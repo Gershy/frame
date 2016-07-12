@@ -65,6 +65,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ret;
 					},
+					assign: function(params /* elem, recurse */) {
+						var elem = U.param(params, 'elem');
+						var recurse = U.param(params, 'recurse', true);
+						
+						var constructor = U.getByName({ root: C, name: this.c });
+						
+						if (!(elem instanceof constructor)) throw 'bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")';
+						
+						elem.init(this.p);
+						
+						if (recurse) {
+							this.i.forEach(function(schema, k) {
+								var child = elem.getNamedChild(k);
+								
+								if (child) 	schema.assign({ elem: child });
+								else 		elem.addChild(schema.actualize());
+							});
+						}
+					},
 					validateElem: function(qElem) {
 						// TODO: Validate!!! (allow subclasses? allow omitted children?)
 					},
@@ -118,6 +137,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					$load: function(params /* onComplete */) {
+						var pass = this;
 						var onComplete = U.param(params, 'onComplete', null);
 						
 						U.request({
@@ -128,10 +148,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							onComplete: function(response) {
 								var schema = new PACK.quickDev.QSchema(response.schemaParams);
 								
-								// HEEERE: Now copy all properties from the schema to `this`
+								schema.assign({ elem: pass });
 								
-								onComplete(this);
-							},
+								onComplete(pass);
+							}
 						});
 					},
 					$getSchema: function(params /* onComplete */) {
@@ -269,10 +289,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
 					init: function(params /* name, schema */) {
+						console.log('LOADING', params);
+						
 						sc.init.call(this, params);
 						this.schema = U.pasam(params, 'schema');
 						
 						this.children = [];
+						
+						console.log('LOADED QGEN');
+						console.log(this.schema.v.simplified());
 					},
 					validateChild: function(child) {
 						this.schema.v.validateElem(child);
@@ -298,7 +323,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return n >= 0 && n < this.children.length ? this.children[n] : null;
 					},
 					
-					schemaChildren: function() { return this.children; }
+					schemaChildren: function() { return this.children; },
+					schemaProperties: function() {
+						return sc.schemaProperties.call(this).update({
+							schema: this.schema.name
+						});
+					}
 				}}
 			}),
 			QDict: PACK.uth.makeClass({ name: 'QDict',

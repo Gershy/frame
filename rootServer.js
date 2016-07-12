@@ -122,9 +122,9 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 					
 					if ('_json' in queryParams) {
-						var json = queryParams._json;
-						delete queryParams._json;
-						queryParams.update(JSON.parse(json));
+						// The "_json" property overwrites any properties in the query of the same name
+						var json = JSON.parse(queryParams._json);
+						queryParams.update(json);
 					}
 				}
 				

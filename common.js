@@ -112,10 +112,10 @@
 		},
 		pasam: function(params, name, def) {
 			var p = this.param(params, name, def);
-			return {
-				name: p,
-				v: this.getSerializable(p)
-			};
+			
+			if (p.constructor !== String) return p;
+			
+			return this.getSerializable(p)
 		},
 		arr: function(arrayLike) {
 			return Array.prototype.slice.call(arrayLike);
@@ -201,7 +201,10 @@
 			return name;
 		},
 		getSerializable: function(name) {
-			return this.getByName({ name: name, root: global.S });
+			return {
+				name: name,
+				v: this.getByName({ name: name, root: S })
+			};
 		},
 		equals: function(o, o2) {
 			for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
