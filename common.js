@@ -85,7 +85,9 @@
 	var isServer = typeof window === 'undefined';
 	
 	// Build utility library
-	global.S = {};
+	global.S = {};		// All serializables are stored here
+	global.C = {};		// All classes are stored here
+	global.PACK = {};	// All packages are stored here
 	global.U = {
 		isServer: function() {
 			return isServer;
@@ -221,18 +223,28 @@
 			if (onComplete) {
 				var pass = this;
 				req.onreadystatechange = function() {
-					if (pass.equals(req, { readyState: 4, status: 200 })) onComplete(JSON.parse(req.responseText));
+					if (pass.equals(req, { readyState: 4, status: 200 })) {
+						var o = JSON.parse(req.responseText);
+						if (o.code !== 0) {
+							throw {
+								msg: 'REQUEST ERROR',
+								url: url,
+								params: reqParams,
+								response: o
+							};
+						}
+						onComplete(o);
+					}
 				};
 			}
 			
+			console.log('AJAX', reqParams);
 			if (!U.isEmptyObj(reqParams)) url += '?_json=' + encodeURIComponent(JSON.stringify(reqParams));
 			
 			req.open('GET', url, typeof async === 'undefined' ? true : async);
 			req.send();
 		},
 	};
-	global.C = {};
-	global.PACK = {};
 	
 	/*
 	Only two packages are built in an ad-hoc manner. These are "uth", and "pack".

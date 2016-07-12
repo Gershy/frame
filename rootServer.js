@@ -16,7 +16,7 @@ var package = new PACK.pack.Package({ name: 'server',
 			Session: PACK.uth.makeClass({ name: 'Session',
 				superclassName: 'QueryHandler',
 				propertyNames: [ 'ip' ],
-				methods: function(superclass) { return {
+				methods: function(sc) { return {
 					init: function(params /* ip */) {
 						this.ip = U.param(params, 'ip');
 						this.id = U.id(this.ip);
@@ -28,11 +28,13 @@ var package = new PACK.pack.Package({ name: 'server',
 					},
 					getNamedChild: function(name) {
 						if (name === 'app') return this.queryHandler;
+						
+						return null;
 					},
 					getFileContents: function(filepath) {
-						//Find the static file, serve it
-						//var filename = queryUrl.join('/') + '/' + (queryFile !== null ? queryFile : 'index.html');
-						//var pathName = DIRNAME + '/' + filename;
+						// Find the static file, serve it
+						// Not a static method (TODO:) because different sessions will
+						// restrict which files are servable in different ways.
 						
 						var ext = path.extname(filepath);
 						if (!(ext in config.legalExtensions)) throw 'unknown extension: "' + ext + '"';
@@ -47,10 +49,11 @@ var package = new PACK.pack.Package({ name: 'server',
 						};
 					},
 					respondToRequest: function(params /* address */) {
+						// Overwrite this method to ensure a "session" param is included
 						if ('session' in params) throw 'illegal "session" param';
-						superclass.respondToRequest.call(this, params.clone({ session: this }));
+						sc.respondToRequest.call(this, params.clone({ session: this }));
 					},
-					handleQuery: function(params /*  */) {
+					handleQuery: function(params /* session, url */) {
 						/*
 						The session itself handles ordinary file requests. Files are
 						referenced using params.url, an array of url components.
@@ -62,7 +65,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
 						if (url.length === 0) throw 'zero-length url';
 						
-						// A request the specifies a file should just serve that file
+						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
 							try {
 								return this.getFileContents(url.join('/'));
@@ -93,6 +96,8 @@ var package = new PACK.pack.Package({ name: 'server',
 						responsible for stringifying those objects, and clarifying that
 						they are in json format.
 						*/
+						if (!('code' in response)) response.code = 0;
+						
 						if (response.constructor !== String) response = JSON.stringify(response);
 						return { data: response, encoding: 'text/json' };
 					},
@@ -152,7 +157,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						: [];
 				}
 				
-				if ('originalAddress' in params) throw 'illegal "originalAddress" param';
+				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
 				var responseContent = session.respondToQuery(params);

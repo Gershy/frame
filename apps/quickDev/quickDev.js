@@ -66,6 +66,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					},
 					assign: function(params /* elem, recurse */) {
+						var pass = this;
 						var elem = U.param(params, 'elem');
 						var recurse = U.param(params, 'recurse', true);
 						
@@ -73,7 +74,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (!(elem instanceof constructor)) throw 'bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")';
 						
-						elem.init(this.p);
+						elem.schemaProperties().forEach(function(v, k) {
+							if (k in pass.p) elem[k] = k[0] === '_'
+								? U.getSerializable(pass.p[k])
+								: pass.p[k];
+						});
 						
 						if (recurse) {
 							this.i.forEach(function(schema, k) {
@@ -288,23 +293,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				superclassName: 'QSet',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* name, schema */) {
-						console.log('LOADING', params);
-						
+					init: function(params /* name, _schema */) {
 						sc.init.call(this, params);
-						this.schema = U.pasam(params, 'schema');
+						this._schema = U.pasam(params, '_schema');
 						
 						this.children = [];
-						
-						console.log('LOADED QGEN');
-						console.log(this.schema.v.simplified());
 					},
 					validateChild: function(child) {
-						this.schema.v.validateElem(child);
+						this._schema.v.validateElem(child);
 					},
 					// generateChild: function(params /* */) { throw 'not implemented'; },
 					getNewChild: function(params /* */) {
-						var child = this.schema.v.actualize(params);
+						var child = this._schema.v.actualize(params);
 						this.addChild(child);
 						return child;
 					},
@@ -326,7 +326,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					schemaChildren: function() { return this.children; },
 					schemaProperties: function() {
 						return sc.schemaProperties.call(this).update({
-							schema: this.schema.name
+							_schema: this._schema.name
 						});
 					}
 				}}
