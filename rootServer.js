@@ -48,10 +48,11 @@ var package = new PACK.pack.Package({ name: 'server',
 							encoding: ext
 						};
 					},
-					respondToRequest: function(params /* address */) {
+					respondToQuery: function(params /* address */) {
+						console.log('RESPONDING TO REQUEST', params.address);
 						// Overwrite this method to ensure a "session" param is included
 						if ('session' in params) throw 'illegal "session" param';
-						sc.respondToRequest.call(this, params.clone({ session: this }));
+						return sc.respondToQuery.call(this, params.clone({ session: this }));
 					},
 					handleQuery: function(params /* session, url */) {
 						/*
@@ -152,6 +153,7 @@ var package = new PACK.pack.Package({ name: 'server',
 					if ('_json' in queryParams) {
 						// The "_json" property overwrites any properties in the query of the same name
 						var json = JSON.parse(queryParams._json);
+						delete queryParams._json;
 						queryParams.update(json);
 					}
 				}

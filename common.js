@@ -125,7 +125,7 @@
 		pasam: function(params, name, def) {
 			var p = this.param(params, name, def);
 			
-			if (p.constructor !== String) return p;
+			if (p === null || p.constructor !== String) return p;
 			
 			return this.getSerializable(p)
 		},

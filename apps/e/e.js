@@ -79,7 +79,6 @@ var package = new PACK.pack.Package({ name: 'e',
 						e = PACK.e.e(e);
 						e.elems.forEach(function(elem) { pass.elems[0].appendChild(elem) });
 						
-						console.log('APPEND RETURN', e);
 						return e;
 					},
 					handle: function(event, func) {

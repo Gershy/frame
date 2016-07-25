@@ -156,7 +156,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						These filters are applied to inner elements. This is only
 						useful for QSets.
 						*/
-						var filterProps = filter.p;
+						var filterProps = U.param(filter, 'p', {});
 						
 						for (var k in filterProps) if (this[k] !== filterProps[k]) return false;
 						
@@ -345,7 +345,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (!sc.matches.call(this, filter)) return false;
 						
 						var pass = this;
-						var filterChildren = filter.i;
+						var filterChildren = U.param(filter, 'i', {});
 						return filterChildren.every(function(filter, k) {
 							var child = pass.getChild(k);
 							return child && child.matches(filter);
@@ -449,14 +449,31 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return sc.schemaProperties.call(this).update({
 							_schema: this._schema.name
 						});
-					}
+					},
 					
+					$getNewChild: function(params /* params, onComplete */) {
+						var onComplete = U.param(params, 'onComplete', null);
+						
+						U.request({
+							params: {
+								address: this.getAddress(),
+								command: 'getNewChild',
+								params: params
+							},
+							onComplete: onComplete
+						});
+					},
 					handleQuery: function(params) {
 						var com = U.param(params, 'command');
 						
 						if (com === 'getNewChild') {
 							var session = params.session;
+							var params = U.param(params, 'params', {});
 							
+							params.session = session;
+							
+							var child = this.getNewChild(params);
+							return { schema: child.schemaParams() };
 						}
 						
 						return sc.handleQuery.call(this, params);

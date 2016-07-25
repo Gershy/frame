@@ -47,11 +47,13 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 								}
 							})
 						}),
-						_initChild: function(child, params) {
-							var session = U.param(params, 'session');
-							
-							child.ip.setValue(session.ip);
-						}
+						_initChild: U.addSerializable({
+							name: 'ahoy.playerInitChild',
+							value: function(child, params) {
+								var session = U.param(params, 'session');
+								child.getChild('ip').setValue(session.ip);
+							}
+						})
 					}),
 					new PACK.quickDev.QGen({ name: 'terrain',
 						prop: 'id',
@@ -103,18 +105,35 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 			onComplete: function(response) {
 				var ip = response.ip;
 				
-				var myUser = users.$filter({
-					filter: { ip: ip },
+				var playGame = function(user) {
+					console.log('PLAYING GAME with user', user.simplified());
+				};
+				
+				users.$filter({
+					filter: { p: {}, i: {
+						ip: { p: { value: ip }, i: {} },
+					} },
 					onComplete: function(response) {
 						var schemas = response.schemaParams;
 						console.log('Filtered user schemas:', response);
 						
 						if (schemas.length > 1) throw 'more than 1 matching schema?';
 						
-						if (schemas.length === 1) var user = users.addChild(schemas[0].actualize());
-						else {
-							var user = users.
+						if (schemas.length === 1) {
 							
+							console.log('Got user from server');
+							var userSchema = new PACK.quickDev.QSchema(schemas[0]);
+							playGame(users.addChild(userSchema.actualize()));
+							
+						} else {
+							
+							console.log('Made NEW user');
+							users.$getNewChild({
+								onComplete: function(response) {
+									var userSchema = new PACK.quickDev.QSchema(response.schema);
+									playGame(userSchema.actualize());
+								}
+							});
 							
 						}
 					}
