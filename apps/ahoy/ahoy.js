@@ -13,6 +13,36 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 		});
 		
 		return {
+			scene: new PACK.e.RootScene({ name: 'root', title: 'Ahoy',
+				build: function(rootElem, subSceneObj) {
+					rootElem.append(new PACK.e.e('<h1>Ahoy</h1>'));
+					
+					rootElem.append(subSceneObj.wrapper);
+					
+					return {
+					};
+				},
+				subScenes: {
+					wrapper: [
+						new PACK.e.Scene({ name: 'game', title: 'Game',
+							build: function(rootElem, subSceneObj) {
+								var canvas = rootElem.append(new PACK.e.e('<canvas width="400" height="400"></canvas>'));
+								return {
+									canvas: canvas
+								}
+							}
+						}),
+						new PACK.e.Scene({ name: 'credits', title: 'Credits',
+							build: function(rootElem, subSceneObj) {
+								rootElem.append(new PACK.e.e('<p>Gershom made this!</p>'));
+								
+								return {
+								};
+							}
+						})
+					]
+				}
+			}),
 			queryHandler: new Ahoy({ name: 'app',
 				children: [
 					new PACK.quickDev.QGen({ name: 'teams',
@@ -96,6 +126,10 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 		
 		if (U.isServer()) return;
 		
+		var html = PACK.ahoy.scene.getHtml();
+		
+		PACK.e.e('body').append(html);
+		
 		var users = root.getChild('users');
 		var myIp = U.request({
 			params: {
@@ -110,12 +144,11 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 				};
 				
 				users.$filter({
-					filter: { p: {}, i: {
-						ip: { p: { value: ip }, i: {} },
+					filter: { i: {
+						ip: { p: { value: ip } },
 					} },
 					onComplete: function(response) {
 						var schemas = response.schemaParams;
-						console.log('Filtered user schemas:', response);
 						
 						if (schemas.length > 1) throw 'more than 1 matching schema?';
 						
@@ -129,6 +162,9 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 							
 							console.log('Made NEW user');
 							users.$getNewChild({
+								params: {
+									name: 'Gershom',
+								},
 								onComplete: function(response) {
 									var userSchema = new PACK.quickDev.QSchema(response.schema);
 									playGame(userSchema.actualize());

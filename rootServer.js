@@ -49,7 +49,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						};
 					},
 					respondToQuery: function(params /* address */) {
-						console.log('RESPONDING TO REQUEST', params.address);
 						// Overwrite this method to ensure a "session" param is included
 						if ('session' in params) throw 'illegal "session" param';
 						return sc.respondToQuery.call(this, params.clone({ session: this }));

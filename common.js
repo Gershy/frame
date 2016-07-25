@@ -76,6 +76,13 @@
 				},
 			},
 		},
+		{ 	target: Array.prototype,
+			props: {
+				contains: function(str) {
+					return this.indexOf(str) !== -1;
+				},
+			},
+		},
 	];
 	
 	for (var i in objectProps) {
@@ -116,7 +123,7 @@
 			if (U.exists(params) && (name in params) && U.exists(params[name])) return params[name];
 			if (this.exists(def)) return def;
 			
-			throw 'missing param: "' + name + '"';
+			throw new Error('missing param: "' + name + '"');
 		},
 		palam: function(params, name, paramFunc) {
 			var ret = this.param(params, name, paramFunc);

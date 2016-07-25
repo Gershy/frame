@@ -471,6 +471,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var params = U.param(params, 'params', {});
 							
 							params.session = session;
+							console.log('params for child', params);
 							
 							var child = this.getNewChild(params);
 							return { schema: child.schemaParams() };
