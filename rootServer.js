@@ -60,6 +60,29 @@ var package = new PACK.pack.Package({ name: 'server',
 						*/
 						
 						var url = U.param(params, 'url');
+						var command = U.param(params, 'command', null);
+						
+						if (command) {
+							
+							var jsonResponse = null;
+							
+							if (command === 'getIp') {
+								jsonResponse = { ip: this.ip }
+							}
+							
+							if (jsonResponse === null) {
+								jsonResponse = {
+									code: 1,
+									msg: 'invalid session command',
+									command: command
+								}
+							}
+							
+							// processChildCommand already takes care of formatting
+							// and conversion to JSON.
+							return this.processChildResponse(jsonResponse);
+							
+						}
 						
 						// Zero-length urls aren't allowed
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
@@ -108,7 +131,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				},
 			}),
 			serverFunc: function(req, res) {
-				var url = req.url; //util.arrDef(req.headers, 'referer', req.headers.host);
+				var url = req.url; // req.url, req.headers.referer, req.headers.host?
 				
 				//Initialize defaults for all url components
 				var queryUrl = url;
@@ -183,6 +206,13 @@ var package = new PACK.pack.Package({ name: 'server',
 		var port = 8000;
 		server.listen(port);
 		console.log('Listening on port: ' + port);
+		
+		setInterval(function() {
+			var mem = process.memoryUsage();
+			var mb = mem.heapUsed / (1024 * 1024);
+			var perc = (mem.heapUsed / mem.heapTotal) * 100;
+			console.log('MEM', mb.toFixed(2).toString() + 'mb (' + perc.toFixed(1).toString() + '%)');
+		}, 30 * 1000);
 	},
 });
 package.build();

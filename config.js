@@ -1,4 +1,5 @@
-module.exports.defaultApp = 'uscape';
+module.exports.defaultApp = 'ahoy';
+//module.exports.defaultApp = 'obfuscate';
 //module.exports.defaultApp = 'sound';
 
 module.exports.legalExtensions = {

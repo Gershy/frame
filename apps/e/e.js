@@ -9,7 +9,7 @@ var package = new PACK.pack.Package({ name: 'e',
 			},
 			E: PACK.uth.makeClass({ name: 'E',
 				propertyNames: [ ],
-				methods: {
+				methods: function(sc) { return {
 					init: function(elems) {
 						/*
 						Accepts a parameter with 5 possible formats.
@@ -31,10 +31,26 @@ var package = new PACK.pack.Package({ name: 'e',
 							
 							if (str[0] === '<') {
 								
-								// The string represents new elements
+								var parsedHtml = new DOMParser().parseFromString(str, 'text/html').firstChild;
+								
+								if (parsedHtml.childNodes.length > 1 && parsedHtml.childNodes[1].childNodes.length > 0) {
+									
+									// The parser will put the element  if appropriate
+									elems = parsedHtml.childNodes[1].childNodes;
+									
+								} else {
+									
+									// If it wasn't in the body it must be in the head
+									elems = parsedHtml.childNodes[0].childNodes;
+									
+								}
+								
+								delete parsedHtml; // Dat memory cleanup
+								
+								/*// The string represents new elements
 								elems = new DOMParser().parseFromString(str, 'text/html')
 								//	 html >     body >        inner element
-									.firstChild.childNodes[1].firstChild;
+									.firstChild.childNodes[1].firstChild;*/
 								
 							} else {
 								
@@ -45,17 +61,26 @@ var package = new PACK.pack.Package({ name: 'e',
 							
 						}
 						
-						// Use array instead of HTMLCollection
-						if (elems instanceof HTMLCollection) elems = U.arr(elems);
 						
 						// Use an array with a single element instead of the element itself
 						if (elems instanceof HTMLElement) elems = [ elems ];
+						else {
+							elems = U.arr(elems);
+						}
+						/*// Use array instead of HTMLCollection
+						if (elems instanceof HTMLCollection) elems = U.arr(elems);*/
 						
 						this.elems = elems;
 					},
 					append: function(e) {
-						e = E(e);
-						for (var n = 0; n < e.elems.length; n++) this.elems[0].appendChild(e.elems[n]);
+						if (this.elems.length === 0) throw 'can\'t append to empty e';
+						
+						var pass = this;
+						e = PACK.e.e(e);
+						e.elems.forEach(function(elem) { pass.elems[0].appendChild(elem) });
+						
+						console.log('APPEND RETURN', e);
+						return e;
 					},
 					handle: function(event, func) {
 						var eventPropName = 'on' + event.substr(0, 1).toUpperCase() + event.substr(1);
@@ -115,7 +140,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						var event = new CustomEvent(eventName, { detail: '' });
 						this.elems.forEach(function(e) { e.dispatchEvent(event); });
 					}
-				}
+				}; }
 			}),
 		};
 	}

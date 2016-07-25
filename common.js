@@ -52,10 +52,20 @@
 					for (var k in this) ret[k] = cb(this[k], k, this);
 					return ret;
 				},
+				every: function(cb) {
+					for (var k in this) if (!cb(this[k], k, this)) return false;
+					return true;
+				},
 				toArray: function() {
 					var ret = [];
 					this.forEach(function(v) { ret.push(v); });
 					return ret;
+				},
+				hasProps: function(propNames) {
+					for (var i = 0, len = propNames.length; i < len; i++)
+						if (!(propNames[i] in this)) return false;
+					
+					return true;
 				},
 			},
 		},
@@ -212,11 +222,12 @@
 			for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
 			return true;
 		},
-		request: function(params /* url, params, onComplete, async */) {
+		request: function(params /* url, params, onComplete, async, json */) {
 			var url = this.param(params, 'url', '');
 			var reqParams = this.param(params, 'params', {});
 			var onComplete = this.param(params, 'onComplete', null);
 			var async = this.param(params, 'async', true);
+			var json = this.param(params, 'json', true);
 			
 			var req = new XMLHttpRequest();
 			
@@ -224,21 +235,24 @@
 				var pass = this;
 				req.onreadystatechange = function() {
 					if (pass.equals(req, { readyState: 4, status: 200 })) {
-						var o = JSON.parse(req.responseText);
-						if (o.code !== 0) {
-							throw {
-								msg: 'REQUEST ERROR',
-								url: url,
-								params: reqParams,
-								response: o
-							};
+						if (json) {
+							var o = JSON.parse(req.responseText);
+							if (o.code !== 0) {
+								throw {
+									msg: 'REQUEST ERROR',
+									url: url,
+									params: reqParams,
+									response: o
+								};
+							}
+						} else {
+							var o = req.responseText;
 						}
 						onComplete(o);
 					}
 				};
 			}
 			
-			console.log('AJAX', reqParams);
 			if (!U.isEmptyObj(reqParams)) url += '?_json=' + encodeURIComponent(JSON.stringify(reqParams));
 			
 			req.open('GET', url, typeof async === 'undefined' ? true : async);

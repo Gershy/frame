@@ -27,7 +27,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							return inner instanceof PACK.quickDev.QSchema ? inner : new PACK.quickDev.QSchema(inner);
 						});
 					},
-					actualize: function(params /* */) {
+					actualize: function(params /* p, i */) {
 						/*
 						====Example call:
 						
@@ -127,8 +127,46 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					getAddress: function() { return this.getNameChain().join('.'); },
+					getChild: function(address) {
+						if (address.length === 0) return this;
+						throw 'cannot get children within non-set element "' + this.getAddress() + '"';
+					},
+					
+					matches: function(filter) {
+						/*
+						Checks if this element matches a filter
+						
+						Example usage:
+						
+						var filter = {
+							p: {},
+							i: {
+								email: 		{ p: { value: 'bob@site.com' } },
+								password: 	{ p: { value: 'password123' } },
+							}
+						};
+						
+						A filter is an object with "p" and "i" keys.
+						
+						The "p" key is a list of properties to check against the
+						element. If any property in "p" exists on the element and
+						doesn't match, the element fails the filter.
+						
+						The "i" key indicates an array or map of inner filters.
+						These filters are applied to inner elements. This is only
+						useful for QSets.
+						*/
+						var filterProps = filter.p;
+						
+						for (var k in filterProps) if (this[k] !== filterProps[k]) return false;
+						
+						return true;
+					},
 					
 					$persist: function(params /* onComplete, requireParent */) {
+						/*
+						Persists this element, causing it to exist on the server-side.
+						*/
 						var onComplete = U.param(params, 'onComplete', null);
 						var requireParent = U.param(params, 'requireParent', false);
 						
@@ -142,6 +180,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					$load: function(params /* onComplete */) {
+						/*
+						Synchronizes this element with the corresponding server-side
+						element. Gets the schema of the server-side element with a
+						calling address, and assigns that schema to itself.
+						*/
 						var pass = this;
 						var onComplete = U.param(params, 'onComplete', null);
 						
@@ -207,6 +250,28 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return {};
 					},
 					schemaParams: function() {
+						/*
+						Returns an object representing parameters for a PACK.quickDev.QSchema
+						object. The parameters can be used raw, but to gain quick
+						additional functionality the result of schemaParams() can be plugged
+						into the QSchema constructor.
+						
+						e.g.
+						
+						var elem = // Some instance of QElem
+						
+						var schemaParams = elem.schemaParams();
+						
+						// Can analyze schemaParams and do stuff
+						
+						// Convenient functionality after building QSchema:
+						var schema = new PACK.quickDev.QSchema(schemaParams);
+						
+						schema.assign(elem); // Quickly assign schema properties to an element
+						schema.actualize();	 // Quickly create a new element based on this schema
+						//...
+						
+						*/
 						return {
 							c: this.schemaConstructorName(),
 							p: this.schemaProperties(),
@@ -221,9 +286,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				propertyNames: [ 'value' ],
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
+						var value = U.param(params, 'value', null);
+						
 						sc.init.call(this, params);
-						this.value = this.sanitizeAndValidate(U.param(params, 'value', null));
+						this.value = null;
+						this.setValue(value);
 					},
+					setValue: function(value) { this.value = this.sanitizeAndValidate(value); },
 					sanitizeAndValidate: function(value) { return value; },
 					simplified: function() { return this.value; },
 					
@@ -247,6 +316,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.validateChild(child);
 						this.containChild(child);
 						child.par = this;
+						
+						return child;
 					},
 					remChild: function(child) {
 						this.uncontainChild(child);
@@ -256,9 +327,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					uncontainChild: function(child) { throw 'not implemented'; },
 					getNamedChild: function(name) { throw 'not implemented'; },
 					getChild: function(address) {
-						if (address.constructor !== Array) address = address.split('.');
-						
 						if (address.length === 0) return this;
+						
+						if (address.constructor !== Array) address = address.split('.');
 						
 						ptr = this;
 						for (var i = 0, len = address.length; i < len; i++) {
@@ -268,11 +339,45 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ptr;
 					},
+					getChildren: function() { throw 'not implemented'; },
 					
-					schemaChildren: function() { throw 'not implemented'; /* Force subclasses to implement */ },
+					matches: function(filter) {
+						if (!sc.matches.call(this, filter)) return false;
+						
+						var pass = this;
+						var filterChildren = filter.i;
+						return filterChildren.every(function(filter, k) {
+							var child = pass.getChild(k);
+							return child && child.matches(filter);
+						});
+					},
+					filterChildren: function(filter) {
+						var ret = [];
+						
+						this.getChildren().forEach(function(child, k) {
+							if (child.matches(filter)) ret.push(child);
+						});
+						
+						return ret;
+					},
 					
+					schemaChildren: function() { return this.getChildren(); },
+					
+					$filter: function(params /* filter, onComplete */) {
+						var onComplete = U.param(params, 'onComplete', null);
+						var filter = U.param(params, 'filter');
+						
+						U.request({
+							params: {
+								address: this.getAddress(),
+								filter: filter,
+								command: 'filteredChildren'
+							},
+							onComplete: onComplete
+						});
+					},
 					handleQuery: function(params) {
-						var com = params.command;
+						var com = U.param(params, 'command');
 						
 						if (com === 'persistChild') {
 							
@@ -283,51 +388,78 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 							return { msg: 'success', id: child.id };
 							
+						} else if (com === 'filteredChildren') {
+							var filter = U.param(params, 'filter');
+							
+							var children = this.filterChildren(filter);
+							
+							return {
+								schemaParams: children.map(function(child) { return child.schemaParams(); })
+							};
 						}
 						
 						return sc.handleQuery.call(this, params);
-					},
+					}
 				}}
 			}),
 			QGen: PACK.uth.makeClass({ name: 'QGen',
 				superclassName: 'QSet',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* name, _schema */) {
+					init: function(params /* name, _schema, childNameProp */) {
 						sc.init.call(this, params);
 						this._schema = U.pasam(params, '_schema');
+						this._initChild = U.pasam(params, '_initChild', null);
+						this.prop = U.param(params, 'prop');
 						
-						this.children = [];
+						var lastDot = this.prop.indexOf('/');
+						if (~lastDot) {
+							this.childAddress = this.prop.substr(0, lastDot);
+							this.childProp = this.prop.substr(lastDot + 1);
+						} else {
+							this.childAddress = '';
+							this.childProp = this.prop;
+						}
+						this.children = {};
 					},
 					validateChild: function(child) {
 						this._schema.v.validateElem(child);
 					},
-					// generateChild: function(params /* */) { throw 'not implemented'; },
 					getNewChild: function(params /* */) {
-						var child = this._schema.v.actualize(params);
+						var child = this._schema.v.actualize();
+						if (this._initChild) this._initChild.v(child, params);
 						this.addChild(child);
 						return child;
 					},
 					containChild: function(child) {
-						child.name = this.children.length;
-						this.children.push(child);
+						var prop = child.getChild(this.childAddress)[this.childProp];
+						this.children[prop] = child;
 					},
 					uncontainChild: function(child) {
-						this.children.splice(child.name, 1);
-						child.name = '-removed from "' + this.getAddress() + '"-';
+						var prop = child.getChild(this.childAddress)[this.childProp];
+						delete this.children[prop];
 					},
 					simplified: function() { return this.children.map(function(c) { return c.simplified(); } ); },
 					getNamedChild: function(name) {
-						var n = parseInt(name);
-						if (isNaN(n)) throw 'bad QGen child name: "' + name + '"';
-						return n >= 0 && n < this.children.length ? this.children[n] : null;
+						return name in this.children ? this.children[name] : null;
 					},
+					getChildren: function() { return this.children; },
 					
-					schemaChildren: function() { return this.children; },
 					schemaProperties: function() {
 						return sc.schemaProperties.call(this).update({
 							_schema: this._schema.name
 						});
+					}
+					
+					handleQuery: function(params) {
+						var com = U.param(params, 'command');
+						
+						if (com === 'getNewChild') {
+							var session = params.session;
+							
+						}
+						
+						return sc.handleQuery.call(this, params);
 					}
 				}}
 			}),
@@ -357,12 +489,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getNamedChild: function(name) {
 						return name in this.children ? this.children[name] : null;
 					},
-					
-					schemaChildren: function() { return this.children; }
+					getChildren: function() { return this.children; }
 				}}
 			}),
 			
 			/* QValue subclasses */
+			QRef: PACK.uth.makeClass({ name: 'QRef',
+				superclassName: 'QValue',
+				methods: function(sc) { return {
+					init: function(params /* name, value, baseAddress */) {
+						// Set the base address before calling super (super will call
+						// sanitizeAndValidate, which relies on knowing baseAddress)
+						this.baseAddress = U.param(params, 'baseAddress', null);
+						sc.init.call(this, params);
+					},
+					sanitizeAndValidate: function(value) {
+						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
+						
+						if (value.constructor !== String) throw 'invalid reference address';
+						
+						return this.baseAddress ? this.baseAddress + '.' + value : value;
+					},
+				}}
+			}),
 			QString: PACK.uth.makeClass({ name: 'QString',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
@@ -377,7 +526,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			QInt: PACK.uth.makeClass({ name: 'QInt',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
-					init: function(params /* */) {
+					init: function(params /* name, value */) {
 						sc.init.call(this, params);
 					},
 					sanitizeAndValidate: function(value) {
@@ -385,23 +534,53 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (isNaN(intValue)) throw 'invalid integer value "' + value + '" for "' + this.getAddress() + '"';
 						return intValue;
 					},
-				}}
+				}; }
 			}),
-			QRef: PACK.uth.makeClass({ name: 'QRef',
+			QVector2D: PACK.uth.makeClass({ name: 'QVector2D',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
-					init: function(params /* */) {
+					init: function(params /* name, value */) {
 						sc.init.call(this, params);
 					},
 					sanitizeAndValidate: function(value) {
-						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
+						if (value.constructor !== Object) throw 'invalid type for vector2D: "' + value.constructor.name + '"';
 						
-						if (value.constructor !== String) throw 'invalid reference address';
+						if (!value.hasProps([ 'x', 'y' ])) throw 'missing coordinate for vector2D';
 						
-						return value;
+						var val = {};
+						if (isNaN(val.x = parseFloat(value.x))) throw 'bad x coordinate for vector2D';
+						if (isNaN(val.y = parseFloat(value.y))) throw 'bad y coordinate for vector2D';
+						
+						return val;
 					},
-				}}
+				}; },
 			}),
+			QColor: PACK.uth.makeClass({ name: 'QColor',
+				superclassName: 'QValue',
+				methods: function(sc) { return {
+					init: function(params /* name, value */) {
+						sc.init.call(this, params);
+					},
+					sanitizeAndValidate: function(value) {
+						if (value.constructor !== Object) throw 'invalid type for color: "' + value.constructor.name + '"';
+						
+						if (!value.hasProps([ 'r', 'g', 'b', 'a' ])) throw 'missing color component';
+						
+						var val = {};
+						if (isNaN(val.r = parseInt(value.r))) throw 'bad format for r component: "' + value.r + '"';
+						if (isNaN(val.g = parseInt(value.g))) throw 'bad format for g component: "' + value.g + '"';
+						if (isNaN(val.b = parseInt(value.b))) throw 'bad format for b component: "' + value.b + '"';
+						if (isNaN(val.a = parseFloat(value.a))) throw 'bad format for a component: "' + value.a + '"';
+						
+						if (val.r < 0 || val.r > 255) throw 'r component outside range';
+						if (val.g < 0 || val.g > 255) throw 'g component outside range';
+						if (val.b < 0 || val.b > 255) throw 'b component outside range';
+						if (val.a < 0 || val.a > 1) throw 'a component outside range';
+						
+						return val;
+					}
+				}; }
+			})
 		};
 	}
 });
