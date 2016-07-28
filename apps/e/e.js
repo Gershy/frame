@@ -167,6 +167,8 @@ var package = new PACK.pack.Package({ name: 'e',
 							into an html node.
 						subScenes: dict of subScene names to array of Scene
 							instances that can be displayed	within this scene.
+							The array will be transformed into an object using
+							each scene's name as the key.
 						
 						Returns an object of named useful elements within the
 						scene.
@@ -223,49 +225,90 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.name = U.param(params, 'name');
 						this.title = U.param(params, 'title');
 						this.build = U.param(params, 'build');
-						this.subScenes = U.param(params, 'subScenes', []);
-						
-						this.active = false;
-						this.par = null;
+						this.start = U.param(params, 'start', null);
+						this.end = U.param(params, 'end', null);
+						this.defaultScene = U.param(params, 'defaultScene', null);
+						this.subScenes = U.param(params, 'subScenes', {});
 						
 						var pass = this;
-						this.subScenes.forEach(function(subSceneList) {
-							subSceneList.forEach(function(subScene) { subScene.par = pass; });
+						this.subScenes.forEach(function(sceneList, wrapperName, obj) {
+							var sceneObj = {};
+							sceneList.forEach(function(scene) {
+								sceneObj[scene.name] = scene;
+								scene.par = pass;
+							});
+							obj[wrapperName] = sceneObj;
 						});
+						
+						this.active = false;
+						this.wrappers = {};
+						this.elems = null;
+						this.par = null;
 					},
-					setSubScene: function(name, subScene) {
+					setSubScene: function(wrapperName, subSceneName) {
+						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper');
+						
+						var next = this.subScenes[wrapperName][subSceneName];
+						if (next.active) return;
+						
+						var sceneList = this.subScenes[wrapperName];
+						var active = null;
+						for (var k in sceneList) {
+							if (sceneList[k].active) {
+								active = sceneList[k];
+								break;
+							}
+						}
+						
+						if (active) {
+							if (active.end) active.end(active.elems);
+							active.active = false;
+						}
+						
+						var wrapper = this.wrappers[wrapperName];
+						wrapper.clear();
+						wrapper.append(next.getHtml());
+						
+						if (next.start) next.start(next.elems);
+						next.active = true;
 					},
 					getHtml: function() {
-						console.log('HEEERE??');
-						var scene = new PACK.e.e('<div class="scene"></div>');
-						scene.listAttr({ class: this.name });
+						var sceneElem = new PACK.e.e('<div class="scene"></div>');
+						sceneElem.listAttr({ class: this.name });
 						
+						var pass = this;
 						var subSceneObj = {};
-						this.subScenes.forEach(function(subSceneList, name) {
-							var elem = new PACK.e.e('<div class="subSceneList"></div>');
-							elem.listAttr({ class: name });
+						this.subScenes.forEach(function(sceneList, wrapperName) {
+							var subSceneElem = new PACK.e.e('<div class="list"></div>');
+							subSceneElem.listAttr({ class: wrapperName });
 							
-							var tabs = elem.append('<div class="tabs"></div>');
-							var wrapper = elem.append('<div class="wrapper"></div>');
+							var tabs = subSceneElem.append('<div class="tabs"></div>');
 							
-							subSceneList.forEach(function(subScene) {
-								console.log(subScene);
-								var tab = tabs.append('<div class="tab">' + subScene.title + '</div>');
-								tab.listAttr({ class: subScene.name });
+							// TODO: Consider reusing wrappers? (Or is that a bad idea lol)
+							pass.wrappers[wrapperName] = subSceneElem.append('<div class="content"></div>');
+							
+							sceneList.forEach(function(scene) {
+								var tab = tabs.append('<div class="tab">' + scene.title + '</div>');
+								tab.listAttr({ class: scene.name });
 								
-								tab.handle('click', function(elem) {
-									wrapper.clear();
-									wrapper.append(subScene.getHtml());
+								tab.handle('click', function(elem, e) {
+									console.log('Setting subscene to', wrapperName, scene.name);
+									pass.setSubScene(wrapperName, scene.name);
 								});
 							});
 							
-							subSceneObj[name] = elem;
+							subSceneObj[wrapperName] = subSceneElem;
 						});
 						
 						// TODO: how to access useful?
-						var useful = this.build(scene, subSceneObj);
+						this.elems = this.build(sceneElem, subSceneObj);
 						
-						return scene;
+						if (this.defaultScene) {
+							var s = this.defaultScene.split('/');
+							this.setSubScene(s[0], s[1]);
+						}
+						
+						return sceneElem;
 					}
 				}; }
 			}),
@@ -276,6 +319,9 @@ var package = new PACK.pack.Package({ name: 'e',
 						sc.init.call(this, params);
 						
 						this.active = true;
+					},
+					go: function() {
+						PACK.e.e('body').append(this.getHtml());
 					}
 				}; }
 			})

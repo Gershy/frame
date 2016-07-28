@@ -453,12 +453,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					$getNewChild: function(params /* params, onComplete */) {
 						var onComplete = U.param(params, 'onComplete', null);
+						var reqParams = U.param(params, 'params', {});
 						
 						U.request({
 							params: {
 								address: this.getAddress(),
 								command: 'getNewChild',
-								params: params
+								initParams: reqParams
 							},
 							onComplete: onComplete
 						});
@@ -468,12 +469,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (com === 'getNewChild') {
 							var session = params.session;
-							var params = U.param(params, 'params', {});
+							var initParams = U.param(params, 'initParams', {});
+							initParams.session = session;
 							
-							params.session = session;
-							console.log('params for child', params);
-							
-							var child = this.getNewChild(params);
+							var child = this.getNewChild(initParams);
 							return { schema: child.schemaParams() };
 						}
 						

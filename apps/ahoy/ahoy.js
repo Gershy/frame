@@ -13,10 +13,11 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 		});
 		
 		return {
-			scene: new PACK.e.RootScene({ name: 'root', title: 'Ahoy',
+			resources: {
+				css: [ 'apps/ahoy/style.css' ]
+			},
+			scene: new PACK.e.RootScene({ name: 'root', title: 'Ahoy', defaultScene: 'wrapper/intro',
 				build: function(rootElem, subSceneObj) {
-					rootElem.append(new PACK.e.e('<h1>Ahoy</h1>'));
-					
 					rootElem.append(subSceneObj.wrapper);
 					
 					return {
@@ -24,6 +25,27 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 				},
 				subScenes: {
 					wrapper: [
+						new PACK.e.Scene({ name: 'intro', title: 'Intro',
+							build: function(rootElem, subSceneObj) {
+								var title = 	rootElem.append(new PACK.e.e('<div class="title"><h1>Ahoy</h1></div>'));
+								var sea = 		rootElem.append(new PACK.e.e('<div class="sea"></div>'));
+								sea.append(new PACK.e.e('<div class="rocks"></div>'));
+								var boat1 = sea.append(new PACK.e.e('<div class="boat boat1"></div>'));
+								var boat2 = sea.append(new PACK.e.e('<div class="boat boat2"><div class="fire"></div></div>'));
+								var turn1 = sea.append(new PACK.e.e('<div class="turn1"></div>'));
+								var turn2 = turn1.append(new PACK.e.e('<div class="turn2"></div>'));
+								U.rng(4).forEach(function() { turn2.append('<div class="cannonball"></div>'); });
+								boat1.append(new PACK.e.e('<div class="pirate pirate1"></div>'));
+								boat1.append(new PACK.e.e('<div class="pirate pirate2"></div>'));
+								boat1.append(new PACK.e.e('<div class="pirate pirate3"></div>'));
+								
+								return {
+									title: title,
+									boat1: boat1,
+									boat2: boat2
+								}
+							},
+						}),
 						new PACK.e.Scene({ name: 'game', title: 'Game',
 							build: function(rootElem, subSceneObj) {
 								var canvas = rootElem.append(new PACK.e.e('<canvas width="400" height="400"></canvas>'));
@@ -80,8 +102,11 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 						_initChild: U.addSerializable({
 							name: 'ahoy.playerInitChild',
 							value: function(child, params) {
+								var name = U.param(params, 'name');
 								var session = U.param(params, 'session');
+								
 								child.getChild('ip').setValue(session.ip);
+								child.getChild('name').setValue(name);
 							}
 						})
 					}),
@@ -126,9 +151,7 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 		
 		if (U.isServer()) return;
 		
-		var html = PACK.ahoy.scene.getHtml();
-		
-		PACK.e.e('body').append(html);
+		PACK.ahoy.scene.go();
 		
 		var users = root.getChild('users');
 		var myIp = U.request({
@@ -154,13 +177,11 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 						
 						if (schemas.length === 1) {
 							
-							console.log('Got user from server');
 							var userSchema = new PACK.quickDev.QSchema(schemas[0]);
 							playGame(users.addChild(userSchema.actualize()));
 							
 						} else {
 							
-							console.log('Made NEW user');
 							users.$getNewChild({
 								params: {
 									name: 'Gershom',

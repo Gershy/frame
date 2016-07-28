@@ -88,6 +88,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
 						if (url.length === 0) throw 'zero-length url';
 						
+						
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
 							try {
@@ -99,19 +100,38 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// A mode-less request to the session just means to serve the html
 						var appName = url[0];
-						var mainScript = this.getFileContents('mainPage.html');
-						mainScript.data = mainScript.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
-						mainScript.data = mainScript.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
+						var html = this.getFileContents('mainPage.html');
+						html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
+						html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
 						
 						if (!(appName in PACK)) {
 							require('./apps/' + appName + '/' + appName + '.js');
-							if (!('queryHandler' in PACK[appName])) throw 'app "' + appName + '" is missing queryHandler';
+							if (!('queryHandler' in PACK[appName])) throw new Error('app "' + appName + '" is missing queryHandler');
 							
 							this.appName = appName;
 							this.queryHandler = PACK[appName].queryHandler;
 						}
 						
-						return mainScript;
+						if ('resources' in PACK[appName]) {
+							
+							var htmlElems = [];
+							
+							var r = PACK[appName].resources;
+							
+							var ver = '?v' + PACK.server.ASSET_VERSION;
+							
+							if ('css' in r) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
+							if ('js' in r)  r.js.forEach( function(js)  { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
+							
+							html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '\t\t' + html; }).join('\n'));
+							
+						} else {
+							
+							html.data = html.data.replace(/(\s*){{resources}}/, '');
+							
+						}
+						
+						return html;
 					},
 					processChildResponse: function(response) {
 						/*
@@ -185,11 +205,14 @@ var package = new PACK.pack.Package({ name: 'server',
 				params.originalAddress = U.arr(params.address);
 				
 				var responseContent = session.respondToQuery(params);
-				responseText = responseContent.data;
-				res.setHeader('Content-Length', responseText.length);
-				res.setHeader('Content-Type', responseContent.encoding);
-				res.end(responseText);
-					
+				
+				res.writeHead(200, {
+					'Content-Type': responseContent.encoding,
+					'Content-Length': responseContent.data.length
+				});
+				res.write(responseContent.data, 'binary');
+				res.end();
+				
 				/*} catch(e) {
 					
 					if (true) throw e;
