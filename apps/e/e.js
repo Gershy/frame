@@ -292,7 +292,6 @@ var package = new PACK.pack.Package({ name: 'e',
 								tab.listAttr({ class: scene.name });
 								
 								tab.handle('click', function(elem, e) {
-									console.log('Setting subscene to', wrapperName, scene.name);
 									pass.setSubScene(wrapperName, scene.name);
 								});
 							});

@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'ahoy',
-	dependencies: [ 'quickDev', 'e' ],
+	dependencies: [ 'quickDev', 'e', 'canvas' ],
 	buildFunc: function() {
 		
 		var Ahoy = PACK.uth.makeClass({ name: 'Ahoy',
@@ -47,6 +47,12 @@ var package = new PACK.pack.Package({ name: 'ahoy',
 							},
 						}),
 						new PACK.e.Scene({ name: 'game', title: 'Game',
+							start: function() {
+								console.log('game started');
+							},
+							end: function() {
+								console.log('game ended');
+							},
 							build: function(rootElem, subSceneObj) {
 								var canvas = rootElem.append(new PACK.e.e('<canvas width="400" height="400"></canvas>'));
 								return {

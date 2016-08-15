@@ -1,7 +1,7 @@
-module.exports.defaultApp = 'ahoy';
-//module.exports.defaultApp = 'obfuscate';
-//module.exports.defaultApp = 'sound';
+//module.exports.defaultApp = 'ahoy';
+module.exports.defaultApp = 'parse';
 
+//module.exports.defaultApp = 'sound';
 module.exports.legalExtensions = {
 	// "!" preceeding the extension name indicates a binary filetype
 	'.html' : 	'text/html',
