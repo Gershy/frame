@@ -68,7 +68,7 @@ var package = new PACK.pack.Package({ name: 'parse',
 							
 						}
 						
-						if (stringElem.length > 0) obj.objs.push(stringElem);
+						if (stringElem.trim().length > 0) obj.objs.push(stringElem);
 						
 						return input.length;
 					},
@@ -99,11 +99,22 @@ var package = new PACK.pack.Package({ name: 'parse',
 						return token;
 					},
 					parse: function(symbolList, input) {
+						/*input = input.replace(/\/\/[^\n]+\n/g, '');
+						input = input.replace(/\/\*.+?\*\/|\/\/.*(?=[\n\r])/g, '');
+						
+						console.log('Compressed input');
+						console.log(input);
+						console.log('======');*/
+						
+						
 						var tokenized = this.tokenize(input);
 						var parseData = this.parseAny(symbolList, tokenized, true);
 						return parseData.instance;
 					},
 					parseAny: function(symbolList, token, mustExhaust) {
+						// Automatic unpacking - means that wrappers with null delimiters are meaningless
+						while (token.constructor === Object && token.delimA === null && token.delimB === null && token.objs.length === 1) token = token.objs[0];
+						
 						if (!U.exists(mustExhaust)) mustExhaust = false;
 						
 						for (var i = 0, len = symbolList.length; i < len; i++) {
@@ -153,12 +164,34 @@ var package = new PACK.pack.Package({ name: 'parse',
 					parse: function(token, parser) {
 						var name = parser.getString(token);
 						
-						if (isNaN(parseFloat((name)))) throw new Error('~bad identifier format');
+						if (!/^[0-9]+$/.test(name)) throw new Error('~bad identifier format');
 						
 						this.string = name;
 						return 1;
 					}
 				}; },
+			}),
+			Declaring: PACK.uth.makeClass({ name: 'Declaring',
+				namespace: n,
+				superclassName: 'Token',
+				methods: function(sc, c) { return {
+					init: function(params /* string */) {
+						sc.init.call(this, params);
+						this.identifier = U.param(params, 'identifier', null);
+					},
+					parse: function(token, parser) {
+						var name = parser.getString(token);
+						
+						var ind = name.indexOf(' ');
+						if (ind === -1) throw new Error('~declaring expects a space');
+						
+						if (name.substr(0, ind) !== 'var') throw new Error('~declaring missed "var" keyword');
+						
+						this.identifier = parser.parseAny([ PACK.parse.Identifier ], name.substr(ind + 1).trim(), true).instance;
+						
+						return 1;
+					}
+				}; }
 			}),
 			Identifier: PACK.uth.makeClass({ name: 'Identifier',
 				namespace: n,
@@ -279,8 +312,6 @@ var package = new PACK.pack.Package({ name: 'parse',
 							}
 						}
 						
-						console.log(goodObjs);
-						
 						var p = PACK.parse;
 						this.entries = [];
 						var key = null;
@@ -298,73 +329,28 @@ var package = new PACK.pack.Package({ name: 'parse',
 					}
 				}; }
 			}),
-			Value: PACK.uth.makeClass({ name: 'Value',
+			BracketedValue: PACK.uth.makeClass({ name: 'BracketedValue',
 				namespace: n,
 				superclassName: 'Token',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
-						sc.init.call(this, params);
-						this.value = U.param(params, 'value', null);
-					},
-					parse: function(token, parser) {
-						var p = PACK.parse;
-						var parsed = parser.parseAny([
-							p.Numeric,
-							p.Identifier,
-							p.SingleQuoteString,
-							p.DoubleQuoteString,
-							p.Indexing,
-							p.Indirecting,
-							p.InlineArray,
-							p.InlineObject,
-							p.BracketedValue
-						], token, true);
-						
-						this.value = parsed.instance;
-						return parsed.numParsed;
-					}
-				}; }
-			}),
-			SimpleValue: PACK.uth.makeClass({ name: 'SimpleValue',
-				namespace: n,
-				superclassName: 'Token',
-				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						sc.init.call(this, params);
-						this.value = U.param(params, 'value', null);
-					},
-					parse: function(token, parser) {
-						var p = PACK.parse;
-						var parsed = parser.parseAny([
-							p.Numeric,
-							p.Identifier,
-							p.SingleQuoteString,
-							p.DoubleQuoteString,
-						], token, true);
-						
-						this.value = parsed.instance;
-						return parsed.numParsed;
-					}
-				}; }
-			}),
-			/*BracketedValue: PACK.uth.makeClass({ name: 'BracketedValue',
-				namespace: n,
-				superclassName: 'Token',
-				methods: function(sc, c) { return {
-					init: function(params /* * /) {
 						sc.init.call(this);
+						
+						// TODO: Consider changing this to an array of values?
 						this.value = U.param(params, 'value', null);
 					},
 					parse: function(token, parser) {
-						// DANG how to allow double-bracketed values? sending obj is no good (has no brackets, won't be parsed), sending obj.objs[0] is no good (may only be a portion of the inner value)
 						var obj = parser.getObject(token);
 						if (obj.delimA !== '(' || obj.delimB !== ')') throw new Error('~bracketed-value must be enclosed in ()');
+						if (obj.objs.length !== 1) throw new Error('~bracketed-value should have exactly 1 inner value');
 						
 						var p = PACK.parse;
-						this.value = parser.parseAny([ p.Value ], { delimA: null, delimB: null, objs: obj.objs[0] }, true);
+						this.value = parser.parseAny([ p.Value ], obj.objs[0], true).instance.value;
+						
+						return 1;
 					}
 				}; }
-			}),*/
+			}),
 			Indexing: PACK.uth.makeClass({ name: 'Indexing',
 				namespace: n,
 				superclassName: 'Token',
@@ -447,8 +433,6 @@ var package = new PACK.pack.Package({ name: 'parse',
 					}
 				}; }
 			}),
-			
-			/* STATEMENTS */
 			BinaryOp: PACK.uth.makeClass({ name: 'BinaryOp',
 				namespace: n,
 				superclassName: 'Token',
@@ -456,19 +440,86 @@ var package = new PACK.pack.Package({ name: 'parse',
 					init: function(params /* */) {
 						sc.init.call(this);
 						
+						this.rightSide = U.param(params, 'rightSide', null);
 						this.leftSide = U.param(params, 'leftSide', null);
 						this.op = U.param(params, 'op', null);
-						this.rightSide = U.param(params, 'rightSide', null);
+					},
+					findOp: function(str) {
+						var ops = c.ops;
+						var ind = -1;
+						var op = null;
+						for (var i = 0, len = ops.length; i < len; i++) {
+							if (~(ind = str.lastIndexOf(ops[i]))) {
+								op = ops[i];
+								break;
+							}
+						}
+						
+						return op !== null ? { ind: ind, op: op } : null;
 					},
 					parse: function(token, parser) {
-						// TODO: HERE
 						if (token.constructor === String) {
 							
+							var opData = this.findOp(token);
+							if (opData === null) throw new Error('~binary-op missed op string');
 							
+							var v = token.substr(0, opData.ind).trim();
+							var i = token.substr(opData.ind + opData.op.length).trim();
+							var numParsed = 1;
 							
 						} else {
 							
+							var tobjs = token.objs;
+							if (tobjs.length === 0) throw new Error('~not enough data for binary-op');
+							
+							// Get the last obj
+							var lastObj = tobjs[tobjs.length - 1];
+							
+							if (lastObj.constructor === String) {
+								
+								lastObj = lastObj.trim();
+								var opData = this.findOp(lastObj);
+								if (opData === null) throw new Error('~binary-op missed op string');
+								
+								var objs = tobjs.slice(0, tobjs.length - 1);
+								if (opData.ind !== 0) objs.push(lastObj.substr(0, opData.ind).trim());
+								
+								var i = lastObj.substr(opData.ind + opData.op.length).trim();
+								
+							} else {
+								
+								if (tobjs.length < 2) throw new Error('~not enough data for binary-op');
+								
+								var opStr = tobjs[tobjs.length - 2];
+								if (opStr.constructor !== String) throw new Error('~binary-op missed op string');
+								
+								opStr = opStr.trim();
+								
+								var opData = this.findOp(opStr);
+								if (opData === null) throw new Error('~binary-op missed op string');
+								
+								// TODO: The operator has to be the last part of the string
+								if (opData.ind !== opStr.length - opData.op.length) throw new Error('~operator should come at end of string');
+								
+								var objs = tobjs.slice(0, tobjs.length - 2);
+								if (opData.ind !== 0) objs.push(opStr.substr(0, opData.ind));
+								
+								var i = lastObj;
+								
+							}
+							
+							var v = { delimA: null, delimB: null, objs: objs };
+							var numParsed = token.objs.length;
+							
 						}
+						
+						var p = PACK.parse;
+						
+						this.rightSide = parser.parseAny([ p.Value ], i, true).instance.value;
+						this.op = opData.op;
+						this.leftSide = parser.parseAny([ p.Value ], v, true).instance.value;
+						
+						return numParsed;
 					}
 				}; },
 				statik: {
@@ -476,6 +527,60 @@ var package = new PACK.pack.Package({ name: 'parse',
 				}
 			}),
 			
+			/* COLLECTIONS */
+			Value: PACK.uth.makeClass({ name: 'Value',
+				namespace: n,
+				superclassName: 'Token',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						sc.init.call(this, params);
+						this.value = U.param(params, 'value', null);
+					},
+					parse: function(token, parser) {
+						var p = PACK.parse;
+						var parsed = parser.parseAny([
+							p.Numeric,
+							p.Identifier,
+							p.Declaring,
+							p.SingleQuoteString,
+							p.DoubleQuoteString,
+							p.BracketedValue,
+							p.Indexing,
+							p.Indirecting,
+							p.InlineArray,
+							p.InlineObject,
+							p.BinaryOp
+						], token, true);
+						
+						this.value = parsed.instance;
+						return parsed.numParsed;
+					}
+				}; }
+			}),
+			SimpleValue: PACK.uth.makeClass({ name: 'SimpleValue',
+				namespace: n,
+				superclassName: 'Token',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						sc.init.call(this, params);
+						this.value = U.param(params, 'value', null);
+					},
+					parse: function(token, parser) {
+						var p = PACK.parse;
+						var parsed = parser.parseAny([
+							p.Numeric,
+							p.Identifier,
+							p.SingleQuoteString,
+							p.DoubleQuoteString,
+						], token, true);
+						
+						this.value = parsed.instance;
+						return parsed.numParsed;
+					}
+				}; }
+			}),
+			
+			/* QUERY HANDLER */
 			queryHandler: new PACK.quickDev.QDict({
 				name: 'app',
 				children: [	],
@@ -496,7 +601,7 @@ var package = new PACK.pack.Package({ name: 'parse',
 		
 		console.log(parser.parse([
 			p.SingleQuoteString, p.DoubleQuoteString
-		], '"lalala { values ( complexity: [ lolol ] ) }"'));
+		], '"lalala { val\\"u\\"es ( complexity: [ lolol ] ) }"'));
 		
 		console.log(parser.parse([
 			p.Indexing
@@ -513,6 +618,18 @@ var package = new PACK.pack.Package({ name: 'parse',
 		console.log(parser.parse([
 			p.InlineObject
 		], '{ a: abc, c: [ 1, 2, 3, { h: \'j\' } ], d: "hi\\"hi\\"hi", b: abc }'));
+		
+		console.log(parser.parse([
+			p.BracketedValue
+		], '("dis a value")'));
+		
+		console.log(parser.parse([
+			p.Value
+		], 'var hahah'));
+		
+		console.log(parser.parse([
+			p.BinaryOp
+		], '(1 + 2) + (3 * 6) / (8 && 7)'));
 	}
 });
 package.build();
