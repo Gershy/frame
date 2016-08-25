@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'quickDev',
-	dependencies: [ 'queries', 'random' ],
+	dependencies: [ 'queries', 'random', 'e' ],
 	buildFunc: function() {
 		return {
 			/* QSchema */
@@ -107,11 +107,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				methods: function(sc, c) { return {
 					init: function(params /* name */) {
 						sc.init.call(this, params);
-						this.name = U.param(params, 'name', '-unnamed-');
+						this.name = U.param(params, 'name').toString();
 						this.par = null;
 						
 						this.id = U.id(c.NEXT_ID++);
 					},
+					
+					use: function() {
+						/*
+						Used to resolve an element to the element it is meant to represent.
+						Useful for indirection - an indirecting element can provide the
+						element it's meant to point at using this method.
+						*/
+						return this;
+					},
+					
 					getAncestry: function() {
 						var ret = [];
 						var ptr = this;
@@ -127,6 +137,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					getAddress: function() { return this.getNameChain().join('.'); },
+					getRoot: function() {
+						var ptr = this;
+						while (ptr.par !== null) ptr = ptr.par;
+						return ptr;
+					},
 					getChild: function(address) {
 						if (address.length === 0) return this;
 						throw 'cannot get children within non-set element "' + this.getAddress() + '"';
@@ -163,6 +178,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return true;
 					},
 					
+					$request: function(params /* command, params, onComplete */) {
+						var command = U.param(params, 'command');
+						var reqParams = U.param(params, 'params', {});
+						var onComplete = U.param(params, 'onComplete', null);
+						
+						U.request({
+							params: {
+								address: this.getAddress(),
+								command: command,
+								params: reqParams
+							},
+							onComplete: onComplete
+						});
+					},
 					$persist: function(params /* onComplete, requireParent */) {
 						/*
 						Persists this element, causing it to exist on the server-side.
@@ -188,19 +217,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var pass = this;
 						var onComplete = U.param(params, 'onComplete', null);
 						
-						U.request({
+						this.$request({ command: 'getSchema', onComplete: function(response) {
+							var schema = new PACK.quickDev.QSchema(response.schemaParams);
+							schema.assign({ elem: pass });
+							onComplete(pass);
+						}});
+						
+						/*U.request({
 							params: {
 								address: this.getAddress(),
 								command: 'getSchema'
 							},
 							onComplete: function(response) {
-								var schema = new PACK.quickDev.QSchema(response.schemaParams);
 								
-								schema.assign({ elem: pass });
-								
-								onComplete(pass);
 							}
-						});
+						});*/
 					},
 					$getSchema: function(params /* onComplete */) {
 						var onComplete = U.param(params, 'onComplete');
@@ -307,6 +338,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				methods: function(sc) { return {
 					init: function(params /* name */) {
 						sc.init.call(this, params);
+						
+						this.length = 0;
 					},
 					validateChild: function(child) {
 						if (child.par !== null) throw 'child already has a parent';
@@ -314,24 +347,35 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					addChild: function(child) {
 						if (child.par === this) return;
 						this.validateChild(child);
-						this.containChild(child);
 						child.par = this;
-						
+						try {
+							this.containChild(child);
+							this.length++;
+						} catch(e) {
+							child.par = null;
+						}
 						return child;
 					},
 					remChild: function(child) {
-						this.uncontainChild(child);
-						child.par = null;
+						var ret = this.uncontainChild(child);
+						if (ret !== null) {
+							this.length--;
+							ret.par = null;
+						}
+						return ret;
 					},
 					containChild: function(child) { throw 'not implemented'; },
 					uncontainChild: function(child) { throw 'not implemented'; },
 					getNamedChild: function(name) { throw 'not implemented'; },
-					getChild: function(address) {
-						if (address.length === 0) return this;
+					getChild: function(address, thing) {
+						if (address.length === 0) return this.use();
 						
-						if (address.constructor !== Array) address = address.split('.');
+						if (address.constructor !== Array) {
+							if (address.constructor === String) address = address.split('.');
+							else 								address = [ address ];
+						}
 						
-						ptr = this;
+						ptr = this.use();
 						for (var i = 0, len = address.length; i < len; i++) {
 							ptr = ptr.getNamedChild(address[i]);
 							if (ptr === null) break;
@@ -406,7 +450,42 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				superclassName: 'QSet',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* name, _schema, childNameProp */) {
+					init: function(params /* name, _schema, _initChild, prop */) {
+						/*
+						name: element name
+						_schema: (serializable) schema that describes how the QGen
+							creates new elements
+						prop: dot-separated address, suffixed by a slash-separated
+						    property-name (e.g. "parent2.parent.child/name"). This
+						    is necessary to determine which key is used to index
+						    children that are added to the QGen. The address-component
+						    of the string indexes into a child that is being added,
+						    and the property-component picks a property from that
+						    child to be used as the key.
+						    
+						    e.g. suppose you want to QGen "people" objects:
+						    
+						    var people = new qd.QGen({ name: 'people',
+								_schema: U.addSerializable({ name: 'someApp.peopleSchema',
+									value: new qd.QSchema({ c: qd.QDict, i: {
+										age: new qd.QSchema({ c: qd.QInt ... }),
+										name: new qd.QSchema({ c: qd.QString ... }),
+										contact: new qd.QSchema({ c: qd.QDict, i: {
+											address: new qd.QSchema({ c: qd.QString ... }),
+											email: new qd.QSchema({ c: qd.QString ... })
+										}})
+									}})
+								})
+							]);
+						    
+						    But the thing that makes a QGen effective is that it stores
+						    using an object instead of an array. So there needs to be
+						    some way of finding a unique object-key for each "person".
+						    The unique key in this case is the email. So we tell the
+						    QGen how to find the email: "contact.email/value". This means
+						    find the childs "contact.email" address element (a QString),
+						    and extract the "value" property to provide a key for indexing.
+						*/
 						sc.init.call(this, params);
 						this._schema = U.pasam(params, '_schema');
 						this._initChild = U.pasam(params, '_initChild', null);
@@ -426,22 +505,38 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this._schema.v.validateElem(child);
 					},
 					getNewChild: function(params /* */) {
-						var child = this._schema.v.actualize();
-						if (this._initChild) this._initChild.v(child, params);
+						var child = this._schema.v.actualize({ p: { name: '-generated-' } });
+						if (this._initChild) this._initChild.v(child, params, this.length);
+						var id = child.getChild('id');
+						if (id !== null) id.setValue(this.length);
+						
 						this.addChild(child);
 						return child;
 					},
+					getChildProp: function(elem) {
+						var propElem = elem.getChild(this.childAddress, this.name === 'votes');
+						if (propElem === null || !(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
+						
+						return propElem[this.childProp].toString();
+					},
 					containChild: function(child) {
-						var prop = child.getChild(this.childAddress)[this.childProp];
+						var prop = this.getChildProp(child);
 						this.children[prop] = child;
+						child.name = prop;
+						
+						return child;
 					},
 					uncontainChild: function(child) {
-						var prop = child.getChild(this.childAddress)[this.childProp];
+						var prop = this.getChildProp(child);
+						if (!(prop in this.children)) return null;
+						
+						var ret = this.children[prop];
 						delete this.children[prop];
+						return ret;
 					},
 					simplified: function() { return this.children.map(function(c) { return c.simplified(); } ); },
 					getNamedChild: function(name) {
-						return name in this.children ? this.children[name] : null;
+						return name in this.children ? this.children[name].use() : null;
 					},
 					getChildren: function() { return this.children; },
 					
@@ -504,7 +599,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					},
 					getNamedChild: function(name) {
-						return name in this.children ? this.children[name] : null;
+						return name in this.children ? this.children[name].use() : null;
+					},
+					setValue: function(k, v) {
+						var c = this.children[k];
+						if (!(c instanceof PACK.quickDev.QRef)) throw new Error('Cannot set non-ref values on QDict');
+						
+						if (v instanceof PACK.quickDev.QElem)	c.setRef(v);
+						else if (v.constructor === String) 		c.setValue(v);
+						else throw new Error('Must set a ref to a QElem or a string');
 					},
 					getChildren: function() { return this.children; }
 				}}
@@ -520,6 +623,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.baseAddress = U.param(params, 'baseAddress', null);
 						sc.init.call(this, params);
 					},
+					
+					use: function() {
+						console.log('USING REF "' + this.getAddress() + '"');
+						var ref = this.getRef();
+						return ref === null ? null : ref.use();
+					},
+					
+					getRef: function(params /* loadIfMissing */) {
+						return this.getRoot().getChild(this.value);
+					},
+					setRef: function(elem) {
+						this.setValue(elem.getAddress());
+					},
 					sanitizeAndValidate: function(value) {
 						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
 						
@@ -532,11 +648,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			QString: PACK.uth.makeClass({ name: 'QString',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
-					init: function(params /* */) {
+					init: function(params /* name, value, minLen, maxLen */) {
 						sc.init.call(this, params);
+						this.minLen = U.param(params, 'minLen', null);
+						this.maxLen = U.param(params, 'maxLen', null);
 					},
 					sanitizeAndValidate: function(value) {
-						return value ? value.toString() : '';
+						value = value === null ? '' : value.toString();
+						
+						if (this.minLen !== null && value.length < this.minLen) throw new Error('need min length of ' + this.minLen);
+						if (this.maxLen !== null && value.length > this.maxLen) throw new Error('need max length of ' + this.maxLen);
+						
+						return value;
 					},
 				}}
 			}),

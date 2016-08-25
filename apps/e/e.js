@@ -73,6 +73,11 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.elems = elems;
 					},
 					append: function(e) {
+						if (e.constructor === Array) {
+							for (var i = 0, len = e.length; i < len; i++) this.append(e[i]);
+							return this.elems.slice(this.elems.length - e.length);
+						}
+						
 						if (this.elems.length === 0) throw 'can\'t append to empty e';
 						
 						var pass = this;
@@ -85,11 +90,16 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
 					},
 					
+					fieldValue: function() {
+						return this.elems[0].value;
+					},
+					
 					find: function(query) {
 						for (var i = 0, len = this.elems.length; i < len; i++) {
 							var e = this.elems[i].querySelector(query);
 							if (e !== null) return new PACK.e.e(e);
 						}
+						return PACK.e.e([]);
 					},
 					
 					handle: function(event, func) {
@@ -154,21 +164,25 @@ var package = new PACK.pack.Package({ name: 'e',
 					doEvent: function(eventName) {
 						var event = new CustomEvent(eventName, { detail: '' });
 						this.elems.forEach(function(e) { e.dispatchEvent(event); });
+					},
+					setHtml: function(html) {
+						this.elems.forEach(function(e) { e.innerHTML = html; });
 					}
 				}; }
 			}),
 			Scene: PACK.uth.makeClass({ name: 'Scene',
 				methods: function(sc, c) { return {
-					init: function(params /* name, title, build, subScenes */) {
+					init: function(params /* name, title, build, subscenes, defaultScene */) {
 						/*
 						name: scene name
 						title: human legible name
-						build: A function(rootElem, subSceneElem) that adds html
-							into an html node.
-						subScenes: dict of subScene names to array of Scene
-							instances that can be displayed	within this scene.
-							The array will be transformed into an object using
-							each scene's name as the key.
+						build: A function(rootElem, subsceneElem, scene) that adds
+							html into an html node.
+						subscenes: dict where each entry is a subscene name
+							keyed to an array of Scene instances that can be
+							displayed within this scene. The array will be
+							transformed into an object using each scene's name as
+							the key.
 						
 						Returns an object of named useful elements within the
 						scene.
@@ -176,7 +190,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						e.g.
 						
 						var scene = new PACK.e.Scene({ name: 'mainScene', title: 'Main Scene!',
-							build: function(rootElem, subSceneObj) {
+							build: function(rootElem, subsceneObj) {
 								var main = new PACK.e.e('<div class="mainScene"></div>');
 								
 								main.append('<div class="title">Hello, here's da form!</div>');
@@ -187,8 +201,8 @@ var package = new PACK.pack.Package({ name: 'e',
 								
 								main.append(text);
 								
-								main.append(subSceneObj.subScene1);
-								main.append(subSceneObj.subScene2);
+								main.append(subsceneObj.subscene1);
+								main.append(subsceneObj.subscene2);
 								
 								rootElem.append(main);
 								
@@ -198,10 +212,10 @@ var package = new PACK.pack.Package({ name: 'e',
 									go: go
 								};
 							},
-							subScenes: {
-								subScene1: [
+							subscenes: {
+								subscene1: [
 									new PACK.e.Scene({ name: 'lala', title: 'La, La, La',
-										build: function(rootElem, subSceneObj) {
+										build: function(rootElem, subsceneObj) {
 											rootElem.append(new PACK.e.e('<div class="hello">Hello! La la la la la</div>'));
 											
 											return {
@@ -209,9 +223,9 @@ var package = new PACK.pack.Package({ name: 'e',
 										}
 									})
 								],
-								subScene2: [
+								subscene2: [
 									new PACK.e.Scene({ name: 'lala', title: 'La, La, La',
-										build: function(rootElem, subSceneObj) {
+										build: function(rootElem, subsceneObj) {
 											rootElem.append(new PACK.e.e('<div class="hello">Hello! La la la la la</div>'));
 											
 											return {
@@ -227,11 +241,11 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.build = U.param(params, 'build');
 						this.start = U.param(params, 'start', null);
 						this.end = U.param(params, 'end', null);
-						this.defaultScene = U.param(params, 'defaultScene', null);
-						this.subScenes = U.param(params, 'subScenes', {});
+						this.defaultScenes = U.param(params, 'defaultScenes', {});
+						this.subscenes = U.param(params, 'subscenes', {});
 						
 						var pass = this;
-						this.subScenes.forEach(function(sceneList, wrapperName, obj) {
+						this.subscenes.forEach(function(sceneList, wrapperName, obj) {
 							var sceneObj = {};
 							sceneList.forEach(function(scene) {
 								sceneObj[scene.name] = scene;
@@ -245,13 +259,14 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.elems = null;
 						this.par = null;
 					},
-					setSubScene: function(wrapperName, subSceneName) {
-						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper');
+					setSubscene: function(wrapperName, subsceneName) {
+						console.log(wrapperName, 'IN', this.wrappers, '???');
+						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper "' + wrapperName + '"');
 						
-						var next = this.subScenes[wrapperName][subSceneName];
+						var next = this.subscenes[wrapperName][subsceneName];
 						if (next.active) return;
 						
-						var sceneList = this.subScenes[wrapperName];
+						var sceneList = this.subscenes[wrapperName];
 						var active = null;
 						for (var k in sceneList) {
 							if (sceneList[k].active) {
@@ -277,35 +292,42 @@ var package = new PACK.pack.Package({ name: 'e',
 						sceneElem.listAttr({ class: this.name });
 						
 						var pass = this;
-						var subSceneObj = {};
-						this.subScenes.forEach(function(sceneList, wrapperName) {
-							var subSceneElem = new PACK.e.e('<div class="list"></div>');
-							subSceneElem.listAttr({ class: wrapperName });
+						var subsceneObj = {};
+						this.subscenes.forEach(function(sceneList, wrapperName) {
+							var subsceneElem = new PACK.e.e('<div class="list"></div>');
+							subsceneElem.listAttr({ class: wrapperName });
 							
-							var tabs = subSceneElem.append('<div class="tabs"></div>');
+							var tabs = subsceneElem.append('<div class="tabs"></div>');
 							
 							// TODO: Consider reusing wrappers? (Or is that a bad idea lol)
-							pass.wrappers[wrapperName] = subSceneElem.append('<div class="content"></div>');
+							pass.wrappers[wrapperName] = subsceneElem.append('<div class="content"></div>');
 							
 							sceneList.forEach(function(scene) {
 								var tab = tabs.append('<div class="tab">' + scene.title + '</div>');
 								tab.listAttr({ class: scene.name });
 								
+								console.log('SETTABLE', wrapperName, scene.name);
+								
 								tab.handle('click', function(elem, e) {
-									pass.setSubScene(wrapperName, scene.name);
+									pass.setSubscene(wrapperName, scene.name);
 								});
 							});
 							
-							subSceneObj[wrapperName] = subSceneElem;
+							subsceneObj[wrapperName] = subsceneElem;
 						});
 						
 						// TODO: how to access useful?
-						this.elems = this.build(sceneElem, subSceneObj);
+						this.elems = this.build(sceneElem, subsceneObj, this);
 						
-						if (this.defaultScene) {
-							var s = this.defaultScene.split('/');
-							this.setSubScene(s[0], s[1]);
+						for (var k in this.defaultScenes) {
+							console.log(k, this.defaultScenes[k]);
+							this.setSubscene(k, this.defaultScenes[k]);
 						}
+						
+						/*if (this.defaultScene) {
+							var s = this.defaultScene.split('/');
+							this.setSubscene(s[0], s[1]);
+						}*/
 						
 						return sceneElem;
 					}
@@ -314,7 +336,7 @@ var package = new PACK.pack.Package({ name: 'e',
 			RootScene: PACK.uth.makeClass({ name: 'RootScene',
 				superclassName: 'Scene',
 				methods: function(sc, c) { return {
-					init: function(params /* name, title, build, subScenes */) {
+					init: function(params /* name, title, build, subscenes, defaultScenes */) {
 						sc.init.call(this, params);
 						
 						this.active = true;

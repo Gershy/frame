@@ -1,5 +1,3 @@
-// TODO: Check out BinaryOp and BracketedValue
-
 var package = new PACK.pack.Package({ name: 'parse',
 	dependencies: [ 'e', 'quickDev' ],
 	buildFunc: function() {

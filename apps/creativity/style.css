@@ -1,0 +1,202 @@
+/*
+CENTERED-PARENT:
+
+{
+	text-align: center;
+}
+:after {
+	content: "";
+	display: inline-block;
+	width: 0; height: 100%;
+	vertical-align: middle;
+}
+
+CENTERED-CHILD:
+{
+	display: inline-block;
+	vertical-align: middle;
+}
+
+*/
+
+@keyframes spin {
+	0% { transform: rotate(0deg); }
+	30% { transform: rotate(450deg); }
+	80% { transform: rotate(-80deg); }
+	100% { transform: rotate(0deg); }
+}
+@keyframes spin2 {
+	0% { transform: rotate(90deg); }
+	30% { transform: rotate(200deg); }
+	80% { transform: rotate(-400deg); }
+	100% { transform: rotate(90deg); }
+}
+
+body {
+	background-color: #ffffff;
+	font-family: sans-serif;
+	
+	overflow: hidden;
+}
+
+/* forms */
+.input-form { }
+.input-form > .submit {
+	position: relative;
+	width: 100%; height: 30px; line-height: 30px;
+	margin-top: 25px;
+	
+	background-color: #c8c8ff;
+	text-align: center;
+	
+	cursor: pointer;
+}
+.input-form > .submit > .content,
+.input-form > .submit > .error {
+	position: absolute;
+	left: 0; top: 0;
+	width: 100%; height: 100%;
+}
+.input-form > .submit > .error {
+	background-color: rgba(255, 0, 0, 0);
+	color: rgba(255, 255, 255, 0);
+	
+	transitioN: background-color 1s linear, color 1s linear;
+}
+.input-form > .submit.error > .error {
+	background-color: rgba(255, 0, 0, 1);
+	color: rgba(255, 255, 255, 1);
+}
+.input-field {
+	margin: 10px 0;
+}
+.input-field > .label {  }
+.input-field > input,
+.input-field > textarea {
+	box-sizing: border-box;
+	border: none;
+	background-color: #e8e0ff !important;
+	width: 100%; height: 30px;
+	padding: 0 10px;
+	font-size: 20px;
+}
+.input-field > textarea {
+	resize: none;
+}
+.input-field > input:-webkit-autofill {
+	/* kill the annoying yellow background */
+    -webkit-box-shadow: 0 0 0 1000px #eeeeff inset !important;
+}
+
+.scene, .scene > .list, .scene > .list > .content {
+	position: relative;
+	left: 0; top: 0;
+	width: 100%; height: 100%;
+}
+
+.scene.root > .list.main > .tabs { display: none; }
+.scene.root > .list.main > .content {}
+.scene.login {
+	text-align: center;
+}
+.scene.login:after {
+	content: "";
+	display: inline-block;
+	width: 0; height: 100%;
+	vertical-align: middle;
+}
+.scene.login > h1 {
+	position: absolute;
+	left: 0; top: 10%;
+	width: 100%; height: 50px; line-height: 50px;
+	color: #fafaff;
+	text-transform: uppercase;
+	font-size: 90px;
+	z-index: 1;
+}
+.scene.login > .credentials {
+	position: relative;
+	display: inline-block;
+	width: 276px;
+	vertical-align: middle;
+	text-align: left;
+	
+	z-index: 2;
+}
+.scene.login > .credentials > .spin {
+	position: absolute;
+	width: 0; height: 0;
+	left: 50%; top: 50%;
+	
+	animation-name: spin;
+	animation-iteration-count: infinite;
+	animation-timing-function: ease-in-out;
+	animation-duration: 30s;
+	
+	z-index: -1;
+}
+.scene.login > .credentials > .spin > .spinner {
+	position: absolute;
+	width: 260px; height: 0;
+	left: 0; top: 0;
+	
+	transform-origin: 0% 50%;
+}
+
+.scene.login > .credentials > .spin > .spinner:nth-child(1) { transform: rotate(0deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(2) { transform: rotate(18deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(3) { transform: rotate(36deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(4) { transform: rotate(54deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(5) { transform: rotate(72deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(6) { transform: rotate(90deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(7) { transform: rotate(108deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(8) { transform: rotate(126deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(9) { transform: rotate(144deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(10) { transform: rotate(162deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(11) { transform: rotate(180deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(12) { transform: rotate(198deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(13) { transform: rotate(216deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(14) { transform: rotate(234deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(15) { transform: rotate(252deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(16) { transform: rotate(270deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(17) { transform: rotate(288deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(18) { transform: rotate(306deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(19) { transform: rotate(324deg); }
+.scene.login > .credentials > .spin > .spinner:nth-child(20) { transform: rotate(342deg); }
+
+.scene.login > .credentials > .spin > .spinner > .dash {
+	position: absolute;
+	width: 12px; height: 180px;
+	right: 0; top: -90px;
+	background-color: #f7f7ff;
+	border-radius: 6px;
+	
+	animation-name: spin2;
+	animation-iteration-count: infinite;
+	animation-timing-function: ease-in-out;
+	animation-duration: 30s;
+}
+
+.scene.writing > .story {
+	width: 100%; height: 50%;
+}
+.scene.writing > .voting {
+	width: 100%; height: 25%;
+	background-color: #f2f2ff;
+}
+.scene.writing > .writing {
+	width: 100%; height: 25%;
+}
+.scene.writing > .writing > .input-form {
+	box-sizing: border-box;
+	height: 100%; padding-bottom: 30px;
+}
+.scene.writing > .writing > .input-form > .input-field {
+	margin: 0;
+	height: 100%;
+}
+.scene.writing > .writing > .input-form > .input-field > textarea {
+	height: 100%;
+	padding: 10px; margin: 0;
+}
+.scene.writing > .writing > .input-form > .submit { margin: 0; }

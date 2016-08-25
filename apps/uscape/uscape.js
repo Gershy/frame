@@ -13,10 +13,12 @@ var package = new PACK.pack.Package({ name: 'uscape',
 							name: 'uscape.userSchema',
 							value: new qd.QSchema({ c: qd.QDict, i: {
 								name:		new qd.QSchema({ c: qd.QString, p: { name: 'name', value: '' } }),
+								username:	new qd.QSchema({ c: qd.QString, p: { name: 'username', value: '' } }),
 								password:	new qd.QSchema({ c: qd.QString, p: { name: 'password', value: '' } }),
 								age:		new qd.QSchema({ c: qd.QInt,	p: { name: 'age', value: 0 } }),
 							}}),
 						}),
+						prop: 'username/value'
 					})
 				],
 			})
