@@ -257,6 +257,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 			scene.go();
 			
+			setTimeout(function() {
+				
+				var users = root.getChild('users');
+				users.$getChild({ address: 'gershom', addChild: true, onComplete: function(child) { console.log('HEY!!!', child); } });
+				
+			}, 200);
+			
 		} else {
 			
 			var userData = {
@@ -284,7 +291,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				[	'daniel',	'DUNNO BUT IT funny.' ],
 				[	'gershom',	'I lol\'d one time ahah.' ],
 				[	'levi',		'bro you LYING you loled SEVERAL -' ],
-				[	'yehuda',	'TIMES.' ],
+				[	'yehuda',	'- TIMES.' ],
 				[	'levi',		'DAWG DON\'T FINISH MY SENTENCES FKIN BISH ASS BISH' ]
 			];
 			var blurbs = root.getChild('blurbs');

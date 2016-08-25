@@ -105,9 +105,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				superclassName: 'QueryHandler',
 				propertyNames: [ 'name' ],
 				methods: function(sc, c) { return {
-					init: function(params /* name */) {
+					init: function(params /* name, allowTransfer */) {
 						sc.init.call(this, params);
 						this.name = U.param(params, 'name').toString();
+						this.allowTransfer = U.param(params, 'allowTransfer', true);
 						this.par = null;
 						
 						this.id = U.id(c.NEXT_ID++);
@@ -367,7 +368,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					containChild: function(child) { throw 'not implemented'; },
 					uncontainChild: function(child) { throw 'not implemented'; },
 					getNamedChild: function(name) { throw 'not implemented'; },
-					getChild: function(address, thing) {
+					getChild: function(address) {
 						if (address.length === 0) return this.use();
 						
 						if (address.constructor !== Array) {
@@ -420,6 +421,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							onComplete: onComplete
 						});
 					},
+					$getChild: function(params /* address, addChild, onComplete */) {
+						var pass = this;
+						var address = U.param(params, 'address');
+						var addChild = U.param(params, 'addChild', false);
+						var onComplete = U.param(params, 'onComplete', null);
+						
+						this.$request({ command: 'getChild', params: { address: address }, onComplete: function(response) {
+							var schema = new PACK.quickDev.QSchema(response.schemaParams);
+							var elem = schema.actualize();
+							
+							var addrPcs = address.split('.');
+							if (addChild) {
+								if (addrPcs.length > 1) throw new Error('Cannot add retrieved child because it doesn\'t go directly in its parent');
+								pass.addChild(elem);
+							}
+							
+							onComplete(elem);
+						}});
+					},
 					handleQuery: function(params) {
 						var com = U.param(params, 'command');
 						
@@ -433,6 +453,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							return { msg: 'success', id: child.id };
 							
 						} else if (com === 'filteredChildren') {
+							
 							var filter = U.param(params, 'filter');
 							
 							var children = this.filterChildren(filter);
@@ -440,6 +461,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							return {
 								schemaParams: children.map(function(child) { return child.schemaParams(); })
 							};
+							
+						} else if (com === 'getChild') {
+							
+							var reqParams = params.params;
+							
+							var address = U.param(reqParams, 'address');
+							console.log('HANDLING GETCHILD', this.getAddress(), '; NEED:', address);
+							
+							var child = this.getChild(address);
+							return { schemaParams: child === null ? null : child.schemaParams() };
+							
 						}
 						
 						return sc.handleQuery.call(this, params);
@@ -542,7 +574,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					schemaProperties: function() {
 						return sc.schemaProperties.call(this).update({
-							_schema: this._schema.name
+							_schema: 	this._schema.name,
+							_initChild: this._initChild.name,
+							prop:	 	this.childAddress === '' ? this.childProp : this.childAddress + '/' + this.childProp
 						});
 					},
 					
