@@ -10,6 +10,8 @@ and attach them in order. Then the child can be attached.
 Perhaps some data-definition language that is able to entirely describe a certain
 connected subset of the full data tree, along with how much of each element in the
 subset to load, would be useful for dynamism.
+
+TODO: Maybe QRefs should never have their "value" include the root object's name
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
@@ -42,6 +44,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					actualize: function(params /* p, i */) {
 						/*
+						Note that this method actually generates children before it
+						generates the parent. This means that at every instant during
+						this method, no element ever exists without all its children.
+						
 						====Example call:
 						
 						var qd = qd;
@@ -64,17 +70,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						*/
 						
-						var myParams = U.param(params, 'p', {});
+						// Generate the array of children first
 						var childParams = U.param(params, 'i', {});
-						
-						var constructorParams = this.p.clone(myParams);
-						
-						var constructor = U.getByName({ root: C, name: this.c });
-						
-						var ret = new constructor(constructorParams);
-						this.i.forEach(function(schema, k) {
-							ret.addChild(schema.actualize(U.param(childParams, k, {})));
+						var children = this.i.map(function(schema, k) {
+							return schema.actualize(U.param(childParams, k, {}));
 						});
+						
+						// Next generate the final containing element
+						var myParams = U.param(params, 'p', {});
+						var constructorParams = this.p.clone(myParams);
+						var constructor = U.getByName({ root: C, name: this.c });
+						var ret = new constructor(constructorParams);
+						
+						// Finally add the children to the element
+						children.forEach(function(child) { ret.addChild(child); });
 						
 						return ret;
 					},
@@ -181,8 +190,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.name = U.param(params, 'name').toString();
 						this.allowTransfer = U.param(params, 'allowTransfer', true);
 						this.par = null;
-						
-						this.id = U.id(c.NEXT_ID++);
 					},
 					
 					use: function() {
@@ -334,7 +341,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// included in the schema.
 						return {};
 					},
-					schemaParams: function() {
+					schemaParams: function(params /* recurse */) {
 						/*
 						Returns an object representing parameters for a PACK.quickDev.QSchema
 						object. The parameters can be used raw, but to gain quick
@@ -357,11 +364,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						//...
 						
 						*/
-						return {
+						var recurse = U.param(params, 'recurse', true);
+						
+						var ret = {
 							c: this.schemaConstructorName(),
 							p: this.schemaProperties(),
-							i: this.schemaChildren().map(function(child) { return child.schemaParams(); })
 						};
+						if (recurse) ret.i = this.schemaChildren().map(function(child) { return child.schemaParams(); });
+						return ret;
 					}
 				}},
 				statik: { NEXT_ID: 0 },
@@ -397,17 +407,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.children = {};
 					},
 					validateChild: function(child) {
-						if (child.par !== null) throw 'child already has a parent';
+						if (child === null) throw new Error('Invalid child element');
 					},
 					addChild: function(child) {
-						if (child.par === this) return;
-						this.validateChild(child);
+						if (child.par !== null) {
+							if (child.par === this) return;
+							throw new Error('child already has a parent');
+						}
 						child.par = this;
+						
 						try {
+							this.validateChild(child);
 							this.containChild(child);
 							this.length++;
 						} catch(e) {
 							child.par = null;
+							throw e;
 						}
 						return child;
 					},
@@ -433,12 +448,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						
 						ptr = this.use();
-						for (var i = 0, len = address.length; i < len; i++) {
+						for (var i = 0, len = address.length; (i < len) && (ptr !== null); i++) {
 							ptr = ptr.getNamedChild(address[i]);
-							if (ptr === null) break;
 						}
 						
 						return ptr;
+					},
+					setValue: function(k, v) {
+						/*
+						NOTE: This method doesn't follow references!!
+						*/
+						var c = this.children[k];
+						if (!c) throw new Error('Can\'t set value for non-existant child: "' + k + '"');
+						c.setValue(v);
 					},
 					
 					forEach: function(cb) { this.children.forEach(cb); /* TODO: Something horribly wrong with this?? (try it) */ },
@@ -475,32 +497,31 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							onComplete: onComplete
 						});
 					},
-					$getChild: function(params /* address, addChild, onComplete, useClientSide */) {
+					$getChild: function(params /* address, recurse, addChild, onComplete, useClientSide */) {
 						var pass = this;
 						var address = U.param(params, 'address');
+						// In case the request elem is a QSet, give control over whether
+						// or not the QSet loads its children.
+						var recurse = U.param(params, 'recurse', true);
 						var addChild = U.param(params, 'addChild', false);
 						var onComplete = U.param(params, 'onComplete', null);
 						var useClientSide = U.param(params, 'useClientSide', false);
+						
+						console.log(address, address.constructor);
+						var addrPcs = address.split('.');
+						if (addChild && addrPcs.length > 1) throw new Error('Cannot add retrieved child because it doesn\'t go directly in its parent');
 						
 						if (useClientSide) {
 							var elem = this.getChild(address);
 							if (elem !== null) { onComplete(elem); return; }
 						}
 						
-						console.log('OK, DOING $GETCHILD; initiator:', this.getAddress(), 'relAddr:', address);
-						this.$request({ command: 'getChild', params: { address: address }, onComplete: function(response) {
-							// TODO: The returned elem should probably have "use" applied to it!!!
-							console.log('GOT PARAMS', response);
-							
+						this.$request({ command: 'getChild', params: { address: address, recurse: recurse }, onComplete: function(response) {
 							var schema = new PACK.quickDev.QSchema(response.schemaParams);
 							
 							var elem = schema.actualize();
 							
-							var addrPcs = address.split('.');
-							if (addChild) {
-								if (addrPcs.length > 1) throw new Error('Cannot add retrieved child because it doesn\'t go directly in its parent');
-								pass.addChild(elem);
-							}
+							if (addChild) pass.addChild(elem);
 							
 							onComplete(elem);
 						}});
@@ -523,32 +544,40 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
-						if (com === 'persistChild') {
+						if (com === 'persistChild') {				/* schemaParams */
 							
 							var schemaParams = U.param(reqParams, 'schemaParams');
 							
 							var child = new PACK.quickDev.QSchema(schemaParams).actualize();
 							this.addChild(child);
 							
-							return { msg: 'success', id: child.id };
+							return { msg: 'success' };
 							
-						} else if (com === 'filteredChildren') {
+						} else if (com === 'filteredChildren') {	/* filter */
 							
 							var filter = U.param(reqParams, 'filter');
 							
 							var children = this.filterChildren(filter);
 							
-							return {
-								schemaParams: children.map(function(child) { return child.schemaParams(); })
-							};
+							return { schemaParams: children.map(function(child) { return child.schemaParams(); }) };
 							
-						} else if (com === 'getChild') {
+						} else if (com === 'getChild') {			/* address, recurse */
 							
 							// TODO: This fails when "address" has multiple components!!
 							var address = U.param(reqParams, 'address');
+							var recurse = U.param(reqParams, 'recurse', true);
 							
-							var child = this.children[address];
-							return { schemaParams: child !== null ? child.schemaParams() : null };
+							// TODO: Probably an issue here; specifying a single-component address
+							// won't resolve QRefs, multiple-component addresses will. Need more
+							// control to specify whether or not to resolve references.
+							var addressPcs = address.split('.');
+							if (addressPcs.length === 1) {
+								var child = this.children[address];
+							} else {
+								var child = this.getChild(address);
+							}
+							
+							return { schemaParams: child ? child.schemaParams({ recurse: recurse}) : null };
 							
 						}
 						
@@ -614,6 +643,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this._schema.v.validateElem(child);
 					},
 					getNewChild: function(params /* */) {
+						/*
+						Here's the pickle: When a QGen generates a new child, it needs to
+						have some way to reference that child. This is done via the "prop"
+						property, which specifies how to determine a unique identifier for
+						each child. This identifier needs to be found, because it must be
+						used to index the child in the parent. When a QRef is added to a
+						QGen, the QRef doesn't have a parent yet, so it obviously can't be
+						aware of the element it refers to. This is an issue when a QGen
+						needs to be able to index deep into a child in order to determine
+						its key. This can fail with QRefs because attempting to index
+						deeper through a QRef requires the QRef to find its referenced
+						element - which can't be done before it's attached to the parent.
+						*/
 						var child = this._schema.v.actualize({ p: { name: '-generated-' } });
 						if (this._initChild) this._initChild.v(child, params, this.length);
 						var id = child.getChild('id');
@@ -623,13 +665,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return child;
 					},
 					getChildProp: function(elem) {
-						var propElem = elem.getChild(this.childAddress, this.name === 'votes');
+						var propElem = elem.getChild(this.childAddress);
 						if (propElem === null || !(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
 						
 						return propElem[this.childProp].toString();
 					},
 					containChild: function(child) {
 						var prop = this.getChildProp(child);
+						
 						this.children[prop] = child;
 						child.name = prop;
 						
@@ -697,7 +740,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						for (var i = 0, len = children.length; i < len; i++) this.addChild(children[i]);
 					},
 					containChild: function(child) {
-						if (child.name in this.children) throw 'tried to overwrite "' + child.name + '" in "' + this.getAddress() + '"';
 						this.children[child.name] = child;
 					},
 					removeChild: function(child) {
@@ -708,30 +750,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						for (var k in this.children) ret[k] = this.children[k].simplified();
 						return ret;
 					},
-					setValue: function(k, v) {
-						var c = this.children[k];
-						if (!(c instanceof PACK.quickDev.QRef)) throw new Error('Cannot set non-ref values on QDict');
-						
-						if (v instanceof PACK.quickDev.QElem)	c.setRef(v);
-						else if (v.constructor === String) 		c.setValue(v);
-						else throw new Error('Must set a ref to a QElem or a string');
-					},
-					$getRefValue: function(params /* address (single-component), addChild, useClientValue, onComplete */) {
-						/*
-						Tells a QRef-child of this dict to ensure that its reference is loaded on the client side.
-						This means that based on the QRef's value, that value is interpreted as an address and is
-						used to find the referenced element on the server-side. It is possible that even if the
-						reference exists it will not be able to be inserted on the client-side tree because its
-						parent is missing. In this case, if "addChild" was set to true, an error will be raised.
-						*/
-						var address = U.param(params, 'address');
-						
-						var ref = this.children[address];
-						if (!U.exists(ref) || !(ref instanceof PACK.quickDev.QRef)) throw new Error('Tried to get a reference value from a non-reference');
-						
-						ref.$getRef(params);
-						
-					},
 				}}
 			}),
 			
@@ -739,10 +757,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			QRef: PACK.uth.makeClass({ name: 'QRef',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
-					init: function(params /* name, value, baseAddress */) {
-						// Set the base address before calling super (super will call
-						// sanitizeAndValidate, which relies on knowing baseAddress)
-						this.baseAddress = U.param(params, 'baseAddress', null);
+					init: function(params /* name, value */) {
 						sc.init.call(this, params);
 					},
 					
@@ -751,8 +766,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ref === null ? null : ref.use();
 					},
 					
+					rootAddr: function() {
+						var dot = this.value.indexOf('.');
+						if (~dot) return this.value.substr(dot + 1);
+						return '';
+					},
 					getRef: function() {
-						return this.getRoot().getChild(this.value);
+						var root = this.getRoot();
+						
+						var dot = this.value.indexOf('.');
+						if (~dot) {
+							var rootName = this.value.substr(0, dot);
+							var relAddr = this.value.substr(dot + 1);
+						} else {
+							var rootName = this.value;
+							var relAddr = '';
+						}
+						if (rootName !== root.name) throw new Error('bad address doesn\'t begin with root name');
+						
+						return root.getChild(relAddr);
 					},
 					setRef: function(elem) {
 						this.setValue(elem.getAddress());
@@ -762,12 +794,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (value.constructor !== String) throw 'invalid reference address';
 						
-						return this.baseAddress ? this.baseAddress + '.' + value : value;
+						return value;
 					},
 					
-					$getRef: function(params /* useClientValue, addChild, onComplete */) {
+					$getRef: function(params /* useClientValue, addRef, recurse, onComplete */) {
+						/*
+						"addRef" is much more complicated than "addChild", because a reference
+						can be nested anywhere inside the data-tree, not just in the element
+						which had "$getRef" called on it.
+						*/
 						var useClientValue = U.param(params, 'useClientValue', false);
-						var addChild = U.param(params, 'addChild', false);
+						var addRef = U.param(params, 'addRef', true);
+						var recurse = U.param(params, 'recurse', true);
 						var onComplete = U.param(params, 'onComplete', null);
 						
 						if (useClientValue) {
@@ -776,8 +814,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						
 						// TODO: TEST THIS SHIZ!!!! The ref couldn't find a client value, so its asks the root to find one for it.
-						this.getRoot().$getChild({ address: this.value, addChild: addChild, useClientValue: false, onComplete: onComplete });
+						this.getRoot().$getChild({ address: this.rootAddr(),
+							addChild: addRef,
+							recurse: recurse,
+							useClientValue: false,
+							onComplete: onComplete
+						});
 					},
+					
+					schemaParams: function(params /* recurse */) {
+						return sc.schemaParams.call(this, params).update({ r: {
+							// TODO: Add in referenced elem here
+						}});
+					}
 				}}
 			}),
 			QString: PACK.uth.makeClass({ name: 'QString',

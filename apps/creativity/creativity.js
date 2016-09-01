@@ -95,8 +95,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							var username = U.param(params, 'username');
 							var text = U.param(params, 'text');
 							
-							child.setValue('user', 'users/' + username);
-							child.getChild('text').setValue(text);
+							child.setValue('user', 'users.' + username); // Set the reference
+							child.setValue('text', text);
 						}
 					}),
 					prop: 'id/value'
@@ -239,16 +239,18 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										story.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(elem) {
-										for (var k in elem.children) {
-											var storyItem = elem.children[k];
-											console.log(storyItem.children['blurb']);
-										}
-										
 										var storyItem = null;
 										for (var k in elem.children) { storyItem = elem.children[k]; break; }
 										
 										var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
-											console.log('GOT', blurb);
+											blurb.$getRef({
+												useClientValue: false,
+												addRef: false,
+												recurse: true,
+												onComplete: function(elem) {
+													console.log('GOT BLURB REF...', elem);
+												}
+											});
 										} });
 										
 										story.listAttr({ class: [ '-loading' ] });

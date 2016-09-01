@@ -1,0 +1,24 @@
+{
+  "name": "gersh",
+  "version": "0.0.1",
+  "description": "a cool thing",
+  "engines": {
+    "node": "0.12.2"
+  },
+  "main": "rootServer.js",
+  "scripts": {
+    "start": "node rootServer.js"
+  },
+  "dependencies": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gershy/frame"
+  },
+  "keywords": [
+    "gersh",
+    "gershy",
+    "gershom"
+  ],
+  "license": "MIT"
+}
