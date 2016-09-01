@@ -507,7 +507,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var onComplete = U.param(params, 'onComplete', null);
 						var useClientSide = U.param(params, 'useClientSide', false);
 						
-						console.log(address, address.constructor);
 						var addrPcs = address.split('.');
 						if (addChild && addrPcs.length > 1) throw new Error('Cannot add retrieved child because it doesn\'t go directly in its parent');
 						

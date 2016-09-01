@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'creativity',
-	dependencies: [ 'quickDev' ],
+	dependencies: [ 'quickDev', 'htmlText' ],
 	buildFunc: function() {
 		var qd = PACK.quickDev;
 		
@@ -217,7 +217,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							build: function(rootElem, subsceneElem) {
 								
 								var story = e('<div class="writing-elem story"></div>');
-								story.append('<div class="scroller"></div>');
+								var scroller = story.append('<div class="scroller"></div>');
 								
 								var voting = e('<div class="writing-elem voting"></div>');
 								voting.append('<div class="scroller"></div>');
@@ -233,30 +233,56 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {
-										root.getChild('storyItems').$load({ onComplete: callback });
+										root.getChild('storyItems').$load({ onComplete: function(elem) {
+											
+											var count = 0;
+											var blurbs = [];
+											var gotBlurb = function(id, username, text) {
+												count++;
+												blurbs.push({ id: id, username: username.split('.')[1], text: PACK.htmlText.render(text) });
+												
+												if (count === elem.length) {
+													blurbs.sort(function(b1, b2) { return b1.id - b2.id });
+													callback(blurbs);
+												}
+											};
+											
+											for (var k in elem.children) {
+												var storyItem = elem.children[k];
+												
+												var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
+													blurb.$getRef({
+														useClientValue: false,
+														addRef: false,
+														recurse: true,
+														onComplete: function(elem) {
+															gotBlurb(elem.getChild('id').value, elem.children['user'].value, elem.getChild('text').value);
+														}
+													});
+												} });
+											}
+											
+										} });
 									},
 									start: function() {
 										story.listAttr({ class: [ '+loading' ] });
 									},
-									end: function(elem) {
-										var storyItem = null;
-										for (var k in elem.children) { storyItem = elem.children[k]; break; }
-										
-										var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
-											blurb.$getRef({
-												useClientValue: false,
-												addRef: false,
-												recurse: true,
-												onComplete: function(elem) {
-													console.log('GOT BLURB REF...', elem);
-												}
-											});
-										} });
+									end: function(storyData) {
+										scroller.clear();
+										scroller.append(storyData.map(function(storyItem) {
+											return e([
+												'<div class="story-item">',
+													'<div class="id">' + storyItem.id + '</div>',
+													'<div class="text">' + storyItem.text + '</div>',
+													'<div class="user">' + storyItem.username + '</div>',
+												'</div>'
+											].join(''));
+										}));
 										
 										story.listAttr({ class: [ '-loading' ] });
 									}
 								});
-								updateStory.run();
+								updateStory.repeat({ delay: 2000 });
 								
 								/*var storyData = root.getChild('storyItems');
 								story.listAttr({ class: [ '+loading' ] });
