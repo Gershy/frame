@@ -227,7 +227,7 @@ var package = new PACK.pack.Package({ name: 'server',
 	runAfter: function() {
 		var server = http.createServer(PACK.server.serverFunc);
 		
-		var port = 8000;
+		var port = process.env.PORT || 5000;
 		server.listen(port);
 		console.log('Listening on port: ' + port);
 		
