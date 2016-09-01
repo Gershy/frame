@@ -544,15 +544,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 						} else if (com === 'getChild') {
 							
-							
+							// TODO: This fails when "address" has multiple components!!
 							var address = U.param(reqParams, 'address');
 							
-							console.log('$GETCHILD: rec:', this.getAddress(), 'trg:', '"' + address + '"');
-							console.log('======');
-							console.log(this.constructor.title + ':', this.simplified());
-							console.log('======');
-							var child = this.getNamedChild(address);
-							console.log('THE CHILD', child);
+							var child = this.children[address];
 							return { schemaParams: child !== null ? child.schemaParams() : null };
 							
 						}
