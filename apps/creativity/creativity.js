@@ -334,7 +334,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			});
 			
 			var taken = {};
-			var children = blurbs.getChildren();
+			var children = blurbs.children;
 			
 			var toVote = [];
 			var toStory = [];

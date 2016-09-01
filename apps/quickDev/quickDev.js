@@ -394,6 +394,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						sc.init.call(this, params);
 						
 						this.length = 0;
+						this.children = {};
 					},
 					validateChild: function(child) {
 						if (child.par !== null) throw 'child already has a parent';
@@ -420,7 +421,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					containChild: function(child) { throw 'not implemented'; },
 					uncontainChild: function(child) { throw 'not implemented'; },
-					getNamedChild: function(name) { throw 'not implemented'; },
+					getNamedChild: function(name) {
+						return name in this.children ? this.children[name].use() : null;
+					},
 					getChild: function(address) {
 						if (address.length === 0) return this.use();
 						
@@ -437,7 +440,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ptr;
 					},
-					getChildren: function() { throw 'not implemented'; },
 					
 					forEach: function(cb) { this.children.forEach(cb); /* TODO: Something horribly wrong with this?? (try it) */ },
 					
@@ -454,14 +456,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					filterChildren: function(filter) {
 						var ret = [];
 						
-						this.getChildren().forEach(function(child, k) {
+						this.children.forEach(function(child, k) {
 							if (child.matches(filter)) ret.push(child);
 						});
 						
 						return ret;
 					},
 					
-					schemaChildren: function() { return this.getChildren(); },
+					schemaChildren: function() { return this.children; },
 					
 					$filter: function(params /* filter, onComplete */) {
 						var onComplete = U.param(params, 'onComplete', null);
@@ -612,7 +614,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							this.childAddress = '';
 							this.childProp = this.prop;
 						}
-						this.children = {};
 					},
 					validateChild: function(child) {
 						this._schema.v.validateElem(child);
@@ -648,10 +649,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					},
 					simplified: function() { return this.children.map(function(c) { return c.simplified(); } ); },
-					getNamedChild: function(name) {
-						return name in this.children ? this.children[name].use() : null;
-					},
-					getChildren: function() { return this.children; },
 					
 					schemaProperties: function() {
 						return sc.schemaProperties.call(this).update({
@@ -695,10 +692,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				propertyNames: [ ],
 				methods: function(sc) { return {
 					init: function(params /* name, children */) {
+						/*
+						Note that "children" is an array, not an object. Each child's
+						names is enough information to index it properly.
+						*/
 						sc.init.call(this, params);
-						var children = U.param(params, 'children', []);
 						
-						this.children = {};
+						var children = U.param(params, 'children', []);
 						for (var i = 0, len = children.length; i < len; i++) this.addChild(children[i]);
 					},
 					containChild: function(child) {
@@ -712,9 +712,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var ret = {};
 						for (var k in this.children) ret[k] = this.children[k].simplified();
 						return ret;
-					},
-					getNamedChild: function(name) {
-						return name in this.children ? this.children[name].use() : null;
 					},
 					setValue: function(k, v) {
 						var c = this.children[k];
@@ -740,7 +737,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						ref.$getRef(params);
 						
 					},
-					getChildren: function() { return this.children; }
 				}}
 			}),
 			
