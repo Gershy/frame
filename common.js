@@ -281,6 +281,7 @@
 	*/
 	
 	// PACKAGE: Under The Hood
+	// This is the only package that is generated without the Package class
 	global.PACK.uth = {
 		makeClass: function(params /* namespace, name, superclassName, propertyNames, methods, statik */) {
 			var namespace = U.param(params, 'namespace', global.C);
@@ -329,7 +330,8 @@
 				'parent',
 				'propertyNames',
 				'instanceProperties',
-				'instanceCopy'
+				'instanceCopy',
+				'update'
 			].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw 'bad property: "' + reserved + '"'; });
 			
 			[	'name'

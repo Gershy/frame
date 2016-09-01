@@ -1,13 +1,15 @@
 var package = new PACK.pack.Package({ name: 'e',
 	dependencies: [ 'uth' ],
 	buildFunc: function() {
+		var namespace = {};
+		
 		return {
 			e: function(elems) {
 				// Ensures that elems is an instance of E. If it's already an E,
 				// does nothing.
 				return elems instanceof PACK.e.E ? elems : new PACK.e.E(elems);
 			},
-			E: PACK.uth.makeClass({ name: 'E',
+			E: PACK.uth.makeClass({ name: 'E', namespace: namespace,
 				propertyNames: [ ],
 				methods: function(sc) { return {
 					init: function(elems) {
@@ -170,7 +172,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					}
 				}; }
 			}),
-			Scene: PACK.uth.makeClass({ name: 'Scene',
+			Scene: PACK.uth.makeClass({ name: 'Scene', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* name, title, build, subscenes, defaultScene */) {
 						/*
@@ -256,7 +258,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						this.active = false;
 						this.wrappers = {};
-						this.elems = null;
+						this.elems = {};
 						this.par = null;
 					},
 					setSubscene: function(wrapperName, subsceneName) {
@@ -333,7 +335,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					}
 				}; }
 			}),
-			RootScene: PACK.uth.makeClass({ name: 'RootScene',
+			RootScene: PACK.uth.makeClass({ name: 'RootScene', namespace: namespace,
 				superclassName: 'Scene',
 				methods: function(sc, c) { return {
 					init: function(params /* name, title, build, subscenes, defaultScenes */) {

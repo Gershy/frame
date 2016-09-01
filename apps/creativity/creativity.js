@@ -23,7 +23,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					for (var i = 0; i < 12; i++) {
 						var v1 = u[(val + 19) % u.length].charCodeAt(0);
 						var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
-						val = (v1 * v2 * 11239) + 11 + (i + v1);
+						val = ((v1 + 3) * (v2 + 11) * 11239) + 3 + i + v1;
 						str += chars[val % chars.length];
 					}
 					
@@ -167,9 +167,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		
 			var scene = new PACK.e.RootScene({ name: 'root', title: 'root',
 				build: function(rootElem, subsceneElem) {
-					
 					rootElem.append(subsceneElem.main);
-					
 				},
 				subscenes: {
 					main: [
@@ -233,12 +231,55 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									'</div>'
 								].join(''));
 								
-								var storyData = root.getChild('storyItems');
+								var updateStory = new PACK.quickDev.QUpdate({
+									request: function(callback) {
+										root.getChild('storyItems').$load({ onComplete: callback });
+									},
+									start: function() {
+										story.listAttr({ class: [ '+loading' ] });
+									},
+									end: function(elem) {
+										for (var k in elem.children) {
+											var storyItem = elem.children[k];
+											console.log(storyItem.children['blurb']);
+										}
+										
+										var storyItem = null;
+										for (var k in elem.children) { storyItem = elem.children[k]; break; }
+										
+										var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
+											console.log('GOT', blurb);
+										} });
+										
+										story.listAttr({ class: [ '-loading' ] });
+									}
+								});
+								updateStory.run();
+								
+								/*var storyData = root.getChild('storyItems');
 								story.listAttr({ class: [ '+loading' ] });
+								story.clear();
 								storyData.$load({ onComplete: function(elem) {
-									console.log('LOADED STORY!!');
-									console.log(elem.simplified());
-								}});
+									
+									for (var k in elem.children) {
+										var storyItem = elem.children[k];
+										console.log(storyItem.children['blurb']);
+										
+										
+										var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
+											var text = blurb.getChild('text').value;
+											console.log(text);
+											
+											// e package should provide templating
+											// e.g. a template for "blurb" which appears in both "story" AND "voting" to generate blurb layouts
+											story.append('<div class="blurb"><div class="user">-none-</div><div class="text">' + text + '</div></div>');
+										} });
+										
+										
+									}
+									
+									story.listAttr({ class: [ '-loading' ] });
+								}});*/
 								
 								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
 								
@@ -257,13 +298,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 			scene.go();
 			
-			setTimeout(function() {
-				
-				var users = root.getChild('users');
-				users.$getChild({ address: 'gershom', addChild: true, onComplete: function(child) { console.log('HEY!!!', child); } });
-				
-			}, 200);
-			
 		} else {
 			
 			var userData = {
@@ -277,22 +311,22 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
 			
 			var blurbData = [
-				[	'ari',		'Skranula looked upon the mountain.' ],
-				[	'gershom',	'Hello my name is Tim.' ],
-				[	'daniel',	'I love gogreens SO MUCH.' ],
-				[	'yehuda', 	'WTF MANG LOLLLL' ],
-				[	'levi',		'HAHAHA' ],
-				[	'ari',		'srsly HAHA' ],
-				[	'daniel',	'man lol I KNOW AHAH LAAOLLOL' ],
-				[	'yehuda',	'lol' ],
-				[	'levi',		'huehue HAHA LAOWLA' ],
-				[	'gershom',	'LOLOL' ],
-				[	'yehuda',	'HAHA WHAT IS THE JOKE THO' ],
-				[	'daniel',	'DUNNO BUT IT funny.' ],
-				[	'gershom',	'I lol\'d one time ahah.' ],
-				[	'levi',		'bro you LYING you loled SEVERAL -' ],
-				[	'yehuda',	'- TIMES.' ],
-				[	'levi',		'DAWG DON\'T FINISH MY SENTENCES FKIN BISH ASS BISH' ]
+				[	'ari',		'1 Skranula looked upon the mountain.' ],
+				[	'gershom',	'2 Hello my name is Tim.' ],
+				[	'daniel',	'3 I love gogreens SO MUCH.' ],
+				[	'yehuda', 	'4 WTF MANG LOLLLL' ],
+				[	'levi',		'5 HAHAHA' ],
+				[	'ari',		'6 srsly HAHA' ],
+				[	'daniel',	'7 man lol I KNOW AHAH LAAOLLOL' ],
+				[	'yehuda',	'8 lol' ],
+				[	'levi',		'9 huehue HAHA LAOWLA' ],
+				[	'gershom',	'10 LOLOL' ],
+				[	'yehuda',	'11 HAHA WHAT IS THE JOKE THO' ],
+				[	'daniel',	'12 DUNNO BUT IT funny.' ],
+				[	'gershom',	'13 I lol\'d one time ahah.' ],
+				[	'levi',		'14 bro you LYING you loled SEVERAL -' ],
+				[	'yehuda',	'15 - TIMES.' ],
+				[	'levi',		'16 DAWG DON\'T FINISH MY SENTENCES FKIN BISH ASS BISH' ]
 			];
 			var blurbs = root.getChild('blurbs');
 			blurbData.forEach(function(data) {
@@ -327,8 +361,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 			var votes = root.getChild('votes');
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
-			
-			console.log(root.simplified());
 		}
 		
 	}
