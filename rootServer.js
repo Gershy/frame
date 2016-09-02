@@ -197,6 +197,8 @@ var package = new PACK.pack.Package({ name: 'server',
 					? sessionsIndex[ip]
 					: (sessionsIndex[ip] = new PACK.server.Session({ ip: ip }));
 				
+				LOL += '[[ SESS ' + session.ip + '/' + session.id + '; name: ' + session.appName + '; app: ' + session.app + ' ]]; ';
+				
 				var params = queryParams.update({ url: queryUrl });
 				if (!('address' in params)) params.address = [];
 					
