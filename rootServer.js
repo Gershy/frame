@@ -50,8 +50,8 @@ var package = new PACK.pack.Package({ name: 'server',
 						};
 					},
 					respondToQuery: function(params /* address */) {
-						// Overwrite this method to ensure a "session" param is included
-						if ('session' in params) throw 'illegal "session" param';
+						// Overwrite this method to ensure no "session" param is included
+						if ('session' in params) throw new Error('illegal "session" param');
 						return sc.respondToQuery.call(this, params.clone({ session: this }));
 					},
 					handleQuery: function(params /* session, url */) {
@@ -197,6 +197,11 @@ var package = new PACK.pack.Package({ name: 'server',
 				
 				LOL += '[[ ' + (ip in sessionsIndex ? 'PREXISTING' : 'NEW') + ' app ]]; ';
 				
+				for (var k in sessionsIndex) {
+					var s = sesionsIndex[k];
+					LOL += '[[ AHHH ' + k + ': ' + s.ip + '/' + s.id + ', "' + s.appName + '" ]]; ';
+				}
+				
 				var session = ip in sessionsIndex 
 					? sessionsIndex[ip]
 					: (sessionsIndex[ip] = new PACK.server.Session({ ip: ip }));
@@ -215,7 +220,9 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
+				LOL += '[[ ABOUT TO RESPOND ]]; ';
 				var responseContent = session.respondToQuery(params);
+				LOL += '[[ RESPONDED!! "' + responseContent + '" ]]; ';
 				
 				res.writeHead(200, {
 					'Content-Type': responseContent.encoding,
