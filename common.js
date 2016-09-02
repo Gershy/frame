@@ -245,12 +245,7 @@
 						if (json) {
 							var o = JSON.parse(req.responseText);
 							if (o.code !== 0) {
-								throw {
-									msg: 'REQUEST ERROR',
-									url: url,
-									params: reqParams,
-									response: o
-								};
+								throw new Error('server responded negatively: ' + o.msg);
 							}
 						} else {
 							var o = req.responseText;

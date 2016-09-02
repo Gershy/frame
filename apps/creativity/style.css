@@ -209,10 +209,10 @@ body {
 	
 	cursor: default;
 }
-.scene.writing > .story:hover > .scroller > .story-item {
-	color: rgba(0, 0, 0, 0.6);
+.scene.writing > .story > .scroller:hover > .story-item {
+	color: rgba(0, 0, 0, 0.7);
 }
-.scene.writing > .story:hover > .scroller > .story-item:hover {
+.scene.writing > .story > .scroller:hover > .story-item:hover {
 	color: rgba(0, 0, 0, 1);
 }
 .scene.writing > .story > .scroller > .story-item > .id { display: none; }
