@@ -25,7 +25,7 @@
 							if (typeof val === 'undefined') val = 'undefined';
 							else 							val = ('title' in val.constructor) ? val.constructor.title : val.constructor.name;
 						} else {
-							if (val.constructor === String && val.length > 30) val = val.substr(0, 30) + '...';
+							if (val.constructor && val.constructor === String && val.length > 30) val = val.substr(0, 30) + '...';
 						}
 						ret.push(k + ': ' + val);
 					}
