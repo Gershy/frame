@@ -114,7 +114,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						this.appName = appName;
 						this.queryHandler = PACK[appName].queryHandler;
-						LOL += '[[ APP "' + appName + '": (' + this.queryHandler + ') ]] ';
+						LOL += '[[ APP "' + appName + '": (' + this.queryHandler + ') ]]; ';
 						if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						
 						if ('resources' in PACK[appName]) {
@@ -194,6 +194,8 @@ var package = new PACK.pack.Package({ name: 'server',
 				var ip = req.connection.remoteAddress;
 				
 				var sessionsIndex = PACK.server.Session.SESSIONS;
+				
+				LOL += '[[ ' + (ip in sessionsIndex ? 'PREXISTING' : 'NEW') + ' app ]]; ';
 				
 				var session = ip in sessionsIndex 
 					? sessionsIndex[ip]
