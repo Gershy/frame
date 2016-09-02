@@ -27,7 +27,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						LOL += 'SESSION GET "' + name + '"; ' + this.queryHandler + '; ';
+						LOL += '[[SESSION GET "' + name + '": ' + this.queryHandler + ']] ';
 						if (name === 'app') return this.queryHandler;
 						
 						return null;
@@ -111,6 +111,8 @@ var package = new PACK.pack.Package({ name: 'server',
 							
 							this.appName = appName;
 							this.queryHandler = PACK[appName].queryHandler;
+							
+							LOL += '[[ "' + appName + '": (' + this.queryHandler + ') ]] ';
 							
 							//if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						}
