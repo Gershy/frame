@@ -218,26 +218,17 @@ var package = new PACK.pack.Package({ name: 'server',
 				console.log('RES: ' + responseContent.simp());
 				console.log('');
 				
-				if (session.queryHandler !== null) {
-					
-					if (!existingSession) {
-						console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
-						sessionsIndex[session.ip] = session;
-					}
-					
-					res.writeHead(200, {
-						'Content-Type': responseContent.encoding,
-						'Content-Length': responseContent.data.length
-					});
-					res.write(responseContent.data, 'binary');
-					res.end();
-					
-				} else {
-					
-					res.writeHead(404)
-					res.end('no good!');
-					
+				if (!existingSession && session.queryHandler !== null) {
+					console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
+					sessionsIndex[session.ip] = session;
 				}
+				
+				res.writeHead(200, {
+					'Content-Type': responseContent.encoding,
+					'Content-Length': responseContent.data.length
+				});
+				res.write(responseContent.data, 'binary');
+				res.end();
 				
 			}
 		};
