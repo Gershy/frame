@@ -1,3 +1,5 @@
+LOL = '';
+
 (function() {
 	/*
 	The following top-level variables exist regardless of whether code is being
@@ -245,7 +247,7 @@
 						if (json) {
 							var o = JSON.parse(req.responseText);
 							if (o.code !== 0) {
-								throw new Error('server responded negatively: ' + o.msg);
+								throw new Error('Bad API use: ' + o.msg);
 							}
 						} else {
 							var o = req.responseText;

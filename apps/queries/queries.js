@@ -25,7 +25,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 							
 						} else {
 							
-							var childResponse = { code: 1, msg: this.constructor.title + ' got invalid address "' + childName + '"', address: params.originalAddress };
+							var childResponse = { code: 1, msg: this.constructor.title + ' got invalid address "' + childName + '"; ' + LOL, address: params.originalAddress };
 							
 						}
 						
