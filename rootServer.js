@@ -27,7 +27,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						LOL += '[[SESSION GET "' + name + '": ' + this.queryHandler + ']] ';
+						LOL += '[[ SESS "' + this.appName + '" -> "' + name + '" -> ' + this.queryHandler + ' ]] ';
 						if (name === 'app') return this.queryHandler;
 						
 						return null;
