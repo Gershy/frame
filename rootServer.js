@@ -198,7 +198,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				LOL += '[[ ' + (ip in sessionsIndex ? 'PREXISTING' : 'NEW') + ' app ]]; ';
 				
 				for (var k in sessionsIndex) {
-					var s = sesionsIndex[k];
+					var s = sessionsIndex[k];
 					LOL += '[[ AHHH ' + k + ': ' + s.ip + '/' + s.id + ', "' + s.appName + '" ]]; ';
 				}
 				
