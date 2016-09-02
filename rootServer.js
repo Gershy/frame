@@ -27,7 +27,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						LOL += '[[ SESS "' + this.appName + '" -> "' + name + '" -> ' + this.queryHandler + ' ]] ';
 						if (name === 'app') return this.queryHandler;
 						
 						return null;
@@ -100,7 +99,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						}
 						
 						// A mode-less request to the session just means to serve the html
-						LOL += '[[ URL: <' + url.toString() + '> ]]; ';
 						var appName = url[0];
 						var html = this.getFileContents('mainPage.html');
 						html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
@@ -114,7 +112,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						this.appName = appName;
 						this.queryHandler = PACK[appName].queryHandler;
-						LOL += '[[ APP "' + appName + '": (' + this.queryHandler + ') ]]; ';
 						if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						
 						if ('resources' in PACK[appName]) {
@@ -156,8 +153,6 @@ var package = new PACK.pack.Package({ name: 'server',
 				},
 			}),
 			serverFunc: function(req, res) {
-				LOL = '';
-				
 				var url = req.url; // req.url, req.headers.referer, req.headers.host?
 				
 				//Initialize defaults for all url components
@@ -195,18 +190,17 @@ var package = new PACK.pack.Package({ name: 'server',
 				
 				var sessionsIndex = PACK.server.Session.SESSIONS;
 				
-				LOL += '[[ ' + (ip in sessionsIndex ? 'PREXISTING' : 'NEW') + ' app ]]; ';
-				
 				for (var k in sessionsIndex) {
 					var s = sessionsIndex[k];
-					LOL += '[[ AHHH ' + k + ': ' + s.ip + '/' + s.id + ', "' + s.appName + '" ]]; ';
-					console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName);
+					if (!('id' in s)) {
+						console.log('DAFUQ IS THIS', s, s.constructor.name, s.constructor.title);
+					} else {
+						console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName);
+					}
 				}
 				
 				if (!(ip in sessionsIndex)) sessionsIndex[i] = new PACK.server.Session({ ip: ip });
 				var session = sessionsIndex[ip];
-				
-				LOL += '[[ SESS ' + session.ip + '/' + session.id + '; name: ' + session.appName + '; app: ' + session.app + ' ]]; ';
 				
 				var params = queryParams.update({ url: queryUrl });
 				if (!('address' in params)) params.address = [];
@@ -220,9 +214,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				LOL += '[[ ABOUT TO RESPOND ]]; ';
 				var responseContent = session.respondToQuery(params);
-				LOL += '[[ RESPONDED!! "' + responseContent + '" ]]; ';
 				
 				res.writeHead(200, {
 					'Content-Type': responseContent.encoding,

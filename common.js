@@ -1,5 +1,3 @@
-LOL = '';
-
 (function() {
 	/*
 	The following top-level variables exist regardless of whether code is being
@@ -14,6 +12,11 @@ LOL = '';
 		-C: Default class directory
 		-PACK: Contains all the packages
 	*/
+	
+	var oldLog = console.log;
+	console.log = function() {
+		oldLog.apply(console, [ '===' ].concat(U.arr(arguments)));
+	};
 	
 	// Add convenience methods to pre-existing classes
 	var objectProps = [
