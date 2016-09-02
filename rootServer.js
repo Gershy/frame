@@ -213,7 +213,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				console.log('REQ: <' + params.address.toString() + ': ' + params.address.command + '>' + (('params' in params) ? '(' + params.params.simp() + ')' : '(no params)' ));
+				console.log('REQ: <' + params.address.toString() + ': ' + params.command + '>' + (('params' in params) ? '(' + params.params.simp() + ')' : '(no params)' ));
 				var responseContent = session.respondToQuery(params);
 				console.log('RES: ' + responseContent.simp());
 				console.log('');

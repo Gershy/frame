@@ -192,6 +192,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										username: usernameField.find('input').fieldValue(),
 										password: passwordField.find('input').fieldValue()
 									}, onComplete: function(response) {
+										console.log('TOKEN RESPONSE', response);
+										
 										if ('help' in response) {
 											submit.find('.error').setHtml(response.help);
 											submit.listAttr({ class: '+error' });
