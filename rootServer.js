@@ -195,7 +195,7 @@ var package = new PACK.pack.Package({ name: 'server',
 					if (!('id' in s)) {
 						console.log('DAFUQ IS THIS', s, s.constructor.name, s.constructor.title);
 					} else {
-						console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName);
+						console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName + '"');
 					}
 				}
 				
@@ -214,7 +214,9 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
+				console.log('Respond to query: ' + params);
 				var responseContent = session.respondToQuery(params);
+				console.log('RESPONDED!!');
 				
 				res.writeHead(200, {
 					'Content-Type': responseContent.encoding,

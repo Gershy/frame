@@ -13,11 +13,6 @@
 		-PACK: Contains all the packages
 	*/
 	
-	var oldLog = console.log;
-	console.log = function() {
-		oldLog.apply(console, [ '===' ].concat(U.arr(arguments)));
-	};
-	
 	// Add convenience methods to pre-existing classes
 	var objectProps = [
 		{	target: Object.prototype,
