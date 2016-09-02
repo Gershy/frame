@@ -27,9 +27,15 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						console.log('SESS IP:', this.ip, 'ID:', this.id);
+						console.log('ALL SESSIONS');
+						for (var k in PACK.server.Session.SESSIONS) {
+							var s = PACK.server.Session.SESSIONS[k];
+							console.log('IP:', s.ip, 'ID:', s.id);
+						}
+						console.log('MY SESS: IP:', this.ip, 'ID:', this.id);
 						console.log('ASK FOR "' + name + '"');
 						console.log('HANDLER:' + this.queryHandler);
+						console.log('');
 						
 						if (name === 'app') return this.queryHandler;
 						
