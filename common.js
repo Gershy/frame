@@ -17,6 +17,18 @@
 	var objectProps = [
 		{	target: Object.prototype,
 			props: {
+				simp: function() {
+					var ret = [];
+					for (var k in this) {
+						var val = this[k];
+						if (val !== null && val.constructor !== String && val.constructor !== Number && val.constructor !== Boolean) {
+							if (typeof val === 'undefined') val = 'undefined';
+							else 							val = ('title' in val.constructor) ? val.constructor.title : val.constructor.name;
+						}
+						ret.push(k + ': ' + val);
+					}
+					return '{ ' + ret.join(', ') + ' }';
+				},
 				update: function(obj) {
 					for (var k in obj) this[k] = obj[k];
 					return this;

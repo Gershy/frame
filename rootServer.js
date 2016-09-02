@@ -214,7 +214,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				console.log('Respond to query: ' + params);
+				console.log('Respond to query: ' + params.simp());
 				var responseContent = session.respondToQuery(params);
 				console.log('RESPONDED!!');
 				
