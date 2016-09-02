@@ -91,9 +91,17 @@ var package = new PACK.pack.Package({ name: 'e',
 					clear: function(e) {
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
 					},
+					text: function() {
+						if (this.elems.length === 0) return '';
+						return this.elems[0].innerHTML;
+					},
 					
-					fieldValue: function() {
-						return this.elems[0].value;
+					fieldValue: function(v) {
+						if (U.exists(v)) {
+							this.elems[0].value = v;
+						} else {
+							return this.elems[0].value;
+						}
 					},
 					
 					find: function(query) {
@@ -107,7 +115,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					handle: function(event, func) {
 						var eventPropName = 'on' + event;
 						this.elems.forEach(function(elem) {
-							elem[eventPropName] = function(e) { func(elem, e); };
+							elem[eventPropName] = function(event) { func(new PACK.e.E(elem), event); };
 						});
 					},
 					attr: function(attrs /* { "name": "value", ... } */) {

@@ -29,14 +29,23 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					
 					return str;
 				},
+				getUserFromToken: function(token) {
+					var users = PACK.creativity.queryHandler.getChild('users');
+					for (var k in users.children) {
+						var child = users.children[k];
+						if (this.genUserToken(child) === token) return child;
+					}
+					return null;
+				},
 				handleQuery: function(params) {
 					var com = U.param(params, 'command');
 					
+					var reqParams = U.param(params, 'params');
+					
 					if (com === 'getToken') {
 						
-						var tokenParams = U.param(params, 'params');
-						var username = U.param(tokenParams, 'username');
-						var password = U.param(tokenParams, 'password');
+						var username = U.param(reqParams, 'username');
+						var password = U.param(reqParams, 'password');
 						
 						var query = { p: {}, i: {
 							username: { p: { value: username } },
@@ -44,13 +53,58 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						}};
 						var result = this.getChild('users').filterChildren(query);
 						
-						if (result.length === 0) {
-							return { help: 'Invalid credentials' };
-						}
+						if (result.length === 0) return { help: 'Invalid credentials' };
 						
 						var user = result[0];
+						return { msg: 'user retrieved', token: this.genUserToken(user), username: user.getChild('username').value };
 						
-						return { msg: 'user retrieved', token: this.genUserToken(user) };
+					} else if (com === 'voteFor') {
+						
+						var token = U.param(reqParams, 'token');
+						var username = U.param(reqParams, 'username'); // This is who to vote for
+						
+						var user = this.getUserFromToken(token);
+						if (user === null) return { code: 1, msg: 'bad token' };
+						
+						var users = this.children['users'];
+						if (!(username in users.children)) return { code: 1, msg: 'invalid vote-for username' };
+						
+						var voteFor = users.children[username];
+						var votable = this.children['votables'].filterChildren({ i: { user: { p: { value: voteFor.getAddress() } } } }, true);
+						
+						if (votable === null) return { code: 1, msg: 'user hasn\'t submitted a votable' };
+						
+						if (this.children['votes'].filterChildren({ i: { user: { p: { value: user.getAddress() } } } }, true) !== null)
+							return { code: 1, msg: 'already voted' };
+						
+						var vote = this.children['votes'].getNewChild({ user: user, votable: votable });
+						
+						return {
+							voter: user.name,
+							votee: voteFor.name,
+							votable: votable.getChild('blurb.text').value,
+							vote: vote.schemaParams()
+						};
+						
+					} else if (com === 'submitVotable') {
+						
+						var token = U.param(reqParams, 'token');
+						var text = U.param(reqParams, 'text');
+						
+						if (text.length > 140) return { code: 1, msg: 'text too long (140 char limit)' };
+						
+						var user = this.getUserFromToken(token);
+						if (user === null) return { code: 1, msg: 'bad token' };
+						
+						var votable = this.children['votables'].filterChildren({ i: { user: { p: { value: user.getAddress() } } } }, true);
+						if (votable !== null) return { code: 1, msg: 'already submitted' };
+						
+						var blurb = this.children['blurbs'].getNewChild({ username: user.getChild('username').value, text: text });
+						var votable = this.children['votables'].getNewChild({ blurb: blurb });
+						
+						return {
+							votable: votable.schemaParams()
+						};
 						
 					}
 					
@@ -105,6 +159,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					_schema: U.addSerializable({ name: 'creativity.votableSchema',
 						value: new qd.QSchema({ c: qd.QDict, i: {
 							id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+							user: 	new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
 							blurb: 	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
 						}})
 					}),
@@ -112,6 +167,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						value: function(child, params /* blurb */) {
 							var blurb = U.param(params, 'blurb');
 							child.setValue('blurb', blurb);
+							// shouldn't be necessary, but intermediate solution
+							// for being unable to filter deeper through QRefs
+							child.setValue('user', blurb.children['user'].value);
 						}
 					}),
 					prop: 'id/value'
@@ -164,6 +222,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		if (!U.isServer()) {
 			
 			var e = PACK.e.e;
+			
+			var auth = { token: null, username: null };
 		
 			var scene = new PACK.e.RootScene({ name: 'root', title: 'root',
 				build: function(rootElem, subsceneElem) {
@@ -188,16 +248,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var submit = e('<div class="submit"><div class="content">Submit</div><div class="error"></div></div>');
 								submit.handle('click', function() {
-									console.log('DOING TOKEN REQUEST', { command: 'getToken', params: {
-										username: usernameField.find('input').fieldValue(),
-										password: passwordField.find('input').fieldValue()
-									}});
-									
 									root.$request({ command: 'getToken', params: {
 										username: usernameField.find('input').fieldValue(),
 										password: passwordField.find('input').fieldValue()
 									}, onComplete: function(response) {
-										console.log('TOKEN RESPONSE', response);
+										auth.token = response.token;
+										auth.username = response.username;
 										
 										if ('help' in response) {
 											submit.find('.error').setHtml(response.help);
@@ -241,6 +297,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										root.getChild('storyItems').$load({ onComplete: function(elem) {
+											
+											if (elem.length === 0) { callback([]); return; }
 											
 											var count = 0;
 											var blurbs = [];
@@ -293,7 +351,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var updateVotables = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										
+										console.log('HERE???');
+										
 										root.getChild('votables').$load({ onComplete: function(elem) {
+											
+											if (elem.length === 0) { callback([]); return; }
 											
 											var count = 0;
 											var votables = [];
@@ -338,7 +400,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									start: function() {
 										voting.listAttr({ class: [ '+loading' ] });
 									},
-									end: function(votableData) {
+									end: function(votableData, updater) {
+										console.log('VOTABLE', votableData);
+										
 										votingScroller.clear();
 										votingScroller.append(votableData.map(function(votableItem) {
 											var elem = e([
@@ -354,19 +418,57 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												return e('<div class="vote">' + vote + '</div>');
 											}));
 											
+											if (votableItem.votes.contains(auth.username)) {
+												votingScroller.listAttr({ class: [ '+voted' ] });
+												elem.listAttr({ class: [ '+voted' ] });
+											}
+											
+											elem.find('.check').handle('click', function() {
+												var username = elem.find('.user').text();
+												voting.listAttr({ class: [ '+loading' ] });
+												root.$request({ command: 'voteFor', params: { username: username, token: auth.token }, onComplete: function(result) {
+													console.log(result);
+													updater.run();
+												}});
+											});
+											
 											return elem;
 										}));
 										
 										voting.listAttr({ class: [ '-loading' ] });
 									},
 								});
-								updateVotables.run();
-								//updateVotables.repeat({ delay: 1000 });
+								updateVotables.repeat({ delay: 3000 });
+								
+								var updateWriting = new PACK.quickDev.QUpdate({
+									// TODO: 
+									request: function(callback) {
+										root.getChild('votables').$filter({
+											filter: { i: { user: { p: { value: 'app.users.' + auth.username } } } },
+											addChildren: false,
+											onComplete: function(elems) {
+												// Active only if there is no existing votable elem
+												callback(elems.length === 0);
+											}
+										});
+									},
+									start: function() {},
+									end: function(active) {
+										writing.listAttr({ class: [ (active ? '-' : '+') + 'disabled' ] });
+										updateVotables.run();
+									}
+								});
+								updateWriting.repeat({ delay: 3000 });
 
 								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
 								
 								submit.handle('click', function() {
-									console.log('Submitted story item!');
+									writing.listAttr({ class: [ '+disabled' ] });
+									var textarea = writing.find('textarea');
+									root.$request({ command: 'submitVotable', params: { token: auth.token, text: textarea.fieldValue() }, onComplete: function(response) {
+										textarea.fieldValue('');
+										updateVotables.run();
+									}});
 								});
 								
 								rootElem.append([ story, voting, writing ]);
@@ -432,9 +534,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			}
 			
 			var votables = root.getChild('votables');
-			toVote.forEach(function(blurb) {
+			/*toVote.forEach(function(blurb) {
 				votables.getNewChild({ blurb: blurb });
-			});
+			});*/
 			
 			var storyItems = root.getChild('storyItems');
 			toStory.forEach(function(blurb) {
@@ -442,10 +544,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			});
 			
 			var votes = root.getChild('votes');
-			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
+			/*votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
 			votes.getNewChild({ user: users.getChild('levi'), votable: votables.getChild('2') });
 			votes.getNewChild({ user: users.getChild('daniel'), votable: votables.getChild('2') });
-			votes.getNewChild({ user: users.getChild('gershom'), votable: votables.getChild('3') });
+			votes.getNewChild({ user: users.getChild('gershom'), votable: votables.getChild('3') });*/
 			
 			/*[
 				{ },

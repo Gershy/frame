@@ -134,10 +134,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							The function that makes the request. It is provided a callback,
 							which should be called with any response data once the request
 							is complete.
-						2) start():
+						2) start(updater):
 							A function that is called as soon as the request is initiated.
 							Useful for indicating to the user that the request has begun.
-						3) end(response):
+						3) end(response, updater):
 							A function that is called once the request has completed, with
 							any data returned by the request.
 						*/
@@ -152,10 +152,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var pass = this;
 						
 						this.pendingCount++;
-						if (this.start) this.start();
+						if (this.start) this.start(pass);
 						this.request(function(response) {
 							pass.pendingCount--;
-							pass.end(response);
+							pass.end(response, pass);
 						});
 					},
 					repeat: function(params /* delay, runInstantly, allowMultiple */) {
@@ -475,14 +475,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							return child && child.matches(filter);
 						});
 					},
-					filterChildren: function(filter) {
-						var ret = [];
+					filterChildren: function(filter, onlyOne) {
+						if (!U.exists(onlyOne)) onlyOne = false;
 						
-						this.children.forEach(function(child, k) {
-							if (child.matches(filter)) ret.push(child);
-						});
+						if (!onlyOne) var ret = [];
 						
-						return ret;
+						for (var k in this.children) {
+							var child = this.children[k];
+							if (child.matches(filter)) {
+								if (onlyOne) 	return child;
+								else 			ret.push(child);
+							}
+						}
+						
+						return onlyOne ? null : ret;
 					},
 					
 					schemaChildren: function() { return this.children; },

@@ -27,16 +27,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						console.log('ALL SESSIONS');
-						for (var k in PACK.server.Session.SESSIONS) {
-							var s = PACK.server.Session.SESSIONS[k];
-							console.log('IP:', s.ip, 'ID:', s.id);
-						}
-						console.log('MY SESS: IP:', this.ip, 'ID:', this.id);
-						console.log('ASK FOR "' + name + '"');
-						console.log('HANDLER:' + this.queryHandler);
-						console.log('');
-						
 						if (name === 'app') return this.queryHandler;
 						
 						return null;
@@ -199,15 +189,6 @@ var package = new PACK.pack.Package({ name: 'server',
 				
 				var sessionsIndex = PACK.server.Session.SESSIONS;
 				
-				for (var k in sessionsIndex) {
-					var s = sessionsIndex[k];
-					if (!('id' in s)) {
-						console.log('DAFUQ IS THIS', s, s.constructor.name, s.constructor.title);
-					} else {
-						console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName + '"');
-					}
-				}
-				
 				var existingSession = ip in sessionsIndex;
 				var session = existingSession ? sessionsIndex[ip] : new PACK.server.Session({ ip: ip });
 				
@@ -226,7 +207,6 @@ var package = new PACK.pack.Package({ name: 'server',
 				var responseContent = session.respondToQuery(params);
 				
 				if (!existingSession && session.queryHandler !== null) {
-					console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
 					sessionsIndex[session.ip] = session;
 				}
 				
