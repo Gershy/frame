@@ -188,6 +188,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var submit = e('<div class="submit"><div class="content">Submit</div><div class="error"></div></div>');
 								submit.handle('click', function() {
+									console.log('DOING TOKEN REQUEST', { command: 'getToken', params: {
+										username: usernameField.find('input').fieldValue(),
+										password: passwordField.find('input').fieldValue()
+									}});
+									
 									root.$request({ command: 'getToken', params: {
 										username: usernameField.find('input').fieldValue(),
 										password: passwordField.find('input').fieldValue()

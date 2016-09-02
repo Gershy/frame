@@ -259,6 +259,7 @@
 						if (json) {
 							var o = JSON.parse(req.responseText);
 							if (o.code !== 0) {
+								console.log(req, o);
 								throw new Error('Bad API use: ' + o.msg);
 							}
 						} else {
