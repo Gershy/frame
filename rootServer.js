@@ -115,7 +115,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.appName = appName;
 						this.queryHandler = PACK[appName].queryHandler;
 						LOL += '[[ APP "' + appName + '": (' + this.queryHandler + ') ]] ';
-						//if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
+						if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						
 						if ('resources' in PACK[appName]) {
 							
