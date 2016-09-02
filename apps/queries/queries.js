@@ -22,6 +22,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 							// Params for the child are exactly the same, except the
 							// address has had its first member removed.
 							var childResponse = child.respondToQuery(params.clone({ address: addr.slice(1) }));
+							if (!childResponse) throw new Error('Bad response');
 							
 						} else {
 							
@@ -29,7 +30,6 @@ var package = new PACK.pack.Package({ name: 'queries',
 							
 						}
 						
-						if (!childResponse) throw new Error('Bad response');
 						var ret = this.processChildResponse(childResponse);
 						
 						return ret;

@@ -27,6 +27,10 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
+						console.log('SESS IP:', this.ip, 'ID:', this.id);
+						console.log('ASK FOR "' + name + '"');
+						console.log('HANDLER:' + this.queryHandler);
+						
 						if (name === 'app') return this.queryHandler;
 						
 						return null;
@@ -213,10 +217,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				console.log('REQ: <' + params.address.toString() + ': ' + params.command + '>' + (('params' in params) ? '(' + params.params.simp() + ')' : '(no params)' ));
 				var responseContent = session.respondToQuery(params);
-				console.log('RES: ' + responseContent.simp());
-				console.log('');
 				
 				if (!existingSession && session.queryHandler !== null) {
 					console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
