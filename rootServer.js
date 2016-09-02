@@ -199,8 +199,8 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 				}
 				
-				if (!(ip in sessionsIndex)) sessionsIndex[ip] = new PACK.server.Session({ ip: ip });
-				var session = sessionsIndex[ip];
+				var existingSession = ip in sessionsIndex;
+				var session = existingSession ? sessionsIndex[ip] : new PACK.server.Session({ ip: ip });
 				
 				var params = queryParams.update({ url: queryUrl });
 				if (!('address' in params)) params.address = [];
@@ -214,9 +214,17 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				console.log('Respond to query: ' + params.simp());
+				console.log('REQ: ' + params.simp() + (('params' in params) ? ' (' + params.params.simp() + ')' : ' (no params' ));
 				var responseContent = session.respondToQuery(params);
-				console.log('RESPONDED!!');
+				if (session.app === null) {
+					responseContent = {
+						encoding: 'text/json',
+						data: JSON.stringify({ code: 1, msg: 'session failed to initialize app' })
+					};
+				} else if (!existingSession) {
+					sessionsIndex[session.ip] = session;
+				}
+				console.log('RES!!');
 				
 				res.writeHead(200, {
 					'Content-Type': responseContent.encoding,
