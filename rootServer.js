@@ -88,7 +88,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
 						if (url.length === 0) throw 'zero-length url';
 						
-						
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
 							try {
@@ -216,15 +215,17 @@ var package = new PACK.pack.Package({ name: 'server',
 				
 				console.log('REQ: ' + params.simp() + (('params' in params) ? ' (' + params.params.simp() + ')' : ' (no params' ));
 				var responseContent = session.respondToQuery(params);
-				if (session.app === null) {
+				if (session.queryHandler === null) {
 					responseContent = {
 						encoding: 'text/json',
 						data: JSON.stringify({ code: 1, msg: 'session failed to initialize app' })
 					};
 				} else if (!existingSession) {
+					console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
 					sessionsIndex[session.ip] = session;
 				}
-				console.log('RES!!');
+				console.log('RES: ' + responseContent);
+				console.log('');
 				
 				res.writeHead(200, {
 					'Content-Type': responseContent.encoding,
@@ -232,15 +233,6 @@ var package = new PACK.pack.Package({ name: 'server',
 				});
 				res.write(responseContent.data, 'binary');
 				res.end();
-				
-				/*} catch(e) {
-					
-					if (true) throw e;
-					
-					res.writeHead(404); 
-					res.end('An error ocurred: "' + e.message + '"');
-					
-				}*/
 			}
 		};
 	},
