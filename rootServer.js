@@ -215,7 +215,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				
 				console.log('REQ: ' + params.simp() + (('params' in params) ? ' (' + params.params.simp() + ')' : ' (no params)' ));
 				var responseContent = session.respondToQuery(params);
-				console.log('RES: ' + responseContent);
+				console.log('RES: ' + responseContent.simp());
 				console.log('');
 				
 				if (session.queryHandler !== null) {
