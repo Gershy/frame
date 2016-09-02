@@ -95,7 +95,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							var username = U.param(params, 'username');
 							var text = U.param(params, 'text');
 							
-							child.setValue('user', 'users.' + username); // Set the reference
+							child.setValue('user', 'app.users.' + username); // Set the reference
 							child.setValue('text', text);
 						}
 					}),
@@ -119,8 +119,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				new qd.QGen({ name: 'votes',
 					_schema: U.addSerializable({ name: 'creativity.voteSchema',
 						value: new qd.QSchema({ c: qd.QDict, i: {
-							id:		new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-							user:	new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
+							id:		 new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+							user:	 new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
 							votable: new qd.QSchema({ c: qd.QRef, p: { name: 'votable', value: '' } })
 						}})
 					}),
@@ -217,10 +217,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							build: function(rootElem, subsceneElem) {
 								
 								var story = e('<div class="writing-elem story"></div>');
-								var scroller = story.append('<div class="scroller"></div>');
+								var storyScroller = story.append('<div class="scroller"></div>');
 								
 								var voting = e('<div class="writing-elem voting"></div>');
-								voting.append('<div class="scroller"></div>');
+								var votingScroller = voting.append('<div class="scroller"></div>');
 								
 								var writing = e('<div class="writing-elem writing"></div>');
 								writing.append([
@@ -239,7 +239,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											var blurbs = [];
 											var gotBlurb = function(id, username, text) {
 												count++;
-												blurbs.push({ id: id, username: username.split('.')[1], text: PACK.htmlText.render(text) });
+												blurbs.push({ id: id, username: username.split('.')[2], text: PACK.htmlText.render(text) });
 												
 												if (count === elem.length) {
 													blurbs.sort(function(b1, b2) { return b1.id - b2.id });
@@ -249,27 +249,26 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											
 											for (var k in elem.children) {
 												var storyItem = elem.children[k];
-												
-												var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
-													blurb.$getRef({
-														useClientValue: false,
+												storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurbRef) {
+													blurbRef.$getRef({
+														useClientValue: true,
 														addRef: false,
 														recurse: true,
 														onComplete: function(elem) {
 															gotBlurb(elem.getChild('id').value, elem.children['user'].value, elem.getChild('text').value);
 														}
 													});
-												} });
+												}});
 											}
 											
-										} });
+										}});
 									},
 									start: function() {
 										story.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(storyData) {
-										scroller.clear();
-										scroller.append(storyData.map(function(storyItem) {
+										storyScroller.clear();
+										storyScroller.append(storyData.map(function(storyItem) {
 											return e([
 												'<div class="story-item">',
 													'<div class="id">' + storyItem.id + '</div>',
@@ -282,33 +281,81 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										story.listAttr({ class: [ '-loading' ] });
 									}
 								});
-								updateStory.repeat({ delay: 2000 });
+								updateStory.repeat({ delay: 3000 });
 								
-								/*var storyData = root.getChild('storyItems');
-								story.listAttr({ class: [ '+loading' ] });
-								story.clear();
-								storyData.$load({ onComplete: function(elem) {
-									
-									for (var k in elem.children) {
-										var storyItem = elem.children[k];
-										console.log(storyItem.children['blurb']);
+								var updateVotables = new PACK.quickDev.QUpdate({
+									request: function(callback) {
 										
-										
-										var blurb = storyItem.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurb) {
-											var text = blurb.getChild('text').value;
-											console.log(text);
+										root.getChild('votables').$load({ onComplete: function(elem) {
 											
-											// e package should provide templating
-											// e.g. a template for "blurb" which appears in both "story" AND "voting" to generate blurb layouts
-											story.append('<div class="blurb"><div class="user">-none-</div><div class="text">' + text + '</div></div>');
-										} });
+											var count = 0;
+											var votables = [];
+											var gotVotable = function(username, text, votes) {
+												count++;
+												votables.push({ username: username.split('.')[2], text: PACK.htmlText.render(text), votes: votes.map(function(o) { return o.name; }) });
+												
+												if (count === elem.length) {
+													votables.sort(function(b1, b2) { return b2.votes.length - b1.votes.length; });
+													callback(votables);
+												}
+											};
+											
+											for (var k in elem.children) {
+												
+												var votable = elem.children[k];
+												var blurb = votable.$getChild({ address: 'blurb', addChild: true, useClientSide: true, onComplete: function(blurbRef) {
+													blurbRef.$getRef({
+														useClientValue: true,
+														addRef: false,
+														recurse: true,
+														onComplete: function(blurb) {
+															var votable = blurbRef.par;
+															
+															// Select each vote whose votable references the blurb
+															root.getChild('votes').$filter({
+																filter: { i: { votable: { p: { value: votable.getAddress() } } } },
+																addChildren: false,
+																onComplete: function(elems) {
+																	gotVotable(blurb.children['user'].value, blurb.getChild('text').value, elems);
+																}
+															});
+														}
+													});
+												}});
+												
+											}
+											
+										}});
 										
+									},
+									start: function() {
+										voting.listAttr({ class: [ '+loading' ] });
+									},
+									end: function(votableData) {
+										votingScroller.clear();
+										votingScroller.append(votableData.map(function(votableItem) {
+											var elem = e([
+												'<div class="votable-item">',
+													'<div class="check"></div>',
+													'<div class="text">' + votableItem.text + '</div>',
+													'<div class="user">' + votableItem.username + '</div>',
+												'</div>'
+											].join(''));
+											
+											var votes = elem.append('<div class="votes"></div>');
+											votes.append(votableItem.votes.map(function(vote) {
+												return e('<div class="vote">' + vote + '</div>');
+											}));
+											
+											return elem;
+										}));
 										
-									}
-									
-									story.listAttr({ class: [ '-loading' ] });
-								}});*/
-								
+										voting.listAttr({ class: [ '-loading' ] });
+									},
+								});
+								updateVotables.run();
+								//updateVotables.repeat({ delay: 1000 });
+
 								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
 								
 								submit.handle('click', function() {
@@ -389,6 +436,16 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 			var votes = root.getChild('votes');
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
+			votes.getNewChild({ user: users.getChild('levi'), votable: votables.getChild('2') });
+			votes.getNewChild({ user: users.getChild('daniel'), votable: votables.getChild('2') });
+			votes.getNewChild({ user: users.getChild('gershom'), votable: votables.getChild('3') });
+			
+			/*[
+				{ },
+				{ i: { votable: { p: { value: 'app.votables.3' } } } }
+			].forEach(function(filter, i) {
+				console.log(i, votes.filterChildren(filter).map(function(o) { return o.simplified(); }));
+			});*/
 		}
 		
 	}

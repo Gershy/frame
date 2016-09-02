@@ -262,7 +262,6 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.par = null;
 					},
 					setSubscene: function(wrapperName, subsceneName) {
-						console.log(wrapperName, 'IN', this.wrappers, '???');
 						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper "' + wrapperName + '"');
 						
 						var next = this.subscenes[wrapperName][subsceneName];
@@ -308,8 +307,6 @@ var package = new PACK.pack.Package({ name: 'e',
 								var tab = tabs.append('<div class="tab">' + scene.title + '</div>');
 								tab.listAttr({ class: scene.name });
 								
-								console.log('SETTABLE', wrapperName, scene.name);
-								
 								tab.handle('click', function(elem, e) {
 									pass.setSubscene(wrapperName, scene.name);
 								});
@@ -322,7 +319,6 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.elems = this.build(sceneElem, subsceneObj, this);
 						
 						for (var k in this.defaultScenes) {
-							console.log(k, this.defaultScenes[k]);
 							this.setSubscene(k, this.defaultScenes[k]);
 						}
 						

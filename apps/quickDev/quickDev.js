@@ -166,10 +166,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var runInstantly = U.param(params, 'runInstantly', true);
 						var allowMultiple = U.param(params, 'allowMultiple', false);
 						
-						if (runInstantly && (allowMultiple || pass.pendingCount === 0)) this.update();
+						if (runInstantly && (allowMultiple || pass.pendingCount === 0)) this.run();
 						
 						this.interval = setInterval(function() {
-							if (allowMultiple || pass.pendingCount === 0) pass.update();
+							if (allowMultiple || pass.pendingCount === 0) pass.run();
 						}, delay);
 					},
 					endRepeat: function() {
@@ -471,7 +471,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var pass = this;
 						var filterChildren = U.param(filter, 'i', {});
 						return filterChildren.every(function(filter, k) {
-							var child = pass.getChild(k);
+							var child = pass.children[k];
 							return child && child.matches(filter);
 						});
 					},
@@ -487,14 +487,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					schemaChildren: function() { return this.children; },
 					
-					$filter: function(params /* filter, onComplete */) {
-						var onComplete = U.param(params, 'onComplete', null);
+					$filter: function(params /* filter, addChildren, onComplete */) {
+						var pass = this;
 						var filter = U.param(params, 'filter');
+						var addChildren = U.param(params, 'addChildren', true);
+						var onComplete = U.param(params, 'onComplete', null);
 						
 						this.$request({
 							command: 'filteredChildren',
 							params: { filter: filter },
-							onComplete: onComplete
+							onComplete: function(response) {
+								var elems = response.schemaParamsList.map(function(schemaParams) {
+									var schema = new PACK.quickDev.QSchema(schemaParams);
+									return schema.actualize();
+								});
+								if (addChildren) {
+									elems.forEach(function(elem) { pass.addChild(elem); });
+								}
+								onComplete(elems);
+							}
 						});
 					},
 					$getChild: function(params /* address, recurse, addChild, onComplete, useClientSide */) {
@@ -557,8 +568,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var filter = U.param(reqParams, 'filter');
 							
 							var children = this.filterChildren(filter);
-							
-							return { schemaParams: children.map(function(child) { return child.schemaParams(); }) };
+							return { schemaParamsList: children.map(function(child) { return child.schemaParams(); }) };
 							
 						} else if (com === 'getChild') {			/* address, recurse */
 							
@@ -665,7 +675,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					getChildProp: function(elem) {
 						var propElem = elem.getChild(this.childAddress);
-						if (propElem === null || !(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
+						
+						if (propElem === null) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop child: "' + this.childAddress + '/' + this.childProp + '"');
+						if (!(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
 						
 						return propElem[this.childProp].toString();
 					},
