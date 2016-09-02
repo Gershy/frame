@@ -109,14 +109,12 @@ var package = new PACK.pack.Package({ name: 'server',
 						if (!(appName in PACK)) {
 							require('./apps/' + appName + '/' + appName + '.js');
 							if (!('queryHandler' in PACK[appName])) throw new Error('app "' + appName + '" is missing queryHandler');
-							
-							this.appName = appName;
-							this.queryHandler = PACK[appName].queryHandler;
-							
-							LOL += '[[ "' + appName + '": (' + this.queryHandler + ') ]] ';
-							
-							//if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						}
+						
+						LOL += '[[ "' + appName + '": (' + this.queryHandler + ') ]] ';
+						this.appName = appName;
+						this.queryHandler = PACK[appName].queryHandler;
+						//if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						
 						if ('resources' in PACK[appName]) {
 							
