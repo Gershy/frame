@@ -213,26 +213,32 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				console.log('REQ: ' + params.simp() + (('params' in params) ? ' (' + params.params.simp() + ')' : ' (no params' ));
+				console.log('REQ: ' + params.simp() + (('params' in params) ? ' (' + params.params.simp() + ')' : ' (no params)' ));
 				var responseContent = session.respondToQuery(params);
-				if (session.queryHandler === null) {
-					responseContent = {
-						encoding: 'text/json',
-						data: JSON.stringify({ code: 1, msg: 'session failed to initialize app' })
-					};
-				} else if (!existingSession) {
-					console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
-					sessionsIndex[session.ip] = session;
-				}
 				console.log('RES: ' + responseContent);
 				console.log('');
 				
-				res.writeHead(200, {
-					'Content-Type': responseContent.encoding,
-					'Content-Length': responseContent.data.length
-				});
-				res.write(responseContent.data, 'binary');
-				res.end();
+				if (session.queryHandler !== null) {
+					
+					if (!existingSession) {
+						console.log('ACCEPT ' + session.ip + ': ' + session.queryHandler.simp());
+						sessionsIndex[session.ip] = session;
+					}
+					
+					res.writeHead(200, {
+						'Content-Type': responseContent.encoding,
+						'Content-Length': responseContent.data.length
+					});
+					res.write(responseContent.data, 'binary');
+					res.end();
+					
+				} else {
+					
+					res.writeHead(404)
+					res.end('no good!');
+					
+				}
+				
 			}
 		};
 	},
