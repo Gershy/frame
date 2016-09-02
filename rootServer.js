@@ -199,7 +199,7 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 				}
 				
-				if (!(ip in sessionsIndex)) sessionsIndex[i] = new PACK.server.Session({ ip: ip });
+				if (!(ip in sessionsIndex)) sessionsIndex[ip] = new PACK.server.Session({ ip: ip });
 				var session = sessionsIndex[ip];
 				
 				var params = queryParams.update({ url: queryUrl });
