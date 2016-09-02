@@ -19,7 +19,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				methods: function(sc) { return {
 					init: function(params /* ip */) {
 						this.ip = U.param(params, 'ip');
-						this.id = U.id(this.ip);
+						this.id = U.id(PACK.server.Session.NEXT_ID++);
 						
 						this.appName = null;
 						this.queryHandler = null;
@@ -156,6 +156,8 @@ var package = new PACK.pack.Package({ name: 'server',
 				},
 			}),
 			serverFunc: function(req, res) {
+				LOL = '';
+				
 				var url = req.url; // req.url, req.headers.referer, req.headers.host?
 				
 				//Initialize defaults for all url components
