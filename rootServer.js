@@ -200,12 +200,11 @@ var package = new PACK.pack.Package({ name: 'server',
 				for (var k in sessionsIndex) {
 					var s = sessionsIndex[k];
 					LOL += '[[ AHHH ' + k + ': ' + s.ip + '/' + s.id + ', "' + s.appName + '" ]]; ';
-					console.log('SESSION: ' + s.ip + '/' + s.id + ', "' + s.appName);
+					console.log('SESSION: ' + k + ': ' + s.id + '(' + (k === s.ip ? 'fine' : 'BAD') + '), "' + s.appName);
 				}
 				
-				var session = ip in sessionsIndex 
-					? sessionsIndex[ip]
-					: (sessionsIndex[ip] = new PACK.server.Session({ ip: ip }));
+				if (!(ip in sessionsIndex)) sessionsIndex[i] = new PACK.server.Session({ ip: ip });
+				var session = sessionsIndex[ip];
 				
 				LOL += '[[ SESS ' + session.ip + '/' + session.id + '; name: ' + session.appName + '; app: ' + session.app + ' ]]; ';
 				
