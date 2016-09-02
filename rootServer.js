@@ -100,6 +100,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						}
 						
 						// A mode-less request to the session just means to serve the html
+						LOL += '[[ URL: <' + url.toString() + '> ]]; ';
 						var appName = url[0];
 						var html = this.getFileContents('mainPage.html');
 						html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
