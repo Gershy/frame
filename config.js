@@ -6,7 +6,7 @@ module.exports.defaultApp = 'creativity';
 module.exports.legalExtensions = {
 	// "!" preceeding the extension name indicates a binary filetype
 	'.html' : 	'text/html',
-	'.js': 		'application/javascript', 
+	'.js': 		'text/javascript', 
 	'.css': 	'text/css',
 	'.txt': 	'text/plain',
 	'.jpg': 	'!image/jpeg',
