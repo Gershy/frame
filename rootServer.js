@@ -188,14 +188,14 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 				}
 				
-				/*try {*/
-					
 				if ('url' in queryParams) throw 'bad query parameter: "url"';
 				
 				queryUrl = queryUrl.split('/').filter(function(e) { return e.length > 0; });
 				if (queryUrl.length === 0) queryUrl.push(config.defaultApp);
 				
-				var ip = req.connection.remoteAddress;
+				var ip = req.headers['x-forwarded-for'];
+				if (!ip) ip = req.connection.remoteAddress;
+				ip = ip.replace(/^[0-9.]/g, '');
 				
 				var sessionsIndex = PACK.server.Session.SESSIONS;
 				
