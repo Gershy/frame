@@ -200,6 +200,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				for (var k in sessionsIndex) {
 					var s = sessionsIndex[k];
 					LOL += '[[ AHHH ' + k + ': ' + s.ip + '/' + s.id + ', "' + s.appName + '" ]]; ';
+					console.log('SESSION: ' + s.ip + '/' + s.id + ', "' + s.appName);
 				}
 				
 				var session = ip in sessionsIndex 
