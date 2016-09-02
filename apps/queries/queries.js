@@ -29,7 +29,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 							
 						}
 						
-						if (!childResponse) throw 'BAD REQUEST RESPONSE';
+						if (!childResponse) throw new Error('Bad response');
 						var ret = this.processChildResponse(childResponse);
 						
 						return ret;
