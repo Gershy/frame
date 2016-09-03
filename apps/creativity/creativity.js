@@ -82,7 +82,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						return {
 							voter: user.name,
 							votee: voteFor.name,
-							votable: votable.getChild('blurb.text').value,
+							votable: votable.getChild('@blurb.text').value,
 							vote: vote.schemaParams()
 						};
 						
@@ -296,6 +296,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {
+										
+										// TODO: Solve this: We want every "storyItems.!blurb" in root
+										// Once it can be specified in a better way, code can be reduced
+										
 										root.getChild('storyItems').$load({ onComplete: function(elem) {
 											
 											if (elem.length === 0) { callback([]); return; }

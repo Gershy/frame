@@ -10,6 +10,43 @@ and attach them in order. Then the child can be attached.
 Perhaps some data-definition language that is able to entirely describe a certain
 connected subset of the full data tree, along with how much of each element in the
 subset to load, would be useful for dynamism.
+
+TODO: Shorten filter language. Right now each element is targeted with:
+
+{
+	p: {
+		value1: 'val',
+		value2: 'val',
+		...
+	},
+	i: {
+		child1Name: innerFilter1,
+		child2Name: innerFilter2,
+		...
+	}
+}
+
+Instead, try:
+
+{
+	value1: 'val',
+	value2: 'val',
+	_: {
+		child1Name: innerFilter1,
+		child2Name: innerFilter2
+	}
+}
+
+Or even:
+
+{
+	'/value1': 'val',
+	'/value2': 'val',
+	'child1Name/propName': 'val',
+	'child2Name/propName': 'val',
+	'child3Name.deeperChild/propName': 'val'
+}
+
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
@@ -435,20 +472,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					containChild: function(child) { throw 'not implemented'; },
 					uncontainChild: function(child) { throw 'not implemented'; },
 					getNamedChild: function(name) {
-						return name in this.children ? this.children[name].use() : null;
+						var resolveRef = name[0] === '@';
+						if (resolveRef) name = name.substr(1);
+						
+						if (!(name in this.children)) return null;
+						
+						return resolveRef ? this.children[name].use() : this.children[name];
 					},
 					getChild: function(address) {
-						if (address.length === 0) return this.use();
+						// Safe to disregard "use" here, because QSet's "use" returns "this"
+						// TODO: is it be safe to assume this will never be overloaded?
+						if (address.length === 0) return this; // Works for both strings and arrays
 						
-						if (address.constructor !== Array) {
-							if (address.constructor === String) address = address.split('.');
-							else 								address = [ address ];
-						}
+						if (address.constructor !== Array) address = address.toString().split('.');
 						
-						ptr = this.use();
-						for (var i = 0, len = address.length; (i < len) && (ptr !== null); i++) {
-							ptr = ptr.getNamedChild(address[i]);
-						}
+						var ptr = this;
+						for (var i = 0, len = address.length; (i < len) && (ptr !== null); i++)	ptr = ptr.getNamedChild(address[i]);
 						
 						return ptr;
 					},
@@ -576,20 +615,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 						} else if (com === 'getChild') {			/* address, recurse */
 							
-							// TODO: This fails when "address" has multiple components!!
+							
 							var address = U.param(reqParams, 'address');
 							var recurse = U.param(reqParams, 'recurse', true);
 							
-							// TODO: Probably an issue here; specifying a single-component address
-							// won't resolve QRefs, multiple-component addresses will. Need more
-							// control to specify whether or not to resolve references.
-							var addressPcs = address.split('.');
-							if (addressPcs.length === 1) {
-								var child = this.children[address];
-							} else {
-								var child = this.getChild(address);
-							}
-							
+							var child = this.getChild(address);
 							return { schemaParams: child ? child.schemaParams({ recurse: recurse}) : null };
 							
 						}
@@ -777,11 +807,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					
 					use: function() {
-						var ref = this.getRef();
-						return ref === null ? null : ref.use();
+						/*
+						Returns the element whose address is "this.value" in this
+						QRef's root.
+						
+						NOTE: "use" not called on "this.getRef()". If it's
+						desirable for the target's address to be resolved, this
+						QRef's "value" should use the "!" flag where necessary.
+						*/
+						return this.getRef();
 					},
 					
 					rootAddr: function() {
+						/*
+						Returns the string that can be used as a parameter for the
+						root element's getChild call. This string is the full "value"
+						of the reference, with the 1st component chopped off.
+						*/
 						var dot = this.value.indexOf('.');
 						if (~dot) return this.value.substr(dot + 1);
 						return '';
@@ -789,17 +831,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getRef: function() {
 						var root = this.getRoot();
 						
+						/*
+						// Sanity check to ensure the QRef's value begins with the root's name
 						var dot = this.value.indexOf('.');
-						if (~dot) {
-							var rootName = this.value.substr(0, dot);
-							var relAddr = this.value.substr(dot + 1);
-						} else {
-							var rootName = this.value;
-							var relAddr = '';
-						}
-						if (rootName !== root.name) throw new Error('bad address doesn\'t begin with root name');
+						var rootName = ~dot ? this.value.substr(0, dot) : this.value;
+						if (rootName !== root.name) throw new Error('bad address doesn\'t begin with root name');*/
 						
-						return root.getChild(relAddr);
+						return root.getChild(this.rootAddr());
 					},
 					setRef: function(elem) {
 						this.setValue(elem.getAddress());
