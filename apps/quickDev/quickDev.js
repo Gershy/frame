@@ -10,8 +10,6 @@ and attach them in order. Then the child can be attached.
 Perhaps some data-definition language that is able to entirely describe a certain
 connected subset of the full data tree, along with how much of each element in the
 subset to load, would be useful for dynamism.
-
-TODO: Maybe QRefs should never have their "value" include the root object's name
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],

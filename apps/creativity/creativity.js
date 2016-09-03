@@ -351,8 +351,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var updateVotables = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										
-										console.log('HERE???');
-										
 										root.getChild('votables').$load({ onComplete: function(elem) {
 											
 											if (elem.length === 0) { callback([]); return; }
@@ -401,8 +399,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										voting.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(votableData, updater) {
-										console.log('VOTABLE', votableData);
-										
 										votingScroller.clear();
 										votingScroller.append(votableData.map(function(votableItem) {
 											var elem = e([
@@ -441,7 +437,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								updateVotables.repeat({ delay: 3000 });
 								
 								var updateWriting = new PACK.quickDev.QUpdate({
-									// TODO: 
 									request: function(callback) {
 										root.getChild('votables').$filter({
 											filter: { i: { user: { p: { value: 'app.users.' + auth.username } } } },
