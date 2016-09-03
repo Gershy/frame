@@ -11,7 +11,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			superclassName: 'QDict',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
-				init: function(params /* */) { sc.init.call(this, params); },
+				init: function(params /* */) {
+					sc.init.call(this, params);
+					
+					this.resolutionTimeoutRef = null;
+				},
 				genUserToken: function(user) {
 					var u = user.getChild('username').value;
 					var p = user.getChild('password').value;
@@ -36,6 +40,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						if (this.genUserToken(child) === token) return child;
 					}
 					return null;
+				},
+				resolveVote: function() {
+					// This function picks the winning votable and adds it to the story
 				},
 				handleQuery: function(params) {
 					var com = U.param(params, 'command');
@@ -102,9 +109,25 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						var blurb = this.children['blurbs'].getNewChild({ username: user.getChild('username').value, text: text });
 						var votable = this.children['votables'].getNewChild({ blurb: blurb });
 						
+						if (this.children['votables'].length === 1) {
+							// Got the 1st votable in the resolution. Start timer!
+							var pass = this;
+							this.getChild('started').setValue(+new Date());
+							this.resolutionTimeoutRef = setTimeout(function() {
+								pass.resolveVote();
+							}, this.getChild('resolutionTimer.started').value * 60000); // The value is in minutes; convert to seconds
+						}
+						
 						return {
 							votable: votable.schemaParams()
 						};
+						
+					} else if (com === 'resolutionTimeRemaining') {
+						
+						var delaySecs = this.getChild('resolutionTimer.delayMins').value * 60;
+						var timeDiff = (+new Date()) - this.getChild('resolutionTimer.startedMillis').value;
+						
+						return { seconds: delaySecs - Math.round(timeDiff / 1000) };
 						
 					}
 					
@@ -115,6 +138,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		
 		ret.queryHandler = new CreativityApp({ name: 'app',
 			children: [
+				new qd.QDict({ name: 'resolutionTimer',
+					children: [
+						new qd.QInt({ name: 'startedMillis', value: (+new Date()) }),
+						new qd.QInt({ name: 'delayMins', value: 60 * 24 }),
+					]
+				}),
 				new qd.QGen({ name: 'users',
 					_schema: U.addSerializable({
 						name: 'creativity.usersSchema',
@@ -282,14 +311,29 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var story = e('<div class="writing-elem story"></div>');
 								var storyScroller = story.append('<div class="scroller"></div>');
 								
+								var resolution = e([
+									'<div class="writing-elem resolution">',
+										'<div class="title">End in:</div>',
+										'<div class="countdown">',
+											'<div class="time-component hour">00</div>',
+											'<div class="time-component minute">00</div>',
+											'<div class="time-component second">00</div>',
+										'</div>',
+										'<div class="votes">',
+											'Votes:<div class="voted">0</div>/<div class="total">0</div>',
+										'</div>',
+									'</div>'
+								].join(''));
+								
 								var voting = e('<div class="writing-elem voting"></div>');
 								var votingScroller = voting.append('<div class="scroller"></div>');
 								
-								var writing = e('<div class="writing-elem writing"></div>');
-								writing.append([
-									'<div class="input-form">',
-										'<div class="input-field">',
-											'<textarea></textarea>',
+								var writing = e([
+									'<div class="writing-elem writing">',
+										'<div class="input-form">',
+											'<div class="input-field">',
+												'<textarea></textarea>',
+											'</div>',
 										'</div>',
 									'</div>'
 								].join(''));
@@ -351,6 +395,33 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									}
 								});
 								updateStory.repeat({ delay: 3000 });
+								
+								var updateTimer = new PACK.quickDev.QUpdate({
+									request: function(callback) {
+										root.$request({ command: 'resolutionTimeRemaining', onComplete: function(response) {
+											callback(response.seconds);
+										}});
+									},
+									start: function() {},
+									end: function(endData) {
+										console.log('SECONDS:', endData.seconds);
+										
+										var t = endData.seconds;
+										var hours = Math.floor(t / 3600);
+										t -= hours * 3600;
+										var minutes = Math.floor(t / 60);
+										console.log(t, minutes, minutes * 60);
+										t -= minutes * 60;
+										var seconds = Math.floor(t);
+										
+										// TODO: HERE!
+										var countdown = resolution.find('.countdown');
+										countdown.find('.hour').text(hours.toString());
+										countdown.find('.minute').text(minutes.toString());
+										countdown.find('.second').text(seconds.toString());
+									}
+								});
+								updateTimer.repeat({ delay: 1000 });
 								
 								var updateVotables = new PACK.quickDev.QUpdate({
 									request: function(callback) {
@@ -470,7 +541,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									}});
 								});
 								
-								rootElem.append([ story, voting, writing ]);
+								rootElem.append([ story, resolution, voting, writing ]);
 								
 							}
 						})
@@ -547,13 +618,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			votes.getNewChild({ user: users.getChild('levi'), votable: votables.getChild('2') });
 			votes.getNewChild({ user: users.getChild('daniel'), votable: votables.getChild('2') });
 			votes.getNewChild({ user: users.getChild('gershom'), votable: votables.getChild('3') });*/
-			
-			/*[
-				{ },
-				{ i: { votable: { p: { value: 'app.votables.3' } } } }
-			].forEach(function(filter, i) {
-				console.log(i, votes.filterChildren(filter).map(function(o) { return o.simplified(); }));
-			});*/
 		}
 		
 	}

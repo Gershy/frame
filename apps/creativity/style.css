@@ -189,7 +189,9 @@ body {
 }
 
 .scene.writing > .story {
+	box-sizing: border-box;
 	width: 100%; height: 50%;
+	padding-bottom: 30px;
 	overflow-x: hidden;
 	overflow-y: auto;
 }
@@ -235,6 +237,40 @@ body {
 	background-color: rgba(150, 150, 255, 1);
 	color: rgba(255, 255, 255, 1);
 }
+
+.scene.writing > .resolution {
+	position: relative;
+	width: 100%; height: 30px;
+	margin-top: -30px;
+	background-color: #000000;
+	color: #ffffff;
+	text-align: center;
+}
+.scene.writing > .resolution > .countdown {
+	font-family: monospace;
+	display: inline-block;
+	white-space: nowrap;
+}
+.scene.writing > .resolution > .countdown > .time-component {
+	display: inline-block;
+	width: 30px; height: 30px; line-height: 30px;
+	margin: 0 4px;
+	font-size: 26px;
+}
+.scene.writing > .resolution > .title,
+.scene.writing > .resolution > .votes {
+	position: absolute;
+	top: 0; height: 30px; line-height: 30px;
+	display: inline-block;
+	
+	text-align: left;
+	
+	font-size: 12px;
+}
+.scene.writing > .resolution > .title { left: 0; }
+.scene.writing > .resolution > .votes { right: 0; }
+.scene.writing > .resolution > .votes > .voted, 
+.scene.writing > .resolution > .votes > .total { display: inline-block; margin: 0 4px; }
 
 .scene.writing > .voting {
 	width: 100%; height: 25%;

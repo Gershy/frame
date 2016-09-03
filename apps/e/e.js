@@ -91,9 +91,11 @@ var package = new PACK.pack.Package({ name: 'e',
 					clear: function(e) {
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
 					},
-					text: function() {
+					text: function(v) {
 						if (this.elems.length === 0) return '';
-						return this.elems[0].innerHTML;
+						
+						if (U.exists(v)) this.elems[0].innerHTML = v;
+						else return this.elems[0].innerHTML;
 					},
 					
 					fieldValue: function(v) {

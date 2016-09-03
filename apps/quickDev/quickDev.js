@@ -469,6 +469,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						return ret;
 					},
+					clear: function() {
+						this.children.forEach(function(child) {
+							child.par = null;
+						});
+						this.children = {};
+						this.length = 0;
+					},
 					containChild: function(child) { throw 'not implemented'; },
 					uncontainChild: function(child) { throw 'not implemented'; },
 					getNamedChild: function(name) {
