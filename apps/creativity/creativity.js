@@ -663,6 +663,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
 			
+			/*
 			var blurbData = [
 				[	'ari',		'1 Skranula looked upon the mountain.' ],
 				[	'gershom',	'2 Hello my name is Tim.' ],
@@ -708,7 +709,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			var votables = root.getChild('votables');
 			toVote.slice(2, 4).forEach(function(blurb) { votables.getNewChild({ blurb: blurb }); });
 			
-			/*
+			
 			var votes = root.getChild('votes');
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('1') });
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
