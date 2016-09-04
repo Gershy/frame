@@ -166,6 +166,11 @@
 			return this.getSerializable(p)
 		},
 		arr: function(arrayLike) {
+			if (arrayLike.constructor === Object) {
+				var ret = [];
+				for (var k in arrayLike) ret.push(arrayLike[k]);
+				return ret;
+			}
 			return Array.prototype.slice.call(arrayLike);
 		},
 		id: function(n, len) {

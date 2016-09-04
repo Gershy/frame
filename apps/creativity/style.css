@@ -429,7 +429,7 @@ body {
 }
 
 .scene.writing > .voting > .scroller.voted > .votable-item > .check { display: none; }
-.scene.writing > .voting > .scroller.voted > .votable-item.voted > .check { display: block; }
+.scene.writing > .voting > .scroller.voted > .votable-item.voted > .check { display: block; pointer-events: none; }
 
 .scene.writing > .writing {
 	width: 100%; height: 25%;

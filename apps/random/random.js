@@ -6,6 +6,7 @@ var package = new PACK.pack.Package({ name: 'random',
 				propertyNames: [ 'seed', ],
 				methods: {
 					init: function(params /* seed */) {
+						// TODO: this.seed is being ignored!!!
 						this.seed = U.param(params, 'seed', null);
 					},
 					randFloat: function() {

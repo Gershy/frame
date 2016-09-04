@@ -11,6 +11,16 @@ Perhaps some data-definition language that is able to entirely describe a certai
 connected subset of the full data tree, along with how much of each element in the
 subset to load, would be useful for dynamism.
 
+TODO: What to do about strings containing "@"?
+
+E.g.:
+
+	var username = ... get username from request ...
+	var user = root.getChild('users').getChild(username);
+
+If the user (possibly maliciously) names themself starting with a "@", this will cause
+undesirable de-referencing.
+
 TODO: Shorten filter language. Right now each element is targeted with:
 
 {
@@ -169,10 +179,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							The function that makes the request. It is provided a callback,
 							which should be called with any response data once the request
 							is complete.
-						2) start(updater):
+						2) start():
 							A function that is called as soon as the request is initiated.
 							Useful for indicating to the user that the request has begun.
-						3) end(response, updater):
+						3) end(response):
 							A function that is called once the request has completed, with
 							any data returned by the request.
 						*/
@@ -187,10 +197,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var pass = this;
 						
 						this.pendingCount++;
-						if (this.start) this.start(pass);
+						if (this.start) this.start();
 						this.request(function(response) {
 							pass.pendingCount--;
-							pass.end(response, pass);
+							pass.end(response);
 						});
 					},
 					repeat: function(params /* delay, runInstantly, allowMultiple */) {
@@ -258,7 +268,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					getChild: function(address) {
 						if (address.length === 0) return this;
-						throw 'cannot get children within non-set element "' + this.getAddress() + '"';
+						throw new Error('cannot get children within non-set element "' + this.getAddress() + '"');
 					},
 					
 					matches: function(filter) {
@@ -285,61 +295,68 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						These filters are applied to inner elements. This is only
 						useful for QSets.
 						*/
-						var filterProps = U.param(filter, 'p', {});
+						
+						for (var k in filter) {
+							var slash = k.indexOf('/');
+							if (~slash) {
+								var addr = k.substr(0, slash);
+								var prop = k.substr(slash + 1);
+							} else {
+								var addr = '';
+								var prop = k;
+							}
+							var c = this.getChild(addr);
+							if (c === null || c[prop] !== filter[k]) return false;
+						}
+						
+						return true;
+						
+						
+						/*var filterProps = U.param(filter, 'p', {});
 						
 						for (var k in filterProps) if (this[k] !== filterProps[k]) return false;
 						
-						return true;
+						return true;*/
 					},
 					
-					$request: function(params /* command, params, onComplete, address */) {
-						var command = U.param(params, 'command');
-						var reqParams = U.param(params, 'params', {});
-						var onComplete = U.param(params, 'onComplete', null);
-						var address = U.param(params, 'address', null);
+					$request: function(params /* command, params, address, transform */) {
+						var transform = U.param(params, 'transform', null);
+						if (!('address' in params)) params.address = this.getAddress();
 						
-						U.request({
-							params: {
-								address: address !== null ? address : this.getAddress(),
-								command: command,
-								params: reqParams
-							},
-							onComplete: onComplete
+						return new PACK.queries.SimpleQuery({
+							params: params,
+							transform: transform
 						});
 					},
-					$persist: function(params /* onComplete, requireParent */) {
-						/*
-						Persists this element, causing it to exist on the server-side.
-						*/
-						var onComplete = U.param(params, 'onComplete', null);
+					/*$persist: function(params /* requireParent * /) {
+						// Persists this element, causing it to exist on the server-side.
 						var requireParent = U.param(params, 'requireParent', false);
 						
-						this.$request({
+						return this.$request({
 							address: this.par.getAddress(),
 							command: 'persistChild',
 							params: { schemaParams: this.schemaParams() },
-							onComplete: onComplete
 						});
-					},
-					$load: function(params /* onComplete */) {
+					},*/
+					$load: function(params /* */) {
 						/*
 						Synchronizes this element with the corresponding server-side
 						element. Gets the schema of the server-side element with a
 						calling address, and assigns that schema to itself.
 						*/
 						var pass = this;
-						var onComplete = U.param(params, 'onComplete', null);
 						
-						this.$request({ command: 'getSchema', onComplete: function(response) {
-							var schema = new PACK.quickDev.QSchema(response.schemaParams);
-							schema.assign({ elem: pass });
-							onComplete(pass);
-						}});
+						return this.$request({
+							command: 'getSchema',
+							transform: function(response) {
+								var schema = new PACK.quickDev.QSchema(response.schemaParams);
+								schema.assign({ elem: pass });
+								return pass;
+							}
+						});
 					},
-					$getSchema: function(params /* onComplete */) {
-						var onComplete = U.param(params, 'onComplete');
-						
-						this.$request({	command: 'getSchema', onComplete: onComplete });
+					$getSchema: function(params /* */) {
+						return this.$request({ command: 'getSchema' });
 					},
 					handleQuery: function(params) {
 						var com = U.param(params, 'command');
@@ -476,8 +493,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.children = {};
 						this.length = 0;
 					},
-					containChild: function(child) { throw 'not implemented'; },
-					uncontainChild: function(child) { throw 'not implemented'; },
+					containChild: function(child) { throw new Error('not implemented'); },
+					uncontainChild: function(child) { throw new Error('not implemented'); },
 					getNamedChild: function(name) {
 						var resolveRef = name[0] === '@';
 						if (resolveRef) name = name.substr(1);
@@ -498,28 +515,24 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ptr;
 					},
-					setValue: function(k, v) {
-						/*
-						NOTE: This method doesn't follow references!!
-						*/
-						var c = this.children[k];
-						if (!c) throw new Error('Can\'t set value for non-existant child: "' + k + '"');
+					setValue: function(address, v) {
+						var c = this.getChild(address);
+						if (!c) throw new Error('Can\'t set value for non-existant child: "' + address + '"');
 						c.setValue(v);
 					},
 					
-					forEach: function(cb) { this.children.forEach(cb); /* TODO: Something horribly wrong with this?? (try it) */ },
-					
-					matches: function(filter) {
+					/*matches: function(filter) {
 						if (!sc.matches.call(this, filter)) return false;
 						
 						var pass = this;
-						var filterChildren = U.param(filter, 'i', {});
-						return filterChildren.every(function(filter, k) {
+						var innerFilters = U.param(filter, 'i', {});
+						
+						return innerFilters.every(function(filter, k) {
 							var child = pass.children[k];
 							return child && child.matches(filter);
 						});
-					},
-					filterChildren: function(filter, onlyOne) {
+					},*/
+					filter: function(filter, onlyOne) {
 						if (!U.exists(onlyOne)) onlyOne = false;
 						
 						if (!onlyOne) var ret = [];
@@ -537,35 +550,35 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					schemaChildren: function() { return this.children; },
 					
-					$filter: function(params /* filter, addChildren, onComplete */) {
+					$filter: function(params /* filter, addChildren */) {
 						var pass = this;
 						var filter = U.param(params, 'filter');
 						var addChildren = U.param(params, 'addChildren', true);
-						var onComplete = U.param(params, 'onComplete', null);
 						
-						this.$request({
-							command: 'filteredChildren',
+						return this.$request({
+							command: 'filter',
 							params: { filter: filter },
-							onComplete: function(response) {
+							transform: function(response) {
+								// Turn each schema into an element
 								var elems = response.schemaParamsList.map(function(schemaParams) {
 									var schema = new PACK.quickDev.QSchema(schemaParams);
 									return schema.actualize();
 								});
+								// If children need to be added, do so
 								if (addChildren) {
 									elems.forEach(function(elem) { pass.addChild(elem); });
 								}
-								onComplete(elems);
+								return elems;
 							}
 						});
 					},
-					$getChild: function(params /* address, recurse, addChild, onComplete, useClientSide */) {
+					$getChild: function(params /* address, recurse, addChild, useClientSide */) {
 						var pass = this;
 						var address = U.param(params, 'address');
 						// In case the request elem is a QSet, give control over whether
 						// or not the QSet loads its children.
 						var recurse = U.param(params, 'recurse', true);
 						var addChild = U.param(params, 'addChild', false);
-						var onComplete = U.param(params, 'onComplete', null);
 						var useClientSide = U.param(params, 'useClientSide', false);
 						
 						var addrPcs = address.split('.');
@@ -573,18 +586,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (useClientSide) {
 							var elem = this.getChild(address);
-							if (elem !== null) { onComplete(elem); return; }
+							if (elem !== null) return new PACK.queries.DudQuery({ response: elem });
 						}
 						
-						this.$request({ command: 'getChild', params: { address: address, recurse: recurse }, onComplete: function(response) {
-							var schema = new PACK.quickDev.QSchema(response.schemaParams);
-							
-							var elem = schema.actualize();
-							
-							if (addChild) pass.addChild(elem);
-							
-							onComplete(elem);
-						}});
+						return this.$request({
+							command: 'getChild',
+							params: { address: address, recurse: recurse },
+							transform: function(response) {
+								var schema = new PACK.quickDev.QSchema(response.schemaParams);
+								var elem = schema.actualize();
+								if (addChild) pass.addChild(elem);
+								return elem;
+							}
+						});
 					},
 					handleQuery: function(params) {
 						/*
@@ -613,11 +627,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 							return { msg: 'success' };
 							
-						} else if (com === 'filteredChildren') {	/* filter */
+						} else if (com === 'filter') {		/* filter */
 							
 							var filter = U.param(reqParams, 'filter');
 							
-							var children = this.filterChildren(filter);
+							var children = this.filter(filter);
 							return { schemaParamsList: children.map(function(child) { return child.schemaParams(); }) };
 							
 						} else if (com === 'getChild') {			/* address, recurse */
@@ -748,28 +762,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					
-					$getNewChild: function(params /* params, onComplete */) {
-						var onComplete = U.param(params, 'onComplete', null);
-						var reqParams = U.param(params, 'params', {});
+					$getNewChild: function(params /* initParams */) {
+						var initParams = U.param(params, 'initParams', {});
 						
-						U.request({
-							params: {
-								address: this.getAddress(),
-								command: 'getNewChild',
-								initParams: reqParams
-							},
-							onComplete: onComplete
+						return this.$request({
+							command: 'getNewChild',
+							params: { initParams: initParams }
 						});
 					},
 					handleQuery: function(params) {
 						var com = U.param(params, 'command');
+						var session = U.param(params, 'session');
+						var reqParams = U.param(params, 'params', {});
 						
 						if (com === 'getNewChild') {
-							var session = params.session;
-							var initParams = U.param(params, 'initParams', {});
-							initParams.session = session;
+							var initParams = U.param(reqParams, 'initParams');
 							
-							var child = this.getNewChild(initParams);
+							var child = this.getNewChild(initParams.update({ session: session }));
 							return { schema: child.schemaParams() };
 						}
 						
@@ -852,12 +861,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					sanitizeAndValidate: function(value) {
 						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
 						
-						if (value.constructor !== String) throw 'invalid reference address';
+						if (value.constructor !== String) throw new Error('invalid reference address');
 						
 						return value;
 					},
 					
-					$getRef: function(params /* useClientValue, addRef, recurse, onComplete */) {
+					$getRef: function(params /* useClientValue, addRef, recurse */) {
 						/*
 						"addRef" is much more complicated than "addChild", because a reference
 						can be nested anywhere inside the data-tree, not just in the element
@@ -866,19 +875,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var useClientValue = U.param(params, 'useClientValue', false);
 						var addRef = U.param(params, 'addRef', true);
 						var recurse = U.param(params, 'recurse', true);
-						var onComplete = U.param(params, 'onComplete', null);
 						
 						if (useClientValue) {
 							var ref = this.getRef();
-							if (ref !== null) { onComplete(ref); return; }
+							if (ref !== null) return new PACK.queries.DudQuery({ response: ref });
 						}
 						
-						// TODO: TEST THIS SHIZ!!!! The ref couldn't find a client value, so its asks the root to find one for it.
-						this.getRoot().$getChild({ address: this.rootAddr(),
+						return this.getRoot().$getChild({ address: this.rootAddr(),
 							addChild: addRef,
 							recurse: recurse,
-							useClientValue: false,
-							onComplete: onComplete
+							useClientValue: useClientValue,
 						});
 					},
 					

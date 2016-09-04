@@ -2,25 +2,78 @@ var package = new PACK.pack.Package({ name: 'queries',
 	dependencies: [ 'uth' ],
 	buildFunc: function() {
 		return {
-			ServerQuery: PACK.uth.makeClass({ name: 'ServerQuery',
+			Query: PACK.uth.makeClass({ name: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* */) { },
 					fire: function(onComplete, ref) { throw new Error('not implemented'); }
 				}; }
 			}),
-			PromiseQuery: PACK.uth.makeClass({ name: 'PromiseQuery',
-				superclassName: 'ServerQuery',
+			DudQuery: PACK.uth.makeClass({ name: 'DudQuery',
+				superclassName: 'Query',
 				methods: function(sc) { return {
-					init: function(params /* subQueries */) {
+					init: function(params /* response */) {
+						sc.init.call(this);
+						this.response = U.param(params, 'response');
+					},
+					fire: function(onComplete, ref) { onComplete(this.response, ref); }
+				}; }
+			}),
+			SimpleQuery: PACK.uth.makeClass({ name: 'SimpleQuery',
+				superclassName: 'Query',
+				methods: function(sc) { return {
+					init: function(params /* url, params, json, transform */) {
 						sc.init.call(this, params);
-						this.subQueries = U.param(params, 'subQueries'); // Array of ServerQuery objects
+						this.url = U.param(params, 'url', '');
+						this.params = U.param(params, 'params', {});
+						this.json = U.param(params, 'json', true);
+						
+						// Allows modification of the response before it's passed to the callback
+						this.transform = U.param(params, 'transform', null);
 					},
 					fire: function(onComplete, ref) {
-						var responses = [];
+						if (this.transform) {
+							var tr = this.transform;
+							var cb = function(response, ref) { onComplete(tr(response), ref); };
+						} else {
+							var cb = onComplete;
+						}
+						
+						// TODO: Implement U.request here instead?
+						U.request({ url: this.url, params: this.params, json: this.json,
+							onComplete: cb, ref: ref
+						});
+					}
+				}; }
+			}),
+			PromiseQuery: PACK.uth.makeClass({ name: 'PromiseQuery',
+				superclassName: 'Query',
+				methods: function(sc) { return {
+					init: function(params /* subQueries, ensureOrder */) {
+						sc.init.call(this, params);
+						this.ensureOrder = U.param(params, 'ensureOrder', true);
+						this.subQueries = U.param(params, 'subQueries'); // Array of Query objects
+						this.transform = U.param(params, 'transform', null);
+					},
+					fire: function(onComplete, ref) {
 						var num = this.subQueries.length;
+						
+						if (num === 0) onComplete([], ref);
+						
+						var responses = [];
+						
+						var ordered = this.ensureOrder;
+						
 						var queryDone = function(response, n) {
-							responses.push(response);
-							if (responses.length === num) onComplete(responses, ref);
+							if (ordered) 	responses.push({ r: response, n: n });
+							else 			responses.push(response);
+							
+							if (responses.length === num) {
+								if (ordered) {
+									responses.sort(function(r1, r2) { return r1.n - r2.n; });
+									responses = responses.map(function(rr) { return rr.r });
+								}
+								onComplete(responses, ref);
+							}
 						};
 						
 						this.subQueries.forEach(function(query, n) { query.fire(queryDone, n); });
@@ -33,27 +86,10 @@ var package = new PACK.pack.Package({ name: 'queries',
 				// for all of them to return, bundle all the queries together
 				// and have the server return a corresponding bundle of
 				// responses
-				superclassName: 'ServerQuery',
+				superclassName: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* url, subQueries */) {
 						sc.init.call(this, params);
-					}
-				}; }
-			}),
-			SimpleQuery: PACK.uth.makeClass({ name: 'SimpleQuery',
-				superclassName: 'ServerQuery',
-				methods: function(sc) { return {
-					init: function(params /* url, params, json */) {
-						sc.init.call(this, params);
-						this.url = U.param(params, 'url', '');
-						this.params = U.param(params, 'params', {});
-						this.json = U.param(params, 'json', true);
-					},
-					fire: function(onComplete, ref) {
-						// TODO: Implement U.request here instead?
-						U.request({ url: this.url, params: this.params, json: this.json,
-							onComplete: onComplete, ref: ref
-						});
 					}
 				}; }
 			}),
@@ -88,10 +124,8 @@ var package = new PACK.pack.Package({ name: 'queries',
 						
 						return ret;
 					},
-					getNamedChild: function(name) {
-						throw 'not implemented';
-					},
-					handleQuery: function(params /* */) { throw 'not implemented'; },
+					getNamedChild: function(name) { throw new Error('not implemented'); },
+					handleQuery: function(params /* */) { throw new Error('not implemented'); },
 					processChildResponse: function(response) { return response; },
 				}; }
 			})
