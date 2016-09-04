@@ -275,13 +275,20 @@
 			
 			var req = new XMLHttpRequest();
 			
+			var error = new Error('Bad API use: ');
+			
 			if (onComplete) {
 				var pass = this;
 				req.onreadystatechange = function() {
 					if (pass.equals(req, { readyState: 4, status: 200 })) {
 						if (json) {
 							var o = JSON.parse(req.responseText);
-							if (o.code !== 0) { console.log(o); throw new Error('Bad API use: ' + o.msg); }
+							if (o.code !== 0) {
+								// Pass the error instead of the response
+								error.message += o.msg;
+								onComplete(error, ref);
+								return;
+							}
 						} else {
 							var o = req.responseText;
 						}

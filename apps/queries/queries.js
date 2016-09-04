@@ -33,7 +33,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					fire: function(onComplete, ref) {
 						if (this.transform) {
 							var tr = this.transform;
-							var cb = function(response, ref) { onComplete(tr(response), ref); };
+							var cb = function(response, ref) { onComplete(response.constructor === Error ? response : tr(response), ref); };
 						} else {
 							var cb = onComplete;
 						}
@@ -64,6 +64,18 @@ var package = new PACK.pack.Package({ name: 'queries',
 						var ordered = this.ensureOrder;
 						
 						var queryDone = function(response, n) {
+							
+							// TODO: This is really messy error handling
+							// It means that every onComplete handler needs to check
+							// if the "response" param is an error
+							if (response.constructor === Error) {
+								responses = response
+								onComplete(responses, ref);
+								return;
+							}
+							
+							if (responses.constructor === Error) return;
+							
 							if (ordered) 	responses.push({ r: response, n: n });
 							else 			responses.push(response);
 							

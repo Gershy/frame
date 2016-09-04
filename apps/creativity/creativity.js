@@ -80,6 +80,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					console.log('BLURB', resultVotable.getChild('@blurb').simplified());
 					this.getChild('storyItems').getNewChild({ blurb: resultVotable.getChild('@blurb') });
 					
+					this.getChild('resolutionTimer.startedMillis').value = -1;
 					this.getChild('votables').clear();
 					this.getChild('votes').clear();
 				},
@@ -183,7 +184,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							this.getChild('resolutionTimer.startedMillis').setValue(+new Date());
 							this.resolutionTimeoutRef = setTimeout(function() {
 								pass.resolveVote();
-							}, this.getChild('resolutionTimer.delayMins').value * 60000); // The value is in minutes; convert to seconds
+							}, this.getChild('resolutionTimer.delaySeconds').value * 1000); // The value is in minutes; convert to seconds
 						}
 						
 						return {
@@ -197,7 +198,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						if (startedMillis === -1) {
 							var seconds = null;
 						} else {
-							var delaySecs = this.getChild('resolutionTimer.delayMins').value * 60;
+							var delaySecs = this.getChild('resolutionTimer.delaySeconds').value;
 							var timeDiff = (+new Date()) - startedMillis;
 							var seconds = delaySecs - Math.round(timeDiff / 1000);
 						}
@@ -223,7 +224,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				new qd.QDict({ name: 'resolutionTimer',
 					children: [
 						new qd.QInt({ name: 'startedMillis', value: -1 }),
-						new qd.QInt({ name: 'delayMins', value: 1/*60 * 24*/ }),
+						new qd.QInt({ name: 'delaySeconds', value: 2/*60 * 24*/ }),
 					]
 				}),
 				new qd.QGen({ name: 'users',

@@ -148,6 +148,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 						
 						if (recurse) {
+							elem.clear();
 							this.i.forEach(function(schema, k) {
 								var child = elem.getNamedChild(k);
 								
