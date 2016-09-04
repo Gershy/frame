@@ -630,11 +630,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		} else {
 			
 			var userData = {
-				ari: 		'ari117',
+				//ari: 		'ari117',
 				daniel: 	'daniel228',
 				gershom: 	'gershom331',
-				levi: 		'levi443',
-				yehuda: 	'yehuda556'
+				//levi: 		'levi443',
+				//yehuda: 	'yehuda556'
 			};
 			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
