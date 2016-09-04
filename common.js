@@ -88,6 +88,21 @@
 				contains: function(str) {
 					return this.indexOf(str) !== -1;
 				},
+				padding: function(width, char) {
+					if (!U.exists(char)) char = ' ';
+					
+					var len = width - this.length;
+					var ret = '';
+					while (ret.length < len) ret += char;
+					
+					return ret;
+				},
+				padLeft: function(width, char) {
+					return this.padding(width, char) + this;
+				},
+				padRight: function(width, char) {
+					return this + this.padding(width, char);
+				}
 			},
 		},
 		{ 	target: Array.prototype,
@@ -243,12 +258,15 @@
 			for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
 			return true;
 		},
-		request: function(params /* url, params, onComplete, async, json */) {
+		request: function(params /* url, params, onComplete, ref, json */) {
 			var url = this.param(params, 'url', '');
 			var reqParams = this.param(params, 'params', {});
 			var onComplete = this.param(params, 'onComplete', null);
-			var async = this.param(params, 'async', true);
 			var json = this.param(params, 'json', true);
+			
+			// User-specified value that doesn't travel client side
+			// Discriminates the query from others
+			var ref = this.param(params, 'ref', null); 
 			
 			var req = new XMLHttpRequest();
 			
@@ -258,21 +276,18 @@
 					if (pass.equals(req, { readyState: 4, status: 200 })) {
 						if (json) {
 							var o = JSON.parse(req.responseText);
-							if (o.code !== 0) {
-								console.log(req, o);
-								throw new Error('Bad API use: ' + o.msg);
-							}
+							if (o.code !== 0) { console.log(o); throw new Error('Bad API use: ' + o.msg); }
 						} else {
 							var o = req.responseText;
 						}
-						onComplete(o);
+						onComplete(o, ref);
 					}
 				};
 			}
 			
 			if (!U.isEmptyObj(reqParams)) url += '?_json=' + encodeURIComponent(JSON.stringify(reqParams));
 			
-			req.open('GET', url, typeof async === 'undefined' ? true : async);
+			req.open('GET', url, true);
 			req.send();
 		},
 	};

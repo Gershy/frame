@@ -252,16 +252,27 @@ body {
 	white-space: nowrap;
 }
 .scene.writing > .resolution > .countdown > .time-component {
+	position: relative;
 	display: inline-block;
 	width: 30px; height: 30px; line-height: 30px;
 	margin: 0 4px;
 	font-size: 26px;
 }
+.scene.writing > .resolution > .countdown > .time-component.hour:after,
+.scene.writing > .resolution > .countdown > .time-component.minute:after {
+	content: ":";
+	position: absolute;
+	right: -14px; top: 0;
+	width: 20px; height: 30px; line-height: 30px;
+	text-align: center;
+	font-size: 14px;
+}
 .scene.writing > .resolution > .title,
 .scene.writing > .resolution > .votes {
 	position: absolute;
-	top: 0; height: 30px; line-height: 30px;
 	display: inline-block;
+	top: 0; height: 30px; line-height: 30px;
+	margin: 0 4px;
 	
 	text-align: left;
 	

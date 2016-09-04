@@ -313,7 +313,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var resolution = e([
 									'<div class="writing-elem resolution">',
-										'<div class="title">End in:</div>',
+										'<div class="title">Waiting...</div>',
 										'<div class="countdown">',
 											'<div class="time-component hour">00</div>',
 											'<div class="time-component minute">00</div>',
@@ -399,26 +399,24 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var updateTimer = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										root.$request({ command: 'resolutionTimeRemaining', onComplete: function(response) {
-											callback(response.seconds);
+											callback({
+												seconds: response.seconds
+											});
 										}});
 									},
 									start: function() {},
 									end: function(endData) {
-										console.log('SECONDS:', endData.seconds);
-										
 										var t = endData.seconds;
 										var hours = Math.floor(t / 3600);
 										t -= hours * 3600;
 										var minutes = Math.floor(t / 60);
-										console.log(t, minutes, minutes * 60);
 										t -= minutes * 60;
 										var seconds = Math.floor(t);
 										
-										// TODO: HERE!
 										var countdown = resolution.find('.countdown');
-										countdown.find('.hour').text(hours.toString());
-										countdown.find('.minute').text(minutes.toString());
-										countdown.find('.second').text(seconds.toString());
+										countdown.find('.hour').text(hours.toString().padLeft(2, '0'));
+										countdown.find('.minute').text(minutes.toString().padLeft(2, '0'));
+										countdown.find('.second').text(seconds.toString().padLeft(2, '0'));
 									}
 								});
 								updateTimer.repeat({ delay: 1000 });
