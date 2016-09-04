@@ -65,10 +65,8 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						
 						// Use an array with a single element instead of the element itself
-						if (elems instanceof HTMLElement) elems = [ elems ];
-						else {
-							elems = U.arr(elems);
-						}
+						if (elems instanceof HTMLElement) 	elems = [ elems ];
+						else 								elems = U.arr(elems);
 						/*// Use array instead of HTMLCollection
 						if (elems instanceof HTMLCollection) elems = U.arr(elems);*/
 						
@@ -87,6 +85,15 @@ var package = new PACK.pack.Package({ name: 'e',
 						e.elems.forEach(function(elem) { pass.elems[0].appendChild(elem) });
 						
 						return e;
+					},
+					children: function() {
+						if (this.elems.length === 0) return new PACK.e.e([]);
+						return new PACK.e.e(this.elems[0].children);
+					},
+					remove: function() {
+						this.elems.forEach(function(elem) {
+							elem.parentNode.removeChild(elem);
+						});
 					},
 					clear: function(e) {
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
@@ -153,9 +160,10 @@ var package = new PACK.pack.Package({ name: 'e',
 										vv = vv.substr(1);
 									}
 									
-									if (mode === '+') 	atts.push(vv);
-									else {
-										var ind = atts.indexOf(vv);
+									var ind = atts.indexOf(vv);
+									if (mode === '+') {
+										if (!~ind) atts.push(vv);
+									} else {
 										if (~ind) atts.splice(ind, 1);
 									}
 								});

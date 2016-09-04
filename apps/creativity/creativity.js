@@ -540,42 +540,66 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										voting.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(votableData) {
-										votingScroller.clear();
-										votingScroller.append(votableData.map(function(votableItem) {
-											var elem = e([
-												'<div class="votable-item">',
-													'<div class="check"></div>',
-													'<div class="text">' + votableItem.text + '</div>',
-													'<div class="user">' + votableItem.username + '</div>',
-												'</div>'
-											].join(''));
+										var existingVotables = {};
+										var votableElems = voting.find('.scroller').children();
+										votableElems.elems.forEach(function(elem) {
+											elem = e(elem);
+											var username = elem.find('.user').text();
+											existingVotables[username] = elem;
+										});
+										
+										votableData.forEach(function(votableItem) {
+											var username = votableItem.username;
+											console.log(username);
 											
-											var votes = elem.append('<div class="votes"></div>');
+											if (username in existingVotables) {
+												var elem = existingVotables[username];
+												delete existingVotables[username];
+											} else {
+												var elem = e([
+													'<div class="votable-item">',
+														'<div class="check"></div>',
+														'<div class="text">' + votableItem.text + '</div>',
+														'<div class="user">' + votableItem.username + '</div>',
+														'<div class="votes"></div>',
+													'</div>'
+												].join(''));
+												
+												elem.find('.check').handle('click', function() {
+													voting.listAttr({ class: [ '+loading' ] });
+													root.$request({
+														command: 'submitVote',
+														params: {
+															voteeUsername: elem.find('.user').text(),
+															token: auth.token
+														}
+													}).fire(function(result) {
+														console.log(result);
+														updateVotables.run();
+													});
+												});
+												
+												votingScroller.append(elem);
+											}
+											
+											var votes = elem.find('.votes');
+											votes.clear();
 											votes.append(votableItem.votes.map(function(vote) {
 												return e('<div class="vote">' + vote + '</div>');
 											}));
 											
 											if (votableItem.votes.contains(auth.username)) {
+												// TODO: If votes can be retracted, this needs to change
 												votingScroller.listAttr({ class: [ '+voted' ] });
 												elem.listAttr({ class: [ '+voted' ] });
 											}
-											
-											elem.find('.check').handle('click', function() {
-												voting.listAttr({ class: [ '+loading' ] });
-												root.$request({
-													command: 'submitVote',
-													params: {
-														voteeUsername: elem.find('.user').text(),
-														token: auth.token
-													}
-												}).fire(function(result) {
-													console.log(result);
-													updateVotables.run();
-												});
-											});
-											
-											return elem;
-										}));
+										});
+										
+										// Anything remaining in existingVotables should be removed
+										existingVotables.forEach(function(votableElem) {
+											console.log('REMOVE', votableElem);
+											votableElem.remove();
+										});
 										
 										voting.listAttr({ class: [ '-loading' ] });
 									},
@@ -639,7 +663,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
 			
-			/*var blurbData = [
+			var blurbData = [
 				[	'ari',		'1 Skranula looked upon the mountain.' ],
 				[	'gershom',	'2 Hello my name is Tim.' ],
 				[	'daniel',	'3 I love gogreens SO MUCH.' ],
@@ -684,6 +708,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			var votables = root.getChild('votables');
 			toVote.slice(2, 4).forEach(function(blurb) { votables.getNewChild({ blurb: blurb }); });
 			
+			/*
 			var votes = root.getChild('votes');
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('1') });
 			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
