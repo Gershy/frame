@@ -71,15 +71,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						else break; // They're ordered so as soon as one is below tieAmount, all the rest will be
 					}
 					
-					console.log('TIED:', tied.map(function(votable) { return votable.simplified() }));
+					// Break the tie randomly
 					var ind = Math.floor(Math.random() * tied.length);
-					console.log('IND:', ind);
+					this.getChild('storyItems').getNewChild({ blurb: tied[ind].getChild('@blurb') });
 					
-					var resultVotable = tied[ind];
-					console.log('RESULT', resultVotable.simplified());
-					console.log('BLURB', resultVotable.getChild('@blurb').simplified());
-					this.getChild('storyItems').getNewChild({ blurb: resultVotable.getChild('@blurb') });
-					
+					// Reset timer, clear votables and votes
 					this.getChild('resolutionTimer.startedMillis').value = -1;
 					this.getChild('votables').clear();
 					this.getChild('votes').clear();
@@ -224,7 +220,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				new qd.QDict({ name: 'resolutionTimer',
 					children: [
 						new qd.QInt({ name: 'startedMillis', value: -1 }),
-						new qd.QInt({ name: 'delaySeconds', value: 2/*60 * 24*/ }),
+						new qd.QInt({ name: 'delaySeconds', value: 60 * 24 }),
 					]
 				}),
 				new qd.QGen({ name: 'users',
@@ -589,12 +585,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var updateWriting = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										root.getChild('votables').$filter({
-											filter: { 'user/value': 'app.users.' + auth.username },
-											addChildren: false,
-											onComplete: function(elems) {
-												// Active only if there is no existing votable elem
-												callback(elems.length === 0);
-											}
+											filter: { '@blurb.@user.username/value': auth.username },
+											addChildren: false
+										}).fire(function(elems) {
+											// Active only if there is no existing votable elem
+											callback(elems.length === 0);
 										});
 									},
 									start: function() {},
@@ -603,7 +598,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										updateVotables.run();
 									}
 								});
-								updateWriting.repeat({ delay: 3000 });
+								updateWriting.repeat({ delay: 1500 });
 
 								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
 								submit.handle('click', function() {
