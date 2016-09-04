@@ -220,7 +220,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				new qd.QDict({ name: 'resolutionTimer',
 					children: [
 						new qd.QInt({ name: 'startedMillis', value: -1 }),
-						new qd.QInt({ name: 'delaySeconds', value: 60 * 24 }),
+						new qd.QInt({ name: 'delaySeconds', value: 60 * 60 * 24 }),
 					]
 				}),
 				new qd.QGen({ name: 'users',
@@ -630,11 +630,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		} else {
 			
 			var userData = {
-				//ari: 		'ari117',
 				daniel: 	'daniel228',
+				ari: 		'ari117',
 				gershom: 	'gershom331',
-				//levi: 		'levi443',
-				//yehuda: 	'yehuda556'
+				levi: 		'levi443',
+				yehuda: 	'yehuda556'
 			};
 			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
