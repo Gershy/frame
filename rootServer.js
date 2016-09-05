@@ -33,29 +33,38 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						return null;
 					},
-					getFileContents: function(filepath) {
+					getFileContents: function(filepath, onComplete) {
 						// Find the static file, serve it
 						// Not a static method (TODO:) because different sessions will
 						// restrict which files are servable in different ways.
 						
 						var ext = path.extname(filepath);
-						if (!(ext in config.legalExtensions)) throw 'unknown extension: "' + ext + '"';
+						if (!(ext in config.legalExtensions)) onComplete(new Error('unknown extension: "' + ext + '"'), null);
 						ext = config.legalExtensions[ext];
 						
 						var binary = ext[0] === '!';
 						if (binary) ext = ext.substr(1);
 						
-						return {
+						fileSys.readFile(filepath, binary ? 'binary' : 'utf8', function(err, content) {
+							onComplete(err, {
+								data: content,
+								encoding: ext
+							});
+						});
+						
+						/*
+						onComplete(null, {
 							data: fileSys.readFileSync(filepath, binary ? 'binary' : 'utf8'),
 							encoding: ext
-						};
+						});
+						*/
 					},
-					respondToQuery: function(params /* address */) {
-						// Overwrite this method to ensure no "session" param is included
+					respondToQuery: function(params /* address */, onComplete) {
+						// Ensure no "session" param was already included
 						if ('session' in params) throw new Error('illegal "session" param');
-						return sc.respondToQuery.call(this, params.clone({ session: this }));
+						sc.respondToQuery.call(this, params.clone({ session: this }), onComplete);
 					},
-					handleQuery: function(params /* session, url */) {
+					handleQuery: function(params /* session, url */, onComplete) {
 						/*
 						The session itself handles ordinary file requests. Files are
 						referenced using params.url, an array of url components.
@@ -68,9 +77,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							
 							var jsonResponse = null;
 							
-							if (command === 'getIp') {
-								jsonResponse = { ip: this.ip }
-							}
+							if (command === 'getIp') jsonResponse = { ip: this.ip };
 							
 							if (jsonResponse === null) {
 								jsonResponse = {
@@ -80,61 +87,79 @@ var package = new PACK.pack.Package({ name: 'server',
 								}
 							}
 							
-							// processChildCommand already takes care of formatting
-							// and conversion to JSON.
-							return this.processChildResponse(jsonResponse);
+							onComplete(this.processChildResponse(jsonResponse));
+							return;
 							
 						}
 						
 						// Zero-length urls aren't allowed
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
-						if (url.length === 0) throw 'zero-length url';
+						if (url.length === 0) throw new Error('zero-length url');
 						
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
-							try {
-								return this.getFileContents(url.join('/'));
-							} catch(e) {
-								return { data: '"' + url + '" not found', encoding: 'text/plain' };
-							}
+							this.getFileContents(url.join('/'), function(err, data) {
+								if (U.err(err)) onComplete({ data: '"' + url + '" not found', encoding: 'text/plain' });
+								else 			onComplete(data);
+							});
+							return;
 						}
 						
 						// A mode-less request to the session just means to serve the html
 						var appName = url[0];
-						var html = this.getFileContents('mainPage.html');
-						html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
-						html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
 						
 						// Check if it's the server's first request for this app
 						if (!(appName in PACK)) {
 							require('./apps/' + appName + '/' + appName + '.js');
-							if (!('queryHandler' in PACK[appName])) throw new Error('app "' + appName + '" is missing queryHandler');
+							if (!('queryHandler' in PACK[appName])) {
+								onComplete(new Error('app "' + appName + '" is missing queryHandler'));
+								return;
+							}
 						}
 						
-						this.appName = appName;
 						this.queryHandler = PACK[appName].queryHandler;
 						if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
+						this.appName = appName;
 						
-						if ('resources' in PACK[appName]) {
+						var html = this.getFileContents('mainPage.html', function(err, html) {
+							if (U.err(err)) {
+								onComplete({
+									data: [
+										'<!DOCTYPE html>',
+										'<html>',
+											'<head></head>',
+											'<body>Couldn\'t serve main page. :(</body>',
+										'</html>'
+									].join(''),
+									encoding: 'text/html'
+								});
+							}
 							
-							var htmlElems = [];
+							html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
+							html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
 							
-							var r = PACK[appName].resources;
+							if ('resources' in PACK[appName]) {
+								
+								var htmlElems = [];
+								
+								var r = PACK[appName].resources;
+								
+								var ver = '?v' + PACK.server.ASSET_VERSION;
+								
+								if ('css' in r) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
+								if ('js' in r)  r.js.forEach( function(js)  { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
+								
+								html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '\t\t' + html; }).join('\n'));
+								
+							} else {
+								
+								html.data = html.data.replace(/(\s*){{resources}}/, '');
+								
+							}
 							
-							var ver = '?v' + PACK.server.ASSET_VERSION;
+							onComplete(html);
 							
-							if ('css' in r) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
-							if ('js' in r)  r.js.forEach( function(js)  { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
-							
-							html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '\t\t' + html; }).join('\n'));
-							
-						} else {
-							
-							html.data = html.data.replace(/(\s*){{resources}}/, '');
-							
-						}
-						
-						return html;
+						});
 					},
 					processChildResponse: function(response) {
 						/*
@@ -206,18 +231,18 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
 				params.originalAddress = U.arr(params.address);
 				
-				var responseContent = session.respondToQuery(params);
-				
-				if (!existingSession && session.queryHandler !== null) {
-					sessionsIndex[session.ip] = session;
-				}
-				
-				res.writeHead(200, {
-					'Content-Type': responseContent.encoding,
-					'Content-Length': responseContent.data.length
+				session.respondToQuery(params, function(response) {
+					
+					// TODO: Sessions need to expire!!
+					if (!existingSession && session.queryHandler !== null) sessionsIndex[session.ip] = session;
+					
+					res.writeHead(200, {
+						'Content-Type': response.encoding,
+						'Content-Length': response.data.length
+					});
+					res.write(response.data, 'binary');
+					res.end();
 				});
-				res.write(responseContent.data, 'binary');
-				res.end();
 				
 			}
 		};

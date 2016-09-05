@@ -13,7 +13,22 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			methods: function(sc, c) { return {
 				init: function(params /* */) {
 					sc.init.call(this, params);
+					
 					this.resolutionTimeoutRef = null;
+				},
+				getState: function(cb) {
+					DB.collection('apps', function(err, collection) {
+						collection.find({ name: 'creativity' }).limit(1).next(function(err, doc) {
+							cb(doc !== null ? doc.data : null);
+						});
+					});
+				},
+				setState: function(state, cb) {
+					DB.collection('apps', function(err, collection) {
+						collection.update({ name: 'creativity' }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
+							cb(doc.result);
+						});
+					});
 				},
 				genUserToken: function(user) {
 					var u = user.getChild('username').value;
@@ -79,7 +94,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					this.getChild('votables').clear();
 					this.getChild('votes').clear();
 				},
-				handleQuery: function(params) {
+				handleQuery: function(params, /* command, params */ onComplete) {
 					var com = U.param(params, 'command');
 					var reqParams = U.param(params, 'params', {});
 					
@@ -95,7 +110,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						if (user === null) return { help: 'Invalid credentials' };
 						
-						return { msg: 'user retrieved', token: this.genUserToken(user), username: user.getChild('username').value };
+						onComplete({ msg: 'user retrieved', token: this.genUserToken(user), username: user.getChild('username').value });
+						return;
 						
 					} else if (com === 'submitVote') {
 						
@@ -136,8 +152,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							// Resolution because there aren't enough votes left to bump 2nd place above 1st
 							var ranking = this.votableRanking();
 							
-							console.log('RANKING', ranking);
-							
 							if (ranking.length === 1 && ranking[0].numVotes > Math.floor(maxVotes / 2)) {
 								
 								// There's only 1 votable with more than half the votes
@@ -154,7 +168,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							
 						}
 						
-						return { vote: vote.schemaParams() };
+						onComplete({ vote: vote.schemaParams() });
+						return;
 						
 					} else if (com === 'submitVotable') {
 						
@@ -181,9 +196,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							}, this.getChild('resolutionTimer.delaySeconds').value * 1000); // The value is in minutes; convert to seconds
 						}
 						
-						return {
-							votable: votable.schemaParams()
-						};
+						onComplete({ votable: votable.schemaParams() });
+						return;
 						
 					} else if (com === 'resolutionTimeRemaining') {
 						
@@ -197,32 +211,36 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							var seconds = delaySecs - Math.round(timeDiff / 1000);
 						}
 						
-						return { seconds: seconds };
+						onComplete({ seconds: seconds });
+						return;
 						
 					} else if (com === 'resolutionVoterData') {
 						
-						return {
+						onComplete({
 							totalVoters: this.getChild('users').length,
 							voters: this.getChild('votes').length
-						};
+						});
+						return;
 						
 					} else if (com === 'write') {
 						
-						DB.collections('apps').save({ _id: 'creativity', data: content });
-						return { msg: 'writing commenced!' };
+						var content = U.param(reqParams, 'content');
+						
+						this.setState(content, function(state) {
+							onComplete({ msg: 'write complete', state: state });
+						});
+						return;
 						
 					} else if (com === 'read') {
 						
-						// TODO: Need an ability to do asynch response
-						
-						return {
-							msg: 'got file',
-							content: content
-						};
+						this.getState(function(state) {
+							onComplete({ msg: 'read complete', content: state });
+						});
+						return;
 						
 					}
 					
-					return sc.handleQuery.call(this, params);
+					sc.handleQuery.call(this, params, onComplete);
 				}
 			}; }
 		});
@@ -664,6 +682,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 		} else {
 			
+			// Initialize all users...
 			var userData = {
 				daniel: 	'daniel228',
 				ari: 		'ari117',
@@ -674,59 +693,62 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
 			
-			/*
-			var blurbData = [
-				[	'ari',		'1 Skranula looked upon the mountain.' ],
-				[	'gershom',	'2 Hello my name is Tim.' ],
-				[	'daniel',	'3 I love gogreens SO MUCH.' ],
-				[	'yehuda', 	'4 WTF MANG LOLLLL' ],
-				[	'levi',		'5 HAHAHA' ],
-				[	'ari',		'6 srsly HAHA' ],
-				[	'daniel',	'7 man lol I KNOW AHAH LAAOLLOL' ],
-				[	'yehuda',	'8 lol' ],
-				[	'levi',		'9 huehue HAHA LAOWLA' ],
-				[	'gershom',	'10 LOLOL' ],
-				[	'yehuda',	'11 HAHA WHAT IS THE JOKE THO' ],
-				[	'daniel',	'12 DUNNO BUT IT funny.' ],
-				[	'gershom',	'13 I lol\'d one time ahah.' ],
-				[	'levi',		'14 bro you LYING you loled SEVERAL -' ],
-				[	'yehuda',	'15 - TIMES.' ],
-				[	'levi',		'16 DAWG DON\'T FINISH MY SENTENCES FKIN BISH ASS BISH' ]
-			];
-			var blurbs = root.getChild('blurbs');
-			blurbData.forEach(function(data) {
-				blurbs.getNewChild({ username: data[0], text: data[1] });
+			root.getState(function(state) {
+				if (state !== null) {
+					var schemaParams = JSON.parse(state);
+					var schema = new PACK.quickDev.QSchema(schemaParams);
+					
+					console.log('OH SHIT, FOUND SAVED STATE');
+					
+					schema.assign({
+						elem: root,
+						recurse: true,
+						ha: true,
+					});
+					
+					var startedMillis = root.getChild('resolutionTimer.startedMillis').value;
+					if (startedMillis !== -1) {
+						
+						var target = root.getChild('resolutionTimer.delaySeconds').value;
+						var millisRemaining = (target * 1000) - (new Date() - startedMillis);
+						
+						console.log('REM:', millisRemaining, 'ms (', Math.floor(millisRemaining / (60 * 1000)), 'm)');
+						if (millisRemaining > 0) {
+							root.resolutionTimerRef = setTimeout(function() {
+								root.resolveVote();
+							}, millisRemaining);
+						} else {
+							root.resolveVote();
+						}
+						
+					}
+				}
 			});
 			
-			var taken = {};
-			var children = blurbs.children;
+			setInterval(function() {
+				console.log('SAVING STATE...')
+				root.setState(JSON.stringify(root.schemaParams()), function() {
+					console.log('DONE.');
+				});
+			}, 5000);
 			
-			var toVote = [];
-			var toStory = [];
-			
-			for (var k in children) {
-				var username = children[k].children.user.value;
-				if (username in taken) {
-					toStory.push(children[k]);
-				} else {
-					toVote.push(children[k]);
-					taken[username] = true;
+			/*DB.collection('apps').find({ name: 'creativity' }).limit(1).next(function(err, doc) {
+				if (doc === null) {
+					DB.collection('apps').insert({ name: 'creativity', data: '' }, function(err, doc){
+						console.log('DID INSERT', doc.ops[0]._id);
+					});
 				}
-			}
+			});
 			
-			var storyItems = root.getChild('storyItems');
-			toStory.forEach(function(blurb) { storyItems.getNewChild({ blurb: blurb }); });
+			var state = DB.collection('apps').find({ name: 'creativity' }).limit(1);
+			state.update({ $set: { data: 'HAHA' } }, function(err, doc) {
+				console.log('UPDATED!!!');
+			});
+			*/
 			
-			var votables = root.getChild('votables');
-			toVote.slice(2, 4).forEach(function(blurb) { votables.getNewChild({ blurb: blurb }); });
 			
-			
-			var votes = root.getChild('votes');
-			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('1') });
-			votes.getNewChild({ user: users.getChild('ari'), votable: votables.getChild('2') });
-			votes.getNewChild({ user: users.getChild('levi'), votable: votables.getChild('2') });
-			votes.getNewChild({ user: users.getChild('daniel'), votable: votables.getChild('2') });
-			votes.getNewChild({ user: users.getChild('gershom'), votable: votables.getChild('3') });*/
+			//DB.collection('apps').update({ name: 'creativity' }, { $set: {} }, { upsert: true });
+
 		}
 		
 	}

@@ -87,6 +87,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							return inner instanceof PACK.quickDev.QSchema ? inner : new PACK.quickDev.QSchema(inner);
 						});
 					},
+					getInstance: function(params) { // NOTE: Not a parameter-like object; actual overwrite-parameters!!
+						if (!U.exists(params)) params = {};
+						var constructor = U.getByName({ root: C, name: this.c });
+						return new constructor(this.p.clone(params));
+					},
 					actualize: function(params /* p, i */) {
 						/*
 						Note that this method actually generates children before it
@@ -123,9 +128,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						// Next generate the final containing element
 						var myParams = U.param(params, 'p', {});
-						var constructorParams = this.p.clone(myParams);
-						var constructor = U.getByName({ root: C, name: this.c });
-						var ret = new constructor(constructorParams);
+						var ret = this.getInstance(myParams);
 						
 						// Finally add the children to the element
 						children.forEach(function(child) { ret.addChild(child); });
@@ -138,8 +141,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var recurse = U.param(params, 'recurse', true);
 						
 						var constructor = U.getByName({ root: C, name: this.c });
-						
-						if (!(elem instanceof constructor)) throw 'bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")';
+						if (!(elem instanceof constructor)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
 						
 						elem.schemaProperties().forEach(function(v, k) {
 							if (k in pass.p) elem[k] = k[0] === '_'
@@ -147,14 +149,30 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 								: pass.p[k];
 						});
 						
-						if (recurse) {
-							elem.clear();
-							this.i.forEach(function(schema, k) {
-								var child = elem.getNamedChild(k);
-								
-								if (child) 	schema.assign({ elem: child });
-								else 		elem.addChild(schema.actualize());
-							});
+						if (recurse && (elem instanceof PACK.quickDev.QSet)) {
+							
+							// TODO: Does this indicate a design flaw?
+							// In some cases, need to attach to parent right away.
+							// In others, need to build child entirely. Try both.
+							try {
+								// Try with immediately attaching to parent
+								elem.clear();
+								this.i.forEach(function(schema, k) {
+									var newElem = schema.getInstance();
+									elem.addChild(newElem);
+									schema.assign({ elem: newElem, recurse: true });
+								});
+							} catch(e) {
+								// Try building child entirely
+								elem.clear();
+								var children = this.i.map(function(schema, k) {
+									var newElem = schema.getInstance();
+									schema.assign({ elem: newElem, recurse: true });
+									return newElem;
+								});
+								children.forEach(function(child) { elem.addChild(child); });
+							}
+							
 						}
 					},
 					validateElem: function(qElem) {
@@ -359,22 +377,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					$getSchema: function(params /* */) {
 						return this.$request({ command: 'getSchema' });
 					},
-					handleQuery: function(params) {
+					handleQuery: function(params, onComplete) {
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
 						if (com === 'getSchema') {
 						
-							return { schemaParams: this.schemaParams() };
+							onComplete({ schemaParams: this.schemaParams() });
+							return;
 						
 						}
 						
-						return {
+						onComplete({
 							status: 1,
-							msg: '"' + this.getAddress() 
-								+ '" (' + this.constructor.title + ') '
-								+ 'didn\'t recognize command "' + com + '"'
-						};
+							msg: '"' + this.getAddress() + '" didn\'t recognize command "' + com + '"'
+						});
 					},
 					
 					simplified: function() { throw 'not implemented'; },
@@ -601,7 +618,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							}
 						});
 					},
-					handleQuery: function(params) {
+					handleQuery: function(params, onComplete) {
 						/*
 						Easy to get confused here because the object "params" has an entry
 						keyed "params".
@@ -626,14 +643,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var child = new PACK.quickDev.QSchema(schemaParams).actualize();
 							this.addChild(child);
 							
-							return { msg: 'success' };
+							onComplete({ msg: 'success' });
+							return;
 							
 						} else if (com === 'filter') {		/* filter */
 							
 							var filter = U.param(reqParams, 'filter');
 							
 							var children = this.filter(filter);
-							return { schemaParamsList: children.map(function(child) { return child.schemaParams(); }) };
+							onComplete({
+								schemaParamsList: children.map(function(child) {
+									return child.schemaParams();
+								})
+							});
+							return;
 							
 						} else if (com === 'getChild') {			/* address, recurse */
 							
@@ -642,11 +665,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var recurse = U.param(reqParams, 'recurse', true);
 							
 							var child = this.getChild(address);
-							return { schemaParams: child ? child.schemaParams({ recurse: recurse}) : null };
+							onComplete({ schemaParams: child ? child.schemaParams({ recurse: recurse}) : null });
+							return;
 							
 						}
 						
-						return sc.handleQuery.call(this, params);
+						sc.handleQuery.call(this, params, onComplete);
 					}
 				}}
 			}),
@@ -771,7 +795,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							params: { initParams: initParams }
 						});
 					},
-					handleQuery: function(params) {
+					handleQuery: function(params, onComplete) {
 						var com = U.param(params, 'command');
 						var session = U.param(params, 'session');
 						var reqParams = U.param(params, 'params', {});
@@ -780,10 +804,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var initParams = U.param(reqParams, 'initParams');
 							
 							var child = this.getNewChild(initParams.update({ session: session }));
-							return { schema: child.schemaParams() };
+							onComplete({ schema: child.schemaParams() });
+							return;
 						}
 						
-						return sc.handleQuery.call(this, params);
+						sc.handleQuery.call(this, params, onComplete);
 					}
 				}}
 			}),

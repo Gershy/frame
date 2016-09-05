@@ -109,35 +109,39 @@ var package = new PACK.pack.Package({ name: 'queries',
 				methods: function(sc) { return {
 					init: function(params /* */) {
 					},
-					respondToQuery: function(params /* address */) {
+					respondToQuery: function(params /* address */, onComplete) {
+						
 						var addr = U.param(params, 'address');
 						
 						// Check if this handler is meant to respond directly to the query
-						if (addr.length === 0) return this.handleQuery(params);
+						if (addr.length === 0) {
+							this.handleQuery(params, onComplete);
+							return;
+						}
 						
 						// Need to have one of the handler's children respond to the query
 						var childName = addr[0];
 						var child = this.getNamedChild(childName);
 						
+						// TODO: Reconsider this - it creates a potentially huge chain of function-calls
+						// Consider removing it entirely (it's only overidden once in rootServer, and maybe
+						// that case could be re-written)
+						// Consider having a flag "noChildProcessing" that can stop certain instances of
+						// QueryHandler from wrapping the function
+						var pass = this;
+						var processedOnComplete = function(response) {
+							if (!response) throw new Error('Bad response');
+							onComplete(pass.processChildResponse(response));
+						};
+						
 						if (child) {
-							
-							// Params for the child are exactly the same, except the
-							// address has had its first member removed.
-							var childResponse = child.respondToQuery(params.clone({ address: addr.slice(1) }));
-							if (!childResponse) throw new Error('Bad response');
-							
+							child.respondToQuery(params.clone({ address: addr.slice(1) }), processedOnComplete);
 						} else {
-							
-							var childResponse = { code: 1, msg: this.constructor.title + ' got invalid address "' + childName + '"', address: params.originalAddress };
-							
+							processedOnComplete({ code: 1, msg: this.constructor.title + ' got invalid address "' + childName + '"', address: params.originalAddress });
 						}
-						
-						var ret = this.processChildResponse(childResponse);
-						
-						return ret;
 					},
 					getNamedChild: function(name) { throw new Error('not implemented'); },
-					handleQuery: function(params /* */) { throw new Error('not implemented'); },
+					handleQuery: function(params /* */, onComplete) { onComplete(new Error('not implemented')); },
 					processChildResponse: function(response) { return response; },
 				}; }
 			})

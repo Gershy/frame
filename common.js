@@ -174,6 +174,9 @@
 			}
 			return Array.prototype.slice.call(arrayLike);
 		},
+		err: function(object) {
+			return object !== null && object.constructor === Error;
+		},
 		id: function(n, len) {
 			if (!U.exists(len)) len = 8;
 			var hex = n.toString(16);
