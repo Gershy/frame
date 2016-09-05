@@ -1,5 +1,7 @@
 require('./common.js');
 
+if (!U.isServer()) throw new Error('rootServer.js should only be used server-side');
+
 var http = require('http');
 var path = require('path');
 var fileSys = require('fs');
@@ -235,4 +237,31 @@ var package = new PACK.pack.Package({ name: 'server',
 		}, 30 * 1000);
 	},
 });
-package.build();
+
+if ('FRAME_DB_URI' in process.env) {
+		
+	var db = require('mongodb');
+	var client = db.MongoClient;
+	var url = process.env.FRAME_DB_URI;
+	
+	console.log('Starting DB connection: ' + url);
+	client.connect(process.env.FRAME_DB_URI, function(err, db) {
+		
+		if (err) {
+			console.log('Couldn\'t connect to DB:', err);
+			global.DB = null;
+		} else {
+			console.log('Connected to DB');
+			global.DB = db;
+		}
+		package.build();
+		
+	});
+	
+} else {
+	
+	// No DB
+	global.DB = null;
+	package.build();
+	
+}

@@ -11,6 +11,7 @@
 		-U: Contains utility methods
 		-C: Default class directory
 		-PACK: Contains all the packages
+		-DB: Reference to the mongodb database object
 	*/
 	
 	// Add convenience methods to pre-existing classes
@@ -123,7 +124,7 @@
 				value: props[k],
 				enumerable: false,
 				configurable: false,
-				writable: false
+				writable: true
 			});
 		}
 	}
@@ -391,9 +392,7 @@
 	
 	// PACKAGE: Packaging
 	global.PACK.pack = {
-		onScriptLoad: function() {
-			var script = this;
-		},
+		onScriptLoad: function() { var script = this; },
 		Package: PACK.uth.makeClass({ name: 'Package',
 			propertyNames: [ 'name', 'buildFunc', ],
 			methods: {
@@ -520,4 +519,5 @@
 			},
 		}),
 	};
+	
 })();
