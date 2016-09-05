@@ -13,7 +13,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			methods: function(sc, c) { return {
 				init: function(params /* */) {
 					sc.init.call(this, params);
-					
 					this.resolutionTimeoutRef = null;
 				},
 				genUserToken: function(user) {
@@ -82,7 +81,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				},
 				handleQuery: function(params) {
 					var com = U.param(params, 'command');
-					
 					var reqParams = U.param(params, 'params', {});
 					
 					if (com === 'getToken') {
@@ -206,6 +204,27 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						return {
 							totalVoters: this.getChild('users').length,
 							voters: this.getChild('votes').length
+						};
+						
+					} else if (com === 'write') {
+						
+						var content = U.param(reqParams, 'content');
+						
+						var fs = require('fs');
+						if (!fs.existsSync('./apps/creativity/state')) fs.mkdirSync('./apps/creativity/state');
+						fs.writeFileSync('./apps/creativity/state/state.json', content, 'utf8');
+						
+						return { msg: 'wrote file' };
+						
+					} else if (com === 'read') {
+						
+						var fs = require('fs');
+						if (!fs.existsSync('./apps/creativity/state/state.json')) return { msg: 'file doesn\'t exist', content: null };
+						var content = fs.readFileSync('./apps/creativity/state/state.json', 'utf8');
+						
+						return {
+							msg: 'got file',
+							content: content
 						};
 						
 					}
@@ -550,7 +569,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										
 										votableData.forEach(function(votableItem) {
 											var username = votableItem.username;
-											console.log(username);
 											
 											if (username in existingVotables) {
 												var elem = existingVotables[username];
