@@ -208,19 +208,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 					} else if (com === 'write') {
 						
-						var content = U.param(reqParams, 'content');
-						
-						var fs = require('fs');
-						if (!fs.existsSync('./apps/creativity/state')) fs.mkdirSync('./apps/creativity/state');
-						fs.writeFileSync('./apps/creativity/state/state.json', content, 'utf8');
-						
-						return { msg: 'wrote file' };
+						DB.collections('apps').save({ _id: 'creativity', data: content });
+						return { msg: 'writing commenced!' };
 						
 					} else if (com === 'read') {
 						
-						var fs = require('fs');
-						if (!fs.existsSync('./apps/creativity/state/state.json')) return { msg: 'file doesn\'t exist', content: null };
-						var content = fs.readFileSync('./apps/creativity/state/state.json', 'utf8');
+						// TODO: Need an ability to do asynch response
 						
 						return {
 							msg: 'got file',
