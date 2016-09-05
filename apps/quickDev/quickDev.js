@@ -151,7 +151,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (recurse && (elem instanceof PACK.quickDev.QSet)) {
 							
-							// TODO: Does this indicate a design flaw?
+							// TODO: Is this indicative design flaw?
 							// In some cases, need to attach to parent right away.
 							// In others, need to build child entirely. Try both.
 							try {

@@ -121,10 +121,13 @@ var package = new PACK.pack.Package({ name: 'e',
 						return PACK.e.e([]);
 					},
 					
-					handle: function(event, func) {
-						var eventPropName = 'on' + event;
+					handle: function(events, func) {
+						if (events.constructor !== Array) events = [ events ];
+						
 						this.elems.forEach(function(elem) {
-							elem[eventPropName] = function(event) { func(new PACK.e.E(elem), event); };
+							events.forEach(function(eventName) {
+								elem['on' + eventName] = function(e) { func(new PACK.e.E(elem), e); };
+							});
 						});
 					},
 					attr: function(attrs /* { "name": "value", ... } */) {

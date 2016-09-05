@@ -26,7 +26,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				setState: function(state, cb) {
 					DB.collection('apps', function(err, collection) {
 						collection.update({ name: 'creativity' }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
-							cb(doc.result);
+							if (cb) cb(doc.result);
 						});
 					});
 				},
@@ -443,6 +443,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										'</div>',
 									'</div>'
 								].join(''));
+								var textarea = writing.find('textarea');
+								textarea.handle([ 'change', 'keyup' ], function() {
+									var val = textarea.fieldValue();
+									if (val.length > 140) textarea.fieldValue(val.substr(0, 140));
+								});
+								
 								
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {
@@ -603,7 +609,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 															token: auth.token
 														}
 													}).fire(function(result) {
-														console.log(result);
 														updateVotables.run();
 													});
 												});
@@ -625,10 +630,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										});
 										
 										// Anything remaining in existingVotables should be removed
-										existingVotables.forEach(function(votableElem) {
-											console.log('REMOVE', votableElem);
-											votableElem.remove();
-										});
+										existingVotables.forEach(function(votableElem) { votableElem.remove(); });
 										
 										voting.listAttr({ class: [ '-loading' ] });
 									},
@@ -656,7 +658,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
 								submit.handle('click', function() {
 									writing.listAttr({ class: [ '+disabled' ] });
-									var textarea = writing.find('textarea');
 									root.$request({
 										command: 'submitVotable',
 										params: {
@@ -698,7 +699,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					var schemaParams = JSON.parse(state);
 					var schema = new PACK.quickDev.QSchema(schemaParams);
 					
-					console.log('OH SHIT, FOUND SAVED STATE');
+					console.log('Loading saved state...');
 					
 					schema.assign({
 						elem: root,
@@ -712,7 +713,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						var target = root.getChild('resolutionTimer.delaySeconds').value;
 						var millisRemaining = (target * 1000) - (new Date() - startedMillis);
 						
-						console.log('REM:', millisRemaining, 'ms (', Math.floor(millisRemaining / (60 * 1000)), 'm)');
 						if (millisRemaining > 0) {
 							root.resolutionTimerRef = setTimeout(function() {
 								root.resolveVote();
@@ -722,14 +722,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						}
 						
 					}
+					
+					console.log('Done!');
 				}
 			});
 			
 			setInterval(function() {
-				console.log('SAVING STATE...')
-				root.setState(JSON.stringify(root.schemaParams()), function() {
-					console.log('DONE.');
-				});
+				root.setState(JSON.stringify(root.schemaParams()));
 			}, 5000);
 			
 			/*DB.collection('apps').find({ name: 'creativity' }).limit(1).next(function(err, doc) {
