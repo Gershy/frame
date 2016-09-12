@@ -1,6 +1,7 @@
 //module.exports.defaultApp = 'ahoy';
 //module.exports.defaultApp = 'parse';
-module.exports.defaultApp = 'creativity';
+//module.exports.defaultApp = 'creativity';
+module.exports.defaultApp = [ 'ahoy', 'parse', 'creativity', 'attack', 'defend' ][2];
 
 //module.exports.defaultApp = 'sound';
 module.exports.legalExtensions = {

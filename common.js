@@ -223,25 +223,29 @@
 			var comps = name.split('.');
 			
 			var ptr = root;
-			for (var i = 0, len = comps.length; i < len - 1; i++) {
+			for (var i = 0, len = comps.length - 1; i < len; i++) {
 				var c = comps[i];
 				if (!(c in ptr)) ptr[c] = {};
 				ptr = ptr[c];
 			}
 			var lastComp = comps[comps.length - 1];
-			if (!overwrite && (lastComp in ptr)) throw 'tried to overwrite value: "' + name + '"';
+			if (!overwrite && (lastComp in ptr)) throw new Error('tried to overwrite value: "' + name + '"');
 			
 			ptr[lastComp] = value;
 		},
-		getByName: function(params /* name, root */) {
+		getByName: function(params /* name, root, createIfNone */) {
 			var name = U.param(params, 'name');
 			var root = U.param(params, 'root');
+			var createIfNone = U.param(params, 'createIfNone', false);
 			
 			var comps = name.length === 0 ? [] : name.split('.');
 			var ptr = root;
 			for (var i = 0, len = comps.length; i < len; i++) {
 				var c = comps[i];
-				if (!(c in ptr)) return null;
+				if (!(c in ptr)) {
+					if (createIfNone)	ptr[c] = {};
+					else 				return null;
+				}
 				ptr = ptr[c];
 			}
 			return ptr;
@@ -327,14 +331,10 @@
 		makeClass: function(params /* namespace, name, superclassName, propertyNames, methods, statik */) {
 			var namespace = U.param(params, 'namespace', global.C);
 			
-			if (namespace.Constructor === String) {
+			if (namespace.constructor === String) {
 				var comps = namespace.split('.');
 				var dir = global.C;
-				comps.forEach(function(comp) {
-					if (!(comp in dir)) dir[comp] = {};
-					dir = dir[comp];
-				});
-				namespace = dir;
+				namespace = U.getByName({ name: namespace, root: dir, createIfNone: false });
 			}
 			
 			var name = U.param(params, 'name');
@@ -373,7 +373,7 @@
 				'instanceProperties',
 				'instanceCopy',
 				'update'
-			].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw 'bad property: "' + reserved + '"'; });
+			].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw new Error('bad property: "' + reserved + '"'); } );
 			
 			[	'name'
 			].forEach(function(reserved) { if (statik.hasOwnProperty(reserved)) throw 'bad statik property: "' + reserved + '"'; });

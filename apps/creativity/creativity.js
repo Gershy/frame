@@ -9,7 +9,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		
 		var CreativityApp = PACK.uth.makeClass({ name: 'CreativityApp',
 			superclassName: 'QDict',
-			propertyNames: [ ],
 			methods: function(sc, c) { return {
 				init: function(params /* */) {
 					sc.init.call(this, params);
@@ -245,107 +244,105 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			}; }
 		});
 		
-		ret.queryHandler = new CreativityApp({ name: 'app',
-			children: [
-				new qd.QDict({ name: 'resolutionTimer',
-					children: [
-						new qd.QInt({ name: 'startedMillis', value: -1 }),
-						new qd.QInt({ name: 'delaySeconds', value: 60 * 60 * 24 }),
-					]
+		ret.queryHandler = new CreativityApp({ name: 'app', children: [
+			new qd.QDict({ name: 'resolutionTimer',
+				children: [
+					new qd.QInt({ name: 'startedMillis', value: -1 }),
+					new qd.QInt({ name: 'delaySeconds', value: 60 * 60 * 24 }),
+				]
+			}),
+			new qd.QGen({ name: 'users',
+				_schema: U.addSerializable({
+					name: 'creativity.usersSchema',
+					value: new qd.QSchema({ c: qd.QDict, i: {
+						username:	new qd.QSchema({ c: qd.QString, p: { name: 'username', 	value: '' } }),
+						password:	new qd.QSchema({ c: qd.QString, p: { name: 'password', 	value: '' } }),
+					}})
 				}),
-				new qd.QGen({ name: 'users',
-					_schema: U.addSerializable({
-						name: 'creativity.usersSchema',
-						value: new qd.QSchema({ c: qd.QDict, i: {
-							username:	new qd.QSchema({ c: qd.QString, p: { name: 'username', 	value: '' } }),
-							password:	new qd.QSchema({ c: qd.QString, p: { name: 'password', 	value: '' } }),
-						}})
-					}),
-					_initChild: U.addSerializable({
-						name: 'creativity.usersInitChild',
-						value: function(child, params /* username, password */) {
-							var username = U.param(params, 'username');
-							var password = U.param(params, 'password');
-							child.getChild('username').setValue(username);
-							child.getChild('password').setValue(password);
-						}
-					}),
-					prop: 'username/value'
+				_initChild: U.addSerializable({
+					name: 'creativity.usersInitChild',
+					value: function(child, params /* username, password */) {
+						var username = U.param(params, 'username');
+						var password = U.param(params, 'password');
+						child.getChild('username').setValue(username);
+						child.getChild('password').setValue(password);
+					}
 				}),
-				new qd.QGen({ name: 'blurbs',
-					_schema: U.addSerializable({
-						name: 'creativity.blurbSchema',
-						value: new qd.QSchema({ c: qd.QDict, i: {
-							id: new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-							user: new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
-							text: new qd.QSchema({ c: qd.QString, p: { name: 'text', minLen: 1, maxLen: 140, value: '' } })
-						}})
-					}),
-					_initChild: U.addSerializable({
-						name: 'creativity.blurbInitChild',
-						value: function(child, params /* username, text */) {
-							var username = U.param(params, 'username');
-							var text = U.param(params, 'text');
-							
-							child.setValue('user', 'app.users.' + username); // Set the reference
-							child.setValue('text', text);
-						}
-					}),
-					prop: 'id/value'
+				prop: 'username/value'
+			}),
+			new qd.QGen({ name: 'blurbs',
+				_schema: U.addSerializable({
+					name: 'creativity.blurbSchema',
+					value: new qd.QSchema({ c: qd.QDict, i: {
+						id: new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+						user: new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
+						text: new qd.QSchema({ c: qd.QString, p: { name: 'text', minLen: 1, maxLen: 140, value: '' } })
+					}})
 				}),
-				new qd.QGen({ name: 'votables',
-					_schema: U.addSerializable({ name: 'creativity.votableSchema',
-						value: new qd.QSchema({ c: qd.QDict, i: {
-							id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-							blurb: 	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
-						}})
-					}),
-					_initChild: U.addSerializable({ name: 'creativity.votablesInitChild',
-						value: function(child, params /* blurb */) {
-							var blurb = U.param(params, 'blurb');
-							child.setValue('blurb', blurb);
-						}
-					}),
-					prop: 'id/value'
+				_initChild: U.addSerializable({
+					name: 'creativity.blurbInitChild',
+					value: function(child, params /* username, text */) {
+						var username = U.param(params, 'username');
+						var text = U.param(params, 'text');
+						
+						child.setValue('user', 'app.users.' + username); // Set the reference
+						child.setValue('text', text);
+					}
 				}),
-				new qd.QGen({ name: 'votes',
-					_schema: U.addSerializable({ name: 'creativity.voteSchema',
-						value: new qd.QSchema({ c: qd.QDict, i: {
-							id:		 new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-							user:	 new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
-							votable: new qd.QSchema({ c: qd.QRef, p: { name: 'votable', value: '' } })
-						}})
-					}),
-					_initChild: U.addSerializable({ name: 'creativity.votesInitChild',
-						value: function(child, params /* user, votable */) {
-							var user = U.param(params, 'user');
-							var votable = U.param(params, 'votable');
-							
-							child.setValue('user', user);
-							child.setValue('votable', votable);
-						}
-					}),
-					prop: '@user.username/value'
+				prop: 'id/value'
+			}),
+			new qd.QGen({ name: 'votables',
+				_schema: U.addSerializable({ name: 'creativity.votableSchema',
+					value: new qd.QSchema({ c: qd.QDict, i: {
+						id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+						blurb: 	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
+					}})
 				}),
-				new qd.QGen({ name: 'storyItems',
-					_schema: U.addSerializable({
-						name: 'creativity.storyItemSchema',
-						value: new qd.QSchema({ c: qd.QDict, i: {
-							id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-							blurb:	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
-						}})
-					}),
-					_initChild: U.addSerializable({
-						name: 'creativity.storyItemsInitChild',
-						value: function(child, params /* blurb */) {
-							var blurb = U.param(params, 'blurb');
-							child.setValue('blurb', blurb);
-						}
-					}),
-					prop: 'id/value'
-				})
-			]
-		});
+				_initChild: U.addSerializable({ name: 'creativity.votablesInitChild',
+					value: function(child, params /* blurb */) {
+						var blurb = U.param(params, 'blurb');
+						child.setValue('blurb', blurb);
+					}
+				}),
+				prop: 'id/value'
+			}),
+			new qd.QGen({ name: 'votes',
+				_schema: U.addSerializable({ name: 'creativity.voteSchema',
+					value: new qd.QSchema({ c: qd.QDict, i: {
+						id:		 new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+						user:	 new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
+						votable: new qd.QSchema({ c: qd.QRef, p: { name: 'votable', value: '' } })
+					}})
+				}),
+				_initChild: U.addSerializable({ name: 'creativity.votesInitChild',
+					value: function(child, params /* user, votable */) {
+						var user = U.param(params, 'user');
+						var votable = U.param(params, 'votable');
+						
+						child.setValue('user', user);
+						child.setValue('votable', votable);
+					}
+				}),
+				prop: '@user.username/value'
+			}),
+			new qd.QGen({ name: 'storyItems',
+				_schema: U.addSerializable({
+					name: 'creativity.storyItemSchema',
+					value: new qd.QSchema({ c: qd.QDict, i: {
+						id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
+						blurb:	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
+					}})
+				}),
+				_initChild: U.addSerializable({
+					name: 'creativity.storyItemsInitChild',
+					value: function(child, params /* blurb */) {
+						var blurb = U.param(params, 'blurb');
+						child.setValue('blurb', blurb);
+					}
+				}),
+				prop: 'id/value'
+			})
+		]});
 		
 		return ret;
 	},
@@ -448,7 +445,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									var val = textarea.fieldValue();
 									if (val.length > 140) textarea.fieldValue(val.substr(0, 140));
 								});
-								
 								
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {

@@ -1,3 +1,7 @@
+/*
+TODO: Need a way of separating server-code and client-code within app scripts
+so that server-code never arrives at the client-side.
+*/
 require('./common.js');
 
 if (!U.isServer()) throw new Error('rootServer.js should only be used server-side');
@@ -250,7 +254,7 @@ var package = new PACK.pack.Package({ name: 'server',
 	runAfter: function() {
 		var server = http.createServer(PACK.server.serverFunc);
 		
-		var port = process.env.PORT || 5000;
+		var port = process.env.PORT || 8000;
 		server.listen(port);
 		console.log('Listening on port: ' + port);
 		

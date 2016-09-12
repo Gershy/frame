@@ -1,4 +1,10 @@
 /*
+TODO: Need some way of marking QElems as "sensitive" so that they cannot be
+transmitted over the wire to any recipient. Perhaps an anonymous function in a parent
+element that gets to return true or false for every child in that parent's
+jurisdiction? It needs to be an anonymous function to allow for any use-case-specific
+permissions to be applied.
+
 TODO: When querying for server-side elems, need to be able to add the queried elem to
 the tree on the client-side. The current issue is that when the element's parent is
 missing (because the address provided for the element had multiple components, and at
@@ -20,42 +26,6 @@ E.g.:
 
 If the user (possibly maliciously) names themself starting with a "@", this will cause
 undesirable de-referencing.
-
-TODO: Shorten filter language. Right now each element is targeted with:
-
-{
-	p: {
-		value1: 'val',
-		value2: 'val',
-		...
-	},
-	i: {
-		child1Name: innerFilter1,
-		child2Name: innerFilter2,
-		...
-	}
-}
-
-Instead, try:
-
-{
-	value1: 'val',
-	value2: 'val',
-	_: {
-		child1Name: innerFilter1,
-		child2Name: innerFilter2
-	}
-}
-
-Or even:
-
-{
-	'/value1': 'val',
-	'/value2': 'val',
-	'child1Name/propName': 'val',
-	'child2Name/propName': 'val',
-	'child3Name.deeperChild/propName': 'val'
-}
 
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
@@ -538,6 +508,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (!c) throw new Error('Can\'t set value for non-existant child: "' + address + '"');
 						c.setValue(v);
 					},
+					setChildProperty: function(address, v) {
+						var pcs = address.split('/');
+						this.getChild(pcs[0])[pcs[1]] = v;
+					},
 					
 					/*matches: function(filter) {
 						if (!sc.matches.call(this, filter)) return false;
@@ -636,9 +610,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
-						if (com === 'persistChild') {				/* schemaParams */
+						if (com === 'persist') {			/* schemaParams */
 							
 							var schemaParams = U.param(reqParams, 'schemaParams');
+							schemaParams.assign({ elem: this, recurse: true });
 							
 							var child = new PACK.quickDev.QSchema(schemaParams).actualize();
 							this.addChild(child);
@@ -658,14 +633,26 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							});
 							return;
 							
-						} else if (com === 'getChild') {			/* address, recurse */
-							
+						} else if (com === 'getChild') {	/* address, recurse */
 							
 							var address = U.param(reqParams, 'address');
 							var recurse = U.param(reqParams, 'recurse', true);
 							
 							var child = this.getChild(address);
 							onComplete({ schemaParams: child ? child.schemaParams({ recurse: recurse}) : null });
+							return;
+							
+						} else if (com === 'setChildProperty') { /* address, value */
+							
+							var address = U.param(reqParams, 'address');
+							var value = U.param(reqParams, 'value');
+							
+							try {
+								this.setChildProperty(address, value);
+								onComplete({ msg: 'success' });
+							} catch (e) {
+								onComplete(e);
+							}
 							return;
 							
 						}
