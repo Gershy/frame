@@ -263,7 +263,7 @@ body {
 	display: inline-block;
 	white-space: nowrap;
 	vertical-align: middle;
-	font-size: 200%;
+	font-size: 150%;
 	margin: 0 20px;
 }
 .scene.writing > .resolution > .countdown > .time-component {
@@ -288,7 +288,7 @@ body {
 	
 	text-align: left;
 	
-	font-size: 130%;
+	font-size: 100%;
 	vertical-align: middle;
 }
 .scene.writing > .resolution > .title { left: 0; }
