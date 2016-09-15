@@ -52,6 +52,10 @@ body {
 
 /* forms */
 .input-form { }
+.input-form.disabled {
+	opacity: 0.6;
+	pointer-events: none;
+}
 .input-form > .submit {
 	position: relative;
 	width: 100%; height: 30px; line-height: 30px;
@@ -105,7 +109,7 @@ body {
 	width: 100%; height: 100%;
 }
 
-.scene.root > .list.main > .tabs { display: none; }
+.scene > .list > .tabs { display: none; }
 .scene.root > .list.main > .content {}
 .scene.login {
 	text-align: center;
@@ -216,10 +220,14 @@ body {
 	color: rgba(0, 0, 0, 1);
 }
 .scene.writing > .story > .scroller > .story-item > .id { display: none; }
-.scene.writing > .story > .scroller > .story-item > .text { display: inline; vertical-align: top; }
+.scene.writing > .story > .scroller > .story-item > .text {
+	display: inline;
+	vertical-align: top;
+	line-height: 24px;
+}
 .scene.writing > .story > .scroller > .story-item > .user {
 	display: inline-block;
-	position: relative;
+	position: relative; top: 4px;
 	padding: 0 0; height: 16px; line-height: 16px; font-size: 0;
 	margin-left: 0;
 	vertical-align: top;
@@ -280,25 +288,23 @@ body {
 .scene.writing > .resolution > .votes > .voted, 
 .scene.writing > .resolution > .votes > .total { display: inline-block; margin: 0 4px; }
 
-.scene.writing > .voting {
-	width: 100%; height: 25%;
-	background-color: #f2f2ff;
-	
-	overflow-x: auto;
-	overflow-y: hidden;
+.scene.writing > .writeOrVote { width: 100%; height: 50%; }
+.scene.writing > .writeOrVote > .content { padding-top: 1px; margin-top: -1px; }
+.scene.vote {
+	overflow-x: hidden;
+	overflow-y: auto;
 }
-.scene.writing > .voting > .scroller {
+.scene.vote > .scroller {
 	box-sizing: border-box;
-	height: 100%; padding: 10px;
-	
-	white-space: nowrap;
+	height: 100%; padding-top: 5px;
+	text-align: center;
 }
-.scene.writing > .voting > .scroller > .votable-item {
+.scene.vote > .scroller > .votable-item {
 	position: relative;
 	display: inline-block;
 	box-sizing: border-box;
-	width: 25%; min-width: 220px; max-width: 400px; height: 100%; padding: 8px;
-	margin: 0 5px;
+	width: 31.5%; height: 150px; padding: 2px;
+	margin: 5px 0.75%;
 	vertical-align: middle;
 	
 	border-top-right-radius: 10px;
@@ -307,14 +313,14 @@ body {
 	
 	overflow: hidden;
 }
-.scene.writing > .voting > .scroller > .votable-item:before {
+.scene.vote > .scroller > .votable-item:before {
 	content: "";
 	display: inline-block;
 	width: 0; height: 100%;
 	vertical-align: middle;
 }
 
-.scene.writing > .voting > .scroller > .votable-item > .check {
+.scene.vote > .scroller > .votable-item > .check {
 	position: absolute;
 	top: 0; right: 0;
 	width: 22px; height: 22px;
@@ -330,7 +336,7 @@ body {
 	cursor: pointer;
 	overflow: hidden;
 }
-.scene.writing > .voting > .scroller > .votable-item > .check:after {
+.scene.vote > .scroller > .votable-item > .check:after {
 	content: "";
 	display: block;
 	position: absolute;
@@ -341,21 +347,21 @@ body {
 	background-color: rgba(64, 64, 64, 0);
 	transition: background-color 1000ms linear;
 }
-.scene.writing > .voting > .scroller > .votable-item > .check:hover,
-.scene.writing > .voting > .scroller > .votable-item.voted > .check {
+.scene.vote > .scroller > .votable-item > .check:hover,
+.scene.vote > .scroller > .votable-item.voted > .check {
 	border-bottom-left-radius: 407px;
 	border-left: 400px solid;
 	border-bottom: 400px solid;
 	border-color: rgb(255, 219, 36);
 }
-.scene.writing > .voting > .scroller > .votable-item > .check:hover:after,
-.scene.writing > .voting > .scroller > .votable-item.voted > .check:after {
+.scene.vote > .scroller > .votable-item > .check:hover:after,
+.scene.vote > .scroller > .votable-item.voted > .check:after {
 	background-color: rgba(255, 219, 36, 1);
 }
-.scene.writing > .voting > .scroller > .votable-item.voted > .check:after {
+.scene.vote > .scroller > .votable-item.voted > .check:after {
 }
 
-.scene.writing > .voting > .scroller > .votable-item > .text {
+.scene.vote > .scroller > .votable-item > .text {
 	position: relative;
 	display: inline-block;
 	width: 100%;
@@ -365,10 +371,10 @@ body {
 	
 	z-index: 3;
 }
-.scene.writing > .voting > .scroller > .votable-item > .user {
+.scene.vote > .scroller > .votable-item > .user {
 	display: none;
 }
-.scene.writing > .voting > .scroller > .votable-item > .votes {
+.scene.vote > .scroller > .votable-item > .votes {
 	position: absolute;
 	box-sizing: border-box;
 	width: 100%; min-height: 22px; padding: 2px 4px;
@@ -380,18 +386,19 @@ body {
 	background-color: rgba(130, 255, 120, 0);
 	box-shadow: 0 0 0 0 rgba(130, 255, 120, 1);
 	transition: background-color 200ms linear, box-shadow 200ms linear;
+	text-align: left;
 	
 	z-index: 1;
 }
-.scene.writing > .voting > .scroller > .votable-item > .votes:empty { text-align: center; }
-.scene.writing > .voting > .scroller > .votable-item > .votes:empty:after {
+.scene.vote > .scroller > .votable-item > .votes:empty { text-align: center; }
+.scene.vote > .scroller > .votable-item > .votes:empty:after {
 	content: "no votes";
 	display: inline-block;
 	height: 18px; line-height: 18px;
 	font-size: 10px;
 	color: rgba(255, 255, 255, 0);
 }
-.scene.writing > .voting > .scroller > .votable-item > .votes > .vote {
+.scene.vote > .scroller > .votable-item > .votes > .vote {
 	display: inline-block;
 	padding: 4px; height: 10px; line-height: 10px;
 	margin: 2px 4px 2px 0;
@@ -403,49 +410,66 @@ body {
 	
 	transition: background-color 200ms linear, color 200ms linear;
 }
-.scene.writing > .voting > .scroller > .votable-item:hover > .votes {
+.scene.vote > .scroller > .votable-item:hover > .votes {
 	background-color: rgba(130, 255, 120, 1);
 	box-shadow: 0 0 10px 1px rgba(130, 255, 120, 1);
 }
-.scene.writing > .voting > .scroller > .votable-item:hover > .votes:empty:after {
+.scene.vote > .scroller > .votable-item:hover > .votes:empty:after {
 	color: rgba(255, 255, 255, 1);
 }
-.scene.writing > .voting > .scroller > .votable-item:hover > .votes > .vote {
+.scene.vote > .scroller > .votable-item:hover > .votes > .vote {
 	background-color: rgba(255, 255, 255, 1);
 	color: rgba(0, 255, 0, 1);
 }
 
-.scene.writing > .voting > .scroller > .votable-item.voted > .votes {
+.scene.vote > .scroller > .votable-item.voted > .votes {
 	background-color: rgba(255, 255, 255, 0);
 	box-shadow: 0 0 0 0 rgba(130, 255, 120, 1);
 	z-index: 4;
 }
-.scene.writing > .voting > .scroller > .votable-item.voted > .votes > .vote {
+.scene.vote > .scroller > .votable-item.voted > .votes > .vote {
 	background-color: rgba(255, 255, 255, 1);
 	color: rgba(255, 219, 36, 1);
 }
 
-.scene.writing > .voting > .scroller.voted > .votable-item > .check { display: none; }
-.scene.writing > .voting > .scroller.voted > .votable-item.voted > .check { display: block; pointer-events: none; }
+.scene.vote > .scroller.voted > .votable-item > .check { display: none; }
+.scene.vote > .scroller.voted > .votable-item.voted > .check { display: block; pointer-events: none; }
 
-.scene.writing > .writing {
-	width: 100%; height: 25%;
+.scene.write {
+	background-color: #f2f2ff;
 }
-.scene.writing > .writing > .input-form {
-	box-sizing: border-box;
-	height: 100%; padding-bottom: 30px;
-}
-.scene.writing > .writing > .input-form > .input-field {
+.scene.write > .input-form > .input-field,
+.scene.write > .input-form > .submit {
 	margin: 0;
-	height: 100%;
 }
-.scene.writing > .writing > .input-form > .input-field > textarea {
-	height: 100%;
-	padding: 10px; margin: 0;
+.scene.write > .input-form > .input-field {
+	box-sizing: border-box;
+	position: absolute;
+	width: 100%; height: 100%;
+	padding: 5px 5px 35px 5px ;
 }
-.scene.writing > .writing > .input-form > .submit { margin: 0; }
+.scene.write > .input-form > .input-field > textarea {
+	box-sizing: border-box;
+	padding: 5px;
+	width: 100%; height: 100%;
+}
+.scene.write > .input-form > .input-field > textarea:focus {
+	outline: none !important;
+	box-shadow: 0 0 0 5px #7979b3;
+}
+.scene.write > .input-form > .submit {
+	position: absolute;
+	left: 0; bottom: 0;
+}
 
-.scene.writing > .writing.disabled {
-	pointer-events: none;
-	opacity: 0.3;
+@media screen and (max-width: 750px) {
+	.scene.vote > .scroller > .votable-item {
+		width: 48%;	margin: 5px 0.65%;
+	}
 }
+@media screen and (max-width: 460px) {
+	.scene.vote > .scroller > .votable-item {
+		width: 96%;	margin: 5px 0;
+	}
+}
+

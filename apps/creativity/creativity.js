@@ -1,3 +1,9 @@
+/*
+TODO: Need a way to issue high-level restrictions/behaviours that will apply
+to both client and server side. E.g. Right now users shouldn't vote if they
+haven't submitted a votable - but need to do totally separate checks for
+the client and server in order to validate.
+*/
 var package = new PACK.pack.Package({ name: 'creativity',
 	dependencies: [ 'quickDev', 'htmlText' ],
 	buildFunc: function() {
@@ -102,7 +108,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					var reqParams = U.param(params, 'params', {});
 					
 					if (com === 'getToken') {
-						
+						/*
+						Returns the token and username for the user. Because of the
+						nature of the app, it's also useful to return whether or not
+						the user has already submitted a votable for the current
+						round because the very first screen the user sees is based
+						on this.
+						*/
 						var username = U.param(reqParams, 'username');
 						var password = U.param(reqParams, 'password');
 						
@@ -113,7 +125,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						if (user === null) return { help: 'Invalid credentials' };
 						
-						onComplete({ msg: 'user retrieved', token: this.genUserToken(user), username: user.getChild('username').value });
+						onComplete({
+							msg: 'user retrieved',
+							token: this.genUserToken(user),
+							username: user.getChild('username').value,
+							hasSubmitted: this.getChild('votables').filter({ '@blurb.user/value': user.getAddress() }, true) !== null
+						});
 						return;
 						
 					} else if (com === 'submitVote') {
@@ -388,14 +405,19 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										username: usernameField.find('input').fieldValue(),
 										password: passwordField.find('input').fieldValue()
 									}}).fire(function(response) {
-										auth.token = response.token;
-										auth.username = response.username;
+										auth.update({
+											token: response.token,
+											username: response.username
+										});
 										
 										if ('help' in response) {
+											// Need to actually show user error
 											submit.find('.error').setHtml(response.help);
 											submit.listAttr({ class: '+error' });
 											setTimeout(function() { submit.listAttr({ class: '-error' }) }, 2000);
 										} else {
+											var writingScene = scene.par.subscenes.main.writing;
+											writingScene.defaultScenes.writeOrVote = response.hasSubmitted ? 'vote' : 'write';
 											scene.par.setSubscene('main', 'writing');
 										}
 									});
@@ -431,24 +453,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										'</div>',
 									'</div>'
 								].join(''));
-								
-								var voting = e('<div class="writing-elem voting"></div>');
-								var votingScroller = voting.append('<div class="scroller"></div>');
-								
-								var writing = e([
-									'<div class="writing-elem writing">',
-										'<div class="input-form">',
-											'<div class="input-field">',
-												'<textarea></textarea>',
-											'</div>',
-										'</div>',
-									'</div>'
-								].join(''));
-								var textarea = writing.find('textarea');
-								textarea.handle([ 'change', 'keyup' ], function() {
-									var val = textarea.fieldValue();
-									if (val.length > 140) textarea.fieldValue(val.substr(0, 140));
-								});
 								
 								var listStory = new PACK.e.ListUpdater({
 									root: storyScroller,
@@ -543,133 +547,184 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								});
 								updateTimer.repeat({ delay: 1000 });
 								
-								var listVotables = new PACK.e.ListUpdater({
-									root: voting.find('.scroller'),
-									elemCreate: function(votableItem) {
-										var elem = e([
-											'<div class="votable-item">',
-												'<div class="check"></div>',
-												'<div class="text">' + votableItem.text + '</div>',
-												'<div class="user">' + votableItem.username + '</div>',
-												'<div class="votes"></div>',
-											'</div>'
-										].join(''));
-										
-										elem.find('.check').handle('click', function() {
-											voting.listAttr({ class: [ '+loading' ] });
-											root.$request({
-												command: 'submitVote',
-												params: {
-													voteeUsername: elem.find('.user').text(),
-													token: auth.token
-												}
-											}).fire(function(result) {
-												updateVotables.run();
-											});
-										});
-										
-										return elem;
-									},
-									elemUpdate: function(elem, votableItem) {
-										
-										var votes = elem.find('.votes');
-										votes.clear();
-										votes.append(votableItem.votes.map(function(vote) {
-											return e('<div class="vote">' + vote + '</div>');
-										}));
-										
-										if (votableItem.votes.contains(auth.username)) {
-											votingScroller.listAttr({ class: [ '+voted' ] });
-											elem.listAttr({ class: [ '+voted' ] });
-										}
-										
-									},
-									getElemKey: function(elem) {
-										return elem.find('.user').text();
-									},
-									getDataKey: function(data) {
-										return data.username;
-									}
-								});
-								var updateVotables = new PACK.quickDev.QUpdate({
-									request: function(callback) {
-										
-										root.getChild('votables').$load().fire(function(elem) {
-											
-											new PACK.queries.PromiseQuery({
-												subQueries: U.arr(elem.children.map(function(votable) {
-													return new PACK.queries.PromiseQuery({
-														subQueries: [
-															votable.$getChild({ address: '@blurb', addChild: false, useClientSide: false }),
-															root.getChild('votes').$filter({
-																filter: { 'votable/value': votable.getAddress() },
-																addChildren: false
-															})
-														]
+								rootElem.append([ story, resolution, subsceneElem.writeOrVote ]);
+								
+							},
+							subscenes: {
+								writeOrVote: [
+									new PACK.e.Scene({ name: 'write', title: 'Write',
+										build: function(rootElem, subsceneElem, scene) {
+											/*var updateWriting = new PACK.quickDev.QUpdate({
+												request: function(callback) {
+													root.getChild('votables').$filter({
+														filter: { '@blurb.@user.username/value': auth.username },
+														addChildren: false
+													}).fire(function(elems) {
+														// Active only if there is no existing votable elem
+														callback({ moveToVoting: elems.length > 0 });
 													});
-												}))
-											}).fire(function(responses) {
-												callback(responses.map(function(response) {
-													var blurb = response[0];
-													var votes = response[1];
-													
-													return {
-														username: blurb.getChild('user').value.split('.')[2],
-														text: PACK.htmlText.render(blurb.getChild('text').value),
-														votes: votes.map(function(vote) { return vote.name; })
+												},
+												start: function() {},
+												end: function(d) {
+													if (d.moveToVoting) {
+														
 													}
-												}));
+												}
+											});*/
+											
+											var form = e([
+												'<div class="input-form">',
+													'<div class="input-field">',
+														'<textarea></textarea>',
+													'</div>',
+													'<div class="submit">Submit</div>',
+												'</div>'
+											].join(''));
+											
+											form.find('textarea').handle([ 'change', 'keyup' ], function(textarea) {
+												var val = textarea.fieldValue();
+												if (val.length > 140) textarea.fieldValue(val.substr(0, 140));
 											});
 											
-										});
-										
-									},
-									start: function() {
-										voting.listAttr({ class: [ '+loading' ] });
-									},
-									end: function(votableData) {
-										listVotables.updateList(votableData);
-										voting.listAttr({ class: [ '-loading' ] });
-									},
-								});
-								updateVotables.repeat({ delay: 3000 });
-								
-								var updateWriting = new PACK.quickDev.QUpdate({
-									request: function(callback) {
-										root.getChild('votables').$filter({
-											filter: { '@blurb.@user.username/value': auth.username },
-											addChildren: false
-										}).fire(function(elems) {
-											// Active only if there is no existing votable elem
-											callback(elems.length === 0);
-										});
-									},
-									start: function() {},
-									end: function(active) {
-										writing.listAttr({ class: [ (active ? '-' : '+') + 'disabled' ] });
-										updateVotables.run();
-									}
-								});
-								updateWriting.repeat({ delay: 1500 });
-
-								var submit = writing.find('.input-form').append('<div class="submit">Submit</div>');
-								submit.handle('click', function() {
-									writing.listAttr({ class: [ '+disabled' ] });
-									root.$request({
-										command: 'submitVotable',
-										params: {
-											token: auth.token,
-											text: textarea.fieldValue()
-										}
-									}).fire(function(response) {
-										textarea.fieldValue('');
-										updateVotables.run();
-									});
-								});
-								
-								rootElem.append([ story, resolution, voting, writing ]);
-								
-							}
+											form.find('.submit').handle('click', function() {
+												form.listAttr({ class: [ '+disabled' ] });
+												root.$request({
+													command: 'submitVotable',
+													params: {
+														token: auth.token,
+														text: form.find('textarea').fieldValue()
+													}
+												}).fire(function(response) {
+													scene.par.setSubscene('writeOrVote', 'vote');
+												});
+											});
+											
+											rootElem.append(form);
+											
+											return { form: form };
+										},
+										start: function(d) {
+											d.form.listAttr({ class: [ '-disabled' ] });
+											d.form.find('textarea').fieldValue('');
+										},
+										/*end: function(d) { d.updater.endRepeat(); },*/
+									}),
+									new PACK.e.Scene({ name: 'vote', title: 'Vote',
+										build: function(rootElem, subsceneElem, scene) {
+											var scroller = e('<div class="scroller"></div>');
+											
+											var listVotables = new PACK.e.ListUpdater({
+												root: scroller,
+												elemCreate: function(votableItem) {
+													var elem = e([
+														'<div class="votable-item">',
+															'<div class="check"></div>',
+															'<div class="text">' + votableItem.text + '</div>',
+															'<div class="user">' + votableItem.username + '</div>',
+															'<div class="votes"></div>',
+														'</div>'
+													].join(''));
+													
+													elem.find('.check').handle('click', function() {
+														rootElem.listAttr({ class: [ '+loading' ] });
+														root.$request({
+															command: 'submitVote',
+															params: {
+																voteeUsername: elem.find('.user').text(),
+																token: auth.token
+															}
+														}).fire(function(result) {
+															updateVotables.run();
+														});
+													});
+													
+													return elem;
+												},
+												elemUpdate: function(elem, votableItem) {
+													
+													var votes = elem.find('.votes');
+													votes.clear();
+													votes.append(votableItem.votes.map(function(vote) {
+														return e('<div class="vote">' + vote + '</div>');
+													}));
+													
+													if (votableItem.votes.contains(auth.username)) {
+														scroller.listAttr({ class: [ '+voted' ] });
+														elem.listAttr({ class: [ '+voted' ] });
+													}
+													
+												},
+												getElemKey: function(elem) {
+													return elem.find('.user').text();
+												},
+												getDataKey: function(data) {
+													return data.username;
+												}
+											});
+											var updateVotables = new PACK.quickDev.QUpdate({
+												request: function(callback) {
+													
+													root.getChild('votables').$load().fire(function(elem) {
+														
+														new PACK.queries.PromiseQuery({
+															subQueries: U.arr(elem.children.map(function(votable) {
+																return new PACK.queries.PromiseQuery({
+																	subQueries: [
+																		votable.$getChild({ address: '@blurb', addChild: false, useClientSide: false }),
+																		root.getChild('votes').$filter({
+																			filter: { 'votable/value': votable.getAddress() },
+																			addChildren: false
+																		})
+																	]
+																});
+															}))
+														}).fire(function(responses) {
+															callback(responses.map(function(response) {
+																var blurb = response[0];
+																var votes = response[1];
+																
+																return {
+																	username: blurb.getChild('user').value.split('.')[2],
+																	text: PACK.htmlText.render(blurb.getChild('text').value),
+																	votes: votes.map(function(vote) { return vote.name; })
+																}
+															}));
+														});
+														
+													});
+													
+												},
+												start: function() {
+													rootElem.listAttr({ class: [ '+loading' ] });
+												},
+												end: function(votableData) {
+													listVotables.updateList(votableData);
+													
+													var gotUserVotable = false;
+													for (var i = 0, len = votableData.length; i < len; i++) {
+														if (votableData[i].username === auth.username) {
+															gotUserVotable = true;
+															break;
+														}
+													}
+													
+													rootElem.listAttr({ class: [ '-loading' ] });
+													
+													// The user hasn't submitted a votable... so take them back to writing!
+													if (!gotUserVotable) scene.par.setSubscene('writeOrVote', 'write');
+												},
+											});
+											
+											rootElem.append(scroller);
+											
+											return { updater: updateVotables };
+										},
+										start: function(d) { d.updater.repeat({ delay: 3000 }); },
+										end: function(d) { d.updater.endRepeat(); }
+									})
+								]
+							},
+							defaultScenes: { writeOrVote: 'vote' }
 						})
 					]
 				},
@@ -715,7 +770,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				storyItems.getNewChild({ blurb: blurb });
 			});
 			
-			[
+			/*[
 				[ 'levi', 'Hahaha.' ],
 				[ 'ari', 'Huehuehuehue.' ],
 				[ 'yehuda', 'LOL OWNED.' ],
@@ -723,7 +778,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			].forEach(function(d) {
 				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
 				votables.getNewChild({ blurb: blurb });
-			});
+			});*/
 			
 			root.getState(function(state) {
 				if (state !== null) {
@@ -754,7 +809,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 					}
 					
-					console.log('Done!');
 				}
 			});
 			
