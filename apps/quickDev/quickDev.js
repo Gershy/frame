@@ -719,19 +719,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this._schema.v.validateElem(child);
 					},
 					getNewChild: function(params /* */) {
-						/*
-						Here's the pickle: When a QGen generates a new child, it needs to
-						have some way to reference that child. This is done via the "prop"
-						property, which specifies how to determine a unique identifier for
-						each child. This identifier needs to be found, because it must be
-						used to index the child in the parent. When a QRef is added to a
-						QGen, the QRef doesn't have a parent yet, so it obviously can't be
-						aware of the element it refers to. This is an issue when a QGen
-						needs to be able to index deep into a child in order to determine
-						its key. This can fail with QRefs because attempting to index
-						deeper through a QRef requires the QRef to find its referenced
-						element - which can't be done before it's attached to the parent.
-						*/
 						var child = this._schema.v.actualize({ p: { name: '-generated-' } });
 						if (this._initChild) this._initChild.v(child, params, this.length);
 						var id = child.getChild('id');

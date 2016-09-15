@@ -16,6 +16,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					this.resolutionTimeoutRef = null;
 				},
 				getState: function(cb) {
+					if (DB === null) { cb(null); return; }
+					
 					DB.collection('apps', function(err, collection) {
 						collection.find({ name: 'creativity' }).limit(1).next(function(err, doc) {
 							cb(doc !== null ? doc.data : null);
@@ -23,6 +25,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					});
 				},
 				setState: function(state, cb) {
+					if (DB === null) { if(cb) cb(null); return; }
+					
 					DB.collection('apps', function(err, collection) {
 						collection.update({ name: 'creativity' }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
 							if (cb) cb(doc.result);
@@ -446,6 +450,20 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									if (val.length > 140) textarea.fieldValue(val.substr(0, 140));
 								});
 								
+								var listStory = new PACK.e.ListUpdater({
+									root: storyScroller,
+									elemCreate: function(storyItem) {
+										return e([
+											'<div class="story-item">',
+												'<div class="id">' + storyItem.id + '</div>',
+												'<div class="text">' + storyItem.text + '</div>',
+												'<div class="user">' + storyItem.username + '</div>',
+											'</div>'
+										].join(''));
+									},
+									getElemKey: function(elem) { return elem.find('.id').text(); },
+									getDataKey: function(data) { return data.id; }
+								});
 								var updateStory = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										
@@ -474,17 +492,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										story.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(storyData) {
-										storyScroller.clear();
-										storyScroller.append(storyData.map(function(storyItem) {
-											return e([
-												'<div class="story-item">',
-													'<div class="id">' + storyItem.id + '</div>',
-													'<div class="text">' + storyItem.text + '</div>',
-													'<div class="user">' + storyItem.username + '</div>',
-												'</div>'
-											].join(''));
-										}));
-										
+										listStory.updateList(storyData);
 										story.listAttr({ class: [ '-loading' ] });
 									}
 								});
@@ -535,6 +543,54 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								});
 								updateTimer.repeat({ delay: 1000 });
 								
+								var listVotables = new PACK.e.ListUpdater({
+									root: voting.find('.scroller'),
+									elemCreate: function(votableItem) {
+										var elem = e([
+											'<div class="votable-item">',
+												'<div class="check"></div>',
+												'<div class="text">' + votableItem.text + '</div>',
+												'<div class="user">' + votableItem.username + '</div>',
+												'<div class="votes"></div>',
+											'</div>'
+										].join(''));
+										
+										elem.find('.check').handle('click', function() {
+											voting.listAttr({ class: [ '+loading' ] });
+											root.$request({
+												command: 'submitVote',
+												params: {
+													voteeUsername: elem.find('.user').text(),
+													token: auth.token
+												}
+											}).fire(function(result) {
+												updateVotables.run();
+											});
+										});
+										
+										return elem;
+									},
+									elemUpdate: function(elem, votableItem) {
+										
+										var votes = elem.find('.votes');
+										votes.clear();
+										votes.append(votableItem.votes.map(function(vote) {
+											return e('<div class="vote">' + vote + '</div>');
+										}));
+										
+										if (votableItem.votes.contains(auth.username)) {
+											votingScroller.listAttr({ class: [ '+voted' ] });
+											elem.listAttr({ class: [ '+voted' ] });
+										}
+										
+									},
+									getElemKey: function(elem) {
+										return elem.find('.user').text();
+									},
+									getDataKey: function(data) {
+										return data.username;
+									}
+								});
 								var updateVotables = new PACK.quickDev.QUpdate({
 									request: function(callback) {
 										
@@ -572,62 +628,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										voting.listAttr({ class: [ '+loading' ] });
 									},
 									end: function(votableData) {
-										var existingVotables = {};
-										var votableElems = voting.find('.scroller').children();
-										votableElems.elems.forEach(function(elem) {
-											elem = e(elem);
-											var username = elem.find('.user').text();
-											existingVotables[username] = elem;
-										});
-										
-										votableData.forEach(function(votableItem) {
-											var username = votableItem.username;
-											
-											if (username in existingVotables) {
-												var elem = existingVotables[username];
-												delete existingVotables[username];
-											} else {
-												var elem = e([
-													'<div class="votable-item">',
-														'<div class="check"></div>',
-														'<div class="text">' + votableItem.text + '</div>',
-														'<div class="user">' + votableItem.username + '</div>',
-														'<div class="votes"></div>',
-													'</div>'
-												].join(''));
-												
-												elem.find('.check').handle('click', function() {
-													voting.listAttr({ class: [ '+loading' ] });
-													root.$request({
-														command: 'submitVote',
-														params: {
-															voteeUsername: elem.find('.user').text(),
-															token: auth.token
-														}
-													}).fire(function(result) {
-														updateVotables.run();
-													});
-												});
-												
-												votingScroller.append(elem);
-											}
-											
-											var votes = elem.find('.votes');
-											votes.clear();
-											votes.append(votableItem.votes.map(function(vote) {
-												return e('<div class="vote">' + vote + '</div>');
-											}));
-											
-											if (votableItem.votes.contains(auth.username)) {
-												// TODO: If votes can be retracted, this needs to change
-												votingScroller.listAttr({ class: [ '+voted' ] });
-												elem.listAttr({ class: [ '+voted' ] });
-											}
-										});
-										
-										// Anything remaining in existingVotables should be removed
-										existingVotables.forEach(function(votableElem) { votableElem.remove(); });
-										
+										listVotables.updateList(votableData);
 										voting.listAttr({ class: [ '-loading' ] });
 									},
 								});
@@ -679,6 +680,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 		} else {
 			
+			var users = root.getChild('users');
+			var blurbs = root.getChild('blurbs');
+			var storyItems = root.getChild('storyItems');
+			var votables = root.getChild('votables');
+			
 			// Initialize all users...
 			var userData = {
 				daniel: 	'daniel228',
@@ -687,8 +693,37 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				levi: 		'levi443',
 				yehuda: 	'yehuda556'
 			};
-			var users = root.getChild('users');
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
+			
+			[
+				[ 'gershom', 'Howdy.' ],
+				[ 'levi', 'My name is Bill,' ],
+				[ 'ari', 'but you can call me Reginald the Fourth.' ],
+				[ 'yehuda', 'Actually, please do go with Reginald.' ],
+				[ 'daniel', 'If you ever call me Bill,' ],
+				[ 'gershom', 'even once,' ],
+				[ 'levi', 'I mean just even try it you' ],
+				[ 'ari', 'fucking little scumbag,' ],
+				[ 'yehuda', 'and you will feel the wrath of not only my niece, Egret,' ],
+				[ 'daniel', 'but also that of the dangerous Etherlord Waqqagrub.\n\n' ],
+				[ 'gershom', 'So just try it.' ],
+				[ 'levi', 'I fucking dare you.' ],
+				[ 'ari', 'Call me Bill.' ],
+				[ 'yehuda', 'Call me Bill you fuckass.' ],
+			].forEach(function(d) {
+				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
+				storyItems.getNewChild({ blurb: blurb });
+			});
+			
+			[
+				[ 'levi', 'Hahaha.' ],
+				[ 'ari', 'Huehuehuehue.' ],
+				[ 'yehuda', 'LOL OWNED.' ],
+				[ 'daniel', 'You won\'t, you\'re a pansy!' ],
+			].forEach(function(d) {
+				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
+				votables.getNewChild({ blurb: blurb });
+			});
 			
 			root.getState(function(state) {
 				if (state !== null) {
@@ -727,23 +762,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				root.setState(JSON.stringify(root.schemaParams()));
 			}, 5000);
 			
-			/*DB.collection('apps').find({ name: 'creativity' }).limit(1).next(function(err, doc) {
-				if (doc === null) {
-					DB.collection('apps').insert({ name: 'creativity', data: '' }, function(err, doc){
-						console.log('DID INSERT', doc.ops[0]._id);
-					});
-				}
-			});
-			
-			var state = DB.collection('apps').find({ name: 'creativity' }).limit(1);
-			state.update({ $set: { data: 'HAHA' } }, function(err, doc) {
-				console.log('UPDATED!!!');
-			});
-			*/
-			
-			
-			//DB.collection('apps').update({ name: 'creativity' }, { $set: {} }, { upsert: true });
-
 		}
 		
 	}

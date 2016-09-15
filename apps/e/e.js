@@ -193,9 +193,10 @@ var package = new PACK.pack.Package({ name: 'e',
 					}
 				}; }
 			}),
+			
 			Scene: PACK.uth.makeClass({ name: 'Scene', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* name, title, build, subscenes, defaultScene */) {
+					init: function(params /* name, title, build, start, end, subscenes, defaultScene */) {
 						/*
 						name: scene name
 						title: human legible name
@@ -364,7 +365,43 @@ var package = new PACK.pack.Package({ name: 'e',
 						PACK.e.e('body').append(this.getHtml());
 					}
 				}; }
+			}),
+			
+			ListUpdater: PACK.uth.makeClass({ name: 'ListUpdater', namespace: namespace,
+				methods: function(sc, c) { return {
+					init: function(params /* root, elemCreate, elemUpdate, getElemKey, getDataKey */) {
+						this.root = U.param(params, 'root');
+						this.elemCreate = U.param(params, 'elemCreate');
+						this.elemUpdate = U.param(params, 'elemUpdate', null);
+						this.getElemKey = U.param(params, 'getElemKey');
+						this.getDataKey = U.param(params, 'getDataKey');
+					},
+					updateList: function(data) {
+						var existingMap = {};
+						var existingElems = this.root.children().elems;
+						for (var i = 0, len = existingElems.length; i < len; i++) {
+							var elem = new PACK.e.E(existingElems[i]);
+							var key = this.getElemKey(elem);
+							existingMap[key] = elem;
+						}
+						for (var i = 0, len = data.length; i < len; i++) {
+							var d = data[i];
+							var key = this.getDataKey(d);
+							
+							if (key in existingMap) {
+								var elem = existingMap[key];
+								delete existingMap[key];
+							} else {
+								var elem = this.elemCreate(d);
+								this.root.append(elem);
+							}
+							if (this.elemUpdate) this.elemUpdate(elem, d);
+						}
+						existingMap.forEach(function(elem) { elem.remove(); });
+					}
+				};}
 			})
+			
 		};
 	}
 });
