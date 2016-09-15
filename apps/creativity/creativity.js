@@ -577,7 +577,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 													'<div class="input-field">',
 														'<textarea></textarea>',
 													'</div>',
-													'<div class="submit">Submit</div>',
+													'<div class="submit"><span>Submit</span></div>',
 												'</div>'
 											].join(''));
 											
