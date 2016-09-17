@@ -417,7 +417,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											setTimeout(function() { submit.listAttr({ class: '-error' }) }, 2000);
 										} else {
 											var writingScene = scene.par.subscenes.main.writing;
-											writingScene.defaultScenes.writeOrVote = response.hasSubmitted ? 'vote' : 'write';
+											writingScene.defaultScenes.contribute = response.hasSubmitted ? 'vote' : 'write';
 											scene.par.setSubscene('main', 'writing');
 										}
 									});
@@ -437,11 +437,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						new PACK.e.Scene({ name: 'writing', title: 'Writing',
 							build: function(rootElem, subsceneElem) {
 								
-								var story = e('<div class="writing-elem story"></div>');
+								var story = e('<div class="story"></div>');
 								var storyScroller = story.append('<div class="scroller"></div>');
 								
 								var resolution = e([
-									'<div class="writing-elem resolution">',
+									'<div class="resolution">',
 										'<div class="title"></div>',
 										'<div class="countdown">',
 											'<div class="time-component hour">00</div>',
@@ -547,11 +547,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								});
 								updateTimer.repeat({ delay: 1000 });
 								
-								rootElem.append([ story, resolution, subsceneElem.writeOrVote ]);
+								rootElem.append([ story, resolution, subsceneElem.contribute ]);
 								
 							},
 							subscenes: {
-								writeOrVote: [
+								contribute: [
 									new PACK.e.Scene({ name: 'write', title: 'Write',
 										build: function(rootElem, subsceneElem, scene) {
 											/*var updateWriting = new PACK.quickDev.QUpdate({
@@ -595,7 +595,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 														text: form.find('textarea').fieldValue()
 													}
 												}).fire(function(response) {
-													scene.par.setSubscene('writeOrVote', 'vote');
+													scene.par.setSubscene('contribute', 'vote');
 												});
 											});
 											
@@ -711,7 +711,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 													rootElem.listAttr({ class: [ '-loading' ] });
 													
 													// The user hasn't submitted a votable... so take them back to writing!
-													if (!gotUserVotable) scene.par.setSubscene('writeOrVote', 'write');
+													if (!gotUserVotable) scene.par.setSubscene('contribute', 'write');
 												},
 											});
 											
@@ -724,7 +724,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									})
 								]
 							},
-							defaultScenes: { writeOrVote: 'vote' }
+							defaultScenes: { contribute: 'vote' }
 						})
 					]
 				},

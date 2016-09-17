@@ -194,8 +194,7 @@ body {
 
 .scene.writing > .story {
 	box-sizing: border-box;
-	position: absolute;
-	left: 0; top: 0;
+	position: relative;
 	width: 100%; height: 40%;
 	overflow-x: hidden;
 	overflow-y: auto;
@@ -245,8 +244,7 @@ body {
 }
 
 .scene.writing > .resolution {
-	position: absolute;
-	left: 0; top: 40%;
+	position: relative;
 	width: 100%; height: 20%;
 	background-color: #000000;
 	color: #ffffff;
@@ -296,12 +294,11 @@ body {
 .scene.writing > .resolution > .votes > .voted, 
 .scene.writing > .resolution > .votes > .total { display: inline-block; margin: 0 4px; }
 
-.scene.writing > .writeOrVote {
-	position: fixed;
-	left: 0; top: 60%;
+.scene.writing > .contribute {
+	position: relative;
 	width: 100%; height: 40%;
 }
-.scene.writing > .writeOrVote > .content { padding-top: 1px; margin-top: -1px; }
+/*.scene.writing > .contribute > .content { padding-top: 1px; margin-top: -1px; }*/
 .scene.vote {
 	overflow-x: hidden;
 	overflow-y: auto;
