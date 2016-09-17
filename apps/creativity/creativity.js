@@ -477,7 +477,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											new PACK.queries.PromiseQuery({
 												subQueries: U.arr(elem.children.map(function(c) {
 													// TODO: Need to investigate implications of "addChild" and "useClientSide"
-													// using the new @-flag and Query architecture
+													// using the new @-flag and *Query architecture
 													return c.$getChild({ address: '@blurb', addChild: false, useClientSide: false });
 												}))
 											}).fire(function(elems) {
@@ -504,12 +504,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								var updateTimer = new PACK.quickDev.QUpdate({
 									request: function(callback) {
-										new PACK.queries.PromiseQuery({
-											subQueries: [
-												root.$request({ command: 'resolutionTimeRemaining' }),
-												root.$request({ command: 'resolutionVoterData' })
-											]
-										}).fire(function(responses) {
+										new PACK.queries.PromiseQuery({ subQueries: [
+											root.$request({ command: 'resolutionTimeRemaining' }),
+											root.$request({ command: 'resolutionVoterData' })
+										]}).fire(function(responses) {
 											callback({
 												seconds: responses[0].seconds,
 												totalVoters: responses[1].totalVoters,
@@ -642,15 +640,23 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												},
 												elemUpdate: function(elem, votableItem) {
 													
+													var clientVote = true;
 													var votes = elem.find('.votes');
 													votes.clear();
 													votes.append(votableItem.votes.map(function(vote) {
-														return e('<div class="vote">' + vote + '</div>');
+														if (vote === auth.username) {
+															var display = 'you!';
+															clientVote = true;
+														} else {
+															var display = 'anon';
+															clientVote = false;
+														}
+														return e('<div class="vote">' + /*vote*/ display + '</div>');
 													}));
 													
-													if (votableItem.votes.contains(auth.username)) {
+													if (clientVote) {
 														scroller.listAttr({ class: [ '+voted' ] });
-														elem.listAttr({ class: [ '+voted' ] });
+														elem.listAttr({ 	class: [ '+voted' ] });
 													}
 													
 												},
