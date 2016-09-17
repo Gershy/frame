@@ -750,7 +750,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			};
 			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
 			
-			[
+			/*[
 				[ 'gershom', 'Howdy.' ],
 				[ 'levi', 'My name is Bill,' ],
 				[ 'ari', 'but you can call me Reginald the Fourth.' ],
@@ -768,7 +768,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			].forEach(function(d) {
 				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
 				storyItems.getNewChild({ blurb: blurb });
-			});
+			});*/
 			
 			/*[
 				[ 'levi', 'Hahaha.' ],
