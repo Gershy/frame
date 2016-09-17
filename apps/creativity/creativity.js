@@ -640,16 +640,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												},
 												elemUpdate: function(elem, votableItem) {
 													
-													var clientVote = true;
+													var clientVote = false;
 													var votes = elem.find('.votes');
 													votes.clear();
 													votes.append(votableItem.votes.map(function(vote) {
+														var display = 'anon';
 														if (vote === auth.username) {
 															var display = 'you!';
 															clientVote = true;
-														} else {
-															var display = 'anon';
-															clientVote = false;
 														}
 														return e('<div class="vote">' + /*vote*/ display + '</div>');
 													}));
