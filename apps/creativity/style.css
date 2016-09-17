@@ -312,7 +312,7 @@ body {
 	position: relative;
 	display: inline-block;
 	box-sizing: border-box;
-	width: 31.5%; height: 150px; padding: 2px;
+	width: 31.5%; max-width: 440px; height: 150px; padding: 2px;
 	margin: 5px 0.75%;
 	vertical-align: middle;
 	
@@ -359,8 +359,8 @@ body {
 .scene.vote > .scroller > .votable-item > .check:hover,
 .scene.vote > .scroller > .votable-item.voted > .check {
 	border-bottom-left-radius: 407px;
-	border-left: 400px solid;
-	border-bottom: 400px solid;
+	border-left: 450px solid;
+	border-bottom: 450px solid;
 	border-color: rgb(255, 219, 36);
 }
 .scene.vote > .scroller > .votable-item > .check:hover:after,
