@@ -297,7 +297,7 @@ body {
 .scene.writing > .resolution > .votes > .total { display: inline-block; margin: 0 4px; }
 
 .scene.writing > .writeOrVote {
-	position: absolute;
+	position: fixed;
 	left: 0; top: 60%;
 	width: 100%; height: 40%;
 }
