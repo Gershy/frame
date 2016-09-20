@@ -1,6 +1,10 @@
 /*
 TODO: Need a way of separating server-code and client-code within app scripts
 so that server-code never arrives at the client-side.
+
+DB Reference:
+- https://github.com/FreeCodeCamp/FreeCodeCamp/wiki/Using-MongoDB-And-Deploying-To-Heroku
+- mongodb://localhost:27017/frame
 */
 require('./common.js');
 
@@ -268,7 +272,7 @@ var package = new PACK.pack.Package({ name: 'server',
 });
 
 if ('FRAME_DB_URI' in process.env) {
-		
+	
 	var db = require('mongodb');
 	var client = db.MongoClient;
 	var url = process.env.FRAME_DB_URI;
