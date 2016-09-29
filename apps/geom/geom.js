@@ -86,15 +86,43 @@ var package = new PACK.pack.Package({ name: 'geom',
 					}
 				};}
 			}),
-			Circle: PACK.uth.makeClass({ name: 'Circle',
+			Bound: PACK.uth.makeClass({ name: 'Bound',
 				superclassName: 'Geom',
 				methods: function(sc, c) { return {
-					init: function(params /* x, y, r */) {
+					init: function(params /* x, y, rot */) {
 						this.pt = new PACK.geom.Point(params);
-						this.r = U.param(params, 'r', 1);
+						this.rot = U.param(params, 'rot', 0);
 					}
 				};}
 			}),
+			Circle: PACK.uth.makeClass({ name: 'Circle',
+				superclassName: 'Bound',
+				methods: function(sc, c) { return {
+					init: function(params /* x, y, rot, r */) {
+						sc.init.call(this, params);
+						this.r = U.param(params, 'r', 1);
+					},
+					collides: function(b) {
+						if (b instanceof PACK.geom.Circle) {
+							var rSum = this.r + b.r;
+							return this.pt.distSqr(b.pt) < (rSum * rSum);
+						} else {
+							throw new Error('Cannot collide Circle with "' + b.constructor.title + '"');
+						}
+					},
+				};}
+			}),
+			Rect: PACK.uth.makeClass({ name: 'Rect',
+				superclassName: 'Bound',
+				methods: function(sc, c) { return {
+					init: function(params /* x, y, rot, w, h */) {
+						// Note that "w" and "h" refer to width/height when rotation is 0
+						sc.init.call(this, params);
+						this.w = U.param(params, 'w', 1);
+						this.h = U.param(params, 'h', 1);
+					}
+				};}
+			})
 				 
 		};
 	},
