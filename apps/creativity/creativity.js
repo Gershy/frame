@@ -165,8 +165,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					votableRanking: function() {
 						// Turn each votable into an object that contains the votable, and the number
 						// of votes that votable has received.
-						var n = this.getChild('votables').length;
-						
 						var votes = this.getChild('votes');
 						var ret = U.arr(this.getChild('votables').children.map(function(votable) {
 							return {
@@ -175,8 +173,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							};
 						}));
 						ret.sort(function(v1, v2) { return v2.numVotes - v1.numVotes; });
-						
-						console.log('STARTED WITH ' + n + ', ENDED WITH ' + ret.length);
 						return ret;
 					},
 					timeRemaining: function() {
