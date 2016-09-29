@@ -102,7 +102,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// Zero-length urls aren't allowed
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
-						if (url.length === 0) throw new Error('zero-length url');
+						if (url.length === 0) { onComplete(new Error('zero-length url')); return; }
 						
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
@@ -118,7 +118,21 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// Check if it's the server's first request for this app
 						if (!(appName in PACK)) {
-							require('./apps/' + appName + '/' + appName + '.js');
+							try {
+								require('./apps/' + appName + '/' + appName + '.js');
+							} catch (e) {
+								console.log('Couldn\'t load essential file');
+								console.error(e.stack);
+								onComplete(e); return;
+							}
+							
+							try {
+								require('./apps/' + appName + '/$' + appName + '.js');
+							} catch(e) {
+								console.log('Couldn\'t load server file');
+								console.error(e.stack);
+							}
+							
 							if (!('queryHandler' in PACK[appName])) {
 								onComplete(new Error('app "' + appName + '" is missing queryHandler'));
 								return;
@@ -240,6 +254,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				params.originalAddress = U.arr(params.address);
 				
 				session.respondToQuery(params, function(response) {
+					if (response instanceof Error) throw response;
 					
 					// TODO: Sessions need to expire!!
 					if (!existingSession && session.queryHandler !== null) sessionsIndex[session.ip] = session;
@@ -271,14 +286,19 @@ var package = new PACK.pack.Package({ name: 'server',
 	},
 });
 
-if ('FRAME_DB_URI' in process.env) {
+var dbUri = 'FRAME_DB_URI' in process.env
+	? process.env.FRAME_DB_URI
+	: 'mongodb://localhost:27017/frame';
+
+var gimmeDb = false;
+if (gimmeDb) {
 	
 	var db = require('mongodb');
 	var client = db.MongoClient;
 	var url = process.env.FRAME_DB_URI;
-	
-	console.log('Starting DB connection: ' + url);
-	client.connect(process.env.FRAME_DB_URI, function(err, db) {
+
+	console.log('Starting DB connection: ' + dbUri);
+	client.connect(dbUri, function(err, db) {
 		
 		if (err) {
 			console.log('Couldn\'t connect to DB:', err);
@@ -293,7 +313,6 @@ if ('FRAME_DB_URI' in process.env) {
 	
 } else {
 	
-	// No DB
 	global.DB = null;
 	package.build();
 	
