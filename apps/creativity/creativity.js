@@ -22,6 +22,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					this.resolutionTimeoutRef = null;
 				},
 				getState: function(cb) {
+					/*
+					Retrieves the persisted state of the creativity app from the db
+					*/
 					if (DB === null) { cb(null); return; }
 					
 					DB.collection('apps', function(err, collection) {
@@ -31,6 +34,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					});
 				},
 				setState: function(state, cb) {
+					/*
+					Persists the creativity app into the db
+					*/
 					if (DB === null) { if(cb) cb(null); return; }
 					
 					DB.collection('apps', function(err, collection) {
@@ -739,86 +745,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 			
 		} else {
 			
-			var users = root.getChild('users');
-			var blurbs = root.getChild('blurbs');
-			var storyItems = root.getChild('storyItems');
-			var votables = root.getChild('votables');
 			
-			// Initialize all users...
-			var userData = {
-				daniel: 	'daniel228',
-				ari: 		'ari117',
-				gershom: 	'gershom331',
-				levi: 		'levi443',
-				yehuda: 	'yehuda556'
-			};
-			for (var k in userData) users.getNewChild({ username: k, password: userData[k] });
-			
-			/*[
-				[ 'gershom', 'Howdy.' ],
-				[ 'levi', 'My name is Bill,' ],
-				[ 'ari', 'but you can call me Reginald the Fourth.' ],
-				[ 'yehuda', 'Actually, please do go with Reginald.' ],
-				[ 'daniel', 'If you ever call me Bill,' ],
-				[ 'gershom', 'even once,' ],
-				[ 'levi', 'I mean just even try it you' ],
-				[ 'ari', 'fucking little scumbag,' ],
-				[ 'yehuda', 'and you will feel the wrath of not only my niece, Egret,' ],
-				[ 'daniel', 'but also that of the dangerous Etherlord Waqqagrub.\n\n' ],
-				[ 'gershom', 'So just try it.' ],
-				[ 'levi', 'I fucking dare you.' ],
-				[ 'ari', 'Call me Bill.' ],
-				[ 'yehuda', 'Call me Bill you fuckass.' ],
-			].forEach(function(d) {
-				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
-				storyItems.getNewChild({ blurb: blurb });
-			});*/
-			
-			/*[
-				[ 'levi', 'Hahaha.' ],
-				[ 'ari', 'Huehuehuehue.' ],
-				[ 'yehuda', 'LOL OWNED.' ],
-				[ 'daniel', 'You won\'t, you\'re a pansy!' ],
-			].forEach(function(d) {
-				var blurb = blurbs.getNewChild({ username: d[0], text: d[1] });
-				votables.getNewChild({ blurb: blurb });
-			});*/
-			
-			root.getState(function(state) {
-				if (state !== null) {
-					var schemaParams = JSON.parse(state);
-					var schema = new PACK.quickDev.QSchema(schemaParams);
-					
-					console.log('Loading saved state...');
-					
-					schema.assign({
-						elem: root,
-						recurse: true,
-						ha: true,
-					});
-					
-					var startedMillis = root.getChild('resolutionTimer.startedMillis').value;
-					if (startedMillis !== -1) {
-						
-						var target = root.getChild('resolutionTimer.delaySeconds').value;
-						var millisRemaining = (target * 1000) - (new Date() - startedMillis);
-						
-						if (millisRemaining > 0) {
-							root.resolutionTimerRef = setTimeout(function() {
-								root.resolveVote();
-							}, millisRemaining);
-						} else {
-							root.resolveVote();
-						}
-						
-					}
-					
-				}
-			});
-			
-			setInterval(function() {
-				root.setState(JSON.stringify(root.schemaParams()));
-			}, 5000);
 			
 		}
 		

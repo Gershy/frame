@@ -970,7 +970,37 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return val;
 					}
 				}; }
-			})
+			}),
+			
+			QMigration: PACK.uth.makeClass({ name: 'QMigration',
+				methods: function(sc, c) { return {
+					init: function(params /* name, apply, next */) {
+						this.name = U.param(params, 'name');
+						this.apply = U.param(params, 'apply');
+						this.next = U.param(params, 'next', null);
+					},
+					chain: function(migrations) {
+						if (this.next !== null) throw new Error('Don\'t call chain on a migration that already has "next" assigned');
+						var ptr = this;
+						for (var i = 0, len = migrations.length; i < len; i++) {
+							ptr.next = migrations[i];
+							ptr = ptr.next;
+						}
+					},
+					run: function(data) {
+						var ptr = this;
+						
+						while (ptr !== null) {
+							var result = ptr.apply(data);
+							console.log('MIG; "' + ptr.name + '": ' + result.msg);
+							data = result.data;
+							ptr = ptr.next;
+						}
+						
+						return data;
+					}
+				};}
+			}),
 		};
 	}
 });

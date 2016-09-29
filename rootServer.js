@@ -102,7 +102,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// Zero-length urls aren't allowed
 						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
-						if (url.length === 0) throw new Error('zero-length url');
+						if (url.length === 0) { onComplete(new Error('zero-length url')); return; }
 						
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
@@ -118,7 +118,8 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// Check if it's the server's first request for this app
 						if (!(appName in PACK)) {
-							require('./apps/' + appName + '/' + appName + '.js');
+							try { require('./apps/' + appName + '/' + appName + '.js'); } catch (e) { onComplete(e); return; }
+							try { require('./apps/' + appName + '/$' + appName + '.js'); } catch(e) {  }
 							if (!('queryHandler' in PACK[appName])) {
 								onComplete(new Error('app "' + appName + '" is missing queryHandler'));
 								return;
@@ -240,6 +241,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				params.originalAddress = U.arr(params.address);
 				
 				session.respondToQuery(params, function(response) {
+					if (response instanceof Error) throw response;
 					
 					// TODO: Sessions need to expire!!
 					if (!existingSession && session.queryHandler !== null) sessionsIndex[session.ip] = session;

@@ -440,7 +440,7 @@
 					if (this.name in PACK) throw 'double-loaded dependency "' + this.name + '"';
 					
 					PACK[this.name] = this.buildFunc();
-					console.log('Built     "' + this.name + '"');
+					console.log('Built "' + this.name + '"');
 					
 					if (!U.isServer()) {
 						var waiting = this.script.__waiting;
