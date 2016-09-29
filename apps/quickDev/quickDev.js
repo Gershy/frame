@@ -27,6 +27,12 @@ E.g.:
 If the user (possibly maliciously) names themself starting with a "@", this will cause
 undesirable de-referencing.
 
+TODO: Long polling
+
+TODO: Link QGen with PACK.e.ListUpdater, and write corresponding *Updaters for the
+other subclasses of QElem. Once this is done any server-side element should be easily
+syncable with the client side. With long-polling, it should be beautiful
+
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
@@ -542,24 +548,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					schemaChildren: function() { return this.children; },
 					
-					$filter: function(params /* filter, addChildren */) {
+					$filter: function(params /* address, filter, addChildren */) {
 						var pass = this;
+						var address = U.param(params, 'address', null);
 						var filter = U.param(params, 'filter');
 						var addChildren = U.param(params, 'addChildren', true);
 						
 						return this.$request({
 							command: 'filter',
-							params: { filter: filter },
+							params: { address: address, filter: filter },
 							transform: function(response) {
 								// Turn each schema into an element
 								var elems = response.schemaParamsList.map(function(schemaParams) {
 									var schema = new PACK.quickDev.QSchema(schemaParams);
 									return schema.actualize();
 								});
+								
 								// If children need to be added, do so
 								if (addChildren) {
-									elems.forEach(function(elem) { pass.addChild(elem); });
+									var root = address ? pass.getChild(address) : pass;
+									if (root === null) throw new Error('Can\'t add children because parent doesn\'t exist client-side');
+									elems.forEach(function(elem) { root.addChild(elem); });
 								}
+								
 								return elems;
 							}
 						});
@@ -567,8 +578,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					$getChild: function(params /* address, recurse, addChild, useClientSide */) {
 						var pass = this;
 						var address = U.param(params, 'address');
-						// In case the request elem is a QSet, give control over whether
-						// or not the QSet loads its children.
+						// In case the request elem is a QSet, allow parameters to control 
+						// whether or not the QSet loads its children.
 						var recurse = U.param(params, 'recurse', true);
 						var addChild = U.param(params, 'addChild', false);
 						var useClientSide = U.param(params, 'useClientSide', false);
@@ -624,8 +635,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						} else if (com === 'filter') {		/* filter */
 							
 							var filter = U.param(reqParams, 'filter');
+							var address = U.param(reqParams, 'address', null);
 							
-							var children = this.filter(filter);
+							var root = address ? this.getChild(address) : this;
+							
+							var children = root.filter(filter);
 							onComplete({
 								schemaParamsList: children.map(function(child) {
 									return child.schemaParams();
@@ -992,7 +1006,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						while (ptr !== null) {
 							var result = ptr.apply(data);
-							console.log('MIG; "' + ptr.name + '": ' + result.msg);
 							data = result.data;
 							ptr = ptr.next;
 						}

@@ -3,6 +3,7 @@ CENTERED-PARENT:
 
 {
 	text-align: center;
+	white-space: nowrap;
 }
 :after {
 	content: "";
@@ -113,6 +114,7 @@ body {
 .scene.root > .list.main > .content {}
 .scene.login {
 	text-align: center;
+	white-space: nowrap;
 }
 .scene.login:after {
 	content: "";
@@ -249,6 +251,7 @@ body {
 	background-color: #000000;
 	color: #ffffff;
 	text-align: center;
+	white-space: nowrap;
 }
 .scene.writing > .resolution:before {
 	content: "";

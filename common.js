@@ -283,7 +283,7 @@
 			
 			var req = new XMLHttpRequest();
 			
-			var error = new Error('Bad API use: ');
+			var error = new Error('');
 			
 			if (onComplete) {
 				var pass = this;
@@ -293,7 +293,7 @@
 							var o = JSON.parse(req.responseText);
 							if (o.code !== 0) {
 								// Pass the error instead of the response
-								error.message += o.msg;
+								error.message = 'Bad API use (' + o.msg + ')';
 								onComplete(error, ref);
 								return;
 							}
@@ -354,7 +354,7 @@
 			
 			eval([ // Needed to eval in order to have a named function in debug. Is there a better way??
 				'var ' + name + ' = function(params) {',
-					'/* ~ ' + name + ' ~ */',
+					'/* ' + name + ' */',
 					'this.init(U.exists(params) ? params : {});',
 				'};',
 				'namespace[name] = ' + name + ';',

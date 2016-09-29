@@ -118,8 +118,21 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						// Check if it's the server's first request for this app
 						if (!(appName in PACK)) {
-							try { require('./apps/' + appName + '/' + appName + '.js'); } catch (e) { onComplete(e); return; }
-							try { require('./apps/' + appName + '/$' + appName + '.js'); } catch(e) {  }
+							try {
+								require('./apps/' + appName + '/' + appName + '.js');
+							} catch (e) {
+								console.log('Couldn\'t load essential file');
+								console.error(e.stack);
+								onComplete(e); return;
+							}
+							
+							try {
+								require('./apps/' + appName + '/$' + appName + '.js');
+							} catch(e) {
+								console.log('Couldn\'t load server file');
+								console.error(e.stack);
+							}
+							
 							if (!('queryHandler' in PACK[appName])) {
 								onComplete(new Error('app "' + appName + '" is missing queryHandler'));
 								return;
@@ -273,14 +286,19 @@ var package = new PACK.pack.Package({ name: 'server',
 	},
 });
 
-if ('FRAME_DB_URI' in process.env) {
+var dbUri = 'FRAME_DB_URI' in process.env
+	? process.env.FRAME_DB_URI
+	: 'mongodb://localhost:27017/frame';
+
+var gimmeDb = false;
+if (gimmeDb) {
 	
 	var db = require('mongodb');
 	var client = db.MongoClient;
 	var url = process.env.FRAME_DB_URI;
-	
-	console.log('Starting DB connection: ' + url);
-	client.connect(process.env.FRAME_DB_URI, function(err, db) {
+
+	console.log('Starting DB connection: ' + dbUri);
+	client.connect(dbUri, function(err, db) {
 		
 		if (err) {
 			console.log('Couldn\'t connect to DB:', err);
@@ -295,7 +313,6 @@ if ('FRAME_DB_URI' in process.env) {
 	
 } else {
 	
-	// No DB
 	global.DB = null;
 	package.build();
 	
