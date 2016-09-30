@@ -191,7 +191,7 @@ migrations.chain([
 			
 			root.getChild('rooms').getNewChild({
 				host: root.getChild('users.gershom'),
-				quickName: 'initial',
+				quickName: 'OneGov',
 				description: 'The first story ever written with this app!',
 				storyLength: 500000,
 				submissionLengthMin: 30,
@@ -204,14 +204,14 @@ migrations.chain([
 			
 			// MIGRATE DATA
 			var users = root.getChild('users').children;
-			var roomUsers = root.getChild('rooms.initial.users');
+			var roomUsers = root.getChild('rooms.OneGov.users');
 			for (var k in users)
 				roomUsers.getNewChild({
 					user: users[k]
 				});
 			
 			var blurbs = root.getChild('blurbs').children;
-			var roomBlurbs = root.getChild('rooms.initial.blurbs');
+			var roomBlurbs = root.getChild('rooms.OneGov.blurbs');
 			for (var k in blurbs)
 				roomBlurbs.getNewChild({
 					username: blurbs[k].getChild('@user').name,
@@ -219,14 +219,14 @@ migrations.chain([
 				});
 			
 			var votables = root.getChild('votables').children;
-			var roomVotables = root.getChild('rooms.initial.votables');
+			var roomVotables = root.getChild('rooms.OneGov.votables');
 			for (var k in votables)
 				roomVotables.getNewChild({
 					blurb: roomBlurbs.getChild(votables[k].getChild('@blurb').name)
 				});
 			
 			var votes = root.getChild('votes').children;
-			var roomVotes = root.getChild('rooms.initial.votes');
+			var roomVotes = root.getChild('rooms.OneGov.votes');
 			for (var k in votes)
 				roomVotes.getNewChild({
 					user: votes[k].getChild('@user'),
@@ -234,13 +234,13 @@ migrations.chain([
 				});
 			
 			var storyItems = root.getChild('storyItems').children;
-			var roomStoryItems = root.getChild('rooms.initial.storyItems');
+			var roomStoryItems = root.getChild('rooms.OneGov.storyItems');
 			for (var k in storyItems)
 				roomStoryItems.getNewChild({
 					blurb: roomBlurbs.getChild(storyItems[k].getChild('@blurb').name)
 				});
 			
-			root.getChild('rooms.initial.startedMillis').setValue(root.getChild('resolutionTimer.startedMillis').value);
+			root.getChild('rooms.OneGov.startedMillis').setValue(root.getChild('resolutionTimer.startedMillis').value);
 			
 			// DELETE UNECESSARY COMPONENTS*/
 			root.remChild('blurbs');
