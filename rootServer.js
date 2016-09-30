@@ -125,14 +125,14 @@ var package = new PACK.pack.Package({ name: 'server',
 								require('./apps/' + appName + '/' + appName + '.js');
 							} catch (e) {
 								console.log('Couldn\'t load essential file');
-								console.error(e.stack);
+								//console.error(e.stack);
 								onComplete(e); return;
 							}
 							
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								console.error(e.stack);
+								//console.error(e.stack);
 								console.log('No server file for "' + appName + '"');
 							}
 							
