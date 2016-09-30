@@ -135,7 +135,14 @@ var package = new PACK.pack.Package({ name: 'queries',
 						};
 						
 						if (child) {
-							child.respondToQuery(params.clone({ address: addr.slice(1) }), processedOnComplete);
+							try {
+								child.respondToQuery(params.clone({ address: addr.slice(1) }), processedOnComplete);
+							} catch(e) {
+								console.log('Error handling query:')
+								console.error(e.stack);
+								console.log('---------------------');
+								processedOnComplete({ code: 1, msg: child.constructor.title + ' caused error' });
+							}
 						} else {
 							processedOnComplete({ code: 1, msg: this.constructor.title + ' got invalid address "' + childName + '"', address: params.originalAddress });
 						}
