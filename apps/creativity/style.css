@@ -246,6 +246,7 @@ body {
 	box-sizing: border-box;
 	position: relative;
 	width: 100%; padding: 10px;
+	margin-bottom: 2px;
 	background-color: #6060e0;
 	color: #ffffff;
 	overflow: hidden;
