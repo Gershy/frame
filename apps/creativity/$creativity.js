@@ -4,7 +4,7 @@ var root = cr.queryHandler;
 
 var migrations = new qd.QMigration({ name: 'head',
 	apply: function(data) {
-		if (data !== null && (!('i' in data) || !U.isEmptyObj(data.i))) {
+		if (data !== null && ('i' in data) && !U.isEmptyObj(data.i)) {
 			return { msg: 'pre-existing state', data: data };
 		}
 		
