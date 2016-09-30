@@ -202,6 +202,19 @@ migrations.chain([
 				submissionMaximum: 0
 			});
 			
+			root.getChild('rooms').getNewChild({
+				host: root.getChild('users.gershom'),
+				quickName: 'Story2',
+				description: 'Another story because there are rooms so there can be different stories???',
+				storyLength: 100000,
+				submissionLengthMin: 30,
+				submissionLengthMax: 160,
+				roundSubmissionSeconds: 60 * 60 * 2,
+				roundVoteSeconds: 60 * 60 * 2,
+				voteMaximum: 0,
+				submissionMaximum: 0
+			});
+			
 			// MIGRATE DATA
 			var users = root.getChild('users').children;
 			var roomUsers = root.getChild('rooms.OneGov.users');
