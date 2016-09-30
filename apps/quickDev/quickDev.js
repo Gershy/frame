@@ -53,20 +53,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						*/
 						this.c = U.param(params, 'c');
 						this.p = U.param(params, 'p', {});
-						this.i = U.param(params, 'i', {});
+						var inner = U.param(params, 'i', {});
+						this.i = {};
 						
 						// this.c is resolved to a string if it's a constructor
 						if (this.c.constructor !== String) this.c = this.c.title;
 						
 						// Ensure that all elements of this.i are instances of QSchema
-						this.i = this.i.map(function(inner) {
-							return inner instanceof PACK.quickDev.QSchema ? inner : new PACK.quickDev.QSchema(inner);
+						var pass = this;
+						inner.forEach(function(schema) {
+							if (!(schema instanceof PACK.quickDev.QSchema)) schema = new PACK.quickDev.QSchema(schema);
+							pass.i[schema.p.name] = schema;
 						});
 					},
 					getInstance: function(params) { // NOTE: Not a parameter-like object; actual overwrite-parameters!!
-						if (!U.exists(params)) params = {};
 						var constructor = U.getByName({ root: C, name: this.c });
-						return new constructor(this.p.clone(params));
+						var cParams = U.exists(params) ? this.p.clone(params) : this.p;
+						if (!('name' in cParams)) cParams.name = '-unnamed-';
+						
+						return new constructor(cParams);
 					},
 					actualize: function(params /* p, i */) {
 						/*
@@ -96,6 +101,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						*/
 						
+						// TODO: THIS WAS A MAJOR THING TO COMMENT OUT!!! NEED TO BE SURE IT'S OK
+						/*
 						// Generate the array of children first
 						var childParams = U.param(params, 'i', {});
 						var children = this.i.map(function(schema, k) {
@@ -108,6 +115,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						// Finally add the children to the element
 						children.forEach(function(child) { ret.addChild(child); });
+						*/
+						
+						// TODO: HERE'S THE REPLACEMENT
+						var myParams = U.param(params, 'p', {});
+						var ret = this.getInstance(myParams);
+						
+						this.assign({ elem: ret, recurse: true });
 						
 						return ret;
 					},
@@ -127,9 +141,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (recurse && (elem instanceof PACK.quickDev.QSet)) {
 							
-							// TODO: Is this indicative design flaw?
-							// In some cases, need to attach to parent right away.
-							// In others, need to build child entirely. Try both.
 							try {
 								// Try with immediately attaching to parent
 								elem.clear();
@@ -183,7 +194,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						*/
 						this.request = U.param(params, 'request');
 						this.start = U.param(params, 'start', null);
-						this.end = U.param(params, 'end');
+						this.end = U.param(params, 'end', null);
 						
 						this.pendingCount = 0;
 						this.interval = null;
@@ -323,16 +334,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							transform: transform
 						});
 					},
-					/*$persist: function(params /* requireParent * /) {
-						// Persists this element, causing it to exist on the server-side.
-						var requireParent = U.param(params, 'requireParent', false);
-						
-						return this.$request({
-							address: this.par.getAddress(),
-							command: 'persistChild',
-							params: { schemaParams: this.schemaParams() },
-						});
-					},*/
 					$load: function(params /* */) {
 						/*
 						Synchronizes this element with the corresponding server-side
@@ -382,7 +383,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// schema that describes this QElem.
 						return { name: this.name };
 					},
-					schemaChildren: function() {
+					schemaChildren: function(params /* whitelist */) {
 						// Returns the list of children for this QElem that need to be
 						// included in the schema.
 						return {};
@@ -416,7 +417,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							c: this.schemaConstructorName(),
 							p: this.schemaProperties(),
 						};
-						if (recurse) ret.i = this.schemaChildren().map(function(child) { return child.schemaParams(); });
+						if (recurse !== false) {
+							if (recurse === true) {
+								ret.i = this.schemaChildren({ whitelist: null }).map(function(child) {
+									return child.schemaParams({ recurse: true });
+								});
+							} else if (recurse.constructor === Object) {
+								var whitelist = recurse;
+								var all = '_' in whitelist;
+								
+								// Passing null to schemaChildren's whitelist means it will return all children
+								ret.i = this.schemaChildren({ whitelist: all ? null : whitelist }).map(function(child) {
+									var childWhitelist = all ? whitelist._ : (child.name in whitelist ? whitelist[child.name] : false);
+									return child.schemaParams({ recurse: childWhitelist });
+								});
+							}
+						}
+						
 						return ret;
 					}
 				}},
@@ -473,8 +490,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return child;
 					},
 					remChild: function(child) {
+						if (child.constructor === String) child = this.getChild(child);
+						
 						var ret = this.uncontainChild(child);
-						if (ret !== null) {
+						if (ret) {
 							this.length--;
 							ret.par = null;
 						}
@@ -519,17 +538,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.getChild(pcs[0])[pcs[1]] = v;
 					},
 					
-					/*matches: function(filter) {
-						if (!sc.matches.call(this, filter)) return false;
-						
-						var pass = this;
-						var innerFilters = U.param(filter, 'i', {});
-						
-						return innerFilters.every(function(filter, k) {
-							var child = pass.children[k];
-							return child && child.matches(filter);
-						});
-					},*/
 					filter: function(filter, onlyOne) {
 						if (!U.exists(onlyOne)) onlyOne = false;
 						
@@ -546,7 +554,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return onlyOne ? null : ret;
 					},
 					
-					schemaChildren: function() { return this.children; },
+					schemaChildren: function(params /* whitelist */) {
+						var whitelist = U.param(params, 'whitelist', null);
+						if (whitelist === null) return this.children;
+						
+						var ret = {};
+						for (var k in whitelist) {
+							var child = this.getChild(k);
+							if (child === null) throw new Error('Bad key for schemaChildren: "' + k + '"');
+							ret[k] = child;
+						}
+						return ret;
+					},
 					
 					$filter: function(params /* address, filter, addChildren */) {
 						var pass = this;
@@ -576,6 +595,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					$getChild: function(params /* address, recurse, addChild, useClientSide */) {
+						/*
+						recurse - can be "true" or "false" to indicate recursion, or a list of
+							addresses to indicate which children should be recursed on.
+						*/
 						var pass = this;
 						var address = U.param(params, 'address');
 						// In case the request elem is a QSet, allow parameters to control 
@@ -596,7 +619,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							command: 'getChild',
 							params: { address: address, recurse: recurse },
 							transform: function(response) {
+								if (response.schemaParams === null) return null;
+								
 								var schema = new PACK.quickDev.QSchema(response.schemaParams);
+								
 								var elem = schema.actualize();
 								if (addChild) pass.addChild(elem);
 								return elem;
@@ -621,23 +647,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
-						if (com === 'persist') {			/* schemaParams */
-							
-							var schemaParams = U.param(reqParams, 'schemaParams');
-							schemaParams.assign({ elem: this, recurse: true });
-							
-							var child = new PACK.quickDev.QSchema(schemaParams).actualize();
-							this.addChild(child);
-							
-							onComplete({ msg: 'success' });
-							return;
-							
-						} else if (com === 'filter') {		/* filter */
+						if (com === 'filter') {		/* filter */
 							
 							var filter = U.param(reqParams, 'filter');
 							var address = U.param(reqParams, 'address', null);
 							
 							var root = address ? this.getChild(address) : this;
+							if (root === null) {
+								onComplete({ code: 1, msg: 'bad address: "' + address + '" for "' + this.getAddress() + '"' });
+								return;
+							}
 							
 							var children = root.filter(filter);
 							onComplete({
@@ -730,10 +749,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 					},
 					validateChild: function(child) {
-						this._schema.v.validateElem(child);
+						if (this._schema.v) this._schema.v.validateElem(child);
 					},
 					getNewChild: function(params /* */) {
-						var child = this._schema.v.actualize({ p: { name: '-generated-' } });
+						var child = this._schema.v.actualize();
 						if (this._initChild) this._initChild.v(child, params, this.length);
 						var id = child.getChild('id');
 						if (id !== null) id.setValue(this.length);
@@ -744,7 +763,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getChildProp: function(elem) {
 						var propElem = elem.getChild(this.childAddress);
 						
-						if (propElem === null) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop child: "' + this.childAddress + '/' + this.childProp + '"');
+						if (propElem === null) {
+							throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop child: "' + this.childAddress + '/' + this.childProp + '"');
+						}
 						if (!(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
 						
 						return propElem[this.childProp].toString();
@@ -817,8 +838,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					containChild: function(child) {
 						this.children[child.name] = child;
 					},
-					removeChild: function(child) {
+					uncontainChild: function(child) {
+						var ret = this.children[child.name];
 						delete this.children[child.name];
+						return ret;
 					},
 					simplified: function(child) {
 						var ret = {};
@@ -875,7 +898,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					sanitizeAndValidate: function(value) {
 						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
 						
-						if (value.constructor !== String) throw new Error('invalid reference address');
+						if (value.constructor !== String) throw new Error('invalid reference address for "' + this.getAddress() + '"');
 						
 						return value;
 					},
@@ -935,7 +958,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					sanitizeAndValidate: function(value) {
 						var intValue = parseInt(value);
-						if (isNaN(intValue)) throw 'invalid integer value "' + value + '" for "' + this.getAddress() + '"';
+						if (isNaN(intValue)) throw new Error('invalid integer value "' + value + '" for "' + this.getAddress() + '"');
 						return intValue;
 					},
 				}; }

@@ -35,6 +35,7 @@ var package = new PACK.pack.Package({ name: 'e',
 								
 								var parsedHtml = new DOMParser().parseFromString(str, 'text/html').firstChild;
 								
+								// Check the body first, then the head
 								if (parsedHtml.childNodes.length > 1 && parsedHtml.childNodes[1].childNodes.length > 0) {
 									
 									// The parser will put the element  if appropriate
@@ -63,12 +64,9 @@ var package = new PACK.pack.Package({ name: 'e',
 							
 						}
 						
-						
 						// Use an array with a single element instead of the element itself
 						if (elems instanceof HTMLElement) 	elems = [ elems ];
 						else 								elems = U.arr(elems);
-						/*// Use array instead of HTMLCollection
-						if (elems instanceof HTMLCollection) elems = U.arr(elems);*/
 						
 						this.elems = elems;
 					},
@@ -135,20 +133,24 @@ var package = new PACK.pack.Package({ name: 'e',
 							for (var k in attrs) elem.setAttribute(k, attrs[k]);
 						});
 					},
-					listAttr: function(attrs /* { "name": "value", ... } */) {
+					listAttr: function(attrs /* { "name1": [ "+value1", "-value2"... ], ... } */) {
 						/*
-						Used for modifying values in list-like attributes.
-						The major example is the "class" attribute, which is
-						really just a list of strings.
+						Used for modifying values in list-like attributes. The major
+						example is the "class" attribute, which is really just a list
+						of strings.
 						
-						Accepts a dictionary of key-values, where each value
-						may be prefixed with either "+" or "-". "+" indicates
-						that the value should be added to the list, while "-"
-						indicates it should be removed.
+						Accepts a dictionary of key-values, where each value may be
+						prefixed with either "+" or "-". "+" indicates that the value
+						should be added to the list, while "-" indicates it should be
+						removed.
 						*/
-						this.elems.forEach(function(elem) {
-							attrs.forEach(function(v, k) {
-								if (v.constructor !== Array) v = [ v ];
+						for (var i = 0, len = this.elems.length; i < len; i++) {
+							
+							var elem = this.elems[i];
+							
+							for (var k in attrs) {
+								var values = attrs[k];
+								if (values.constructor !== Array) values = [ values ];
 								
 								var att = elem.getAttribute(k);
 								
@@ -156,28 +158,29 @@ var package = new PACK.pack.Package({ name: 'e',
 								if (att)	var atts = att.split(' ');
 								else 		var atts = [];
 								
-								v.forEach(function(vv) {
-									var mode = '+';
-									if ([ '+', '-' ].contains(vv[0])) {
-										mode = vv[0];
-										vv = vv.substr(1);
-									}
+								for (var j = 0, vLen = values.length; j < vLen; j++) {
+									var v = values[j];
+									if ([ '+', '-' ].contains(v[0])) { var mode = v[0]; v = v.substr(1); }
+									else  							 { var mode = '+'; }
 									
-									var ind = atts.indexOf(vv);
-									if (mode === '+') {
-										if (!~ind) atts.push(vv);
-									} else {
-										if (~ind) atts.splice(ind, 1);
-									}
-								});
+									var ind = atts.indexOf(v);
+									if (mode === '+' && !~ind)		{ atts.push(v); }
+									else if (mode === '-' && ~ind) 	{ atts.splice(ind, 1); }
+								}
 								
 								elem.setAttribute(k, atts.join(' '));
-							});
+							}
 							
-						});
+						}
 					},
-					dictAttr: function(attrs /* { "name": { "attr1": "value1", ... }, ... } */) {
+					dictAttr: function(attrs /* { "name1": { "attr1": "value1", "attr2": null, ... }, ... } */) {
+						/*
+						Maintains a list of semicolon-separated dictionary attributes,
+						like this string: "v1: k1; v2: k2; v3: k3;".
 						
+						The most prominent usage is for css attributes, which have this
+						exact format.
+						*/
 					},
 					onEvent: function(eventName, callback) {
 						this.elems.forEach(function(elem) {

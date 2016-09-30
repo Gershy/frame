@@ -2,6 +2,9 @@
 TODO: Need a way of separating server-code and client-code within app scripts
 so that server-code never arrives at the client-side.
 
+TODO: Switch to POST queries? Eventually queries will exceed the recommended
+size for GET
+
 DB Reference:
 - https://github.com/FreeCodeCamp/FreeCodeCamp/wiki/Using-MongoDB-And-Deploying-To-Heroku
 - mongodb://localhost:27017/frame
@@ -129,8 +132,8 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								console.log('Couldn\'t load server file');
-								console.error(e.stack);
+								console.error(e);
+								console.log('No server file for "' + appName + '"');
 							}
 							
 							if (!('queryHandler' in PACK[appName])) {
@@ -282,7 +285,7 @@ var package = new PACK.pack.Package({ name: 'server',
 			var mb = mem.heapUsed / (1024 * 1024);
 			var perc = (mem.heapUsed / mem.heapTotal) * 100;
 			console.log('MEM', mb.toFixed(2).toString() + 'mb (' + perc.toFixed(1).toString() + '%)');
-		}, 30 * 1000);
+		}, 90 * 1000);
 	},
 });
 
@@ -290,7 +293,7 @@ var dbUri = 'FRAME_DB_URI' in process.env
 	? process.env.FRAME_DB_URI
 	: 'mongodb://localhost:27017/frame';
 
-var gimmeDb = false;
+var gimmeDb = true;
 if (gimmeDb) {
 	
 	var db = require('mongodb');
