@@ -132,7 +132,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								console.error(e);
+								console.error(e.stack);
 								console.log('No server file for "' + appName + '"');
 							}
 							
