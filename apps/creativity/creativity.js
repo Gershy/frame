@@ -470,27 +470,21 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							passwordField.append('<div class="label">Password</div>');
 							passwordField.append('<input type="password"/>');
 							
-							var submit = e('<div class="submit"><div class="content">Submit</div><div class="error"></div></div>');
+							var submit = e('<div class="submit"><div class="content">Submit</div></div>');
 							submit.handle('click', function() {
 								root.$request({ command: 'getToken', params: {
 									username: usernameField.find('input').fieldValue(),
 									password: passwordField.find('input').fieldValue()
 								}}).fire(function(response) {
-									auth.update({
-										token: response.token,
-										username: response.username
-									});
-									
 									if ('help' in response) {
-										// Need to actually show user error
-										submit.find('.error').setHtml(response.help);
+										// Need to actually show user error, display response.help
 										submit.listAttr({ class: '+error' });
 										setTimeout(function() { submit.listAttr({ class: '-error' }) }, 2000);
 									} else {
-										/*
-										var writingScene = scene.par.subscenes.main.writing;
-										writingScene.defaultScenes.contribute = response.hasSubmitted ? 'vote' : 'write';
-										*/
+										auth.update({
+											token: response.token,
+											username: response.username
+										});
 										scene.par.setSubscene('main', 'lobby');
 									}
 								});
@@ -639,7 +633,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										new PACK.queries.PromiseQuery({
 											subQueries: U.arr(elem.children.map(function(c) {
 												// TODO: Need to investigate implications of "addChild" and "useClientSide"
-												// using the new @-flag and *Query architecture
+												// using the @-flag and *Query architecture
 												return c.$getChild({ address: '@blurb', addChild: false, useClientSide: false });
 											}))
 										}).fire(function(elems) {

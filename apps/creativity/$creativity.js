@@ -85,6 +85,7 @@ migrations.chain([
 						{ c: qd.QRef, p: { name: 'host', value: '' } },
 						{ c: qd.QString, p: { name: 'quickName', value: '' } },
 						{ c: qd.QString, p: { name: 'description', value: '' } },
+						{ c: qd.QString, p: { name: 'password', value: '' } },
 						{ c: qd.QDict, p: { name: 'params' }, i: [
 							{ c: qd.QInt, p: { name: 'storyLength', value: 0 } },
 							{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0 } },
@@ -264,13 +265,16 @@ migrations.chain([
 			
 			return {
 				msg: 'added rooms',
-				data: root.schemaParams({ recurse: true })
+				data: root.schemaParams({ recurse: true, selection: qd.sel.none })
 			};
 		}
 	})
 ]);
 
+var reset = true;
 root.getState(function(state) {
+	
+	if (reset) state = null;
 	
 	// The migrations produce the root
 	var migratedSchemaParams = migrations.run(state);

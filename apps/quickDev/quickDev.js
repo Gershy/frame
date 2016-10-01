@@ -37,7 +37,7 @@ syncable with the client side. With long-polling, it should be beautiful
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
 	buildFunc: function() {
-		return {
+		var ret = {
 			/* QSchema */
 			QSchema: PACK.uth.makeClass({ name: 'QSchema',
 				propertyNames: [ 'c', 'p', 'i' ],
@@ -66,7 +66,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							pass.i[schema.p.name] = schema;
 						});
 					},
-					getInstance: function(params) { // NOTE: Not a parameter-like object; actual overwrite-parameters!!
+					getInstance: function(params /* overwrite params */) {
 						var constructor = U.getByName({ root: C, name: this.c });
 						var cParams = U.exists(params) ? this.p.clone(params) : this.p;
 						if (!('name' in cParams)) cParams.name = '-unnamed-';
@@ -125,10 +125,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ret;
 					},
-					assign: function(params /* elem, recurse */) {
+					assign: function(params /* elem, recurse, strict */) {
 						var pass = this;
 						var elem = U.param(params, 'elem');
+						// Recurse means that the i field is used to assign values to
+						// elem's children as well.
 						var recurse = U.param(params, 'recurse', true);
+						// If the assignment is strict, it removes any children from
+						// elem that don't appear in the schema.
+						var strict = U.param(params, 'strict', true);
 						
 						var constructor = U.getByName({ root: C, name: this.c });
 						if (!(elem instanceof constructor)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
@@ -141,23 +146,36 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (recurse && (elem instanceof PACK.quickDev.QSet)) {
 							
+							// If doing non-strict assignment, need to save the list of
+							// children in case the 1st attempt doesn't work, because in
+							// that case .clear() needs to be called, but because
+							// assignment is non-strict the original children shouldn't
+							// have been removed so they need to be put back.
+							if (!strict) var nonStrictChildren = elem.children.clone();
+							
 							try {
+								
 								// Try with immediately attaching to parent
-								elem.clear();
+								if (strict) elem.clear();
 								this.i.forEach(function(schema, k) {
 									var newElem = schema.getInstance();
 									elem.addChild(newElem);
 									schema.assign({ elem: newElem, recurse: true });
 								});
+								
 							} catch(e) {
+								
 								// Try building child entirely
-								elem.clear();
+								elem.clear(); // Probably removes malformed children from 1st attempt
+								if (!strict) elem.children = nonStrictChildren;
+								
 								var children = this.i.map(function(schema, k) {
 									var newElem = schema.getInstance();
 									schema.assign({ elem: newElem, recurse: true });
 									return newElem;
 								});
 								children.forEach(function(child) { elem.addChild(child); });
+								
 							}
 							
 						}
@@ -229,6 +247,114 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.interval = null;
 					}
 				}; }
+			}),
+			
+			/* QSel */
+			QSel: PACK.uth.makeClass({ name: 'QSel',
+				propertyNames: [ ],
+				methods: function(sc) { return {
+					init: function(params /* */) {
+					},
+					select: function(elem) {
+						console.log('ELEM', elem);
+						var children = elem.schemaChildren();
+						
+						if (U.isEmptyObj(children)) return true;
+						
+						var names = this.getSelectedNames(children);
+						
+						var ret = {};
+						for (var i = 0, len = names.length; i < len; i++) {
+							var name = names[i];
+							var selector = this.getSelectorFor(children[name]);
+							ret[name] = selector ? selector.select(children[name]) : false;
+						}
+						
+						return ret;
+					},
+					getSelectedNames: function(childrenObj) { throw new Error('not implemented'); },
+					getSelectorFor: function(child) { throw new Error('not implemented'); }
+				};}
+			}),
+			QSelSimpleInner: PACK.uth.makeClass({ name: 'QSelSimpleInner',
+				superclassName: 'QSel',
+				propertyNames: [ 'sel' ],
+				methods: function(sc) { return {
+					init: function(params /* sel */) {
+						sc.init.call(this, params);
+						this.sel = U.param(params, 'sel', null);
+					},
+					getSelectorFor: function(child) { return this.sel }
+				};}
+			}),
+			QSelNamedInner: PACK.uth.makeClass({ name: 'QSelNamedInner',
+				superclassName: 'QSelSimpleInner',
+				propertyNames: [ 'selNames' ],
+				methods: function(sc) { return {
+					init: function(params /* sel, selNames */) {
+						sc.init.call(this, params);
+						this.selNames = U.param(params, 'selNames', null);
+					},
+					getSelectorFor: function(child) {
+						if (child.name in this.selNames) return this.selNames[child];
+						return sc.getSelectorFor.call(this, child);
+					}
+				};}
+			}),
+			QSelAll: PACK.uth.makeClass({ name: 'QSelAll',
+				superclassName: 'QSelSimpleInner',
+				propertyNames: [ ],
+				methods: function(sc) { return {
+					init: function(params /* sel */) {
+						sc.init.call(this, params);
+					},
+					getSelectedNames: function(childrenObj) {
+						var ret = [];
+						for (var k in childrenObj) ret.push(k);
+						return ret;
+					}
+				};}
+			}),
+			QSelNone: PACK.uth.makeClass({ name: 'QSelNone',
+				superclassName: 'QSel',
+				propertyNames: [ ],
+				methods: function(sc) { return {
+					init: function(params /* sel */) {
+						sc.init.call(this, params);
+					},
+					getSelectedNames: function(childrenObj) { return []; },
+					getSelectorFor: function(child) { return null; }
+				};}
+			}),
+			QSelInc: PACK.uth.makeClass({ name: 'QSelInc',
+				propertyNames: [ 'names' ],
+				superclassName: 'QSelNamedInner',
+				methods: function(sc) { return {
+					init: function(params /* names */) {
+						sc.init.call(this, params);
+					},
+					getSelectedNames: function(childrenObj) {
+						var ret = [];
+						for (var k in childrenObj) if (k in this.selNames) ret.push(k);
+						return ret;
+					}
+				};}
+			}),
+			QSelExc: PACK.uth.makeClass({ name: 'QSelExc',
+				propertyNames: [ 'names' ],
+				superclassName: 'QSel',
+				methods: function(sc) { return {
+					init: function(params /* sel */) {
+						this.names = U.param(params, 'names');
+						this.sel = U.param(params, 'sel', null);
+					},
+					getSelectedNames: function(childrenObj) {
+						var ret = [];
+						for (var k in childrenObj) if (!(k in this.names)) ret.push(k);
+						return ret;
+					},
+					getSelectorFor: function(child) { return this.sel; }
+				};}
 			}),
 			
 			/* QElem */
@@ -325,6 +451,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return true;*/
 					},
 					
+					getForm: function(whitelist) {
+						/*
+						A form connects the client-side to the server-side with a quick
+						way to modify information. The form is responsible for producing
+						a QSchema.
+						*/
+					},
+					
 					$request: function(params /* command, params, address, transform */) {
 						var transform = U.param(params, 'transform', null);
 						if (!('address' in params)) params.address = this.getAddress();
@@ -384,12 +518,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return { name: this.name };
 					},
 					schemaChildren: function(params /* whitelist */) {
-						// Returns the list of children for this QElem that need to be
+						// Returns the object of children for this QElem that need to be
 						// included in the schema.
 						return {};
 					},
-					schemaParams: function(params /* recurse */) {
+					schemaParams: function(params /* whitelist, selection */) {
 						/*
+						- whitelist: Controls which children (if any) are included in the
+							schema params.
+						
 						Returns an object representing parameters for a PACK.quickDev.QSchema
 						object. The parameters can be used raw, but to gain quick
 						additional functionality the result of schemaParams() can be plugged
@@ -397,7 +534,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						e.g.
 						
-						var elem = // Some instance of QElem
+						var elem = // Create some instance of QElem
 						
 						var schemaParams = elem.schemaParams();
 						
@@ -412,27 +549,59 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						*/
 						var recurse = U.param(params, 'recurse', true);
+						var selection = U.param(params, 'selection', null);
+						
+						// TODO: Rename "recurse" to "whitelist" for all usages
+						var whitelist = recurse;
+						
+						if (selection !== null) {
+							
+							if (selection instanceof PACK.quickDev.QSel) {
+								console.log('THIS HAPPENS');
+								selection = selection.select(this);
+							}
+							
+							var ret = {
+								c: this.schemaConstructorName(),
+								p: this.schemaProperties(),
+							};
+							
+							if (selection !== null && selection.constructor === Object) {
+								
+								ret.i = {};
+								
+								// TODO: schemaChildren shouldn't do any processing, just return all children
+								var children = this.schemaChildren();
+								for (var k in selection) {
+									if (!(k in children)) throw new Error('Bad selection for "' + this.getAddress() + '"');
+									ret.i[k] = children[k].schemaParams({ selection: selection[k] });
+								}
+							}
+							
+							console.log('WITH SELECTION', ret);
+							
+						}
 						
 						var ret = {
 							c: this.schemaConstructorName(),
 							p: this.schemaProperties(),
 						};
-						if (recurse !== false) {
-							if (recurse === true) {
-								ret.i = this.schemaChildren({ whitelist: null }).map(function(child) {
-									return child.schemaParams({ recurse: true });
-								});
-							} else if (recurse.constructor === Object) {
-								var whitelist = recurse;
-								var all = '_' in whitelist;
-								
-								// Passing null to schemaChildren's whitelist means it will return all children
-								ret.i = this.schemaChildren({ whitelist: all ? null : whitelist }).map(function(child) {
-									var childWhitelist = all ? whitelist._ : (child.name in whitelist ? whitelist[child.name] : false);
-									return child.schemaParams({ recurse: childWhitelist });
-								});
+						
+						if (whitelist === false) return ret;
+						
+						if (whitelist === true) var schemaChildren = this.schemaChildren({ whitelist: null });
+						else 					var schemaChildren = this.schemaChildren({ whitelist: '_' in whitelist ? null : whitelist });
+						
+						ret.i = schemaChildren.map(function(child) {
+							if (whitelist === true) {
+								var childWhitelist = true;
+							} else {
+								var childWhitelist = '_' in whitelist
+									? whitelist._
+									: (child.name in whitelist ? whitelist[child.name] : false);
 							}
-						}
+							return child.schemaParams({ recurse: childWhitelist });
+						});
 						
 						return ret;
 					}
@@ -669,7 +838,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						} else if (com === 'getChild') {	/* address, recurse */
 							
 							var address = U.param(reqParams, 'address');
-							var recurse = U.param(reqParams, 'recurse', true);
+							var recurse = U.param(reqParams, 'recurse', true); // SELECTION PROBLEM
 							
 							var child = this.getChild(address);
 							onComplete({ schemaParams: child ? child.schemaParams({ recurse: recurse}) : null });
@@ -1038,6 +1207,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				};}
 			}),
 		};
+		
+		var selAll = new ret.QSelAll();
+		selAll.sel = selAll;
+		
+		ret.update({
+			sel: {
+				all: selAll,
+				none: new ret.QSelNone()
+			}
+		});
+		
+		for (var k in ret) console.log(k);
+		
+		return ret;
 	}
 });
 package.build();

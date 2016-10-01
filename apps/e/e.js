@@ -290,16 +290,11 @@ var package = new PACK.pack.Package({ name: 'e',
 						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper "' + wrapperName + '"');
 						
 						var next = this.subscenes[wrapperName][subsceneName];
-						if (next.active) return;
+						if (next !== null && next.active) return;
 						
 						var sceneList = this.subscenes[wrapperName];
 						var active = null;
-						for (var k in sceneList) {
-							if (sceneList[k].active) {
-								active = sceneList[k];
-								break;
-							}
-						}
+						for (var k in sceneList) if (sceneList[k].active) { active = sceneList[k]; break; }
 						
 						if (active) {
 							if (active.end) active.end(active.elems);
@@ -308,10 +303,13 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						var wrapper = this.wrappers[wrapperName];
 						wrapper.clear();
-						wrapper.append(next.getHtml());
 						
-						if (next.start) next.start(next.elems);
-						next.active = true;
+						if (next !== null) {
+							wrapper.append(next.getHtml());
+							
+							if (next.start) next.start(next.elems);
+							next.active = true;
+						}
 					},
 					getHtml: function() {
 						var sceneElem = new PACK.e.e('<div class="scene"></div>');

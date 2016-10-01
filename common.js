@@ -365,7 +365,7 @@
 			
 			if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, c);
 			
-			if (!('init' in methods)) throw 'missing "init" class method';
+			if (!('init' in methods)) throw new Error('missing "init" class method');
 			
 			[	'constructor',
 				'parent',

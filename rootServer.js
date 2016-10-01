@@ -11,7 +11,7 @@ DB Reference:
 */
 require('./common.js');
 
-if (!U.isServer()) throw new Error('rootServer.js should only be used server-side');
+if (!U.isServer()) throw new Error('only for server-side use');
 
 var http = require('http');
 var path = require('path');
@@ -125,7 +125,7 @@ var package = new PACK.pack.Package({ name: 'server',
 								require('./apps/' + appName + '/' + appName + '.js');
 							} catch (e) {
 								console.log('Couldn\'t load essential file');
-								//console.error(e.stack);
+								console.error(e.stack);
 								onComplete(e); return;
 							}
 							
