@@ -95,9 +95,9 @@ body {
 .input-field {
 	margin: 10px 0;
 }
-.input-field > .label {  }
-.input-field > input,
-.input-field > textarea {
+.input-field .label {  }
+.input-field input,
+.input-field textarea {
 	box-sizing: border-box;
 	border: none;
 	background-color: #e8e0ff !important;
@@ -105,10 +105,10 @@ body {
 	padding: 0 10px;
 	font-size: 100%;
 }
-.input-field > textarea {
+.input-field textarea {
 	resize: none;
 }
-.input-field > input:-webkit-autofill {
+.input-field input:-webkit-autofill {
 	/* kill the annoying yellow background */
     -webkit-box-shadow: 0 0 0 1000px #eeeeff inset !important;
 }
@@ -644,12 +644,12 @@ body {
 	width: 100%; height: 70%;
 	padding: 5px;
 }
-.scene.write > .input-form > .input-field > textarea {
+.scene.write > .input-form > .input-field textarea {
 	box-sizing: border-box;
 	padding: 5px;
 	width: 100%; height: 100%;
 }
-.scene.write > .input-form > .input-field > textarea:focus {
+.scene.write > .input-form > .input-field textarea:focus {
 	outline: none !important;
 	box-shadow: 0 0 0 5px #7979b3;
 }

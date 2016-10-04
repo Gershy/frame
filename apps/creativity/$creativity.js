@@ -83,9 +83,9 @@ migrations.chain([
 				_schema: U.addSerializable({ name: 'creativity.roomsSchema',
 					value: new qd.QSchema({ c: qd.QDict, i: [
 						{ c: qd.QRef, p: { name: 'host', value: '' } },
-						{ c: qd.QString, p: { name: 'quickName', value: '' } },
-						{ c: qd.QString, p: { name: 'description', value: '' } },
-						{ c: qd.QString, p: { name: 'password', value: '' } },
+						{ c: qd.QString, p: { name: 'quickName', value: '', minLen: 3, maxLen: 20 } },
+						{ c: qd.QString, p: { name: 'description', value: '', minLen: 0, maxLen: 250 } },
+						{ c: qd.QString, p: { name: 'password', value: '', minLen: 0, maxLen: 30 } },
 						{ c: qd.QDict, p: { name: 'params' }, i: [
 							{ c: qd.QInt, p: { name: 'storyLength', value: 0 } },
 							{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0 } },

@@ -605,13 +605,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								}),
 								new PACK.e.Scene({ name: 'newRoom', title: 'Create new room',
 									build: function(rootElem, subsceneElem, scene) {
-										var formElem = rootElem.append('<div class="input-form"></div>');
-										formElem.listAttr({ class: [ '+loading' ] });
+										var scroller = e('<div class="scroller"><div class="input-form"></div></div>');
+										scroller.listAttr({ class: [ '+loading' ] });
 										
 										root.$getForm({
-											address: 'rooms.+',
+											address: 'rooms.+room',
 											selection: new qd.QSelExc({
 												names: {
+													// Exclude these fields
 													'startedMillis': true,
 													'host': true
 												},
@@ -619,107 +620,50 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											})
 										}).fire(function(response) {
 											
-											console.log('FORM:', response);
+											var buildField = function(label) {
+												return scroller.find('.input-form').append([
+													'<div class="input-field">',
+														'<div class="label">' + label + '</div>',
+														'<div class="widget-container"></div>',
+													'</div>'
+												].join(''));
+											};
 											
 											var formBuilder = new PACK.e.FormBuilder({});
+											var fireSubmission = formBuilder.build({
+												formData: response.form,
+												containers: {
+													'room.quickName': 						buildField('Name'),
+													'room.password': 						buildField('Password'),
+													'room.description': 					buildField('Description'),
+													'room.params.roundSubmissionSeconds':	buildField('Submission time limit'),
+													'room.params.roundVoteSeconds':			buildField('Voting time limit'),
+													'room.params.storyLength':				buildField('Maximum story length'),
+													'room.params.submissionLengthMax':		buildField('Maximum submission limit'),
+													'room.params.submissionLengthMin':		buildField('Minimum submission limit'),
+													'room.params.submissionMaximum':		buildField('Maximum submissions per round'),
+													'room.params.voteMaximum':				buildField('Maximum votes per round'),
+												},
+												makeContainer: function(data) {
+													return e([
+														'<div class="input-field">',
+															'<div class="label">Field</div>',
+															'<div class="widget"></div>',
+														'</div>'
+													].join(''));
+												}
+											});
 											
+											var submit = scroller.find('.input-form').append('<div class="submit">Submit</div>');
+											submit.handle('click', fireSubmission);
+											
+											scroller.listAttr({ class: [ '-loading' ] });
 											
 										});
 										
-										/*formElem.append([
-											'<div class="input-field quick-name">',
-												'<div class="label">QuickName</div>',
-												'<input type="text"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field password">',
-												'<div class="label">Password</div>',
-												'<input type="text"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field description">',
-												'<div class="label">Description</div>',
-												'<textarea></textarea>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field story-length">',
-												'<div class="label">Story Length (in characters)</div>',
-												'<input type="number"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<p>',
-												'The next field allows different rounds to have varying ',
-												'character limits for a submission. If you don\'t want the ',
-												'limit to vary between rounds, set the same value for both.',
-											'</p>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field submission-length">',
-												'<div class="label">Character limit range</div>',
-												'<input type="number" min="0" max="1000"/>',
-												'<input type="number" min="0" max="1000"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field round-submission-seconds">',
-												'<div class="label">Round submission time</div>',
-												'<input type="number" min="120" max="86400"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field round-vote-seconds">',
-												'<div class="label">Round vote time</div>',
-												'<input type="number" min="120" max="86400"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<p>',
-												'The next two fields allow you to restrict how many votes ',
-												'and submissions can be received per round. If the ',
-												'maximum number of submissions is received, the round ',
-												'goes directly to voting. If the maximum number of votes ',
-												'is received, the round is resolved. To remove any limits ',
-												'set the value to zero.',
-											'</p>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field vote-maximum">',
-												'<div class="label">Maximum votes per round</div>',
-												'<input type="number" min="0" max="1000"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="input-field submission-maximum">',
-												'<div class="label">Maximum submissions per round</div>',
-												'<input type="number" min="0" max="1000"/>',
-											'</div>'
-										].join(''));
-										
-										formElem.append([
-											'<div class="submit">Submit</div>'
-										].join(''));
-										*/
-										
-										var scroller = e('<div class="scroller"></div>');
-										scroller.append(formElem);
-										
 										rootElem.append(scroller);
 										
-										return { formElem: formElem };
+										return { };
 									},
 								}),
 							]

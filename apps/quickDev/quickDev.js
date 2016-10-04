@@ -537,7 +537,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						for (var k in params.params) {
 							var p = params.params[k];
 							try {
-								if (('constructor' in p) && ('title' in p.constructor)) {
+								if (PACK.uth.isClassedObj(p)) {
 									console.log('Warning: putting classed object onto the wire: ' + p.constructor.title);
 									console.log(p);
 								}
@@ -1015,7 +1015,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return child;
 					},
 					getNamedChild: function(name) {
-						if (name === '+') return this._schema.v.actualize();
+						if (name[0] === '+') {
+							var elem = this._schema.v.actualize();
+							elem.name = name.substr(1);
+							return elem;
+						}
 						return sc.getNamedChild.call(this, name);
 					},
 					getChildProp: function(elem) {
@@ -1108,30 +1112,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 				}}
 			}),
-			/*QClientElem: PACK.uth.makeClass({ name: 'QDict',
-				superclassName: 'QElem',
-				propertyNames: [ ],
-				methods: function(sc, c) { return {
-					init: function(params /* name, allowTransfer * /) {
-						sc.init.call(this, params);
-						this.children = {};
-						this.root = this;
-					},
-					getNamedChild: function(name) {
-						var resolveRef = name[0] === '@';
-						if (resolveRef) name = name.substr(1);
-						
-						if (!(name in this.children)) {
-							if (resolveRef) return this.root.getChild(
-							
-							
-						}
-						
-						return resolveRef ? this.children[name].use() : this.children[name];
-					},
-					
-				};}
-			}),*/
 			
 			/* QValue subclasses */
 			QRef: PACK.uth.makeClass({ name: 'QRef',
@@ -1230,6 +1210,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return value;
 					},
+					schemaProperties: function() {
+						return sc.schemaProperties.call(this).update({
+							minLen: this.minLen,
+							maxLen: this.maxLen
+						});
+					}
 				}}
 			}),
 			QInt: PACK.uth.makeClass({ name: 'QInt',

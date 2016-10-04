@@ -84,6 +84,20 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						return e;
 					},
+					prepend: function(e) {
+						console.log('NEED TO TEST THIS!!');
+						//this.append(e);
+						
+						e = PACK.e.e(e);
+						var p = this.elems[0].parentNode;
+						
+						console.log(p);
+						
+						p.insertBefore(e.elems[0], p.children[0]);
+						
+						//var p = c.parentNode;
+						//p.insertBefore(e.elems[0], p.children[0]);
+					},
 					children: function() {
 						if (this.elems.length === 0) return new PACK.e.e([]);
 						return new PACK.e.e(this.elems[0].children);
@@ -92,6 +106,13 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.elems.forEach(function(elem) {
 							elem.parentNode.removeChild(elem);
 						});
+					},
+					replaceElement: function(elem) {
+						elem = PACK.e.e(elem);
+						var rep = elem.elems[0];
+						rep.parentNode.replaceChild(this.elems[0], rep);
+						
+						return elem;
 					},
 					clear: function(e) {
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
@@ -405,11 +426,115 @@ var package = new PACK.pack.Package({ name: 'e',
 			
 			FormBuilder: PACK.uth.makeClass({ name: 'FormBuilder', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						
+					init: function(params /* buildWidget */) {
+						this.buildWidget = U.param(params, 'buildWidget', function(widgetData) {
+							
+							var schema = new PACK.quickDev.QSchema(widgetData);
+							var qElem = schema.actualize();
+							
+							var container = PACK.e.e('<div></div>');
+							
+							if (qElem instanceof PACK.quickDev.QString) {
+								
+								if (qElem.maxLen !== null && qElem.maxLen <= 50) {
+									
+									var widget = PACK.e.e('<input type="text"/>');
+									
+								} else {
+									
+									console.log(qElem.maxLen);
+									var widget = PACK.e.e('<textarea></textarea>');
+									
+								}
+								
+								if (qElem.minLen !== null) {
+									container.append('<span class="min">' + qElem.minLen + '</span>');
+									widget.attr({ minLength: qElem.minLen });
+								}
+								if (qElem.maxLen !== null) {
+									container.append('<span class="max">' + qElem.maxLen + '</span>');
+									widget.attr({ maxLength: qElem.maxLen });
+								}
+								
+								container.append(widget);
+								
+								if (qElem.minLen !== null) {
+									//container.prepend('<span class="min">' + qElem.minLen + '</span>');
+									//container.find('input').attr({ min: qElem.minLen });
+									container.attr({ minlength: qElem.minLen });
+								}
+								if (qElem.maxLen !== null) {
+									//container.prepend('<span class="max">' + qElem.maxLen + '</span>');
+									//container.find('input').attr({ max: qElem.maxLen });
+									container.attr({ maxlength: qElem.maxLen });
+								}
+								
+							} else if (qElem instanceof PACK.quickDev.QInt) {
+								
+								var widget = container.append('<input type="number"/>');
+								
+							} else {
+								
+								throw new Error('Unhandled data type: "' + qElem.constructor.title + '"');
+								
+							}/*else if (qElem instanceof PACK.quickDev.QRef) {
+								
+								// TODO: This should be cool
+								
+							}*/
+							
+							return {
+								container: container,
+								widget: widget
+							};
+						});
 					},
-					build: function() {
+					build: function(params /* formData, containers, makeContainer */) {
 						
+						var formData = U.param(params, 'formData');
+						var containers = U.param(params, 'containers', {});
+						var makeContainer = U.param(params, 'makeContainer', null);
+						
+						var collectedInputs = {};
+						
+						for (var k in formData) {
+							/*
+							Three categories of elements here:
+							"container": Contains everything, the widget, its container, the label, etc.
+							"widgetContainer": Contains the widget. E.g. stores chars-left indicator for text fields
+							"widget": The actual html widget which provides the "value" property that has meaning
+							*/
+							var container = k in containers ? containers[k] : (makeContainer ? makeContainer(formData[k]) : null);
+							if (container === null) continue;
+							
+							var builtHtml = this.buildWidget(formData[k]);
+							if (builtHtml === null) {
+								var widget = PACK.e.e('<input type="text"/>');
+								var widgetContainer = widget;
+							} else {
+								var widget = builtHtml.widget;
+								var widgetContainer = builtHtml.container;
+							}
+							
+							widget.listAttr({ class: [ '+widget' ] });
+							
+							// Replace the widget-container part of container
+							widgetContainer.listAttr({ class: [ '+widget-container' ] });
+							widgetContainer.replaceElement(container.find('.widget-container'));
+							
+							// Reset the classes on the the container
+							container.attr({ class: '' });
+							container.listAttr({ class: [ '+input-field', '+' + k ] });
+							
+							collectedInputs[k] = {
+								data: formData[k],
+								widget: widget
+							};
+						}
+						
+						return function() {
+							console.log('OMG HERE WE GOOOO', arguments);
+						};
 					}
 				};}
 			}),

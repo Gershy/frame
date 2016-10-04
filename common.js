@@ -359,6 +359,10 @@
 	// PACKAGE: Under The Hood
 	// This is the only package that is generated without the Package class
 	global.PACK.uth = {
+		isClassedObj: function(obj) {
+			try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
+			return false;
+		},
 		wirePut: function(obj, arr) {
 			if (!U.exists(arr)) arr = [];
 			
@@ -369,10 +373,7 @@
 			ind = arr.length;
 			arr.push(obj);
 			
-			var isClassedObj = false;
-			try { isClassedObj = ('constructor' in obj) && ('title' in obj.constructor); } catch(e) {};
-			
-			if (isClassedObj) {
+			if (PACK.uth.isClassedObj(obj)) {
 				
 				var ps = obj.propertyNames;
 				var data = {};
