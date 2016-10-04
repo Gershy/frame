@@ -88,6 +88,10 @@ body {
 	background-color: rgba(255, 0, 0, 1);
 	color: rgba(255, 255, 255, 1);
 }
+.input-form > p {
+	font-size: 80%;
+	padding: 0 10px;
+}
 .input-field {
 	margin: 10px 0;
 }
@@ -237,12 +241,21 @@ body {
 	animation-timing-function: ease-in-out;
 	animation-duration: 10s;
 }
-.scene.lobby > .rooms {
+
+.scene.lobby > .list {
 	position: relative;
 	width: 100%; height: 70%;
+	overflow: hidden;
 }
-.scene.lobby > .rooms > .scroller {}
-.scene.lobby > .rooms > .scroller > .room {
+
+.scene.rooms {
+	
+}
+.scene.rooms > .scroller {
+	position: relative;
+	z-index: 1;
+}
+.scene.rooms > .scroller > .room {
 	box-sizing: border-box;
 	position: relative;
 	width: 100%; padding: 10px;
@@ -254,26 +267,26 @@ body {
 	transition: color 300ms linear;
 	cursor: pointer;
 }
-.scene.lobby > .rooms > .scroller > .room > .bg {
+.scene.rooms > .scroller > .room > .bg {
 	position: absolute;
 	width: 100%; height: 100%;
 	left: 100%; top: 0;
-	margin-left: 30px;
+	margin-left: 300px;
 	background-color: #c3c3ff;
-	box-shadow: 0 0 5px 20px #c3c3ff;
+	box-shadow: 0 0 50px 200px #c3c3ff;
 	
-	transition: left 300ms ease-in-out, margin-left 300ms ease-in-out;
+	transition: left 600ms ease-in-out, margin-left 600ms ease-in-out;
 	
 	pointer-events: none;
 }
-.scene.lobby > .rooms > .scroller > .room:hover {
+.scene.rooms > .scroller > .room:hover {
 	color: #000000;
 }
-.scene.lobby > .rooms > .scroller > .room:hover > .bg {
+.scene.rooms > .scroller > .room:hover > .bg {
 	left: 0;
 	margin-left: 0;
 }
-.scene.lobby > .rooms > .scroller > .room > .title {
+.scene.rooms > .scroller > .room > .title {
 	position: relative;
 	width: 100%; height: 50px;
 	white-space: nowrap;
@@ -281,37 +294,86 @@ body {
 	
 	pointer-events: none;
 }
-.scene.lobby > .rooms > .scroller > .room > .title > .quick-name {
+.scene.rooms > .scroller > .room > .title > .quick-name {
 	display: inline-block;
 	text-align: bottom;
 	font-size: 250%;
 	margin-right: 10px;
 }
-.scene.lobby > .rooms > .scroller > .room > .title > .host {
+.scene.rooms > .scroller > .room > .title > .host {
 	display: inline-block;
 	text-align: bottom;
 	font-size: 150%;
 	margin-right: 10px;
 }
-.scene.lobby > .rooms > .scroller > .room > .title > .story-length {
+.scene.rooms > .scroller > .room > .title > .story-length {
 	display: inline-block;
 	text-align: bottom;
 	font-size: 60%;
 }
-.scene.lobby > .rooms > .scroller > .room > .description {
+.scene.rooms > .scroller > .room > .description {
 	position: relative;
 	font-size: 90%;
 	z-index: 2;
 	
 	pointer-events: none;
 }
-.scene.lobby > .rooms > .scroller > .room > .time-remaining {
+.scene.rooms > .scroller > .room > .time-remaining {
 	position: relative;
 	margin-top: 5px;
 	font-size: 60%;
 	z-index: 2;
 	
 	pointer-events: none;
+}
+
+.scene.rooms > .new-room {
+	position: absolute;
+	box-sizing: border-box;
+	right: 0; bottom: 0;
+	width: 26%; height: 0; padding-bottom: 26%;
+	min-width: 100px; min-height: 100px;
+	background-color: #000000;
+	color: #ffffff;
+	border-top-left-radius: 20px;
+	
+	z-index: 2;
+	cursor: pointer;
+	overflow: hidden;
+}
+.scene.rooms > .new-room > span {
+	position: absolute;
+	box-sizing: border-box;
+	left: -100%; top: -100%;
+	width: 300%; height: 300%;
+	text-align: center;
+	white-space: nowrap;
+	font-size: 400%;
+}
+
+.scene.rooms > .new-room > span:before {
+	content: "";
+	display: inline-block;
+	width: 0; height: 100%;
+	vertical-align: middle;
+}
+.scene.rooms > .new-room > span:after {
+	content: "+";
+	display: inline-block;
+	vertical-align: middle;
+	width: 60px; height: 60px; line-height: 60px;
+	border-radius: 100%;
+	box-shadow: 0 0 0 4px #ffffff;
+}
+
+.scene.newRoom {
+	box-sizing: border-box;
+	padding: 5px;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+.scene.newRoom > .scroller {
+	padding: 0 5px;
 }
 
 .scene.writing > .story {

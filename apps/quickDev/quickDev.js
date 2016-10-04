@@ -33,6 +33,9 @@ TODO: Link QGen with PACK.e.ListUpdater, and write corresponding *Updaters for t
 other subclasses of QElem. Once this is done any server-side element should be easily
 syncable with the client side. With long-polling, it should be beautiful
 
+TODO: QClientElem can just be implemented by changing the behaviours of already
+existing QElem classes based on the result of U.isServer()
+
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
@@ -255,9 +258,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				methods: function(sc) { return {
 					init: function(params /* */) {
 					},
+					getElemChildren: function(elem) {
+						return elem.schemaChildren();
+					},
 					select: function(elem) {
-						console.log('ELEM', elem);
-						var children = elem.schemaChildren();
+						var children = this.getElemChildren(elem);
 						
 						if (U.isEmptyObj(children)) return true;
 						
@@ -268,6 +273,47 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var name = names[i];
 							var selector = this.getSelectorFor(children[name]);
 							ret[name] = selector ? selector.select(children[name]) : false;
+						}
+						
+						return ret;
+					},
+					iterate: function(params /* elem, includeRoot, func */) {
+						var pass = this;
+						var elem = U.param(params, 'elem');
+						var includeRoot = U.param(params, 'includeRoot', false);
+						var func = U.param(params, 'func');
+						var selection = U.palam(params, 'selection', function() { return pass.select(elem); });
+						
+						if (includeRoot) func(elem);
+						
+						
+						if (selection.constructor === Object) {
+							var children = this.getElemChildren(elem);
+							for (var k in selection) this.iterate({
+								elem: children[k],
+								selection: selection[k],
+								includeRoot: true,
+								func: func
+							});
+						}
+					},
+					map: function(params /* elem, func */) {
+						var pass = this;
+						var elem = U.param(params, 'elem');
+						var func = U.param(params, 'func'); // Accepts (elem, parent)
+						var lastVal = U.param(params, 'lastVal', null);
+						var selection = U.palam(params, 'selection', function() { return pass.select(elem); });
+						
+						var ret = func(elem, lastVal);
+						
+						if (selection.constructor === Object) {
+							var children = this.getElemChildren(elem);
+							for (var k in selection) this.map({
+								elem: children[k],
+								func: func,
+								selection: selection[k],
+								lastVal: ret
+							});
 						}
 						
 						return ret;
@@ -342,18 +388,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			}),
 			QSelExc: PACK.uth.makeClass({ name: 'QSelExc',
 				propertyNames: [ 'names' ],
-				superclassName: 'QSel',
+				superclassName: 'QSelSimpleInner',
 				methods: function(sc) { return {
-					init: function(params /* sel */) {
+					init: function(params /* sel, names */) {
+						sc.init.call(this, params);
 						this.names = U.param(params, 'names');
-						this.sel = U.param(params, 'sel', null);
 					},
 					getSelectedNames: function(childrenObj) {
 						var ret = [];
 						for (var k in childrenObj) if (!(k in this.names)) ret.push(k);
 						return ret;
 					},
-					getSelectorFor: function(child) { return this.sel; }
 				};}
 			}),
 			
@@ -364,7 +409,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				methods: function(sc, c) { return {
 					init: function(params /* name, allowTransfer */) {
 						sc.init.call(this, params);
-						this.name = U.param(params, 'name').toString();
+						
+						var name = U.param(params, 'name').toString();
+						if (!c.NAME_REGEX.test(name)) throw new Error('Invalid element name: "' + name + '"');
+						
+						this.name = name;
 						this.allowTransfer = U.param(params, 'allowTransfer', true);
 						this.par = null;
 					},
@@ -451,17 +500,49 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return true;*/
 					},
 					
-					getForm: function(whitelist) {
+					formParams: function() { return null; },
+					getForm: function(selection) {
+						var ret = {};
+						
+						selection.iterate({ elem: this, includeRoot: true, func: function(child) {
+							var formParams = child.formParams();
+							if (formParams !== null) ret[child.getAddress()] = formParams;
+						}});
+						
+						return ret;
+ 					},
+					$getForm: function(params /* address, selection, formBuilder */) {
 						/*
 						A form connects the client-side to the server-side with a quick
 						way to modify information. The form is responsible for producing
 						a QSchema.
 						*/
+						var address = U.param(params, 'address');
+						var selection = U.param(params, 'selection');
+						
+						return this.$request({
+							command: 'getForm',
+							params: {
+								address: address,
+								selection: PACK.uth.wirePut(selection).arr
+							}
+						});
 					},
 					
 					$request: function(params /* command, params, address, transform */) {
 						var transform = U.param(params, 'transform', null);
 						if (!('address' in params)) params.address = this.getAddress();
+						
+						// TODO: This is a sanity check! No need for the overhead in production
+						for (var k in params.params) {
+							var p = params.params[k];
+							try {
+								if (('constructor' in p) && ('title' in p.constructor)) {
+									console.log('Warning: putting classed object onto the wire: ' + p.constructor.title);
+									console.log(p);
+								}
+							} catch(e) {};
+						}
 						
 						return new PACK.queries.SimpleQuery({
 							params: params,
@@ -494,9 +575,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (com === 'getSchema') {
 						
-							onComplete({ schemaParams: this.schemaParams() });
+							onComplete({ schemaParams: this.schemaParams({ selection: PACK.sel.all }) });
 							return;
 						
+						} else if (com === 'getForm') {
+							
+							var address = U.param(reqParams, 'address');
+							var selection = U.pawam(reqParams, 'selection');
+							
+							var obj = address ? this.getChild(address) : this;
+							
+							onComplete({ form: obj.getForm(selection) });
+							return;
+							
 						}
 						
 						onComplete({
@@ -522,7 +613,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// included in the schema.
 						return {};
 					},
-					schemaParams: function(params /* whitelist, selection */) {
+					schemaParams: function(params /* selection */) {
 						/*
 						- whitelist: Controls which children (if any) are included in the
 							schema params.
@@ -548,39 +639,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						//...
 						
 						*/
-						var recurse = U.param(params, 'recurse', true);
-						var selection = U.param(params, 'selection', null);
+						var selection = U.param(params, 'selection');
 						
+						return selection.map({
+							elem: this,
+							func: function(elem, par) {
+								var ret = {
+									c: elem.schemaConstructorName(),
+									p: elem.schemaProperties(),
+									i: {}
+								};
+								if (par) par.i[elem.name] = ret;
+								return ret;
+							}
+						});
+						
+						/*
 						// TODO: Rename "recurse" to "whitelist" for all usages
+						var recurse = U.param(params, 'recurse', true);
 						var whitelist = recurse;
-						
-						if (selection !== null) {
-							
-							if (selection instanceof PACK.quickDev.QSel) {
-								console.log('THIS HAPPENS');
-								selection = selection.select(this);
-							}
-							
-							var ret = {
-								c: this.schemaConstructorName(),
-								p: this.schemaProperties(),
-							};
-							
-							if (selection !== null && selection.constructor === Object) {
-								
-								ret.i = {};
-								
-								// TODO: schemaChildren shouldn't do any processing, just return all children
-								var children = this.schemaChildren();
-								for (var k in selection) {
-									if (!(k in children)) throw new Error('Bad selection for "' + this.getAddress() + '"');
-									ret.i[k] = children[k].schemaParams({ selection: selection[k] });
-								}
-							}
-							
-							console.log('WITH SELECTION', ret);
-							
-						}
 						
 						var ret = {
 							c: this.schemaConstructorName(),
@@ -602,11 +679,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							}
 							return child.schemaParams({ recurse: childWhitelist });
 						});
+						*/
 						
 						return ret;
 					}
 				}},
-				statik: { NEXT_ID: 0 },
+				statik: { NEXT_ID: 0, NAME_REGEX: /^[a-zA-Z0-9-_]+$/ },
 			}),
 			QValue: PACK.uth.makeClass({ name: 'QValue',
 				superclassName: 'QElem',
@@ -622,6 +700,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					setValue: function(value) { this.value = this.sanitizeAndValidate(value); },
 					sanitizeAndValidate: function(value) { return value; },
 					simplified: function() { return this.value; },
+					
+					formParams: function() {
+						return {
+							c: this.schemaConstructorName(),
+							p: this.schemaProperties(),
+						};
+					},
 					
 					schemaProperties: function() {
 						return sc.schemaProperties.call(this).update({ value: this.value });
@@ -830,7 +915,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var children = root.filter(filter);
 							onComplete({
 								schemaParamsList: children.map(function(child) {
-									return child.schemaParams();
+									return child.schemaParams({ selection: PACK.sel.all });
 								})
 							});
 							return;
@@ -838,10 +923,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						} else if (com === 'getChild') {	/* address, recurse */
 							
 							var address = U.param(reqParams, 'address');
-							var recurse = U.param(reqParams, 'recurse', true); // SELECTION PROBLEM
+							var selection = U.pawam(reqParams, 'selection', PACK.quickDev.sel.all);
 							
 							var child = this.getChild(address);
-							onComplete({ schemaParams: child ? child.schemaParams({ recurse: recurse}) : null });
+							onComplete({ schemaParams: child ? child.schemaParams({ selection: selection }) : null });
 							return;
 							
 						} else if (com === 'setChildProperty') { /* address, value */
@@ -929,6 +1014,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.addChild(child);
 						return child;
 					},
+					getNamedChild: function(name) {
+						if (name === '+') return this._schema.v.actualize();
+						return sc.getNamedChild.call(this, name);
+					},
 					getChildProp: function(elem) {
 						var propElem = elem.getChild(this.childAddress);
 						
@@ -982,7 +1071,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var initParams = U.param(reqParams, 'initParams');
 							
 							var child = this.getNewChild(initParams.update({ session: session }));
-							onComplete({ schema: child.schemaParams() });
+							onComplete({ schema: child.schemaParams({ selection: PACK.quickDev.sel.all }) });
 							return;
 						}
 						
@@ -1019,6 +1108,30 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 				}}
 			}),
+			/*QClientElem: PACK.uth.makeClass({ name: 'QDict',
+				superclassName: 'QElem',
+				propertyNames: [ ],
+				methods: function(sc, c) { return {
+					init: function(params /* name, allowTransfer * /) {
+						sc.init.call(this, params);
+						this.children = {};
+						this.root = this;
+					},
+					getNamedChild: function(name) {
+						var resolveRef = name[0] === '@';
+						if (resolveRef) name = name.substr(1);
+						
+						if (!(name in this.children)) {
+							if (resolveRef) return this.root.getChild(
+							
+							
+						}
+						
+						return resolveRef ? this.children[name].use() : this.children[name];
+					},
+					
+				};}
+			}),*/
 			
 			/* QValue subclasses */
 			QRef: PACK.uth.makeClass({ name: 'QRef',
@@ -1217,8 +1330,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				none: new ret.QSelNone()
 			}
 		});
-		
-		for (var k in ret) console.log(k);
 		
 		return ret;
 	}

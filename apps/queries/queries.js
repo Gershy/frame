@@ -139,7 +139,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 								child.respondToQuery(params.clone({ address: addr.slice(1) }), processedOnComplete);
 							} catch(e) {
 								console.log('Error handling query:')
-								console.error(e);
+								console.error(e.stack);
 								console.log('---------------------');
 								processedOnComplete({ code: 1, msg: child.constructor.title + ' caused error' });
 							}

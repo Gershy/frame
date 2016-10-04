@@ -107,7 +107,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						var pass = this;
 						this.dbUpdate = new qd.QUpdate({
-							request: function(cb) { pass.setState(pass.schemaParams(), cb); },
+							request: function(cb) { pass.setState(pass.schemaParams({ selection: qd.sel.all }), cb); },
 							start: function() {},
 							end: function(response) { }
 						});
@@ -359,7 +359,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 							}
 							
-							onComplete({ vote: vote.schemaParams() });
+							onComplete({ vote: vote.schemaParams({ selection: PACK.quickDev.sel.all }) });
 							return;
 							
 						} else if (com === 'submitVotable') {
@@ -389,7 +389,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								room.getChild('startedMillis').setValue(+new Date());
 							}
 							
-							onComplete({ votable: votable.schemaParams() });
+							onComplete({ votable: votable.schemaParams({ selection: PACK.sel.all }) });
 							return;
 							
 						} else if (com === 'resolutionTimeRemaining') {
@@ -445,6 +445,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		if (U.isServer()) return;
 		
 		var root = PACK.creativity.queryHandler;
+		var qd = PACK.quickDev;
 		var e = PACK.e.e;
 		
 		var auth = { token: null, username: null, room: null };
@@ -504,89 +505,226 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					}),
 					new PACK.e.Scene({ name: 'lobby', title: 'Lobby',
 						build: function(rootElem, subsceneElem, scene) {
-							
-							var title = e('<div class="title"><span>Rooms</span></div>');
-							var rooms = e('<div class="rooms"></div>');
-							
-							var scroller = rooms.append('<div class="scroller"></div>');
-							
-							var listRooms = new PACK.e.ListUpdater({
-								root: scroller,
-								elemCreate: function(roomData) {
-									var room = e([
-										'<div class="room">',
-											'<div class="bg"></div>',
-											'<div class="title">',
-												'<div class="quick-name">' + roomData.quickName + '</div>',
-												'<div class="host">' + roomData.host + '</div>',
-												'<div class="story-length">' + roomData.storyLength + '</div>',
-											'</div>',
-											'<div class="description">' + roomData.description + '</div>',
-											'<div class="time-remaining">Round time: ' + roomData.timeRemaining + '</div>',
-										'</div>'
-									].join(''));
-									
-									room.handle('click', function() {
-										root.$request({	command: 'joinRoom', params: {
-											token: auth.token,
-											quickName: roomData.quickName
-										}}).fire(function(response) {
-											auth.room = response.quickName;
-											var writingScene = scene.par.subscenes.main.writing;
-											writingScene.defaultScenes.contribute = response.hasSubmitted ? 'vote' : 'write';
-											scene.par.setSubscene('main', 'writing');
-										});
-									});
-									
-									return room;
-								},
-								elemUpdate: function(elem, roomData) {
-									elem.find('.time-remaining').text('Round time: ' + roomData.timeRemaining);
-								},
-								getElemKey: function(elem) {
-									return elem.find('.quick-name').text();
-								},
-								getDataKey: function(roomData) {
-									return roomData.quickName;
-								}
-							});
-							var updateRooms = new PACK.quickDev.QUpdate({
-								request: function(callback) {
-									root.$getChild({ address: 'rooms', recurse: {
-										_: {
-											host: true,
-											quickName: true,
-											description: true,
-											params: {
-												storyLength: true,
-											},
-											startedMillis: true,
-										}
-									}}).fire(function(elem) {
-										callback(U.arr(elem.children.map(function(room) { return {
-											description: room.getChild('description').value,
-											quickName: room.getChild('quickName').value,
-											host: room.getChild('host').value.split('.')[2],
-											storyLength: room.getChild('params.storyLength').value,
-											timeRemaining: room.getChild('startedMillis').value
-										};})));
-									});
-								},
-								start: function() {
-									rootElem.listAttr({ class: [ '+loading' ] });
-								},
-								end: function(roomsData) {
-									listRooms.updateList(roomsData);
-									rootElem.listAttr({ class: [ '-loading' ] });
-								}
-							});
-							
-							rootElem.append([ title, rooms ]);
-							
-							return { updater: updateRooms };
+							rootElem.append([
+								'<div class="title"><span>Rooms</span></div>',
+								subsceneElem.main
+							]);
+							return {};
 						},
-						start: function(d) { d.updater.repeat({ delay: 2000 }); },
-						end: function(d) { d.updater.endRepeat(); }
+						subscenes: {
+							main: [
+								new PACK.e.Scene({ name: 'rooms', title: 'Room list',
+									build: function(rootElem, subsceneElem, scene) {
+										var scroller = e('<div class="scroller"></div>');
+							
+										var listRooms = new PACK.e.ListUpdater({
+											root: scroller,
+											elemCreate: function(roomData) {
+												var room = e([
+													'<div class="room">',
+														'<div class="bg"></div>',
+														'<div class="title">',
+															'<div class="quick-name">' + roomData.quickName + '</div>',
+															'<div class="host">' + roomData.host + '</div>',
+															'<div class="story-length">' + roomData.storyLength + '</div>',
+														'</div>',
+														'<div class="description">' + roomData.description + '</div>',
+														'<div class="time-remaining">Round time: ' + roomData.timeRemaining + '</div>',
+													'</div>'
+												].join(''));
+												
+												room.handle('click', function() {
+													root.$request({	command: 'joinRoom', params: {
+														token: auth.token,
+														quickName: roomData.quickName
+													}}).fire(function(response) {
+														auth.room = response.quickName;
+														var writingScene = scene.par.subscenes.main.writing;
+														writingScene.defaultScenes.contribute = response.hasSubmitted ? 'vote' : 'write';
+														scene.par.setSubscene('main', 'writing');
+													});
+												});
+												
+												return room;
+											},
+											elemUpdate: function(elem, roomData) {
+												elem.find('.time-remaining').text('Round time: ' + roomData.timeRemaining);
+											},
+											getElemKey: function(elem) {
+												return elem.find('.quick-name').text();
+											},
+											getDataKey: function(roomData) {
+												return roomData.quickName;
+											}
+										});
+										var updateRooms = new PACK.quickDev.QUpdate({
+											request: function(callback) {
+												root.$getChild({ address: 'rooms', recurse: {
+													_: {
+														host: true,
+														quickName: true,
+														description: true,
+														params: {
+															storyLength: true,
+														},
+														startedMillis: true,
+													}
+												}}).fire(function(elem) {
+													callback(U.arr(elem.children.map(function(room) { return {
+														description: room.getChild('description').value,
+														quickName: room.getChild('quickName').value,
+														host: room.getChild('host').value.split('.')[2],
+														storyLength: room.getChild('params.storyLength').value,
+														timeRemaining: room.getChild('startedMillis').value
+													};})));
+												});
+											},
+											start: function() {
+												rootElem.listAttr({ class: [ '+loading' ] });
+											},
+											end: function(roomsData) {
+												listRooms.updateList(roomsData);
+												rootElem.listAttr({ class: [ '-loading' ] });
+											}
+										});
+										
+										var newRoomButton = e('<div class="button new-room"><span></span></div>');
+										newRoomButton.handle('click', function() {
+											scene.par.setSubscene('main', 'newRoom');
+										});
+										
+										rootElem.append([
+											scroller,
+											newRoomButton
+										]);
+										
+										return { updater: updateRooms };
+									},
+									start: function(d) { d.updater.repeat({ delay: 2000 }); },
+									end: function(d) { d.updater.endRepeat(); },
+								}),
+								new PACK.e.Scene({ name: 'newRoom', title: 'Create new room',
+									build: function(rootElem, subsceneElem, scene) {
+										var formElem = rootElem.append('<div class="input-form"></div>');
+										formElem.listAttr({ class: [ '+loading' ] });
+										
+										root.$getForm({
+											address: 'rooms.+',
+											selection: new qd.QSelExc({
+												names: {
+													'startedMillis': true,
+													'host': true
+												},
+												sel: qd.sel.all
+											})
+										}).fire(function(response) {
+											
+											console.log('FORM:', response);
+											
+											var formBuilder = new PACK.e.FormBuilder({});
+											
+											
+										});
+										
+										/*formElem.append([
+											'<div class="input-field quick-name">',
+												'<div class="label">QuickName</div>',
+												'<input type="text"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field password">',
+												'<div class="label">Password</div>',
+												'<input type="text"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field description">',
+												'<div class="label">Description</div>',
+												'<textarea></textarea>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field story-length">',
+												'<div class="label">Story Length (in characters)</div>',
+												'<input type="number"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<p>',
+												'The next field allows different rounds to have varying ',
+												'character limits for a submission. If you don\'t want the ',
+												'limit to vary between rounds, set the same value for both.',
+											'</p>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field submission-length">',
+												'<div class="label">Character limit range</div>',
+												'<input type="number" min="0" max="1000"/>',
+												'<input type="number" min="0" max="1000"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field round-submission-seconds">',
+												'<div class="label">Round submission time</div>',
+												'<input type="number" min="120" max="86400"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field round-vote-seconds">',
+												'<div class="label">Round vote time</div>',
+												'<input type="number" min="120" max="86400"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<p>',
+												'The next two fields allow you to restrict how many votes ',
+												'and submissions can be received per round. If the ',
+												'maximum number of submissions is received, the round ',
+												'goes directly to voting. If the maximum number of votes ',
+												'is received, the round is resolved. To remove any limits ',
+												'set the value to zero.',
+											'</p>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field vote-maximum">',
+												'<div class="label">Maximum votes per round</div>',
+												'<input type="number" min="0" max="1000"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="input-field submission-maximum">',
+												'<div class="label">Maximum submissions per round</div>',
+												'<input type="number" min="0" max="1000"/>',
+											'</div>'
+										].join(''));
+										
+										formElem.append([
+											'<div class="submit">Submit</div>'
+										].join(''));
+										*/
+										
+										var scroller = e('<div class="scroller"></div>');
+										scroller.append(formElem);
+										
+										rootElem.append(scroller);
+										
+										return { formElem: formElem };
+									},
+								}),
+							]
+						},
+						defaultScenes: { main: 'rooms' },
 					}),
 					new PACK.e.Scene({ name: 'writing', title: 'Writing',
 						build: function(rootElem, subsceneElem) {

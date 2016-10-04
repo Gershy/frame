@@ -132,7 +132,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								//console.error(e.stack);
+								console.error(e.stack);
 								console.log('No server file for "' + appName + '"');
 							}
 							
@@ -293,7 +293,7 @@ var dbUri = 'FRAME_DB_URI' in process.env
 	? process.env.FRAME_DB_URI
 	: 'mongodb://localhost:27017/frame';
 
-var gimmeDb = true;
+var gimmeDb = false;
 if (gimmeDb) {
 	
 	var db = require('mongodb');

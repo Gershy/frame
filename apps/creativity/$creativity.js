@@ -101,9 +101,10 @@ migrations.chain([
 								value: new qd.QSchema({ c: qd.QDict, i: [
 									/*
 									TODO: It sucks that "username" is needed!! But it is,
-									because if it's taken out and prop is switch from "username/value"
-									to "@user.username/value" then stuff breaks!! It will be way
-									cleaner once this is fixed. Pity in the meantime.
+									because if it's taken out and prop is switched from
+									"username/value" to "@user.username/value" then stuff
+									breaks!! It will be way	cleaner once this is fixed.
+									Pity in the meantime.
 									*/
 									{ c: qd.QRef, p: { name: 'user', value: '' } },
 									{ c: qd.QString, p: { name: 'username', value: '' } },
@@ -118,7 +119,7 @@ migrations.chain([
 									userElem.getChild('username').setValue(user.name);
 								}
 							}),
-							prop: 'username/value'
+							prop: 'username/value' //'@user.username/value'
 						}},
 						{ c: qd.QGen, p: { name: 'blurbs',
 							_schema: 'creativity.blurbSchema',
@@ -265,7 +266,7 @@ migrations.chain([
 			
 			return {
 				msg: 'added rooms',
-				data: root.schemaParams({ recurse: true, selection: qd.sel.none })
+				data: root.schemaParams({ selection: qd.sel.all })
 			};
 		}
 	})

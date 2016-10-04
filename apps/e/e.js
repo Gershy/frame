@@ -401,7 +401,18 @@ var package = new PACK.pack.Package({ name: 'e',
 						existingMap.forEach(function(elem) { elem.remove(); });
 					}
 				};}
-			})
+			}),
+			
+			FormBuilder: PACK.uth.makeClass({ name: 'FormBuilder', namespace: namespace,
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						
+					},
+					build: function() {
+						
+					}
+				};}
+			}),
 			
 		};
 	}

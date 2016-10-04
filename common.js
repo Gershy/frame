@@ -150,23 +150,54 @@
 			return this.exists(v) ? v : def;
 		},
 		param: function(params, name, def) {
+			/*
+			Used to retrieve an item from an object. If def is provided and no
+			item under the "name" key is found, def is returned.
+			*/
 			if (U.exists(params) && (name in params) && U.exists(params[name])) return params[name];
 			if (this.exists(def)) return def;
 			
 			throw new Error('missing param: "' + name + '"');
 		},
 		palam: function(params, name, paramFunc) {
+			/*
+			Lambda-param. Exactly like U.param, but uses a lambda to retrieve
+			the default value (if none was found) instead of a pre-computed
+			value.
+			*/
 			var ret = this.param(params, name, paramFunc);
 			return ret === paramFunc ? paramFunc() : ret;
 		},
 		pasam: function(params, name, def) {
+			/*
+			Serializable-param. If the result of U.param is a string
+			for the given parameters, return the serializable under the
+			string's name.
+			*/
 			var p = this.param(params, name, def);
 			
 			if (p === null || p.constructor !== String) return p;
 			
 			return this.getSerializable(p)
 		},
+		pawam: function(params, name, def) {
+			/*
+			Wire-param. Used to reconstitute an object that was sent over
+			the wire. If U.param doesn't return def, use PACK.uth.wireGet
+			to rebuild the value.
+			*/
+			var p = this.param(params, name, def);
+			
+			if (p === def) return def;
+			
+			return PACK.uth.wireGet(p);
+		},
 		arr: function(arrayLike) {
+			if (arrayLike.constructor === Number) {
+				var ret = [];
+				for (var i = 0; i < arrayLike; i++) ret.push(null);
+				return ret;
+			}
 			if (arrayLike.constructor === Object) {
 				var ret = [];
 				for (var k in arrayLike) ret.push(arrayLike[k]);
@@ -328,6 +359,102 @@
 	// PACKAGE: Under The Hood
 	// This is the only package that is generated without the Package class
 	global.PACK.uth = {
+		wirePut: function(obj, arr) {
+			if (!U.exists(arr)) arr = [];
+			
+			var ind = arr.indexOf(obj);
+			
+			if (~ind) return { arr: arr, ind: ind };
+			
+			ind = arr.length;
+			arr.push(obj);
+			
+			var isClassedObj = false;
+			try { isClassedObj = ('constructor' in obj) && ('title' in obj.constructor); } catch(e) {};
+			
+			if (isClassedObj) {
+				
+				var ps = obj.propertyNames;
+				var data = {};
+				for (var i = 0, len = ps.length; i < len; i++) {
+					var k = ps[i];
+					data[k] = PACK.uth.wirePut(obj[k], arr).ind;
+				}
+				arr[ind] = { __c: obj.constructor.title, p: data };
+				
+			} else if (obj.constructor === Object) {
+				
+				for (var k in obj) {
+					if (k === '_c') throw new Error('Illegal key: "_c"');
+					obj[k] = PACK.uth.wirePut(obj[k], arr).ind;
+				}
+				
+			} else if (obj.constructor === Array) {
+				
+				for (var i = 0; i < obj.length; i++) obj[i] = PACK.uth.wirePut(obj[i], arr).ind;
+				
+			}
+			
+			return { arr: arr, ind: ind };
+		},
+		wireGet: function(arr, ind, built) {
+			if (!U.exists(built)) built = U.arr(arr.length);
+			if (!U.exists(ind)) ind = 0;
+			
+			// This is a dumb hack to deal with the actual value being
+			// null: put EVERY value in an array lol
+			if (built[ind] !== null) return built[ind][0];
+			
+			var d = arr[ind];
+			var value = null;
+			if (d.constructor === Object) {
+				
+				if ('__c' in d) {
+					
+					// TODO: This is bad. In circular cases, need to have the object
+					// already within "built", but that means it has to be constructed
+					// before its parameters are known. Because of cases involving
+					// mandatory parameters, need to construct "dud" parameters.
+					
+					// Get constructor
+					var constructor = U.getByName({ root: global.C, name: d.__c });
+					
+					// Construct dud parameters
+					var dudParams = {};
+					var ps = constructor.prototype.propertyNames;
+					for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
+					
+					// value is a classed object
+					built[ind] = [ new constructor(dudParams) ];
+					
+					// Construct actual parameters, and call init
+					var params = {};
+					for (var k in d.p) params[k] = PACK.uth.wireGet(arr, d.p[k], built);
+					built[ind][0].init(params);
+					return built[ind][0];
+					
+				} else {
+					
+					// value is an ordinary object
+					built[ind] = [ {} ];
+					for (var k in d) built[ind][0][k] = PACK.uth.wireGet(arr, d[k], built);
+					return built[ind][0];
+					
+				}
+					
+				
+			} else if (d.constructor === Array) {
+				
+				// value is an array
+				built[ind] =  [ [] ];
+				for (var i = 0; i < d.length; i++) built[ind][0].push(PACK.uth.wireGet(arr, d[i], built));
+				return built[ind][0];
+				
+			}
+			
+			built[ind] = [ d ];
+			return built[ind][0];
+		},
 		makeClass: function(params /* namespace, name, superclassName, propertyNames, methods, statik */) {
 			var namespace = U.param(params, 'namespace', global.C);
 			
@@ -383,6 +510,7 @@
 			methods.update({
 				parent: superclass ? superclass.prototype : null,
 				propertyNames: (superclass ? superclass.prototype.propertyNames : []).concat(propertyNames),
+				wirePut: global.PACK.uth.wirePut,
 				constructor: c
 			});
 			
