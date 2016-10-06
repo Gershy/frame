@@ -523,7 +523,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						rootElem.append(title);
 						rootElem.append(credentials);
-						rootElem.append('<div class="version">Version: 0.0.2 (rooms ééé)</div>');
+						rootElem.append('<div class="version">Version: 0.0.2 (rooms)</div>');
 						
 						return {};
 					}
