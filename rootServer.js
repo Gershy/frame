@@ -57,10 +57,9 @@ var package = new PACK.pack.Package({ name: 'server',
 						if (binary) ext = ext.substr(1);
 						
 						fileSys.readFile(filepath, binary ? 'binary' : 'utf8', function(err, content) {
-							onComplete(err, {
-								data: content,
-								encoding: ext
-							});
+							var ret = { data: content, encoding: ext };
+							if (ret.binary) ret.binary = true;
+							onComplete(err, ret);
 						});
 						
 						/*
@@ -266,7 +265,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						'Content-Type': response.encoding,
 						'Content-Length': response.data.length
 					});
-					res.write(response.data, 'binary');
+					res.write(response.data, ('binary' in response && response.binary) ? 'binary' : 'utf-8');
 					res.end();
 				});
 				
