@@ -254,19 +254,16 @@ var package = new PACK.pack.Package({ name: 'server',
 					// TODO: Sessions need to expire!!
 					if (!existingSession && session.queryHandler !== null) sessionsIndex[session.ip] = session;
 					
+					// TODO: So it works... but because an extra space is tacked on to every response.
+					// This could completely destory certain responses, but it also shouldn't be
+					// necessary. Investigate?
+					
 					var encoding = response.encoding;
-					var length = response.data.length + 1;
-					var data = response.data + ' ';
+					var length = response.data.length + 1;  // TODO: Because of the extra space
+					var data = response.data + ' ';			// TODO: Here's the extra space
 					var transferStyle = ('binary' in response && response.binary) ? 'binary' : 'utf8';
 					
-					res.writeHead(200, {
-						'Content-Type': encoding,
-						'Content-Length': length
-					});
-					
-					// ('binary' in response && response.binary) ? 'binary' : 'utf8'
-					
-					//res.write(response.data, response.encoding === 'text/html' ? 'utf-8' : 'binary');
+					res.writeHead(200, { 'Content-Type': encoding, 'Content-Length': length });
 					res.end(data, transferStyle);
 				});
 				
