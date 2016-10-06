@@ -279,5 +279,5 @@ root.getState(function(state) {
 	schema.assign({ elem: PACK.creativity.queryHandler, recurse: true });
 	
 	// Start the CreativityApp
-	// PACK.creativity.queryHandler.start();
+	PACK.creativity.queryHandler.start();
 });
