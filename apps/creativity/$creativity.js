@@ -87,13 +87,13 @@ migrations.chain([
 						{ c: qd.QString, p: { name: 'description', value: '', minLen: 0, maxLen: 250 } },
 						{ c: qd.QString, p: { name: 'password', value: '', minLen: 0, maxLen: 30 } },
 						{ c: qd.QDict, p: { name: 'params' }, i: [
-							{ c: qd.QInt, p: { name: 'storyLength', value: 0 } },
-							{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0 } },
-							{ c: qd.QInt, p: { name: 'submissionLengthMax', value: 0 } },
-							{ c: qd.QInt, p: { name: 'roundSubmissionSeconds', value: 0 } },
-							{ c: qd.QInt, p: { name: 'roundVoteSeconds', value: 0 } },
-							{ c: qd.QInt, p: { name: 'voteMaximum', value: 0 } },
-							{ c: qd.QInt, p: { name: 'submissionMaximum', value: 0 } },
+							{ c: qd.QInt, p: { name: 'storyLength', value: 0, minVal: 500, maxVal: 10000000 /* ten-million */ } },
+							{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0, minVal: 10, maxVal: 600 } },
+							{ c: qd.QInt, p: { name: 'submissionLengthMax', value: 0, minVal: 10, maxVal: 600 } },
+							{ c: qd.QInt, p: { name: 'roundSubmissionSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
+							{ c: qd.QInt, p: { name: 'roundVoteSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
+							{ c: qd.QInt, p: { name: 'voteMaximum', value: 0, minVal: 0, maxVal: 10000 } },
+							{ c: qd.QInt, p: { name: 'submissionMaximum', value: 0, minVal: 0, maxVal: 10000 } },
 						]},
 						{ c: qd.QInt, p: { name: 'startedMillis', value: -1 } },
 						{ c: qd.QGen, p: { name: 'users',
@@ -105,6 +105,10 @@ migrations.chain([
 									"username/value" to "@user.username/value" then stuff
 									breaks!! It will be way	cleaner once this is fixed.
 									Pity in the meantime.
+									
+									NOTE: When it's changed, need to update the query
+									handling for 'createRoom' where the user is checked
+									to make sure they're not exceeding the rooms limit.
 									*/
 									{ c: qd.QRef, p: { name: 'user', value: '' } },
 									{ c: qd.QString, p: { name: 'username', value: '' } },
@@ -141,7 +145,6 @@ migrations.chain([
 							_initChild: 'creativity.storyItemsInitChild',
 							prop: 'id/value'
 						}}
-						
 					]})
 				}),
 				_initChild: U.addSerializable({ name: 'creativity.roomsInitChild',
@@ -184,6 +187,7 @@ migrations.chain([
 				}),
 				prop: 'quickName/value'
 			}});
+			data.i.maxRoomsPerUser = new qd.QSchema({ c: qd.QInt, p: { name: 'maxRoomsPerUser', value: 3 } });
 			
 			// Work with an actual instance - it's much easier.
 			// It will be converted back to a schema at the end.
@@ -191,71 +195,62 @@ migrations.chain([
 			var root = new cr.CreativityApp({ name: 'app' });
 			schema.assign({ elem: root, recurse: true });
 			
-			root.getChild('rooms').getNewChild({
-				host: root.getChild('users.gershom'),
-				quickName: 'OneGov',
-				description: 'The first story ever written with this app!',
-				storyLength: 500000,
-				submissionLengthMin: 30,
-				submissionLengthMax: 160,
-				roundSubmissionSeconds: 60 * 60 * 12,
-				roundVoteSeconds: 60 * 60 * 12,
-				voteMaximum: 0,
-				submissionMaximum: 0
-			});
-			
-			root.getChild('rooms').getNewChild({
-				host: root.getChild('users.gershom'),
-				quickName: 'Story2',
-				description: 'Another story because there are rooms so there can be different stories???',
-				storyLength: 100000,
-				submissionLengthMin: 30,
-				submissionLengthMax: 160,
-				roundSubmissionSeconds: 60 * 60 * 2,
-				roundVoteSeconds: 60 * 60 * 2,
-				voteMaximum: 0,
-				submissionMaximum: 0
-			});
-			
-			// MIGRATE DATA
-			var users = root.getChild('users').children;
-			var roomUsers = root.getChild('rooms.OneGov.users');
-			for (var k in users)
-				roomUsers.getNewChild({
-					user: users[k]
+			if (root.getChild('blurbs').length > 0) {
+				
+				root.getChild('rooms').getNewChild({
+					host: root.getChild('users.gershom'),
+					quickName: 'firstStory',
+					description: 'The first story ever written with this app!',
+					storyLength: 500000,
+					submissionLengthMin: 30,
+					submissionLengthMax: 160,
+					roundSubmissionSeconds: 60 * 60 * 12,
+					roundVoteSeconds: 60 * 60 * 12,
+					voteMaximum: 0,
+					submissionMaximum: 0
 				});
-			
-			var blurbs = root.getChild('blurbs').children;
-			var roomBlurbs = root.getChild('rooms.OneGov.blurbs');
-			for (var k in blurbs)
-				roomBlurbs.getNewChild({
-					username: blurbs[k].getChild('@user').name,
-					text: blurbs[k].getChild('text').value
-				});
-			
-			var votables = root.getChild('votables').children;
-			var roomVotables = root.getChild('rooms.OneGov.votables');
-			for (var k in votables)
-				roomVotables.getNewChild({
-					blurb: roomBlurbs.getChild(votables[k].getChild('@blurb').name)
-				});
-			
-			var votes = root.getChild('votes').children;
-			var roomVotes = root.getChild('rooms.OneGov.votes');
-			for (var k in votes)
-				roomVotes.getNewChild({
-					user: votes[k].getChild('@user'),
-					votable: roomVotables.getChild(votes[k].getChild('@votable').name)
-				});
-			
-			var storyItems = root.getChild('storyItems').children;
-			var roomStoryItems = root.getChild('rooms.OneGov.storyItems');
-			for (var k in storyItems)
-				roomStoryItems.getNewChild({
-					blurb: roomBlurbs.getChild(storyItems[k].getChild('@blurb').name)
-				});
-			
-			root.getChild('rooms.OneGov.startedMillis').setValue(root.getChild('resolutionTimer.startedMillis').value);
+				
+				// MIGRATE DATA
+				var users = root.getChild('users').children;
+				var roomUsers = root.getChild('rooms.firstStory.users');
+				for (var k in users)
+					roomUsers.getNewChild({
+						user: users[k]
+					});
+				
+				var blurbs = root.getChild('blurbs').children;
+				var roomBlurbs = root.getChild('rooms.firstStory.blurbs');
+				for (var k in blurbs)
+					roomBlurbs.getNewChild({
+						username: blurbs[k].getChild('@user').name,
+						text: blurbs[k].getChild('text').value
+					});
+				
+				var votables = root.getChild('votables').children;
+				var roomVotables = root.getChild('rooms.firstStory.votables');
+				for (var k in votables)
+					roomVotables.getNewChild({
+						blurb: roomBlurbs.getChild(votables[k].getChild('@blurb').name)
+					});
+				
+				var votes = root.getChild('votes').children;
+				var roomVotes = root.getChild('rooms.firstStory.votes');
+				for (var k in votes)
+					roomVotes.getNewChild({
+						user: votes[k].getChild('@user'),
+						votable: roomVotables.getChild(votes[k].getChild('@votable').name)
+					});
+				
+				var storyItems = root.getChild('storyItems').children;
+				var roomStoryItems = root.getChild('rooms.firstStory.storyItems');
+				for (var k in storyItems)
+					roomStoryItems.getNewChild({
+						blurb: roomBlurbs.getChild(storyItems[k].getChild('@blurb').name)
+					});
+				
+				root.getChild('rooms.firstStory.startedMillis').setValue(root.getChild('resolutionTimer.startedMillis').value);
+				
+			}
 			
 			// DELETE UNECESSARY COMPONENTS*/
 			root.remChild('blurbs');

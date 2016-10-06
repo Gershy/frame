@@ -525,6 +525,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							params: {
 								address: address,
 								selection: PACK.uth.wirePut(selection).arr
+							},
+							transform: function(data) {
+								for (var k in data) data[k].name = k;
+								return data;
 							}
 						});
 					},
@@ -702,10 +706,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					simplified: function() { return this.value; },
 					
 					formParams: function() {
-						return {
-							c: this.schemaConstructorName(),
-							p: this.schemaProperties(),
-						};
+						return this.schemaProperties().update({
+							class: this.constructor.title
+						});
 					},
 					
 					schemaProperties: function() {
@@ -915,7 +918,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var children = root.filter(filter);
 							onComplete({
 								schemaParamsList: children.map(function(child) {
-									return child.schemaParams({ selection: PACK.sel.all });
+									return child.schemaParams({ selection: PACK.quickDev.sel.all });
 								})
 							});
 							return;
@@ -1201,6 +1204,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						sc.init.call(this, params);
 						this.minLen = U.param(params, 'minLen', null);
 						this.maxLen = U.param(params, 'maxLen', null);
+						
+						if (this.minLen !== null && this.minLen !== null && this.minLen > this.maxLen)
+							throw new Error('minLen must be <= maxLen');
 					},
 					sanitizeAndValidate: function(value) {
 						value = value === null ? '' : value.toString();
@@ -1223,12 +1229,28 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
 						sc.init.call(this, params);
+						
+						this.minVal = U.param(params, 'minVal', null);
+						this.maxVal = U.param(params, 'maxVal', null);
+						
+						if (this.minVal !== null && this.maxVal !== null && this.minVal > this.maxVal)
+							throw new Error('minVal must be <= maxVal');
 					},
 					sanitizeAndValidate: function(value) {
 						var intValue = parseInt(value);
 						if (isNaN(intValue)) throw new Error('invalid integer value "' + value + '" for "' + this.getAddress() + '"');
+						
+						if (this.minVal !== null && intValue < this.minVal) throw new Error('Below minimum value: ' + intValue + ' < ' + this.minVal);
+						if (this.maxVal !== null && intValue > this.maxVal) throw new Error('Above maximum value: ' + intValue + ' > ' + this.maxVal);
+						
 						return intValue;
 					},
+					schemaProperties: function() {
+						return sc.schemaProperties.call(this).update({
+							minVal: this.minVal,
+							maxVal: this.maxVal
+						});
+					}
 				}; }
 			}),
 			QVector2D: PACK.uth.makeClass({ name: 'QVector2D',

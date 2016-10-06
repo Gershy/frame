@@ -213,7 +213,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						for (var k in rooms) {
 							var room = rooms[k];
 							var t = this.timeRemaining(room);
-							if (t <= 0) room.getChild('startedMillis').setValue(-1);
 							if (room.getChild('votables').length >= 1 && (t === null || t <= 0)) this.resolveVote(room);
 						}
 					},
@@ -240,6 +239,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						// Clear votables and votes
 						room.getChild('votables').clear();
 						room.getChild('votes').clear();
+						
+						// Clear the timer
+						room.getChild('startedMillis').setValue(-1)
 					},
 					handleQuery: function(params, /* command, params */ onComplete) {
 						
@@ -290,7 +292,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								}
 								
 								console.log('Couldn\'t find "' + user.getChild('username').value + '"; Creating new room user!');
-								roomUser = room.getChild('users').getNewChild(user)
+								roomUser = room.getChild('users').getNewChild({ user: user })
 							}
 							
 							onComplete({
@@ -336,7 +338,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								
 								// Resolution from everyone voting
 								console.log('Everyone voted! Resolving.');
-								this.resolveVote();
+								this.resolveVote(room);
 								
 							} else {
 								
@@ -389,7 +391,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								room.getChild('startedMillis').setValue(+new Date());
 							}
 							
-							onComplete({ votable: votable.schemaParams({ selection: PACK.sel.all }) });
+							onComplete({ votable: votable.schemaParams({ selection: PACK.quickDev.sel.all }) });
 							return;
 							
 						} else if (com === 'resolutionTimeRemaining') {
@@ -413,22 +415,47 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							});
 							return;
 							
-						} else if (com === 'write') {
+						} else if (com === 'createRoom') {
 							
-							var content = U.param(reqParams, 'content');
+							var token = U.param(reqParams, 'token');
+							var roomParams = U.param(reqParams, 'roomParams');
 							
-							this.setState(content, function(state) {
-								onComplete({ msg: 'write complete', state: state });
-							});
+							var user = this.getUserFromToken(token);
+							
+							var rooms = this.getChild('rooms');
+							var userRooms = rooms.filter({ '@host.username/value': user.getChild('username').value });
+							var maxRooms = this.getChild('maxRoomsPerUser').value;
+							if (userRooms.length > maxRooms) {
+								onComplete({ code: 1, msg: 'User already owns ' + maxRooms + ' rooms; can\'t create another.' });
+								return;
+							}
+							
+							var quickName = U.param(roomParams, 'room.quickName');
+							if (rooms.getChild(quickName)) {
+								onComplete({ code: 1, msg: 'A room with quickName "' + quickName + '" already exists.' });
+								return;
+							}
+							
+							try {
+								var newRoom = rooms.getNewChild({
+									host: user,
+									quickName: quickName,
+									description: 			U.param(roomParams, 'room.description'),
+									storyLength: 			U.param(roomParams, 'room.params.storyLength'),
+									submissionLengthMin: 	U.param(roomParams, 'room.params.submissionLengthMin'),
+									submissionLengthMax: 	U.param(roomParams, 'room.params.submissionLengthMax'),
+									roundSubmissionSeconds: U.param(roomParams, 'room.params.roundSubmissionSeconds'),
+									roundVoteSeconds: 		U.param(roomParams, 'room.params.roundVoteSeconds'),
+									voteMaximum: 			U.param(roomParams, 'room.params.voteMaximum'),
+									submissionMaximum: 		U.param(roomParams, 'room.params.submissionMaximum')
+								});
+							} catch(e) {
+								console.error(e.stack);
+								onComplete({ code: 1, msg: 'Error creating room: "' + e.message + '"' });
+								return;
+							}
+							onComplete({ msg: 'created room!', schemaParams: newRoom.schemaParams({ selection: PACK.quickDev.sel.all }) });
 							return;
-							
-						} else if (com === 'read') {
-							
-							this.getState(function(state) {
-								onComplete({ msg: 'read complete', content: state });
-							});
-							return;
-							
 						}
 						
 						sc.handleQuery.call(this, params, onComplete);
@@ -611,62 +638,139 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var scroller = e('<div class="scroller"><div class="input-form"></div></div>');
 								scroller.listAttr({ class: [ '+loading' ] });
 								
+								var form = new PACK.e.Form({
+									html: [
+										'<div class="input-form">',
+											'<div class="input-field room.quickName">',
+												'<div class="label">Name</div>',
+												'<div class="input-container text">',
+													'<input class="widget" name="{{ name }}" min="{{ minLen }}" max="{{ maxLen }}"/>',
+													'<div class="char-count">',
+														'<div class="cur"></div>',
+														'<div class="min">{{ minLen }}</div>',
+														'<div class="max">{{ maxLen }}</div>',
+													'</div>',
+												'</div>',
+											'</div>',
+											'<div class="input-field room.password">',
+												'<div class="label">Password</div>',
+												'<div class="input-container text">',
+													'<input class="widget" name="{{ name }} min="{{ minLen }}" max="{{ maxLen }}""/>',
+													'<div class="char-count">',
+														'<div class="cur"></div>',
+														'<div class="min">{{ minLen }}</div>',
+														'<div class="max">{{ maxLen }}</div>',
+													'</div>',
+												'</div>',
+											'</div>',
+											'<div class="input-field room.description">',
+												'<div class="label">Description</div>',
+												'<div class="input-container text long">',
+													'<textarea class="widget" name="{{ name }} min="{{ minLen }}" max="{{ maxLen }}""></textarea>',
+													'<div class="char-count">',
+														'<div class="cur"></div>',
+														'<div class="min">{{ minLen }}</div>',
+														'<div class="max">{{ maxLen }}</div>',
+													'</div>',
+												'</div>',
+											'</div>',
+											'<div class="input-field room.params.roundSubmissionSeconds">',
+												'<div class="label">Submission time limit</div>',
+												'<div class="input-container number">',
+													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+												'</div>',
+											'</div>',
+											'<div class="input-field room.params.roundVoteSeconds">',
+												'<div class="label">Voting time limit</div>',
+												'<div class="input-container number">',
+													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+												'</div>',
+											'</div>',
+											'<div class="input-field room.params.storyLength">',
+												'<div class="label">Story length (characters)</div>',
+												'<div class="input-container number">',
+													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+												'</div>',
+											'</div>',
+											'<p>',
+												'The next field allows you to control the minimum and maximum ',
+												'values that each submission round randomly has. If you want ',
+												'each submission to be of the same length (no randomness), set ',
+												'both fields to the same value.',
+											'</p>',
+											'<div class="input-container range-input">',
+												'<div class="label">Text limit range</div>',
+												'<div class="input-field room.params.submissionLengthMin">',
+													'<div class="input-container number">',
+														'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+													'</div>',
+												'</div>',
+												'<div class="sep">to</div>',
+												'<div class="input-field room.params.submissionLengthMax">',
+													'<div class="input-container number">',
+														'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+													'</div>',
+												'</div>',
+											'</div>',
+											'<p>',
+												'The next field allows you to control how many submissions ',
+												'there can be in each round. If the maximum is hit during a ',
+												'round, no more submissions can occur and the voting stage is ',
+												'entered immediately. If you want no limit, set the value to 0.',
+											'</p>',
+											'<div class="input-field room.params.submissionMaximum">',
+												'<div class="label">Maximum submissions per round</div>',
+												'<div class="input-container number">',
+													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+												'</div>',
+											'</div>',
+											'<p>',
+												'The next field allows you to control how many votes there can ',
+												'be in each round. If the maximum is hit, a submission is ',
+												'immediately picked based on the existing votes. If you want ',
+												'no limit, set the value to 0.',
+											'</p>',
+											'<div class="input-field room.params.voteMaximum">',
+												'<div class="label">Maximum votes per round</div>',
+												'<div class="input-container number">',
+													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
+												'</div>',
+											'</div>',
+											'<div class="submit">Submit</div>',
+										'</div>'
+									].join(''),
+									onSubmit: function(data) {
+										scroller.listAttr({ class: [ '+loading' ] });
+										console.log('CREATING ROOM???');
+										root.$request({
+											command: 'createRoom',
+											params: {
+												token: auth.token,
+												roomParams: data,
+											}
+										}).fire(function(response) {
+											scroller.listAttr({ class: [ '-loading' ] });
+											scene.par.setSubscene('main', 'rooms');
+										});
+									}
+								});
+								
 								root.$getForm({
 									address: 'rooms.+room',
 									selection: new qd.QSelExc({
-										names: {
-											// Exclude these fields
-											'startedMillis': true,
-											'host': true
-										},
+										names: { 'startedMillis': 1, 'host': 1 }, // Excluded fields
 										sel: qd.sel.all
 									})
 								}).fire(function(response) {
-									
-									var buildField = function(label) {
-										return scroller.find('.input-form').append([
-											'<div class="input-field">',
-												'<div class="label">' + label + '</div>',
-												'<div class="widget-container"></div>',
-											'</div>'
-										].join(''));
-									};
-									
-									var formBuilder = new PACK.e.FormBuilder({});
-									var fireSubmission = formBuilder.build({
-										formData: response.form,
-										containers: {
-											'room.quickName': 						buildField('Name'),
-											'room.password': 						buildField('Password'),
-											'room.description': 					buildField('Description'),
-											'room.params.roundSubmissionSeconds':	buildField('Submission time limit'),
-											'room.params.roundVoteSeconds':			buildField('Voting time limit'),
-											'room.params.storyLength':				buildField('Maximum story length'),
-											'room.params.submissionLengthMax':		buildField('Maximum submission limit'),
-											'room.params.submissionLengthMin':		buildField('Minimum submission limit'),
-											'room.params.submissionMaximum':		buildField('Maximum submissions per round'),
-											'room.params.voteMaximum':				buildField('Maximum votes per round'),
-										},
-										makeContainer: function(data) {
-											return e([
-												'<div class="input-field">',
-													'<div class="label">Field</div>',
-													'<div class="widget"></div>',
-												'</div>'
-											].join(''));
-										}
-									});
-									
-									var submit = scroller.find('.input-form').append('<div class="submit">Submit</div>');
-									submit.handle('click', fireSubmission);
-									
+
+									scroller.append(form.build(response.form));
 									scroller.listAttr({ class: [ '-loading' ] });
 									
 								});
 								
 								rootElem.append(scroller);
 								
-								return { };
+								return { form: form };
 							},
 						}),
 					]},

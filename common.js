@@ -76,6 +76,25 @@
 					this.forEach(function(v) { ret.push(v); });
 					return ret;
 				},
+				flatten: function(prefix) {
+					var ret = {};
+					for (var k in this) {
+						var kk = U.exists(prefix) ? (prefix + '.' + k) : k;
+						var o = this[k];
+						if (PACK.uth.isObj(o) && o.constructor === Object) {
+							
+							console.log('OBJ');
+							var flattened = o.flatten(kk);
+							for (var j in flattened) ret[j] = flattened[j];
+							
+						} else {
+							
+							ret[kk] = this[k];
+							
+						}
+					}
+					return ret;					
+				},
 				hasProps: function(propNames) {
 					for (var i = 0, len = propNames.length; i < len; i++)
 						if (!(propNames[i] in this)) return false;
@@ -359,6 +378,10 @@
 	// PACKAGE: Under The Hood
 	// This is the only package that is generated without the Package class
 	global.PACK.uth = {
+		isObj: function(obj) {
+			try { return ('constructor' in obj) || true } catch(e) {};
+			return false;
+		},
 		isClassedObj: function(obj) {
 			try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
 			return false;

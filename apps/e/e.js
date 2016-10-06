@@ -117,24 +117,47 @@ var package = new PACK.pack.Package({ name: 'e',
 					clear: function(e) {
 						this.elems.forEach(function(elem) { elem.innerHTML = ''; });
 					},
+					parameterize: function(params /* data, delim1, delim2 */) {
+						var data = U.param(params, 'data');
+						var delim1 = U.param(params, 'delim1', '{{ ');
+						var delim2 = U.param(params, 'delim2', ' }}');
+						
+						this.elems.forEach(function(elem) {
+							var html = elem.innerHTML;
+							for (var k in data) {
+								var reg = new RegExp(delim1 + k + delim2, 'g');
+								html = html.replace(reg, data[k]);
+							}
+							elem.innerHTML = html;
+						});
+					},
 					text: function(v) {
 						if (this.elems.length === 0) return '';
 						
 						if (U.exists(v)) this.elems[0].innerHTML = v;
 						else return this.elems[0].innerHTML;
 					},
+					htmlCopy: function() {
+						return PACK.e.e(this.elems[0].outerHTML);
+					},
+					forEach: function(cb) {
+						for (var i = 0, len = this.elems.length; i < len; i++) cb(new PACK.e.E(this.elems[i]));
+					},
 					
 					fieldValue: function(v) {
 						if (U.exists(v)) {
 							this.elems[0].value = v;
+							return null;
 						} else {
 							return this.elems[0].value;
 						}
 					},
 					
 					find: function(query) {
-						for (var i = 0, len = this.elems.length; i < len; i++) {
-							var e = this.elems[i].querySelector(query);
+						if (query[0] === '+') {
+							return new PACK.e.e(this.elems[0].querySelectorAll(query.substr(1)));
+						} else {
+							var e = this.elems[0].querySelector(query);
 							if (e !== null) return new PACK.e.e(e);
 						}
 						return PACK.e.e([]);
@@ -150,6 +173,8 @@ var package = new PACK.pack.Package({ name: 'e',
 						});
 					},
 					attr: function(attrs /* { "name": "value", ... } */) {
+						if (attrs.constructor === String) return this.elems[0].getAttribute(attrs);
+						
 						this.elems.forEach(function(elem) {
 							for (var k in attrs) elem.setAttribute(k, attrs[k]);
 						});
@@ -446,9 +471,10 @@ var package = new PACK.pack.Package({ name: 'e',
 				};}
 			}),
 			
-			FormBuilder: PACK.uth.makeClass({ name: 'FormBuilder', namespace: namespace,
+			Form: PACK.uth.makeClass({ name: 'Form', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* buildWidget */) {
+					init: function(params /* html, buildWidget, onSubmit */) {
+						this.html = U.param(params, 'html');
 						this.buildWidget = U.param(params, 'buildWidget', function(widgetData) {
 							
 							var schema = new PACK.quickDev.QSchema(widgetData);
@@ -510,53 +536,58 @@ var package = new PACK.pack.Package({ name: 'e',
 								widget: widget
 							};
 						});
+						this.onSubmit = U.param(params, 'onSubmit');
 					},
-					build: function(params /* formData, containers, makeContainer */) {
-						
-						var formData = U.param(params, 'formData');
-						var containers = U.param(params, 'containers', {});
-						var makeContainer = U.param(params, 'makeContainer', null);
-						
-						var collectedInputs = {};
-						
-						for (var k in formData) {
-							/*
-							Three categories of elements here:
-							"container": Contains everything, the widget, its container, the label, etc.
-							"widgetContainer": Contains the widget. E.g. stores chars-left indicator for text fields
-							"widget": The actual html widget which provides the "value" property that has meaning
-							*/
-							var container = k in containers ? containers[k] : (makeContainer ? makeContainer(formData[k]) : null);
-							if (container === null) continue;
-							
-							var builtHtml = this.buildWidget(formData[k]);
-							if (builtHtml === null) {
-								var widget = PACK.e.e('<input type="text"/>');
-								var widgetContainer = widget;
-							} else {
-								var widget = builtHtml.widget;
-								var widgetContainer = builtHtml.container;
+					validate: function(element) {
+						var widget = element.find('.widget');
+						var valid = true;
+						if (widget.attr('type') === 'number') {
+							if (isNaN(parseInt(widget.fieldValue()))) {
+								valid = false;
 							}
-							
-							widget.listAttr({ class: [ '+widget' ] });
-							
-							// Replace the widget-container part of container
-							widgetContainer.listAttr({ class: [ '+widget-container' ] });
-							widgetContainer.replaceElement(container.find('.widget-container'));
-							
-							// Reset the classes on the the container
-							container.attr({ class: '' });
-							container.listAttr({ class: [ '+input-field', '+' + k ] });
-							
-							collectedInputs[k] = {
-								data: formData[k],
-								widget: widget
-							};
 						}
 						
-						return function() {
-							console.log('OMG HERE WE GOOOO', arguments);
-						};
+						if (!valid) widget.listAttr({ class: [ '+error' ] });
+						else 		widget.listAttr({ class: [ '-error' ] });
+						
+						return valid;
+					},
+					build: function(formData) {
+						var pass = this;
+						var formElem = new PACK.e.e(this.html);
+						
+						for (var k in formData) {
+							var className = k.replace(/\./g, '\\.');
+							var container = formElem.find('.input-field.' + className);
+							
+							if (!container) throw new Error('Missing container for field: "' + k + '"');
+							
+							container.parameterize({ data: formData[k] });
+						}
+						
+						var submit = formElem.find('.submit');
+						if (submit === null) throw new Error('No submit button in template');
+						submit.handle('click', function() {
+							var fields = formElem.find('+.input-field');
+							
+							console.log('here..');
+							
+							// TODO: Uncomment this!
+							/*var invalid = false;
+							fields.forEach(function(elem) { if (!pass.validate(elem)) invalid = true; });
+							if (invalid) return;*/
+							
+							var data = {};
+							fields.forEach(function(elem) {
+								var address = elem.attr('class').replace('input-field', '').trim();
+								var value = elem.find('.widget').fieldValue();
+								data[address] = value;
+							});
+							console.log('Data', data);
+							pass.onSubmit(data);
+						});
+						
+						return formElem;
 					}
 				};}
 			}),
