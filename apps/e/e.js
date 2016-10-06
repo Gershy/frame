@@ -91,8 +91,6 @@ var package = new PACK.pack.Package({ name: 'e',
 						e = PACK.e.e(e);
 						var p = this.elems[0].parentNode;
 						
-						console.log(p);
-						
 						p.insertBefore(e.elems[0], p.children[0]);
 						
 						//var p = c.parentNode;
@@ -473,69 +471,8 @@ var package = new PACK.pack.Package({ name: 'e',
 			
 			Form: PACK.uth.makeClass({ name: 'Form', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* html, buildWidget, onSubmit */) {
+					init: function(params /* html, onSubmit */) {
 						this.html = U.param(params, 'html');
-						this.buildWidget = U.param(params, 'buildWidget', function(widgetData) {
-							
-							var schema = new PACK.quickDev.QSchema(widgetData);
-							var qElem = schema.actualize();
-							
-							var container = PACK.e.e('<div></div>');
-							
-							if (qElem instanceof PACK.quickDev.QString) {
-								
-								if (qElem.maxLen !== null && qElem.maxLen <= 50) {
-									
-									var widget = PACK.e.e('<input type="text"/>');
-									
-								} else {
-									
-									console.log(qElem.maxLen);
-									var widget = PACK.e.e('<textarea></textarea>');
-									
-								}
-								
-								if (qElem.minLen !== null) {
-									container.append('<span class="min">' + qElem.minLen + '</span>');
-									widget.attr({ minLength: qElem.minLen });
-								}
-								if (qElem.maxLen !== null) {
-									container.append('<span class="max">' + qElem.maxLen + '</span>');
-									widget.attr({ maxLength: qElem.maxLen });
-								}
-								
-								container.append(widget);
-								
-								if (qElem.minLen !== null) {
-									//container.prepend('<span class="min">' + qElem.minLen + '</span>');
-									//container.find('input').attr({ min: qElem.minLen });
-									container.attr({ minlength: qElem.minLen });
-								}
-								if (qElem.maxLen !== null) {
-									//container.prepend('<span class="max">' + qElem.maxLen + '</span>');
-									//container.find('input').attr({ max: qElem.maxLen });
-									container.attr({ maxlength: qElem.maxLen });
-								}
-								
-							} else if (qElem instanceof PACK.quickDev.QInt) {
-								
-								var widget = container.append('<input type="number"/>');
-								
-							} else {
-								
-								throw new Error('Unhandled data type: "' + qElem.constructor.title + '"');
-								
-							}/*else if (qElem instanceof PACK.quickDev.QRef) {
-								
-								// TODO: This should be cool
-								
-							}*/
-							
-							return {
-								container: container,
-								widget: widget
-							};
-						});
 						this.onSubmit = U.param(params, 'onSubmit');
 					},
 					validate: function(element) {
@@ -543,6 +480,12 @@ var package = new PACK.pack.Package({ name: 'e',
 						var valid = true;
 						if (widget.attr('type') === 'number') {
 							if (isNaN(parseInt(widget.fieldValue()))) {
+								valid = false;
+							}
+						} else if (widget.attr('type') === 'text') {
+							var min = widget.attr('min');
+							var nMin = parseInt(min);
+							if (!isNaN(nMin) && widget.fieldValue().length < nMin) {
 								valid = false;
 							}
 						}
@@ -570,12 +513,9 @@ var package = new PACK.pack.Package({ name: 'e',
 						submit.handle('click', function() {
 							var fields = formElem.find('+.input-field');
 							
-							console.log('here..');
-							
-							// TODO: Uncomment this!
-							/*var invalid = false;
+							var invalid = false;
 							fields.forEach(function(elem) { if (!pass.validate(elem)) invalid = true; });
-							if (invalid) return;*/
+							if (invalid) return;
 							
 							var data = {};
 							fields.forEach(function(elem) {
@@ -583,7 +523,6 @@ var package = new PACK.pack.Package({ name: 'e',
 								var value = elem.find('.widget').fieldValue();
 								data[address] = value;
 							});
-							console.log('Data', data);
 							pass.onSubmit(data);
 						});
 						
