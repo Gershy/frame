@@ -267,7 +267,7 @@ migrations.chain([
 	})
 ]);
 
-var reset = true;
+var reset = false;
 root.getState(function(state) {
 	
 	if (reset) state = null;
@@ -279,5 +279,5 @@ root.getState(function(state) {
 	schema.assign({ elem: PACK.creativity.queryHandler, recurse: true });
 	
 	// Start the CreativityApp
-	//PACK.creativity.queryHandler.start();
+	// PACK.creativity.queryHandler.start();
 });
