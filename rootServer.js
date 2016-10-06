@@ -293,7 +293,7 @@ var dbUri = 'FRAME_DB_URI' in process.env
 	? process.env.FRAME_DB_URI
 	: 'mongodb://localhost:27017/frame';
 
-var gimmeDb = false;
+var gimmeDb = true;
 if (gimmeDb) {
 	
 	var db = require('mongodb');

@@ -198,7 +198,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			QUpdate: PACK.uth.makeClass({ name: 'QUpdate',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* request, start, end */) {
+					init: function(params /* request, onStart, onEnd */) {
 						/*
 						Performs a request with 3 components:
 						
@@ -214,8 +214,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							any data returned by the request.
 						*/
 						this.request = U.param(params, 'request');
-						this.start = U.param(params, 'start', null);
-						this.end = U.param(params, 'end', null);
+						this.onStart = U.param(params, 'onStart', null);
+						this.onEnd = U.param(params, 'onEnd', null);
 						
 						this.pendingCount = 0;
 						this.interval = null;
@@ -224,10 +224,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var pass = this;
 						
 						this.pendingCount++;
-						if (this.start) this.start();
+						if (this.onStart) this.onStart();
 						this.request(function(response) {
 							pass.pendingCount--;
-							pass.end(response);
+							if (pass.onEnd) pass.onEnd(response);
 						});
 					},
 					repeat: function(params /* delay, runInstantly, allowMultiple */) {

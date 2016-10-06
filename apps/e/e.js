@@ -220,7 +220,7 @@ var package = new PACK.pack.Package({ name: 'e',
 			
 			Scene: PACK.uth.makeClass({ name: 'Scene', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* name, title, build, start, end, subscenes, defaultScene */) {
+					init: function(params /* name, title, build, onStart, onEnd, subscenes, defaultScene */) {
 						/*
 						name: scene name
 						title: human legible name
@@ -287,8 +287,8 @@ var package = new PACK.pack.Package({ name: 'e',
 						this.name = U.param(params, 'name');
 						this.title = U.param(params, 'title');
 						this.build = U.param(params, 'build');
-						this.start = U.param(params, 'start', null);
-						this.end = U.param(params, 'end', null);
+						this.onStart = U.param(params, 'onStart', null);
+						this.onEnd = U.param(params, 'onEnd', null);
 						this.defaultScenes = U.param(params, 'defaultScenes', {});
 						this.subscenes = U.param(params, 'subscenes', {});
 						
@@ -298,39 +298,62 @@ var package = new PACK.pack.Package({ name: 'e',
 							sceneList.forEach(function(scene) {
 								sceneObj[scene.name] = scene;
 								scene.par = pass;
+								scene.wrapperName = wrapperName;
 							});
 							obj[wrapperName] = sceneObj;
 						});
 						
-						this.active = false;
-						this.wrappers = {};
-						this.elems = {};
 						this.par = null;
+						this.wrapperName = null; 	// Stores the name of the parent's wrapper in which this scene exists
+						this.activeScenes = {};		// Stores the active scene for each wrapper
+						this.wrapperElems = {};		// Stores the container element for each wrapper
+						this.elems = {};			// Stores any data returned from this.build
+					},
+					isActive: function() {
+						return this.par.activeScenes[this.wrapperName] === this;
+					},
+					getWrapper: function() {
+						if (this.par === null || !(this.wrapperName in this.par.wrapperElems))
+							throw new Error('Missing wrapper for "' + this.getAddress() + '"');
+						
+						return this.par.wrapperElems[this.wrapperName];
+					},
+					start: function() {
+						// Attach the html
+						this.getWrapper().append(this.getHtml());
+						
+						// Set the parent's active scene
+						if (this.par) this.par.activeScenes[this.wrapperName] = this;
+						
+						// Run the user function
+						if (this.onStart) this.onStart(this.elems);
+					},
+					end: function() {
+						if (this.isActive()) {
+							// Run the user function
+							if (this.onEnd) this.onEnd(this.elems);
+							
+							// Remove the html
+							this.getWrapper().clear();
+							
+							// Set the parent's active scene within the wrapper to null
+							this.par.activeScenes[this.wrapperName] = null;
+							
+							// End any child scenes
+							for (var k in this.activeScenes) {
+								var scene = this.activeScenes[k];
+								if (scene) scene.end();
+							}
+						}
 					},
 					setSubscene: function(wrapperName, subsceneName) {
-						if (!(wrapperName in this.wrappers)) throw new Error('Cannot set subscenes before generating wrapper "' + wrapperName + '"');
+						var oldScene = this.activeScenes[wrapperName];
+						var newScene = this.subscenes[wrapperName][subsceneName];
 						
-						var next = this.subscenes[wrapperName][subsceneName];
-						if (next !== null && next.active) return;
+						if (newScene === oldScene) return;
 						
-						var sceneList = this.subscenes[wrapperName];
-						var active = null;
-						for (var k in sceneList) if (sceneList[k].active) { active = sceneList[k]; break; }
-						
-						if (active) {
-							if (active.end) active.end(active.elems);
-							active.active = false;
-						}
-						
-						var wrapper = this.wrappers[wrapperName];
-						wrapper.clear();
-						
-						if (next !== null) {
-							wrapper.append(next.getHtml());
-							
-							if (next.start) next.start(next.elems);
-							next.active = true;
-						}
+						if (oldScene) oldScene.end();
+						if (newScene) newScene.start();
 					},
 					getHtml: function() {
 						var sceneElem = new PACK.e.e('<div class="scene"></div>');
@@ -344,8 +367,8 @@ var package = new PACK.pack.Package({ name: 'e',
 							
 							var tabs = subsceneElem.append('<div class="tabs"></div>');
 							
-							// TODO: Consider reusing wrappers? (Or is that a bad idea lol)
-							pass.wrappers[wrapperName] = subsceneElem.append('<div class="content"></div>');
+							// TODO: Consider reusing wrapperElems? (Or is that a bad idea lol)
+							pass.wrapperElems[wrapperName] = subsceneElem.append('<div class="content"></div>');
 							
 							sceneList.forEach(function(scene) {
 								var tab = tabs.append('<div class="tab">' + scene.title + '</div>');
@@ -359,20 +382,21 @@ var package = new PACK.pack.Package({ name: 'e',
 							subsceneObj[wrapperName] = subsceneElem;
 						});
 						
-						// TODO: how to access useful?
 						this.elems = this.build(sceneElem, subsceneObj, this);
 						
-						for (var k in this.defaultScenes) {
-							this.setSubscene(k, this.defaultScenes[k]);
-						}
-						
-						/*if (this.defaultScene) {
-							var s = this.defaultScene.split('/');
-							this.setSubscene(s[0], s[1]);
-						}*/
+						for (var k in this.defaultScenes) this.setSubscene(k, this.defaultScenes[k]);
 						
 						return sceneElem;
-					}
+					},
+					getAddress: function() {
+						var ret = [];
+						var ptr = this;
+						while (ptr !== null) {
+							ret.push(this.wrapperName + ':' + this.name);
+							ptr = ptr.par;
+						}
+						return ret.reverse().join('.');
+					},
 				}; }
 			}),
 			RootScene: PACK.uth.makeClass({ name: 'RootScene', namespace: namespace,
@@ -380,12 +404,10 @@ var package = new PACK.pack.Package({ name: 'e',
 				methods: function(sc, c) { return {
 					init: function(params /* name, title, build, subscenes, defaultScenes */) {
 						sc.init.call(this, params);
-						
-						this.active = true;
 					},
-					go: function() {
-						PACK.e.e('body').append(this.getHtml());
-					}
+					getWrapper: function() { return PACK.e.e('body'); },
+					isActive: function() { return true; },
+					end: function() { throw new Error('Cannot end the RootScene'); }
 				}; }
 			}),
 			

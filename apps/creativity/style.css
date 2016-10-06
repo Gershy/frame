@@ -272,15 +272,15 @@ body {
 	width: 100%; height: 100%;
 	left: 100%; top: 0;
 	margin-left: 300px;
-	background-color: #c3c3ff;
-	box-shadow: 0 0 50px 200px #c3c3ff;
+	background-color: #dfdff3;
+	box-shadow: 0 0 50px 200px #dfdff3;
 	
 	transition: left 600ms ease-in-out, margin-left 600ms ease-in-out;
 	
 	pointer-events: none;
 }
 .scene.rooms > .scroller > .room:hover {
-	color: #000000;
+	color: #6060e0;
 }
 .scene.rooms > .scroller > .room:hover > .bg {
 	left: 0;
