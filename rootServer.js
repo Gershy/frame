@@ -61,13 +61,6 @@ var package = new PACK.pack.Package({ name: 'server',
 							if (ret.binary) ret.binary = true;
 							onComplete(err, ret);
 						});
-						
-						/*
-						onComplete(null, {
-							data: fileSys.readFileSync(filepath, binary ? 'binary' : 'utf8'),
-							encoding: ext
-						});
-						*/
 					},
 					respondToQuery: function(params /* address */, onComplete) {
 						// Ensure no "session" param was already included

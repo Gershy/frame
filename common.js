@@ -340,6 +340,7 @@
 				req.onreadystatechange = function() {
 					if (pass.equals(req, { readyState: 4, status: 200 })) {
 						if (json) {
+							console.log('RESPONSE', req);
 							var o = JSON.parse(req.responseText);
 							if (o.code !== 0) {
 								// Pass the error instead of the response
