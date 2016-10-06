@@ -254,15 +254,20 @@ var package = new PACK.pack.Package({ name: 'server',
 					// TODO: Sessions need to expire!!
 					if (!existingSession && session.queryHandler !== null) sessionsIndex[session.ip] = session;
 					
+					var encoding = response.encoding;
+					var length = response.data.length + 1;
+					var data = response.data + ' ';
+					var transferStyle = ('binary' in response && response.binary) ? 'binary' : 'utf8';
+					
 					res.writeHead(200, {
-						'Content-Type': response.encoding,
-						'Content-Length': response.data.length
+						'Content-Type': encoding,
+						'Content-Length': length
 					});
 					
 					// ('binary' in response && response.binary) ? 'binary' : 'utf8'
 					
 					//res.write(response.data, response.encoding === 'text/html' ? 'utf-8' : 'binary');
-					res.end(response.data, ('binary' in response && response.binary) ? 'binary' : 'utf8');
+					res.end(response.data, transferStyle);
 				});
 				
 			}
