@@ -265,8 +265,11 @@ var package = new PACK.pack.Package({ name: 'server',
 						'Content-Type': response.encoding,
 						'Content-Length': response.data.length
 					});
-					res.write(response.data, response.encoding === 'text/html' ? 'utf-8' : 'binary');
-					res.end();
+					
+					// ('binary' in response && response.binary) ? 'binary' : 'utf8'
+					
+					//res.write(response.data, response.encoding === 'text/html' ? 'utf-8' : 'binary');
+					res.end(response.data, ('binary' in response && response.binary) ? 'binary' : 'utf8'));
 				});
 				
 			}
