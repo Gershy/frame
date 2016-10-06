@@ -425,7 +425,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							var rooms = this.getChild('rooms');
 							var userRooms = rooms.filter({ '@host.username/value': user.getChild('username').value });
 							var maxRooms = this.getChild('maxRoomsPerUser').value;
-							if (userRooms.length > maxRooms) {
+							if (userRooms.length >= maxRooms) {
 								onComplete({ code: 1, msg: 'User already owns ' + maxRooms + ' rooms; can\'t create another.' });
 								return;
 							}
