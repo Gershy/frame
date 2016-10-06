@@ -923,7 +923,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							});
 							return;
 							
-						} else if (com === 'getChild') {	/* address, recurse */
+						} else if (com === 'getChild') {	/* address, selection */
 							
 							var address = U.param(reqParams, 'address');
 							var selection = U.pawam(reqParams, 'selection', PACK.quickDev.sel.all);

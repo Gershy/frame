@@ -1068,6 +1068,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		
 		rootScene.start();
 		
+		window.root = root;
 	}
 });
 package.build();

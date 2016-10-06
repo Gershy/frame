@@ -77,114 +77,117 @@ migrations.chain([
 	}),
 	new qd.QMigration({ name: 'rooms',
 		apply: function(data) {
+			U.addSerializable({ name: 'creativity.roomsSchema',
+				value: new qd.QSchema({ c: qd.QDict, i: [
+					{ c: qd.QRef, p: { name: 'host', value: '' } },
+					{ c: qd.QString, p: { name: 'quickName', value: '', minLen: 3, maxLen: 20 } },
+					{ c: qd.QString, p: { name: 'description', value: '', minLen: 0, maxLen: 250 } },
+					{ c: qd.QString, p: { name: 'password', value: '', minLen: 0, maxLen: 30 } },
+					{ c: qd.QDict, p: { name: 'params' }, i: [
+						{ c: qd.QInt, p: { name: 'storyLength', value: 0, minVal: 500, maxVal: 10000000 /* ten-million */ } },
+						{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0, minVal: 10, maxVal: 600 } },
+						{ c: qd.QInt, p: { name: 'submissionLengthMax', value: 0, minVal: 10, maxVal: 600 } },
+						{ c: qd.QInt, p: { name: 'roundSubmissionSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
+						{ c: qd.QInt, p: { name: 'roundVoteSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
+						{ c: qd.QInt, p: { name: 'voteMaximum', value: 0, minVal: 0, maxVal: 10000 } },
+						{ c: qd.QInt, p: { name: 'submissionMaximum', value: 0, minVal: 0, maxVal: 10000 } },
+					]},
+					{ c: qd.QInt, p: { name: 'startedMillis', value: -1 } },
+					{ c: qd.QGen, p: { name: 'users',
+						_schema: U.addSerializable({ name: 'creativity.roomUsersSchema',
+							value: new qd.QSchema({ c: qd.QDict, i: [
+								/*
+								TODO: It sucks that "username" is needed!! But it is,
+								because if it's taken out and prop is switched from
+								"username/value" to "@user.username/value" then stuff
+								breaks!! It will be way	cleaner once this is fixed.
+								Pity in the meantime.
+								
+								NOTE: When it's changed, need to update the query
+								handling for 'createRoom' where the user is checked
+								to make sure they're not exceeding the rooms limit.
+								*/
+								{ c: qd.QRef, p: { name: 'user', value: '' } },
+								{ c: qd.QString, p: { name: 'username', value: '' } },
+								{ c: qd.QInt, p: { name: 'nukeStartedMillis', value: -1 } }
+							]})
+						}),
+						_initChild: U.addSerializable({ name: 'creativity.roomUsersInitChild',
+							value: function(userElem, params /* user */) {
+								var user = U.param(params, 'user');
+								userElem.getChild('user').setRef(user);
+								// TODO: This also (see about TODO) should be unecessary
+								userElem.getChild('username').setValue(user.name);
+							}
+						}),
+						prop: 'username/value' //'@user.username/value'
+					}},
+					{ c: qd.QGen, p: { name: 'blurbs',
+						_schema: 'creativity.blurbSchema',
+						_initChild: 'creativity.blurbInitChild',
+						prop: 'id/value'
+					}},
+					{ c: qd.QGen, p: { name: 'votables',
+						_schema: 'creativity.votableSchema',
+						_initChild: 'creativity.votablesInitChild',
+						prop: 'id/value'
+					}},
+					{ c: qd.QGen, p: { name: 'votes',
+						_schema: 'creativity.voteSchema',
+						_initChild: 'creativity.votesInitChild',
+						prop: '@user.username/value'
+					}},
+					{ c: qd.QGen, p: { name: 'storyItems',
+						_schema: 'creativity.storyItemSchema',
+						_initChild: 'creativity.storyItemsInitChild',
+						prop: 'id/value'
+					}}
+				]})
+			});
+			U.addSerializable({ name: 'creativity.roomsInitChild',
+				value: function(roomElem, params /* host, storyLength, submissionLengthMin, submissionLengthMax, roundSubmissionSeconds, roundVoteSeconds, voteMaximum, submissionMaximum */) {
+					
+					// Hosting user
+					var host = U.param(params, 'host');
+					
+					// Room quickName
+					var quickName = U.param(params, 'quickName');
+					// Room description
+					var description = U.param(params, 'description');
+					
+					// Maximum story length in characters
+					var storyLength = U.param(params, 'storyLength');
+					// Minimum limit on the length of a submission (potential random character limits)
+					var submissionLengthMin = U.param(params, 'submissionLengthMin');
+					// Maximum limit on the length of a submission
+					var submissionLengthMax = U.param(params, 'submissionLengthMax');
+					// The number of seconds during which submissions are allowed
+					var roundSubmissionSeconds = U.param(params, 'roundSubmissionSeconds');
+					// The number of seconds during which voting is allowed
+					var roundVoteSeconds = U.param(params, 'roundVoteSeconds');
+					// If a submission reaches this many votes, it instantly wins (0 to disable)
+					var voteMaximum = U.param(params, 'voteMaximum');
+					// Maximum number of submissions allowed per round (0 to disable)
+					var submissionMaximum = U.param(params, 'submissionMaximum');
+					
+					roomElem.getChild('host').setRef(host);
+					roomElem.getChild('quickName').setValue(quickName);
+					roomElem.getChild('description').setValue(description);
+					roomElem.getChild('params.storyLength').setValue(storyLength);
+					roomElem.getChild('params.submissionLengthMin').setValue(submissionLengthMin);
+					roomElem.getChild('params.submissionLengthMax').setValue(submissionLengthMax);
+					roomElem.getChild('params.roundSubmissionSeconds').setValue(roundSubmissionSeconds);
+					roomElem.getChild('params.roundVoteSeconds').setValue(roundVoteSeconds);
+					roomElem.getChild('params.voteMaximum').setValue(voteMaximum);
+					roomElem.getChild('params.submissionMaximum').setValue(submissionMaximum);
+				}
+			});
+			
 			if ('rooms' in data.i) return { msg: 'no change', data: data };
 			
 			data.i.rooms = new qd.QSchema({ c: qd.QGen, p: { name: 'rooms',
-				_schema: U.addSerializable({ name: 'creativity.roomsSchema',
-					value: new qd.QSchema({ c: qd.QDict, i: [
-						{ c: qd.QRef, p: { name: 'host', value: '' } },
-						{ c: qd.QString, p: { name: 'quickName', value: '', minLen: 3, maxLen: 20 } },
-						{ c: qd.QString, p: { name: 'description', value: '', minLen: 0, maxLen: 250 } },
-						{ c: qd.QString, p: { name: 'password', value: '', minLen: 0, maxLen: 30 } },
-						{ c: qd.QDict, p: { name: 'params' }, i: [
-							{ c: qd.QInt, p: { name: 'storyLength', value: 0, minVal: 500, maxVal: 10000000 /* ten-million */ } },
-							{ c: qd.QInt, p: { name: 'submissionLengthMin', value: 0, minVal: 10, maxVal: 600 } },
-							{ c: qd.QInt, p: { name: 'submissionLengthMax', value: 0, minVal: 10, maxVal: 600 } },
-							{ c: qd.QInt, p: { name: 'roundSubmissionSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
-							{ c: qd.QInt, p: { name: 'roundVoteSeconds', value: 0, minVal: 15, maxVal: 60 * 60 * 48 } },
-							{ c: qd.QInt, p: { name: 'voteMaximum', value: 0, minVal: 0, maxVal: 10000 } },
-							{ c: qd.QInt, p: { name: 'submissionMaximum', value: 0, minVal: 0, maxVal: 10000 } },
-						]},
-						{ c: qd.QInt, p: { name: 'startedMillis', value: -1 } },
-						{ c: qd.QGen, p: { name: 'users',
-							_schema: U.addSerializable({ name: 'creativity.roomUsersSchema',
-								value: new qd.QSchema({ c: qd.QDict, i: [
-									/*
-									TODO: It sucks that "username" is needed!! But it is,
-									because if it's taken out and prop is switched from
-									"username/value" to "@user.username/value" then stuff
-									breaks!! It will be way	cleaner once this is fixed.
-									Pity in the meantime.
-									
-									NOTE: When it's changed, need to update the query
-									handling for 'createRoom' where the user is checked
-									to make sure they're not exceeding the rooms limit.
-									*/
-									{ c: qd.QRef, p: { name: 'user', value: '' } },
-									{ c: qd.QString, p: { name: 'username', value: '' } },
-									{ c: qd.QInt, p: { name: 'nukeStartedMillis', value: -1 } }
-								]})
-							}),
-							_initChild: U.addSerializable({ name: 'creativity.roomUsersInitChild',
-								value: function(userElem, params /* user */) {
-									var user = U.param(params, 'user');
-									userElem.getChild('user').setRef(user);
-									// TODO: This also (see about TODO) should be unecessary
-									userElem.getChild('username').setValue(user.name);
-								}
-							}),
-							prop: 'username/value' //'@user.username/value'
-						}},
-						{ c: qd.QGen, p: { name: 'blurbs',
-							_schema: 'creativity.blurbSchema',
-							_initChild: 'creativity.blurbInitChild',
-							prop: 'id/value'
-						}},
-						{ c: qd.QGen, p: { name: 'votables',
-							_schema: 'creativity.votableSchema',
-							_initChild: 'creativity.votablesInitChild',
-							prop: 'id/value'
-						}},
-						{ c: qd.QGen, p: { name: 'votes',
-							_schema: 'creativity.voteSchema',
-							_initChild: 'creativity.votesInitChild',
-							prop: '@user.username/value'
-						}},
-						{ c: qd.QGen, p: { name: 'storyItems',
-							_schema: 'creativity.storyItemSchema',
-							_initChild: 'creativity.storyItemsInitChild',
-							prop: 'id/value'
-						}}
-					]})
-				}),
-				_initChild: U.addSerializable({ name: 'creativity.roomsInitChild',
-					value: function(roomElem, params /* host, storyLength, submissionLengthMin, submissionLengthMax, roundSubmissionSeconds, roundVoteSeconds, voteMaximum, submissionMaximum */) {
-						
-						// Hosting user
-						var host = U.param(params, 'host');
-						
-						// Room quickName
-						var quickName = U.param(params, 'quickName');
-						// Room description
-						var description = U.param(params, 'description');
-						
-						// Maximum story length in characters
-						var storyLength = U.param(params, 'storyLength');
-						// Minimum limit on the length of a submission (potential random character limits)
-						var submissionLengthMin = U.param(params, 'submissionLengthMin');
-						// Maximum limit on the length of a submission
-						var submissionLengthMax = U.param(params, 'submissionLengthMax');
-						// The number of seconds during which submissions are allowed
-						var roundSubmissionSeconds = U.param(params, 'roundSubmissionSeconds');
-						// The number of seconds during which voting is allowed
-						var roundVoteSeconds = U.param(params, 'roundVoteSeconds');
-						// If a submission reaches this many votes, it instantly wins (0 to disable)
-						var voteMaximum = U.param(params, 'voteMaximum');
-						// Maximum number of submissions allowed per round (0 to disable)
-						var submissionMaximum = U.param(params, 'submissionMaximum');
-						
-						roomElem.getChild('host').setRef(host);
-						roomElem.getChild('quickName').setValue(quickName);
-						roomElem.getChild('description').setValue(description);
-						roomElem.getChild('params.storyLength').setValue(storyLength);
-						roomElem.getChild('params.submissionLengthMin').setValue(submissionLengthMin);
-						roomElem.getChild('params.submissionLengthMax').setValue(submissionLengthMax);
-						roomElem.getChild('params.roundSubmissionSeconds').setValue(roundSubmissionSeconds);
-						roomElem.getChild('params.roundVoteSeconds').setValue(roundVoteSeconds);
-						roomElem.getChild('params.voteMaximum').setValue(voteMaximum);
-						roomElem.getChild('params.submissionMaximum').setValue(submissionMaximum);
-					}
-				}),
+				_schema: 'creativity.roomsSchema',
+				_initChild: 'creativity.roomsInitChild',
 				prop: 'quickName/value'
 			}});
 			data.i.maxRoomsPerUser = new qd.QSchema({ c: qd.QInt, p: { name: 'maxRoomsPerUser', value: 3 } });
