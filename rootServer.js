@@ -271,13 +271,12 @@ var package = new PACK.pack.Package({ name: 'server',
 					// This could completely destory certain responses, but it also shouldn't be
 					// necessary. Investigate?
 					
-					var length = response.data.length + 1;  // TODO: Because of the extra space
-					var data = response.data + ' ';			// TODO: Here's the extra space
-					
-					console.log('Returning:', data.constructor);
-					
-					res.writeHead(200, { 'Content-Type': response.encoding, 'Content-Length': length });
-					res.end(data, response.binary ? 'binary' : 'utf8');
+					var transferEncoding = response.binary ? 'binary' : 'utf8';
+					res.writeHead(200, {
+						'Content-Type': response.data,
+						'Content-Length': Buffer.byteLength(response.data, transferEncoding)
+					});
+					res.end(data, transferEncoding);
 				});
 				
 			}
