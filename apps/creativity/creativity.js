@@ -741,7 +741,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									].join(''),
 									onSubmit: function(data) {
 										scroller.listAttr({ class: [ '+loading' ] });
-										console.log('CREATING ROOM???');
 										root.$request({
 											command: 'createRoom',
 											params: {

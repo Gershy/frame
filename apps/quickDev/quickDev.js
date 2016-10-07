@@ -540,12 +540,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// TODO: This is a sanity check! No need for the overhead in production
 						for (var k in params.params) {
 							var p = params.params[k];
-							try {
-								if (PACK.uth.isClassedObj(p)) {
-									console.log('Warning: putting classed object onto the wire: ' + p.constructor.title);
-									console.log(p);
-								}
-							} catch(e) {};
+							if (PACK.uth.isClassedObj(p)) {
+								console.log('Warning: putting classed object onto the wire: ' + p.constructor.title);
+								console.log(p);
+							}
 						}
 						
 						return new PACK.queries.SimpleQuery({
