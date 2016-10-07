@@ -74,7 +74,6 @@ var package = new PACK.pack.Package({ name: 'server',
 						The session itself handles ordinary file requests. Files are
 						referenced using params.url, an array of url components.
 						*/
-						
 						var url = U.param(params, 'url');
 						var command = U.param(params, 'command', null);
 						
