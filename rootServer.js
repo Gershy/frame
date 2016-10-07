@@ -273,10 +273,10 @@ var package = new PACK.pack.Package({ name: 'server',
 					
 					var transferEncoding = response.binary ? 'binary' : 'utf8';
 					res.writeHead(200, {
-						'Content-Type': response.data,
+						'Content-Type': response.encoding,
 						'Content-Length': Buffer.byteLength(response.data, transferEncoding)
 					});
-					res.end(data, transferEncoding);
+					res.end(response.data, transferEncoding);
 				});
 				
 			}
