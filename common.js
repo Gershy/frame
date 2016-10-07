@@ -225,7 +225,8 @@
 			return Array.prototype.slice.call(arrayLike);
 		},
 		err: function(object) {
-			return object !== null && object.constructor === Error;
+			try { return object.constructor === Error; } catch(e) {};
+			return false;
 		},
 		id: function(n, len) {
 			if (!U.exists(len)) len = 8;

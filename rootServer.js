@@ -57,9 +57,11 @@ var package = new PACK.pack.Package({ name: 'server',
 						if (binary) ext = ext.substr(1);
 						
 						fileSys.readFile(filepath, binary ? 'binary' : 'utf8', function(err, content) {
-							var ret = { data: content, encoding: ext };
-							if (ret.binary) ret.binary = true;
-							onComplete(err, ret);
+							onComplete(err, {
+								data: content,
+								encoding: ext,
+								binary: binary
+							});
 						});
 					},
 					respondToQuery: function(params /* address */, onComplete) {
@@ -102,8 +104,15 @@ var package = new PACK.pack.Package({ name: 'server',
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
 							this.getFileContents(url.join('/'), function(err, data) {
-								if (U.err(err)) onComplete({ data: '"' + url + '" not found', encoding: 'text/plain' });
-								else 			onComplete(data);
+								if (U.err(err)) {
+									onComplete({
+										data: '"' + url + '" not found',
+										encoding: 'text/plain',
+										binary: false
+									});
+								} else {
+									onComplete(data);
+								}
 							});
 							return;
 						}
@@ -148,7 +157,8 @@ var package = new PACK.pack.Package({ name: 'server',
 											'<body>Couldn\'t serve main page. :(</body>',
 										'</html>'
 									].join(''),
-									encoding: 'text/html'
+									encoding: 'text/html',
+									binary: false
 								});
 							}
 							
@@ -187,7 +197,11 @@ var package = new PACK.pack.Package({ name: 'server',
 						if (!('code' in response)) response.code = 0;
 						
 						if (response.constructor !== String) response = JSON.stringify(response);
-						return { data: response, encoding: 'text/json' };
+						return {
+							data: response,
+							encoding: 'text/json',
+							binary: false
+						};
 					},
 				}},
 				statik: {
@@ -261,7 +275,7 @@ var package = new PACK.pack.Package({ name: 'server',
 					var encoding = response.encoding;
 					var length = response.data.length + 1;  // TODO: Because of the extra space
 					var data = response.data + ' ';			// TODO: Here's the extra space
-					var transferStyle = ('binary' in response && response.binary) ? 'binary' : 'utf8';
+					var transferStyle = response.binary ? 'binary' : 'utf8';
 					
 					res.writeHead(200, { 'Content-Type': encoding, 'Content-Length': length });
 					res.end(data, transferStyle);
