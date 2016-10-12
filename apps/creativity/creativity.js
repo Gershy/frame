@@ -95,6 +95,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		})();
 		
 		var ret = {
+			versionString: '0.0.4 (rooms)',
 			resources: { css: [ 'apps/creativity/style.css' ] },
 			CreativityApp: PACK.uth.makeClass({ name: 'CreativityApp',
 				superclassName: 'QDict',
@@ -476,6 +477,44 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		var e = PACK.e.e;
 		
 		var auth = { token: null, username: null, room: null };
+		var creativityFormListeners = PACK.e.defaultFormListeners.clone({
+			'char-count': {
+				start: function(widget, container) {
+					//widget.attr({ step: 100 });
+					container.append('<div class="char-sense"></div>');
+				},
+				change: function(widget, container) {
+					var n = parseInt(widget.fieldValue());
+					
+					var sense = '';
+					if (!isNaN(n)) {
+						var words = n / 5.1;
+						
+						if (words >= 100000000) 	sense = 'Stop. No one will read this.';
+						else if (words >= 10000000)	sense = 'Think: absolutely massive epic';
+						else if (words >= 1000000)	sense = 'Think: every Harry Potter book combined';
+						else if (words >= 600000) 	sense = 'Think: War and Peace';
+						else if (words >= 160000) 	sense = 'Think: A Tree Grows in Brooklyn';
+						else if (words >= 100000)	sense = 'Think: 1984';
+						else if (words >= 70000)	sense = 'Think: typical Mystery novel';
+						else if (words >= 40000)	sense = 'Think: typical novel';
+						else if (words >= 25000)	sense = 'Think: Alice in Wonderland';
+						else if (words >= 10000)	sense = 'Think: typical thesis';
+						else if (words >= 5000)		sense = 'Think: typical short story';
+						else if (words >= 1000)		sense = 'Think: typical highschool essay';
+						else if (words >= 500)		sense = 'Think: two pages';
+						else if (words >= 250)		sense = 'Think: a page';
+						else if (words >= 80)		sense = 'Think: a long paragraph';
+						else if (words >= 10)		sense = 'Think: a long sentence';
+						
+						var places = Math.ceil(Math.log10(n)) - 1;
+						widget.attr({ step: Math.pow(10, places - 1) });
+					}
+					
+					container.find('.char-sense').text(sense);
+				}
+			}
+		});
 	
 		var rootScene = new PACK.e.RootScene({ name: 'root', title: 'root',
 			build: function(rootElem, subsceneElems) {
@@ -504,8 +543,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							}}).fire(function(response) {
 								if ('help' in response) {
 									// Need to actually show user error, display response.help
-									submit.listAttr({ class: '+error' });
-									setTimeout(function() { submit.listAttr({ class: '-error' }) }, 2000);
 								} else {
 									auth.update({
 										token: response.token,
@@ -523,7 +560,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						rootElem.append(title);
 						rootElem.append(credentials);
-						rootElem.append('<div class="version">Version: 0.0.3 (rooms)</div>');
+						rootElem.append('<div class="version">Version: ' + PACK.creativity.versionString + '</div>');
 						
 						return {};
 					}
@@ -641,54 +678,42 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								var form = new PACK.e.Form({
 									html: [
 										'<div class="input-form">',
+											'<p>',
+												'The room\'s name must be alphanumeric, and unique.',
+											'</p>',
 											'<div class="input-field room.quickName">',
 												'<div class="label">Name</div>',
-												'<div class="input-container text">',
+												'<div class="input-container text alphanumeric unique">',
 													'<input class="widget" name="{{ name }}" min="{{ minLen }}" max="{{ maxLen }}"/>',
-													'<div class="char-count">',
-														'<div class="cur"></div>',
-														'<div class="min">{{ minLen }}</div>',
-														'<div class="max">{{ maxLen }}</div>',
-													'</div>',
 												'</div>',
 											'</div>',
 											'<div class="input-field room.password">',
 												'<div class="label">Password</div>',
 												'<div class="input-container text">',
 													'<input class="widget" name="{{ name }} min="{{ minLen }}" max="{{ maxLen }}""/>',
-													'<div class="char-count">',
-														'<div class="cur"></div>',
-														'<div class="min">{{ minLen }}</div>',
-														'<div class="max">{{ maxLen }}</div>',
-													'</div>',
 												'</div>',
 											'</div>',
 											'<div class="input-field room.description">',
 												'<div class="label">Description</div>',
 												'<div class="input-container text long">',
 													'<textarea class="widget" name="{{ name }} min="{{ minLen }}" max="{{ maxLen }}""></textarea>',
-													'<div class="char-count">',
-														'<div class="cur"></div>',
-														'<div class="min">{{ minLen }}</div>',
-														'<div class="max">{{ maxLen }}</div>',
-													'</div>',
 												'</div>',
 											'</div>',
 											'<div class="input-field room.params.roundSubmissionSeconds">',
 												'<div class="label">Submission time limit</div>',
-												'<div class="input-container number">',
+												'<div class="input-container number clock">',
 													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
 												'</div>',
 											'</div>',
 											'<div class="input-field room.params.roundVoteSeconds">',
 												'<div class="label">Voting time limit</div>',
-												'<div class="input-container number">',
+												'<div class="input-container number clock">',
 													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
 												'</div>',
 											'</div>',
 											'<div class="input-field room.params.storyLength">',
 												'<div class="label">Story length (characters)</div>',
-												'<div class="input-container number">',
+												'<div class="input-container number char-count">',
 													'<input class="widget" name="{{ name }}" type="number" min="{{ minVal }}" max="{{ maxVal }}"/>',
 												'</div>',
 											'</div>',
@@ -698,7 +723,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												'each submission to be of the same length (no randomness), set ',
 												'both fields to the same value.',
 											'</p>',
-											'<div class="input-container range-input">',
+											'<div class="input-joiner range-input">',
 												'<div class="label">Text limit range</div>',
 												'<div class="input-field room.params.submissionLengthMin">',
 													'<div class="input-container number">',
@@ -739,6 +764,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											'<div class="submit">Submit</div>',
 										'</div>'
 									].join(''),
+									listeners: creativityFormListeners,
 									onSubmit: function(data) {
 										scroller.listAttr({ class: [ '+loading' ] });
 										root.$request({
@@ -1067,7 +1093,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		
 		rootScene.start();
 		
-		window.root = root;
+		window.root = root; // Nice to make "root" available on client-side terminal
 	}
 });
 package.build();

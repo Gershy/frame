@@ -100,6 +100,20 @@ var package = new PACK.pack.Package({ name: 'e',
 						if (this.elems.length === 0) return new PACK.e.e([]);
 						return new PACK.e.e(this.elems[0].children);
 					},
+					par: function(selector) {
+						// Get the parent, ensure it exists
+						var p = this.elems[0].parentNode;
+						if (!p) return null;
+						
+						// Get the wrapped version of the parent
+						var ep = new PACK.e.e(p);
+						
+						// If there's no selector, or the selector is matched, return parent
+						if (!U.exists(selector) || p.matches(selector)) return ep;
+						
+						// Otherwise go deeper
+						return ep.par(selector);
+					},
 					remove: function() {
 						this.elems.forEach(function(elem) {
 							elem.parentNode.removeChild(elem);
@@ -139,7 +153,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						return PACK.e.e(this.elems[0].outerHTML);
 					},
 					forEach: function(cb) {
-						for (var i = 0, len = this.elems.length; i < len; i++) cb(new PACK.e.E(this.elems[i]));
+						for (var i = 0, len = this.elems.length; i < len; i++) cb(new PACK.e.E(this.elems[i]), i);
 					},
 					
 					fieldValue: function(v) {
@@ -165,17 +179,24 @@ var package = new PACK.pack.Package({ name: 'e',
 						if (events.constructor !== Array) events = [ events ];
 						
 						this.elems.forEach(function(elem) {
+							var f = function(event) { func(new PACK.e.E(elem), event); }
 							events.forEach(function(eventName) {
-								elem['on' + eventName] = function(e) { func(new PACK.e.E(elem), e); };
+								elem['on' + eventName] = f;
 							});
 						});
 					},
 					attr: function(attrs /* { "name": "value", ... } */) {
 						if (attrs.constructor === String) return this.elems[0].getAttribute(attrs);
 						
-						this.elems.forEach(function(elem) {
-							for (var k in attrs) elem.setAttribute(k, attrs[k]);
-						});
+						for (var i = 0, len = this.elems.length; i < len; i++) {
+							for (var k in attrs) {
+								if (attrs[k] !== null) 	this.elems[i].setAttribute(k, attrs[k]);
+								else 					this.elems[i].removeAttribute(k);
+							}
+						}
+					},
+					hasAttr: function(name) {
+						return this.elems[0].hasAttribute(name);
 					},
 					listAttr: function(attrs /* { "name1": [ "+value1", "-value2"... ], ... } */) {
 						/*
@@ -216,6 +237,12 @@ var package = new PACK.pack.Package({ name: 'e',
 							}
 							
 						}
+					},
+					hasListAttr: function(attrName, value) {
+						var attr = this.elems[0].getAttribute(attrName);
+						if (!attr) return false;
+						
+						return ~attr.split(' ').indexOf(value);
 					},
 					dictAttr: function(attrs /* { "name1": { "attr1": "value1", "attr2": null, ... }, ... } */) {
 						/*
@@ -469,11 +496,97 @@ var package = new PACK.pack.Package({ name: 'e',
 				};}
 			}),
 			
+			defaultFormListeners: {
+				'input-container': {
+					start: function(widget, container) {},
+					change: function(widget, container) {
+						container.listAttr({ class: [ '-error' ] });
+					}
+				},
+				text: {
+					start: function(widget, container) {
+						var min = parseInt(widget.attr('min'));
+						var max = parseInt(widget.attr('max'));
+						
+						var count = PACK.e.e([
+							'<div class="status">',
+								'<div class="cur"></div>',
+								'<div class="min"></div>',
+							'</div>'
+						].join(''));
+						
+						if (isNaN(min)) widget.attr({ min: null });
+						if (isNaN(max)) widget.attr({ max: null });
+						
+						container.append(count);
+					},
+					change: function(widget, container) {
+						var val = widget.fieldValue();
+						var n = val.length;
+						var min = parseInt(widget.attr('min'));
+						var max = parseInt(widget.attr('max'));
+						
+						var goodMin = isNaN(min) || n >= min;
+						var goodMax = isNaN(max) || n <= max;
+						
+						var cur = container.find('.status > .cur');
+						cur.text(n + (isNaN(max) ? ' chars' : (' / ' + max)));
+						
+						if (goodMin) {
+							container.find('.status > .min').listAttr({ class: [ '-show' ] });
+						} else {
+							container.find('.status > .min').text('(' + (min - n) + ' more chars)');
+							container.find('.status > .min').listAttr({ class: [ '+show' ] });
+						}
+						
+						if (!(goodMin && goodMax)) container.listAttr({ class: [ '+error' ] });
+					}
+				},
+				alphanumeric: {
+					start: function(widget, container) {
+						container.find('.status').append('<div class="alphanumeric">Invalid characters</div>');
+					},
+					change: function(widget, container) {
+						var val = widget.fieldValue();
+						if (/^[a-zA-Z0-9]*$/.test(val)) {
+							container.find('.status > .alphanumeric').listAttr({ class: [ '-show' ] });
+						} else {
+							container.find('.status > .alphanumeric').listAttr({ class: [ '+show' ] });
+							container.listAttr({ class: [ '+error' ] });
+						}
+					}
+				},
+				number: {
+					start: function(widget, container) {},
+					change: function(widget, container) {
+						var val = parseInt(widget.fieldValue());
+						if (isNaN(val)) container.listAttr({ class: [ '+error' ] });
+					},
+				},
+				unique: {
+					start: function(widget, container) {},
+					change: function(widget, container) {}
+				},
+				clock: {
+					start: function(widget, container) {},
+					change: function(widget, container) {}
+				}
+			},
 			Form: PACK.uth.makeClass({ name: 'Form', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* html, onSubmit */) {
+					init: function(params /* html, onSubmit, listeners */) {
 						this.html = U.param(params, 'html');
 						this.onSubmit = U.param(params, 'onSubmit');
+						this.listeners = U.param(params, 'listeners', PACK.e.defaultFormListeners);
+					},
+					listenersFor: function(widget) {
+						var listeners = [];
+						var classes = widget.par('.input-container').attr('class').split(' ');
+						for (var i = 0, len = classes.length; i < len; i++) {
+							var cls = classes[i];
+							if (cls in this.listeners) listeners.push(this.listeners[cls]);
+						}
+						return listeners;
 					},
 					validate: function(element) {
 						var widget = element.find('.widget');
@@ -499,26 +612,53 @@ var package = new PACK.pack.Package({ name: 'e',
 						var pass = this;
 						var formElem = new PACK.e.e(this.html);
 						
+						// Parameterize every form element
 						for (var k in formData) {
-							var className = k.replace(/\./g, '\\.');
-							var container = formElem.find('.input-field.' + className);
-							
+							// Note all literal dots are escaped so they aren't interpreted as the class prefix
+							var container = formElem.find('.input-field.' + k.replace(/\./g, '\\.'));
 							if (!container) throw new Error('Missing container for field: "' + k + '"');
 							
 							container.parameterize({ data: formData[k] });
 						}
 						
+						// Generate the function that will cause a widget to adhere to its
+						// listener's commands
+						var widgetChangeFunc = function(widget) {
+							pass.listenersFor(widget).forEach(function(listener) {
+								listener.change(widget, widget.par('.input-container'));
+							});
+						};
+						
+						// Apply listeners to all containers
+						formElem.find('+.input-container').forEach(function(container) {
+							var widget = container.find('.widget');
+							if (!widget) throw new Error('Container (' + container.attr('class') + ') is missing .widget');
+							widget.handle([ 'input', 'change' ], widgetChangeFunc);
+							
+							pass.listenersFor(widget).forEach(function(listener) {
+								listener.start(widget, container);
+								listener.change(widget, container);
+							});
+						});
+						
 						var submit = formElem.find('.submit');
 						if (submit === null) throw new Error('No submit button in template');
+						
+						// Handle the submit event
 						submit.handle('click', function() {
-							var fields = formElem.find('+.input-field');
-							
-							var invalid = false;
-							fields.forEach(function(elem) { if (!pass.validate(elem)) invalid = true; });
-							if (invalid) return;
+							// Check to see if there are any errors in the form
+							if (formElem.find('.input-container.error').elems.length > 0) {
+								if (!submit.hasListAttr('class', 'error')) {
+									submit.listAttr({ class: [ '+error' ] });
+									setTimeout(function() {
+										submit.listAttr({ class: [ '-error' ] });
+									}, 1500);
+								}
+								return;
+							}
 							
 							var data = {};
-							fields.forEach(function(elem) {
+							formElem.find('+.input-field').forEach(function(elem) {
 								var address = elem.attr('class').replace('input-field', '').trim();
 								var value = elem.find('.widget').fieldValue();
 								data[address] = value;

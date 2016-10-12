@@ -230,16 +230,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							if (pass.onEnd) pass.onEnd(response);
 						});
 					},
+					fire: function(params /* allowMultiple */) {
+						var allowMultiple = U.param(params, 'allowMultiple', false);
+						
+						if (allowMultiple || this.pendingCount === 0) this.run();
+					},
 					repeat: function(params /* delay, runInstantly, allowMultiple */) {
 						if (this.interval !== null) throw new Error('Cannot begin another interval without clearing the first');
 						
-						var pass = this;
 						var delay = U.param(params, 'delay');
 						var runInstantly = U.param(params, 'runInstantly', true);
 						var allowMultiple = U.param(params, 'allowMultiple', false);
 						
-						if (runInstantly && (allowMultiple || pass.pendingCount === 0)) this.run();
+						if (runInstantly && (allowMultiple || this.pendingCount === 0)) this.run();
 						
+						var pass = this;
 						this.interval = setInterval(function() {
 							if (allowMultiple || pass.pendingCount === 0) pass.run();
 						}, delay);

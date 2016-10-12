@@ -62,7 +62,7 @@ body {
 	opacity: 0.6;
 	pointer-events: none;
 }
-.input-form > .submit {
+.input-form .submit {
 	position: relative;
 	width: 100%; height: 30px; line-height: 30px;
 	margin-top: 25px;
@@ -71,23 +71,10 @@ body {
 	text-align: center;
 	
 	cursor: pointer;
-}
-.input-form > .submit > .content,
-.input-form > .submit > .error {
-	position: absolute;
-	left: 0; top: 0;
-	width: 100%; height: 100%;
-}
-.input-form > .submit > .error {
-	background-color: rgba(255, 0, 0, 0);
-	color: rgba(255, 255, 255, 0);
 	
-	transitioN: background-color 1s linear, color 1s linear;
+	transition: background-color 500ms linear, color 500ms linear;
 }
-.input-form > .submit.error > .error {
-	background-color: rgba(255, 0, 0, 1);
-	color: rgba(255, 255, 255, 1);
-}
+
 .input-form > p {
 	font-size: 80%;
 	color: #3c4882;
@@ -113,15 +100,20 @@ body {
 	/* kill the annoying yellow background */
     -webkit-box-shadow: 0 0 0 1000px #eeeeff inset !important;
 }
-.input-field .widget.error {
-	background-color: #a00000 !important;
+.input-container.error .widget,
+.input-form .submit.error {
+	background-color: #ef003a !important;
 	color: #ffffff !important;
 }
-
-.input-container {
-	position: relative;
+.input-form .submit.error { font-size: 0; }
+.input-form .submit.error:before {
+	content: "The form has errors.";
+	font-size: initial;
 }
-.input-container.text > .char-count {
+
+.input-joiner { position: relative; }
+.input-container { position: relative; }
+.input-container.text > .status {
 	position: absolute;
 	background-color: #000000;
 	color: #ffffff;
@@ -129,25 +121,43 @@ body {
 	
 	text-align: center;
 	white-space: nowrap;
+	height: 18px;
+    line-height: 18px;
 	
 	transition: background-color 1000ms linear;
 }
-.input-container.text > .char-count.error { background-color: #f00000; }
-.input-container.text > .char-count > .min,
-.input-container.text > .char-count > .cur,
-.input-container.text > .char-count > .max { display: inline-block; font-size: 80%; }
-.input-container.text > .char-count > .min:before { content: "Min: "; }
-.input-container.text > .char-count > .max:before { content: "Max: "; }
+.input-container.text > .status > .cur {
+	display: inline-block;
+	font-size: 80%;
+}
+.input-container.text > .status > .min,
+.input-container.text > .status > .alphanumeric { 
+	font-size: 80%;
+	margin-left: 5px;
+	display: none;
+	font-weight: bold;
+}
+.input-container.text > .status > .min.show,
+.input-container.text > .status > .alphanumeric.show { display: inline-block; }
+
+
 .input-container.text.long {
 	height: 80px;
 }
 
-.input-container.number > input { width: 80px; }
+.input-container.number > input { width: 150px; }
+.input-container.number > .char-sense {
+    position: relative;
+    display: inline-block;
+    margin-left: 5px;
+    font-size: 85%;
+}
 
 .range-input > .input-field {
 	width: 80px; display: inline-block;
 	vertical-align: middle;
 }
+.range-input > .input-field .widget { width: 80px; }
 .range-input > .sep {
 	display: inline-block;
 	vertical-align: middle;
