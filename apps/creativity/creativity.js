@@ -4,9 +4,6 @@ to both client and server side. E.g. Right now users shouldn't vote if they
 haven't submitted a votable - but need to do totally separate checks for
 the client and server in order to validate.
 
-TODO: Move the countdown clock into its own app, and use it generate the
-times remaining in the lobby rooms list as well as the resolution clock.
-
 TODO: Getting a user from a token is very inefficient
 
 TODO: Growing "vote-power", increases over time, can deplete any amount of
@@ -16,7 +13,7 @@ TODO: Write a subclass for room, implements methods on it instead of on
 CreativityApp with "room" parameter
 */
 var package = new PACK.pack.Package({ name: 'creativity',
-	dependencies: [ 'quickDev', 'htmlText' ],
+	dependencies: [ 'quickDev', 'htmlText', 'clock' ],
 	buildFunc: function() {
 		var qd = PACK.quickDev;
 		
@@ -124,9 +121,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						this.dbUpdate.repeat({ delay: 1500 });
 						this.resolveUpdate.repeat({ delay: 1000 });
-					},
-					step: function() {
-						/* Checks to see if resolution needs to be done */
 					},
 					getState: function(cb) {
 						/*
@@ -480,7 +474,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		var creativityFormListeners = PACK.e.defaultFormListeners.clone({
 			'char-count': {
 				start: function(widget, container) {
-					//widget.attr({ step: 100 });
 					container.append('<div class="char-sense"></div>');
 				},
 				change: function(widget, container) {
@@ -490,15 +483,15 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					if (!isNaN(n)) {
 						var words = n / 5.1;
 						
-						if (words >= 100000000) 	sense = 'Stop. No one will read this.';
+						if (words >= 100000000) 	sense = 'Stop lol no one will read this';
 						else if (words >= 10000000)	sense = 'Think: absolutely massive epic';
-						else if (words >= 1000000)	sense = 'Think: every Harry Potter book combined';
-						else if (words >= 600000) 	sense = 'Think: War and Peace';
-						else if (words >= 160000) 	sense = 'Think: A Tree Grows in Brooklyn';
-						else if (words >= 100000)	sense = 'Think: 1984';
-						else if (words >= 70000)	sense = 'Think: typical Mystery novel';
+						else if (words >= 1000000)	sense = 'Every Harry Potter book combined';
+						else if (words >= 600000) 	sense = 'War and Peace';
+						else if (words >= 160000) 	sense = 'A Tree Grows in Brooklyn';
+						else if (words >= 100000)	sense = '1984';
+						else if (words >= 70000)	sense = 'Think: typical mystery novel';
 						else if (words >= 40000)	sense = 'Think: typical novel';
-						else if (words >= 25000)	sense = 'Think: Alice in Wonderland';
+						else if (words >= 25000)	sense = 'Alice in Wonderland';
 						else if (words >= 10000)	sense = 'Think: typical thesis';
 						else if (words >= 5000)		sense = 'Think: typical short story';
 						else if (words >= 1000)		sense = 'Think: typical highschool essay';
@@ -803,23 +796,21 @@ var package = new PACK.pack.Package({ name: 'creativity',
 				}),
 				new PACK.e.Scene({ name: 'writing', title: 'Writing',
 					build: function(rootElem, subsceneElems) {
-						
 						var story = e('<div class="story"></div>');
 						var storyScroller = story.append('<div class="scroller"></div>');
 						
-						var resolution = e([
-							'<div class="resolution">',
-								'<div class="title"></div>',
-								'<div class="countdown">',
-									'<div class="time-component hour">00</div>',
-									'<div class="time-component minute">00</div>',
-									'<div class="time-component second">00</div>',
-								'</div>',
-								'<div class="votes">',
-									'Votes:<div class="voted">0</div>/<div class="total">0</div>',
-								'</div>',
-							'</div>'
-						].join(''));
+						var clock = new PACK.clock.Clock({
+							hasControls: false,
+							minSeconds: 0,
+							maxSeconds: null
+						});
+						
+						var resolution = e('<div class="resolution"></div>');
+						resolution.append([
+							'<div class="title"></div>',
+							clock.createElem(),
+							'<div class="votes">Votes:<div class="voted">0</div>/<div class="total">0</div></div>'
+						]);
 						
 						var listStory = new PACK.e.ListUpdater({
 							root: storyScroller,
@@ -887,24 +878,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
 							},
 							onStart: function() {},
 							onEnd: function(endData) {
-								var t = endData.seconds;
-								
 								var countdown = resolution.find('.countdown');
-								if (t === null) {
-									countdown.find('.hour').text('--');
-									countdown.find('.minute').text('--');
-									countdown.find('.second').text('--');
+								var seconds = endData.seconds;
+								
+								if (seconds === null) {
+									clock.setSeconds(null);
 									resolution.find('.title').text('Stalled.');
 								} else {
-									var hours = Math.floor(t / 3600);
-									t -= hours * 3600;
-									var minutes = Math.floor(t / 60);
-									t -= minutes * 60;
-									var seconds = Math.floor(t);
-									
-									countdown.find('.hour').text(hours.toString().padLeft(2, '0'));
-									countdown.find('.minute').text(minutes.toString().padLeft(2, '0'));
-									countdown.find('.second').text(seconds.toString().padLeft(2, '0'));
+									clock.setSeconds(seconds);
 									resolution.find('.title').text('Counting...');
 								}
 								

@@ -98,9 +98,10 @@ body {
 }
 .input-field input:-webkit-autofill {
 	/* kill the annoying yellow background */
-    -webkit-box-shadow: 0 0 0 1000px #eeeeff inset !important;
+	-webkit-box-shadow: 0 0 0 1000px #eeeeff inset !important;
 }
 .input-container.error .widget,
+.input-container.error .v-widget,
 .input-form .submit.error {
 	background-color: #ef003a !important;
 	color: #ffffff !important;
@@ -122,7 +123,7 @@ body {
 	text-align: center;
 	white-space: nowrap;
 	height: 18px;
-    line-height: 18px;
+	line-height: 18px;
 	
 	transition: background-color 1000ms linear;
 }
@@ -140,17 +141,89 @@ body {
 .input-container.text > .status > .min.show,
 .input-container.text > .status > .alphanumeric.show { display: inline-block; }
 
-
 .input-container.text.long {
 	height: 80px;
 }
 
+.input-container.number.clock { margin: 0; }
+.input-container.number.clock > .widget {
+	display: none;
+}
+
 .input-container.number > input { width: 150px; }
 .input-container.number > .char-sense {
-    position: relative;
-    display: inline-block;
-    margin-left: 5px;
-    font-size: 85%;
+	position: relative;
+	display: inline-block;
+	margin-left: 5px;
+	font-size: 85%;
+}
+
+/* clocks */
+.clock {
+	font-family: monospace;
+	display: inline-block;
+	white-space: nowrap;
+	vertical-align: middle;
+	font-size: 150%;
+	margin: 0 20px;
+}
+.clock.controls {
+	margin: 0;
+	padding: 13px 0;
+}
+.clock > .time-component {
+	position: relative;
+	display: inline-block;
+	width: 30px; height: 30px; line-height: 30px;
+	margin: 0 4px;
+}
+.clock > .time-component.hour:after,
+.clock > .time-component.minute:after {
+	content: ":";
+	position: absolute;
+	right: -14px; top: 0;
+	width: 20px; height: 30px; line-height: 30px;
+	text-align: center;
+	font-size: 60%;
+}
+.clock > .time-component > .control {
+	position: absolute;
+	width: 30px; height: 15px;
+	left: 50%; margin-left: -15px;
+	opacity: 0.6;
+	overflow: hidden;
+	cursor: pointer;
+}
+.clock > .time-component > .control:hover { opacity: 1; }
+.clock > .time-component > .control.more { top: -46%; }
+.clock > .time-component > .control.less { bottom: -46%; }
+.clock > .time-component > .control:before {
+	content: ""; display: block; position: absolute;
+	width: 0; height: 0; left: 0;
+	
+	border: 15px solid;
+	border-left: 15px solid rgba(0, 0, 0, 0);
+	border-right: 15px solid rgba(0, 0, 0, 0);
+}
+.clock > .time-component > .control.more:before { border-top: 15px solid rgba(0, 0, 0, 0); bottom: 0; }
+.clock > .time-component > .control.less:before { border-bottom: 15px solid rgba(0, 0, 0, 0); top: 0; }
+.clock > .description {
+	position: absolute;
+	left: 100%; top: 0; height: 100%;
+	margin-left: 5px;
+	font-size: 30%;
+	font-family: sans-serif;
+	white-space: nowrap;
+}
+.clock > .description:before {
+	content: "";
+	display: inline-block;
+	width: 0; height: 100%;
+	vertical-align: middle;
+}
+.clock > .description > .text {
+	display: inline-block;
+	vertical-align: middle;
 }
 
 .range-input > .input-field {
@@ -492,7 +565,8 @@ body {
 	width: 0; height: 100%;
 	vertical-align: middle;
 }
-.scene.writing > .resolution > .countdown {
+/*
+.scene.writing > .resolution > .clock {
 	font-family: monospace;
 	display: inline-block;
 	white-space: nowrap;
@@ -500,14 +574,14 @@ body {
 	font-size: 150%;
 	margin: 0 20px;
 }
-.scene.writing > .resolution > .countdown > .time-component {
+.scene.writing > .resolution > .clock > .time-component {
 	position: relative;
 	display: inline-block;
 	width: 30px; height: 30px; line-height: 30px;
 	margin: 0 4px;
 }
-.scene.writing > .resolution > .countdown > .time-component.hour:after,
-.scene.writing > .resolution > .countdown > .time-component.minute:after {
+.scene.writing > .resolution > .clock > .time-component.hour:after,
+.scene.writing > .resolution > .clock > .time-component.minute:after {
 	content: ":";
 	position: absolute;
 	right: -14px; top: 0;
@@ -515,6 +589,7 @@ body {
 	text-align: center;
 	font-size: 60%;
 }
+*/
 .scene.writing > .resolution > .title,
 .scene.writing > .resolution > .votes {
 	display: inline-block;

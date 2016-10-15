@@ -159,6 +159,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					fieldValue: function(v) {
 						if (U.exists(v)) {
 							this.elems[0].value = v;
+							if (this.elems[0].onchange) this.elems[0].onchange();
 							return null;
 						} else {
 							return this.elems[0].value;
@@ -500,6 +501,7 @@ var package = new PACK.pack.Package({ name: 'e',
 				'input-container': {
 					start: function(widget, container) {},
 					change: function(widget, container) {
+						// Removes errors - sublisteners will reinstate them if necessary
 						container.listAttr({ class: [ '-error' ] });
 					}
 				},
@@ -568,8 +570,18 @@ var package = new PACK.pack.Package({ name: 'e',
 					change: function(widget, container) {}
 				},
 				clock: {
-					start: function(widget, container) {},
-					change: function(widget, container) {}
+					start: function(widget, container) {
+						var clock = new PACK.clock.Clock({
+							hasControls: true,
+							minSeconds: widget.hasAttr('min') ? parseInt(widget.attr('min')) : 0,
+							maxSeconds: widget.hasAttr('max') ? parseInt(widget.attr('max')) : 24 * 60 * 60,
+							field: widget
+						});
+						var clockElem = widget.par().append(clock.createElem());
+						clockElem.listAttr({ class: [ '+v-widget' ] });
+					},
+					change: function(widget, container) {
+					}
 				}
 			},
 			Form: PACK.uth.makeClass({ name: 'Form', namespace: namespace,
