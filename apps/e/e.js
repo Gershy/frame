@@ -682,7 +682,6 @@ var package = new PACK.pack.Package({ name: 'e',
 					}
 				};}
 			}),
-			
 		};
 	}
 });

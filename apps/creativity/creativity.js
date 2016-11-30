@@ -92,8 +92,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		})();
 		
 		var ret = {
-			versionString: '0.0.4 (rooms)',
 			resources: { css: [ 'apps/creativity/style.css' ] },
+			versionString: '0.0.4 (rooms)',
 			CreativityApp: PACK.uth.makeClass({ name: 'CreativityApp',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
@@ -483,8 +483,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
 					if (!isNaN(n)) {
 						var words = n / 5.1;
 						
-						if (words >= 100000000) 	sense = 'Stop lol no one will read this';
-						else if (words >= 10000000)	sense = 'Think: absolutely massive epic';
+						if (words >= 10000000) 		sense = 'Stop lol no one will read this';
+						else if (words >= 5000000)	sense = 'Think: absolutely massive epic';
 						else if (words >= 1000000)	sense = 'Every Harry Potter book combined';
 						else if (words >= 600000) 	sense = 'War and Peace';
 						else if (words >= 160000) 	sense = 'A Tree Grows in Brooklyn';
@@ -500,8 +500,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						else if (words >= 80)		sense = 'Think: a long paragraph';
 						else if (words >= 10)		sense = 'Think: a long sentence';
 						
-						var places = Math.ceil(Math.log10(n)) - 1;
-						widget.attr({ step: Math.pow(10, places - 1) });
+						var places = Math.floor(Math.log10(n));
+						var inc = Math.max(1, Math.pow(10, places - 1)); // Affect the 2nd-highest digit
+						widget.attr({ step: inc });
 					}
 					
 					container.find('.char-sense').text(sense);
@@ -712,7 +713,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											'</div>',
 											'<p>',
 												'The next field allows you to control the minimum and maximum ',
-												'values that each submission round randomly has. If you want ',
+												'length of a submission each round randomly has. If you want ',
 												'each submission to be of the same length (no randomness), set ',
 												'both fields to the same value.',
 											'</p>',

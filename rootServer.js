@@ -1,10 +1,4 @@
 /*
-TODO: Need a way of separating server-code and client-code within app scripts
-so that server-code never arrives at the client-side.
-
-TODO: Switch to POST queries? Eventually queries will exceed the recommended
-size for GET
-
 DB Reference:
 - https://github.com/FreeCodeCamp/FreeCodeCamp/wiki/Using-MongoDB-And-Deploying-To-Heroku
 - mongodb://localhost:27017/frame
@@ -18,8 +12,6 @@ var path = require('path');
 var fileSys = require('fs');
 var config = require('./config.js');
 //var mongoDb = require('mongodb').MongoClient;
-
-var DIRNAME = __dirname.replace(/\\/g, '/');
 
 var package = new PACK.pack.Package({ name: 'server',
 	dependencies: [ 'queries', ],
@@ -124,6 +116,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/' + appName + '.js');
 							} catch (e) {
+								console.log('./apps/' + appName + '/' + appName + '.js');
 								console.log('Couldn\'t load essential file');
 								console.error(e.stack);
 								onComplete(e); return;
@@ -132,8 +125,8 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								console.error(e.stack);
-								console.log('No server file for "' + appName + '"');
+								/*console.error(e.stack);
+								console.log('No server file for "' + appName + '"');*/
 							}
 							
 							if (!('queryHandler' in PACK[appName])) {
@@ -298,9 +291,7 @@ var package = new PACK.pack.Package({ name: 'server',
 	},
 });
 
-var dbUri = 'FRAME_DB_URI' in process.env
-	? process.env.FRAME_DB_URI
-	: 'mongodb://localhost:27017/frame';
+var dbUri = U.param(process.env, 'FRAME_DB_URI', 'mongodb://localhost:27017/frame');
 
 var gimmeDb = true;
 if (gimmeDb) {

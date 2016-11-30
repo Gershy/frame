@@ -194,7 +194,7 @@ migrations.chain([
 			
 			// Work with an actual instance - it's much easier.
 			// It will be converted back to a schema at the end.
-			var schema = new qd.QSchema(data)
+			var schema = new qd.QSchema(data);
 			var root = new cr.CreativityApp({ name: 'app' });
 			schema.assign({ elem: root, recurse: true });
 			

@@ -1,11 +1,125 @@
 var package = new PACK.pack.Package({ name: 'match',
-	dependencies: [ 'quickDev' ],
+	dependencies: [ 'random', 'quickDev' ],
 	buildFunc: function() {
 		return {
+			Knowledge: PACK.uth.makeClass({ name: 'Knowledge',
+				propertyNames: [ ],
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						this.items = {};
+					},
+					getInd: function(c1, c2) {
+						return Math.min(c1.id, c2.id) + ':' + Math.max(c1.id, c2.id);
+					},
+					getData: function(c1, c2) {
+						var ind = this.getInd(c1, c2);
+						return ind in this.items ? this.items[ind] : null;
+					},
+					setData: function(c1, c2, data) {
+						var ind = this.getInd(c1, c2);
+						this.items[ind] = data.update({ c1: c1, c2: c2 });
+					},
+					getOrdered: function() {
+						var items = U.arr(this.items);
+						items.sort(function(c1, c2) {
+							return c2.similarity - c1.similarity
+						});
+						return items;
+					},
+					truncateOrdered: function(num) {
+						var ordered = this.getOrdered();
+						if (num < ordered.length) ordered = ordered.slice(0, num);
+						
+						this.items = {};
+						for (var i = 0, len = ordered.length; i < len; i++) this.setData(ordered[i].c1, ordered[i].c2, ordered[i]);
+						
+						return ordered;
+					}
+				};}
+			}),
+				
 			Concept: PACK.uth.makeClass({ name: 'Concept',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* knownLabels, strength */) {
+					init: function(params /* */) {
+						this.id = U.id(c.NEXT_ID++, 4);
+					},
+					similarity: function(c) { throw new Error('not implemented'); }
+				};},
+				statik: {
+					NEXT_ID: 0,
+				}
+			}),
+			StringConcept: PACK.uth.makeClass({ name: 'StringConcept',
+				superclassName: 'Concept',
+				propertyNames: [ ],
+				methods: function(sc, c) { return {
+					init: function(params /* value */) {
+						sc.init.call(this);
+						this.value = U.param(params, 'value', '');
+						this.freq = 0;
+					},
+					similarity: function(c, k) {
+						if (!(c instanceof PACK.match.StringConcept)) return 0;
+						
+						if (this.value === c.value) return 1;
+						
+						var data = k.getData(this, c);
+						return data === null ? 0 : data.similarity;
+					}
+				};}
+			}),
+			OrderedConcept: PACK.uth.makeClass({ name: 'OrderedConcept',
+				superclassName: 'Concept',
+				propertyNames: [ ],
+				methods: function(sc, c) { return {
+					init: function(params /* concepts, description */) {
+						sc.init.call(this);
+						this.concepts = U.param(params, 'concepts', []);
+						this.description = U.param(params, 'description', null);
+					},
+					similarity: function(c, k) {
+						if (!(c instanceof PACK.match.OrderedConcept)) return 0;
+						
+						var min = Math.min(this.concepts.length, c.concepts.length);
+						var max = Math.max(this.concepts.length, c.concepts.length);
+						
+						// Should they be compared starting from the beginning?...
+						var sum = 0;
+						for (var i = 0; i < min; i++) {
+							sum += this.concepts[i].similarity(c.concepts[i], k);
+						}
+						
+						return sum / max;
+					},
+					correlate: function(c, k) {
+						var s = this.similarity(c, k);
+						
+						var min = Math.min(this.concepts.length, c.concepts.length);
+						for (var i = 0; i < min; i++) {
+							var c1 = this.concepts[i];
+							var c2 = c.concepts[i];
+							
+							if (c1 === c2) continue;
+							
+							var data = k.getData(c1, c2);
+							if (data === null) {
+								k.setData(c1, c2, { similarity: s });
+							} else {
+								var balance = s < data.similarity ? 0.15 : (Math.sqrt(1 / (c1.freq + c2.freq)) * 0.5);
+								k.setData(c1, c2, { similarity: ((data.similarity * (1 - balance)) + (s * balance)) });
+							}
+						}
+						
+						return s;
+					}
+				};}
+			}),
+			/*
+			Concept: PACK.uth.makeClass({ name: 'Concept',
+				propertyNames: [ ],
+				methods: function(sc, c) { return {
+					init: function(params /* knownLabels, strength * /) {
 						this.knownLabels = U.param(params, 'knownLabels', {});
 						this.strength = U.param(params, 'strength', 0);
 						
@@ -24,7 +138,7 @@ var package = new PACK.pack.Package({ name: 'match',
 			Knowledge: PACK.uth.makeClass({ name: 'Knowledge',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* improveRate, highestLen */) {
+					init: function(params /* improveRate, highestLen * /) {
 						this.patterns = [];
 						
 						this.concepts = [];
@@ -37,7 +151,7 @@ var package = new PACK.pack.Package({ name: 'match',
 							knownLabels: [ 'ben', 'auden', 'claire' ],
 							strength: 0.84
 						});
-						*/
+						* /
 					},
 					getConcept: function(labels) {
 						for (var i = 0, len = this.concepts.length; i < len; i++) {
@@ -116,7 +230,7 @@ var package = new PACK.pack.Package({ name: 'match',
 			Pattern: PACK.uth.makeClass({ name: 'Pattern',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
-					init: function(params /* knowledge, item */) {
+					init: function(params /* knowledge, item * /) {
 						this.knowledge = U.param(params, 'knowledge');
 						this.item = U.param(params, 'item');
 						this.items = [];
@@ -200,6 +314,7 @@ var package = new PACK.pack.Package({ name: 'match',
 					}
 				}; }
 			}),
+			*/
 			
 			queryHandler: new PACK.quickDev.QDict({ name: 'app' })
 		};
@@ -208,7 +323,7 @@ var package = new PACK.pack.Package({ name: 'match',
 		if (U.isServer()) return;
 		
 		U.request({
-			url: 'apps/match/parse.txt',
+			url: 'apps/match/parse2.txt',
 			json: false,
 			onComplete: function(text) {
 				var knowledge = new PACK.match.Knowledge({
@@ -216,15 +331,67 @@ var package = new PACK.pack.Package({ name: 'match',
 					highestLen: 10
 				});
 				
+				var knowledge = new PACK.match.Knowledge({});
+				window.knowledge = knowledge;
+				var concepts = [];
+				var stringBank = {};
+				
 				text = text.replace(/\s+/g, ' ');
-				items = text.split(/[?!.]/).map(function(item) { return new PACK.match.Pattern({
-					knowledge: knowledge,
-					item: item.trim()
-				}); });
+				items = text.split(/[?!.]/).map(function(sentence) {
+					
+					var wordConcepts = [];
+					var words = sentence.toLowerCase().replace(/[^a-zA-Z, -]/g, '').replace(/,/g, ' ,').trim().split(' ');
+					for (var i = 0, len = words.length; i < len; i++) {
+						var w = words[i];
+						var ind = '~' + w;
+						if (!(ind in stringBank)) stringBank[ind] = new PACK.match.StringConcept({ value: w });
+						
+						stringBank[ind].freq++;
+						wordConcepts.push(stringBank[ind]);
+					}
+					concepts.push(new PACK.match.OrderedConcept({
+						concepts: wordConcepts,
+						description: sentence
+					}));
+					
+				});
 				
-				knowledge.process(knowledge.patterns.slice(200, 400));
-				
-				console.log(knowledge.sortedConcepts());
+				var rand = new PACK.random.Random({ seed: 9873984 });
+				var numTests = 20000;
+				setInterval(function() {
+					var t = +(new Date());
+					
+					for (var i = 0; i < numTests; i++) {
+						var r1 = rand.randInt({ lo: 0, hi: concepts.length });
+						var r2 = rand.randInt({ lo: 0, hi: concepts.length });
+						
+						if (r1 === r2) continue;
+						
+						concepts[r1].correlate(concepts[r2], knowledge);
+					}
+					
+					knowledge;
+					
+					var body = document.getElementsByTagName('body')[0];
+					body.setAttribute('style', 'overflow-y: scroll;');
+					
+					var status = document.createElement('div');
+					status.innerHTML = 'Finished ' + numTests + ' correlations in ' + (+(new Date()) - t) + 'ms';
+					
+					var show = document.createElement('div');
+					show.setAttribute('class', 'show');
+					show.innerHTML = knowledge.getOrdered().slice(0, 10).map(function(i) {
+						return '<div style="display: inline-block; margin-left: 30px; width: 150px; font-size: 150%;">' + i.c1.value + '</div>' + 
+							'<div style="display: inline-block; width: 150px; font-size: 150%;">' + i.c2.value + '</div>' +
+							'<div style="margin-left: 30px;">' + i.similarity + '</div>';
+					}).join('<br/>');
+					
+					requestAnimationFrame(function() {
+						body.innerHTML = '';
+						body.appendChild(status);
+						body.appendChild(show);
+					});
+				}, 500);
 			}
 		});
 		

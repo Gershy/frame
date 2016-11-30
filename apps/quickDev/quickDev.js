@@ -13,17 +13,6 @@ element cannot be attached to the tree because no intermediate elements will be
 loaded. Approach this by first writing a method to load all intermediate components
 and attach them in order. Then the child can be attached.
 
-Perhaps some data-definition language that is able to entirely describe a certain
-connected subset of the full data tree, along with how much of each element in the
-subset to load, would be useful for dynamism.
-
-TODO: What to do about strings containing "@"?
-
-E.g.:
-
-	var username = ... get username from request ...
-	var user = root.getChild('users').getChild(username);
-
 If the user (possibly maliciously) names themself starting with a "@", this will cause
 undesirable de-referencing.
 
@@ -35,7 +24,6 @@ syncable with the client side. With long-polling, it should be beautiful
 
 TODO: QClientElem can just be implemented by changing the behaviours of already
 existing QElem classes based on the result of U.isServer()
-
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
