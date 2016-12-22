@@ -310,6 +310,12 @@ global.U = {
 		});
 		return name;
 	},
+	addSerializables: function(paramsList) {
+		var pass = this;
+		paramsList.forEach(function(params) {
+			pass.addSerializable(params);
+		});
+	},
 	getSerializable: function(name) {
 		return {
 			name: name,
@@ -595,7 +601,7 @@ global.PACK.pack = {
 				*/
 				if (this.name in PACK) throw 'double-loaded dependency "' + this.name + '"';
 				
-				PACK[this.name] = this.buildFunc();
+				PACK[this.name] = this.buildFunc(this.name);
 				console.log('Built "' + this.name + '"');
 				
 				if (!U.isServer()) {

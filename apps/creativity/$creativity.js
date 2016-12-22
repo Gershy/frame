@@ -4,9 +4,7 @@ var root = cr.queryHandler;
 
 var migrations = new qd.QMigration({ name: 'head',
 	apply: function(data) {
-		if (data !== null) {
-			return { msg: 'pre-existing state', data: data };
-		}
+		if (data !== null) return { msg: 'pre-existing state', data: data };
 		
 		return {
 			msg: 'built initial schema',

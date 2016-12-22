@@ -1,100 +1,21 @@
-/*
-TODO: Need a way to issue high-level restrictions/behaviours that will apply
-to both client and server side. E.g. Right now users shouldn't vote if they
-haven't submitted a votable - but need to do totally separate checks for
-the client and server in order to validate.
-
-TODO: Getting a user from a token is very inefficient
-
-TODO: Growing "vote-power", increases over time, can deplete any amount of
-it when voting to increase vote's power.
-
-TODO: Write a subclass for room, implements methods on it instead of on
-CreativityApp with "room" parameter
-*/
-var package = new PACK.pack.Package({ name: 'creativity',
+var package = new PACK.pack.Package({ name: 'logic',
 	dependencies: [ 'quickDev', 'htmlText', 'clock' ],
-	buildFunc: function() {
+	buildFunc: function(packageName) {
 		var qd = PACK.quickDev;
 		
 		// Add serializables
 		(function() {
-			U.addSerializable({ name: 'creativity.usersSchema',
+			U.addSerializable({ name: [ packageName, 'itemSchema' ].join('.'),
 				value: new qd.QSchema({ c: qd.QDict, i: [
-					{ c: qd.QString, p: { name: 'username', value: '' } },
-					{ c: qd.QString, p: { name: 'password', value: '' } }
+					{ c: null, p: { name: null, value: null } }
 				]})
-			});
-			U.addSerializable({ name: 'creativity.usersInitChild',
-				value: function(child, params /* username, password */) {
-					var username = U.param(params, 'username');
-					var password = U.param(params, 'password');
-					child.getChild('username').setValue(username);
-					child.getChild('password').setValue(password);
-				}
-			});
-			U.addSerializable({ name: 'creativity.blurbSchema',
-				value: new qd.QSchema({ c: qd.QDict, i: {
-					id: new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-					user: new qd.QSchema({ c: qd.QRef, p: { name: 'user', value: '' } }),
-					text: new qd.QSchema({ c: qd.QString, p: { name: 'text', minLen: 1, maxLen: 140, value: '' } })
-				}})
-			});
-			U.addSerializable({ name: 'creativity.blurbInitChild',
-				value: function(child, params /* username, text */) {
-					var username = U.param(params, 'username');
-					var text = U.param(params, 'text');
-					
-					child.setValue('user', 'app.users.' + username); // Set the reference
-					child.setValue('text', text);
-				}
-			});
-			U.addSerializable({ name: 'creativity.votableSchema',
-				value: new qd.QSchema({ c: qd.QDict, i: [
-					{ c: qd.QInt, p: { name: 'id', 	value: 0 } },
-					{ c: qd.QRef, p: { name: 'blurb', value: '' } }
-				]})
-			});
-			U.addSerializable({ name: 'creativity.votablesInitChild',
-				value: function(child, params /* blurb */) {
-					var blurb = U.param(params, 'blurb');
-					child.setValue('blurb', blurb);
-				}
-			});
-			U.addSerializable({ name: 'creativity.voteSchema',
-				value: new qd.QSchema({ c: qd.QDict, i: [
-					{ c: qd.QInt, p: { name: 'id', value: 0 } },
-					{ c: qd.QRef, p: { name: 'user', value: '' } },
-					{ c: qd.QRef, p: { name: 'votable', value: '' } }
-				]})
-			});
-			U.addSerializable({ name: 'creativity.votesInitChild',
-				value: function(child, params /* user, votable */) {
-					var user = U.param(params, 'user');
-					var votable = U.param(params, 'votable');
-					
-					child.setValue('user', user);
-					child.setValue('votable', votable);
-				}
-			});
-			U.addSerializable({ name: 'creativity.storyItemSchema',
-				value: new qd.QSchema({ c: qd.QDict, i: {
-					id: 	new qd.QSchema({ c: qd.QInt, p: { name: 'id', value: 0 } }),
-					blurb:	new qd.QSchema({ c: qd.QRef, p: { name: 'blurb', value: '' } })
-				}})
-			});
-			U.addSerializable({ name: 'creativity.storyItemsInitChild',
-				value: function(child, params /* blurb */) {
-					var blurb = U.param(params, 'blurb');
-					child.setValue('blurb', blurb);
-				}
 			});
 		})();
 		
 		var ret = {
-			resources: { css: [ 'apps/creativity/style.css' ] },
-			versionString: '0.0.4 (rooms)',
-			CreativityApp: PACK.uth.makeClass({ name: 'CreativityApp',
+			resources: { css: [ 'apps/logic/style.css' ] },
+			versionString: '0.0.1',
+			LogicApp: PACK.uth.makeClass({ name: 'LogicApp',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
@@ -133,7 +54,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						if (DB === null) { cb(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
-							collection.find({ name: 'creativity' }).limit(1).next(function(err, doc) {
+							collection.find({ name: packageName }).limit(1).next(function(err, doc) {
 								cb(doc !== null ? doc.data : null);
 							});
 						});
@@ -145,324 +66,15 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						if (DB === null) { if(cb) cb(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
-							collection.update({ name: 'creativity' }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
+							collection.update({ name: packageName }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
 								if (cb) cb(doc.result);
 							});
 						});
 					},
-					genUserToken: function(user) {
-						var u = user.getChild('username').value;
-						var p = user.getChild('password').value;
-						
-						var str = '';
-						var val = 9;
-						var chars = '0ab45cd21ef58gh02ij0klm0no23p9qr62stu92vwxyz5AB8C0D37EF5GH7I4JKL2M4NO4PQR6ST8U39VW9998XYZ';
-						
-						for (var i = 0; i < 12; i++) {
-							var v1 = u[(val + 19) % u.length].charCodeAt(0);
-							var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
-							val = ((v1 + 3) * (v2 + 11) * 11239) + 3 + i + v1;
-							str += chars[val % chars.length];
-						}
-						
-						return str;
-					},
-					getRoomFromQuickName: function(quickName) {
-						return this.getChild('rooms.' + quickName);
-					},
-					getUserFromToken: function(token, room) {
-						var users = PACK.creativity.queryHandler.getChild('users');
-						for (var k in users.children) {
-							var user = users.children[k];
-							if (this.genUserToken(user) === token) {
-								if (U.exists(room) && room.getChild('users.' + user.name) === null) return null;
-								return user;
-							}
-						}
-						return null;
-					},
-					votableRanking: function(room) {
-						// Turn each votable into an object that contains the votable, and the number
-						// of votes that votable has received.
-						var votes = room.getChild('votes');
-						var ret = U.arr(room.getChild('votables').children.map(function(votable) {
-							return {
-								votable: votable,
-								numVotes: votes.filter({ 'votable/value': votable.getAddress() }).length
-							};
-						}));
-						ret.sort(function(v1, v2) { return v2.numVotes - v1.numVotes; });
-						return ret;
-					},
-					timeRemaining: function(room) {
-						var startedMillis = room.getChild('startedMillis').value;
-						
-						if (startedMillis === -1) return null;
-						
-						var delaySecs = 
-							room.getChild('params.roundSubmissionSeconds').value +
-							room.getChild('params.roundVoteSeconds').value;
-						
-						var timeDiff = (+new Date()) - startedMillis;
-						return delaySecs - Math.round(timeDiff / 1000);
-					},
-					tryResolveVotes: function() {
-						var rooms = this.getChild('rooms').children;
-						
-						for (var k in rooms) {
-							var room = rooms[k];
-							var t = this.timeRemaining(room);
-							if (room.getChild('votables').length >= 1 && (t === null || t <= 0)) this.resolveVote(room);
-						}
-					},
-					resolveVote: function(room) {
-						// This function picks the winning votable and adds it to the story
-						var ranking = this.votableRanking(room);
-						if (ranking.length === 0) {
-							console.log('This shouldn\'t happen - resolution, but no votables??');
-							return;
-						}
-						
-						var tieAmount = ranking[0].numVotes;
-						var tied = [];
-						for (var i = 0, len = ranking.length; i < len; i++) {
-							// They're ordered so as soon as one is below tieAmount, all the rest will be
-							if (ranking[i].numVotes < tieAmount) break;
-							tied.push(ranking[i].votable);
-						}
-						
-						// Break the tie randomly
-						var ind = Math.floor(Math.random() * tied.length);
-						room.getChild('storyItems').getNewChild({ blurb: tied[ind].getChild('@blurb') });
-						
-						// Clear votables and votes
-						room.getChild('votables').clear();
-						room.getChild('votes').clear();
-						
-						// Clear the timer
-						room.getChild('startedMillis').setValue(-1)
-					},
-					handleQuery: function(params, /* command, params */ onComplete) {
-						
-						var com = U.param(params, 'command');
-						var reqParams = U.param(params, 'params', {});
-						
-						if (com === 'getToken') {
-							/*
-							Returns the token and username for the user. Because of the
-							nature of the app, it's also useful to return whether or not
-							the user has already submitted a votable for the current
-							round because the very first screen the user sees is based
-							on this.
-							*/
-							var username = U.param(reqParams, 'username');
-							var password = U.param(reqParams, 'password');
-							
-							var user = this.getChild('users').filter({
-								'username/value': username,
-								'password/value': password
-							}, true);
-							
-							if (user === null) return { help: 'Invalid credentials' };
-							
-							onComplete({
-								msg: 'user retrieved',
-								token: this.genUserToken(user),
-								username: user.getChild('username').value,
-							});
-							return;
-							
-						} else if (com === 'joinRoom') {
-							
-							var token = U.param(reqParams, 'token');
-							var quickName = U.param(reqParams, 'quickName');
-							
-							var user = this.getUserFromToken(token);
-							if (user === null) return { code: 1, msg: 'bad token' };
-							
-							var room = this.getChild('rooms').getChild(quickName);
-							if (room === null) return { code: 1, msg: 'invalid quickName' };
-							
-							var roomUser = room.getChild('users').getChild(user.getChild('username').value);
-							if (roomUser === null) {
-								if (false /* TODO: max-users check! */) {
-									onComplete({ code: 1, msg: 'room is full' });
-									return;
-								}
-								
-								console.log('Couldn\'t find "' + user.getChild('username').value + '"; Creating new room user!');
-								roomUser = room.getChild('users').getNewChild({ user: user })
-							}
-							
-							onComplete({
-								msg: 'joined room!',
-								quickName: room.name,
-								hasSubmitted: room.getChild('votables').filter({ '@blurb.user/value': user.getAddress() }, true) !== null
-							});
-							return;
-							
-						} else if (com === 'submitVote') {
-							
-							var token = U.param(reqParams, 'token');
-							var roomQuickName = U.param(reqParams, 'roomQuickName');
-							var voteeUsername = U.param(reqParams, 'voteeUsername'); // This is who to vote for
-							
-							var room = this.getRoomFromQuickName(roomQuickName);
-							if (room === null) return { code: 1, msg: 'bad room' };
-							
-							var user = this.getUserFromToken(token, room);
-							if (user === null) return { code: 1, msg: 'bad token' };
-							
-							var users = room.getChild('users');
-							var votables = room.getChild('votables');
-							var votes = room.getChild('votes');
-							
-							// Ensure the user hasn't already voted
-							if (votes.filter({ 'user/value': user.getAddress() }, true) !== null) return { code: 1, msg: 'already voted' };
-							
-							var votee = users.getChild(voteeUsername);
-							if (votee === null) return { code: 1, msg: 'invalid vote-for username' };
-							votee = votee.getChild('@user');
-							
-							var votable = votables.filter({ '@blurb.user/value': votee.getAddress() }, true);
-							// Ensure the user being voted for has actually published a votable
-							if (votable === null) return { code: 1, msg: 'user hasn\'t submitted a votable' };
-							
-							// Create the new vote
-							var vote = votes.getNewChild({ user: user, votable: votable });
-							var maxVotes = users.length;
-							var votesRemaining = maxVotes - votes.length;
-							
-							if (votesRemaining <= 0) {
-								
-								// Resolution from everyone voting
-								console.log('Everyone voted! Resolving.');
-								this.resolveVote(room);
-								
-							} else {
-								
-								// Resolution because there aren't enough votes left to bump 2nd place above 1st
-								var ranking = this.votableRanking(room);
-								
-								if (ranking.length === 1 && ranking[0].numVotes > Math.floor(maxVotes / 2)) {
-									
-									// There's only 1 votable with more than half the votes
-									console.log('The only votable has won the vote! Resolving.');
-									this.resolveVote(room);
-									
-								} else if (ranking.length > 1 && ranking[0].numVotes > (ranking[1].numVotes + votesRemaining)) {
-									
-									// The #1 votable can't be overtaken by the #2 votable
-									console.log('The winner has become evident early! Resolving.');
-									this.resolveVote(room);
-									
-								}
-								
-							}
-							
-							onComplete({ vote: vote.schemaParams({ selection: PACK.quickDev.sel.all }) });
-							return;
-							
-						} else if (com === 'submitVotable') {
-							
-							var token = U.param(reqParams, 'token');
-							var roomQuickName = U.param(reqParams, 'roomQuickName');
-							var text = U.param(reqParams, 'text');
-							
-							var room = this.getRoomFromQuickName(roomQuickName);
-							if (room === null) return { code: 1, msg: 'bad room' };
-							
-							var user = this.getUserFromToken(token, room);
-							if (user === null) return { code: 1, msg: 'bad token' };
-							
-							if (text.length > 140) return { code: 1, msg: 'text too long (140 char limit)' };
-							
-							var votables = room.getChild('votables');
-							
-							var votable = votables.filter({ 'user/value': user.getAddress() }, true);
-							if (votable !== null) return { code: 1, msg: 'already submitted' };
-							
-							var blurb = room.getChild('blurbs').getNewChild({ username: user.getChild('username').value, text: text });
-							var votable = votables.getNewChild({ blurb: blurb });
-							
-							if (votables.length === 1) {
-								// Got the 1st votable in the resolution. Start timer!
-								room.getChild('startedMillis').setValue(+new Date());
-							}
-							
-							onComplete({ votable: votable.schemaParams({ selection: PACK.quickDev.sel.all }) });
-							return;
-							
-						} else if (com === 'resolutionTimeRemaining') {
-							
-							var roomQuickName = U.param(reqParams, 'roomQuickName');
-							var room = this.getRoomFromQuickName(roomQuickName);
-							if (room === null) return { code: 1, msg: 'bad room' };
-							
-							onComplete({ seconds: this.timeRemaining(room) });
-							return;
-							
-						} else if (com === 'resolutionVoterData') {
-							
-							var roomQuickName = U.param(reqParams, 'roomQuickName');
-							var room = this.getRoomFromQuickName(roomQuickName);
-							if (room === null) return { code: 1, msg: 'bad room' };
-							
-							onComplete({
-								totalVoters: room.getChild('users').length,
-								voters: room.getChild('votes').length
-							});
-							return;
-							
-						} else if (com === 'createRoom') {
-							
-							var token = U.param(reqParams, 'token');
-							var roomParams = U.param(reqParams, 'roomParams');
-							
-							var user = this.getUserFromToken(token);
-							
-							var rooms = this.getChild('rooms');
-							var userRooms = rooms.filter({ '@host.username/value': user.getChild('username').value });
-							var maxRooms = this.getChild('maxRoomsPerUser').value;
-							if (userRooms.length >= maxRooms) {
-								onComplete({ code: 1, msg: 'User already owns ' + maxRooms + ' rooms; can\'t create another.' });
-								return;
-							}
-							
-							var quickName = U.param(roomParams, 'room.quickName');
-							if (rooms.getChild(quickName)) {
-								onComplete({ code: 1, msg: 'A room with quickName "' + quickName + '" already exists.' });
-								return;
-							}
-							
-							try {
-								var newRoom = rooms.getNewChild({
-									host: user,
-									quickName: quickName,
-									description: 			U.param(roomParams, 'room.description'),
-									storyLength: 			U.param(roomParams, 'room.params.storyLength'),
-									submissionLengthMin: 	U.param(roomParams, 'room.params.submissionLengthMin'),
-									submissionLengthMax: 	U.param(roomParams, 'room.params.submissionLengthMax'),
-									roundSubmissionSeconds: U.param(roomParams, 'room.params.roundSubmissionSeconds'),
-									roundVoteSeconds: 		U.param(roomParams, 'room.params.roundVoteSeconds'),
-									voteMaximum: 			U.param(roomParams, 'room.params.voteMaximum'),
-									submissionMaximum: 		U.param(roomParams, 'room.params.submissionMaximum')
-								});
-							} catch(e) {
-								console.error(e.stack);
-								onComplete({ code: 1, msg: 'Error creating room: "' + e.message + '"' });
-								return;
-							}
-							onComplete({ msg: 'created room!', schemaParams: newRoom.schemaParams({ selection: PACK.quickDev.sel.all }) });
-							return;
-						}
-						
-						sc.handleQuery.call(this, params, onComplete);
-					}
 				}; }
 			})
 		};
-		ret.queryHandler = new ret.CreativityApp({ name: 'app', children: [] });
+		ret.queryHandler = new ret.LogicApp({ name: 'app', children: [] });
 		
 		return ret;
 	},
