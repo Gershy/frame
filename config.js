@@ -4,7 +4,8 @@
 //module.exports.defaultApp = 'sound';
 //module.exports.defaultApp = 'match';
 //module.exports.defaultApp = 'userify';
-module.exports.defaultApp = 'ctrl';
+//module.exports.defaultApp = 'ctrl';
+module.exports.defaultApp = 'logic';
 
 module.exports.legalExtensions = {
 	// "!" preceeding the extension name indicates a binary filetype

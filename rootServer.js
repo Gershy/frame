@@ -125,8 +125,10 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/$' + appName + '.js');
 							} catch(e) {
-								/*console.error(e.stack);
-								console.log('No server file for "' + appName + '"');*/
+								if (e.message.substr(0, 18) !== 'Cannot find module') {
+									console.error(e.stack);
+									console.log('No server file for "' + appName + '"');
+								}
 							}
 							
 							if (!('queryHandler' in PACK[appName])) {

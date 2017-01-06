@@ -138,10 +138,8 @@ run on server or client side:
 	var props = obj.props;
 	for (var k in props) {
 		Object.defineProperty(trg, k, {
-			value: props[k],
-			enumerable: false,
-			configurable: false,
-			writable: true
+			enumerable: false, configurable: false, writable: true,
+			value: props[k]
 		});
 	}
 });
@@ -210,6 +208,16 @@ global.U = {
 		return PACK.uth.wireGet(p);
 	},
 	arr: function(arrayLike) {
+		/*
+		Useful method for constructing arrays from a variety of inputs:
+		
+		- If `arrayLike` is an int n, return an array of n `null`s
+		- If `arrayLike` is an object, return an array of all the object's
+		  properties.
+		- Otherwise apply `Array.prototype.slice` which will look a
+		  `length` property, and return an array consisting of all the
+		  index values of the input between 0 and the `length` value.
+		*/
 		if (arrayLike.constructor === Number) {
 			var ret = [];
 			for (var i = 0; i < arrayLike; i++) ret.push(null);
@@ -312,9 +320,7 @@ global.U = {
 	},
 	addSerializables: function(paramsList) {
 		var pass = this;
-		paramsList.forEach(function(params) {
-			pass.addSerializable(params);
-		});
+		paramsList.forEach(pass.addSerializable.bind(pass));
 	},
 	getSerializable: function(name) {
 		return {
@@ -386,7 +392,7 @@ itself.
 // This is the only package that is generated without the Package class
 global.PACK.uth = {
 	isObj: function(obj) {
-		try { return ('constructor' in obj) || true } catch(e) {};
+		try { return ('constructor' in obj) || true; } catch(e) {};
 		return false;
 	},
 	isClassedObj: function(obj) {
@@ -400,7 +406,6 @@ global.PACK.uth = {
 		if (!U.exists(arr)) arr = [];
 		
 		var ind = arr.indexOf(obj);
-		
 		if (~ind) return { arr: arr, ind: ind };
 		
 		ind = arr.length;
@@ -415,19 +420,25 @@ global.PACK.uth = {
 				data[k] = PACK.uth.wirePut(obj[k], arr).ind;
 			}
 			arr[ind] = { __c: obj.constructor.title, p: data };
+		
+		} else if (PACK.uth.isObj(obj)) {
 			
-		} else if (obj.constructor === Object) {
-			
-			for (var k in obj) {
-				if (k === '_c') throw new Error('Illegal key: "_c"');
-				obj[k] = PACK.uth.wirePut(obj[k], arr).ind;
+			if (obj.constructor === Object) {
+				
+				for (var k in obj) {
+					if (k === '_c') throw new Error('Illegal key: "_c"');
+					obj[k] = PACK.uth.wirePut(obj[k], arr).ind;
+				}
+				
+			} else if (obj.constructor === Array) {
+				
+				for (var i = 0; i < obj.length; i++) obj[i] = PACK.uth.wirePut(obj[i], arr).ind;
+				
 			}
 			
-		} else if (obj.constructor === Array) {
-			
-			for (var i = 0; i < obj.length; i++) obj[i] = PACK.uth.wirePut(obj[i], arr).ind;
-			
 		}
+		
+		// Skip `null`, undefined, integer, string cases etc.
 		
 		return { arr: arr, ind: ind };
 	},
@@ -441,48 +452,52 @@ global.PACK.uth = {
 		
 		var d = arr[ind];
 		var value = null;
-		if (d.constructor === Object) {
+		
+		if (PACK.uth.isObj(d)) {
 			
-			if ('__c' in d) {
+			if (d.constructor === Object) {
 				
-				// TODO: This is bad. In circular cases, need to have the object
-				// already within "built", but that means it has to be constructed
-				// before its parameters are known. Because of cases involving
-				// mandatory parameters, need to construct "dud" parameters.
+				if ('__c' in d) {
+					
+					// TODO: This is bad. In circular cases, need to have the object
+					// already within "built", but that means it has to be constructed
+					// before its parameters are known. Because of cases involving
+					// mandatory parameters, need to construct "dud" parameters.
+					
+					// Get constructor
+					var cls = U.getByName({ root: global.C, name: d.__c });
+					
+					// Construct dud parameters
+					var dudParams = {};
+					var ps = cls.prototype.propertyNames;
+					for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
+					
+					// value is a classed object
+					built[ind] = [ new cls(dudParams) ];
+					
+					// Construct actual parameters, and call init
+					var params = {};
+					for (var k in d.p) params[k] = PACK.uth.wireGet(arr, d.p[k], built);
+					built[ind][0].init(params);
+					return built[ind][0];
+					
+				} else {
+					
+					// value is an ordinary object
+					built[ind] = [ {} ];
+					for (var k in d) built[ind][0][k] = PACK.uth.wireGet(arr, d[k], built);
+					return built[ind][0];
+					
+				}
+					
+			} else if (d.constructor === Array) {
 				
-				// Get constructor
-				var constructor = U.getByName({ root: global.C, name: d.__c });
-				
-				// Construct dud parameters
-				var dudParams = {};
-				var ps = constructor.prototype.propertyNames;
-				for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
-				
-				// value is a classed object
-				built[ind] = [ new constructor(dudParams) ];
-				
-				// Construct actual parameters, and call init
-				var params = {};
-				for (var k in d.p) params[k] = PACK.uth.wireGet(arr, d.p[k], built);
-				built[ind][0].init(params);
-				return built[ind][0];
-				
-			} else {
-				
-				// value is an ordinary object
-				built[ind] = [ {} ];
-				for (var k in d) built[ind][0][k] = PACK.uth.wireGet(arr, d[k], built);
+				// value is an array
+				built[ind] =  [ [] ];
+				for (var i = 0; i < d.length; i++) built[ind][0].push(PACK.uth.wireGet(arr, d[i], built));
 				return built[ind][0];
 				
 			}
-				
-			
-		} else if (d.constructor === Array) {
-			
-			// value is an array
-			built[ind] =  [ [] ];
-			for (var i = 0; i < d.length; i++) built[ind][0].push(PACK.uth.wireGet(arr, d[i], built));
-			return built[ind][0];
 			
 		}
 		
@@ -516,6 +531,7 @@ global.PACK.uth = {
 		eval([ // Needed to eval in order to have a named function in debug. Is there a better way??
 			'var ' + name + ' = function(params) {',
 				'/* ' + name + ' */',
+				//'if (!(\'init\' in this)) console.log(\'' + name + '\');',
 				'this.init(U.exists(params) ? params : {});',
 			'};',
 			'namespace[name] = ' + name + ';',
@@ -542,10 +558,10 @@ global.PACK.uth = {
 		if (superclass) { c.prototype = Object.create(superclass.prototype); }
 		
 		methods.update({
+			constructor: c,
 			parent: superclass ? superclass.prototype : null,
 			propertyNames: (superclass ? superclass.prototype.propertyNames : []).concat(propertyNames),
-			wirePut: global.PACK.uth.wirePut,
-			constructor: c
+			wirePut: global.PACK.uth.wirePut // TODO: why? `wirePut` doesn't use `this`
 		});
 		
 		c.prototype.update(methods);

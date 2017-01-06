@@ -255,6 +255,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return elem.schemaChildren();
 					},
 					select: function(elem) {
+						/*
+						Returns an object representing the children of `elem`, where
+						each key of the returned object is the child's name, and the
+						value is the recursive representation of that child; `false`
+						if that child is meant to be excluded by the selection, or
+						`true` if that child is a leaf.
+						
+						Note that this method will return `true` instead of an object
+						if `elem` is a leaf.
+						*/
 						var children = this.getElemChildren(elem);
 						
 						if (U.isEmptyObj(children)) return true;
@@ -279,8 +289,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (includeRoot) func(elem);
 						
-						
-						if (selection.constructor === Object) {
+						if (PACK.uth.isObj(selection) && selection.constructor === Object) {
 							var children = this.getElemChildren(elem);
 							for (var k in selection) this.iterate({
 								elem: children[k],
@@ -290,7 +299,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							});
 						}
 					},
-					map: function(params /* elem, func */) {
+					walk: function(params /* elem, func, lastVal, selection */) {
 						var pass = this;
 						var elem = U.param(params, 'elem');
 						var func = U.param(params, 'func'); // Accepts (elem, parent)
@@ -301,7 +310,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (selection.constructor === Object) {
 							var children = this.getElemChildren(elem);
-							for (var k in selection) this.map({
+							for (var k in selection) this.walk({
 								elem: children[k],
 								func: func,
 								selection: selection[k],
@@ -517,8 +526,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							command: 'getForm',
 							params: {
 								address: address,
-								selection: PACK.uth.wirePut(selection).arr
+								selection: selection
 							},
+							serialize: [ 'selection' ],
 							transform: function(data) {
 								for (var k in data) data[k].name = k;
 								return data;
@@ -526,17 +536,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					
-					$request: function(params /* command, params, address, transform */) {
+					$request: function(params /* command, params, serialize, address, transform */) {
 						var transform = U.param(params, 'transform', null);
+						var serialize = U.param(params, 'serialize', []);
+						
 						if (!('address' in params)) params.address = this.getAddress();
 						
-						// TODO: This is a sanity check! No need for the overhead in production
-						for (var k in params.params) {
-							var p = params.params[k];
-							if (PACK.uth.isClassedObj(p)) {
-								console.log('Warning: putting classed object onto the wire: ' + p.constructor.title);
-								console.log(p);
-							}
+						// Serialize any complex fields
+						var reqParams = params.params;
+						for (var i = 0, len = serialize.length; i < len; i++) {
+							var k = serialize[i];
+							if (k in reqParams) reqParams[k] = PACK.uth.wirePut(reqParams[k]).arr;
 						}
 						
 						return new PACK.queries.SimpleQuery({
@@ -544,7 +554,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							transform: transform
 						});
 					},
-					$load: function(params /* */) {
+					$load: function(params /* selection */) {
 						/*
 						Synchronizes this element with the corresponding server-side
 						element. Gets the schema of the server-side element with a
@@ -554,6 +564,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return this.$request({
 							command: 'getSchema',
+							params: params,
+							serialize: [ 'selection' ],
 							transform: function(response) {
 								var schema = new PACK.quickDev.QSchema(response.schemaParams);
 								schema.assign({ elem: pass });
@@ -561,16 +573,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							}
 						});
 					},
-					$getSchema: function(params /* */) {
-						return this.$request({ command: 'getSchema' });
+					$getSchema: function(params /* selection */) {
+						return this.$request({ command: 'getSchema', params: params });
 					},
 					handleQuery: function(params, onComplete) {
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
 						if (com === 'getSchema') {
-						
-							onComplete({ schemaParams: this.schemaParams({ selection: PACK.sel.all }) });
+							
+							var selection = U.pawam(reqParams, 'selection', PACK.quickDev.sel.all);
+							onComplete({ schemaParams: this.schemaParams({ selection: selection }) });
 							return;
 						
 						} else if (com === 'getForm') {
@@ -610,9 +623,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					schemaParams: function(params /* selection */) {
 						/*
-						- whitelist: Controls which children (if any) are included in the
-							schema params.
-						
 						Returns an object representing parameters for a PACK.quickDev.QSchema
 						object. The parameters can be used raw, but to gain quick
 						additional functionality the result of schemaParams() can be plugged
@@ -636,7 +646,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						*/
 						var selection = U.param(params, 'selection');
 						
-						return selection.map({
+						return selection.walk({
 							elem: this,
 							func: function(elem, par) {
 								var ret = {
@@ -1133,28 +1143,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						root element's getChild call. This string is the full "value"
 						of the reference, with the 1st component chopped off.
 						*/
-						var dot = this.value.indexOf('.');
-						if (~dot) return this.value.substr(dot + 1);
-						return '';
+						var dotInd = this.value.indexOf('.');
+						return ~dotInd ? this.value.substr(dotInd + 1) : '';
 					},
 					getRef: function() {
-						var root = this.getRoot();
-						
-						/*
-						// Sanity check to ensure the QRef's value begins with the root's name
-						var dot = this.value.indexOf('.');
-						var rootName = ~dot ? this.value.substr(0, dot) : this.value;
-						if (rootName !== root.name) throw new Error('bad address doesn\'t begin with root name');*/
-						
-						return root.getChild(this.rootAddr());
+						if (this.value === null) return null;
+						return this.getRoot().getChild(this.rootAddr());
 					},
 					setRef: function(elem) {
+						if (!(elem instanceof PACK.quickDev.QElem)) throw new Error('Need to set the ref to a QElem');
 						this.setValue(elem.getAddress());
 					},
 					sanitizeAndValidate: function(value) {
 						if (value instanceof PACK.quickDev.QElem) value = value.getAddress();
 						
-						if (value.constructor !== String) throw new Error('invalid reference address for "' + this.getAddress() + '"');
+						if (value !== null && value.constructor !== String) throw new Error('invalid reference address for "' + this.getAddress() + '"');
 						
 						return value;
 					},
@@ -1318,14 +1321,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				};}
 			}),
+			
 		};
-		
-		var selAll = new ret.QSelAll();
-		selAll.sel = selAll;
 		
 		ret.update({
 			sel: {
-				all: selAll,
+				all: (function() { var sel = new ret.QSelAll(); return sel.sel = sel; })(),
 				none: new ret.QSelNone()
 			}
 		});

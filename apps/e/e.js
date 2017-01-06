@@ -90,11 +90,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						e = PACK.e.e(e);
 						var p = this.elems[0].parentNode;
-						
 						p.insertBefore(e.elems[0], p.children[0]);
-						
-						//var p = c.parentNode;
-						//p.insertBefore(e.elems[0], p.children[0]);
 					},
 					children: function() {
 						if (this.elems.length === 0) return new PACK.e.e([]);
@@ -174,6 +170,9 @@ var package = new PACK.pack.Package({ name: 'e',
 							if (e !== null) return new PACK.e.e(e);
 						}
 						return PACK.e.e([]);
+					},
+					empty: function() {
+						return this.elems.length === 0;
 					},
 					
 					handle: function(events, func) {
