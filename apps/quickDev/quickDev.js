@@ -13,17 +13,13 @@ element cannot be attached to the tree because no intermediate elements will be
 loaded. Approach this by first writing a method to load all intermediate components
 and attach them in order. Then the child can be attached.
 
-If the user (possibly maliciously) names themself starting with a "@", this will cause
-undesirable de-referencing.
-
 TODO: Long polling
 
 TODO: Link QGen with PACK.e.ListUpdater, and write corresponding *Updaters for the
 other subclasses of QElem. Once this is done any server-side element should be easily
 syncable with the client side. With long-polling, it should be beautiful
 
-TODO: QClientElem can just be implemented by changing the behaviours of already
-existing QElem classes based on the result of U.isServer()
+TODO: Abstract tree class in separate package!!!
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'random', 'e' ],
@@ -689,7 +685,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					}
 				}},
-				statik: { NEXT_ID: 0, NAME_REGEX: /^[a-zA-Z0-9-_]+$/ },
+				statik: {
+					NAME_REGEX: /^[a-zA-Z0-9-_]+$/
+				}
 			}),
 			QValue: PACK.uth.makeClass({ name: 'QValue',
 				superclassName: 'QElem',
@@ -770,9 +768,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var resolveRef = name[0] === '@';
 						if (resolveRef) name = name.substr(1);
 						
-						if (!(name in this.children)) return null;
+						if (name[0] === '$') {
+							
+							if (name === '$par')		var child = this.par;
+							else if (name === '$root')	var child = this.getRoot();
+							else						throw new Error('Unrecognized special reference: "' + name + '"');
+							
+						} else {
+							
+							// It's an ordinary child reference
+							var child = name in this.children
+								? this.children[name]
+								: null;
+							
+						}
 						
-						return resolveRef ? this.children[name].use() : this.children[name];
+						return (resolveRef && child !== null) ? child.use() : child;
 					},
 					getChild: function(address) {
 						// Safe to disregard "use" here, because QSet's "use" returns "this"
@@ -953,6 +964,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				}}
 			}),
 			QGen: PACK.uth.makeClass({ name: 'QGen',
+				/*
+				TODO: Still need to deal with reordering children.
+				This requires some way to handle reverse-relations.
+				This is because reordering requires renaming (e.g. if
+				for parent "container" there are children "0", "1", and
+				"2", and "1" is deleted, "2" should be renamed "1" - but
+				this will break	any references to "container.2", so
+				those references would need to be updated. Tricky stuff,
+				especially if many children are being reordered (e.g.
+				due to the application of some sorting algorithm).
+				*/
 				superclassName: 'QSet',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
@@ -1002,6 +1024,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							this.childAddress = this.prop.substr(0, lastDot);
 							this.childProp = this.prop.substr(lastDot + 1);
 						} else {
+							// If there's no "/", `this.prop` is the PROP, not the ADDRESS
+							// That's because it's ok if the address is blank, but the prop
+							// cannot be blank! So if only one string is given, it must be
+							// the prop.
 							this.childAddress = '';
 							this.childProp = this.prop;
 						}
@@ -1012,6 +1038,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getNewChild: function(params /* */) {
 						var child = this._schema.v.actualize();
 						if (this._initChild) this._initChild.v(child, params, this.length);
+						
+						// TODO: The next 2 lines assume sequential ordering...
 						var id = child.getChild('id');
 						if (id !== null) id.setValue(this.length);
 						
@@ -1019,9 +1047,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return child;
 					},
 					getNamedChild: function(name) {
+						// QGens allow the "+" symbol to refer to a new,
+						// dynamically created element.
 						if (name[0] === '+') {
 							var elem = this._schema.v.actualize();
-							elem.name = name.substr(1);
+							elem.name = name.length > 1
+								? name.substr(1)
+								: this.length.toString();
 							return elem;
 						}
 						return sc.getNamedChild.call(this, name);
@@ -1029,9 +1061,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getChildProp: function(elem) {
 						var propElem = elem.getChild(this.childAddress);
 						
-						if (propElem === null) {
+						if (propElem === null)
 							throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop child: "' + this.childAddress + '/' + this.childProp + '"');
-						}
+						
 						if (!(this.childProp in propElem)) throw new Error('Invalid child "' + elem.getAddress() + '" doesn\'t contain prop: "' + this.childAddress + '/' + this.childProp + '"');
 						
 						return propElem[this.childProp].toString();

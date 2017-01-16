@@ -4,7 +4,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var qd = PACK.quickDev;
 		
 		var ret = {
-			resources: { css: [ 'apps/logic/style.css' ] },
+			resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
 			versionString: '0.0.1',
 			LogicApp: PACK.uth.makeClass({ name: 'LogicApp',
 				superclassName: 'QDict',
@@ -51,6 +51,52 @@ var package = new PACK.pack.Package({ name: 'logic',
 							});
 						});
 					},
+					handleQuery: function(params, onComplete) {
+						var com = U.param(params, 'command');
+						var reqParams = U.param(params, 'params', {});
+						
+						if (com === 'login') {
+							var username = U.param(reqParams, 'username');
+							var password = U.param(reqParams, 'password');
+							
+							var user = this.getChild('users').filter({ 'username/value': username }, true);
+							if (user === null) return onComplete({ error: 'no user named "' + username + '"' });
+							if (user.getChild('password').value !== password) return onComplete({ error: 'invalid password' });
+							
+							return onComplete({
+								msg: 'login success',
+								token: user.getToken()
+							});
+						}
+						
+						sc.handleQuery.call(this, params, onComplete);
+					}
+				
+				}; }
+			}),
+			LogicUser: PACK.uth.makeClass({ name: 'LogicUser',
+				superclassName: 'QDict',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						sc.init.call(this, params);
+					},
+					getToken: function() {
+						var u = this.getChild('username').value;
+						var p = this.getChild('password').value;
+						
+						var token = '';
+						var val = 9;
+						var chars = '0ab45c2vwxyz5AB8C0D37EF5GHd21ef58gh02ij0klm0no23p9qr62stQR6ST8U39VW9u97I4JKL2M4NO4P98XYZ';
+						
+						for (var i = 0; i < 12; i++) {
+							var v1 = u[(val + 19) % u.length].charCodeAt(0);
+							var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
+							val = ((v1 + 3 + i) * (v2 + 11) * 112239) + 3 + i + v1;
+							token += chars[val % chars.length];
+						}
+						
+						return token;
+					}
 				}; }
 			}),
 			LogicTheory: PACK.uth.makeClass({ name: 'LogicTheory',
@@ -58,7 +104,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
 						sc.init.call(this, params);
-					}
+					},
 				}; }
 			})
 		};
@@ -87,7 +133,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 			},
 			
 			{	name: 'logic.user.schema',
-				value: new qd.QSchema({ c: qd.QDict, i: [
+				value: new qd.QSchema({ c: ret.LogicUser, i: [
 					{ c: qd.QString, p: { name: 'fname' } },
 					{ c: qd.QString, p: { name: 'lname' } },
 					{ c: qd.QString, p: { name: 'username' } }
@@ -176,6 +222,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var e = PACK.e.e;
 		
 		root.$load({ selection: new qd.QSelAll() }).fire(function(app) {
+			
 			app.addChild(new qd.QDict({ name: 'static', children: [
 				new qd.QDict({ name: 'credentials', children: [
 					new qd.QString({ name: 'token', value: '' }),
@@ -185,11 +232,30 @@ var package = new PACK.pack.Package({ name: 'logic',
 					new qd.QDict({ name: 'login', children: [
 						new qd.QString({ name: 'username', value: '' }),
 						new qd.QString({ name: 'password', value: '' })
-					]})
+					]}),
+					new qd.QDict({ name: 'createAccount', children: [
+						new qd.QString({ name: 'username', value: '' }),
+						new qd.QString({ name: 'password', value: '' })
+					]}),
 				]}),
 				new qd.QDict({ name: 'text', children: [
+					new qd.QString({ name: 'marker', value: 'HELLOOOO' }),
 					new qd.QString({ name: 'version', value: 'Version:' }),
-					new qd.QString({ name: 'enterCreds', value: 'Enter credentials:' })
+					new qd.QString({ name: 'accountLogin', value: 'Login' }),
+					new qd.QString({ name: 'accountLoginTitle', value: 'Enter credentials:' }),
+					new qd.QString({ name: 'accountCreate', value: 'Create Account' }),
+					new qd.QString({ name: 'accountCreateTitle', value: 'Fill out the fields:' }),
+					new qd.QGen({ name: 'temp',
+						_schema: U.addSerializable({
+							name: 'logic.text.temp.schema',
+							value: new qd.QSchema({ c: qd.QString, p: {} })
+						}),
+						_initChild: U.addSerializable({
+							name: 'logic.text.temp.initChild',
+							value: function(child, params /* */) {}
+						}),
+						prop: '/name'
+					})
 				]})
 			]}));
 			
@@ -197,68 +263,71 @@ var package = new PACK.pack.Package({ name: 'logic',
 			
 			var view = new us.RootView({ name: 'root', appData: app, elem: PACK.e.e('body'), children: [
 				
-				new us.IfView({ name: 'checkLogin', appData: app,
+				new us.ConditionView({ name: 'checkLogin', appData: app,
 					
-					condition: function() { return app.getChild('static.credentials.token').value !== ''; },
+					condition: function() {
+						return app.getChild('static.credentials.token').value === ''
+							? 'loginActions'
+							: 'loggedIn';
+					},
 					
-					view0: new us.SetView({ name: 'login', children: [
+					children: [
+						new us.SetView({ name: 'loginActions', children: [
 						
-						// TODO: Need to decide how to handle `appData` with throw-away fields like these
-						new us.StringView({ name: 'title', appData: 'static.text.enterCreds', editable: false }),
-						new us.StringView({ name: 'username', appData: 'static.forms.login.username', editable: true }),
-						new us.StringView({ name: 'password', appData: 'static.forms.login.password', editable: true }),
-						new us.ActionView({ name: 'submit', appData: null, title: 'LOGIN',
-							action: function() {
-								app.getChild('static.credentials.token').setValue('WOOO');
-							}
-						})
-					
-					]}),
-					
-					view1: new us.SetView({ name: 'app', children: [
-					]})
+							new us.TabView({ name: 'loginOrCreate',
+								getTabAppData: function(elem) {
+									return ({
+										create: 'static.text.accountCreate',
+										login: 'static.text.accountLogin',
+									})[elem.name];
+									return 'static.text.loginTab.' + elem.name;
+								},
+								children: [
+								
+									new us.SetView({ name: 'login', children: [
+										
+										// TODO: Need to decide how to handle `appData` with throw-away fields like these
+										new us.TextView({ name: 'title', appData: 'static.text.accountLoginTitle', editable: false }),
+										new us.TextView({ name: 'username', appData: 'static.forms.login.username', editable: true }),
+										new us.TextView({ name: 'password', appData: 'static.forms.login.password', editable: true }),
+										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountLogin',
+											action: function(view) {
+												app.getChild('static.credentials.token').setValue('WOOO');
+											}
+										})
+										
+									]}),
+									
+									new us.SetView({ name: 'create', children: [
+										
+										new us.TextView({ name: 'title', appData: 'static.text.accountCreateTitle', editable: false }),
+										new us.TextView({ name: 'username', appData: 'static.forms.createAccount.username', editable: true }),
+										new us.TextView({ name: 'password', appData: 'static.forms.createAccount.password', editable: true }),
+										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountCreate',
+											action: function(view) {
+												
+											}
+										})
+										
+									]})
+								
+								]
+							})
+							
+						]}),
+						new us.SetView({ name: 'loggedIn', children: [
+							
+							new us.TextView({ name: 'marker', appData: 'static.text.marker', editable: false })
+							
+						]})
+					]
 					
 				}),
-				
-				new us.SetView({ name: 'test', children: [
-					
-					new us.SetView({ name: 'inner', children: [] })
-					
-				]}),
 				
 				new us.SetView({ name: 'versionText', flow: 'inline', children: [
-					new us.StringView({ name: '1', appData: 'static.text.version', editable: false }),
-					new us.StringView({ name: '2', appData: 'version', editable: false })
+					new us.TextView({ name: '1', appData: 'static.text.version', editable: false }),
+					new us.TextView({ name: '2', appData: 'version', editable: false })
 				]})
-				
-				
-				/*
-				new us.ConditionView({ name: 'checkLogin', target: 'app.@client', cond: 'exists',
-					
-					child0: new us.CompoundView({ name: 'loggedOut', children: [
-						
-						new us.StringView({ name: 'errorMsg', content: 'app.loginError' }),
-						new us.StringView({ name: 'username', content: null }),
-						new us.StringView({ name: 'password', content: null }),
-						new us.ActionView({ name: 'submit', action: function(view, cb) {
-							app.$loginUser({
-								username: view.par.getChild('username').value,
-								password: view.par.getChild('password').value
-							}).fire(function(user) {
-								if (U.err(user)) return;
-							});
-						}})
-						
-					]}),
-					
-					child1: new us.CompoundView({ name: 'loggedIn', children: [
-						
-					]})
-					
-				}),
-				
-				new us.StringView({ name: 'version', content: 'app.version' })
-				*/
 				
 			]});
 			

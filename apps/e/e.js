@@ -76,7 +76,7 @@ var package = new PACK.pack.Package({ name: 'e',
 							return this.elems.slice(this.elems.length - e.length);
 						}
 						
-						if (this.elems.length === 0) throw 'can\'t append to empty e';
+						if (this.elems.length === 0) throw new Error('can\'t append to empty e');
 						
 						var pass = this;
 						e = PACK.e.e(e);
@@ -150,6 +150,12 @@ var package = new PACK.pack.Package({ name: 'e',
 					},
 					forEach: function(cb) {
 						for (var i = 0, len = this.elems.length; i < len; i++) cb(new PACK.e.E(this.elems[i]), i);
+					},
+					children: function() {
+						return new PACK.e.E(this.elems[0].childNodes);
+					},
+					indexedChild: function(index) {
+						return new PACK.e.E(this.elems[0].childNodes[index]);
 					},
 					
 					fieldValue: function(v) {

@@ -12,16 +12,21 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.par = null;
 						this.elem = null;
 					},
-					getAppData: function() {
-						if (this.appData.constructor === String) return this.par
-							? this.par.getAppData().getChild(this.appData)
-							: null;
+					getAppData: function(address) {
+						// Supplying a QElem for `address` simply returns that QElem
+						if (U.exists(address) && address.constructor !== String) return address;
 						
-						return this.appData;
+						if (this.appData.constructor === String) {
+							if (!this.par) throw new Error('View has no parent or appData');
+							this.appData = this.par.getAppData().getChild(this.appData);
+						}
+						
+						return U.exists(address) ? this.appData.getChild(address) : this.appData;
 					},
 					startRender: function() {
 						if (this.elem !== null) throw new Error('`startRender` called while already rendering');
 						this.elem = this.createElem();
+						this.elem.listAttr({ class: [ '+name-' + this.name  ] });
 						
 						var cont = this.getContainer();
 						
@@ -48,11 +53,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var flow = U.param(params, 'flow', 'block');
 						
 						sc.init.call(this, params);
-						this.flow = flow;
 						this.children = {};
 						this.childrenElems = {};
+						this.flow = flow;
 						
 						for (var i = 0, len = children.length; i < len; i++) this.addChild(children[i]);
+					},
+					getChildWrapper: function() {
+						/*
+						Returns the element to which children can be directly added
+						*/
+						return this.elem;
 					},
 					provideContainer: function(elem) {
 						if (elem.name in this.childrenElems) return this.childrenElems[elem.name];
@@ -62,7 +73,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							inline:	function() { return new PACK.e.E('<span class="child ' + elem.name + '"></span>'); },
 						})[this.flow]();
 						
-						this.elem.append(container);
+						this.getChildWrapper().append(container);
 						return container;
 					},
 					orderChildren: function(compareFunc) {
@@ -76,8 +87,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						data.sort(compareFunc);
 						
+						var wrapper = this.getChildWrapper();
 						for (var i = 0, len = data.length; i < len; i++) {
-							this.elem.append(data[i].__childContainer);
+							wrapper.append(data[i].__childContainer);
 							delete data[i].__childContainer;
 						}
 						
@@ -107,9 +119,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return ret;
 					},
+					doChildrenUpdates: function() { return true; },
 					startRender: function() {
 						sc.startRender.call(this);
-						for (var k in this.children) this.children[k].startRender();
+						if (this.doChildrenUpdates()) for (var k in this.children) this.children[k].startRender();
 					},
 					ceaseRender: function() {
 						for (var k in this.children) this.children[k].ceaseRender();
@@ -119,7 +132,67 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return new PACK.e.E('<div class="setView"></div>');
 					},
 					updateElem: function() {
-						for (var k in this.children) this.children[k].updateElem();
+						if (this.doChildrenUpdates()) for (var k in this.children) this.children[k].updateElem();
+					}
+				}; }
+			}),
+			TabView: PACK.uth.makeClass({ name: 'TabView', namespace: namespace,
+				superclassName: 'SetView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, children, flow, getTabAppData */) {
+						sc.init.call(this, params);
+						this.getTabAppData = U.param(params, 'getTabAppData');
+						this.activeTab = null;
+						this.activeContainer = null;
+						this.activeElem = null;
+					},
+					getChildWrapper: function() {
+						return this.elem.find('.children');
+					},
+					provideContainer: function(elem) {
+						var pass = this;
+						var tabAppData = this.getAppData(this.getTabAppData(elem));
+						var tab = new PACK.e.E('<div class="tab ' + elem.name + '">' + tabAppData.value + '</div>');
+						var container = sc.provideContainer.call(this, elem);
+						
+						tab.handle('click', function() { pass.setActiveElem(elem); });
+						this.elem.find('.tabs').append(tab);
+						
+						return container;
+					},
+					setActiveElem: function(elem) {
+						// TODO: Consider doing the actual dom changes in updateElem,
+						// and only changing the appData here
+						if (elem === this.activeElem) return;
+						
+						if (this.activeTab) {
+							this.activeTab.listAttr({ class: [ '-active' ] });
+							this.activeContainer.listAttr({ class: [ '-active' ] });
+						}
+						
+						this.activeElem = elem;
+						
+						if (this.activeElem) {
+							this.activeTab = this.elem.find('.tabs > .tab.' + this.activeElem.name);
+							this.activeTab.listAttr({ class: [ '+active' ] });
+							
+							this.activeContainer = this.elem.find('.children > .child.' + this.activeElem.name);
+							this.activeContainer.listAttr({ class: [ '+active' ] });
+						}
+					},
+					createElem: function() {
+						return new PACK.e.E([
+							'<div class="tabView">',
+								'<div class="tabs"></div>',
+								'<div class="children"></div>',
+							'</div>'
+						].join(''));
+					},
+					updateElem: function() {
+						if (this.activeElem === null && !U.isEmptyObj(this.children))
+							this.setActiveElem(U.first(this.children));
+						
+						if (this.activeElem) this.activeElem.updateElem();
 					}
 				}; }
 			}),
@@ -153,27 +226,30 @@ var package = new PACK.pack.Package({ name: 'userify',
 				}; }
 			}),
 			
-			IfView: PACK.uth.makeClass({ name: 'IfView', namespace: namespace,
-				superclassName: 'View',
+			ConditionView: PACK.uth.makeClass({ name: 'ConditionView', namespace: namespace,
+				superclassName: 'SetView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, condition, view0, view1 */) {
+					init: function(params /* name, appData, condition, children */) {
 						sc.init.call(this, params);
 						this.condition = U.param(params, 'condition');
-						this.view0 = U.param(params, 'view0');
-						this.view1 = U.param(params, 'view1');
 						this.currentView = null;
-						
-						this.view0.par = this;
-						this.view1.par = this;
+					},
+					doChildrenUpdates: function() {
+						// Turn of `SetView` children updates; this
+						// class will manually perform updates on
+						// children
+						return false;
 					},
 					provideContainer: function(elem) {
 						return this.elem;
 					},
 					createElem: function() {
-						return new PACK.e.E('<div class="ifView"></div>');
+						return new PACK.e.E('<div class="conditionView"></div>');
 					},
 					updateElem: function() {
-						var nextView = this.condition() ? this.view1 : this.view0;
+						var nextName = this.condition();
+						if (!(nextName in this.children)) throw new Error('Invalid conditional name "' + nextName + '"');
+						var nextView = this.children[nextName];
 						
 						if (nextView !== this.currentView) {
 							// `this.currentView` may be `null` if it's the first call to `updateElem`
@@ -203,7 +279,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			}),
-			StringView: PACK.uth.makeClass({ name: 'StringView', namespace: namespace,
+			TextView: PACK.uth.makeClass({ name: 'TextView', namespace: namespace,
 				superclassName: 'ValueView',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData */) {
@@ -239,19 +315,54 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (this.editable) 	this.appValue(this.elem.find('input').fieldValue());
 						// Set the span text to reflect the app value
 						else 				this.elem.text(this.appValue());
+						
+						var isEmpty = this.appValue().length === 0;
+						this.elem.listAttr({ class: [
+							(isEmpty ? '+' : '-') + 'empty',
+							(this.editable ? '+' : '-') + 'editable'
+						]});
+					}
+				}; }
+			}),
+			FieldView: PACK.uth.makeClass({ name: 'FieldView', namespace: namespace,
+				superclassName: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name, appData, field, titleAppData */) {
+						sc.init.call(this, params);
+						this.field = U.param(params, 'field');
+						this.titleAppData = U.param(params, 'titleAppData');
+					},
+					provideContainer: function(elem) {
+						return this.elem.find('.field');
+					},
+					startRender: function() {
+						sc.startRender.call(this);
+						this.field.startRender();
+					},
+					createElem: function() {
+						return new PACK.e.E([
+							'<div class="fieldView">',
+								'<div class="title"></div>',
+								'<div class="field"></div>',
+							'</div>'
+						].join(''));
+					},
+					updateElem: function() {
+						this.elem.find('.title').text(this.getAppData(this.titleAppData).value);
 					}
 				}; }
 			}),
 			ActionView: PACK.uth.makeClass({ name: 'ActionView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, title, action */) {
+					init: function(params /* name, appData, titleAppData, action */) {
 						sc.init.call(this, params);
-						this.title = U.param(params, 'title');
+						this.titleAppData = U.param(params, 'titleAppData');
 						this.action = U.param(params, 'action');
 					},
 					createElem: function() {
-						var ret = new PACK.e.E('<button type="button" class="actionView">' + this.title + '</button>');
+						var title = this.getAppData(this.titleAppData).value;
+						var ret = new PACK.e.E('<button type="button" class="actionView">' + title + '</button>');
 						ret.handle('click', this.action);
 						return ret;
 					},
@@ -260,7 +371,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			})
-				
 		};
 	}
 });

@@ -1,0 +1,25 @@
+.setView {}
+
+.tabView {}
+.tabView > .tabs {
+	white-space: nowrap;
+}
+.tabView > .tabs > .tab {
+	display: inline-block;
+	vertical-align: top;
+	padding: 4px;
+	background-color: transparent;
+	cursor: pointer;
+}
+.tabView > .tabs > .tab.active {
+	font-weight: bold;
+	background-color: #d0d0d0;
+}
+
+.tabView > .children {}
+.tabView > .children > .child { display: none; }
+.tabView > .children > .child.active {
+	display: block;
+	padding: 10px;
+	background-color: #d0d0d0;
+}

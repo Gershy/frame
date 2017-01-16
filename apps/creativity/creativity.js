@@ -263,7 +263,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 								'password/value': password
 							}, true);
 							
-							if (user === null) return { help: 'Invalid credentials' };
+							if (user === null) return onComplete({ help: 'Invalid credentials' });
 							
 							onComplete({
 								msg: 'user retrieved',

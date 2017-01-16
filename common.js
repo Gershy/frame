@@ -161,6 +161,9 @@ global.U = {
 		for (k in v) return false;
 		return true;
 	},
+	first: function(obj) {
+		for (var k in obj) return obj[k];
+	},
 	value: function(v, def) {
 		return this.exists(v) ? v : def;
 	},
