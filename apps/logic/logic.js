@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'logic',
-	dependencies: [ 'quickDev', 'htmlText', 'clock', 'userify' ],
+	dependencies: [ 'queries', 'quickDev', 'htmlText', 'clock', 'userify' ],
 	buildFunc: function(packageName) {
 		var qd = PACK.quickDev;
 		
@@ -55,7 +55,29 @@ var package = new PACK.pack.Package({ name: 'logic',
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
-						if (com === 'login') {
+						
+						if (com === 'createAccount') {
+							
+							var username = U.param(reqParams, 'username');
+							var password = U.param(reqParams, 'password');
+							
+							var users = this.getChild('users');
+							
+							if (users.getChild(username)) return onComplete({ code: 1, msg: 'username taken' });
+							
+							var user = this.getChild('users').getNewChild({
+								username: username,
+								password: password
+							});
+							
+							return onComplete({
+								msg: 'successfully created account',
+								token: user.getToken(),
+								username: user.getChild('username').value
+							});
+							
+						} else if (com === 'getUserToken') {
+							
 							var username = U.param(reqParams, 'username');
 							var password = U.param(reqParams, 'password');
 							
@@ -67,11 +89,11 @@ var package = new PACK.pack.Package({ name: 'logic',
 								msg: 'login success',
 								token: user.getToken()
 							});
+							
 						}
 						
 						sc.handleQuery.call(this, params, onComplete);
 					}
-				
 				}; }
 			}),
 			LogicUser: PACK.uth.makeClass({ name: 'LogicUser',
@@ -136,12 +158,16 @@ var package = new PACK.pack.Package({ name: 'logic',
 				value: new qd.QSchema({ c: ret.LogicUser, i: [
 					{ c: qd.QString, p: { name: 'fname' } },
 					{ c: qd.QString, p: { name: 'lname' } },
-					{ c: qd.QString, p: { name: 'username' } }
+					{ c: qd.QString, p: { name: 'username' } },
+					{ c: qd.QString, p: { name: 'password' } }
 				]})
 			},
 			{	name: 'logic.user.init',
-				value: function(child, params /* */) {
-					
+				value: function(user, params /* */) {
+					user.getChild('fname').setValue('unnamed');
+					user.getChild('lname').setValue('individual');
+					user.getChild('username').setValue(params.username);
+					user.getChild('password').setValue(params.password);
 				}
 			},
 			
@@ -266,9 +292,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 				new us.ConditionView({ name: 'checkLogin', appData: app,
 					
 					condition: function() {
-						return app.getChild('static.credentials.token').value === ''
-							? 'loginActions'
-							: 'loggedIn';
+						try {
+						return app.getChild('static.credentials.token').value === '' ? 'loginActions'	: 'loggedIn'; } catch(err) {} return 'loginActions';
 					},
 					
 					children: [
@@ -280,19 +305,26 @@ var package = new PACK.pack.Package({ name: 'logic',
 										create: 'static.text.accountCreate',
 										login: 'static.text.accountLogin',
 									})[elem.name];
-									return 'static.text.loginTab.' + elem.name;
 								},
 								children: [
 								
 									new us.SetView({ name: 'login', children: [
 										
-										// TODO: Need to decide how to handle `appData` with throw-away fields like these
 										new us.TextView({ name: 'title', appData: 'static.text.accountLoginTitle', editable: false }),
 										new us.TextView({ name: 'username', appData: 'static.forms.login.username', editable: true }),
 										new us.TextView({ name: 'password', appData: 'static.forms.login.password', editable: true }),
 										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountLogin',
 											action: function(view) {
-												app.getChild('static.credentials.token').setValue('WOOO');
+												view.getAppData().$request({
+													command: 'getUserToken',
+													params: {
+														username: view.par.children.username.appValue(),
+														password: view.par.children.username.appValue()
+													}
+												}).fire(function(res) {
+													console.log('LOGGED IN??', res);
+													app.getChild('static.credentials.token').setValue(res.token);
+												});
 											}
 										})
 										
@@ -305,7 +337,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 										new us.TextView({ name: 'password', appData: 'static.forms.createAccount.password', editable: true }),
 										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountCreate',
 											action: function(view) {
-												
+												view.getAppData().$request({
+													command: 'createAccount',
+													params: {
+														username: view.par.children.username.appValue(),
+														password: view.par.children.password.appValue()
+													}
+												}).fire(function(res) {
+													app.getChild('static.credentials.token').setValue(res.token);
+												});
 											}
 										})
 										
@@ -317,7 +357,25 @@ var package = new PACK.pack.Package({ name: 'logic',
 						]}),
 						new us.SetView({ name: 'loggedIn', children: [
 							
-							new us.TextView({ name: 'marker', appData: 'static.text.marker', editable: false })
+							new us.GenGraphView({ name: 'theories',
+								
+								initialNodeAppData: app.getChild('theories.0'),
+								
+								decorateView: function(view, appData) {
+									
+									view.addChild(new us.TextView({ name: 'name', appData: 'quickName' }));
+									view.addChild(new us.TextView({ name: 'content', appData: '@essay.markup' }));
+									view.addChild(new us.TextView({ name: 'user', appData: '@user.username' }));
+									
+								},
+								
+								followLinks: function(appData, cb) {
+									
+									return appData.getChild('prerequisites');
+									
+								}
+								
+							})
 							
 						]})
 					]
@@ -332,8 +390,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 			]});
 			
 			view.startRender();
-			window.view = view;
-			window.root = root; // Nice to make "root" available on client-side terminal
+			window.view = view;	// Nice to make `root`/`view` available on client-side terminal
+			window.root = root; 
 		});
 		
 	}

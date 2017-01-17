@@ -88,23 +88,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						*/
 						
-						// TODO: THIS WAS A MAJOR THING TO COMMENT OUT!!! NEED TO BE SURE IT'S OK
-						/*
-						// Generate the array of children first
-						var childParams = U.param(params, 'i', {});
-						var children = this.i.map(function(schema, k) {
-							return schema.actualize(U.param(childParams, k, {}));
-						});
-						
-						// Next generate the final containing element
-						var myParams = U.param(params, 'p', {});
-						var ret = this.getInstance(myParams);
-						
-						// Finally add the children to the element
-						children.forEach(function(child) { ret.addChild(child); });
-						*/
-						
-						// TODO: HERE'S THE REPLACEMENT
 						var myParams = U.param(params, 'p', {});
 						var ret = this.getInstance(myParams);
 						
@@ -158,7 +141,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 								
 								var children = this.i.map(function(schema, k) {
 									var newElem = schema.getInstance();
-									schema.assign({ elem: newElem, recurse: true });
+									schema.assign({ elem: newElem, strict: strict, recurse: true });
 									return newElem;
 								});
 								children.forEach(function(child) { elem.addChild(child); });
@@ -174,7 +157,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var ret = {};
 						ret[this.c + '(' + JSON.stringify(this.p) + ')'] = this.i.map(function(schema) { return schema.simplified(); });
 						return ret;
-					},
+					}
 				}},
 			}),
 			
@@ -550,13 +533,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							transform: transform
 						});
 					},
-					$load: function(params /* selection */) {
+					$load: function(params /* selection, strict */) {
 						/*
 						Synchronizes this element with the corresponding server-side
 						element. Gets the schema of the server-side element with a
 						calling address, and assigns that schema to itself.
 						*/
 						var pass = this;
+						var strict = U.param(params, 'strict', true);
 						
 						return this.$request({
 							command: 'getSchema',
@@ -570,7 +554,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					$getSchema: function(params /* selection */) {
-						return this.$request({ command: 'getSchema', params: params });
+						return this.$request({
+							command: 'getSchema',
+							params: params,
+							serialize: [ 'selection' ]
+						});
 					},
 					handleQuery: function(params, onComplete) {
 						var com = U.param(params, 'command');
@@ -984,16 +972,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						_schema: (serializable) schema that describes how the QGen
 							creates new elements
 						prop: dot-separated address, suffixed by a slash-separated
-						    property-name (e.g. "parent2.parent.child/name"). This
-						    is necessary to determine which key is used to index
-						    children that are added to the QGen. The address-component
-						    of the string indexes into a child that is being added,
-						    and the property-component picks a property from that
-						    child to be used as the key.
-						    
-						    e.g. suppose you want to QGen "people" objects:
-						    
-						    var people = new qd.QGen({ name: 'people',
+							property-name (e.g. "parent2.parent.child/name"). This
+							is necessary to determine which key is used to index
+							children that are added to the QGen. The address-component
+							of the string indexes into a child that is being added,
+							and the property-component picks a property from that
+							child to be used as the key.
+							
+							e.g. suppose you want to QGen "people" objects:
+							
+							var people = new qd.QGen({ name: 'people',
 								_schema: U.addSerializable({ name: 'someApp.peopleSchema',
 									value: new qd.QSchema({ c: qd.QDict, i: {
 										age: new qd.QSchema({ c: qd.QInt ... }),
@@ -1006,18 +994,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 								})
 							]);
 						    
-						    But the thing that makes a QGen effective is that it stores
-						    using an object instead of an array. So there needs to be
-						    some way of finding a unique object-key for each "person".
-						    The unique key in this case is the email. So we tell the
-						    QGen how to find the email: "contact.email/value". This means
-						    find the childs "contact.email" address element (a QString),
-						    and extract the "value" property to provide a key for indexing.
+							But the thing that makes a QGen effective is that it stores
+							using an object instead of an array. So there needs to be
+							some way of finding a unique object-key for each "person".
+							The unique key in this case is the email. So we tell the
+							QGen how to find the email: "contact.email/value". This means
+							find the child's "contact.email" address element (a QString),
+							and extract the "value" property to provide a key for indexing.
 						*/
 						sc.init.call(this, params);
 						this._schema = U.pasam(params, '_schema');
 						this._initChild = U.pasam(params, '_initChild', null);
 						this.prop = U.param(params, 'prop');
+						
+						// TODO: Omitting `prop` should cause a default "id" child
+						// to be generated (and require the `_schema` produces a
+						// subclass of QDict).
 						
 						var lastDot = this.prop.indexOf('/');
 						if (~lastDot) {
@@ -1040,11 +1032,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (this._initChild) this._initChild.v(child, params, this.length);
 						
 						// TODO: The next 2 lines assume sequential ordering...
+						// holes left from removals, sorting, etc, will break this.
 						var id = child.getChild('id');
 						if (id !== null) id.setValue(this.length);
 						
-						this.addChild(child);
-						return child;
+						return this.addChild(child);
 					},
 					getNamedChild: function(name) {
 						// QGens allow the "+" symbol to refer to a new,

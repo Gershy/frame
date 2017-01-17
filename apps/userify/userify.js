@@ -65,14 +65,19 @@ var package = new PACK.pack.Package({ name: 'userify',
 						*/
 						return this.elem;
 					},
-					provideContainer: function(elem) {
-						if (elem.name in this.childrenElems) return this.childrenElems[elem.name];
-						
-						var container = ({
+					getChildContainer: function(elem) {
+						return ({
 							block:	function() { return new PACK.e.E('<div class="child ' + elem.name + '"></div>'); },
 							inline:	function() { return new PACK.e.E('<span class="child ' + elem.name + '"></span>'); },
 						})[this.flow]();
+					},
+					provideContainer: function(elem) {
+						/*
+						Creates and attaches a container for the provided element.
+						*/
+						if (elem.name in this.childrenElems) return this.childrenElems[elem.name];
 						
+						var container = this.childrenElems[elem.name] = this.getChildContainer(elem);
 						this.getChildWrapper().append(container);
 						return container;
 					},
@@ -150,6 +155,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return this.elem.find('.children');
 					},
 					provideContainer: function(elem) {
+						/*
+						When a `TabView` provides a container, it adds a tab to
+						access it.
+						*/
 						var pass = this;
 						var tabAppData = this.getAppData(this.getTabAppData(elem));
 						var tab = new PACK.e.E('<div class="tab ' + elem.name + '">' + tabAppData.value + '</div>');
@@ -180,6 +189,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.activeContainer.listAttr({ class: [ '+active' ] });
 						}
 					},
+					// TODO: `orderChildren` needs to be overridden here (need to reorder tabs too)
 					createElem: function() {
 						return new PACK.e.E([
 							'<div class="tabView">',
@@ -363,13 +373,49 @@ var package = new PACK.pack.Package({ name: 'userify',
 					createElem: function() {
 						var title = this.getAppData(this.titleAppData).value;
 						var ret = new PACK.e.E('<button type="button" class="actionView">' + title + '</button>');
-						ret.handle('click', this.action);
+						ret.handle('click', this.action.bind(null, this));
 						return ret;
 					},
 					updateElem: function() {
 						
 					}
 				}; }
+			}),
+		
+			// TODO: This class would possibly benefit from using a <canvas>
+			GenGraphView: PACK.uth.makeClass({ name: 'GenGraphView', namespace: namespace,
+				superclassName: 'SetView',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						sc.init.call(this, params);
+						
+						this.decorateView = U.param(params, 'decorateView');
+						this.followLinks = U.param(params, 'followLinks');
+						
+						this.children = {};
+					},
+					getChildWrapper: function() {
+						return this.elem.find('.children');
+					},
+					getChildContainer: function(elem) {
+						var ret = new PACK.e.E('<div class="graphNode"></div>');
+						// TODO: Add controls to focus clicked graphNodes
+						// Focussing should decorate the `.genGraphView > .controls`
+						// element with the focussed view's controls
+						return ret;
+					},
+					createElem: function() {
+						return new PACK.e.E([
+							'<div class="genGraphView">',
+								'<div class="children"></div>',
+								'<div class="controls"></div>',
+							'</div>'
+						].join(''));
+					},
+					updateElem: function() {
+						
+					}
+				};}
 			})
 		};
 	}

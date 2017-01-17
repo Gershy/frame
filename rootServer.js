@@ -14,7 +14,7 @@ var config = require('./config.js');
 //var mongoDb = require('mongodb').MongoClient;
 
 var package = new PACK.pack.Package({ name: 'server',
-	dependencies: [ 'queries', ],
+  dependencies: [ 'queries', ],
 	buildFunc: function() {
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
@@ -28,7 +28,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						this.appName = null;
 						this.queryHandler = null;
-						
+            
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
@@ -296,9 +296,12 @@ var package = new PACK.pack.Package({ name: 'server',
 var dbUri = U.param(process.env, 'FRAME_DB_URI', 'mongodb://localhost:27017/frame');
 
 var gimmeDb = true;
-if (gimmeDb) {
+var db = null;
+
+try { db = require('mongodb'); } catch(err) {}
+
+if (db && gimmeDb) {
 	
-	var db = require('mongodb');
 	var client = db.MongoClient;
 	var url = process.env.FRAME_DB_URI;
 
