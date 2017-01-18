@@ -843,7 +843,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 										subQueries: U.arr(elem.children.map(function(c) {
 											// TODO: Need to investigate implications of "addChild" and "useClientSide"
 											// using the @-flag and *Query architecture
-											return c.$getChild({ address: '@blurb', addChild: false, useClientSide: false });
+											return c.$getChild({ address: '@blurb' });
 										}))
 									}).fire(function(elems) {
 										callback(elems.map(function(elem) {
@@ -1017,11 +1017,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												subQueries: U.arr(elem.children.map(function(votable) {
 													return new PACK.queries.PromiseQuery({
 														subQueries: [
-															votable.$getChild({ address: '@blurb', addChild: false, useClientSide: false }),
+															votable.$getChild({ address: '@blurb' }),
 															root.$filter({
 																address: 'rooms.' + auth.room + '.votes',
 																filter: { 'votable/value': votable.getAddress() },
-																addChildren: false
 															})
 														]
 													});

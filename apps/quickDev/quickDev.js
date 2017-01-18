@@ -62,9 +62,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					actualize: function(params /* p, i */) {
 						/*
+						Fully creates an entirely new `QElem` based on the schema.
+						
 						Note that this method actually generates children before it
 						generates the parent. This means that at every instant during
-						this method, no element ever exists without all its children.
+						this method, no element ever exists without all its children,
+						but at ever instance no element ever has its parent.
 						
 						====Example call:
 						
@@ -95,15 +98,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ret;
 					},
-					assign: function(params /* elem, recurse, strict */) {
+					assign: function(params /* elem, recurse */) {
 						var pass = this;
 						var elem = U.param(params, 'elem');
 						// Recurse means that the i field is used to assign values to
 						// elem's children as well.
 						var recurse = U.param(params, 'recurse', true);
-						// If the assignment is strict, it removes any children from
-						// elem that don't appear in the schema.
-						var strict = U.param(params, 'strict', true);
 						
 						var constructor = U.getByName({ root: C, name: this.c });
 						if (!(elem instanceof constructor)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
@@ -116,17 +116,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (recurse && (elem instanceof PACK.quickDev.QSet)) {
 							
-							// If doing non-strict assignment, need to save the list of
-							// children in case the 1st attempt doesn't work, because in
-							// that case .clear() needs to be called, but because
-							// assignment is non-strict the original children shouldn't
-							// have been removed so they need to be put back.
-							if (!strict) var nonStrictChildren = elem.children.clone();
-							
 							try {
 								
 								// Try with immediately attaching to parent
-								if (strict) elem.clear();
+								elem.clear();
 								this.i.forEach(function(schema, k) {
 									var newElem = schema.getInstance();
 									elem.addChild(newElem);
@@ -135,13 +128,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 								
 							} catch(e) {
 								
-								// Try building child entirely
+								// Try building child entirely.
+								// All the children are built before any of them are added.
+								// The advantage of this is that if an error occurs during
+								// building, there will be no malformed children attached
+								// during error handling.
 								elem.clear(); // Probably removes malformed children from 1st attempt
-								if (!strict) elem.children = nonStrictChildren;
-								
 								var children = this.i.map(function(schema, k) {
 									var newElem = schema.getInstance();
-									schema.assign({ elem: newElem, strict: strict, recurse: true });
+									schema.assign({ elem: newElem, recurse: true });
 									return newElem;
 								});
 								children.forEach(function(child) { elem.addChild(child); });
@@ -231,6 +226,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					init: function(params /* */) {
 					},
 					getElemChildren: function(elem) {
+						/*
+						Overridable way of retrieving children from a parent.
+						TODO: This is coupled to QSchema. Would it be worthwhile
+						decoupling?
+						*/
 						return elem.schemaChildren();
 					},
 					select: function(elem) {
@@ -243,6 +243,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						Note that this method will return `true` instead of an object
 						if `elem` is a leaf.
+						
+						This method should probably not be called by the
+						implementation. It is a utility method which simplies
+						`QSel.prototype.iterate` and `QSel.prototype.walk`.
 						*/
 						var children = this.getElemChildren(elem);
 						
@@ -260,11 +264,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					},
 					iterate: function(params /* elem, includeRoot, func */) {
+						/*
+						Applies a function to every element which is selected by
+						this `QSel`.
+						
+						Note the `selection` variable below; it isn't meant to be
+						a parameter given by the user. On the first run of this
+						method it will be undefined, so the `U.palam` call will
+						cause it to be the result of `this.select` on `elem`. This
+						value of `selection` will then be provided to every
+						recursive call of `this.iterate`, and therefore the `select`
+						method won't be called on any iteration except for the 1st.
+						*/
 						var pass = this;
-						var elem = U.param(params, 'elem');
-						var includeRoot = U.param(params, 'includeRoot', false);
-						var func = U.param(params, 'func');
-						var selection = U.palam(params, 'selection', function() { return pass.select(elem); });
+						var elem = 				U.param(params, 'elem');
+						var includeRoot =	U.param(params, 'includeRoot', false);
+						var func = 				U.param(params, 'func');
+						var selection = 	U.palam(params, 'selection', function() { return pass.select(elem); });
 						
 						if (includeRoot) func(elem);
 						
@@ -273,12 +289,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							for (var k in selection) this.iterate({
 								elem: children[k],
 								selection: selection[k],
-								includeRoot: true,
+								includeRoot: true,	// `includeRoot` is always true for children
 								func: func
 							});
 						}
 					},
 					walk: function(params /* elem, func, lastVal, selection */) {
+						/*
+						This method simplifies the process of building another tree
+						which is related to the tree of elements filtered by this
+						`QSel`.
+						
+						If calls `func` for every element in the selected tree, and
+						provides a `par` parameter as well. This should allow
+						related trees to have their nodes connected in the same
+						way as the selected tree.
+						*/
 						var pass = this;
 						var elem = U.param(params, 'elem');
 						var func = U.param(params, 'func'); // Accepts (elem, parent)
@@ -299,8 +325,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return ret;
 					},
-					getSelectedNames: function(childrenObj) { throw new Error('not implemented'); },
-					getSelectorFor: function(child) { throw new Error('not implemented'); }
+					getSelectedNames: function(childrenObj) {
+						/*
+						This is the method which defines the filtering logic.
+						Returns an array whose elements are a subset of the keys in
+						`childrenObj`. These keys define which elements have been
+						selected by this `QSel`.
+						*/
+						throw new Error('not implemented');
+					},
+					getSelectorFor: function(child) {
+						/*
+						Returns the next instance of a `QSel` which should be used
+						to filter `child`.
+						*/
+						throw new Error('not implemented');
+					}
 				};}
 			}),
 			QSelSimpleInner: PACK.uth.makeClass({ name: 'QSelSimpleInner',
@@ -533,26 +573,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							transform: transform
 						});
 					},
-					$load: function(params /* selection, strict */) {
-						/*
-						Synchronizes this element with the corresponding server-side
-						element. Gets the schema of the server-side element with a
-						calling address, and assigns that schema to itself.
-						*/
-						var pass = this;
-						var strict = U.param(params, 'strict', true);
-						
-						return this.$request({
-							command: 'getSchema',
-							params: params,
-							serialize: [ 'selection' ],
-							transform: function(response) {
-								var schema = new PACK.quickDev.QSchema(response.schemaParams);
-								schema.assign({ elem: pass });
-								return pass;
-							}
-						});
-					},
 					$getSchema: function(params /* selection */) {
 						return this.$request({
 							command: 'getSchema',
@@ -560,7 +580,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							serialize: [ 'selection' ]
 						});
 					},
+					$load: function(params /* selection */) {
+						/*
+						Calls `this.$getSchema`, then actualizes the response schema
+						into a `QElem`.
+						*/
+						var ret = this.$getSchema(params);
+						ret.transform = function(response) {
+							return (new PACK.quickDev.QSchema(response.schemaParams)).actualize();
+						};
+						return ret;
+					},
 					handleQuery: function(params, onComplete) {
+						/*
+						This method should only be called server-side. Returns a
+						response for a request.
+						*/
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
 						
@@ -592,7 +627,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					schemaConstructorName: function() {
 						// Return the name that can be used to reference this class' name.
-						// Can be a period-delimited string to reference deep classes.
+						// Can be a period-delimited string to reference packaged classes.
 						return this.constructor.title;
 					},
 					schemaProperties: function() {
@@ -824,11 +859,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ret;
 					},
 					
-					$filter: function(params /* address, filter, addChildren */) {
+					$filter: function(params /* address, filter */) {
 						var pass = this;
 						var address = U.param(params, 'address', null);
 						var filter = U.param(params, 'filter');
-						var addChildren = U.param(params, 'addChildren', true);
 						
 						return this.$request({
 							command: 'filter',
@@ -840,18 +874,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 									return schema.actualize();
 								});
 								
-								// If children need to be added, do so
-								if (addChildren) {
-									var root = address ? pass.getChild(address) : pass;
-									if (root === null) throw new Error('Can\'t add children because parent doesn\'t exist client-side');
-									elems.forEach(function(elem) { root.addChild(elem); });
-								}
-								
 								return elems;
 							}
 						});
 					},
-					$getChild: function(params /* address, recurse, addChild, useClientSide */) {
+					$getChild: function(params /* address, recurse */) {
 						/*
 						recurse - can be "true" or "false" to indicate recursion, or a list of
 							addresses to indicate which children should be recursed on.
@@ -861,16 +888,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// In case the request elem is a QSet, allow parameters to control 
 						// whether or not the QSet loads its children.
 						var recurse = U.param(params, 'recurse', true);
-						var addChild = U.param(params, 'addChild', false);
-						var useClientSide = U.param(params, 'useClientSide', false);
 						
 						var addrPcs = address.split('.');
-						if (addChild && addrPcs.length > 1) throw new Error('Cannot add retrieved child because it doesn\'t go directly in its parent');
-						
-						if (useClientSide) {
-							var elem = this.getChild(address);
-							if (elem !== null) return new PACK.queries.DudQuery({ response: elem });
-						}
 						
 						return this.$request({
 							command: 'getChild',
@@ -881,7 +900,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 								var schema = new PACK.quickDev.QSchema(response.schemaParams);
 								
 								var elem = schema.actualize();
-								if (addChild) pass.addChild(elem);
 								return elem;
 							}
 						});
@@ -1186,25 +1204,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return value;
 					},
 					
-					$getRef: function(params /* useClientValue, addRef, recurse */) {
-						/*
-						"addRef" is much more complicated than "addChild", because a reference
-						can be nested anywhere inside the data-tree, not just in the element
-						which had "$getRef" called on it.
-						*/
-						var useClientValue = U.param(params, 'useClientValue', false);
-						var addRef = U.param(params, 'addRef', true);
+					$getRef: function(params /* recurse */) {
 						var recurse = U.param(params, 'recurse', true);
 						
-						if (useClientValue) {
-							var ref = this.getRef();
-							if (ref !== null) return new PACK.queries.DudQuery({ response: ref });
-						}
-						
-						return this.getRoot().$getChild({ address: this.rootAddr(),
-							addChild: addRef,
+						return this.getRoot().$getChild({
+							address: this.rootAddr(),
 							recurse: recurse,
-							useClientValue: useClientValue,
 						});
 					},
 					
