@@ -148,8 +148,8 @@ var package = new PACK.pack.Package({ name: 'e',
 					htmlCopy: function() {
 						return PACK.e.e(this.elems[0].outerHTML);
 					},
-					forEach: function(cb) {
-						for (var i = 0, len = this.elems.length; i < len; i++) cb(new PACK.e.E(this.elems[i]), i);
+					forEach: function(it) {
+						for (var i = 0, len = this.elems.length; i < len; i++) it(new PACK.e.E(this.elems[i]), i);
 					},
 					children: function() {
 						return new PACK.e.E(this.elems[0].childNodes);

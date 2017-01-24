@@ -33,16 +33,15 @@ var package = new PACK.pack.Package({ name: 'queries',
 					fire: function(onComplete, ref) {
 						if (this.transform) {
 							var tr = this.transform;
-							var cb = function(response, ref) { onComplete(response.constructor === Error ? response : tr(response), ref); };
-						} else {
-							var cb = onComplete;
+							var oldOnComplete = onComplete;
+							onComplete = function(response, ref) { oldOnComplete(U.err(response) ? response : tr(response), ref); };
 						}
 						
 						// TODO: Implement U.request here instead?
 						// TODO: auto-implement `wirePut` here, based off `serialize` param, instead of in quickDev?
 						// TODO: auto-implement `wireGet` here, instead of manually in implementation?
 						U.request({ url: this.url, params: this.params, json: this.json,
-							onComplete: cb, ref: ref
+							onComplete: onComplete, ref: ref
 						});
 					}
 				}; }

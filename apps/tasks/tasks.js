@@ -14,17 +14,17 @@ var package = new PACK.pack.Package({ name: 'tasks',
 						
 						this.intervalId = null;
 					},
-					run: function(params /* items, progressCB, totalTasks, tasksPerTick, sleepTime */) {
+					run: function(params /* items, onProgress, totalTasks, tasksPerTick, sleepTime */) {
 						var totalTasks = 	U.param(params, 'totalTasks');
 						var items = 		U.param(params, 'items', {});
-						var progressCB = 	U.param(params, 'progressCB', null);
+						var onProgress = 	U.param(params, 'onProgress', null);
 						var tasksPerTick = 	U.param(params, 'tasksPerTick', 10000);
 						var sleepTime = 	U.param(params, 'sleepTime', 10);
 						
 						var pass = this;
 						
 						// Run the progress callback guaranteeing that it is called with 0
-						if (progressCB) progressCB(0, totalTasks);
+						if (onProgress) onProgress(0, totalTasks);
 						
 						var count = 0;
 						var intervalFunc = sleepTime !== 'anim' ? PACK.tasks.timedCallbackFunc : PACK.tasks.animCallbackFunc;
@@ -42,7 +42,7 @@ var package = new PACK.pack.Package({ name: 'tasks',
 							for (var tasksDone = tasksAlready; tasksDone < tasksByTickEnd; tasksDone++)	pass.work(items, tasksDone);
 							if (pass.afterChunk) pass.afterChunk(items, tasksDone);
 							
-							if (progressCB) progressCB(tasksDone, totalTasks);
+							if (onProgress) onProgress(tasksDone, totalTasks);
 							
 							if (tasksDone >= totalTasks) {
 								var intervalFuncEnd = sleepTime !== 'anim' ? PACK.tasks.timedCallbackFuncEnd : PACK.tasks.animCallbackFuncEnd;
@@ -61,12 +61,12 @@ var package = new PACK.pack.Package({ name: 'tasks',
 			}),
 			timedCallbackFunc: setInterval,
 			timedCallbackFuncEnd: clearInterval,
-			animCallbackFunc: function(cb, delay) {
+			animCallbackFunc: function(it, delay) {
 				var id = { running: true };
 				
 				var func = function() {
 					if (!id.running) return;
-					cb();
+					it();
 					requestAnimationFrame(func);
 				};
 				
@@ -76,7 +76,7 @@ var package = new PACK.pack.Package({ name: 'tasks',
 			},
 			animCallbackFuncEnd: function(animId) {
 				animId.running = false;
-			},
+			}
 		};
 	}
 });

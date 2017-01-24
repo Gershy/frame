@@ -61,16 +61,16 @@ run on server or client side:
 				
 				return new this.constructor(properties);
 			},
-			forEach: function(cb) {
-				for (var k in this) cb(this[k], k, this);
+			forEach: function(it) {
+				for (var k in this) it(this[k], k, this);
 			},
-			map: function(cb) {
+			map: function(it) {
 				var ret = {};
-				for (var k in this) ret[k] = cb(this[k], k, this);
+				for (var k in this) ret[k] = it(this[k], k, this);
 				return ret;
 			},
-			every: function(cb) {
-				for (var k in this) if (!cb(this[k], k, this)) return false;
+			every: function(it) {
+				for (var k in this) if (!it(this[k], k, this)) return false;
 				return true;
 			},
 			toArray: function() {
@@ -160,6 +160,10 @@ global.U = {
 	isEmptyObj: function(v) {
 		for (k in v) return false;
 		return true;
+	},
+	isEmpty: function(v) {
+		if (v.constructor === Object) return U.isEmptyObj(v);
+		return v.length === 0;
 	},
 	first: function(obj) {
 		for (var k in obj) return obj[k];
@@ -376,6 +380,19 @@ global.U = {
 			
 		}
 	},
+	createDelay: function(params /* task, delay, repeat */) {
+		var task = U.param(params, 'task');
+		var delay = U.param(params, 'delay');
+		var repeat = U.param(params, 'repeat', false);
+		
+		var start = repeat ? setInterval : setTimeout;
+		var end = repeat ? clearInterval : clearTimeout;
+		
+		return {
+			ref: start(task, delay),
+			end: function() { end(this.ref); }
+		};
+	}
 };
 
 /*

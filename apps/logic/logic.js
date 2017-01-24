@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'logic',
-	dependencies: [ 'queries', 'quickDev', 'htmlText', 'clock', 'userify' ],
+	dependencies: [ 'queries', 'quickDev', 'htmlText', 'clock', 'userify', 'p' ],
 	buildFunc: function(packageName) {
 		var qd = PACK.quickDev;
 		
@@ -17,37 +17,37 @@ var package = new PACK.pack.Package({ name: 'logic',
 						
 						var pass = this;
 						this.dbUpdate = new qd.QUpdate({
-							request: function(cb) {
+							request: function(onComplete) {
 								pass.setState(pass.schemaParams({
 									selection: qd.sel.all
-								}), cb);
+								}), onComplete);
 							},
 							onStart: function() {},
 							onEnd: function(response) { }
 						});
 						this.dbUpdate.repeat({ delay: 1500 });
 					},
-					getState: function(cb) {
+					getState: function(onComplete) {
 						/*
 						Retrieves the persisted state of the creativity app from the db
 						*/
-						if (DB === null) { cb(null); return; }
+						if (DB === null) { onComplete(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
 							collection.find({ name: packageName }).limit(1).next(function(err, doc) {
-								cb(doc !== null ? doc.data : null);
+								onComplete(doc !== null ? doc.data : null);
 							});
 						});
 					},
-					setState: function(state, cb) {
+					setState: function(state, onComplete) {
 						/*
 						Persists the creativity app into the db
 						*/
-						if (DB === null) { if(cb) cb(null); return; }
+						if (DB === null) { if(onComplete) onComplete(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
 							collection.update({ name: packageName }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
-								if (cb) cb(doc.result);
+								if (onComplete) onComplete(doc.result);
 							});
 						});
 					},
@@ -369,7 +369,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 									
 								},
 								
-								followLinks: function(appData, cb) {
+								followLinks: function(appData, onComplete) {
 									
 									return appData.getChild('prerequisites');
 									

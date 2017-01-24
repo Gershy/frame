@@ -105,19 +105,19 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						
 						var pass = this;
 						this.dbUpdate = new qd.QUpdate({
-							request: function(cb) {
+							request: function(onComplete) {
 								pass.setState(pass.schemaParams({
 									selection: qd.sel.all
-								}), cb);
+								}), onComplete);
 							},
 							onStart: function() {},
 							onEnd: function(response) { }
 						});
 						
 						this.resolveUpdate = new qd.QUpdate({
-							request: function(cb) {
+							request: function(onComplete) {
 								pass.tryResolveVotes();
-								cb(null);
+								onComplete(null);
 							},
 							onStart: function() {},
 							onEnd: function(response) { }
@@ -126,27 +126,27 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						this.dbUpdate.repeat({ delay: 1500 });
 						this.resolveUpdate.repeat({ delay: 1000 });
 					},
-					getState: function(cb) {
+					getState: function(onComplete) {
 						/*
 						Retrieves the persisted state of the creativity app from the db
 						*/
-						if (DB === null) { cb(null); return; }
+						if (DB === null) { onComplete(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
 							collection.find({ name: 'creativity' }).limit(1).next(function(err, doc) {
-								cb(doc !== null ? doc.data : null);
+								onComplete(doc !== null ? doc.data : null);
 							});
 						});
 					},
-					setState: function(state, cb) {
+					setState: function(state, onComplete) {
 						/*
 						Persists the creativity app into the db
 						*/
-						if (DB === null) { if(cb) cb(null); return; }
+						if (DB === null) { if(onComplete) onComplete(null); return; }
 						
 						DB.collection('apps', function(err, collection) {
 							collection.update({ name: 'creativity' }, { $set: { data: state } }, { upsert: true }, function(err, doc) {
-								if (cb) cb(doc.result);
+								if (onComplete) onComplete(doc.result);
 							});
 						});
 					},
