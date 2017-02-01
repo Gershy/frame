@@ -83,7 +83,7 @@ run on server or client side:
 				for (var k in this) {
 					var kk = U.exists(prefix) ? (prefix + '.' + k) : k;
 					var o = this[k];
-					if (PACK.uth.isObj(o) && o.constructor === Object) {
+					if (U.isObj(o) && o.constructor === Object) {
 						
 						var flattened = o.flatten(kk);
 						for (var j in flattened) ret[j] = flattened[j];
@@ -144,40 +144,21 @@ run on server or client side:
 	}
 });
 
-var isServer = typeof window === 'undefined';
-
 // Build utility library
 global.S = {};		// All serializables are stored here
 global.C = {};		// All classes are stored here
 global.PACK = {};	// All packages are stored here
 global.U = {
-	isServer: function() {
-		return isServer;
-	},
-	exists: function(p) {
-		return typeof p !== 'undefined';
-	},
-	isEmptyObj: function(v) {
-		for (k in v) return false;
-		return true;
-	},
-	isEmpty: function(v) {
-		if (v.constructor === Object) return U.isEmptyObj(v);
-		return v.length === 0;
-	},
-	first: function(obj) {
-		for (var k in obj) return obj[k];
-	},
-	value: function(v, def) {
-		return this.exists(v) ? v : def;
-	},
+	isServer: typeof window === 'undefined' ? function() { return true; } : function() { return false; },
+	
+	// Parameter utility
 	param: function(params, name, def) {
 		/*
 		Used to retrieve an item from an object. If def is provided and no
 		item under the "name" key is found, def is returned.
 		*/
-		if (U.exists(params) && (name in params) && U.exists(params[name])) return params[name];
-		if (this.exists(def)) return def;
+		if (U.isObj(params) && (name in params)) return params[name]; // TODO: Was previously this && too: "&& U.exists(params[name])"
+		if (U.exists(def)) return def;
 		
 		throw new Error('missing param: "' + name + '"');
 	},
@@ -187,7 +168,7 @@ global.U = {
 		the default value (if none was found) instead of a pre-computed
 		value.
 		*/
-		var ret = this.param(params, name, paramFunc);
+		var ret = U.param(params, name, paramFunc);
 		return ret === paramFunc ? paramFunc() : ret;
 	},
 	pasam: function(params, name, def) {
@@ -196,89 +177,68 @@ global.U = {
 		for the given parameters, return the serializable under the
 		string's name.
 		*/
-		var p = this.param(params, name, def);
+		var p = U.param(params, name, def);
 		
 		if (p === null || p.constructor !== String) return p;
 		
-		return this.getSerializable(p)
+		return U.getSerializable(p)
 	},
 	pawam: function(params, name, def) {
 		/*
 		Wire-param. Used to reconstitute an object that was sent over
-		the wire. If U.param doesn't return def, use PACK.uth.wireGet
+		the wire. If U.param doesn't return def, use U.wireGet
 		to rebuild the value.
 		*/
-		var p = this.param(params, name, def);
+		var p = U.param(params, name, def);
 		
 		if (p === def) return def;
 		
-		return PACK.uth.wireGet(p);
+		return U.wireGet(p);
 	},
-	arr: function(arrayLike) {
-		/*
-		Useful method for constructing arrays from a variety of inputs:
-		
-		- If `arrayLike` is an int n, return an array of n `null`s
-		- If `arrayLike` is an object, return an array of all the object's
-		  properties.
-		- Otherwise apply `Array.prototype.slice` which will look a
-		  `length` property, and return an array consisting of all the
-		  index values of the input between 0 and the `length` value.
-		*/
-		if (arrayLike.constructor === Number) {
-			var ret = [];
-			for (var i = 0; i < arrayLike; i++) ret.push(null);
-			return ret;
-		}
-		if (arrayLike.constructor === Object) {
-			var ret = [];
-			for (var k in arrayLike) ret.push(arrayLike[k]);
-			return ret;
-		}
-		return Array.prototype.slice.call(arrayLike);
+	exists: function(p) {
+		return typeof p !== 'undefined';
 	},
-	err: function(object) {
+	
+	// Object utility
+	isObj: function(obj, cls) {
+		try { return (('constructor' in obj) || true) && (!cls || obj.constructor === cls); } catch(e) {};
+		return false;
+	},
+	isClassedObj: function(obj) {
+		try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
+		return false;
+	},
+	instanceOf: function(obj, cls) {
+		return U.isObj(obj) && (obj instanceof cls);
+	},
+	isEmptyObj: function(v) {
+		for (k in v) return false;
+		return true;
+	},
+	isEmpty: function(v) {
+		if (v.constructor === Array) return v.length === 0;
+		return U.isEmptyObj(v);
+	},
+	length: function(v) {
+		if (v.constructor === Array) return v.length;
+		return Object.keys(v).length;
+	},
+	isError: function(object) {
 		try { return object.constructor === Error; } catch(e) {};
 		return false;
 	},
-	id: function(n, len) {
-		if (!U.exists(len)) len = 8;
-		var hex = n.toString(16);
-		
-		while(hex.length < len) hex = '0' + hex;
-		
-		return hex;
+	firstKey: function(obj) {
+		for (var k in obj) return k;
+		throw new Error('Cannot get first property of empty object');
 	},
-	rng: function(rng) {
-		// Sneaky way of allowing x:y notation is using an object param
-		if (rng.constructor === Object) {
-			var k = null;
-			for (var kk in rng) { k = kk; break; }
-			var v = rng[k];
-		} else {
-			var k = 0;
-			var v = rng;
-		}
-		
-		var ret = [];
-		for (var i = k; i < v; i++) ret.push(i);
-		
-		return ret;
+	firstVal: function(obj) {
+		return obj[U.firstKey(obj)];
 	},
-	charId: function(n, len) {
-		var hex = this.id(n, len);
-		
-		var letters = '';
-		for (var i = 0; i < hex.length; i++) {
-			var c = hex[i];
-			letters += (c >= '0' && c <= '9') 
-				? String.fromCharCode('a'.charCodeAt(0) + parseInt(c))
-				: String.fromCharCode(c.charCodeAt(0) + 10);
-		}
-		
-		return letters;
+	matches: function(o, o2) {
+		for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
+		return true;
 	},
-	setByName: function(params /* name, root, value, overwrite */) {
+	deepSet: function(params /* name, root, value, overwrite */) {
 		var name = U.param(params, 'name');
 		var root = U.param(params, 'root');
 		var value = U.param(params, 'value');
@@ -297,7 +257,7 @@ global.U = {
 		
 		ptr[lastComp] = value;
 	},
-	getByName: function(params /* name, root, createIfNone */) {
+	deepGet: function(params /* name, root, createIfNone */) {
 		var name = U.param(params, 'name');
 		var root = U.param(params, 'root');
 		var createIfNone = U.param(params, 'createIfNone', false);
@@ -314,223 +274,15 @@ global.U = {
 		}
 		return ptr;
 	},
-	addSerializable: function(params /* name, value */) {
-		var name = U.param(params, 'name');
-		var value = U.param(params, 'value');
-		
-		this.setByName({
-			root: global.S,
-			name: name,
-			value: value
-		});
-		return name;
-	},
-	addSerializables: function(paramsList) {
-		var pass = this;
-		paramsList.forEach(pass.addSerializable.bind(pass));
-	},
-	getSerializable: function(name) {
-		return {
-			name: name,
-			v: this.getByName({ name: name, root: S })
-		};
-	},
-	equals: function(o, o2) {
-		for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
-		return true;
-	},
-	request: function(params /* url, params, onComplete, post, ref, json */) {
-		var url = this.param(params, 'url', '');
-		var reqParams = this.param(params, 'params', {});
-		var onComplete = this.param(params, 'onComplete', null);
-		var json = this.param(params, 'json', true);
-		var post = this.param(params, 'post', false);
-		var ref = this.param(params, 'ref', null); // User-specified value that doesn't travel client side - discriminates the query from others
-		
-		var error = new Error('');
-		
-		var req = new XMLHttpRequest();
-		req.onreadystatechange = onComplete ? function() {
-			if (U.equals(req, { readyState: 4, status: 200 })) {
-				if (json) {
-					var o = JSON.parse(req.responseText);
-					if (o.code !== 0) {
-						// Pass the error instead of the response
-						error.message = 'Bad API use (' + o.msg + ')';
-						onComplete(error, ref);
-						return;
-					}
-				} else {
-					var o = req.responseText;
-				}
-				onComplete(o, ref);
-			}
-		} : null;
-		
-		if (!post) {
-			
-			req.open('GET', U.isEmptyObj(reqParams) ? url : (url + '?_json=' + encodeURIComponent(JSON.stringify(reqParams))), true);
-			req.send();
-			
-		} else {
-			
-			req.open('POST', url, true);
-			req.setRequestHeader('Content-Type', 'application/json');
-			req.send(JSON.stringify(reqParams));
-			
-		}
-	},
-	createDelay: function(params /* task, delay, repeat */) {
-		var task = U.param(params, 'task');
-		var delay = U.param(params, 'delay');
-		var repeat = U.param(params, 'repeat', false);
-		
-		var start = repeat ? setInterval : setTimeout;
-		var end = repeat ? clearInterval : clearTimeout;
-		
-		return {
-			ref: start(task, delay),
-			end: function() { end(this.ref); }
-		};
-	}
-};
-
-/*
-Only two packages are built in an ad-hoc manner. These are "uth", and "pack".
-
--UTH
-This package provides the makeClass method, which is used to built the "pack"
-package itself. That's why it can't be built in the standard way.
-
--PACK
-This package is the package which facilitates the proper method of building
-packages. If it were to be built in the standard way, it would have to build
-itself.
-*/
-
-// PACKAGE: Under The Hood
-// This is the only package that is generated without the Package class
-global.PACK.uth = {
-	isObj: function(obj) {
-		try { return ('constructor' in obj) || true; } catch(e) {};
-		return false;
-	},
-	isClassedObj: function(obj) {
-		try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
-		return false;
-	},
-	instanceOf: function(obj, cls) {
-		return PACK.uth.isObj(obj) && (obj instanceof cls);
-	},
-	wirePut: function(obj, arr) {
-		if (!U.exists(arr)) arr = [];
-		
-		var ind = arr.indexOf(obj);
-		if (~ind) return { arr: arr, ind: ind };
-		
-		ind = arr.length;
-		arr.push(obj);
-		
-		if (PACK.uth.isClassedObj(obj)) {
-			
-			var ps = obj.propertyNames;
-			var data = {};
-			for (var i = 0, len = ps.length; i < len; i++) {
-				var k = ps[i];
-				data[k] = PACK.uth.wirePut(obj[k], arr).ind;
-			}
-			arr[ind] = { __c: obj.constructor.title, p: data };
-		
-		} else if (PACK.uth.isObj(obj)) {
-			
-			if (obj.constructor === Object) {
-				
-				for (var k in obj) {
-					if (k === '_c') throw new Error('Illegal key: "_c"');
-					obj[k] = PACK.uth.wirePut(obj[k], arr).ind;
-				}
-				
-			} else if (obj.constructor === Array) {
-				
-				for (var i = 0; i < obj.length; i++) obj[i] = PACK.uth.wirePut(obj[i], arr).ind;
-				
-			}
-			
-		}
-		
-		// Skip `null`, undefined, integer, string cases etc.
-		
-		return { arr: arr, ind: ind };
-	},
-	wireGet: function(arr, ind, built) {
-		if (!U.exists(built)) built = U.arr(arr.length);
-		if (!U.exists(ind)) ind = 0;
-		
-		// This is a dumb hack to deal with the actual value being
-		// null: put EVERY value in an array lol
-		if (built[ind] !== null) return built[ind][0];
-		
-		var d = arr[ind];
-		var value = null;
-		
-		if (PACK.uth.isObj(d)) {
-			
-			if (d.constructor === Object) {
-				
-				if ('__c' in d) {
-					
-					// TODO: This is bad. In circular cases, need to have the object
-					// already within "built", but that means it has to be constructed
-					// before its parameters are known. Because of cases involving
-					// mandatory parameters, need to construct "dud" parameters.
-					
-					// Get constructor
-					var cls = U.getByName({ root: global.C, name: d.__c });
-					
-					// Construct dud parameters
-					var dudParams = {};
-					var ps = cls.prototype.propertyNames;
-					for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
-					
-					// value is a classed object
-					built[ind] = [ new cls(dudParams) ];
-					
-					// Construct actual parameters, and call init
-					var params = {};
-					for (var k in d.p) params[k] = PACK.uth.wireGet(arr, d.p[k], built);
-					built[ind][0].init(params);
-					return built[ind][0];
-					
-				} else {
-					
-					// value is an ordinary object
-					built[ind] = [ {} ];
-					for (var k in d) built[ind][0][k] = PACK.uth.wireGet(arr, d[k], built);
-					return built[ind][0];
-					
-				}
-					
-			} else if (d.constructor === Array) {
-				
-				// value is an array
-				built[ind] =  [ [] ];
-				for (var i = 0; i < d.length; i++) built[ind][0].push(PACK.uth.wireGet(arr, d[i], built));
-				return built[ind][0];
-				
-			}
-			
-		}
-		
-		built[ind] = [ d ];
-		return built[ind][0];
-	},
+	
+	// Class utility
 	makeClass: function(params /* namespace, name, superclassName, propertyNames, methods, statik */) {
 		var namespace = U.param(params, 'namespace', global.C);
 		
 		if (namespace.constructor === String) {
 			var comps = namespace.split('.');
 			var dir = global.C;
-			namespace = U.getByName({ name: namespace, root: dir, createIfNone: false });
+			namespace = U.deepGet({ name: namespace, root: dir, createIfNone: false });
 		}
 		
 		var name = U.param(params, 'name');
@@ -580,21 +332,279 @@ global.PACK.uth = {
 		methods.update({
 			constructor: c,
 			parent: superclass ? superclass.prototype : null,
-			propertyNames: (superclass ? superclass.prototype.propertyNames : []).concat(propertyNames),
-			wirePut: global.PACK.uth.wirePut // TODO: why? `wirePut` doesn't use `this`
+			propertyNames: (superclass ? superclass.prototype.propertyNames : []).concat(propertyNames)
 		});
 		
 		c.prototype.update(methods);
 		c.update(statik);
 		
 		return c;
+	},
+	
+	// Serialization utility
+	wirePut: function(obj, arr) {
+		/*
+		Note the convention: This method is particularly named "wirePut" because
+		it's a form of serialization that should only be used for the wire, and
+		has no real application anywhere else.
+		*/
+		if (!U.exists(arr)) arr = [];
+		
+		var ind = arr.indexOf(obj);
+		if (~ind) return { arr: arr, ind: ind };
+		
+		ind = arr.length;
+		arr.push(obj);
+		
+		if (U.isClassedObj(obj)) {
+			
+			var ps = obj.propertyNames;
+			var data = {};
+			for (var i = 0, len = ps.length; i < len; i++) {
+				var k = ps[i];
+				data[k] = U.wirePut(obj[k], arr).ind;
+			}
+			arr[ind] = { __c: obj.constructor.title, p: data };
+		
+		} else if (U.isObj(obj)) {
+			
+			if (obj.constructor === Object) {
+				
+				for (var k in obj) {
+					if (k === '_c') throw new Error('Illegal key: "_c"');
+					obj[k] = U.wirePut(obj[k], arr).ind;
+				}
+				
+			} else if (obj.constructor === Array) {
+				
+				for (var i = 0; i < obj.length; i++) obj[i] = U.wirePut(obj[i], arr).ind;
+				
+			}
+			
+		}
+		
+		// Skip `null`, undefined, integer, string cases etc.
+		
+		return { arr: arr, ind: ind };
+	},
+	wireGet: function(arr, ind, built) {
+		if (!U.exists(built)) built = U.toArray(arr.length);
+		if (!U.exists(ind)) ind = 0;
+		
+		// This is a dumb hack to deal with the actual value being
+		// null: put EVERY value in an array lol
+		// TODO: Is this even that bad?
+		if (built[ind] !== null) return built[ind][0];
+		
+		var d = arr[ind];
+		var value = null;
+		
+		if (U.isObj(d)) {
+			
+			if (d.constructor === Object) {
+				
+				if ('__c' in d) {
+					
+					// TODO: This is bad. In circular cases, need to have the object
+					// already within "built", but that means it has to be constructed
+					// before its parameters are known. Because of cases involving
+					// mandatory parameters, need to construct "dud" parameters.
+					
+					// Get constructor
+					var cls = U.deepGet({ root: global.C, name: d.__c });
+					
+					// Construct dud parameters
+					var dudParams = {};
+					var ps = cls.prototype.propertyNames;
+					for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
+					
+					// value is a classed object
+					built[ind] = [ new cls(dudParams) ];
+					
+					// Construct actual parameters, and call init
+					var params = {};
+					for (var k in d.p) params[k] = U.wireGet(arr, d.p[k], built);
+					built[ind][0].init(params);
+					return built[ind][0];
+					
+				} else {
+					
+					// value is an ordinary object
+					built[ind] = [ {} ];
+					for (var k in d) built[ind][0][k] = U.wireGet(arr, d[k], built);
+					return built[ind][0];
+					
+				}
+					
+			} else if (d.constructor === Array) {
+				
+				// value is an array
+				built[ind] =  [ [] ];
+				for (var i = 0; i < d.length; i++) built[ind][0].push(U.wireGet(arr, d[i], built));
+				return built[ind][0];
+				
+			}
+			
+		}
+		
+		built[ind] = [ d ];
+		return built[ind][0];
+	},
+	addSerializable: function(params /* name, value */) {
+		var name = U.param(params, 'name');
+		var value = U.param(params, 'value');
+		
+		U.deepSet({
+			root: global.S,
+			name: name,
+			value: value
+		});
+		return name;
+	},
+	addSerializables: function(paramsList /* [ { name, value }, ... ] */) {
+		paramsList.forEach(U.addSerializable.bind(U));
+	},
+	getSerializable: function(name) {
+		return {
+			name: name,
+			v: U.deepGet({ name: name, root: S })
+		};
+	},
+	
+	// Misc
+	toArray: function(arrayLike) {
+		/*
+		Useful method for constructing arrays from a variety of inputs:
+		
+		- If `arrayLike` is an int n, return an array of n `null`s
+		- If `arrayLike` is an object, return an array of all the object's
+		  properties.
+		- Otherwise apply `Array.prototype.slice` which will look a
+		  `length` property, and return an array consisting of all the
+		  index values of the input between 0 and the `length` value.
+		*/
+		if (arrayLike.constructor === Number) {
+			var ret = [];
+			for (var i = 0; i < arrayLike; i++) ret.push(null);
+			return ret;
+		}
+		if (arrayLike.constructor === Object) {
+			var ret = [];
+			for (var k in arrayLike) ret.push(arrayLike[k]);
+			return ret;
+		}
+		return Array.prototype.slice.call(arrayLike);
+	},
+	range: function(rng) {
+		// Sneaky way of allowing x:y notation is using an object param
+		if (rng.constructor === Object) {
+			var k = U.firstKey(rng);
+			var v = rng[k];
+		} else {
+			var k = 0;
+			var v = rng;
+		}
+		
+		var ret = [];
+		for (var i = k; i < v; i++) ret.push(i);
+		
+		return ret;
+	},
+	id: function(n, len) {
+		if (!U.exists(len)) len = 8;
+		var hex = n.toString(16);
+		
+		while(hex.length < len) hex = '0' + hex;
+		
+		return hex;
+	},
+	charId: function(n, len) {
+		/*
+		Returns an id comprised entirely of characters starting from lowercase "a".
+		There will be no integer characters. For values of "n" greater than 26
+		there will be funky non-alpha characters.
+		*/
+		var hex = U.id(n, len);
+		
+		var letters = '';
+		for (var i = 0; i < hex.length; i++) {
+			var c = hex[i];
+			letters += (c >= '0' && c <= '9') 
+				? String.fromCharCode('a'.charCodeAt(0) + parseInt(c))
+				: String.fromCharCode(c.charCodeAt(0) + 10);
+		}
+		
+		return letters;
+	},
+	request: function(params /* url, params, onComplete, post, ref, json */) {
+		var url = U.param(params, 'url', '');
+		var reqParams = U.param(params, 'params', {});
+		var onComplete = U.param(params, 'onComplete', null);
+		var json = U.param(params, 'json', true);
+		var post = U.param(params, 'post', false);
+		var ref = U.param(params, 'ref', null); // User-specified value that doesn't travel client side - discriminates the query from others
+		
+		var error = new Error('');
+		
+		var req = new XMLHttpRequest();
+		req.onreadystatechange = onComplete ? function() {
+			if (U.matches(req, { readyState: 4, status: 200 })) {
+				if (json) {
+					var o = JSON.parse(req.responseText);
+					if (o.code !== 0) {
+						// Pass the error instead of the response
+						error.message = 'Bad API use (' + o.msg + ')';
+						onComplete(error, ref);
+						return;
+					}
+				} else {
+					var o = req.responseText;
+				}
+				onComplete(o, ref);
+			}
+		} : null;
+		
+		if (!post) {
+			
+			req.open('GET', U.isEmptyObj(reqParams) ? url : (url + '?_json=' + encodeURIComponent(JSON.stringify(reqParams))), true);
+			req.send();
+			
+		} else {
+			
+			req.open('POST', url, true);
+			req.setRequestHeader('Content-Type', 'application/json');
+			req.send(JSON.stringify(reqParams));
+			
+		}
+	},
+	createDelay: function(params /* task, delay, repeat */) {
+		var task = U.param(params, 'task');
+		var delay = U.param(params, 'delay');
+		var repeat = U.param(params, 'repeat', false);
+		
+		var start = repeat ? setInterval : setTimeout;
+		var end = repeat ? clearInterval : clearTimeout;
+		
+		return {
+			ref: start(task, delay),
+			end: function() { end(U.ref); }
+		};
 	}
+	
 };
+
+/*
+Only one package is built in an ad-hoc manner:
+
+-PACK
+This package is the package which facilitates the proper method of building
+packages. If it were to be built in the standard way, it would have to build
+itself.
+*/
 
 // PACKAGE: Packaging
 global.PACK.pack = {
-	onScriptLoad: function() { var script = this; },
-	Package: PACK.uth.makeClass({ name: 'Package',
+	Package: U.makeClass({ name: 'Package',
 		propertyNames: [ 'name', 'buildFunc', ],
 		methods: {
 			init: function(params /* name, dependencies, buildFunc, runAfter */) {
@@ -609,15 +619,13 @@ global.PACK.pack = {
 				
 				this.depErrorChecking = {};
 			},
-			startBuild: function() {
-			},
 			stepBuild: function(script) {
 				/*
 				This gets called on the package each time one of its dependencies
 				is loaded. The number of times this method gets called is counted,
 				and once it's called for each dependency it calls this.endBuild().
 				*/
-				if (script.src in this.depErrorChecking) throw 'double-loaded dependency "' + script.src + '"';
+				if (script.src in this.depErrorChecking) throw new Error('double-loaded dependency "' + script.src + '"');
 				this.depErrorChecking[script.src] = 'loaded';
 				
 				this.receivedDeps++;
@@ -656,8 +664,6 @@ global.PACK.pack = {
 				This method works substantially differently depending on
 				whether it is executing on server or client side.
 				*/
-				this.startBuild();
-				
 				var pass = this;
 				
 				// Collect missing dependencies
@@ -707,7 +713,6 @@ global.PACK.pack = {
 							script.setAttribute('type', 'text/javascript');
 							script.async = false;
 							script.src = src;
-							script.onload = PACK.pack.onScriptLoad;
 							
 							document.getElementsByTagName('head')[0].appendChild(script);
 						}

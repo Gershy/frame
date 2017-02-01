@@ -1,10 +1,10 @@
 var package = new PACK.pack.Package({ name: 'userify',
-	dependencies: [ 'uth', 'quickDev', 'e' ],
+	dependencies: [ 'quickDev', 'e' ],
 	buildFunc: function() {
 		var namespace = {};
 		
 		return {
-			View: PACK.uth.makeClass({ name: 'View', namespace: namespace,
+			View: U.makeClass({ name: 'View', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData */) {
 						this.name = U.param(params, 'name');
@@ -45,7 +45,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					updateElem: function() { throw new Error('not implemented'); }
 				}; }
 			}),
-			SetView: PACK.uth.makeClass({ name: 'SetView', namespace: namespace,
+			SetView: U.makeClass({ name: 'SetView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
 					init: function(params /* name, children, flow */) {
@@ -141,7 +141,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			}),
-			TabView: PACK.uth.makeClass({ name: 'TabView', namespace: namespace,
+			TabView: U.makeClass({ name: 'TabView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
 					init: function(params /* name, children, flow, getTabAppData */) {
@@ -200,13 +200,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					updateElem: function() {
 						if (this.activeElem === null && !U.isEmptyObj(this.children))
-							this.setActiveElem(U.first(this.children));
+							this.setActiveElem(U.firstVal(this.children));
 						
 						if (this.activeElem) this.activeElem.updateElem();
 					}
 				}; }
 			}),
-			RootView: PACK.uth.makeClass({ name: 'RootView', namespace: namespace,
+			RootView: U.makeClass({ name: 'RootView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
 					init: function(params /* name, children, appData, rootElem */) {
@@ -236,7 +236,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 				}; }
 			}),
 			
-			ConditionView: PACK.uth.makeClass({ name: 'ConditionView', namespace: namespace,
+			ConditionView: U.makeClass({ name: 'ConditionView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData, condition, children */) {
@@ -276,7 +276,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 				}; }
 			}),
 			
-			ValueView: PACK.uth.makeClass({ name: 'ValueView', namespace: namespace,
+			ValueView: U.makeClass({ name: 'ValueView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData, editable */) {
@@ -289,7 +289,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			}),
-			TextView: PACK.uth.makeClass({ name: 'TextView', namespace: namespace,
+			TextView: U.makeClass({ name: 'TextView', namespace: namespace,
 				superclassName: 'ValueView',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData */) {
@@ -334,7 +334,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			}),
-			FieldView: PACK.uth.makeClass({ name: 'FieldView', namespace: namespace,
+			FieldView: U.makeClass({ name: 'FieldView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData, field, titleAppData */) {
@@ -362,7 +362,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				}; }
 			}),
-			ActionView: PACK.uth.makeClass({ name: 'ActionView', namespace: namespace,
+			ActionView: U.makeClass({ name: 'ActionView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
 					init: function(params /* name, appData, titleAppData, action */) {
@@ -383,7 +383,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 			}),
 		
 			// TODO: This class would possibly benefit from using a <canvas>
-			GenGraphView: PACK.uth.makeClass({ name: 'GenGraphView', namespace: namespace,
+			GenGraphView: U.makeClass({ name: 'GenGraphView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {

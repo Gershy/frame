@@ -1,12 +1,12 @@
 var package = new PACK.pack.Package({ name: 'clock',
-	dependencies: [ 'uth', 'e' ],
+	dependencies: [ 'e' ],
 	buildFunc: function() {
 		var controlClick = function(amount) {
 			this.changeSeconds(amount);
 		};
 		
 		return {
-			Clock: PACK.uth.makeClass({ name: 'Clock',
+			Clock: U.makeClass({ name: 'Clock',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
 					init: function(params /* hasControls, minSeconds, maxSeconds */) {

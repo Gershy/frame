@@ -18,7 +18,7 @@ var package = new PACK.pack.Package({ name: 'server',
 	buildFunc: function() {
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
-			Session: PACK.uth.makeClass({ name: 'Session',
+			Session: U.makeClass({ name: 'Session',
 				superclassName: 'QueryHandler',
 				propertyNames: [ 'ip' ],
 				methods: function(sc) { return {
@@ -95,7 +95,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						// A request that specifies a file should just serve that file
 						if (url[url.length - 1].contains('.')) {
 							this.getFileContents(url.join('/'), function(err, data) {
-								if (U.err(err)) {
+								if (U.isError(err)) {
 									onComplete({
 										data: '"' + url + '" not found',
 										encoding: 'text/plain',
@@ -142,7 +142,7 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.appName = appName;
 						
 						var html = this.getFileContents('mainPage.html', function(err, html) {
-							if (U.err(err)) {
+							if (U.isError(err)) {
 								onComplete({
 									data: [
 										'<!DOCTYPE html>',
@@ -254,7 +254,7 @@ var package = new PACK.pack.Package({ name: 'server',
 				}
 				
 				if ('originalAddress' in params) throw 'used reserved "originalAddress" param';
-				params.originalAddress = U.arr(params.address);
+				params.originalAddress = U.toArray(params.address);
 				
 				session.respondToQuery(params, function(response) {
 					if (response instanceof Error) throw response;

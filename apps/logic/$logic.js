@@ -25,13 +25,3 @@ root.getState(function(state) {
 	(new qd.QSchema(sp)).assign({ elem: app, recurse: true });
 	app.start();
 });
-
-var P = PACK.p.P;
-
-var d1 = new P({ cb: U.createDelay, cbParams: { delay: 3000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay3000'; });
-var d2 = new P({ cb: U.createDelay, cbParams: { delay: 2000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay2000'; });
-var d3 = new P({ cb: U.createDelay, cbParams: { delay: 1000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay1000'; });
-
-var allDelays = new P({ all: [ d1, d2, d3 ]}).then(function(vals) {
-	console.log('GOT', vals);
-});

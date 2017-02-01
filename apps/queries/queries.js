@@ -1,14 +1,14 @@
 var package = new PACK.pack.Package({ name: 'queries',
-	dependencies: [ 'uth' ],
+	dependencies: [ ],
 	buildFunc: function() {
 		return {
-			Query: PACK.uth.makeClass({ name: 'Query',
+			Query: U.makeClass({ name: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* */) { },
 					fire: function(onComplete, ref) { throw new Error('not implemented'); }
 				}; }
 			}),
-			DudQuery: PACK.uth.makeClass({ name: 'DudQuery',
+			DudQuery: U.makeClass({ name: 'DudQuery',
 				superclassName: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* response */) {
@@ -18,7 +18,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					fire: function(onComplete, ref) { onComplete(this.response, ref); }
 				}; }
 			}),
-			SimpleQuery: PACK.uth.makeClass({ name: 'SimpleQuery',
+			SimpleQuery: U.makeClass({ name: 'SimpleQuery',
 				superclassName: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* url, params, json, transform */) {
@@ -34,7 +34,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 						if (this.transform) {
 							var tr = this.transform;
 							var oldOnComplete = onComplete;
-							onComplete = function(response, ref) { oldOnComplete(U.err(response) ? response : tr(response), ref); };
+							onComplete = function(response, ref) { oldOnComplete(U.isError(response) ? response : tr(response), ref); };
 						}
 						
 						// TODO: Implement U.request here instead?
@@ -46,7 +46,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					}
 				}; }
 			}),
-			PromiseQuery: PACK.uth.makeClass({ name: 'PromiseQuery',
+			PromiseQuery: U.makeClass({ name: 'PromiseQuery',
 				superclassName: 'Query',
 				methods: function(sc) { return {
 					init: function(params /* subQueries, ensureOrder */) {
@@ -93,7 +93,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					}
 				}; }
 			}),
-			CompoundQuery: PACK.uth.makeClass({ name: 'CompoundQuery',
+			CompoundQuery: U.makeClass({ name: 'CompoundQuery',
 				// TODO: This class would be nice to have!!
 				// Instead of sending multiple small queries and waiting
 				// for all of them to return, bundle all the queries together
@@ -106,7 +106,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					}
 				}; }
 			}),
-			QueryHandler: PACK.uth.makeClass({ name: 'QueryHandler',
+			QueryHandler: U.makeClass({ name: 'QueryHandler',
 				methods: function(sc) { return {
 					init: function(params /* */) {
 					},

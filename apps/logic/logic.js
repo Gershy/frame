@@ -6,7 +6,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var ret = {
 			resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
 			versionString: '0.0.1',
-			LogicApp: PACK.uth.makeClass({ name: 'LogicApp',
+			LogicApp: U.makeClass({ name: 'LogicApp',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
@@ -96,7 +96,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 				}; }
 			}),
-			LogicUser: PACK.uth.makeClass({ name: 'LogicUser',
+			LogicUser: U.makeClass({ name: 'LogicUser',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
@@ -121,7 +121,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 				}; }
 			}),
-			LogicTheory: PACK.uth.makeClass({ name: 'LogicTheory',
+			LogicTheory: U.makeClass({ name: 'LogicTheory',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {

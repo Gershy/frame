@@ -26,7 +26,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 	buildFunc: function() {
 		var ret = {
 			/* QSchema */
-			QSchema: PACK.uth.makeClass({ name: 'QSchema',
+			QSchema: U.makeClass({ name: 'QSchema',
 				propertyNames: [ 'c', 'p', 'i' ],
 				methods: function(sc) { return {
 					init: function(params /* c, p, i */) {
@@ -54,7 +54,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					getInstance: function(params /* overwrite params */) {
-						var constructor = U.getByName({ root: C, name: this.c });
+						var constructor = U.deepGet({ root: C, name: this.c });
 						var cParams = U.exists(params) ? this.p.clone(params) : this.p;
 						if (!('name' in cParams)) cParams.name = '-unnamed-';
 						
@@ -105,7 +105,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// elem's children as well.
 						var recurse = U.param(params, 'recurse', true);
 						
-						var constructor = U.getByName({ root: C, name: this.c });
+						var constructor = U.deepGet({ root: C, name: this.c });
 						if (!(elem instanceof constructor)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
 						
 						elem.schemaProperties().forEach(function(v, k) {
@@ -157,7 +157,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			}),
 			
 			/* QUpdate */
-			QUpdate: PACK.uth.makeClass({ name: 'QUpdate',
+			QUpdate: U.makeClass({ name: 'QUpdate',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
 					init: function(params /* request, onStart, onEnd */) {
@@ -220,7 +220,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			}),
 			
 			/* QSel */
-			QSel: PACK.uth.makeClass({ name: 'QSel',
+			QSel: U.makeClass({ name: 'QSel',
 				propertyNames: [ ],
 				methods: function(sc) { return {
 					init: function(params /* */) {
@@ -284,7 +284,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						if (includeRoot) func(elem);
 						
-						if (PACK.uth.isObj(selection) && selection.constructor === Object) {
+						if (U.isObj(selection) && selection.constructor === Object) {
 							var children = this.getElemChildren(elem);
 							for (var k in selection) this.iterate({
 								elem: children[k],
@@ -343,7 +343,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				};}
 			}),
-			QSelSimpleInner: PACK.uth.makeClass({ name: 'QSelSimpleInner',
+			QSelSimpleInner: U.makeClass({ name: 'QSelSimpleInner',
 				superclassName: 'QSel',
 				propertyNames: [ 'sel' ],
 				methods: function(sc) { return {
@@ -354,7 +354,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getSelectorFor: function(child) { return this.sel }
 				};}
 			}),
-			QSelNamedInner: PACK.uth.makeClass({ name: 'QSelNamedInner',
+			QSelNamedInner: U.makeClass({ name: 'QSelNamedInner',
 				superclassName: 'QSelSimpleInner',
 				propertyNames: [ 'selNames' ],
 				methods: function(sc) { return {
@@ -368,7 +368,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				};}
 			}),
-			QSelAll: PACK.uth.makeClass({ name: 'QSelAll',
+			QSelAll: U.makeClass({ name: 'QSelAll',
 				superclassName: 'QSelSimpleInner',
 				propertyNames: [ ],
 				methods: function(sc) { return {
@@ -382,7 +382,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				};}
 			}),
-			QSelNone: PACK.uth.makeClass({ name: 'QSelNone',
+			QSelNone: U.makeClass({ name: 'QSelNone',
 				superclassName: 'QSel',
 				propertyNames: [ ],
 				methods: function(sc) { return {
@@ -393,7 +393,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getSelectorFor: function(child) { return null; }
 				};}
 			}),
-			QSelInc: PACK.uth.makeClass({ name: 'QSelInc',
+			QSelInc: U.makeClass({ name: 'QSelInc',
 				propertyNames: [ 'names' ],
 				superclassName: 'QSelNamedInner',
 				methods: function(sc) { return {
@@ -407,7 +407,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				};}
 			}),
-			QSelExc: PACK.uth.makeClass({ name: 'QSelExc',
+			QSelExc: U.makeClass({ name: 'QSelExc',
 				propertyNames: [ 'names' ],
 				superclassName: 'QSelSimpleInner',
 				methods: function(sc) { return {
@@ -424,7 +424,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			}),
 			
 			/* QElem */
-			QElem: PACK.uth.makeClass({ name: 'QElem',
+			QElem: U.makeClass({ name: 'QElem',
 				superclassName: 'QueryHandler',
 				propertyNames: [ 'name' ],
 				methods: function(sc, c) { return {
@@ -565,7 +565,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var reqParams = params.params;
 						for (var i = 0, len = serialize.length; i < len; i++) {
 							var k = serialize[i];
-							if (k in reqParams) reqParams[k] = PACK.uth.wirePut(reqParams[k]).arr;
+							if (k in reqParams) reqParams[k] = U.wirePut(reqParams[k]).arr;
 						}
 						
 						return new PACK.queries.SimpleQuery({
@@ -712,7 +712,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					NAME_REGEX: /^[a-zA-Z0-9-_]+$/
 				}
 			}),
-			QValue: PACK.uth.makeClass({ name: 'QValue',
+			QValue: U.makeClass({ name: 'QValue',
 				superclassName: 'QElem',
 				propertyNames: [ 'value' ],
 				methods: function(sc) { return {
@@ -738,7 +738,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 				}}
 			}),
-			QSet: PACK.uth.makeClass({ name: 'QSet',
+			QSet: U.makeClass({ name: 'QSet',
 				superclassName: 'QElem',
 				propertyNames: [ ],
 				methods: function(sc) { return {
@@ -969,7 +969,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}}
 			}),
-			QGen: PACK.uth.makeClass({ name: 'QGen',
+			QGen: U.makeClass({ name: 'QGen',
 				/*
 				TODO: Still need to deal with reordering children.
 				This requires some way to handle reverse-relations.
@@ -1129,7 +1129,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}}
 			}),
-			QDict: PACK.uth.makeClass({ name: 'QDict',
+			QDict: U.makeClass({ name: 'QDict',
 				superclassName: 'QSet',
 				propertyNames: [ ],
 				methods: function(sc) { return {
@@ -1160,7 +1160,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			}),
 			
 			/* QValue subclasses */
-			QRef: PACK.uth.makeClass({ name: 'QRef',
+			QRef: U.makeClass({ name: 'QRef',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
@@ -1220,7 +1220,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}}
 			}),
-			QString: PACK.uth.makeClass({ name: 'QString',
+			QString: U.makeClass({ name: 'QString',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
 					init: function(params /* name, value, minLen, maxLen */) {
@@ -1247,7 +1247,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}}
 			}),
-			QInt: PACK.uth.makeClass({ name: 'QInt',
+			QInt: U.makeClass({ name: 'QInt',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
@@ -1276,7 +1276,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}; }
 			}),
-			QVector2D: PACK.uth.makeClass({ name: 'QVector2D',
+			QVector2D: U.makeClass({ name: 'QVector2D',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
@@ -1295,7 +1295,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 				}; },
 			}),
-			QColor: PACK.uth.makeClass({ name: 'QColor',
+			QColor: U.makeClass({ name: 'QColor',
 				superclassName: 'QValue',
 				methods: function(sc) { return {
 					init: function(params /* name, value */) {
@@ -1322,7 +1322,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				}; }
 			}),
 			
-			QMigration: PACK.uth.makeClass({ name: 'QMigration',
+			QMigration: U.makeClass({ name: 'QMigration',
 				methods: function(sc, c) { return {
 					init: function(params /* name, apply, next */) {
 						this.name = U.param(params, 'name');

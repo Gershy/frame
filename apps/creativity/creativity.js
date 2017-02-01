@@ -94,7 +94,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 		var ret = {
 			resources: { css: [ 'apps/creativity/style.css' ] },
 			versionString: '0.0.4 (rooms)',
-			CreativityApp: PACK.uth.makeClass({ name: 'CreativityApp',
+			CreativityApp: U.makeClass({ name: 'CreativityApp',
 				superclassName: 'QDict',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
@@ -185,7 +185,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						// Turn each votable into an object that contains the votable, and the number
 						// of votes that votable has received.
 						var votes = room.getChild('votes');
-						var ret = U.arr(room.getChild('votables').children.map(function(votable) {
+						var ret = U.toArray(room.getChild('votables').children.map(function(votable) {
 							return {
 								votable: votable,
 								numVotes: votes.filter({ 'votable/value': votable.getAddress() }).length
@@ -552,7 +552,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						});
 						
 						var spin = e('<div class="spin"></div>');
-						spin.append(U.rng(20).map(function(i) { return '<div class="spinner"><div class="dash"></div></div>'; }));
+						spin.append(U.range(20).map(function(i) { return '<div class="spinner"><div class="dash"></div></div>'; }));
 						
 						credentials.append([ usernameField, passwordField, submit, spin ]);
 						
@@ -635,7 +635,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 												startedMillis: true,
 											}
 										}}).fire(function(elem) {
-											callback(U.arr(elem.children.map(function(room) { return {
+											callback(U.toArray(elem.children.map(function(room) { return {
 												description: room.getChild('description').value,
 												quickName: room.getChild('quickName').value,
 												host: room.getChild('host').value.split('.')[2],
@@ -840,7 +840,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 									elem.name = 'app.rooms.' + auth.room + '.storyItems';
 									
 									new PACK.queries.PromiseQuery({
-										subQueries: U.arr(elem.children.map(function(c) {
+										subQueries: U.toArray(elem.children.map(function(c) {
 											// TODO: Need to investigate implications of "addChild" and "useClientSide"
 											// using the @-flag and *Query architecture
 											return c.$getChild({ address: '@blurb' });
@@ -1014,7 +1014,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 											elem.name = 'app.rooms.' + auth.room + '.votables';
 											
 											new PACK.queries.PromiseQuery({
-												subQueries: U.arr(elem.children.map(function(votable) {
+												subQueries: U.toArray(elem.children.map(function(votable) {
 													return new PACK.queries.PromiseQuery({
 														subQueries: [
 															votable.$getChild({ address: '@blurb' }),

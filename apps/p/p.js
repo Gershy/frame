@@ -1,93 +1,84 @@
 var package = new PACK.pack.Package({ name: 'p',
-  dependencies: [ 'uth' ],
+  dependencies: [ ],
   buildFunc: function() {
     return {
       p: function(val) {
-        return PACK.uth.instanceOf(val, PACK.p.P) ? val : new PACK.p.P(val);
+        /*
+        Convert a value into a promise.
+        If `val` is a promise return it, otherwise return a promise wrapping `val`.
+        */
+        return U.instanceOf(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
       },
-      P: PACK.uth.makeClass({ name: 'P',
+      P: U.makeClass({ name: 'P',
         methods: function() { return {
           init: function(params /* val, func, cb, cbParams, cbName, all */) {
             this.val = null;
-            this.satisfied = true;
+            this.satisfied = false;
             this.waiting = [];
             
-            if (!PACK.uth.isObj(params) || params.constructor !== Object) params = { val: params };
+            if (!U.isObj(params, Object)) throw new Error(this.constructor.title + ' takes an object as a parameter');
             
-            if ('cb' in params) {
+            if ('val' in params) {        // Allow an ordinary value to be treated as a promise
               
-              this.val = null;
-              this.satisfied = false;
-              
-              var cb = U.param(params, 'cb');
-              var cbParams = U.param(params, 'cbParams', {});
-              var cbName = U.param(params, 'cbName', null);
-              
-              if (!PACK.uth.instanceOf(cbParams, Array)) cbParams = [ cbParams ];
-              
-              /*
-              Add the generated callback `satisfyMe` to the parameters. The user
-              can control where the parameter goes using `cbName`, which will
-              be used along with `U.setByName` to insert the parameter correctly.
-              */
-              var satisfyMe = this.satisfy.bind(this);
-              if (cbName) U.setByName({ root: cbParams, name: cbName, value: satisfyMe, overwrite: true });
-              else        params.push(satisfyMe);
-              
-              cb.apply(null, cbParams);
-              
-            } else if ('val' in params) {
-
-              // If a val is given, it's either a promise or a regular value
+              // Try to satisfy using the simple value we were given
               var val = U.param(params, 'val');
               var func = U.param(params, 'func', null);
               
-              if (PACK.uth.instanceOf(val, PACK.p.P)) { // If it's a promise, it's either satisfied or not
+              this.satisfied = this.trySatisfy(val, func);
               
-                if (val.satisfied) { // If it's satisfied, simply extract its `val`.
-                  
-                  this.val = val.val;
-                  this.satisfied = true;
-                  
-                } else { // Otherwise we need to wait on it
-                  
-                  this.val = val;
-                  this.satisfied = false;
-                  val.waiting.push({
-                    promise: this,
-                    func: func
-                  });
-                  
-                }
-                
-              } else { // If it's not a promise, simply satisfy using it
-                
-                this.val = val;
-                this.satisfied = true;
-                
-              }
+            } else if ('cb' in params) {  // Allow an ordinary callback function to be treated as a promise
               
-            } else if ('all' in params) {
+              // A callback function
+              var cb = U.param(params, 'cb');
               
-              this.val = null;
-              this.satisfied = false;
+              // Provided arguments for the function
+              var cbParams = U.param(params, 'cbParams', {});
+              
+              // The deep key of the argument which is the callback
+              // If not provided the callback will be assumed to be the final argument in the argument list
+              var cbName = U.param(params, 'cbName', null);
+              
+              // Create the callback `satisfy` which will satisfy `this` when called
+              var satisfy = this.satisfy.bind(this);
+              
+              if (!U.instanceOf(cbParams, Array)) cbParams = [ cbParams ];
+              
+              if (cbName)
+                // `U.deepSet` allows the user to control which parameter is replaced
+                U.deepSet({ root: cbParams, name: cbName, value: satisfy, overwrite: true });
+              else
+                // If no `cbName` then append (this is default since most callback functions take callback as a final parameter)
+                params.push(satisfy);
+              
+              // Run the function
+              cb.apply(null, cbParams);
+              
+            } else if ('all' in params) { // Allow a list of promises to be treated as a single promise
               
               var all = U.param(params, 'all');
-              if (all.length === 0) this.satisfy([]);
+              var results = new all.constructor(); // This allows the same code to process both arrays and objects
+              var num = U.length(all);
+              
+              if (!num) this.satisfy(results);
               
               var pass = this;
-              var results = U.arr(all.length);
               var count = 0;
               
-              all.forEach(function(promise, i) {
+              all.forEach(function(promise, k) {
                 promise.then(function(val) {
-                  console.log('ALL RESULT #' + i + ': ' + val);
-                  results[i] = val;
-                  if (++count === all.length) pass.satisfy(results);
+                  results[k] = val;
+                  if (++count >= num) pass.satisfy(results);
                   return val;
                 });
               });
               
+            } else if ('timeout' in params) {
+              
+              var timeout = U.param(params, 'timeout');
+              setTimeout(this.satisfy.bind(this, null), timeout);
+              
+            } else {
+              throw new Error('Invalid P params: ' + params);
             }
             
           },
@@ -95,22 +86,54 @@ var package = new PACK.pack.Package({ name: 'p',
             if (this.satisfied) throw new Error('Double-satisfied promise');
             
             this.val = val;
-            this.satisified = true;
+            this.satisfied = true;
             
             for (var i = 0, len = this.waiting.length; i < len; i++) {
               var w = this.waiting[i];
-              w.promise.satisfy(w.func ? w.func(this.val) : this.val);
-              //this.waiting[i].satisfy(this.val);
+              w.promise.trySatisfy(w.func ? w.func(this.val) : this.val);
             }
             
             this.waiting = [];
           },
+          trySatisfy: function(promiseVal, func) {
+            if (!U.exists(func)) func = null;
+            
+            // Turn the promise into its value, if possible
+            if (U.instanceOf(promiseVal, PACK.p.P) && promiseVal.satisifed) promiseVal = promiseVal.val;
+            
+            if (U.instanceOf(promiseVal, PACK.p.P)) {
+              promiseVal.waiting.push({ promise: this, func: func });
+              return false;
+            } else {
+              this.satisfy(func ? func(promiseVal) : promiseVal);
+              return true;
+            }
+          },
           then: function(task) {
             if (!task) throw new Error('Need to provide a `task` param');
             
-            if (this.satisfied) return PACK.p.p(task(this.val));
+            return this.satisfied
+              ? PACK.p.p(task(this.val))
+              : new PACK.p.P({ val: this, func: task });
+          },
+          thenSeq: function(tasks) {
+            var promise = this;
+            var results = new tasks.constructor();
+            var lastKey = null;
             
-            return new PACK.p.P({ val: this, func: task });
+            tasks.forEach(function(task, k) {
+              promise = promise.then(function(result) {
+                if (lastKey !== null) results[lastKey] = result;
+                lastKey = k;
+                return task(results);
+              });
+            });
+            
+            // Need to add the final promise value to `results`, and return `results`.
+            return promise.then(function(result) {
+              if (lastKey !== null) results[lastKey] = result;
+              return results;
+            });
           }
         };}
       })
@@ -118,3 +141,78 @@ var package = new PACK.pack.Package({ name: 'p',
   }
 });
 package.build();
+
+/*
+
+var P = PACK.p.P;
+
+var d1 = new P({ cb: U.createDelay, cbParams: { delay: 3000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay3000'; });
+var d2 = new P({ cb: U.createDelay, cbParams: { delay: 2000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay2000'; });
+var d3 = new P({ cb: U.createDelay, cbParams: { delay: 1000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay1000'; });
+
+var allDelays = new P({ all: [ d1, d2, d3 ] }).then(function(vals) {
+	console.log('GOT', vals);
+	return vals;
+});
+
+var dp = new P({ cb: U.createDelay, cbParams: { delay: 3550, repeat: false }, cbName: '0.task' }).then(function() { return 'HAHA'; });
+var doubleDelay = new P({ all: { big: allDelays, lala: dp } }).then(function(vals) {
+	console.log('FINAL', vals);
+});
+
+// =========================
+
+var simplePromise = new P({ val: 'val' }).then(function(v) {
+	console.log('YAY', v);
+	return v;
+}).then(function(v) {
+	console.log('ANOTHER');
+	return v;
+});
+
+var objSeq = new P({ val: { lol: 'ha' } }).thenSeq({
+	thing1: 	function(v) { return new P({ val: '1' }).then(function(v) { console.log('HAHA!!'); return v; }); },
+	thing2: 	function(v) { return '2'; },
+	thing3: 	function(v) { return '3'; },
+	delayed: 	function(v) { return new P({ cb: setTimeout, cbParams: [ null, 2000 ], cbName: '0' }).then(function() { return 'DD'; }) },
+	delayed2: function(v) { return new P({ cb: setTimeout, cbParams: [ null, 1000 ], cbName: '0' }).then(function() { return v.delayed + ' AGAIN'; }) },
+	thing5: 	function(v) { return '5'; }
+}).then(function(allVals) {
+	console.log('OBJECT SEQ:', allVals);
+	return allVals;
+});
+
+var arrSeq = new P({ val: '0' }).thenSeq([
+	function(v) { return '1'; },
+	function(v) { return '2'; },
+	function(v) { return new P({ cb: setTimeout, cbParams: [ null, 500 ], cbName: '0' }).then(function() { return '3' }) },
+	function(v) { return v[0] + v[2]; }
+]).then(function(allVals) {
+	console.log('ARRAY SEQ:', allVals);
+	return allVals;
+});
+
+new P({ all: [ objSeq, arrSeq, simplePromise ] }).then(function(allVals) {
+	console.log('ALL', allVals);
+});
+
+// =========================
+
+new P({ timeout: 1000 }).then(function() {
+  console.log('WHOOOO');
+  return new P({ timeout: 500 });
+}).then(function() {
+  console.log('ye');
+  return new P({ timeout: 500 });
+}).then(function() {
+  console.log('ye');
+  return new P({ timeout: 500 });
+}).then(function() {
+  console.log('ye');
+  return new P({ timeout: 500 });
+}).then(function() {
+  console.log('ye');
+  return new P({ timeout: 500 });
+});
+
+*/

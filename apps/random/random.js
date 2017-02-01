@@ -1,8 +1,8 @@
 var package = new PACK.pack.Package({ name: 'random',
-	dependencies: [ 'uth' ],
+	dependencies: [ ],
 	buildFunc: function() {
 		return {
-			Random: PACK.uth.makeClass({ name: 'Random',
+			Random: U.makeClass({ name: 'Random',
 				propertyNames: [ 'seed', ],
 				methods: {
 					init: function(params /* seed */) {

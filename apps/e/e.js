@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'e',
-	dependencies: [ 'uth' ],
+	dependencies: [ ],
 	buildFunc: function() {
 		var namespace = {};
 		
@@ -9,7 +9,7 @@ var package = new PACK.pack.Package({ name: 'e',
 				// does nothing.
 				return elems instanceof PACK.e.E ? elems : new PACK.e.E(elems);
 			},
-			E: PACK.uth.makeClass({ name: 'E', namespace: namespace,
+			E: U.makeClass({ name: 'E', namespace: namespace,
 				propertyNames: [ ],
 				methods: function(sc) { return {
 					init: function(elems) {
@@ -66,7 +66,7 @@ var package = new PACK.pack.Package({ name: 'e',
 						
 						// Use an array with a single element instead of the element itself
 						if (elems instanceof HTMLElement) 	elems = [ elems ];
-						else 								elems = U.arr(elems);
+						else 								elems = U.toArray(elems);
 						
 						this.elems = elems;
 					},
@@ -274,7 +274,7 @@ var package = new PACK.pack.Package({ name: 'e',
 				}; }
 			}),
 			
-			Scene: PACK.uth.makeClass({ name: 'Scene', namespace: namespace,
+			Scene: U.makeClass({ name: 'Scene', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* name, title, build, onStart, onEnd, subscenes, defaultScene */) {
 						/*
@@ -455,7 +455,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					},
 				}; }
 			}),
-			RootScene: PACK.uth.makeClass({ name: 'RootScene', namespace: namespace,
+			RootScene: U.makeClass({ name: 'RootScene', namespace: namespace,
 				superclassName: 'Scene',
 				methods: function(sc, c) { return {
 					init: function(params /* name, title, build, subscenes, defaultScenes */) {
@@ -467,7 +467,7 @@ var package = new PACK.pack.Package({ name: 'e',
 				}; }
 			}),
 			
-			ListUpdater: PACK.uth.makeClass({ name: 'ListUpdater', namespace: namespace,
+			ListUpdater: U.makeClass({ name: 'ListUpdater', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* root, elemCreate, elemUpdate, getElemKey, getDataKey */) {
 						this.root = U.param(params, 'root');
@@ -589,7 +589,7 @@ var package = new PACK.pack.Package({ name: 'e',
 					}
 				}
 			},
-			Form: PACK.uth.makeClass({ name: 'Form', namespace: namespace,
+			Form: U.makeClass({ name: 'Form', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* html, onSubmit, listeners */) {
 						this.html = U.param(params, 'html');
