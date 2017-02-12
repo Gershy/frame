@@ -157,7 +157,7 @@ global.U = {
 		Used to retrieve an item from an object. If def is provided and no
 		item under the "name" key is found, def is returned.
 		*/
-		if (U.isObj(params) && (name in params)) return params[name]; // TODO: Was previously this && too: "&& U.exists(params[name])"
+		if (U.isObj(params) && (name in params)) return params[name];
 		if (U.exists(def)) return def;
 		
 		throw new Error('missing param: "' + name + '"');
@@ -169,7 +169,7 @@ global.U = {
 		value.
 		*/
 		var ret = U.param(params, name, paramFunc);
-		return ret === paramFunc ? paramFunc() : ret;
+		return U.isObj(ret, Function) ? ret() : ret;
 	},
 	pasam: function(params, name, def) {
 		/*
@@ -201,7 +201,7 @@ global.U = {
 	
 	// Object utility
 	isObj: function(obj, cls) {
-		try { return (('constructor' in obj) || true) && (!cls || obj.constructor === cls); } catch(e) {};
+		try { return ('constructor' in obj) && (!cls || obj.constructor === cls); } catch(e) {};
 		return false;
 	},
 	isClassedObj: function(obj) {
@@ -535,47 +535,6 @@ global.U = {
 		}
 		
 		return letters;
-	},
-	request: function(params /* url, params, onComplete, post, ref, json */) {
-		var url = U.param(params, 'url', '');
-		var reqParams = U.param(params, 'params', {});
-		var onComplete = U.param(params, 'onComplete', null);
-		var json = U.param(params, 'json', true);
-		var post = U.param(params, 'post', false);
-		var ref = U.param(params, 'ref', null); // User-specified value that doesn't travel client side - discriminates the query from others
-		
-		var error = new Error('');
-		
-		var req = new XMLHttpRequest();
-		req.onreadystatechange = onComplete ? function() {
-			if (U.matches(req, { readyState: 4, status: 200 })) {
-				if (json) {
-					var o = JSON.parse(req.responseText);
-					if (o.code !== 0) {
-						// Pass the error instead of the response
-						error.message = 'Bad API use (' + o.msg + ')';
-						onComplete(error, ref);
-						return;
-					}
-				} else {
-					var o = req.responseText;
-				}
-				onComplete(o, ref);
-			}
-		} : null;
-		
-		if (!post) {
-			
-			req.open('GET', U.isEmptyObj(reqParams) ? url : (url + '?_json=' + encodeURIComponent(JSON.stringify(reqParams))), true);
-			req.send();
-			
-		} else {
-			
-			req.open('POST', url, true);
-			req.setRequestHeader('Content-Type', 'application/json');
-			req.send(JSON.stringify(reqParams));
-			
-		}
 	},
 	createDelay: function(params /* task, delay, repeat */) {
 		var task = U.param(params, 'task');

@@ -51,10 +51,9 @@ var package = new PACK.pack.Package({ name: 'logic',
 							});
 						});
 					},
-					handleQuery: function(params, onComplete) {
+					handleQuery: function(params) {
 						var com = U.param(params, 'command');
 						var reqParams = U.param(params, 'params', {});
-						
 						
 						if (com === 'createAccount') {
 							
@@ -63,18 +62,21 @@ var package = new PACK.pack.Package({ name: 'logic',
 							
 							var users = this.getChild('users');
 							
-							if (users.getChild(username)) return onComplete({ code: 1, msg: 'username taken' });
+							if (users.getChild(username)) return new PACK.p.P({ val: {
+								msg: 'username taken',
+								code: 1
+							}});
 							
 							var user = this.getChild('users').getNewChild({
 								username: username,
 								password: password
 							});
 							
-							return onComplete({
+							return new PACK.p.P({ val: {
 								msg: 'successfully created account',
 								token: user.getToken(),
 								username: user.getChild('username').value
-							});
+							}});
 							
 						} else if (com === 'getUserToken') {
 							
@@ -82,17 +84,17 @@ var package = new PACK.pack.Package({ name: 'logic',
 							var password = U.param(reqParams, 'password');
 							
 							var user = this.getChild('users').filter({ 'username/value': username }, true);
-							if (user === null) return onComplete({ error: 'no user named "' + username + '"' });
-							if (user.getChild('password').value !== password) return onComplete({ error: 'invalid password' });
+							if (user === null) throw new Error('no user named "' + username + '"');
+							if (user.getChild('password').value !== password) throw new Error('Invalid password');
 							
-							return onComplete({
+							return new PACK.p.P({ val: {
 								msg: 'login success',
 								token: user.getToken()
-							});
+							}});
 							
 						}
 						
-						sc.handleQuery.call(this, params, onComplete);
+						return sc.handleQuery.call(this, params);
 					}
 				}; }
 			}),
@@ -247,7 +249,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var us = PACK.userify;
 		var e = PACK.e.e;
 		
-		root.$load({ selection: new qd.QSelAll() }).fire(function(app) {
+		root.$load({ selection: new qd.QSelAll() }).then(function(app) {
 			
 			app.addChild(new qd.QDict({ name: 'static', children: [
 				new qd.QDict({ name: 'credentials', children: [
@@ -321,7 +323,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 														username: view.par.children.username.appValue(),
 														password: view.par.children.username.appValue()
 													}
-												}).fire(function(res) {
+												}).then(function(res) {
 													console.log('LOGGED IN??', res);
 													app.getChild('static.credentials.token').setValue(res.token);
 												});
@@ -343,7 +345,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 														username: view.par.children.username.appValue(),
 														password: view.par.children.password.appValue()
 													}
-												}).fire(function(res) {
+												}).then(function(res) {
 													app.getChild('static.credentials.token').setValue(res.token);
 												});
 											}
@@ -369,7 +371,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 									
 								},
 								
-								followLinks: function(appData, onComplete) {
+								followLinks: function(appData) {
 									
 									return appData.getChild('prerequisites');
 									

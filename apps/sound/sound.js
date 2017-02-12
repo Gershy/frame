@@ -1,7 +1,21 @@
 var package = new PACK.pack.Package({ name: 'sound',
 	dependencies: [ 'queries', 'tasks', 'random' ],
 	buildFunc: function() {
-		var Keyboard = PACK.uth.makeClass({ name: 'KeyBoard',
+		var channelOperation = function(buffer, op) {
+			var channels = buffer.numberOfChannels;
+			var ret = PACK.sound.context.createBuffer(channels, buffer.length, PACK.sound.context.sampleRate);
+			
+			for (var chn = 0; chn < channels; chn++) {
+				var arr = new Float32Array(buffer.length);
+				buffer.copyFromChannel(arr, chn, 0);
+				if (op) op(arr);
+				ret.copyToChannel(arr, chn, 0);
+			}
+			
+			return ret;
+		};
+		
+		var Keyboard = U.makeClass({ name: 'KeyBoard',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
 				init: function(params /* rootHz, step */) {
@@ -14,7 +28,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; }
 		});
 		
-		var Sound = PACK.uth.makeClass({ name: 'Sound',
+		var Sound = U.makeClass({ name: 'Sound',
 			propertyNames: [ 'name', 'buffer' ],
 			methods: function(sc, c) { return {
 				init: function(params /* name, buffer */) {
@@ -23,29 +37,18 @@ var package = new PACK.pack.Package({ name: 'sound',
 					-buffer: Either an AudioBuffer or anything array-like (mono)
 					*/
 					this.name = U.param(params, 'name', '');
-					this.buffer = null;
-					this.time = 0;
+					var buffer = U.param(params, 'buffer');
 					
-					if ('buffer' in params) this.setData(params.buffer);
-				},
-				setData: function(buffer) {
-					var ctx = PACK.sound.context;
-					
-					// Convert mono array to AudioBuffer
-					if (buffer.constructor !== AudioBuffer) {
-						var arr = buffer;
+					if (U.isObj(buffer, AudioBuffer)) {
+						this.buffer = buffer;
+					} else {
+						this.buffer = PACK.sound.context.createBuffer(2, buffer.length, PACK.sound.context.sampleRate);
+						this.buffer.copyToChannel(buffer, 0);
+						this.buffer.copyToChannel(buffer, 1);
 						
-						buffer = ctx.createBuffer(2, arr.length, ctx.sampleRate);
-						buffer.copyToChannel(arr, 0);
-						buffer.copyToChannel(arr, 1);
+						if (!this.name) this.name = 'buffered (' + (this.buffer.length) + ')';
 					}
-					
-					this.buffer = buffer;
-					this.time = this.buffer.length / ctx.sampleRate;
-					
-					if (this.name.length === 0) this.name = 'buffered (' + (this.buffer.length / ctx.sampleRate).toFixed(2) + 's)'
 				},
-				numSamples: function() { return this.buffer.length; },
 				play: function(params /* delay, start, len */) {
 					var delay = U.param(params, 'delay', 0);
 					var start = U.param(params, 'start', 0);
@@ -56,9 +59,9 @@ var package = new PACK.pack.Package({ name: 'sound',
 					node.connect(PACK.sound.context.destination);
 					
 					if (len)	node.start(delay, start, len);
-					else		node.start(delay, start);
+					else 			node.start(delay, start);
 				},
-				draw: function(channelNum, ctx, tlX, tlY, w, h, quality) {
+				draw: function(channelNum, graphics, tlX, tlY, w, h, quality) {
 					if (!U.exists(quality)) quality = 1;
 					
 					var pass = this;
@@ -71,77 +74,74 @@ var package = new PACK.pack.Package({ name: 'sound',
 					
 					new PACK.tasks.Task({
 						start: function(items) {
-							ctx.lineWidth = 0.7;
-							ctx.strokeStyle = '#980000';
-							ctx.moveTo(tlX, tlY + hh);
+							graphics.lineWidth = 0.7;
+							graphics.strokeStyle = '#980000';
+							graphics.moveTo(tlX, tlY + hh);
 						},
-						beforeChunk: function() { ctx.beginPath(); },
+						beforeChunk: function() { graphics.beginPath(); },
 						work: function(items, n) {
 							var newX = tlX + (n * xInc);
 							var newY = tlY + hh + (buffer[n] * hh);
-							ctx.lineTo(newX, newY);
+							graphics.lineTo(newX, newY);
 						},
-						afterChunk: function() { ctx.stroke(); },
+						afterChunk: function() { graphics.stroke(); },
 						end: function() {
 							
+							var profile = pass.profileReduce({ iterations: 10, amount: 0.5 });
+							
+							new PACK.tasks.Task({
+								start: function(items) {
+									graphics.lineWidth = 2;
+									graphics.strokeStyle = '#000000';
+								},
+								beforeChunk: function() { graphics.beginPath(); },
+								work: function(items, n) {
+									var newX = tlX + (n * xInc);
+									var newY = tlY + hh - (profile[n] * hh);
+									graphics.lineTo(newX, newY);
+								},
+								afterChunk: function() { graphics.stroke(); }
+							}).run({
+								totalTasks: profile.length,
+								tasksPerTick: 50000,
+								sleepTime: 5
+							});
+							
+							/*
 							var bias = 0.99;
 							var evenReps = 2;
 							var threshold = 0.4;
 							var thresholdOut = 0.2;
 							var fallback = 0;
 							
-							var profile = pass.evenProfiled({ bias: bias, evenReps: evenReps });
+							var beats = pass.beatLocations({
+								cut: 350,
+								reps: 10,
+								bias: bias,
+								evenReps: evenReps,
+								threshold: threshold,
+								thresholdOut: thresholdOut,
+								fallback: fallback
+							});
 							
 							new PACK.tasks.Task({
 								start: function(items) {
-									ctx.lineWidth = 0.7;
-									ctx.strokeStyle = '#000098';
-									ctx.moveTo(tlX, tlY + hh);
+									graphics.lineWidth = 30;
+									graphics.strokeStyle = '#009800';
 								},
-								beforeChunk: function() { ctx.beginPath(); },
+								beforeChunk: function() { graphics.beginPath(); },
 								work: function(items, n) {
-									var newX = tlX + (n * xInc);
-									var newY = tlY + hh + (-profile[n] * hh);
-									ctx.lineTo(newX, newY);
+									var newX = tlX + (beats[n] * xInc);
+									var newY = tlY;
+									graphics.moveTo(newX, newY);
+									graphics.lineTo(newX, newY + hh + hh);
 								},
-								afterChunk: function() { ctx.stroke(); },
-								end: function() {
-									
-									var beats = pass.beatLocations({
-										cut: 350,
-										reps: 10,
-										bias: bias,
-										evenReps: evenReps,
-										threshold: threshold,
-										thresholdOut: thresholdOut,
-										fallback: fallback
-									});
-									
-									new PACK.tasks.Task({
-										start: function(items) {
-											ctx.lineWidth = 0.7;
-											ctx.strokeStyle = '#009800';
-										},
-										beforeChunk: function() { ctx.beginPath(); },
-										work: function(items, n) {
-											var newX = tlX + (beats[n] * xInc);
-											var newY = tlY;
-											ctx.moveTo(newX, newY);
-											ctx.lineTo(newX + 5, newY + hh + hh);
-										},
-										afterChunk: function() { ctx.stroke(); },
-									}).run({
-										totalTasks: beats.length, 
-										tasksPerTick: 50000,
-										sleepTime: 5,
-									});
-								},
-								
+								afterChunk: function() { graphics.stroke(); },
 							}).run({
-								totalTasks: profile.length, 
+								totalTasks: beats.length, 
 								tasksPerTick: 50000,
 								sleepTime: 5,
-							});
+							});*/
 						},
 						
 					}).run({
@@ -151,6 +151,72 @@ var package = new PACK.pack.Package({ name: 'sound',
 						sleepTime: 5,
 						// progressCB: function(n, t) { console.log(parseInt((n / t) * 100)); },
 					});
+				},
+				getSubSound: function(params /* offset, length */) {
+					
+					var offset = U.param(params, 'offset', 0);
+					var length = U.param(params, 'length', this.buffer.length - offset);
+					
+					var b1 = new Float32Array(length);
+					var b2 = new Float32Array(length);
+					
+					this.buffer.copyFromChannel(b1, 0, offset);
+					this.buffer.copyFromChannel(b2, 1, offset);
+					
+					var buff = PACK.sound.context.createBuffer(2, length, PACK.sound.context.sampleRate);
+					buff.copyToChannel(b1, 0, 0);
+					buff.copyToChannel(b2, 1, 0);
+					
+					return new Sound({
+						name: this.name + ' (' + offset + ' - ' + (offset + length) + ')',
+						buffer: buff
+					});
+				},
+				getInformation: function() {
+					var ret = [];
+					for (var i = 0, len = this.buffer.numberOfChannels; i < len; i++) {
+						var arr = new Float32Array(this.buffer.length);
+						this.buffer.copyFromChannel(arr, i, 0);
+						ret.push(arr);
+					}
+					return ret;
+				},
+				operate: function(op) {
+					return new Sound({
+						name: this.name + ' (op)',
+						buffer: channelOperation(this.buffer, op)
+					});
+				},
+				lowpassed: function(params /* offset, length, cut, reps */) {
+					/*
+					// WITH DT AND RC (time-interval, time-constant)
+					var dt = U.param(params, 'dt');
+					var rc = U.param(params, 'rc');
+					var alpha = dt / (rc + dt);
+					*/
+					
+					var cut = U.param(params, 'cut');
+					var reps = U.param(params, 'reps', 5);
+					
+					var alpha = 2 * Math.PI * (cut / PACK.sound.context.sampleRate); // Inverse sample-rate is delta-t
+					alpha = alpha / (alpha + 1);
+					
+					return this.operate(function(arr) {
+						
+						for (var rep = 0; rep < reps; rep++) {
+							for (var i = 1, len = arr.length; i < len; i++) {
+								var v1 = arr[i - 1];
+								var v2 = arr[i];
+								
+								var prev = arr[i - 1];
+								arr[i] = prev + (alpha * (arr[i] - prev));
+								
+								arr[i] = v1 + (alpha * (v2 - v1));
+							}
+						}
+						
+					});
+					
 				},
 				monoAverage: function(params /* offset, length */) {
 					var offset = U.param(params, 'offset', 0);
@@ -165,104 +231,63 @@ var package = new PACK.pack.Package({ name: 'sound',
 					
 					return ret;
 				},
-				lowpassed: function(params /* offset, length, cut, reps */) {
-					var ret = this.monoAverage(params);
+				profileReduce: function(params /* iterations, amount */) {
+					var iterations = U.param(params, 'iterations', 10);
+					var amount = U.param(params, 'amount', 0.5);
 					
-					/*
-					// WITH DT AND RC (time-interval, time-constant)
-					var dt = U.param(params, 'dt');
-					var rc = U.param(params, 'rc');
-					var alpha = dt / (rc + dt);
-					*/
+					var info = this.getInformation();
+					var nSmps = info[0].length;
+					var nChns = info.length;
 					
-					// WITH CUT AND REPS (cutoff-frequency, repetitions)
-					// TODO: This makes everything quieter :(
-					var cut = U.param(params, 'cut');
-					var reps = U.param(params, 'reps', 5);
-					var alpha = 2 * Math.PI * (cut / PACK.sound.context.sampleRate); // Inverse sample-rate is delta-t
-					alpha /= alpha + 1;
+					var energies = [];
 					
-					for (var rep = 0; rep < reps; rep++) {
-						for (var i = 1, len = ret.length; i < len; i++) {
-							var prev = ret[i - 1];
-							ret[i] = prev + (alpha * (ret[i] - prev));
+					for (var smp = 0; smp < nSmps; smp++) {
+						
+						var energy = 0;
+						for (var chn = 0; chn < nChns; chn++) {
+							var v = info[chn][smp];
+							energy += v * v;
 						}
-					}
-					
-					var orig = this.monoAverage(params);
-					var diffSum = 0;
-					for (var i = 0; i < orig.length; i++) {
-						diffSum += Math.max(orig[i], ret[i]) - Math.min(orig[i], ret[i]);
-					}
-					console.log('Average diff', (diffSum / orig.length).toFixed(3));
-					
-					return ret;
-				},
-				profiled: function(params /* offset, length, bias */) {
-					var bias = U.param(params, 'bias', 0.8);
-					var unBias = 1 - bias;
-					
-					var mono = this.monoAverage(params);
-					var ret = new Float32Array(mono.length);
-					
-					var lastVal = Math.abs(mono[0]);
-					for (var i = 1, len = mono.length; i < len; i++) {
-						var v = Math.abs(mono[i]);
+						energies.push(energy);
 						
-						lastVal = v > lastVal
-							? (v * bias) + (lastVal * unBias)
-							: (v * unBias) + (lastVal * bias);
-						
-						ret[i] = lastVal;
 					}
 					
-					return ret;
-				},
-				evenProfiled: function(params /* offset, length, bias, evenReps */) {
-					var reps = U.param(params, 'evenReps', 1);
+					var maxEnergy = 0;
+					var minEnergy = Number.MAX_VALUE;
 					
-					var profile = this.profiled(params);
+					for (var i = 0, len = energies.length; i < len; i++) {
+						var e = energies[i];
+						if (e > maxEnergy) maxEnergy = e;
+						if (e < minEnergy) minEnergy = e;
+					}
+					if (maxEnergy === 0) throw new Error('No energy?');
 					
-					for (var rep = 0; rep < reps; rep++) {
 					
-						var prevCrestP = 0;
-						var crestP = 0;
-						var hasValley = false;
-						for (var i = 1; i < profile.length; i++) {
-							var v = profile[i];
+					energies = energies.map(function(n) { return n / maxEnergy; });
+					for (var it = 0; it < 20; it++) {
+						
+						//var maxEnergy = 0;
+						var n = 0;
+						
+						for (var i = 0, len = energies.length - 1; i < len; i++) {
 							
-							if (hasValley && v < profile[crestP]) {
-								// We're past a valley and descending again
-								
-								// Linearize the curve between prevCrestP(crest1V) and crestP(crest2V)
-								var crest1V = profile[prevCrestP];
-								var crest2V = profile[crestP];
-								for (var j = prevCrestP; j < crestP; j++) {
-									var perc = (j - prevCrestP) / (crestP - prevCrestP);
-									profile[j] = (crest1V * (1 - perc)) + (crest2V * perc);
-								}
-								
-								hasValley = false;
-								prevCrestP = i;
-								
-							} else if (!hasValley && v < profile[crestP]) {
-								// We're descending, but we haven't found a valley
-								
-							} else if (hasValley && v > profile[crestP]) {
-								// We're past a valley and still ascending
-								
-							} else if (!hasValley && v > profile[crestP]) {
-								// No valley yet, but just beginning to ascend
-								hasValley = true;
-								
-							}
+							var v1 = energies[i];
 							
-							crestP = i;
+							n = (n * 0.95) + (v1 * 0.05);
+							v1 = n;
+							
+							energies[i] = v1;
+							
 						}
 						
+						//var mult = 1 / maxEnergy;
+						//energies = energies.map(function(n) { return n * mult; });
+						
 					}
 					
-					return profile;
+					return energies;
+					
+					
 				},
 				beatLocations: function(params /* offset, length, cut, reps, bias, evenReps, threshold, thresholdOut, fallback */) {
 					/*
@@ -280,38 +305,45 @@ var package = new PACK.pack.Package({ name: 'sound',
 					-threshold: beat volume threshold
 					*/
 					
-					var cut = U.param(params, 'cut', 350);
-					var reps = U.param(params, 'reps', 15);
-					var bias = U.param(params, 'bias', 0.995);
-					var evenReps = U.param(params, 'evenReps', 2);
-					var threshold = U.param(params, 'threshold', 0.6);
-					var thresholdOut = U.param(params, 'thresholdOut', 0.2);
-					var fallback = U.param(params, 'fallback', 0);
+					var chns = [];
+					var smps = this.buffer.length;
+					for (var i = 0, len = this.buffer.numberOfChannels; i < len; i++) {
+						var arr = new Float32Array(this.buffer.length);
+						this.buffer.copyFromChannel(arr, i, 0);
+						chns.push(arr);
+					}
 					
-					//var evenProfile = new Sound({ name: 'lowpassed', buffer: this.lowpassed(params.clone({
-					//	cut: 		cut,
-					//	reps: 		reps
-					//}))}).evenProfiled(params.clone({
-					//	bias: 		bias,
-					//	evenReps: 	evenReps
-					//}));
+					var blockSize = 1000;
+					var blockEnergies = [];
 					
-					var evenProfile = this.evenProfiled(params.clone({
-						bias: 		bias,
-						evenReps: 	evenReps
-					}));
+					for (var i = 0; i < smps; i += blockSize) {
+						
+						var energy = 0;
+						
+						// Loop through channels, and then through the block
+						for (var chn = 0; chn < chns.length; chn++) {
+							for (var j = i, len = Math.min(i + blockSize, smps); j < len; j++) {
+								var v = chns[chn][j];
+								energy += v * v;
+							}
+						}
+						blockEnergies.push(energy);
+						
+					}
+					
+					var avg = blockEnergies.reduce(function(a, b) { return a + b; }, 0) / blockEnergies.length;
+					var threshMult = 1.5;
+					var thresh = avg * threshMult;
 					
 					var beats = [];
-					var inBeat = false;
-					for (var i = 0, len = evenProfile.length; i < len; i++) {
-						var v = evenProfile[i];
-						if (!inBeat) {
-							if (v > threshold) {
-								inBeat = true;
-								beats.push(Math.max(i - fallback, 0));
-							}
-						} else if (v < thresholdOut) {
-							inBeat = false;
+					var needToWait = 3;
+					var wait = 0;
+					for (var i = 0, len = blockEnergies.length; i < len; i++) {
+						if (blockEnergies[i] > thresh && !wait) {
+							beats.push(i * blockSize);
+							wait = needToWait;
+						} else if (wait) {
+							wait--;
 						}
 					}
 					
@@ -337,19 +369,19 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}
 		});
 		
-		var SoundGen = PACK.uth.makeClass({ name: 'SoundGen',
+		var SoundGen = U.makeClass({ name: 'SoundGen',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
 				init: function(params /* */) {
-					this.played = 0;
-					this.playedHz = 0;
+					this.playedSamples = 0;
+					this.playedOsc = 0;
 				},
 				reset: function() {
-					this.playedHz = 0;
-					this.played = 0;
+					this.playedOsc = 0;
+					this.playedSamples = 0;
 				},
 				nextSample: function(params /* n, i, channel, rootHz, velocity */) {
-					throw 'not implemented';
+					throw new Error('not implemented');
 				},
 				write: function(params /* buffer, offset, length */) {
 					var buffer = U.param(params, 'buffer');
@@ -370,16 +402,13 @@ var package = new PACK.pack.Package({ name: 'sound',
 					var c2 = buffer.getChannelData(1);
 					
 					for (var i = offset, len = offset + length; i < len; i++) {
-						c1[i] += this.nextSample(p.update({ n: this.playedHz, i: this.played, channel: 0 }));
-						c2[i] += this.nextSample(p.update({ n: this.playedHz, i: this.played, channel: 1 }));
+						c1[i] += this.nextSample(p.update({ n: this.playedOsc, i: this.playedSamples, channel: 0 }));
+						c2[i] += this.nextSample(p.update({ n: this.playedOsc, i: this.playedSamples, channel: 1 }));
 						
-						if (isNaN(c1[i] + c2[i])) {
-							console.log(c1[i], c2[i], p);
-							throw 'NAN';
-						}
+						if (isNaN(c1[i] + c2[i])) throw new Error('NaN');
 						
-						this.playedHz += secsPerSample;
-						this.played += 1;
+						this.playedOsc += secsPerSample;
+						this.playedSamples += 1;
 					}
 					
 					this.reset();
@@ -392,10 +421,10 @@ var package = new PACK.pack.Package({ name: 'sound',
 					var secsPerSample = (Math.PI * 2) / PACK.sound.context.sampleRate;
 					
 					for (var i = offset, len = offset + length; i < len; i++) {
-						arr[i] += this.nextSample(p.update({ n: this.playedHz, i: this.played }));
+						arr[i] += this.nextSample(p.update({ n: this.playedOsc, i: this.playedSamples }));
 						
-						this.playedHz += secsPerSample;
-						this.played += 1;
+						this.playedOsc += secsPerSample;
+						this.playedSamples += 1;
 					}
 					
 					this.reset();
@@ -403,7 +432,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; }
 		});
 		
-		var SoundGenSin = PACK.uth.makeClass({ name: 'SoundGenSin',
+		var SoundGenSin = U.makeClass({ name: 'SoundGenSin',
 			superclassName: 'SoundGen',
 			propertyNames: [ 'phase' ],
 			methods: function(sc, c) { return {
@@ -420,7 +449,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; }
 		});
 		
-		var SoundGenTremollo = PACK.uth.makeClass({ name: 'SoundGenTremollo',
+		var SoundGenTremollo = U.makeClass({ name: 'SoundGenTremollo',
 			superclassName: 'SoundGen',
 			propertyNames: [ 'tremolloHz', 'tremolloAmount', 'soundGen' ],
 			methods: function(sc, c) { return {
@@ -439,7 +468,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; }
 		});
 		
-		var SoundGenSample = PACK.uth.makeClass({ name: 'SoundGenSample',
+		var SoundGenSample = U.makeClass({ name: 'SoundGenSample',
 			superclassName: 'SoundGen',
 			propertyNames: [ 'sound', 'offset', 'length' ],
 			methods: function(sc, c) { return {
@@ -457,7 +486,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; }
 		});
 		
-		var Midi = PACK.uth.makeClass({ name: 'Midi',
+		var Midi = U.makeClass({ name: 'Midi',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
 				init: function(params /* offset, length, soundGen, keyboard, key, velocity */) {
@@ -482,7 +511,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			}; },
 		});
 		
-		var MidiSequence = PACK.uth.makeClass({ name: 'MidiSequence',
+		var MidiSequence = U.makeClass({ name: 'MidiSequence',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
 				init: function(params /* midis */) {
@@ -526,7 +555,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 			},
 		});
 		
-		var SoundApp = PACK.uth.makeClass({ name: 'SoundApp',
+		var SoundApp = U.makeClass({ name: 'SoundApp',
 			superclassName: 'QueryHandler',
 			propertyNames: [ ],
 			methods: function(sc, c) { return {
@@ -561,7 +590,7 @@ var package = new PACK.pack.Package({ name: 'sound',
 				inp.setAttribute('type', 'file');
 				inp.setAttribute('multiple', 'multiple');
 				inp.onchange = function(e) {
-					var files = U.arr(e.target.files);
+					var files = U.toArray(e.target.files);
 					var sounds = [];
 					
 					files.forEach(function(file) {
@@ -589,8 +618,9 @@ var package = new PACK.pack.Package({ name: 'sound',
 		if (U.isServer()) return;
 		
 		var canvas = document.createElement('canvas');
-		canvas.setAttribute('width', '4000');
-		canvas.setAttribute('height', '200');
+		canvas.setAttribute('width', '8000');
+		canvas.setAttribute('height', '400');
+		canvas.setAttribute('style', 'position: relative; left: 0; top: 0; display: inline-block; /*width: 500px; height: 400px;*/');
 		var ctx = canvas.getContext('2d');
 		
 		var cont = document.createElement('div');
@@ -621,8 +651,11 @@ var package = new PACK.pack.Package({ name: 'sound',
 				go.setAttribute('style', 'display: inline-block; font-size: 30px; cursor: pointer; margin-left: 20px;');
 				go.innerHTML = 'go';
 				go.onclick = function() {
-					var seq = new PACK.sound.MidiSequence({
-						midis: U.rng({0:20}).map(function(i) {
+					var sec = PACK.sound.context.sampleRate;
+					var sound = sounds[0].getSubSound({ offset: sec * 60, length: sec * 5 });
+					
+					/*var seq = new PACK.sound.MidiSequence({
+						midis: U.range({0:20}).map(function(i) {
 							var soundGen = r.randElem(beats);
 							return new PACK.sound.Midi({
 								offset: pieceLen * i,
@@ -633,27 +666,38 @@ var package = new PACK.pack.Package({ name: 'sound',
 						})
 					});
 					
-					//var orig = seq.genSound();
-					/*var orig = new PACK.sound.SoundGenSample({ sound: sounds[0], offset: OFF * PACK.sound.context.sampleRate });
-					var seq = new PACK.sound.MidiSequence({ midis: [ new PACK.sound.Midi({
-						offset: 0,
-						length: 5 * PACK.sound.context.sampleRate,
-						key: 0,
-						soundGen: orig
-					}) ]});
-					*/
-					
-					var sound = seq.genSound();
+					var sound = seq.genSound();*/
 					
 					ctx.clearRect(0, 0, canvas.width, canvas.height);
-					sound.draw(0, ctx, 10, 10, 3980, 180, 1);
+					sound.draw(0, ctx, 10, 10, 7980, 380, 1);
 					sound.play();
 				};
+				
+				/*
+				// skylarking: 62.3-3.84
+				var sound0 = sounds[0];
+				go.onclick = function() {
+					var sec = PACK.sound.context.sampleRate;
+					var t = prompt('start-len?').split('-');
+					var sound = sound0.getSubSound({ offset: Math.round(sec * parseFloat(t[0])), length: Math.round(sec * parseFloat(t[1])) });
+					console.log('HERES', sound.name);
+					sound.draw(0, ctx, 10, 10, 7980, 380, 1);
+					sound.play();
+				};
+				
+				var size = document.createElement('div');
+				size.setAttribute('style', 'display: inline-block; font-size: 30px; cursor: pointer; margin-left: 20px;');
+				size.innerHTML = 'size';
+				size.onclick = function() {
+					var size = prompt('size');
+					canvas.setAttribute('style', 'position: relative; left: 0; top: 0; display: inline-block; width: ' + size + 'px; height: 400px;');
+				};
+				body.appendChild(size);
+				*/
+				
 				body.appendChild(go);
 			}
 		}));
-		
-		//sound.play();
 	},
 });
 package.build();

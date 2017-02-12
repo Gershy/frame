@@ -1,8 +1,8 @@
 var package = new PACK.pack.Package({ name: 'tasks',
-	dependencies: [ 'uth' ],
+	dependencies: [],
 	buildFunc: function() {
 		return {
-			Task: PACK.uth.makeClass({ name: 'Task',
+			Task: U.makeClass({ name: 'Task',
 				propertyNames: [ ],
 				methods: function(sc, c) { return {
 					init: function(params /* start, beforeChunk, work, afterChunk, end */) {
@@ -36,7 +36,7 @@ var package = new PACK.pack.Package({ name: 'tasks',
 							var tasksThisTick = Math.min(tasksPerTick, totalTasks - tasksAlready);
 							var tasksByTickEnd = tasksAlready + tasksThisTick;
 							
-							if (tasksAlready === 0 && pass.start) { pass.start(items); }
+							if (tasksAlready === 0 && pass.start) pass.start(items);
 							
 							if (pass.beforeChunk) pass.beforeChunk(items, tasksDone);
 							for (var tasksDone = tasksAlready; tasksDone < tasksByTickEnd; tasksDone++)	pass.work(items, tasksDone);

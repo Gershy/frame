@@ -22,7 +22,7 @@ syncable with the client side. With long-polling, it should be beautiful
 TODO: Abstract tree class in separate package!!!
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
-	dependencies: [ 'queries', 'random', 'e' ],
+	dependencies: [ 'queries', 'e' ],
 	buildFunc: function() {
 		var ret = {
 			/* QSchema */
@@ -54,43 +54,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						});
 					},
 					getInstance: function(params /* overwrite params */) {
-						var constructor = U.deepGet({ root: C, name: this.c });
+						var cls = U.deepGet({ root: C, name: this.c });
 						var cParams = U.exists(params) ? this.p.clone(params) : this.p;
 						if (!('name' in cParams)) cParams.name = '-unnamed-';
 						
-						return new constructor(cParams);
+						return new cls(cParams);
 					},
-					actualize: function(params /* p, i */) {
+					actualize: function(params /* p */) {
 						/*
 						Fully creates an entirely new `QElem` based on the schema.
-						
-						Note that this method actually generates children before it
-						generates the parent. This means that at every instant during
-						this method, no element ever exists without all its children,
-						but at ever instance no element ever has its parent.
-						
-						====Example call:
-						
-						var qd = qd;
-						
-						var schema = new qd.QSchema({ c: qd.QDict, p: { name: 'wrapper' }, i: [
-							new qd.QSchema({ c: qd.QString, p: { name: 'inner1', value: 'hi' }),
-							new qd.QSchema({ c: qd.QString, p: { name: 'inner2' }),
-						]});
-						
-						schema.actualize({	p: { name: 'wrapperRenamed' }, i: [
-							{ p: { name: 'inner1Renamed', value: 'inner1NewValue' }, i: [] },
-							{ p: { name: 'inner2Renamed', value: 'inner2NewValue' }, i: [] },
-						]});
-						
-						====Result:
-						
-						wrapperRenamed: {
-							inner1Renamed: 'inner1NewValue',
-							inner2Renamed: 'inner2NewValue',
-						}
 						*/
-						
 						var myParams = U.param(params, 'p', {});
 						var ret = this.getInstance(myParams);
 						
@@ -105,8 +78,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						// elem's children as well.
 						var recurse = U.param(params, 'recurse', true);
 						
-						var constructor = U.deepGet({ root: C, name: this.c });
-						if (!(elem instanceof constructor)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
+						var cls = U.deepGet({ root: C, name: this.c });
+						if (!(elem instanceof cls)) throw new Error('bad schema assignment (have "' + this.c + '", need "' + elem.constructor.title + '")');
 						
 						elem.schemaProperties().forEach(function(v, k) {
 							if (k in pass.p) elem[k] = k[0] === '_'
@@ -542,42 +515,36 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var selection = U.param(params, 'selection');
 						
 						return this.$request({
+							address: address,
 							command: 'getForm',
-							params: {
-								address: address,
-								selection: selection
-							},
-							serialize: [ 'selection' ],
-							transform: function(data) {
-								for (var k in data) data[k].name = k;
-								return data;
-							}
+							params: { selection: selection },
+							serialized: [ 'selection' ],
+						}).then(function(response) {
+							for (var k in response) response[k].name = k;
+							return response;
 						});
 					},
 					
-					$request: function(params /* command, params, serialize, address, transform */) {
-						var transform = U.param(params, 'transform', null);
-						var serialize = U.param(params, 'serialize', []);
+					$request: function(params /* command, params, serialized, address */) {
+						var address = U.param(params, 'address', this.getAddress());
+						var command = U.param(params, 'command');
+						var reqParams = U.param(params, 'params', {});
+						var serialized = U.param(params, 'serialized', []);
 						
-						if (!('address' in params)) params.address = this.getAddress();
-						
-						// Serialize any complex fields
-						var reqParams = params.params;
-						for (var i = 0, len = serialize.length; i < len; i++) {
-							var k = serialize[i];
-							if (k in reqParams) reqParams[k] = U.wirePut(reqParams[k]).arr;
-						}
-						
-						return new PACK.queries.SimpleQuery({
-							params: params,
-							transform: transform
-						});
+						return new PACK.queries.Query({
+							address: address,
+							command: command,
+							params: reqParams,
+							serialized: serialized
+						}).fire();
 					},
 					$getSchema: function(params /* selection */) {
+						var selection = U.param(params, 'selection');
+						
 						return this.$request({
 							command: 'getSchema',
-							params: params,
-							serialize: [ 'selection' ]
+							params: { selection: selection },
+							serialized: [ 'selection' ]
 						});
 					},
 					$load: function(params /* selection */) {
@@ -585,13 +552,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						Calls `this.$getSchema`, then actualizes the response schema
 						into a `QElem`.
 						*/
-						var ret = this.$getSchema(params);
-						ret.transform = function(response) {
-							return (new PACK.quickDev.QSchema(response.schemaParams)).actualize();
-						};
-						return ret;
+						return this.$getSchema(params).then(function(data) {
+							return (new PACK.quickDev.QSchema(data.schemaParams)).actualize();
+						});
 					},
-					handleQuery: function(params, onComplete) {
+					handleQuery: function(params) {
 						/*
 						This method should only be called server-side. Returns a
 						response for a request.
@@ -602,8 +567,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (com === 'getSchema') {
 							
 							var selection = U.pawam(reqParams, 'selection', PACK.quickDev.sel.all);
-							onComplete({ schemaParams: this.schemaParams({ selection: selection }) });
-							return;
+							return new PACK.p.P({ val: { schemaParams: this.schemaParams({ selection: selection }) } });
 						
 						} else if (com === 'getForm') {
 							
@@ -612,15 +576,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 							var obj = address ? this.getChild(address) : this;
 							
-							onComplete({ form: obj.getForm(selection) });
-							return;
+							return new PACK.p.P({ val: { form: obj.getForm(selection) } });
 							
 						}
 						
-						onComplete({
-							status: 1,
-							msg: '"' + this.getAddress() + '" didn\'t recognize command "' + com + '"'
-						});
+						throw new Error('"' + this.getAddress() + '" didn\'t recognize command "' + com + '"');
 					},
 					
 					simplified: function() { throw 'not implemented'; },
@@ -861,21 +821,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 					$filter: function(params /* address, filter */) {
 						var pass = this;
-						var address = U.param(params, 'address', null);
+						var address = U.param(params, 'address', this.getAddress());
 						var filter = U.param(params, 'filter');
 						
 						return this.$request({
+							address: address,
 							command: 'filter',
-							params: { address: address, filter: filter },
-							transform: function(response) {
-								// Turn each schema into an element
-								var elems = response.schemaParamsList.map(function(schemaParams) {
-									var schema = new PACK.quickDev.QSchema(schemaParams);
-									return schema.actualize();
-								});
-								
-								return elems;
-							}
+							params: { filter: filter },
+						}).then(function(response) {
+							// Turn each schema into an element
+							var elems = response.schemaParamsList.map(function(schemaParams) {
+								var schema = new PACK.quickDev.QSchema(schemaParams);
+								return schema.actualize();
+							});
+							
+							return elems;
 						});
 					},
 					$getChild: function(params /* address, recurse */) {
@@ -885,26 +845,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						*/
 						var pass = this;
 						var address = U.param(params, 'address');
-						// In case the request elem is a QSet, allow parameters to control 
-						// whether or not the QSet loads its children.
-						var recurse = U.param(params, 'recurse', true);
-						
-						var addrPcs = address.split('.');
+						var recurse = U.param(params, 'recurse', true); // Load children?
 						
 						return this.$request({
 							command: 'getChild',
 							params: { address: address, recurse: recurse },
-							transform: function(response) {
-								if (response.schemaParams === null) return null;
-								
-								var schema = new PACK.quickDev.QSchema(response.schemaParams);
-								
-								var elem = schema.actualize();
-								return elem;
-							}
+						}).then(function(response) {
+							return response.schemaParams
+								? (new PACK.quickDev.QSchema(response.schemaParams)).actualize()
+								: null;
 						});
 					},
-					handleQuery: function(params, onComplete) {
+					handleQuery: function(params) {
 						/*
 						Easy to get confused here because the object "params" has an entry
 						keyed "params".
@@ -928,18 +880,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var address = U.param(reqParams, 'address', null);
 							
 							var root = address ? this.getChild(address) : this;
-							if (root === null) {
-								onComplete({ code: 1, msg: 'bad address: "' + address + '" for "' + this.getAddress() + '"' });
-								return;
-							}
+							if (root === null) throw new Error('bad address: "' + address + '" for "' + this.getAddress() + '"');
 							
 							var children = root.filter(filter);
-							onComplete({
+							
+							return new PACK.p.P({ val: {
 								schemaParamsList: children.map(function(child) {
 									return child.schemaParams({ selection: PACK.quickDev.sel.all });
 								})
-							});
-							return;
+							}});
 							
 						} else if (com === 'getChild') {	/* address, selection */
 							
@@ -947,25 +896,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var selection = U.pawam(reqParams, 'selection', PACK.quickDev.sel.all);
 							
 							var child = this.getChild(address);
-							onComplete({ schemaParams: child ? child.schemaParams({ selection: selection }) : null });
-							return;
+							return new PACK.p.P({ val: { schemaParams: child ? child.schemaParams({ selection: selection }) : null } });
 							
 						} else if (com === 'setChildProperty') { /* address, value */
 							
 							var address = U.param(reqParams, 'address');
 							var value = U.param(reqParams, 'value');
 							
-							try {
-								this.setChildProperty(address, value);
-								onComplete({ msg: 'success' });
-							} catch (e) {
-								onComplete(e);
-							}
-							return;
+							this.setChildProperty(address, value);
+							return new PACK.p.P({ val: { msg: 'success' } });
 							
 						}
 						
-						sc.handleQuery.call(this, params, onComplete);
+						return sc.handleQuery.call(this, params);
 					}
 				}}
 			}),
@@ -1112,7 +1055,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							params: { initParams: initParams }
 						});
 					},
-					handleQuery: function(params, onComplete) {
+					handleQuery: function(params) {
 						var com = U.param(params, 'command');
 						var session = U.param(params, 'session');
 						var reqParams = U.param(params, 'params', {});
@@ -1121,11 +1064,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							var initParams = U.param(reqParams, 'initParams');
 							
 							var child = this.getNewChild(initParams.update({ session: session }));
-							onComplete({ schema: child.schemaParams({ selection: PACK.quickDev.sel.all }) });
-							return;
+							return new PACK.p.P({ val: {
+								schema: child.schemaParams({ selection: PACK.quickDev.sel.all })
+							}});
 						}
 						
-						sc.handleQuery.call(this, params, onComplete);
+						return sc.handleQuery.call(this, params);
 					}
 				}}
 			}),
