@@ -12,9 +12,15 @@ var package = new PACK.pack.Package({ name: 'random',
 					randFloat: function() {
 						return Math.random();
 					},
-					randInt: function(params /* hi, lo */) {
-						var hi = U.param(params, 'hi');
-						var lo = U.param(params, 'lo', 0);
+					randInt: function(params /* hi, lo | {x:y} */) {
+						if ('hi' in params) {
+							var hi = U.param(params, 'hi');
+							var lo = U.param(params, 'lo', 0);
+						} else {
+							var lo = parseInt(U.firstKey(params));
+							if (isNaN(lo)) throw new Error('Non-integer');
+							var hi = params[lo];
+						}
 						return lo + Math.floor(this.randFloat() * (hi - lo));
 					},
 					randElem: function(arr) {

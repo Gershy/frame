@@ -179,7 +179,7 @@ global.U = {
 		*/
 		var p = U.param(params, name, def);
 		
-		if (p === null || p.constructor !== String) return p;
+		if (p === null || p.constructor !== String) return { name: '', v: p };
 		
 		return U.getSerializable(p)
 	},
@@ -195,21 +195,32 @@ global.U = {
 		
 		return U.wireGet(p);
 	},
+	$param: function(params, name, def) {
+		/*
+		Promise-param. Returns a promise. Requires `PACK.p`.
+		*/
+		return PACK.p.p(U.param(params, name, def));
+	},
 	exists: function(p) {
 		return typeof p !== 'undefined';
 	},
 	
 	// Object utility
 	isObj: function(obj, cls) {
-		try { return ('constructor' in obj) && (!cls || obj.constructor === cls); } catch(e) {};
+		try { return cls ? obj.constructor === cls : ('constructor' in obj); } catch(e) {};
 		return false;
 	},
 	isClassedObj: function(obj) {
+		// TODO: Checking for a "title" attribute is sort of a hack...
 		try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
 		return false;
 	},
-	instanceOf: function(obj, cls) {
+	isInstance: function(obj, cls) {
 		return U.isObj(obj) && (obj instanceof cls);
+	},
+	instanceOf: function(obj, cls) {
+		// TODO: This is deprecated in favour of "isInstance"
+		return U.isInstance(obj, cls);
 	},
 	isEmptyObj: function(v) {
 		for (k in v) return false;
@@ -295,7 +306,7 @@ global.U = {
 		var superclassName = U.param(params, 'superclassName', null);
 		if (superclassName !== null) {
 			if (superclassName in namespace)	var superclass = namespace[superclassName];
-			else 								throw 'bad superclass name: "' + superclassName + '"';
+			else 								throw new Error('bad superclass name: "' + superclassName + '"');
 		} else {
 			var superclass = null;
 		}
@@ -548,6 +559,11 @@ global.U = {
 			ref: start(task, delay),
 			end: function() { end(U.ref); }
 		};
+	},
+	debug: function(t, v) {
+		console.log('----------------------');
+		console.log('::::' + t);
+		console.log(JSON.stringify(v, null, 2));
 	}
 	
 };

@@ -1,48 +1,86 @@
 var package = new PACK.pack.Package({ name: 'userify',
-	dependencies: [ 'quickDev', 'e' ],
+	dependencies: [ 'quickDev', 'e', 'p' ],
 	buildFunc: function() {
 		var namespace = {};
+		
+		var ensurePromise = PACK.p.p;
+		var $null = ensurePromise(null);
+		var P = PACK.p.P;
+		var E = PACK.e.E;
 		
 		return {
 			View: U.makeClass({ name: 'View', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData */) {
+					init: function(params /* name, doss */) {
 						this.name = U.param(params, 'name');
-						this.appData = U.param(params, 'appData', '');
+						this.doss = U.param(params, 'doss', '');
 						this.par = null;
 						this.elem = null;
 					},
-					getAppData: function(address) {
-						// Supplying a QElem for `address` simply returns that QElem
-						if (U.exists(address) && address.constructor !== String) return address;
-						
-						if (this.appData.constructor === String) {
-							if (!this.par) throw new Error('View has no parent or appData');
-							this.appData = this.par.getAppData().getChild(this.appData);
-						}
-						
-						return U.exists(address) ? this.appData.getChild(address) : this.appData;
+					getChain: function() {
+						var views = [];
+						var view = this;
+						while (view.par) { views.push(view); view = view.par; }
+						return views.reverse();
 					},
-					startRender: function() {
-						if (this.elem !== null) throw new Error('`startRender` called while already rendering');
-						this.elem = this.createElem();
-						this.elem.listAttr({ class: [ '+name-' + this.name  ] });
+					getAddress: function() {
+						return this.getChain().map(function(view) { return view.name; }).join('.');
+					},
+					$getDoss: function(doss) {
 						
-						var cont = this.getContainer();
+						var pass = this;
 						
-						if (cont) cont.append(this.elem);
+						var $doss1 = ensurePromise(U.exists(doss) ? doss : null);
+						var $doss2 = ensurePromise(this.doss)
+							.then(function(doss2) {
+								// `doss2` is either a String address or a `QElem`
+								if (U.isInstance(doss2, PACK.quickDev.QElem)) return doss2;
+								
+								// `doss2` must be a String; if there's no parent, impossible to get `QElem`
+								if (!pass.par) throw new Error('View has no parent or explicit doss');
+								
+								return pass.par.$getDoss()
+									// Retrieve from the parent
+									.then(function(parDoss) { return parDoss.getChild(doss2) })
+									// Replace the address with the `Dossier` itself
+									.then(function(doss) { return pass.doss = doss; });
+								
+							});
+						
+						return $doss1.then(function(doss1) {
+							
+							if (!doss1) return $doss2;
+							
+							if (U.isInstance(doss1, PACK.quickDev.QElem)) return doss1;
+							
+							// `doss1` is a String address
+							return $doss2.then(function(doss2) { return doss2.getChild(doss1); });
+							
+						});
+						
+					},
+					$startRender: function() {
+						if (this.elem !== null) throw new Error('`$startRender` called while already rendering');
+						
+						return new P({ all: [ this, this.$createElem(), this.$getContainer() ], args: true })
+							.then(function(pass, elem, container) {
+								pass.elem = elem;
+								pass.elem.listAttr({ class: [ '+name-' + this.name ] });
+								
+								if (container) container.append(elem);
+							});
 					},
 					ceaseRender: function() {
 						if (this.elem === null) throw new Error('`ceaseRender` called while not rendering');
 						this.elem.remove();
 						this.elem = null;
 					},
-					getContainer: function() {
-						if (this.par !== null) return this.par.provideContainer(this);
-						return null;
+					$getContainer: function() {
+						if (this.par !== null) return this.par.$provideContainer(this);
+						return $null;
 					},
-					createElem: function() { throw new Error('not implemented'); },
-					updateElem: function() { throw new Error('not implemented'); }
+					$createElem: function() { throw new Error('not implemented'); },
+					$updateElem: function() { throw new Error('not implemented'); }
 				}; }
 			}),
 			SetView: U.makeClass({ name: 'SetView', namespace: namespace,
@@ -57,7 +95,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.childrenElems = {};
 						this.flow = flow;
 						
-						for (var i = 0, len = children.length; i < len; i++) this.addChild(children[i]);
+						for (var i = 0, len = children.length; i < len; i++) this.addView(children[i]);
 					},
 					getChildWrapper: function() {
 						/*
@@ -65,21 +103,24 @@ var package = new PACK.pack.Package({ name: 'userify',
 						*/
 						return this.elem;
 					},
-					getChildContainer: function(elem) {
+					getChildContainer: function(view) {
 						return ({
-							block:	function() { return new PACK.e.E('<div class="child ' + elem.name + '"></div>'); },
-							inline:	function() { return new PACK.e.E('<span class="child ' + elem.name + '"></span>'); },
+							block:	function() { return new E('<div class="child ' + view.name + '"></div>'); },
+							inline:	function() { return new E('<span class="child ' + view.name + '"></span>'); },
 						})[this.flow]();
 					},
-					provideContainer: function(elem) {
+					$provideContainer: function(view) {
 						/*
 						Creates and attaches a container for the provided element.
 						*/
-						if (elem.name in this.childrenElems) return this.childrenElems[elem.name];
 						
-						var container = this.childrenElems[elem.name] = this.getChildContainer(elem);
+						// Try to reuse a pre-existing container
+						if (view.name in this.childrenElems) return ensurePromise(this.childrenElems[view.name]);
+						
+						// Otherwise create and contain a new container
+						var container = this.childrenElems[view.name] = this.getChildContainer(view);
 						this.getChildWrapper().append(container);
-						return container;
+						return ensurePromise(container);
 					},
 					orderChildren: function(compareFunc) {
 						var data = [];
@@ -100,18 +141,18 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return data;
 					},
-					addChild: function(child) {
-						if (child.par !== null) throw new Error('Tried to add child which already has parent');
-						if (child.name in this.children) throw new Error('Tried to add "' + child.name + '" multiple times');
+					addView: function(view) {
+						if (view.par !== null) throw new Error('Tried to add view which already has parent');
+						if (view.name in this.children) throw new Error('Tried to add "' + view.name + '" multiple times');
 						
-						this.children[child.name] = child;
-						child.par = this;
+						this.children[view.name] = view;
+						view.par = this;
 					},
-					remChild: function(childName) {
+					remView: function(name) {
 						/*
 						`childName` can be either a string or a View
 						*/
-						if (childName.constructor !== String) childName = childName.name;
+						if (U.isInstance(name, PACK.userify.View)) name = name.name;
 						
 						if (!(name in this.children)) return false;
 						
@@ -124,29 +165,45 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return ret;
 					},
-					doChildrenUpdates: function() { return true; },
-					startRender: function() {
-						sc.startRender.call(this);
-						if (this.doChildrenUpdates()) for (var k in this.children) this.children[k].startRender();
+					doChildrenUpdates: function() {
+						return true;
+					},
+					$startRender: function() {
+						return new P({ all: [ this, sc.$startRender.call(this) ], args: true })
+							.then(function(pass) {
+								
+								if (!pass.doChildrenUpdates()) return null;
+								
+								return new P({
+									all: pass.children.map(function(child) {
+										return child.$startRender();
+									})
+								});
+								
+							});
 					},
 					ceaseRender: function() {
 						for (var k in this.children) this.children[k].ceaseRender();
 						sc.ceaseRender.call(this);
 					},
-					createElem: function() {
-						return new PACK.e.E('<div class="setView"></div>');
+					$createElem: function() {
+						return ensurePromise(new E('<div class="setView"></div>'));
 					},
-					updateElem: function() {
-						if (this.doChildrenUpdates()) for (var k in this.children) this.children[k].updateElem();
+					$updateElem: function() {
+						if (!this.doChildrenUpdates()) return $null;
+						
+						return new P({ all: this.children.map(function(child) { return child.$updateElem();	})});
 					}
 				}; }
 			}),
 			TabView: U.makeClass({ name: 'TabView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children, flow, getTabAppData */) {
+					init: function(params /* name, children, flow, getTabDoss */) {
 						sc.init.call(this, params);
-						this.getTabAppData = U.param(params, 'getTabAppData');
+						
+						this.getTabDoss = U.param(params, 'getTabDoss'); // A method which takes a view and returns a `Dossier`
+						
 						this.activeTab = null;
 						this.activeContainer = null;
 						this.activeElem = null;
@@ -154,32 +211,39 @@ var package = new PACK.pack.Package({ name: 'userify',
 					getChildWrapper: function() {
 						return this.elem.find('.children');
 					},
-					provideContainer: function(elem) {
+					$provideContainer: function(view) {
 						/*
-						When a `TabView` provides a container, it adds a tab to
+						When a `TabView` provides a container, it also adds a tab to
 						access it.
 						*/
-						var pass = this;
-						var tabAppData = this.getAppData(this.getTabAppData(elem));
-						var tab = new PACK.e.E('<div class="tab ' + elem.name + '">' + tabAppData.value + '</div>');
-						var container = sc.provideContainer.call(this, elem);
 						
-						tab.handle('click', function() { pass.setActiveElem(elem); });
-						this.elem.find('.tabs').append(tab);
-						
-						return container;
+						return new P({ all: [ this, this.$getDoss(this.getTabDoss(view)) ], args: true })
+							.then(function(pass, tabDoss) {
+								var tab = new E('<div class="tab ' + view.name + '">' + tabDoss.value + '</div>');
+								tab.handle('click', function() { pass.setActiveView(view); });
+								pass.elem.find('.tabs').append(tab);
+								return pass;
+							})
+							.then(function(pass) {
+								return sc.$provideContainer.call(pass, view)
+							});
 					},
-					setActiveElem: function(elem) {
-						// TODO: Consider doing the actual dom changes in updateElem,
-						// and only changing the appData here
-						if (elem === this.activeElem) return;
+					setActiveView: function(view) {
+						/*
+						This method just alters classnames to correctly mark the active
+						container and tab.
+						
+						TODO: Consider doing the actual dom changes in $updateElem,
+						and only changing the doss here
+						*/
+						if (view === this.activeElem) return;
 						
 						if (this.activeTab) {
 							this.activeTab.listAttr({ class: [ '-active' ] });
 							this.activeContainer.listAttr({ class: [ '-active' ] });
 						}
 						
-						this.activeElem = elem;
+						this.activeElem = view;
 						
 						if (this.activeElem) {
 							this.activeTab = this.elem.find('.tabs > .tab.' + this.activeElem.name);
@@ -190,48 +254,57 @@ var package = new PACK.pack.Package({ name: 'userify',
 						}
 					},
 					// TODO: `orderChildren` needs to be overridden here (need to reorder tabs too)
-					createElem: function() {
-						return new PACK.e.E([
+					$createElem: function() {
+						return ensurePromise(new E([
 							'<div class="tabView">',
 								'<div class="tabs"></div>',
 								'<div class="children"></div>',
 							'</div>'
-						].join(''));
+						].join('')));
 					},
-					updateElem: function() {
-						if (this.activeElem === null && !U.isEmptyObj(this.children))
-							this.setActiveElem(U.firstVal(this.children));
+					$updateElem: function() {
+						// If no active elem, set 1st child active
+						if (!this.activeElem && !U.isEmptyObj(this.children))
+							this.setActiveView(U.firstVal(this.children));
 						
-						if (this.activeElem) this.activeElem.updateElem();
+						return this.activeElem
+							? this.activeElem.$updateElem()
+							: $null;
 					}
 				}; }
 			}),
 			RootView: U.makeClass({ name: 'RootView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children, appData, rootElem */) {
+					init: function(params /* name, children, doss, rootElem */) {
 						var rootElem = U.param(params, 'elem');
 						
 						sc.init.call(this, params);
 						this.rootElem = PACK.e.e(rootElem);
 						this.updateInterval = null;
 					},
-					startRender: function() {
-						sc.startRender.call(this);
-						
+					$startRender: function() {
 						var pass = this;
-						var updateFunc = function() {
-							pass.updateElem();
-						};
 						
-						updateFunc();
-						this.updateInterval = setInterval(updateFunc, 1000);
+						return new P({ all: [ this, sc.$startRender.call(this) ], args: true })
+							.then(function(pass) {
+								
+								var updateFunc = function() { pass.$updateElem().done(); };
+								
+								// Call immediately...
+								updateFunc();
+								
+								// And then once per second
+								this.updateInterval = setInterval(updateFunc, 1000);
+								
+							});
+						
 					},
-					getContainer: function() { return null; },
-					createElem: function() {
+					$getContainer: function() { return $null; },
+					$createElem: function() {
 						// RootView is the one class that doesn't actually "create" an elem
 						this.rootElem.listAttr({ class: [ '+rootView' ] });
-						return this.rootElem;
+						return ensurePromise(this.rootElem);
 					}
 				}; }
 			}),
@@ -239,7 +312,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 			ConditionView: U.makeClass({ name: 'ConditionView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, condition, children */) {
+					init: function(params /* name, doss, condition, children */) {
 						sc.init.call(this, params);
 						this.condition = U.param(params, 'condition');
 						this.currentView = null;
@@ -250,27 +323,34 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// children
 						return false;
 					},
-					provideContainer: function(elem) {
-						return this.elem;
+					$provideContainer: function(view) {
+						return ensurePromise(this.elem);
 					},
-					createElem: function() {
-						return new PACK.e.E('<div class="conditionView"></div>');
+					$createElem: function() {
+						return ensurePromise(new E('<div class="conditionView"></div>'));
 					},
-					updateElem: function() {
+					$updateElem: function() {
+						
 						var nextName = this.condition();
 						if (!(nextName in this.children)) throw new Error('Invalid conditional name "' + nextName + '"');
 						var nextView = this.children[nextName];
 						
 						if (nextView !== this.currentView) {
-							// `this.currentView` may be `null` if it's the first call to `updateElem`
-							if (this.currentView !== null) {
-								this.currentView.ceaseRender();
-							}
+							
+							// `this.currentView` may be `null` if it's the first call to `$updateElem`
+							if (this.currentView !== null) this.currentView.ceaseRender();
 							this.currentView = nextView;
-							this.currentView.startRender();
+							var $update = this.currentView.$startRender();
+							
+						} else {
+							
+							var $update = $null;
+							
 						}
 						
-						this.currentView.updateElem();
+						var pass = this;
+						return $update.then(function() { pass.currentView.$updateElem(); });
+						
 					}
 					
 				}; }
@@ -279,105 +359,113 @@ var package = new PACK.pack.Package({ name: 'userify',
 			ValueView: U.makeClass({ name: 'ValueView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, editable */) {
+					init: function(params /* name, doss, editable */) {
 						sc.init.call(this, params);
 						this.editable = U.param(params, 'editable', true);
 					},
-					appValue: function(v) {
-						if (U.exists(v)) 	this.getAppData().value = v;
-						else 				return this.getAppData().value;
+					$appValue: function(v) {
+						return this.$getDoss().then(function(doss) {
+							return U.exists(v) ? doss.value = v : doss.value;
+						});
 					}
 				}; }
 			}),
 			TextView: U.makeClass({ name: 'TextView', namespace: namespace,
 				superclassName: 'ValueView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData */) {
+					init: function(params /* name, doss */) {
 						sc.init.call(this, params);
 					},
-					createElem: function() {
-						var ret = new PACK.e.E([
-							'<span class="stringView">',
-								this.appValue(),
-							'</span>'
-						].join(''));
-						
-						return ret;
+					$createElem: function() {
+						return this.$appValue().then(function(val) {
+							return new E('<span class="stringView">' + val + '</span>');
+						});
 					},
-					updateElem: function() {
+					$updateElem: function() {
+						if (!this.elem) throw new Error(this.getAddress() + ' has no elem');
+						
+						var pass = this;
 						var input = this.elem.find('input');
 						var currentlyEditable = !input.empty();
 						
 						if (this.editable !== currentlyEditable) {
-							if (currentlyEditable) { // Set to editable, but shouldn't be
+							if (currentlyEditable) { 	// Set to editable, but shouldn't be
 								input.remove();
-							} else {
-								input = new PACK.e.E('<input type="text"/>');
+							} else {									// Set to uneditable, but shouldn't be
+								input = new E('<input type="text"/>');
 								input.fieldValue(this.elem.text());
 								this.elem.clear();
 								this.elem.append(input);
 							}
 						}
 						
-						// Either the appData becomes the entered value, or vice-versa;
+						// Update either the field or the value
+						var $val = this.editable
+							? this.$appValue(input.fieldValue())
+							: this.$appValue().then(function(val) { pass.elem.text(val); return val; });
 						
-						// Set the app value to reflect the value of the input
-						if (this.editable) 	this.appValue(this.elem.find('input').fieldValue());
-						// Set the span text to reflect the app value
-						else 				this.elem.text(this.appValue());
+						return $val.then(function(val) {
+							pass.elem.listAttr({ class: [
+								(!val.length ? '+' : '-') + 'empty',
+								(pass.editable ? '+' : '-') + 'editable'
+							]});
+						});
 						
-						var isEmpty = this.appValue().length === 0;
-						this.elem.listAttr({ class: [
-							(isEmpty ? '+' : '-') + 'empty',
-							(this.editable ? '+' : '-') + 'editable'
-						]});
 					}
 				}; }
 			}),
 			FieldView: U.makeClass({ name: 'FieldView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, field, titleAppData */) {
+					init: function(params /* name, doss, field, titleDoss */) {
 						sc.init.call(this, params);
 						this.field = U.param(params, 'field');
-						this.titleAppData = U.param(params, 'titleAppData');
+						this.titleDoss = U.param(params, 'titleDoss');
 					},
-					provideContainer: function(elem) {
-						return this.elem.find('.field');
+					$provideContainer: function(view) {
+						return ensurePromise(this.elem.find('.field'));
 					},
-					startRender: function() {
-						sc.startRender.call(this);
-						this.field.startRender();
+					$startRender: function() {
+						var pass = this;
+						return sc.$startRender.call(this).then(function() {
+							return pass.field.$startRender();
+						});
 					},
-					createElem: function() {
-						return new PACK.e.E([
+					$createElem: function() {
+						return ensurePromise(new E([
 							'<div class="fieldView">',
 								'<div class="title"></div>',
 								'<div class="field"></div>',
 							'</div>'
-						].join(''));
+						].join('')));
 					},
-					updateElem: function() {
-						this.elem.find('.title').text(this.getAppData(this.titleAppData).value);
+					$updateElem: function() {
+						var pass = this;
+						return this.$getDoss(this.titleDoss)
+							.then(function(doss) {
+								pass.elem.find('.title').text(doss.value);
+							});
 					}
 				}; }
 			}),
 			ActionView: U.makeClass({ name: 'ActionView', namespace: namespace,
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, appData, titleAppData, action */) {
+					init: function(params /* name, doss, titleDoss, action */) {
 						sc.init.call(this, params);
-						this.titleAppData = U.param(params, 'titleAppData');
-						this.action = U.param(params, 'action');
+						this.titleDoss = U.param(params, 'titleDoss');
+						this.action = U.param(params, 'action'); // Function which is called when the action occurs
 					},
-					createElem: function() {
-						var title = this.getAppData(this.titleAppData).value;
-						var ret = new PACK.e.E('<button type="button" class="actionView">' + title + '</button>');
-						ret.handle('click', this.action.bind(null, this));
-						return ret;
+					$createElem: function() {
+						return new P({ all: [ this, this.$getDoss(this.titleDoss) ], args: true })
+							.then(function(pass, doss) {
+								var elem = new E('<button type="button" class="actionView">' + doss.value + '</button>')
+								elem.handle('click', function() { pass.action(pass); });
+								return elem;
+							});
 					},
-					updateElem: function() {
-						
+					$updateElem: function() {
+						return $null;
 					}
 				}; }
 			}),
@@ -386,33 +474,92 @@ var package = new PACK.pack.Package({ name: 'userify',
 			GenGraphView: U.makeClass({ name: 'GenGraphView', namespace: namespace,
 				superclassName: 'SetView',
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
+					init: function(params /* genView, associationData, $initialDoss */) {
+						
+						this.genView = U.param(params, 'genView');
+						this.associationData = U.param(params, 'associationData');
+						this.$initialDoss = U.param(params, '$initialDoss');
+						
 						sc.init.call(this, params);
+					},
+					generateNodeView: function(doss) {
+						var view = this.genView(doss);
+						this.addView(view);
 						
-						this.decorateView = U.param(params, 'decorateView');
-						this.followLinks = U.param(params, 'followLinks');
+						view.addView(new PACK.userify.SetView({ name: 'controls', children: [
+							
+							new PACK.userify.SetView({ name: 'associations', 
+								children: this.associationData.map(function(data) {
+									return new PACK.userify.ActionView({ name: data.name,
+										titleDoss: data.titleDoss,
+										action: function(view) {
+											// par reverse-order: associations, controls, graph-node
+											var graphNode = view.par.par.par;
+											
+											// HEEERE TODO: Clicking the links to follow blows up the server!!
+											data.$follow(doss).then(function(associatedDossSet) {
+												console.log('HA', associatedDossSet);
+											});
+										}
+									});
+								}
+							)})
+							
+						]}));
 						
-						this.children = {};
+						return view;
 					},
 					getChildWrapper: function() {
 						return this.elem.find('.children');
 					},
-					getChildContainer: function(elem) {
-						var ret = new PACK.e.E('<div class="graphNode"></div>');
+					getChildContainer: function(view) {
+						var ret = new E([
+							'<div class="graphNode">',
+							'</div>'
+						].join(''));
+						
 						// TODO: Add controls to focus clicked graphNodes
 						// Focussing should decorate the `.genGraphView > .controls`
 						// element with the focussed view's controls
+						
 						return ret;
 					},
-					createElem: function() {
-						return new PACK.e.E([
+					$addDoss: function(doss, association, doss2) {
+						var pass = this;
+						var $doss = ensurePromise(doss);
+						var $startView = $doss.then(function(doss) {
+							return pass.generateNodeView(doss).$startRender();
+						});
+						
+						if (!U.exists(association)) return $doss;
+						
+						return new P({ all: [ $doss, association, doss2, $startView ], args: true })
+							.then(function(doss1, association, doss2) {
+								if (!U.exists(doss2)) throw new Error('If providing association need to also provide 2nd Dossier');
+								
+								console.log('Associating', doss1.getAddress(), 'and', doss2.getAddress());
+								
+								return doss1;
+							});
+					},
+					$createElem: function() {
+						return ensurePromise(new E([
 							'<div class="genGraphView">',
 								'<div class="children"></div>',
 								'<div class="controls"></div>',
 							'</div>'
-						].join(''));
+						].join('')));
 					},
-					updateElem: function() {
+					$updateElem: function() {
+							
+						var $update = U.isEmpty(this.children)
+							? this.$addDoss(this.$initialDoss)
+							: $null;
+						
+						var pass = this;
+						return $update.then(function() {
+							return sc.$updateElem.call(pass);
+						});
 						
 					}
 				};}
@@ -421,4 +568,3 @@ var package = new PACK.pack.Package({ name: 'userify',
 	}
 });
 package.build();
-	

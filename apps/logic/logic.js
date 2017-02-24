@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'logic',
-	dependencies: [ 'queries', 'quickDev', 'htmlText', 'clock', 'userify', 'p' ],
+	dependencies: [ 'queries', 'quickDev', 'htmlText', 'clock', 'userify', 'p', 'random' ],
 	buildFunc: function(packageName) {
 		var qd = PACK.quickDev;
 		
@@ -135,10 +135,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 		ret.queryHandler = new ret.LogicApp({ name: 'app', children: [] });
 		
 		U.addSerializables([
-			{	name: 'logic.root.schemaParams',
-				value: { c: ret.LogicApp, p: { name: 'app' }, i: [
+			{	name: 'logic.root.schema',
+				value: new qd.QSchema({ c: ret.LogicApp, p: { name: 'app' }, i: [
 					{	c: qd.QString, p: { name: 'version', value: '0.0.1 (initial)' } },
-					{ 	c: qd.QGen, p: { name: 'users',
+					{ c: qd.QGen, p: { name: 'users',
 						_schema: 'logic.user.schema',
 						_initChild: 'logic.user.init',
 						prop: 'username/value'
@@ -153,7 +153,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 						_initChild: 'logic.theory.init',
 						prop: 'quickName/value'
 					}}
-				]}
+				]})
 			},
 			
 			{	name: 'logic.user.schema',
@@ -181,14 +181,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 			},
 			{	name: 'logic.essay.init',
 				value: function(child, params /* */) {
-					
+					var markup = U.param(params, 'markup');
+					child.getChild('markup').setValue(markup);
 				}
 			},
 			
 			{	name: 'logic.theory.schema',
 				value: new qd.QSchema({ c: ret.LogicTheory, i: [
-					{ c: qd.QRef, 		p: { name: 'user' } },
 					{ c: qd.QInt, 		p: { name: 'timestamp' } },
+					{ c: qd.QRef, 		p: { name: 'user' } },
 					{ c: qd.QRef, 		p: { name: 'duplicate' } },
 					{ c: qd.QString, 	p: { name: 'quickName' } },
 					{ c: qd.QString, 	p: { name: 'title' } },
@@ -196,23 +197,51 @@ var package = new PACK.pack.Package({ name: 'logic',
 					{ c: qd.QGen, 		p: { name: 'challengers',
 						_schema: 'logic.theory.related.schema',
 						_initChild: 'logic.theory.related.init',
-						prop: '@theory.quickName/value'
+						prop: '@.quickName/value'
 					}},
 					{ c: qd.QGen, 		p: { name: 'prerequisites',
 						_schema: 'logic.theory.related.schema',
 						_initChild: 'logic.theory.related.init',
-						prop: '@theory.quickName/value'
+						prop: '@.quickName/value'
 					}},
 					{ c: qd.QGen, 		p: { name: 'voters',
 						_schema: 'logic.theory.voter.schema',
 						_initChild: 'logic.theory.voter.init',
-						prop: '@voter.username/value'
+						prop: '@user.username/value'
 					}}
 				]})
 			},
 			{	name: 'logic.theory.init',
-				value: function(child, params /* */) {
+				value: function(child, params /* user, quickName, title, essayMarkup, prerequisites */, par) {
+					var theories = par.getChild('$root.theories');
 					
+					var timestamp = +(new Date());
+					var user = U.param(params, 'user');
+					var quickName = U.param(params, 'quickName');
+					var title = U.param(params, 'title');
+					var essayMarkup = U.param(params, 'essayMarkup');
+					var prerequisites = U.param(params, 'prerequisites', []);
+					
+					prerequisites = prerequisites.map(function(prereqName) {
+						var ret = theories.getChild(prereqName);
+						if (!ret) throw new Error('Invalid prerequisite name: "' + prereqName + '"');
+						return ret;
+					});
+					
+					child.getChild('timestamp').setValue(timestamp);
+					child.getChild('user').setValue(user);
+					child.getChild('quickName').setValue(quickName);
+					child.getChild('title').setValue(title);
+					
+					var essay = par.getChild('$root.essays').getNewChild({ markup: essayMarkup });
+					
+					child.getChild('essay').setRef(essay);
+					
+					// TODO: HEEERE; SOMETHING WRONG HERE
+					// Should potentially refactor the whole dynamic-id-name, tree-building thing in quickDev
+					prerequisites.forEach(function(theory) {
+						child.getChild('prerequisites').getNewChild({ theory: theory });
+					});
 				}
 			},
 			
@@ -220,8 +249,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 				value: new qd.QSchema({ c: qd.QRef, p: { name: 'theory' } })
 			},
 			{	name: 'logic.theory.related.init',
-				value: function(child, params /* */) {
-					
+				value: function(child, params /* theory */) {
+					var theory = U.param(params, 'theory');
+					if (theory === null) throw new Error('Cannot relate to a null theory');
+					child.setRef(theory);
 				}
 			},
 			
@@ -248,153 +279,180 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var qd = PACK.quickDev;
 		var us = PACK.userify;
 		var e = PACK.e.e;
+		var P = PACK.p.P;
 		
-		root.$load({ selection: new qd.QSelAll() }).then(function(app) {
-			
-			app.addChild(new qd.QDict({ name: 'static', children: [
-				new qd.QDict({ name: 'credentials', children: [
-					new qd.QString({ name: 'token', value: '' }),
-					new qd.QRef({ name: 'user', value: null })
-				]}),
-				new qd.QDict({ name: 'forms', children: [
-					new qd.QDict({ name: 'login', children: [
-						new qd.QString({ name: 'username', value: '' }),
-						new qd.QString({ name: 'password', value: '' })
-					]}),
-					new qd.QDict({ name: 'createAccount', children: [
-						new qd.QString({ name: 'username', value: '' }),
-						new qd.QString({ name: 'password', value: '' })
-					]}),
-				]}),
-				new qd.QDict({ name: 'text', children: [
-					new qd.QString({ name: 'marker', value: 'HELLOOOO' }),
-					new qd.QString({ name: 'version', value: 'Version:' }),
-					new qd.QString({ name: 'accountLogin', value: 'Login' }),
-					new qd.QString({ name: 'accountLoginTitle', value: 'Enter credentials:' }),
-					new qd.QString({ name: 'accountCreate', value: 'Create Account' }),
-					new qd.QString({ name: 'accountCreateTitle', value: 'Fill out the fields:' }),
-					new qd.QGen({ name: 'temp',
-						_schema: U.addSerializable({
-							name: 'logic.text.temp.schema',
-							value: new qd.QSchema({ c: qd.QString, p: {} })
-						}),
-						_initChild: U.addSerializable({
-							name: 'logic.text.temp.initChild',
-							value: function(child, params /* */) {}
-						}),
-						prop: '/name'
-					})
-				]})
-			]}));
-			
-			console.log(app.simplified());
-			
-			var view = new us.RootView({ name: 'root', appData: app, elem: PACK.e.e('body'), children: [
+		var selAll = qd.sel.all;
+		var selTheory = new qd.QSelInc({ selNames: {
+			timestamp: selAll,
+			quickName: selAll,
+			title: selAll,
+			essay: selAll
+		}});
+		
+		root.$load({ selection: new qd.QSelAll() })
+			.then(function(app) {					// Add static elements to `app`
 				
-				new us.ConditionView({ name: 'checkLogin', appData: app,
-					
-					condition: function() {
-						try {
-						return app.getChild('static.credentials.token').value === '' ? 'loginActions'	: 'loggedIn'; } catch(err) {} return 'loginActions';
-					},
-					
-					children: [
-						new us.SetView({ name: 'loginActions', children: [
-						
-							new us.TabView({ name: 'loginOrCreate',
-								getTabAppData: function(elem) {
-									return ({
-										create: 'static.text.accountCreate',
-										login: 'static.text.accountLogin',
-									})[elem.name];
-								},
-								children: [
-								
-									new us.SetView({ name: 'login', children: [
-										
-										new us.TextView({ name: 'title', appData: 'static.text.accountLoginTitle', editable: false }),
-										new us.TextView({ name: 'username', appData: 'static.forms.login.username', editable: true }),
-										new us.TextView({ name: 'password', appData: 'static.forms.login.password', editable: true }),
-										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountLogin',
-											action: function(view) {
-												view.getAppData().$request({
-													command: 'getUserToken',
-													params: {
-														username: view.par.children.username.appValue(),
-														password: view.par.children.username.appValue()
-													}
-												}).then(function(res) {
-													console.log('LOGGED IN??', res);
-													app.getChild('static.credentials.token').setValue(res.token);
-												});
-											}
-										})
-										
-									]}),
-									
-									new us.SetView({ name: 'create', children: [
-										
-										new us.TextView({ name: 'title', appData: 'static.text.accountCreateTitle', editable: false }),
-										new us.TextView({ name: 'username', appData: 'static.forms.createAccount.username', editable: true }),
-										new us.TextView({ name: 'password', appData: 'static.forms.createAccount.password', editable: true }),
-										new us.ActionView({ name: 'submit', titleAppData: 'static.text.accountCreate',
-											action: function(view) {
-												view.getAppData().$request({
-													command: 'createAccount',
-													params: {
-														username: view.par.children.username.appValue(),
-														password: view.par.children.password.appValue()
-													}
-												}).then(function(res) {
-													app.getChild('static.credentials.token').setValue(res.token);
-												});
-											}
-										})
-										
-									]})
-								
-								]
-							})
-							
+				app.addChild(new qd.QDict({ name: 'static', children: [
+					new qd.QDict({ name: 'credentials', children: [
+						new qd.QString({ name: 'token', value: '' }),
+						new qd.QRef({ name: 'user', value: null })
+					]}),
+					new qd.QDict({ name: 'forms', children: [
+						new qd.QDict({ name: 'login', children: [
+							new qd.QString({ name: 'username', value: '' }),
+							new qd.QString({ name: 'password', value: '' })
 						]}),
-						new us.SetView({ name: 'loggedIn', children: [
-							
-							new us.GenGraphView({ name: 'theories',
-								
-								initialNodeAppData: app.getChild('theories.0'),
-								
-								decorateView: function(view, appData) {
-									
-									view.addChild(new us.TextView({ name: 'name', appData: 'quickName' }));
-									view.addChild(new us.TextView({ name: 'content', appData: '@essay.markup' }));
-									view.addChild(new us.TextView({ name: 'user', appData: '@user.username' }));
-									
-								},
-								
-								followLinks: function(appData) {
-									
-									return appData.getChild('prerequisites');
-									
-								}
-								
-							})
-							
-						]})
-					]
+						new qd.QDict({ name: 'createAccount', children: [
+							new qd.QString({ name: 'username', value: '' }),
+							new qd.QString({ name: 'password', value: '' })
+						]}),
+					]}),
+					new qd.QDict({ name: 'text', children: [
+						new qd.QString({ name: 'marker', value: 'HELLOOOO' }),
+						new qd.QString({ name: 'version', value: 'Version:' }),
+						new qd.QString({ name: 'accountLogin', value: 'Login' }),
+						new qd.QString({ name: 'accountLoginTitle', value: 'Enter credentials:' }),
+						new qd.QString({ name: 'accountCreate', value: 'Create Account' }),
+						new qd.QString({ name: 'accountCreateTitle', value: 'Fill out the fields:' }),
+						new qd.QString({ name: 'prerequisiteAssocName', value: 'Prerequisite' }),
+						new qd.QString({ name: 'challengerAssocName', value: 'Challenger' }),
+						new qd.QGen({ name: 'temp',
+							_schema: U.addSerializable({
+								name: 'logic.text.temp.schema',
+								value: new qd.QSchema({ c: qd.QString, p: {} })
+							}),
+							_initChild: U.addSerializable({
+								name: 'logic.text.temp.initChild',
+								value: function(child, params /* */) {}
+							}),
+							prop: '/name'
+						})
+					]})
+				]}));
+				
+				return app;
+				
+			})
+			.then(function(rootDoss) {		// Define the view
+				
+				var view = new us.RootView({ name: 'root', doss: rootDoss, elem: PACK.e.e('body'), children: [
 					
-				}),
+					new us.ConditionView({ name: 'checkLogin',
+						
+						condition: function() {
+							return !rootDoss.getChild('static.credentials.token').value ? 'loggedOut'	: 'loggedIn';
+						},
+						
+						children: [
+							new us.SetView({ name: 'loggedOut', children: [
+							
+								new us.TabView({ name: 'loginOrCreate',
+									getTabDoss: function(elem) {
+										return ({
+											create: 'static.text.accountCreate',
+											login: 'static.text.accountLogin',
+										})[elem.name];
+									},
+									children: [
+										
+										new us.SetView({ name: 'create', children: [
+											
+											new us.TextView({ name: 'title', doss: 'static.text.accountCreateTitle', editable: false }),
+											new us.TextView({ name: 'username', doss: 'static.forms.createAccount.username', editable: true }),
+											new us.TextView({ name: 'password', doss: 'static.forms.createAccount.password', editable: true }),
+											new us.ActionView({ name: 'submit', titleDoss: 'static.text.accountCreate',
+												action: function(view) {
+													
+													var $username = view.par.children.username.$appValue();
+													var $password = view.par.children.password.$appValue()
+													
+													new P({ all: [ view.$getDoss(), $username, $password ], args: true })
+														.then(function(doss, username, password) {
+															return doss.$request({
+																command: 'createAccount',
+																params: { username: username, password: password }
+															});
+														})
+														.then(function(responseData) {
+															rootDoss.getChild('static.credentials.token').setValue(responseData.token);
+														});
+												}
+											})
+											
+										]}),
+										new us.SetView({ name: 'login', children: [
+											
+											new us.TextView({ name: 'title', doss: 'static.text.accountLoginTitle', editable: false }),
+											new us.TextView({ name: 'username', doss: 'static.forms.login.username', editable: true }),
+											new us.TextView({ name: 'password', doss: 'static.forms.login.password', editable: true }),
+											new us.ActionView({ name: 'submit', titleDoss: 'static.text.accountLogin',
+												action: function(view) {
+													view.getDoss().$request({
+														command: 'getUserToken',
+														params: {
+															username: view.par.children.username.appValue(),
+															password: view.par.children.username.appValue()
+														}
+													}).then(function(res) {
+														console.log('LOGGED IN??', res);
+														rootDoss.getChild('static.credentials.token').setValue(res.token);
+													});
+												}
+											})
+											
+										]})
+										
+									]
+								})
+								
+							]}),
+							new us.SetView({ name: 'loggedIn', children: [
+								
+								new us.GenGraphView({ name: 'theories',
+									
+									genView: function(doss) {
+										return new us.SetView({ name: doss.name, doss: doss, children: [
+											new us.TextView({ name: 'name', doss: 'quickName', editable: false }),
+											new us.TextView({ name: 'content', doss: 'title', editable: false }),
+											//new us.TextView({ name: 'essay', doss: '@essay.markup', editable: false })
+										]});
+									},
+									
+									associationData: [
+										{	
+											name: 'prerequisite',
+											titleDoss: rootDoss.getChild('static.text.prerequisiteAssocName'),
+											$follow: function(doss) { return doss.$getChild('prerequisites'); }
+										},
+										{	
+											name: 'challenger',
+											titleDoss: rootDoss.getChild('static.text.challengerAssocName'),
+											$follow: function(doss) { return doss.$getChild('challengers'); }
+										}
+									],
+									
+									$initialDoss: rootDoss.$getChild({ address: 'theories.townSurvivorsSolved', selection: selTheory })
+									
+								})
+								
+							]})
+						]
+						
+					}),
+					
+					new us.SetView({ name: 'versionText', flow: 'inline', children: [
+						new us.TextView({ name: '1', doss: 'static.text.version', editable: false }),
+						new us.TextView({ name: '2', doss: 'version', editable: false })
+					]})
+					
+				]});
 				
-				new us.SetView({ name: 'versionText', flow: 'inline', children: [
-					new us.TextView({ name: '1', appData: 'static.text.version', editable: false }),
-					new us.TextView({ name: '2', appData: 'version', editable: false })
-				]})
+				view.$startRender().then(function() { console.log('Began rendering'); });
 				
-			]});
-			
-			view.startRender();
-			window.view = view;	// Nice to make `root`/`view` available on client-side terminal
-			window.root = root; 
-		});
+				window.view = view;	// Nice to make `root`/`view` vars available on client-side terminal
+				window.root = root; 
+				
+			});
 		
 	}
 });

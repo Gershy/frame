@@ -6,6 +6,7 @@ DB Reference:
 TODO: This is one UGLY goddang file
 TODO: The DB connection at this end of this file needs its own paradigm
 TODO: Responses for non-existing files are no good, try removing favicon and loading
+TODO: Dependency loading should be done via promises
 */
 require('./common.js');
 
@@ -15,26 +16,20 @@ var http = require('http');
 var path = require('path');
 var fileSys = require('fs');
 var config = require('./config.js');
-//var mongoDb = require('mongodb').MongoClient;
-
-var readFile = fileSys.readFile.bind(fileSys);
 
 var package = new PACK.pack.Package({ name: 'server',
-  dependencies: [ 'queries', 'p' ],
+  dependencies: [ 'p', 'queries' ],
 	buildFunc: function() {
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
 			Session: U.makeClass({ name: 'Session',
 				superclassName: 'QueryHandler',
-				propertyNames: [ 'ip' ],
 				methods: function(sc) { return {
 					init: function(params /* ip */) {
 						this.ip = U.param(params, 'ip');
 						this.id = U.id(PACK.server.Session.NEXT_ID++);
-						
 						this.appName = null;
 						this.queryHandler = null;
-            
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
@@ -48,32 +43,25 @@ var package = new PACK.pack.Package({ name: 'server',
 						// restrict which files are servable in different ways.
 						
 						var ext = path.extname(filepath);
-						if (!(ext in config.legalExtensions)) throw new Error('unknown extension: "' + ext + '"');
+						if (!(ext in config.legalExtensions)) throw new Error('Illegal extension: "' + ext + '"');
 						ext = config.legalExtensions[ext];
 						
 						var binary = ext[0] === '!';
 						if (binary) ext = ext.substr(1);
 						
-						return new PACK.p.P({ cb: readFile, cbParams: [ filepath, binary ? 'binary' : 'utf8' ] })
+						return new PACK.p.P({ cb: fileSys.readFile.bind(fileSys), cbParams: [ filepath, binary ? 'binary' : 'utf8' ] })
 							.then(function(err, data) {
-								if (err) throw err;
+								if (err) throw new Error('Error reading file', err);
 								
 								return {
 									data: data,
 									encoding: ext,
 									binary: binary
 								};
-							})
-							.fail(function(err) {
-								return {
-									data: '"' + filepath + '" not found',
-									encoding: 'text/plain',
-									binary: false
-								};
 							});
 					},
 					respondToQuery: function(params /* address */) {
-						// Ensure no "session" param was already included
+						// Ensure no "session" param  was already included
 						if ('session' in params) throw new Error('illegal "session" param');
 						
 						return sc.respondToQuery.call(this, params.clone({ session: this }));
@@ -88,19 +76,13 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						if (command) {
 							
-							var promise = null;
-							
 							if (command === 'getIp') {
 								
 								var promise = PACK.p.P({ val: { ip: this.ip } });
 								
-							} else if (command === 'not yet implemented?') {
-								
-								var promise = PACK.p.P({ val: { msg: 'not implemented lol' } });
-								
 							} else {
 								
-								var promise = new PACK.p.P({ val:{
+								var promise = new PACK.p.P({ val: {
 									code: 1,
 									msg: 'invalid session command',
 									command: command
@@ -113,11 +95,18 @@ var package = new PACK.pack.Package({ name: 'server',
 						}
 						
 						// Zero-length urls aren't allowed
-						// TODO: Consider adding server-queries here? e.g. "ramAvailable"
 						if (url.length === 0) throw new Error('Zero-length url');
 						
 						// A request that specifies a file should just serve that file
-						if (url[url.length - 1].contains('.')) return this.getFileContents(url.join('/'));
+						if (url[url.length - 1].contains('.'))
+							return this.getFileContents(url.join('/'))
+								.fail(function(err) {
+									return {
+										data: 'File "' + filepath + '" not found',
+										encoding: 'text/plain',
+										binary: false
+									};
+								});
 						
 						// A mode-less request to the session just means to serve the html
 						var appName = url[0];
@@ -127,8 +116,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							try {
 								require('./apps/' + appName + '/' + appName + '.js');
 							} catch (e) {
-								console.log('./apps/' + appName + '/' + appName + '.js');
-								console.log('Couldn\'t load essential file');
+								console.log('Couldn\'t load essential file "/apps/' + appName + '/' + appName + '.js"');
 								throw e;
 							}
 							
@@ -153,6 +141,7 @@ var package = new PACK.pack.Package({ name: 'server',
 							.then(function(html) {
 								html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
 								html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
+								html.data = html.data.replace('{{title}}', appName);
 								
 								if ('resources' in PACK[appName]) {
 									
@@ -226,10 +215,10 @@ var package = new PACK.pack.Package({ name: 'server',
 				var queryParams = {};
 				
 				//Check if the url includes parameters (indicated by the "?" symbol)
-				var q = queryUrl.indexOf('?');
-				if (~q) {
-					queryUrl = url.substr(0, q); //The url is only the piece before the "?" symbol
-					var queryArr = url.substr(q + 1).split('&'); //Array of url parameters
+				var qInd = queryUrl.indexOf('?');
+				if (~qInd) {
+					queryUrl = url.substr(0, qInd); //The url is only the piece before the "?" symbol
+					var queryArr = url.substr(qInd + 1).split('&'); //Array of url parameters
 					for (var i = 0; i < queryArr.length; i++) {
 						var str = queryArr[i];
 						var eq = str.indexOf('=');

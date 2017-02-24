@@ -70,18 +70,23 @@ var package = new PACK.pack.Package({ name: 'p',
             } else if ('all' in params) { // Allow a list of promises to be treated as a single promise
               
               var all = U.param(params, 'all');
+              var args = U.isObj(all, Array) && U.param(params, 'args', false);
               var results = new all.constructor(); // This allows the same code to process both arrays and objects
               var num = U.length(all);
               
-              if (!num) this.satisfy(results);
+              if (!num) { return args ? this.satisfy() : this.satisfy(results); }
               
               var pass = this;
               var count = 0;
               
               all.forEach(function(promise, k) {
-                promise.then(function(val) {
+                PACK.p.p(promise).then(function(val) {
                   results[k] = val;
-                  if (++count >= num) pass.satisfy(results);
+                  if (++count === num) {
+                    // If using `Object` pass object otherwise pass multiple params
+                    if (args)   pass.satisfy.apply(pass, results);
+                    else        pass.satisfy(results);
+                  }
                   return val;
                 });
               });
@@ -90,13 +95,22 @@ var package = new PACK.pack.Package({ name: 'p',
               
               var timeout = U.param(params, 'timeout');
               setTimeout(this.satisfy.bind(this, null), timeout);
+            
+            } else if ('require' in params) {
+              
+              var name = U.param(params, 'require');
+              var func = U.param(params, 'func', null);
+              
+              this.satisfied = this.trySatisfy(require(name), func);
               
             } else if (U.isEmptyObj(params)) {
               
               // Manually satisfied promise
               
             } else {
-              throw new Error('Invalid P params: ' + params);
+              
+              throw new Error('Invalid P params: ' + JSON.stringify(params));
+              
             }
             
           },
@@ -153,21 +167,23 @@ var package = new PACK.pack.Package({ name: 'p',
             var task = U.param(params, 'task', null);
             var multi = U.param(params, 'multi', false);
             
-            if (this.failTask && task) {
+            if (!task) return val;
+            
+            if (this.failTask) {
               
               try         { return multi ? task.apply(null, val) : task(val); }
               catch(err)  { return this.failTask(err); };
                 
             }
             
-            return task ? task(val) : val;
+            return multi ? task.apply(null, val) : task(val);
             
           },
           then: function(task) {
             if (!task) throw new Error('Need to provide a `task` param');
             
             return this.satisfied
-              ? PACK.p.p(this.getVal({ val: this.val, task: task }))
+              ? PACK.p.p(this.getVal({ val: this.val, task: task, multi: this.multiArgs }))
               : new PACK.p.P({ val: this, func: task });
             
           },
@@ -177,6 +193,15 @@ var package = new PACK.pack.Package({ name: 'p',
             
             this.failTask = failTask;
             return this;
+            
+          },
+          done: function() {
+            // TODO: any unhandled errors are thrown
+            
+            this.failTask = function(err) {
+              console.log('DONE WITH ERROR');
+              console.error(err.stack);
+            };
             
           },
           thenSeq: function(tasks) {
@@ -213,9 +238,9 @@ var d1 = new P({ cb: U.createDelay, cbParams: { delay: 3000, repeat: false }, cb
 var d2 = new P({ cb: U.createDelay, cbParams: { delay: 2000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay2000'; });
 var d3 = new P({ cb: U.createDelay, cbParams: { delay: 1000, repeat: false }, cbName: '0.task' }).then(function() { return 'delay1000'; });
 
-var allDelays = new P({ all: [ d1, d2, d3 ] }).then(function(vals) {
-	console.log('GOT', vals);
-	return vals;
+var allDelays = new P({ all: [ d1, d2, d3 ] }).then(function(d1, d2, d3) {
+	console.log('GOT', d1, d2, d3);
+	return [ d1, d2, d3 ];
 });
 
 var dp = new P({ cb: U.createDelay, cbParams: { delay: 3550, repeat: false }, cbName: '0.task' }).then(function() { return 'HAHA'; });
@@ -255,8 +280,8 @@ var arrSeq = new P({ val: '0' }).thenSeq([
 	return allVals;
 });
 
-new P({ all: [ objSeq, arrSeq, simplePromise ] }).then(function(allVals) {
-	console.log('ALL', allVals);
+new P({ all: [ objSeq, arrSeq, simplePromise ] }).then(function(v1, v2, v3) {
+	console.log('ALL', [ v1, v2, v3 ]);
 });
 
 // =========================
