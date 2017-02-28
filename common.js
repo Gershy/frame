@@ -305,15 +305,24 @@ global.U = {
 		
 		var superclassName = U.param(params, 'superclassName', null);
 		if (superclassName !== null) {
+			
 			if (superclassName in namespace)	var superclass = namespace[superclassName];
-			else 								throw new Error('bad superclass name: "' + superclassName + '"');
+			else 															throw new Error('bad superclass name: "' + superclassName + '"');
+			
 		} else {
+			
 			var superclass = null;
+			
 		}
+		
+		var heirName = superclass ? (superclass.heirName + '.' + name) : name;
 		
 		eval([ // Needed to eval in order to have a named function in debug. Is there a better way??
 			'var ' + name + ' = function(params) {',
-				'/* ' + name + ' */',
+				'/*\n',
+				'Class: ' + name + '\n',
+				'Heirarchy: ' + heirName.replace(/\./g, ' / ') + '\n',
+				'*/\n',
 				//'if (!(\'init\' in this)) console.log(\'' + name + '\');',
 				'this.init(U.exists(params) ? params : {});',
 			'};',
@@ -322,6 +331,8 @@ global.U = {
 		].join(''));
 		var c = namespace[name];
 		c.title = name;
+		
+		c.heirName = heirName;
 		
 		if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, c);
 		

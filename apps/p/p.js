@@ -2,7 +2,7 @@ var package = new PACK.pack.Package({ name: 'p',
   dependencies: [ ],
   buildFunc: function() {
     return {
-      p: function(val) {
+      $p: function(val) {
         /*
         Convert a value into a promise.
         If `val` is a promise return it, otherwise return a promise wrapping `val`.
@@ -10,25 +10,23 @@ var package = new PACK.pack.Package({ name: 'p',
         return U.instanceOf(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
       },
       P: U.makeClass({ name: 'P',
-        methods: function() { return {
-          init: function(params /* val, func, cb, cbParams, cbName, all */) {
+        methods: function(sc) { return {
+          init: function(params /* val, func | cb, cbParams, cbName, all */) {
+            this.children = [];
+            this.status = 'pending'; // | 'resolved' | 'rejected'
             this.val = null;
-            this.multiArgs = false;
-            this.satisfied = false;
-            this.waiting = [];
-            this.failTask = null;
+            this.multi = U.param(params, 'multi', false);
+            this.func = U.param(params, 'func', null);
+            this.recoveryFunc = U.param(params, 'recoveryFunc', null);
+            this.snapshot = params;
             
-            if (!U.isObj(params, Object)) throw new Error(this.constructor.title + ' takes an object as a parameter');
-            
-            if ('val' in params) {        // Allow an ordinary value to be treated as a promise
+            if (!U.exists(params)) {
+              this.resolve(null);
+            } else if ('val' in params) {
               
-              // Try to satisfy using the simple value we were given
-              var val = U.param(params, 'val');
-              var func = U.param(params, 'func', null);
+              this.tryResolve(params.val);
               
-              this.satisfied = this.trySatisfy(val, func);
-              
-            } else if ('cb' in params) {  // Allow an ordinary callback function to be treated as a promise
+            } else if ('cb' in params) {
               
               /*
               
@@ -52,176 +50,242 @@ var package = new PACK.pack.Package({ name: 'p',
               // If not provided the callback will be assumed to be the final argument in the argument list
               var cbName = U.param(params, 'cbName', null);
               
-              // Create the callback `satisfy` which will satisfy `this` when called
-              var satisfy = this.satisfy.bind(this);
+              // Create the callback `resolve` which will resolve `this` when called
+              var resolve = this.resolve.bind(this);
               
               if (!U.instanceOf(cbParams, Array)) cbParams = [ cbParams ];
               
               if (cbName)
                 // `U.deepSet` allows the user to control which parameter is replaced
-                U.deepSet({ root: cbParams, name: cbName, value: satisfy, overwrite: true });
+                U.deepSet({ root: cbParams, name: cbName, value: resolve, overwrite: true });
               else
                 // If no `cbName` then append (this is default since most callback functions take callback as a final parameter)
-                cbParams.push(satisfy);
+                cbParams.push(resolve);
               
               // Run the function
               cb.apply(null, cbParams);
               
-            } else if ('all' in params) { // Allow a list of promises to be treated as a single promise
+            } else if ('custom' in params) {  // Allow the user to arbitrarily call resolve or reject
+              
+              /*
+              e.g.
+              new PACK.p.P({ custom: function(resolve, reject) {
+                setTimeout(resolve, 1000);
+              }});
+              */
+              params.custom(this.resolve.bind(this), this.reject.bind(this));
+              
+            } else if ('all' in params) {     // Allow a list of promises to be treated as a single promise
               
               var all = U.param(params, 'all');
-              var args = U.isObj(all, Array) && U.param(params, 'args', false);
               var results = new all.constructor(); // This allows the same code to process both arrays and objects
               var num = U.length(all);
               
-              if (!num) { return args ? this.satisfy() : this.satisfy(results); }
+              if (!num) return this.resolve(results);
               
+              var healthy = true;
               var pass = this;
               var count = 0;
               
-              all.forEach(function(promise, k) {
-                PACK.p.p(promise).then(function(val) {
-                  results[k] = val;
-                  if (++count === num) {
-                    // If using `Object` pass object otherwise pass multiple params
-                    if (args)   pass.satisfy.apply(pass, results);
-                    else        pass.satisfy(results);
-                  }
-                  return val;
-                });
+              all.forEach(function(v, k) {
+                PACK.p.$p(v)
+                  .then(function(val) {
+                    if (!healthy) return;
+                    results[k] = val;
+                    if (++count === num) pass.resolve(results);
+                  })
+                  .fail(function(err) {
+                    healthy = false;
+                    pass.reject(err);
+                  });
+              });
+              
+            } else if ('args' in params) {
+              
+              this.multi = true;
+              var args = U.param(params, 'args');
+              var results = [];
+              
+              if (!args.length) return this.resolve();
+              
+              var healthy = true;
+              var pass = this;
+              var count = 0;
+              
+              args.forEach(function(v, k) {
+                PACK.p.$p(v)
+                  .then(function(val) {
+                    if (!healthy) return;
+                    results[k] = val;
+                    if (++count === args.length) pass.resolve.apply(pass, results);
+                  }).fail(function(err) {
+                    healthy = false;
+                    pass.reject(err);
+                  });
               });
               
             } else if ('timeout' in params) {
               
               var timeout = U.param(params, 'timeout');
-              setTimeout(this.satisfy.bind(this, null), timeout);
+              setTimeout(this.resolve.bind(this, null), timeout);
             
-            } else if ('require' in params) {
+            }
+            
+          },
+          tryResolve: function(/* ... */) {
+            
+            // PART 1: Ensure that multiple values are handled
+            
+            multi = arguments.length !== 1;
+            
+            if (multi) {
               
-              var name = U.param(params, 'require');
-              var func = U.param(params, 'func', null);
-              
-              this.satisfied = this.trySatisfy(require(name), func);
-              
-            } else if (U.isEmptyObj(params)) {
-              
-              // Manually satisfied promise
+              // In the case of multiple arguments we'd prefer to use a simple
+              // value, and only resort to an args-style promise if necessary
+              var val = [];
+              for (var i = 0, len = arguments.length; i < len; i++) {
+                var v = arguments[i];
+                if (U.isInstance(v, PACK.p.P)) {
+                  
+                  // Get the value of a resolved promise
+                  if (v.status === 'resolved') val.push(v.val);
+                  // Reject immediately if one of the promises is rejected
+                  else if (v.status === 'rejected') return this.reject(v.val);
+                  // Immediately use an args-style promise if any of the promises are pending
+                  else if (v.status === 'pending') { val = new PACK.p.P({ args: U.toArray(arguments) }); break; }
+                  
+                } else {
+                  
+                  // The value is already a non-promise value, so just use it
+                  val.push(v);
+                  
+                }
+              }
               
             } else {
               
-              throw new Error('Invalid P params: ' + JSON.stringify(params));
+              // Exactly 1 argument was provided.
+              var val = arguments[0];
               
             }
             
-          },
-          satisfy: function(/* ... */) {
-            if (this.satisfied) throw new Error('Double-satisfied promise');
+            // PART 2: Ensure that we are either working with an unresolved promise, or a simple value
             
-            this.multiArgs = arguments.length > 1;
-            
-            this.val = this.multiArgs ? U.toArray(arguments) : arguments[0];
-            this.satisfied = true;
-            
-            for (var i = 0, len = this.waiting.length; i < len; i++) {
-              var w = this.waiting[i];
-              
-              /*var innerVal = w.func
-                ? (this.multiArgs ? w.func.apply(null, this.val) : w.func(this.val))
-                : this.val;*/
-              
-              // TODO: Is it `w.getVal(...)` or `this.getVal(...)`???
-              w.promise.trySatisfy(w.promise.getVal({
-                val: this.val,
-                task: w.func,
-                multi: this.multiArgs
-              }));
+            while (U.isInstance(val, PACK.p.P) && val.status !== 'pending') {
+              // Rejected promises should cause this promise to reject instead of resolve
+              if (val.status === 'rejected') return this.reject(val.val);
+              // Resolved promises should be treated as their simple value; ensure multi is remembered as well
+              if (val.status === 'resolved') { multi = val.multi; val = val.val; }
             }
             
-            this.waiting = [];
-          },
-          trySatisfy: function(promiseVal, func) {
-            if (!U.exists(func)) func = null;
-            
-            // Turn the promise into its value, if possible
-            if (U.instanceOf(promiseVal, PACK.p.P) && promiseVal.satisifed) promiseVal = promiseVal.val;
-            
-            // Now dealing with either a value or an unsatisfied promise
-            if (U.instanceOf(promiseVal, PACK.p.P)) {
+            // PART 3: We now have a pending promise or a simple value. In case of the promise,
+            // attach ourself as a child. In the case of a simple value, immediately resolve.
+            if (U.isInstance(val, PACK.p.P)) {
               
-              promiseVal.waiting.push({ promise: this, func: func });
+              if (val.status === 'resolved') throw new Error('THis cannot beee');
+              val.children.push(this);
               return false;
               
             } else {
               
-              this.satisfy(this.getVal({
-                val: promiseVal,
-                task: func
-              }));
+              if (multi)  this.resolve.apply(this, val);
+              else        this.resolve(val);
               return true;
               
             }
+            
           },
-          getVal: function(params /* val, task, multi */) {
+          resolve: function(/* ... */) {
+            if (this.status !== 'pending') throw new Error('Cannot resolve; status is already "' + this.status + '"');
             
-            var val = U.param(params, 'val');
-            var task = U.param(params, 'task', null);
-            var multi = U.param(params, 'multi', false);
+            //this.multi = arguments.length !== 1;
+            var multi = arguments.length !== 1;
             
-            if (!task) return val;
-            
-            if (this.failTask) {
+            // Get the value taking `this.multi` and `this.func` into account
+            try {
               
-              try         { return multi ? task.apply(null, val) : task(val); }
-              catch(err)  { return this.failTask(err); };
-                
+              this.val = this.func
+                // ? (this.multi ? this.func.apply(null, arguments) : this.func(arguments[0]))
+                // : (this.multi ? U.toArray(arguments) : arguments[0]);
+                ? (multi ? this.func.apply(null, arguments) : this.func(arguments[0]))
+                : (multi ? U.toArray(arguments) : arguments[0]);
+              
+            } catch(err) {
+              
+              this.reject(err);
+              return false;
+              
             }
             
-            return multi ? task.apply(null, val) : task(val);
+            this.status = 'resolved';
+            for (var i = 0, len = this.children.length; i < len; i++) {
+              var p = this.children[i];
+              // if (this.multi) p.tryResolve.apply(p, this.val);
+              // else            p.tryResolve(this.val);
+              if (multi)  p.tryResolve.apply(p, this.val);
+              else        p.tryResolve(this.val);
+            }
+            this.children = []; // Release memory
             
           },
-          then: function(task) {
-            if (!task) throw new Error('Need to provide a `task` param');
+          reject: function(err) {
             
-            return this.satisfied
-              ? PACK.p.p(this.getVal({ val: this.val, task: task, multi: this.multiArgs }))
-              : new PACK.p.P({ val: this, func: task });
+            if (this.status !== 'pending') throw new Error('Cannot resolve; status is already "' + this.status + '"');
+            
+            if (this.recoveryFunc) {
+              
+              try {
+                var val = this.recoveryFunc(err);
+                this.recoveryFunc = null; // Avoid infinite loop
+              } catch(recoveryErr) {
+                // Update the error
+                // TODO: Extend the error instead of overwriting?
+                err = recoveryErr;
+              }
+              
+              // `this.recoveryFunc` is `null` if no error occurred in `this.recoveryFunc` 
+              if (!this.recoveryFunc) return this.tryResolve(val);
+              
+            }
+            
+            this.status = 'rejected';
+            this.val = err;
+            for (var i = 0, len = this.children.length; i < len; i++) {
+              var p = this.children[i];
+              p.reject(err);
+            }
+            this.children = []; // Release memory
             
           },
-          fail: function(failTask) {
-            
-            if (this.failTask) throw new Error('Multiple `fail` handlers');
-            
-            this.failTask = failTask;
-            return this;
-            
+          then: function(func) {
+            var p = new PACK.p.P({ func: func });
+            p.tryResolve(this);
+            return p;
+          },
+          thenArgs: function(func) {
+            var p = new PACK.p.P({ func: func, multi: true });
+            p.tryResolve(this);
+            return p;
+          },
+          fail: function(func) {
+            var p = new PACK.p.P({ recoveryFunc: func });
+            p.tryResolve(this);
+            return p;
           },
           done: function() {
-            // TODO: any unhandled errors are thrown
-            
-            this.failTask = function(err) {
-              console.log('DONE WITH ERROR');
-              console.error(err.stack);
-            };
-            
-          },
-          thenSeq: function(tasks) {
-            var promise = this;
-            var results = new tasks.constructor();
-            var lastKey = null;
-            
-            tasks.forEach(function(task, k) {
-              promise = promise.then(function(result) {
-                if (lastKey !== null) results[lastKey] = result;
-                lastKey = k;
-                return task(results);
-              });
-            });
-            
-            // Need to add the final promise value to `results`, and return `results`.
-            return promise.then(function(result) {
-              if (lastKey !== null) results[lastKey] = result;
-              return results;
-            });
+            if (U.isServer()) {
+              new PACK.p.P({ recoveryFunc: function(err) {
+                process.nextTick(function() {
+                  throw err;
+                });
+              }}).tryResolve(this);
+            } else {
+              new PACK.p.P({ recoveryFunc: function(err) {
+                setTimeout(function() {
+                  throw err;
+                }, 10);
+              }}).tryResolve(this);
+            }
           }
         };}
       })

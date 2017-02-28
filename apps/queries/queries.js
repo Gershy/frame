@@ -30,21 +30,21 @@ var package = new PACK.pack.Package({ name: 'queries',
 						};
 					},
 					fire: function() {
-						var prmQuery = new PACK.p.P({});
-						
-						var query = new XMLHttpRequest();
-						query.onreadystatechange = function() {
-							if (U.matches(query, { readyState: 4, status: 200 })) prmQuery.satisfy(JSON.parse(query.responseText));
-						};
-						
-						//req.open('POST', '', true);
-						//req.setRequestHeader('Content-Type', 'application/json');
-						//req.send(JSON.stringify(this.wireParams()));
+						var params = this.wireParams();
+						return new PACK.p.P({ custom: function(resolve, reject) {
+								
+							var query = new XMLHttpRequest();
 							
-						query.open('GET', '?_json=' + encodeURIComponent(JSON.stringify(this.wireParams())));
-						query.send();
-						
-						return prmQuery;
+							query.onreadystatechange = function() {
+								if (query.readyState !== 4) return;
+								if (query.status === 200)	resolve(JSON.parse(query.responseText));
+								else											reject(new Error('Ajax error: "' + query.statusText + '"'));
+							};
+							
+							query.open('GET', '?_json=' + encodeURIComponent(JSON.stringify(params)));
+							query.send();
+								
+						}});
 					}
 				};}
 			}),

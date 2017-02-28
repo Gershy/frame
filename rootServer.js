@@ -22,6 +22,16 @@ var package = new PACK.pack.Package({ name: 'server',
 	buildFunc: function() {
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
+			$readFile: function(filepath, isBinary) {
+				return new PACK.p.P({
+					custom: function(resolve, reject) {
+						fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
+							if (err)	reject(err);
+							else 			resolve(data);
+						});
+					}
+				});
+			},
 			Session: U.makeClass({ name: 'Session',
 				superclassName: 'QueryHandler',
 				methods: function(sc) { return {
@@ -49,10 +59,8 @@ var package = new PACK.pack.Package({ name: 'server',
 						var binary = ext[0] === '!';
 						if (binary) ext = ext.substr(1);
 						
-						return new PACK.p.P({ cb: fileSys.readFile.bind(fileSys), cbParams: [ filepath, binary ? 'binary' : 'utf8' ] })
-							.then(function(err, data) {
-								if (err) throw new Error('Error reading file', err);
-								
+						return PACK.server.$readFile(filepath, binary)
+							.then(function(data) {
 								return {
 									data: data,
 									encoding: ext,
@@ -61,7 +69,11 @@ var package = new PACK.pack.Package({ name: 'server',
 							});
 					},
 					respondToQuery: function(params /* address */) {
-						// Ensure no "session" param  was already included
+						/*
+						Simply call the super method, but with an included "session"
+						parameter. The "session" parameter is also a reserved
+						keyword, so if it has been provided an error is thrown.
+						*/
 						if ('session' in params) throw new Error('illegal "session" param');
 						
 						return sc.respondToQuery.call(this, params.clone({ session: this }));
@@ -254,36 +266,38 @@ var package = new PACK.pack.Package({ name: 'server',
 				if ('originalAddress' in params) throw new Error('used reserved "originalAddress" param');
 				params.originalAddress = U.toArray(params.address);
 				
-				session.respondToQuery(params).then(function(response) {
-					
-					// TODO: Sessions need to expire!!
-					
-					if (!response) response = {
-						code: 404,
-						binary: false,
-						encoding: 'text/plain',
-						data: 'not found'
-					};
-					
-					var transferEncoding = response.binary ? 'binary' : 'utf8';
-					res.writeHead(response.code ? response.code : 200, {
-						'Content-Type': response.encoding,
-						'Content-Length': Buffer.byteLength(response.data, transferEncoding)
+				session.respondToQuery(params)
+					.then(function(response) {
+						
+						// TODO: Sessions need to expire!!
+						
+						if (!response) response = {
+							code: 404,
+							binary: false,
+							encoding: 'text/plain',
+							data: 'not found'
+						};
+						
+						var transferEncoding = response.binary ? 'binary' : 'utf8';
+						res.writeHead(response.code ? response.code : 200, {
+							'Content-Type': response.encoding,
+							'Content-Length': Buffer.byteLength(response.data, transferEncoding)
+						});
+						
+						res.end(response.data, transferEncoding);
+						
+					})
+					.fail(function(err) {
+						
+						console.log('Failed response');
+						console.error(err.stack);
+						
+						return {
+							code: 400,
+							msg: err.message
+						};
+						
 					});
-					
-					res.end(response.data, transferEncoding);
-					
-				}).fail(function(err) {
-					
-					console.log('Failed response');
-					console.error(err.stack);
-					
-					return {
-						code: 400,
-						msg: err.message
-					};
-					
-				});
 				
 			}
 		};

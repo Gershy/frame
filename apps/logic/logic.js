@@ -366,7 +366,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 													var $username = view.par.children.username.$appValue();
 													var $password = view.par.children.password.$appValue()
 													
-													new P({ all: [ view.$getDoss(), $username, $password ], args: true })
+													new P({ args: [ view.$getDoss(), $username, $password ] })
 														.then(function(doss, username, password) {
 															return doss.$request({
 																command: 'createAccount',
@@ -422,7 +422,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 										{	
 											name: 'prerequisite',
 											titleDoss: rootDoss.getChild('static.text.prerequisiteAssocName'),
-											$follow: function(doss) { return doss.$getChild('prerequisites'); }
+											$follow: function(doss) {
+												console.log('Getting child from:', doss);
+												return doss.$getChild('prerequisites');
+											}
 										},
 										{	
 											name: 'challenger',
@@ -447,12 +450,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 					
 				]});
 				
-				view.$startRender().then(function() { console.log('Began rendering'); });
-				
 				window.view = view;	// Nice to make `root`/`view` vars available on client-side terminal
-				window.root = root; 
+				window.root = root;
 				
-			});
+				return view.$startRender().then(function(v) { console.log('Began rendering', v); });
+				
+			})
+			.done();
 		
 	}
 });

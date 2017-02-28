@@ -3,7 +3,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 	buildFunc: function() {
 		var namespace = {};
 		
-		var ensurePromise = PACK.p.p;
+		var ensurePromise = function(val) {
+			return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val });
+		};
 		var $null = ensurePromise(null);
 		var P = PACK.p.P;
 		var E = PACK.e.E;
@@ -60,12 +62,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 					},
 					$startRender: function() {
-						if (this.elem !== null) throw new Error('`$startRender` called while already rendering');
+						if (this.elem !== null) throw new Error('`$startRender` called while already rendering ' + this.constructor.title + ' (' + this.getAddress() + ')');
 						
-						return new P({ all: [ this, this.$createElem(), this.$getContainer() ], args: true })
+						return new P({ args: [ this, this.$createElem(), this.$getContainer() ] })
 							.then(function(pass, elem, container) {
 								pass.elem = elem;
-								pass.elem.listAttr({ class: [ '+name-' + this.name ] });
+								pass.elem.listAttr({ class: [ '+name-' + pass.name ] });
 								
 								if (container) container.append(elem);
 							});
@@ -169,16 +171,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return true;
 					},
 					$startRender: function() {
-						return new P({ all: [ this, sc.$startRender.call(this) ], args: true })
+						
+						return new P({ args: [ this, sc.$startRender.call(this) ] })
 							.then(function(pass) {
 								
-								if (!pass.doChildrenUpdates()) return null;
-								
-								return new P({
-									all: pass.children.map(function(child) {
-										return child.$startRender();
-									})
-								});
+								return pass.doChildrenUpdates()
+									? new P({ all: pass.children.map(function(child) {	return child.$startRender(); }) })
+									: $null;
 								
 							});
 					},
@@ -190,9 +189,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return ensurePromise(new E('<div class="setView"></div>'));
 					},
 					$updateElem: function() {
-						if (!this.doChildrenUpdates()) return $null;
-						
-						return new P({ all: this.children.map(function(child) { return child.$updateElem();	})});
+						return this.doChildrenUpdates()
+							? new P({ all: this.children.map(function(child) { return child.$updateElem();	})})
+							: $null;
 					}
 				}; }
 			}),
@@ -217,7 +216,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						access it.
 						*/
 						
-						return new P({ all: [ this, this.$getDoss(this.getTabDoss(view)) ], args: true })
+						return new P({ args: [ this, this.$getDoss(this.getTabDoss(view)) ] })
 							.then(function(pass, tabDoss) {
 								var tab = new E('<div class="tab ' + view.name + '">' + tabDoss.value + '</div>');
 								tab.handle('click', function() { pass.setActiveView(view); });
@@ -281,21 +280,19 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						sc.init.call(this, params);
 						this.rootElem = PACK.e.e(rootElem);
-						this.updateInterval = null;
+						this.interval = null;
 					},
 					$startRender: function() {
 						var pass = this;
 						
-						return new P({ all: [ this, sc.$startRender.call(this) ], args: true })
+						var p2 = sc.$startRender.call(this).then(function(v) { return v; });
+						
+						return new P({ args: [ this, p2 ] })
 							.then(function(pass) {
 								
 								var updateFunc = function() { pass.$updateElem().done(); };
-								
-								// Call immediately...
-								updateFunc();
-								
-								// And then once per second
-								this.updateInterval = setInterval(updateFunc, 1000);
+								updateFunc();	// Call immediately...
+								pass.interval = setInterval(updateFunc, 1000); // And then once per second
 								
 							});
 						
@@ -457,7 +454,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.action = U.param(params, 'action'); // Function which is called when the action occurs
 					},
 					$createElem: function() {
-						return new P({ all: [ this, this.$getDoss(this.titleDoss) ], args: true })
+						return new P({ args: [ this, this.$getDoss(this.titleDoss) ] })
 							.then(function(pass, doss) {
 								var elem = new E('<button type="button" class="actionView">' + doss.value + '</button>')
 								elem.handle('click', function() { pass.action(pass); });
@@ -503,7 +500,14 @@ var package = new PACK.pack.Package({ name: 'userify',
 										}
 									});
 								}
-							)})
+							)}),
+							
+							/*new PACK.userify.ActionView({ name: 'delete',
+								titleDoss: null,
+								action: function(view) {
+									console
+								}
+							})*/
 							
 						]}));
 						
@@ -533,7 +537,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						if (!U.exists(association)) return $doss;
 						
-						return new P({ all: [ $doss, association, doss2, $startView ], args: true })
+						return new P({ args: [ $doss, association, doss2, $startView ] })
 							.then(function(doss1, association, doss2) {
 								if (!U.exists(doss2)) throw new Error('If providing association need to also provide 2nd Dossier');
 								

@@ -32,6 +32,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 		
 		// Add classes
 		ret.update({
+			
 			/* QSchema */
 			QSchema: U.makeClass({ name: 'QSchema',
 				propertyNames: [ 'c', 'p', 'i' ],
