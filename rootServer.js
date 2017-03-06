@@ -18,7 +18,7 @@ var fileSys = require('fs');
 var config = require('./config.js');
 
 var package = new PACK.pack.Package({ name: 'server',
-  dependencies: [ 'p', 'queries' ],
+  dependencies: [ 'p', 'queries', 'quickDev' ],
 	buildFunc: function() {
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
@@ -303,18 +303,21 @@ var package = new PACK.pack.Package({ name: 'server',
 		};
 	},
 	runAfter: function() {
+		
 		var server = http.createServer(PACK.server.serverFunc);
 		
 		var port = process.env.PORT || 8000;
 		server.listen(port);
 		console.log('Listening on port: ' + port);
 		
+		/*
 		setInterval(function() {
 			var mem = process.memoryUsage();
 			var mb = mem.heapUsed / (1024 * 1024);
 			var perc = (mem.heapUsed / mem.heapTotal) * 100;
 			console.log('MEM', mb.toFixed(2).toString() + 'mb (' + perc.toFixed(1).toString() + '%)');
 		}, 90 * 1000);
+		*/
 	},
 });
 

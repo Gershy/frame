@@ -46,8 +46,7 @@ run on server or client side:
 				return true;
 			},
 			clone: function(props) {
-				var ret = {}.update(this);
-				return U.exists(props) ? ret.update(props) : ret;
+				return {}.update(this).update(props ? props : {});
 			},
 			instanceProperties: function() {
 				return this.propertyNames.reduce(function(ret, v1) {
@@ -301,7 +300,7 @@ global.U = {
 		var statik = U.param(params, 'statik', {});
 		var propertyNames = U.param(params, 'propertyNames', []);
 		
-		if (name in namespace) throw 'tried to overwrite class "' + name + '"';
+		if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
 		
 		var superclassName = U.param(params, 'superclassName', null);
 		if (superclassName !== null) {

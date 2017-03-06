@@ -18,7 +18,6 @@ var package = new PACK.pack.Package({ name: 'p',
             this.multi = U.param(params, 'multi', false);
             this.func = U.param(params, 'func', null);
             this.recoveryFunc = U.param(params, 'recoveryFunc', null);
-            this.snapshot = params;
             
             if (!U.exists(params)) {
               this.resolve(null);
@@ -198,15 +197,12 @@ var package = new PACK.pack.Package({ name: 'p',
           resolve: function(/* ... */) {
             if (this.status !== 'pending') throw new Error('Cannot resolve; status is already "' + this.status + '"');
             
-            //this.multi = arguments.length !== 1;
             var multi = arguments.length !== 1;
             
             // Get the value taking `this.multi` and `this.func` into account
             try {
               
               this.val = this.func
-                // ? (this.multi ? this.func.apply(null, arguments) : this.func(arguments[0]))
-                // : (this.multi ? U.toArray(arguments) : arguments[0]);
                 ? (multi ? this.func.apply(null, arguments) : this.func(arguments[0]))
                 : (multi ? U.toArray(arguments) : arguments[0]);
               
@@ -220,8 +216,6 @@ var package = new PACK.pack.Package({ name: 'p',
             this.status = 'resolved';
             for (var i = 0, len = this.children.length; i < len; i++) {
               var p = this.children[i];
-              // if (this.multi) p.tryResolve.apply(p, this.val);
-              // else            p.tryResolve(this.val);
               if (multi)  p.tryResolve.apply(p, this.val);
               else        p.tryResolve(this.val);
             }
@@ -238,8 +232,7 @@ var package = new PACK.pack.Package({ name: 'p',
                 var val = this.recoveryFunc(err);
                 this.recoveryFunc = null; // Avoid infinite loop
               } catch(recoveryErr) {
-                // Update the error
-                // TODO: Extend the error instead of overwriting?
+                // Update the error; TODO: Extend the error instead of overwriting?
                 err = recoveryErr;
               }
               
@@ -262,7 +255,7 @@ var package = new PACK.pack.Package({ name: 'p',
             p.tryResolve(this);
             return p;
           },
-          thenArgs: function(func) {
+          them: function(func) {
             var p = new PACK.p.P({ func: func, multi: true });
             p.tryResolve(this);
             return p;

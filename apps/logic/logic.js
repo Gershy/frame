@@ -83,7 +83,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 							var username = U.param(reqParams, 'username');
 							var password = U.param(reqParams, 'password');
 							
-							var user = this.getChild('users').filter({ 'username/value': username }, true);
+							var user = this.getChild('users').filter({ 'username/data': username }, true);
 							if (user === null) throw new Error('no user named "' + username + '"');
 							if (user.getChild('password').value !== password) throw new Error('Invalid password');
 							
@@ -141,17 +141,17 @@ var package = new PACK.pack.Package({ name: 'logic',
 					{ c: qd.QGen, p: { name: 'users',
 						_schema: 'logic.user.schema',
 						_initChild: 'logic.user.init',
-						prop: 'username/value'
+						prop: 'username/data'
 					}},
 					{	c: qd.QGen, p: { name: 'essays',
 						_schema: 'logic.essay.schema',
 						_initChild: 'logic.essay.init',
-						prop: 'id/value'
+						prop: 'id/data'
 					}},
 					{	c: qd.QGen, p: { name: 'theories',
 						_schema: 'logic.theory.schema',
 						_initChild: 'logic.theory.init',
-						prop: 'quickName/value'
+						prop: 'quickName/data'
 					}}
 				]})
 			},
@@ -197,17 +197,17 @@ var package = new PACK.pack.Package({ name: 'logic',
 					{ c: qd.QGen, 		p: { name: 'challengers',
 						_schema: 'logic.theory.related.schema',
 						_initChild: 'logic.theory.related.init',
-						prop: '@.quickName/value'
+						prop: '@.quickName/data'
 					}},
 					{ c: qd.QGen, 		p: { name: 'prerequisites',
 						_schema: 'logic.theory.related.schema',
 						_initChild: 'logic.theory.related.init',
-						prop: '@.quickName/value'
+						prop: '@.quickName/data'
 					}},
 					{ c: qd.QGen, 		p: { name: 'voters',
 						_schema: 'logic.theory.voter.schema',
 						_initChild: 'logic.theory.voter.init',
-						prop: '@user.username/value'
+						prop: '@user.username/data'
 					}}
 				]})
 			},
@@ -274,6 +274,183 @@ var package = new PACK.pack.Package({ name: 'logic',
 	runAfter: function() {
 		
 		if (U.isServer()) return;
+		
+		var appData = {
+			name: 'AMAZING APP',
+			snacks: {
+				cookie: {
+					name: 'cookie',
+					calories: 80
+				},
+				apple: {
+					name: 'apple',
+					calories: 30
+				},
+				peanut: {
+					name: 'peanut',
+					calories: 20
+				}
+			},
+			users: {
+				gmaes: {
+					name: {
+						user: 'gmaes',
+						first: 'Gersh',
+						last: 'Maes'
+					},
+					snacks: {
+						0: '~root.snacks.peanut',
+						1: '~root.snacks.peanut',
+						2: '~root.snacks.peanut',
+						3: '~root.snacks.peanut',
+						4: '~root.snacks.peanut'
+					},
+					age: 23
+				},
+				apast: {
+					name: {
+						user: 'apast',
+						first: 'Ari',
+						last: 'Past'
+					},
+					snacks: {
+						0: '~root.snacks.cookie',
+						1: '~root.snacks.cookie',
+						2: '~root.snacks.cookie'
+					},
+					age: 23
+				},
+				dsiege: {
+					name: {
+						user: 'dsiege',
+						first: 'Daniel',
+						last: 'Siegel'
+					},
+					snacks: {
+						0: '~root.snacks.apple'
+					},
+					age: 23
+				}
+			}
+		};
+		
+		var qd = PACK.quickDev;
+		
+		var snackOutline = new qd.Outline({ c: qd.DossierDict, i: [
+			{ c: qd.DossierValue, p: { name: 'name' } },
+			{ c: qd.DossierValue, p: { name: 'calories' } },
+		]});
+		var snackRefOutline = new qd.Outline({ c: qd.DossierRef });
+		var userOutline = new qd.Outline({ c: qd.DossierDict, i: [
+			
+			{ c: qd.DossierDict, p: { name: 'name' }, i: [
+				{ c: qd.DossierValue, p: { name: 'user' } },
+				{ c: qd.DossierValue, p: { name: 'first' } },
+				{ c: qd.DossierValue, p: { name: 'last' } },
+			]},
+			{ c: qd.DossierList, p: { name: 'snacks',
+				innerOutline: snackRefOutline,
+				prop: '~par/nextInd',
+			}},
+			{ c: qd.DossierValue, p: { name: 'age' } },
+			
+		]});
+		var appOutline = new qd.Outline({ c: qd.DossierDict, p: { name: 'app' }, i: [
+			
+			{ c: qd.DossierValue, p: { name: 'name' } },
+			{ c: qd.DossierList, p: { name: 'users',
+				innerOutline: userOutline,
+				prop: 'name.user/data',
+			}},
+			{ c: qd.DossierList, p: { name: 'snacks',
+				innerOutline: snackOutline,
+				prop: 'name.value',
+			}}
+			
+		]});
+		
+		/*
+		// HERE'S WHAT'S NEEDED!!!!
+		var $newUser = editor.editAdd({
+			par: appDoss.getChild('users'),
+			data: {
+				name: {	user: 'haha', first: 'Ha', last: 'Haa' },
+				snacks: {},
+				age: 10
+			}
+		});
+		var $newSnk1 = editor.editAdd({
+			par: $newUser,
+			data: '~root.snacks.apple'
+		});
+		var $newSnk2 = editor.editAdd({
+			par: $newUser,
+			data: '~root.snacks.apple'
+		});
+		*/
+		
+		var ed = new qd.Editor({});
+		
+		ed.$create(appOutline, appData)
+			.then(function(appDoss) {
+				console.log('GOT APP:', JSON.stringify(appDoss.getSimpleView(), null, 2));
+			})
+		
+		ed.resolveReqs();
+		
+		return;
+		
+		var add = ed.$add(appDoss.getChild('users'), appDoss.getChild('users').getChildOutline(), null, {
+			name: {
+				user: 'haha',
+				first: 'Ha',
+				last: 'Haa'
+			},
+			snacks: {
+				0: '~root.snacks.apple'
+			},
+			age: 10
+		})
+			.then(function(doss) {
+				console.log('WHOAAAA GOT DOSS', JSON.stringify(doss.getAddress()));
+			})
+		
+		ed.resolveReqs();
+		
+		console.log(add);
+		return;
+		
+		new qd.Edit({ add: [
+			{	par: appDoss.getChild('users'),
+				data: {
+					name: {
+						user: 'haha',
+						first: 'Ha',
+						last: 'Haa'
+					},
+					snacks: {
+						0: '~root.snacks.apple'
+					},
+					age: 10
+				}
+			}
+		] }).apply();
+		
+		new qd.Edit({ add: [
+			{	par: appDoss.getChild('users.haha.snacks'),
+				data: '~root.snacks.apple'
+			},
+			{	par: appDoss.getChild('users.haha.snacks'),
+				data: '~root.snacks.apple'
+			},
+			{	par: appDoss.getChild('users.haha.snacks'),
+				data: '~root.snacks.peanut'
+			}
+		] }).apply();
+		
+		console.log(JSON.stringify(appDoss.getSimpleView(), null, 2));
+		
+		return;
 		
 		var root = PACK.logic.queryHandler;
 		var qd = PACK.quickDev;
@@ -424,7 +601,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 											titleDoss: rootDoss.getChild('static.text.prerequisiteAssocName'),
 											$follow: function(doss) {
 												console.log('Getting child from:', doss);
-												return doss.$getChild('prerequisites');
+												//return doss.$getChild('prerequisites');
+												return doss.$load({ selection: qd.sel.all })
+													.then(function(loadedDoss) {
+														console.log('LOADED', loadedDoss);
+														return loadedDoss;
+													})
+													.fail(function(err) {
+														console.log('ERR:', err);
+													});
 											}
 										},
 										{	
@@ -450,11 +635,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 					
 				]});
 				
-				window.view = view;	// Nice to make `root`/`view` vars available on client-side terminal
+				// Nice to make `root` and `view` vars available on client-side terminal
+				window.view = view;
 				window.root = root;
 				
-				return view.$startRender().then(function(v) { console.log('Began rendering', v); });
+				return view.$startRender();
 				
+			})
+			.then(function() {
+				console.log('Began rendering');
 			})
 			.done();
 		
