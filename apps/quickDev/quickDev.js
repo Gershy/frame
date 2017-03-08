@@ -43,7 +43,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				return 'TEMP((' + id + '))';
 			},
 			
-			/* Outline */
+			/* Outline - define what a Dossier structure looks like */
 			Outline: U.makeClass({ name: 'Outline',
 				propertyNames: [ 'c', 'p', 'i' ],
 				methods: function(sc) { return {
@@ -67,138 +67,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							if (!U.isInstance(outline, PACK.quickDev.Outline))
 								outline = new PACK.quickDev.Outline(outline);
 							
-							this.i[outline.getName()] = outline;
+							this.i[outline.getProperty('name')] = outline;
 						}
 					},
-					getName: function() {
-						if (!this.p.name) throw new Error('Unnamed outline');
-						return this.p.name;
-					},
-					isListOutline: function() {
-						return 'name' in this.p;
-					},
-					actualize: function(params /* name, data, par */) {
-						var name = U.param(params, 'name', this.p.name);
-						var data = U.param(params, 'data');
-						var par = U.param(params, 'par', null);
-						
-						var reqNameSimple = function(doss, name) {
-							try {
-								
-								doss.updateName(name);
-								return true;
-								
-							} catch(err) { console.log('REQSIMP ERR:', err.message); return false; }
-						};
-						var reqNameCalculated = function(doss) {
-							try {
-								
-								var name = doss.par.getChildName(doss);
-								doss.updateName(name);
-								return true;
-								
-							} catch (err) { console.log('REQCALC ERR:', err.message); return false; }
-						};
-						var reqData = function(doss) {
-							try {
-								
-								if (!doss.hasResolvedName() || !doss.par || !doss.par.data) return false;
-								doss.data = doss.par.data[doss.name];
-								// TODO: UPDATE CHILDREN BASED ON DATA???
-								
-							} catch (err) { console.log('REQDATA ERR:', err.message); return false; }
-						};
-						
-						var recurseBuild = function(reqs, par, outline, name, data) {
-							// Builds the structured doss recursively
-							
-							var cls = U.deepGet({ root: C, name: outline.c });
-							var doss = new cls({ outline: outline }.update(outline.p));
-							
-							// Check how to add the name; either directly or with requirements
-							if (name) {
-								
-								doss.updateName(name);
-								
-							} else {
-								
-								if (outline.p.name) reqs.push(reqNameSimple.bind(null, doss, outline.p.name));
-								else 								reqs.push(reqNameCalculated.bind(null, doss));
-								
-							}
-							
-							// Check how to add the data; either directly or with requirements
-							if (data) {
-								
-								doss.data = data;
-								if (U.isObj(data, Object))
-									for (var k in data) recurseBuild(reqs, doss, doss.getChildOutline(k), k, data[k]);
-								
-							} else {
-								
-								throw new Error('reqData not implemented yet!!!');
-								reqs.push(reqData.bind(null, doss));
-								
-							}
-							
-							if (par) par.addChild(doss); // TODO: Mystery why this can't happen right in the beginning of `recurseBuild`???
-							return doss;
-							
-						};
-						
-						var reqs = [];
-						var doss = recurseBuild(reqs, par, this, name, data);
-						
-						// Resolve any requirements...
-						while (reqs.length) {
-							
-							var nextReqs = [];
-							
-							for (var i = 0, len = reqs.length; i < len; i++) if (!reqs[i]()) nextReqs.push(reqs[i]);
-							
-							if (nextReqs.length === reqs.length) {
-								console.log(reqs);
-								throw new Error('Can\'t resolve ' + reqs.length + ' requirement' + (reqs.length === 1 ? '' : 's'));
-							}
-							
-							console.log('REQ: Completed ' + (reqs.length - nextReqs.length) + ' / ' + reqs.length);
-							
-							reqs = nextReqs;
-						}
-						
-						return doss;
+					getProperty: function(name, def) {
+						if (name in this.p) return this.p[name];
+						if (!U.exists(def)) throw new Error('Couldn\'t get property "' + name + '"');
+						return def;
 					}
 					
 				};}
 			}),
 			
-			/* Edit */
+			/* Edit - make changes to Dossier structures */
 			Editor: U.makeClass({ name: 'Editor',
 				methods: function(sc, c) { return {
 					init: function(params /* add, rem */) {
-						this.add = U.param(params, 'add', []);
-						this.rem = U.param(params, 'rem', []);
-						this.status = 'initializing';
-						
 						this.curReqs = [];
-					},
-					doAdd: function(params /* par, data, name */) {
-						if (this.status !== 'initializing') throw new Error('Cannot add with status "' + this.status + '"');
-						
-						this.add.push({
-							par:	U.param(params, 'par'),
-							data:	U.param(params, 'data'),
-							name:	U.param(params, 'name', null)
-						});
-						return this;
-					},
-					doRem: function(params /* child */) {
-						if (this.status !== 'initializing') throw new Error('Cannot rem with status "' + this.status + '"');
-						
-						this.rem.push({
-							child: U.param(params, 'child')
-						});
-						return this;
 					},
 					
 					$create: function(outline, data) {
@@ -289,7 +174,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						
 						// Step 4: Attach to parent
-						if (par) par.addChild(doss); // TODO: Mystery why this can't happen right in the beginning of `applyAdd`???
+						if (par) par.addChild(doss); // TODO: Mystery why this can't happen right in the beginning of `$add`???
 						
 						return new PACK.p.P({ all: promises }).then(function() { return doss; });
 					},
@@ -297,10 +182,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var reqs = this.curReqs;
 						this.curReqs = [];
 						
-						reqs.forEach(this.tryResolveReqs(reqs)
-							? function(r) { r.resolve(); }
-							: function(r) { r.reject(new Error('Couldn\'t resolve requirements')); }
-						);
+						if (this.tryResolveReqs(reqs)) {
+							reqs.forEach(function(r) { r.resolve(); });
+						} else {
+							var err = new Error('Couldn\'t resolve requirements');
+							reqs.forEach(function(r) { r.reject(err); });
+							this.rollBackChanges();
+						}
 					},
 					tryResolveReqs: function(unresolved) {
 						// TODO: Need to consider reqs being added DURING resolveReqs
@@ -334,97 +222,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						
 						return true;
 					},
-					
-					applyAdd: function(reqs, par, outline, name, data) {
-						/*
-						Builds the structured doss recursively
-						*/
-						
-						// Step 1: Initialize the doss
-						var cls = U.deepGet({ root: C, name: outline.c });
-						var doss = new cls({ outline: outline }.update(outline.p));
-						
-						// Step 2: Add the name; either directly or with requirements
-						if (name) {
-							
-							doss.updateName(name);
-							
-						} else {
-							
-							if (outline.p.name) reqs.push(c.reqNameSimple.bind(null, doss, outline.p.name));
-							else 								reqs.push(c.reqNameCalculated.bind(null, doss));
-							
-						}
-						
-						// Step 3: Add the data; either directly or with requirements
-						if (data) {
-							
-							doss.data = data;
-							if (U.isObj(data, Object))
-								// Here's the recursive case...
-								for (var k in data) this.applyAdd(reqs, doss, doss.getChildOutline(k), k, data[k]);
-							
-						} else {
-							
-							throw new Error('reqData not implemented yet!!!');
-							// And here's the recursive case through requirements
-							reqs.push(c.reqData.bind(null, doss));
-							
-						}
-						
-						// Step 4: Attach to parent
-						if (par) par.addChild(doss); // TODO: Mystery why this can't happen right in the beginning of `applyAdd`???
-						
-					},
-					applyRem: function(reqs, child) {
-						throw new Error('not implemented');
-					},
-					apply: function() {
-						
-						this.status = 'processing';
-						
-						var reqs = [];
-						
-						for (var i = 0, len = this.add.length; i < len; i++) {
-							var a = this.add[i];
-							var par = a.par;		// Can't be null! Can't add ~root (only doss without a parent) this way
-							var name = a.name; 	// Can be null
-							var data = a.data;	// Can be null
-							var childOutline = par.getChildOutline(name);
-							
-							this.applyAdd(reqs, par, childOutline, name, data);
-						}
-						
-						for (var i = 0, len = this.rem.length; i < len; i++) {
-							var r = this.rem[i];
-							var child = r.child;
-							
-							this.applyRem(reqs, child);
-						}
-						
-						console.log('REQ: completed with ' + reqs.length + ' requirement' + (reqs.length === 1 ? '' : 's'));
-						
-						// Resolve any requirements...
-						while (reqs.length) {
-							
-							var nextReqs = [];
-							
-							for (var i = 0, len = reqs.length; i < len; i++)
-								// Push every failed requirement to the next iteration
-								if (!reqs[i]()) nextReqs.push(reqs[i]);
-							
-							if (nextReqs.length === reqs.length) {
-								console.log(reqs);
-								throw new Error('Can\'t resolve ' + reqs.length + ' requirement' + (reqs.length === 1 ? '' : 's'));
-							}
-							
-							console.log('REQ: Completed ' + (reqs.length - nextReqs.length) + ' / ' + reqs.length);
-							
-							reqs = nextReqs;
-						}
-						
-						this.status = 'success';
-						
+					rollBackChanges: function() {
+						throw new Error('not implemented ur data is corrupt haha');
 					}
 				};},
 				statik: {
@@ -620,13 +419,15 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			DossierList: U.makeClass({ name: 'DossierList',
 				superclassName: 'DossierSet',
 				methods: function(sc) { return {
-					init: function(params /* outline, innerOutline, prop, populate */) {
+					init: function(params /* outline, innerOutline, prop */) {
 						sc.init.call(this, params);
 						
 						this.innerOutline = U.param(params, 'innerOutline');
 						this.prop = U.param(params, 'prop', '~par/nextInd');
-						this.populate = U.param(params, 'populate', null);
 						this.nextInd = 0;
+						
+						// Convert outline params to Outline
+						if (U.isObj(this.innerOutline, Object)) this.innerOutline = new PACK.quickDev.Outline(this.innerOutline);
 					},
 					
 					// Child methods
@@ -661,6 +462,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 				};}
 			}),
+			
+			/* DossierValue */
 			DossierValue: U.makeClass({ name: 'DossierValue',
 				superclassName: 'Dossier',
 				methods: function(sc) { return {
@@ -674,21 +477,88 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					
 				};}
 			}),
-			DossierRef: U.makeClass({ name: 'DossierRef',
+			DossierString: U.makeClass({ name: 'DossierString',
 				superclassName: 'DossierValue',
 				methods: function(sc) { return {
 					init: function(params /* outline */) {
 						sc.init.call(this, params);
+					}
+				}; }
+			}),
+			DossierInt: U.makeClass({ name: 'DossierInt',
+				superclassName: 'DossierValue',
+				methods: function(sc) { return {
+					init: function(params /* outline */) {
+						sc.init.call(this, params);
+					}
+				}; }
+			}),
+			DossierRef: U.makeClass({ name: 'DossierRef',
+				superclassName: 'DossierString',
+				methods: function(sc) { return {
+					init: function(params /* outline */) {
+						sc.init.call(this, params);
 					},
-					
+					getRefAddress: function() {
+						return this.outline.getProperty('baseAddress', '~root') + '.' + this.data;
+					},
 					dereference: function() {
-						return this.getChild(this.data);
+						return this.getChild(this.getRefAddress());
+					},
+					getSimpleView: function() {
+						return 'GET: ' + this.getRefAddress();
 					}
 				}; }
 			}),
 			
-			//================----------------==================
-			//================----------------==================
+			/* Versioner */
+			Versioner: U.makeClass({ name: 'Versioner',
+				methods: function(sc) { return {
+					init: function(params /* versions */) {
+						this.versions = U.param(params, 'versions');
+					},
+					addVersion: function(params /* name, detect, apply */) {
+						this.versions.push({
+							name: 	U.param(params, 'name'),
+							detect: U.param(params, 'detect'),
+							$apply: U.param(params, '$apply')
+						});
+					},
+					$getDoss: function() {
+						var $dossData = new PACK.p.P({ val: { versionName: 'empty-state', doss: null } });
+						
+						this.versions.forEach(function(ver) {
+							
+							$dossData = $dossData.then((function(ver, dossData) {
+								
+								var versionName = dossData.versionName;
+								var doss = dossData.doss;
+								
+								if (ver.detect(doss)) {
+									
+									console.log('Transitioning from version "' + versionName + '" to "' + ver.name + '"...');
+									return ver.$apply(doss).then(function(doss) {
+										console.log('Success!');
+										return { versionName: ver.name, doss: doss };
+									});
+									
+								} else {
+									
+									console.log('Skipping version "' + ver.name + '".');
+									return dossData;
+									
+								}
+								
+							}).bind(null, ver));
+							
+						});
+						
+						return $dossData.then(function(dossData) { return dossData.doss });
+						
+					}
+				};}
+			}),
+			
 			//================----------------==================
 			//================----------------==================
 			//================----------------==================

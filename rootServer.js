@@ -39,11 +39,10 @@ var package = new PACK.pack.Package({ name: 'server',
 						this.ip = U.param(params, 'ip');
 						this.id = U.id(PACK.server.Session.NEXT_ID++);
 						this.appName = null;
-						this.queryHandler = null;
 						this.userData = {};
 					},
 					getNamedChild: function(name) {
-						if (name === 'app') return this.queryHandler;
+						if (name === 'app') return U.deepGet({ root: PACK, name: [ this.appName, 'queryHandler' ] });
 						
 						return null;
 					},
@@ -141,11 +140,8 @@ var package = new PACK.pack.Package({ name: 'server',
 								}
 							}
 							
-							if (!('queryHandler' in PACK[appName])) throw new Error('app "' + appName + '" is missing queryHandler');
 						}
 						
-						this.queryHandler = PACK[appName].queryHandler;
-						if (!(this.queryHandler)) throw new Error('Bad queryHandler in app "' + appName + '"');
 						this.appName = appName;
 						PACK.server.Session.SESSIONS[this.ip] = this;
 						

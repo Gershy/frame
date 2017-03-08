@@ -15,6 +15,8 @@ var migrations = new qd.QMigration({ name: 'head',
 		};
 	}
 });
+
+if (false)
 migrations.chain([
 	new qd.QMigration({ name: 'add default data',
 		

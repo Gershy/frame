@@ -20,20 +20,6 @@ run on server or client side:
 
 [	{	target: Object.prototype,
 		props: {
-			simp: function() {
-				var ret = [];
-				for (var k in this) {
-					var val = this[k];
-					if (val !== null && val.constructor !== String && val.constructor !== Number && val.constructor !== Boolean) {
-						if (typeof val === 'undefined') val = 'undefined';
-						else 							val = ('title' in val.constructor) ? val.constructor.title : val.constructor.name;
-					} else {
-						if (val && val.constructor === String && val.length > 30) val = val.substr(0, 30) + '...';
-					}
-					ret.push(k + ': ' + val);
-				}
-				return '{ ' + ret.join(', ') + ' }';
-			},
 			update: function(obj) {
 				for (var k in obj) this[k] = obj[k];
 				return this;
@@ -103,7 +89,7 @@ run on server or client side:
 			},
 		},
 	},
-	{ 	target: String.prototype,
+	{	target: String.prototype,
 		props: {
 			contains: function(str) {
 				return this.indexOf(str) !== -1;
@@ -125,11 +111,21 @@ run on server or client side:
 			}
 		},
 	},
-	{ 	target: Array.prototype,
+	{	target: Array.prototype,
 		props: {
 			contains: function(val) {
 				return this.indexOf(val) !== -1;
 			},
+			any: function(func) {
+				for (var i = 0, len = this.length; i < len; i++)
+					if (func(this[i])) return true;
+				return false;
+			},
+			all: function(func) {
+				for (var i = 0, len = this.length; i < len; i++)
+					if (!func(this[i])) return false;
+				return true;
+			}
 		},
 	},
 ].forEach(function(obj) {
@@ -272,13 +268,14 @@ global.U = {
 		var root = U.param(params, 'root');
 		var createIfNone = U.param(params, 'createIfNone', false);
 		
-		var comps = name.length === 0 ? [] : name.split('.');
+		if (!U.isObj(name, Array)) name = name ? name.split('.') : [];
+		
 		var ptr = root;
-		for (var i = 0, len = comps.length; i < len; i++) {
-			var c = comps[i];
+		for (var i = 0, len = name.length; i < len; i++) {
+			var c = name[i];
 			if (!(c in ptr)) {
 				if (createIfNone)	ptr[c] = {};
-				else 				return null;
+				else 							return null;
 			}
 			ptr = ptr[c];
 		}
@@ -614,7 +611,7 @@ global.PACK.pack = {
 				this.depErrorChecking[script.src] = 'loaded';
 				
 				this.receivedDeps++;
-				if (this.receivedDeps >= this.neededDeps) {
+				if (this.receivedDeps === this.neededDeps) {
 					// Clean up the ugly properties that were attached to the dom
 					delete script.__waiting[this.name];
 					if (U.isEmptyObj(script.__waiting)) delete script.__waiting;
@@ -630,7 +627,9 @@ global.PACK.pack = {
 				*/
 				if (this.name in PACK) throw 'double-loaded dependency "' + this.name + '"';
 				
-				PACK[this.name] = this.buildFunc(this.name);
+				var args = [ this.name ];
+				this.dependencies.forEach(function(dpName) { args.push(PACK[dpName]); });
+				PACK[this.name] = this.buildFunc.apply(null, args);
 				console.log('Built "' + this.name + '"');
 				
 				if (!U.isServer()) {

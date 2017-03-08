@@ -2,6 +2,22 @@ var package = new PACK.pack.Package({ name: 'p',
   dependencies: [ ],
   buildFunc: function() {
     return {
+      getValueData: function(v) {
+        if (!U.isInstance(v, PACK.p.P))
+          return { type: 'resolved', multi: false, value: v };
+        
+        var multi = v.multi;
+        while (U.isInstance(v, PACK.p.P) && v.status !== 'pending') {
+          if (v.status === 'rejected') return { type: 'rejected', value: v.val };
+          if (v.status === 'resolved') { multi = v.multi; v = v.val; }
+        }
+        
+        return {
+          type: U.isInstance(v, PACK.p.P) ? 'pending' : 'resolved',
+          multi: multi,
+          value: v
+        };
+      },
       $p: function(val) {
         /*
         Convert a value into a promise.
@@ -76,6 +92,10 @@ var package = new PACK.pack.Package({ name: 'p',
               
             } else if ('all' in params) {     // Allow a list of promises to be treated as a single promise
               
+              // TODO: all-style and args-style code is basically copy-pasted
+              // Differences are:
+              // - all-style is always non-multi, args-style is always multi
+              // - all-style allows for arrays and objects, args-style is array only
               var all = U.param(params, 'all');
               var results = new all.constructor(); // This allows the same code to process both arrays and objects
               var num = U.length(all);
@@ -135,30 +155,25 @@ var package = new PACK.pack.Package({ name: 'p',
             
             // PART 1: Ensure that multiple values are handled
             
-            multi = arguments.length !== 1;
-            
-            if (multi) {
+            var args = [];
+            var pending = false; // Track if there are any pending arguments
+            for (var i = 0, len = arguments.length; i < len; i++) {
+              var valueData = PACK.p.getValueData(arguments[i]);
               
-              // In the case of multiple arguments we'd prefer to use a simple
-              // value, and only resort to an args-style promise if necessary
-              var val = [];
-              for (var i = 0, len = arguments.length; i < len; i++) {
-                var v = arguments[i];
-                if (U.isInstance(v, PACK.p.P)) {
-                  
-                  // Get the value of a resolved promise
-                  if (v.status === 'resolved') val.push(v.val);
-                  // Reject immediately if one of the promises is rejected
-                  else if (v.status === 'rejected') return this.reject(v.val);
-                  // Immediately use an args-style promise if any of the promises are pending
-                  else if (v.status === 'pending') { val = new PACK.p.P({ args: U.toArray(arguments) }); break; }
-                  
-                } else {
-                  
-                  // The value is already a non-promise value, so just use it
-                  val.push(v);
-                  
-                }
+              if (valueData.type === 'pending')   pending = true;
+              if (valueData.type === 'rejected')  this.reject(valueData.value);
+              
+              args.push(valueData);
+            }
+            
+            if (args.length !== 1) {
+              
+              // If there are pending arguments, need to use an args-style promise
+              // If there are no pending arguments, use a simple array of values
+              if (pending) {
+                var val = new PACK.p.P({ args: args.map(function(a) { return a.value; }) });
+              } else {
+                var val = args.map(function(a) { return a.value; });
               }
               
             } else {
@@ -169,27 +184,21 @@ var package = new PACK.pack.Package({ name: 'p',
             }
             
             // PART 2: Ensure that we are either working with an unresolved promise, or a simple value
-            
-            while (U.isInstance(val, PACK.p.P) && val.status !== 'pending') {
-              // Rejected promises should cause this promise to reject instead of resolve
-              if (val.status === 'rejected') return this.reject(val.val);
-              // Resolved promises should be treated as their simple value; ensure multi is remembered as well
-              if (val.status === 'resolved') { multi = val.multi; val = val.val; }
-            }
-            
-            // PART 3: We now have a pending promise or a simple value. In case of the promise,
-            // attach ourself as a child. In the case of a simple value, immediately resolve.
-            if (U.isInstance(val, PACK.p.P)) {
+            var valueData = PACK.p.getValueData(val);
+            if (valueData.type === 'rejected') {
               
-              if (val.status === 'resolved') throw new Error('THis cannot beee');
-              val.children.push(this);
-              return false;
+              return this.reject(valueData.val);
               
-            } else {
+            } else if (valueData.type === 'resolved') {
               
-              if (multi)  this.resolve.apply(this, val);
-              else        this.resolve(val);
+              if (this.multi) this.resolve.apply(this, valueData.value);
+              else            this.resolve(valueData.value);
               return true;
+              
+            } else if (valueData.type === 'pending') {
+              
+              valueData.value.children.push(this);
+              return false;
               
             }
             
@@ -216,15 +225,19 @@ var package = new PACK.pack.Package({ name: 'p',
             this.status = 'resolved';
             for (var i = 0, len = this.children.length; i < len; i++) {
               var p = this.children[i];
-              if (multi)  p.tryResolve.apply(p, this.val);
-              else        p.tryResolve(this.val);
+              if (p.multi)  p.tryResolve.apply(p, this.val);
+              else          p.tryResolve(this.val);
             }
             this.children = []; // Release memory
             
           },
           reject: function(err) {
             
-            if (this.status !== 'pending') throw new Error('Cannot resolve; status is already "' + this.status + '"');
+            if (this.status !== 'pending') {
+              throw this.status === 'resolved'
+                ? new Error('Cannot resolve; status is already "resolved"')
+                : this.val;
+            }
             
             if (this.recoveryFunc) {
               
