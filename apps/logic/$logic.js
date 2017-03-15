@@ -2,6 +2,7 @@ var qd = PACK.quickDev;
 var lg = PACK.logic;
 var root = lg.queryHandler;
 
+if (false)
 var migrations = new qd.QMigration({ name: 'head',
 	apply: function(data) {
 		if (data) return { msg: 'pre-existing state', data: data };
@@ -83,6 +84,7 @@ migrations.chain([
 	})
 ]);
 
+/*
 var reset = true;
 root.getState(function(state) {
 	if (state) {
@@ -96,3 +98,4 @@ root.getState(function(state) {
 	var app = migrations.run(reset ? null : state);
 	app.start();
 });
+*/

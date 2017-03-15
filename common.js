@@ -178,18 +178,6 @@ global.U = {
 		
 		return U.getSerializable(p)
 	},
-	pawam: function(params, name, def) {
-		/*
-		Wire-param. Used to reconstitute an object that was sent over
-		the wire. If U.param doesn't return def, use U.wireGet
-		to rebuild the value.
-		*/
-		var p = U.param(params, name, def);
-		
-		if (p === def) return def;
-		
-		return U.wireGet(p);
-	},
 	$param: function(params, name, def) {
 		/*
 		Promise-param. Returns a promise. Requires `PACK.p`.
@@ -283,7 +271,7 @@ global.U = {
 	},
 	
 	// Class utility
-	makeClass: function(params /* namespace, name, superclassName, propertyNames, methods, statik */) {
+	makeClass: function(params /* namespace, name, superclass, superclassName, propertyNames, methods, statik */) {
 		var namespace = U.param(params, 'namespace', global.C);
 		
 		if (namespace.constructor === String) {
@@ -300,14 +288,14 @@ global.U = {
 		if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
 		
 		var superclassName = U.param(params, 'superclassName', null);
-		if (superclassName !== null) {
+		if (superclassName) {
 			
 			if (superclassName in namespace)	var superclass = namespace[superclassName];
 			else 															throw new Error('bad superclass name: "' + superclassName + '"');
 			
 		} else {
 			
-			var superclass = null;
+			var superclass = U.param(params, 'superclass', null);
 			
 		}
 		
@@ -368,13 +356,17 @@ global.U = {
 		*/
 		if (!U.exists(arr)) arr = [];
 		
-		var ind = arr.indexOf(obj);
+		var ind = arr.indexOf(obj); // This is O(n^2) complexity :(
 		if (~ind) return { arr: arr, ind: ind };
 		
 		ind = arr.length;
 		arr.push(obj);
 		
+		/*
 		if (U.isClassedObj(obj)) {
+			
+			throw new Error('Cannot wirePut fancy classed objects!');
+			
 			
 			var ps = obj.propertyNames;
 			var data = {};
@@ -384,20 +376,20 @@ global.U = {
 			}
 			arr[ind] = { __c: obj.constructor.title, p: data };
 		
-		} else if (U.isObj(obj)) {
+		} else
+		*/
+		
+		if (U.isObj(obj, Object)) {
 			
-			if (obj.constructor === Object) {
+			for (var k in obj) obj[k] = U.wirePut(obj[k], arr).ind;
 				
-				for (var k in obj) {
-					if (k === '_c') throw new Error('Illegal key: "_c"');
-					obj[k] = U.wirePut(obj[k], arr).ind;
-				}
+		} else if (U.isObj(obj, Array)) {
 				
-			} else if (obj.constructor === Array) {
+			for (var i = 0; i < obj.length; i++) obj[i] = U.wirePut(obj[i], arr).ind;
 				
-				for (var i = 0; i < obj.length; i++) obj[i] = U.wirePut(obj[i], arr).ind;
-				
-			}
+		} else if (U.isInstance(obj, Object)) { // If not an Object or Array, but an instance of Object, it's too fancy
+			
+			throw new Error('Cannot `wirePut` fancy classed object (' + obj.constructor.title || obj.constructor.name + ')');
 			
 		}
 		
@@ -409,59 +401,27 @@ global.U = {
 		if (!U.exists(built)) built = U.toArray(arr.length);
 		if (!U.exists(ind)) ind = 0;
 		
-		// This is a dumb hack to deal with the actual value being
-		// null: put EVERY value in an array lol
+		// This is a dumb hack to deal with the actual value being null: put
+		// EVERY SINGLE value in an array lol
 		// TODO: Is this even that bad?
 		if (built[ind] !== null) return built[ind][0];
 		
 		var d = arr[ind];
 		var value = null;
 		
-		if (U.isObj(d)) {
+		if (U.isObj(d, Object)) {
 			
-			if (d.constructor === Object) {
-				
-				if ('__c' in d) {
-					
-					// TODO: This is bad. In circular cases, need to have the object
-					// already within "built", but that means it has to be constructed
-					// before its parameters are known. Because of cases involving
-					// mandatory parameters, need to construct "dud" parameters.
-					
-					// Get constructor
-					var cls = U.deepGet({ root: global.C, name: d.__c });
-					
-					// Construct dud parameters
-					var dudParams = {};
-					var ps = cls.prototype.propertyNames;
-					for (var i = 0, len = ps.length; i < len; i++) dudParams[ps[i]] = null;
-					
-					// value is a classed object
-					built[ind] = [ new cls(dudParams) ];
-					
-					// Construct actual parameters, and call init
-					var params = {};
-					for (var k in d.p) params[k] = U.wireGet(arr, d.p[k], built);
-					built[ind][0].init(params);
-					return built[ind][0];
-					
-				} else {
-					
-					// value is an ordinary object
-					built[ind] = [ {} ];
-					for (var k in d) built[ind][0][k] = U.wireGet(arr, d[k], built);
-					return built[ind][0];
-					
-				}
-					
-			} else if (d.constructor === Array) {
-				
-				// value is an array
-				built[ind] =  [ [] ];
-				for (var i = 0; i < d.length; i++) built[ind][0].push(U.wireGet(arr, d[i], built));
-				return built[ind][0];
-				
-			}
+			// value is an ordinary object
+			built[ind] = [ {} ];
+			for (var k in d) built[ind][0][k] = U.wireGet(arr, d[k], built);
+			return built[ind][0];
+			
+		} else if (U.isObj(d, Array)) {
+			
+			// value is an array
+			built[ind] =  [ [] ];
+			for (var i = 0; i < d.length; i++) built[ind][0].push(U.wireGet(arr, d[i], built));
+			return built[ind][0];
 			
 		}
 		

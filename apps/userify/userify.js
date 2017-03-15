@@ -10,7 +10,23 @@ var package = new PACK.pack.Package({ name: 'userify',
 		var P = PACK.p.P;
 		var E = PACK.e.E;
 		
-		return {
+		var ret = {}
+		
+		ret.update({
+			
+			View: U.makeClass({ name: 'View', superclassName: 'Dossier',
+				methods: function(sc, c) { return {
+					init: function(params /* outline, folder */) {
+						sc.init.call(this, params);
+						
+						this.folder = U.param(params, 'folder');
+					}
+				};}
+			})
+			
+		});
+		
+		ret.update({} || {
 			View: U.makeClass({ name: 'View', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* name, doss */) {
@@ -568,7 +584,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			})
-		};
+		});
+		
+		return ret;
 	}
 });
 package.build();

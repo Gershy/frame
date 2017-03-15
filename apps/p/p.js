@@ -1,7 +1,9 @@
 var package = new PACK.pack.Package({ name: 'p',
   dependencies: [ ],
   buildFunc: function() {
-    return {
+    var ret = {}
+    
+    ret.update({
       getValueData: function(v) {
         if (!U.isInstance(v, PACK.p.P))
           return { type: 'resolved', multi: false, value: v };
@@ -35,11 +37,14 @@ var package = new PACK.pack.Package({ name: 'p',
             this.func = U.param(params, 'func', null);
             this.recoveryFunc = U.param(params, 'recoveryFunc', null);
             
-            if (!U.exists(params)) {
-              this.resolve(null);
-            } else if ('val' in params) {
+            if ('val' in params) {
               
-              this.tryResolve(params.val);
+              if (U.isInstance(params.val, this.constructor)) { // `this.constructor` instead of `PACK.p.P` simply just to all the addition of $null before `PACK.p.P` exists
+                this.tryResolve(params.val);
+              } else {
+                this.status = 'resolved';
+                this.val = params.val;
+              }
               
             } else if ('cb' in params) {
               
@@ -148,6 +153,11 @@ var package = new PACK.pack.Package({ name: 'p',
               var timeout = U.param(params, 'timeout');
               setTimeout(this.resolve.bind(this, null), timeout);
             
+            } else if ('err' in params) {
+              
+              this.status = 'rejected';
+              this.val = params.err;
+              
             }
             
           },
@@ -161,7 +171,7 @@ var package = new PACK.pack.Package({ name: 'p',
               var valueData = PACK.p.getValueData(arguments[i]);
               
               if (valueData.type === 'pending')   pending = true;
-              if (valueData.type === 'rejected')  this.reject(valueData.value);
+              if (valueData.type === 'rejected')  return this.reject(valueData.value);
               
               args.push(valueData);
             }
@@ -233,11 +243,10 @@ var package = new PACK.pack.Package({ name: 'p',
           },
           reject: function(err) {
             
-            if (this.status !== 'pending') {
-              throw this.status === 'resolved'
-                ? new Error('Cannot resolve; status is already "resolved"')
-                : this.val;
-            }
+            if (this.status === 'resolved')
+              throw new Error('Cannot reject; status is already "resolved"')
+            else if (this.status === 'rejected')
+              throw this.val;
             
             if (this.recoveryFunc) {
               
@@ -273,6 +282,9 @@ var package = new PACK.pack.Package({ name: 'p',
             p.tryResolve(this);
             return p;
           },
+          insert: function(func) {
+            return this.then(function(v) { func(v); return v; });
+          },
           fail: function(func) {
             var p = new PACK.p.P({ recoveryFunc: func });
             p.tryResolve(this);
@@ -280,22 +292,31 @@ var package = new PACK.pack.Package({ name: 'p',
           },
           done: function() {
             if (U.isServer()) {
+              
               new PACK.p.P({ recoveryFunc: function(err) {
                 process.nextTick(function() {
                   throw err;
                 });
               }}).tryResolve(this);
+              
             } else {
+              
               new PACK.p.P({ recoveryFunc: function(err) {
-                setTimeout(function() {
-                  throw err;
-                }, 10);
+                console.error(err.stack);
+                //setTimeout(function() { throw err; }, 10);
               }}).tryResolve(this);
+              
             }
           }
         };}
       })
-    };
+    });
+    
+    ret.update({
+      $null: new ret.P({ val: null })
+    });
+    
+    return ret;
   }
 });
 package.build();

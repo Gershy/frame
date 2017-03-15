@@ -32,6 +32,39 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 				});
 			},
+			ResponseData: U.makeClass({ name: 'ResponseData',
+				methods: function(sc) { return {
+					init: function(params /* data, code, encoding, binary */) {
+						this.code = U.param(params, 'code', 200);
+						this.encoding = U.param(params, 'encoding', 'text/json');
+						this.binary = U.param(params, 'binary', false);
+						this.data = U.param(params, 'data');
+						this.serialized = U.param(params, 'serialized', []);
+						
+						if (this.encoding === 'text/json' && !U.isObj(this.data, String))
+							this.data = JSON.stringify(this.data);
+					},
+					endResponse: function(res) {
+						var data = this.data;
+						
+						if (this.serialized.length)
+							data = {
+								data: data,
+								serialized: PACK.queries.serialize(data, this.serialized)
+							};
+						
+						if (this.encoding === 'text/json' && !U.isObj(this.data, String))
+							data = JSON.stringify(data);
+						
+						var transferEncoding = this.binary ? 'binary' : 'utf8';
+						res.writeHead(this.code ? this.code : 200, {
+							'Content-Type': this.encoding,
+							'Content-Length': Buffer.byteLength(data, transferEncoding)
+						});
+						res.end(data, transferEncoding);
+					}
+				};}
+			}),
 			Session: U.makeClass({ name: 'Session',
 				superclassName: 'QueryHandler',
 				methods: function(sc) { return {
@@ -60,14 +93,14 @@ var package = new PACK.pack.Package({ name: 'server',
 						
 						return PACK.server.$readFile(filepath, binary)
 							.then(function(data) {
-								return {
+								return new PACK.server.ResponseData({
 									data: data,
 									encoding: ext,
 									binary: binary
-								};
+								});
 							});
 					},
-					respondToQuery: function(params /* address */) {
+					$respondToQuery: function(params /* address */) {
 						/*
 						Simply call the super method, but with an included "session"
 						parameter. The "session" parameter is also a reserved
@@ -75,9 +108,21 @@ var package = new PACK.pack.Package({ name: 'server',
 						*/
 						if ('session' in params) throw new Error('illegal "session" param');
 						
-						return sc.respondToQuery.call(this, params.clone({ session: this }));
+						params.session = this;
+						return sc.$respondToQuery.call(this, params)
+							.then(function(response) {
+								/*
+								The sessions children all reply with objects. The session is
+								responsible for stringifying those objects, and clarifying that
+								they are in json format.
+								*/
+								
+								return U.isInstance(response, PACK.server.ResponseData)
+									? response
+									: new PACK.server.ResponseData({ data: response });
+							});
 					},
-					handleQuery: function(params /* session, url */) {
+					$handleQuery: function(params /* session, url */) {
 						/*
 						The session itself handles ordinary file requests. Files are
 						referenced using params.url, an array of url components.
@@ -112,11 +157,12 @@ var package = new PACK.pack.Package({ name: 'server',
 						if (url[url.length - 1].contains('.'))
 							return this.getFileContents(url.join('/'))
 								.fail(function(err) {
-									return {
+									return new PACK.server.ResponseData({
+										code: 404,
 										data: 'File "' + filepath + '" not found',
 										encoding: 'text/plain',
 										binary: false
-									};
+									});
 								});
 						
 						// A mode-less request to the session just means to serve the html
@@ -173,7 +219,7 @@ var package = new PACK.pack.Package({ name: 'server',
 								return html;
 							})
 							.fail(function(err) {
-								return {
+								return new PACK.server.ResponseData({
 									data: [
 										'<!DOCTYPE html>',
 										'<html>',
@@ -185,24 +231,9 @@ var package = new PACK.pack.Package({ name: 'server',
 									].join(''),
 									encoding: 'text/html',
 									binary: false
-								}
+								})
 							});
 						
-					},
-					processChildResponse: function(response) {
-						/*
-						The sessions children all reply with objects. The session is
-						responsible for stringifying those objects, and clarifying that
-						they are in json format.
-						*/
-						if (!('code' in response)) response.code = 0;
-						
-						if (response.constructor !== String) response = JSON.stringify(response);
-						return {
-							data: response,
-							encoding: 'text/json',
-							binary: false
-						};
 					},
 				}},
 				statik: {
@@ -247,54 +278,45 @@ var package = new PACK.pack.Package({ name: 'server',
 				queryUrl = queryUrl.split('/').filter(function(e) { return e.length > 0; });
 				if (queryUrl.length === 0) queryUrl.push(config.defaultApp);
 				
-				var ip = req.headers['x-forwarded-for'];
-				if (!ip) ip = req.connection.remoteAddress;
-				ip = ip.replace(/^[0-9.]/g, '');
+				var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/^[0-9.]/g, '')
 				
 				var session = PACK.server.Session.GET_SESSION(ip);
 				
-				var params = queryParams.update({ url: queryUrl });
+				var params = PACK.queries.wireToParams(queryParams);
+				
+				// Ensure there is a "url" property
+				params.update({ url: queryUrl });
+				
+				// Ensure there is an "address" property
 				if (!('address' in params)) params.address = [];
-					
+				
+				// Ensure the "address" property is an array
 				if (params.address.constructor === String)
-					params.address = params.address.length > 0 ? params.address.split('.') : [];
+					params.address = params.address ? params.address.split('.') : [];
 				
-				if ('originalAddress' in params) throw new Error('used reserved "originalAddress" param');
-				params.originalAddress = U.toArray(params.address);
-				
-				session.respondToQuery(params)
-					.then(function(response) {
-						
-						// TODO: Sessions need to expire!!
-						
-						if (!response) response = {
+				session.$respondToQuery(params)
+					.fail(function(err) { 			// Insert error message in case of 400
+						return new PACK.server.ResponseData({
+							code: 400,
+							binary: false,
+							encoding: 'text/plain',
+							data: err.message
+						});
+					})
+					.then(function(response) { 	// Insert error message in case of 404
+						return response || new PACK.server.ResponseData({
 							code: 404,
 							binary: false,
 							encoding: 'text/plain',
 							data: 'not found'
-						};
-						
-						var transferEncoding = response.binary ? 'binary' : 'utf8';
-						res.writeHead(response.code ? response.code : 200, {
-							'Content-Type': response.encoding,
-							'Content-Length': Buffer.byteLength(response.data, transferEncoding)
 						});
+					})
+					.then(function(response) {	// End the response
 						
-						res.end(response.data, transferEncoding);
+						response.endResponse(res);
 						
 					})
-					.fail(function(err) {
-						
-						console.log('Failed response');
-						console.error(err.stack);
-						
-						return {
-							code: 400,
-							msg: err.message
-						};
-						
-					});
-				
+					.done();
 			}
 		};
 	},
