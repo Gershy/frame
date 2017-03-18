@@ -1,88 +1,53 @@
 var package = new PACK.pack.Package({ name: 'queries',
 	dependencies: [ 'p' ],
 	buildFunc: function() {
+		
 		return {
 			
-			serialize: function(params, serialized) {
-				var neededSerialized = [];
-				serialized.forEach(function(paramName) {
-					if (paramName in params) {
-						params[paramName] = U.wirePut(params[paramName]).arr;
-						neededSerialized.push(paramName);
-					}
-				});
+			$doRawQuery: function(data /* */) {
 				
-				return neededSerialized;
-			},
-			
-			unserialize: function(params, serialized) {
-				serialized.forEach(function(paramName) {
-					if (paramName in params) params[paramName] = U.wireGet(params[paramName]);
-				});
-			},
-			
-			paramsToWire: function(params /* address, command, params, serialized */) {
-				// Note that this method modifies `params.params`
-				
-				var address = U.param(params, 'address');
-				var command = U.param(params, 'command');
-				var reqParams = U.param(params, 'params', {});
-				var serialized = U.param(params, 'serialized', []);
-				
-				return {
-					address: address,
-					command: command,
-					params: reqParams,
-					serialized: PACK.queries.serialize(reqParams, serialized) // Modifies `reqParams` and returns serialized list
-				};
-			},
-			
-			wireToParams: function(params /* address, command, params, serialized */) {
-				
-				var reqParams = U.param(params, 'params', {});
-				var serialized = U.param(params, 'serialized', []);
-				
-				PACK.queries.unserialize(reqParams, serialized);	// Apply wireGet
-				delete params.serialized;													// Delete "serialized" property
-				
-				return params;
-				
-			},
-			
-			$doRawQuery: function(params /* */) {
 				return new PACK.p.P({ custom: function(resolve, reject) {
 					var query = new XMLHttpRequest();
 					
 					query.onreadystatechange = function() {
 						if (query.readyState !== 4) return; // Query isn't done yet
 						
-						if (query.status === 200) resolve(JSON.parse(query.responseText));
-						else 											reject(new Error(query.responseText));
+						if (query.status === 200) {
+							
+							resolve(U.stringToThing(query.responseText));
+							
+						} else {
+							
+							reject(new Error(query.responseText));
+							
+						}
 					};
 					
-					query.open('GET', '?_json=' + encodeURIComponent(JSON.stringify(params)), true);
+					query.open('GET', '?_data=' + encodeURIComponent(data), true);
 					query.send();
 				}});
 			},
 			
-			$doQuery: function(params /* address, command, params, serialized */) {
-				return PACK.queries.$doRawQuery(PACK.queries.paramsToWire(params));
+			$doQuery: function(params /* address, command, params */) {
+				return PACK.queries.$doRawQuery(U.thingToString({
+					address: U.param(params, 'address'),
+					command: U.param(params, 'command'),
+					params: U.param(params, 'params', {})
+				}));
 			},
 			
 			Query: U.makeClass({ name: 'Query',
 				methods: function(sc) { return {
-					init: function(params /* address, command, params, serialized */) {
+					init: function(params /* address, command, params */) {
 						this.address = U.param(params, 'address');
 						this.command = U.param(params, 'command');
 						this.params = U.param(params, 'params', {});
-						this.serialized = U.param(params, 'serialized', []);
 					},
 					$fire: function() {
 						return PACK.queries.$doQuery({
 							address: this.address,
 							command: this.command,
-							params: this.params.clone(),
-							serialized: this.serialized
+							params: this.params,
 						});
 					}
 				};}

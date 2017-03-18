@@ -20,7 +20,7 @@ var package = new PACK.pack.Package({ name: 'p',
           value: v
         };
       },
-      $p: function(val) {
+      $: function(val) {
         /*
         Convert a value into a promise.
         If `val` is a promise return it, otherwise return a promise wrapping `val`.
@@ -112,7 +112,7 @@ var package = new PACK.pack.Package({ name: 'p',
               var count = 0;
               
               all.forEach(function(v, k) {
-                PACK.p.$p(v)
+                PACK.p.$(v)
                   .then(function(val) {
                     if (!healthy) return;
                     results[k] = val;
@@ -137,7 +137,7 @@ var package = new PACK.pack.Package({ name: 'p',
               var count = 0;
               
               args.forEach(function(v, k) {
-                PACK.p.$p(v)
+                PACK.p.$(v)
                   .then(function(val) {
                     if (!healthy) return;
                     results[k] = val;
@@ -203,6 +203,7 @@ var package = new PACK.pack.Package({ name: 'p',
               
               if (this.multi) this.resolve.apply(this, valueData.value);
               else            this.resolve(valueData.value);
+              
               return true;
               
             } else if (valueData.type === 'pending') {

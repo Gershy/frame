@@ -34,34 +34,23 @@ var package = new PACK.pack.Package({ name: 'server',
 			},
 			ResponseData: U.makeClass({ name: 'ResponseData',
 				methods: function(sc) { return {
-					init: function(params /* data, code, encoding, binary */) {
+					init: function(params /* code, encoding, binary, data */) {
 						this.code = U.param(params, 'code', 200);
 						this.encoding = U.param(params, 'encoding', 'text/json');
 						this.binary = U.param(params, 'binary', false);
 						this.data = U.param(params, 'data');
-						this.serialized = U.param(params, 'serialized', []);
-						
-						if (this.encoding === 'text/json' && !U.isObj(this.data, String))
-							this.data = JSON.stringify(this.data);
 					},
 					endResponse: function(res) {
-						var data = this.data;
 						
-						if (this.serialized.length)
-							data = {
-								data: data,
-								serialized: PACK.queries.serialize(data, this.serialized)
-							};
-						
-						if (this.encoding === 'text/json' && !U.isObj(this.data, String))
-							data = JSON.stringify(data);
-						
+						var data = this.encoding === 'text/json' ? U.thingToString(this.data) : this.data;
 						var transferEncoding = this.binary ? 'binary' : 'utf8';
+						
 						res.writeHead(this.code ? this.code : 200, {
 							'Content-Type': this.encoding,
 							'Content-Length': Buffer.byteLength(data, transferEncoding)
 						});
 						res.end(data, transferEncoding);
+						
 					}
 				};}
 			}),
@@ -159,7 +148,7 @@ var package = new PACK.pack.Package({ name: 'server',
 								.fail(function(err) {
 									return new PACK.server.ResponseData({
 										code: 404,
-										data: 'File "' + filepath + '" not found',
+										data: 'File "' + url.join('/') + '" not found',
 										encoding: 'text/plain',
 										binary: false
 									});
@@ -246,64 +235,73 @@ var package = new PACK.pack.Package({ name: 'server',
 					}
 				},
 			}),
-			serverFunc: function(req, res) {
-				var url = req.url; // req.url, req.headers.referer, req.headers.host?
+			
+			$getSession: function(req) {
+				// Prefer the "x-forwarded-for" header over `connection.remoteAddress`
+				var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/^[0-9.]/g, '');
+				return PACK.p.$(PACK.server.Session.GET_SESSION(ip));
+			},
+			$getQuery: function(req) {
+				var url = req.url.substr(1); // Strip the leading "/"
 				
-				//Initialize defaults for all url components
+				// Initialize defaults for all url components
 				var queryUrl = url;
 				var queryParams = {};
 				
-				//Check if the url includes parameters (indicated by the "?" symbol)
-				var qInd = queryUrl.indexOf('?');
+				// Check if the url includes parameters (indicated by the "?" symbol)
+				var qInd = url.indexOf('?');
 				if (~qInd) {
-					queryUrl = url.substr(0, qInd); //The url is only the piece before the "?" symbol
-					var queryArr = url.substr(qInd + 1).split('&'); //Array of url parameters
+					// Eliminate the query portion from `queryUrl`
+					queryUrl = url.substr(0, qInd);
+					
+					// Get array of "k=v"-style url parameters
+					var queryArr = url.substr(qInd + 1).split('&');
 					for (var i = 0; i < queryArr.length; i++) {
 						var str = queryArr[i];
 						var eq = str.indexOf('=');
 						if (~eq)	queryParams[str.substr(0, eq)] = decodeURIComponent(str.substr(eq + 1));
-						else 		queryParams[str] = null;
+						else 			queryParams[str] = null;
 					}
 					
-					if ('_json' in queryParams) {
-						// The "_json" property overwrites any properties in the query of the same name
-						var json = JSON.parse(queryParams._json);
-						delete queryParams._json;
-						queryParams.update(json);
+					// Handle the special "_data" parameter
+					if ('_data' in queryParams) {
+						// The "_data" property overwrites any properties in the query of the same name
+						var obj = U.stringToThing(queryParams._data);
+						
+						if (!U.isObj(obj, Object))
+							throw new Error('Invalid "_data" parameter: "' + obj + '"');
+						
+						delete queryParams._data;
+						queryParams.update(obj);
 					}
 				}
 				
-				if ('url' in queryParams) throw new Error('bad query parameter: "url"');
+				// Ensure that the "url" property is represented as an array
+				queryUrl = queryUrl ? queryUrl.split('/') : [];
 				
-				queryUrl = queryUrl.split('/').filter(function(e) { return e.length > 0; });
+				// Ensure that empty urls refer to the default app
 				if (queryUrl.length === 0) queryUrl.push(config.defaultApp);
 				
-				var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/^[0-9.]/g, '')
-				
-				var session = PACK.server.Session.GET_SESSION(ip);
-				
-				var params = PACK.queries.wireToParams(queryParams);
-				
-				// Ensure there is a "url" property
-				params.update({ url: queryUrl });
+				// Ensure that the "url" property is only provided automatically
+				if ('url' in queryParams) throw new Error('Provided reserved property: "url"');
+				queryParams.url = queryUrl;
 				
 				// Ensure there is an "address" property
-				if (!('address' in params)) params.address = [];
+				if (!('address' in queryParams)) queryParams.address = [];
 				
 				// Ensure the "address" property is an array
-				if (params.address.constructor === String)
-					params.address = params.address ? params.address.split('.') : [];
+				if (U.isObj(queryParams.address, String))
+					queryParams.address = queryParams.address ? queryParams.address.split('.') : [];
 				
-				session.$respondToQuery(params)
-					.fail(function(err) { 			// Insert error message in case of 400
-						return new PACK.server.ResponseData({
-							code: 400,
-							binary: false,
-							encoding: 'text/plain',
-							data: err.message
-						});
+				return PACK.p.$(queryParams);
+			},
+			
+			serverFunc: function(req, res) {
+				new PACK.p.P({ args: [ PACK.server.$getSession(req), PACK.server.$getQuery(req) ] })
+					.them(function(session, query) {	// Get a response based on session and query
+						return session.$respondToQuery(query);
 					})
-					.then(function(response) { 	// Insert error message in case of 404
+					.then(function(response) { 				// Insert error message in case of 404
 						return response || new PACK.server.ResponseData({
 							code: 404,
 							binary: false,
@@ -311,10 +309,17 @@ var package = new PACK.pack.Package({ name: 'server',
 							data: 'not found'
 						});
 					})
-					.then(function(response) {	// End the response
-						
+					.fail(function(err) { 						// Insert error message in case of 400
+						console.error(err.stack);
+						return new PACK.server.ResponseData({
+							code: 400,
+							binary: false,
+							encoding: 'text/plain',
+							data: err.message
+						});
+					})
+					.then(function(response) {				// End the response
 						response.endResponse(res);
-						
 					})
 					.done();
 			}

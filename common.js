@@ -5,11 +5,10 @@ size for GET (make the "post" parameter of U.request default to true)
 The following top-level variables exist regardless of whether code is being
 run on server or client side:
 	
-	-S: Index of non-serializable content that needs to be serialized 
-		at some point.
-		For example, a function that needs to be referenced dynamically
-		on client and server-side is referenced instead by its string
-		index in S (allowing for serialization).
+	-S: Index of non-serializable content that needs serialization at some
+		point. For example, a function that needs to be referenced
+		dynamically on client and server-side is referenced instead by its
+		string index in S (allowing for serialization).
 	-U: Contains utility methods
 	-C: Default class directory
 	-PACK: Contains all the packages
@@ -115,6 +114,15 @@ run on server or client side:
 		props: {
 			contains: function(val) {
 				return this.indexOf(val) !== -1;
+			},
+			map: function(it) {
+				var ret = [];
+				for (var i = 0, len = this.length; i < len; i++)
+					ret.push(it(this[i], i, this));
+				return ret;
+			},
+			clone: function() {
+				return this.map(function(n) { return n; });
 			},
 			any: function(func) {
 				for (var i = 0, len = this.length; i < len; i++)
@@ -348,85 +356,79 @@ global.U = {
 	},
 	
 	// Serialization utility
-	wirePut: function(obj, arr) {
-		/*
-		Note the convention: This method is particularly named "wirePut" because
-		it's a form of serialization that should only be used for the wire, and
-		has no real application anywhere else.
-		*/
-		if (!U.exists(arr)) arr = [];
+	straighten: function(item) {
+		var arr = [];
+		U.straighten0(item.clone(), arr);
+		return arr.map(function(item) { return item.calc; });
+	},
+	straighten0: function(item, items) {
 		
-		var ind = arr.indexOf(obj); // This is O(n^2) complexity :(
-		if (~ind) return { arr: arr, ind: ind };
+		var found = null;
+		for (var i = 0, len = items.length; i < len; i++) // This is O(n^2) complexity :(
+			if (items[i].orig === item) return { items: items, ind: i };
 		
-		ind = arr.length;
-		arr.push(obj);
+		var ind = items.length;
 		
-		/*
-		if (U.isClassedObj(obj)) {
+		if (U.isObj(item, Object)) {
 			
-			throw new Error('Cannot wirePut fancy classed objects!');
+			var obj = {};
+			items.push({ orig: item, calc: obj });
+			for (var k in item)
+				obj[k] = U.straighten0(item[k], items);
 			
+		} else if (U.isObj(item, Array)) {
 			
-			var ps = obj.propertyNames;
-			var data = {};
-			for (var i = 0, len = ps.length; i < len; i++) {
-				var k = ps[i];
-				data[k] = U.wirePut(obj[k], arr).ind;
-			}
-			arr[ind] = { __c: obj.constructor.title, p: data };
-		
-		} else
-		*/
-		
-		if (U.isObj(obj, Object)) {
+			var arr = [];
+			items.push({ orig: item, calc: arr });
+			for (var i = 0; i < item.length; i++)
+				arr.push(U.straighten0(item[i], items));
 			
-			for (var k in obj) obj[k] = U.wirePut(obj[k], arr).ind;
-				
-		} else if (U.isObj(obj, Array)) {
-				
-			for (var i = 0; i < obj.length; i++) obj[i] = U.wirePut(obj[i], arr).ind;
-				
-		} else if (U.isInstance(obj, Object)) { // If not an Object or Array, but an instance of Object, it's too fancy
+		} else {
 			
-			throw new Error('Cannot `wirePut` fancy classed object (' + obj.constructor.title || obj.constructor.name + ')');
+			items.push({ orig: item, calc: item });
 			
 		}
-		
-		// Skip `null`, undefined, integer, string cases etc.
-		
-		return { arr: arr, ind: ind };
+				
+		return ind;
 	},
-	wireGet: function(arr, ind, built) {
-		if (!U.exists(built)) built = U.toArray(arr.length);
-		if (!U.exists(ind)) ind = 0;
+	unstraighten: function(items) {
+		var unbuilt = { UNBUILT: true };
+		return U.unstraighten0(items, 0, U.toArray(items.length, unbuilt), unbuilt, 0);
+	},
+	unstraighten0: function(items, ind, built, unbuilt) {
 		
-		// This is a dumb hack to deal with the actual value being null: put
-		// EVERY SINGLE value in an array lol
-		// TODO: Is this even that bad?
-		if (built[ind] !== null) return built[ind][0];
+		if (built[ind] !== unbuilt) return built[ind];
 		
-		var d = arr[ind];
+		var item = items[ind];
 		var value = null;
 		
-		if (U.isObj(d, Object)) {
+		if (U.isObj(item, Object)) {
 			
 			// value is an ordinary object
-			built[ind] = [ {} ];
-			for (var k in d) built[ind][0][k] = U.wireGet(arr, d[k], built);
-			return built[ind][0];
+			var obj = built[ind] = {};
+			for (var k in item)
+				obj[k] =	U.unstraighten0(items, item[k], built, unbuilt);
+			return obj;
 			
-		} else if (U.isObj(d, Array)) {
+		} else if (U.isObj(item, Array)) {
 			
 			// value is an array
-			built[ind] =  [ [] ];
-			for (var i = 0; i < d.length; i++) built[ind][0].push(U.wireGet(arr, d[i], built));
-			return built[ind][0];
+			var arr = built[ind] = [];
+			for (var i = 0; i < item.length; i++)
+				arr.push(	U.unstraighten0(items, item[i], built, unbuilt));
+			return arr;
 			
 		}
 		
-		built[ind] = [ d ];
-		return built[ind][0];
+		built[ind] = item;
+		return item;
+	},
+	thingToString: function(thing) {
+		var st = U.straighten(thing);
+		return JSON.stringify(st);
+	},
+	stringToThing: function(string) {
+		return U.unstraighten(JSON.parse(string));
 	},
 	addSerializable: function(params /* name, value */) {
 		var name = U.param(params, 'name');
@@ -450,7 +452,7 @@ global.U = {
 	},
 	
 	// Misc
-	toArray: function(arrayLike) {
+	toArray: function(arrayLike, v) {
 		/*
 		Useful method for constructing arrays from a variety of inputs:
 		
@@ -462,8 +464,9 @@ global.U = {
 		  index values of the input between 0 and the `length` value.
 		*/
 		if (arrayLike.constructor === Number) {
+			if (!U.exists(v)) v = null;
 			var ret = [];
-			for (var i = 0; i < arrayLike; i++) ret.push(null);
+			for (var i = 0; i < arrayLike; i++) ret.push(v);
 			return ret;
 		}
 		if (arrayLike.constructor === Object) {
@@ -527,10 +530,12 @@ global.U = {
 			end: function() { end(U.ref); }
 		};
 	},
-	debug: function(t, v) {
+	debug: function(/* ... */) {
+		var stuff = [];
 		console.log('----------------------');
-		console.log('::::' + t);
-		console.log(JSON.stringify(v, null, 2));
+		if (arguments.length > 1) console.log('::::' + arguments[0] + '::::');
+		console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) { if (~stuff.indexOf(v)) return '--CIRC--'; stuff.push(v); return v; }, 2));
+		console.log('');
 	}
 	
 };

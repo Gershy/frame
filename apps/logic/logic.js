@@ -74,24 +74,37 @@ var package = new PACK.pack.Package({ name: 'logic',
 
 				}
 			},
-			{ name: 'add default user',
+			{ name: 'add default data',
 				detect: function(doss) { return !doss.getChild('userSet.admin'); },
-				$apply: function(doss) {
-					
-					var userSet = doss.getChild('userSet');
-					var userOutline = userSet.getChildOutline();
-					var userData = {
-						fname: 'Admin',
-						lname: 'Istrator',
-						username: 'admin',
-						password: 'adminadmin123'
-					};
+				$apply: function(root) {
 					
 					var editor = new qd.Editor();
-					var $user = editor.$add(userSet, userOutline, null, userData);
-					editor.resolveReqs();
 					
-					return $user.then(function() { return doss; });
+					return editor.$editFast({
+						add: [
+							{
+								par: root.getChild('userSet'),
+								data: {
+									fname: 'Admin',
+									lname: 'Istrator',
+									username: 'admin',
+									password: 'adminadmin123'
+								}
+							},
+							{
+								par: root.getChild('userSet'),
+								data: {
+									fname: 'Another',
+									lname: 'User',
+									username: 'another',
+									password: 'anotheruseryay!'
+								}
+							}
+						]
+					})
+						.then(function() {
+							return root;
+						});
 					
 				}
 			}
@@ -109,7 +122,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		if (U.isServer()) return;
 		
 		PACK.logic.$init.then(function(doss) {
-			console.log(doss.getDataView({}));
+			U.debug('THING', doss.getDataView({}));
 		}).done();
 		
 		return;
