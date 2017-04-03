@@ -78,7 +78,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 				};}
 			}),
 			
-			/* Edit - make changes to Dossier structures */
+			/* Editor - make changes to Dossier structures */
 			Editor: U.makeClass({ name: 'Editor',
 				methods: function(sc, c) { return {
 				
@@ -342,7 +342,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}
 			}),
-				
+			
 			/* Dossier */
 			Dossier: U.makeClass({ name: 'Dossier',
 				superclassName: 'QueryHandler',
@@ -357,7 +357,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.par = null;
 					},
 					
-					// Name
+					// Construction
 					hasResolvedName: function() {
 						return this.name.substr(0, 5) !== 'TEMP(';
 					},
@@ -369,6 +369,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (par) par.remChild(this);
 						this.name = name.toString();
 						if (par) par.addChild(this);
+					},
+					$loadFromRawData: function(data, editor) {
+						throw new Error('not implemented');
 					},
 					
 					// Heirarchy
@@ -395,19 +398,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ptr;
 					},
 					getChild: function(address) {
-						// Safe to disregard "use" here, because QSet's "use" returns "this"
 						// TODO: is it safe to assume this will never be overloaded?
 						if (address.length === 0) return this; // Works for both strings and arrays
 						
-						if (address.constructor !== Array) address = address.toString().split('.');
+						if (!U.isObj(address, Array)) address = address.toString().split('.');
 						
 						var ptr = this;
 						for (var i = 0, len = address.length; (i < len) && (ptr !== null); i++)	{
 							var a = address[i];
-							if (a[0] === '@') {
+							if (a[0] === '@') {	// Handle dereferenced child
 								ptr = ptr.getNamedChild(a.substr(1));
 								if (ptr) ptr = ptr.dereference();
-							} else {
+							} else {						// Handle ordinary child
 								ptr = ptr.getNamedChild(a);
 							}
 						}
@@ -417,25 +419,28 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getNamedChild: function(name) {
 						if (name === '')				return this;
 						if (name === '~par')		return this.par;
-						if (name === '~root')	return this.getRoot();
+						if (name === '~root')		return this.getRoot();
 						
 						return null;
 						// throw new Error('Invalid child name: "' + name + '"');
 					},
 					
 					// Server/client
-					$doRequest: function(params /* command, params, serialize */) {
-						
+					$doRequest: function(params /* address, command, params */) {
 						if (U.isObj(params, String)) params = { command: params };
 						
+						var command = U.param(params, 'command');
+						var address = U.param(params, 'address', '');
+						var reqParams = U.param(params, 'params', {});
+						
+						
 						return PACK.queries.$doQuery({
-							address:		this.getAddress(),
-							command:		U.param(params, 'command'),
-							params:			U.param(params, 'params', {}),
-							serialize:	U.param(params, 'serialize', [])
+							address:		this.getAddress() + (address ? '.' + address : ''),
+							command:		command,
+							params:			reqParams,
 						});
 					},
-					$handleQuery: function(params) {
+					$handleQuery: function(params /* command */) {
 						var command = U.param(params, 'command');
 						
 						if (command === 'getRawData') {
@@ -449,10 +454,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						
 						throw new Error('Couldn\'t handle invalid command: "' + command + '"');
-					},
-					
-					$loadFromRawData: function(data, editor) {
-						throw new Error('not implemented');
 					},
 					
 					dereference: function() {
@@ -522,6 +523,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					getChildOutline: function(name) {
 						// Returns the outline needed by a child named "name"
 						throw new Error('Not implemented');
+					},
+					filter: function(filter) {
+						
 					},
 					
 					$loadFromRawData: function(data, editor) {
@@ -682,45 +686,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					}
 				}; }
 			}),
-			
-			/* Folder - Folders contain Dossiers */
-			Folder: U.makeClass({ name: 'Folder',
-				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						this.$dossier = this.$getDossier();
-					},
-					$getDossier: function() {
-						throw new Error('not implemented');
-					}
-				};}
-			}),
-			SimpleFolder: U.makeClass({ name: 'SimpleFolder',
-				methods: function(sc, c) { return {
-					init: function(params /* dossier */) {
-						this.dossier = U.param(params, 'dossier');
-					},
-					$getDossier: function() {
-						return PACK.p.$(this.dossier);
-					}
-				};}
-			}),
-			AddressFolder: U.makeClass({ name: 'AddressedFolder',
-				methods: function(sc, c) { return {
-					init: function(params /* $root, address */) {
-						// Root can be either a promise or a String
-						this.$root = U.$param(params, '$root', null);
-						this.address = U.param(params, 'address');
-						sc.init.call(this);
-					},
-					$getDossier: function() {
-						return new PACK.p.P({ args: [ this.$root, this.address ] })
-							.then(function(root, addr) {
-								return root.getChild(addr);
-							})
-					}
-				};}
-			}),
-			
 			
 			/* Versioner - maintain evolving Dossier structures */
 			Versioner: U.makeClass({ name: 'Versioner',

@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'userify',
-	dependencies: [ 'quickDev', 'e', 'p' ],
+	dependencies: [ 'quickDev', 'p' ],
 	buildFunc: function() {
 		var namespace = {};
 		
@@ -10,23 +10,428 @@ var package = new PACK.pack.Package({ name: 'userify',
 		var P = PACK.p.P;
 		var E = PACK.e.E;
 		
-		var ret = {}
+		var uf = {}
 		
-		ret.update({
+		uf.update({
 			
-			View: U.makeClass({ name: 'View', superclassName: 'Dossier',
+			domSetText: function(elem, text) {
+				if (elem.innerHTML !== text) elem.innerHTML = text;
+			},
+			domRestartAnimation: function(elem) {
+				elem.style.animation = 'none';
+				setTimeout(function() { elem.style.animation = ''; }, 10);
+			},
+			
+			Data: U.makeClass({ name: 'Data',
 				methods: function(sc, c) { return {
-					init: function(params /* outline, folder */) {
+					init: function(params /* */) {
+						this.value = null;
+					},
+					getValue: function() {
+						throw new Error('Not implemented');
+					},
+					setValue: function() {
+						throw new Error('Not implemented');
+					},
+					fini: function() {
+						throw new Error('Not implemented');
+					}
+				};}
+			}),
+			InstantData: U.makeClass({ name: 'InstantData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* value */) {
+						sc.init.call(this, params);
+						this.value = U.param(params, 'value');
+					},
+					getValue: function() {
+						return this.value;
+					},
+					setValue: function(value) {
+						this.value = value;
+					},
+					fini: function() {}
+				};}
+			}),
+			UpdatingData: U.makeClass({ name: 'UpdatingData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* $getFunc, updateMillis */) {
+						sc.init.call(this, params);
+						this.$getFunc = U.param(params, '$getFunc');
+						this.$setFunc = U.param(params, '$setFunc', null);
+						this.doingSet = false;
+						this.updateMillis = U.param(params, 'updateMillis', 0);
+						this.value = null;
+						
+						this.refresh();
+						this.interval = this.updateMillis
+							? setInterval(function(){ this.refresh(); }.bind(this), this.updateMillis)
+							: null;
+					},
+					fini: function() {
+						if (this.interval !== null) clearInterval(this.interval);
+					},
+					getValue: function() {
+						if (!this.$getFunc) throw new Error('No `$getFunc`');
+						return this.value;
+					},
+					setValue: function(value) {
+						if (!this.$setFunc) throw new Error('No `$setFunc`');
+						this.value = value;
+						this.doingSet = true;
+						this.$setFunc(value).then(function() { this.doingSet = false; }.bind(this)).done();
+					},
+					refresh: function() {
+						this.$getFunc().then(function(val) { if (!this.doingSet) this.value = val; }.bind(this)).done();
+					}
+				};}
+			}),
+			CalculatedData: U.makeClass({ name: 'CalculatedData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* getFunc */) {
+						sc.init.call(this, params);
+						this.getFunc = U.param(params, 'getFunc');
+						this.setFunc = U.param(params, 'setFunc', null);
+					},
+					getValue: function() {
+						return this.getFunc();
+					},
+					setValue: function(value) {
+						if (!this.setFunc) throw new Error('No `setFunc`');
+						this.setFunc(value);
+					}
+				};}
+			}),
+			
+			NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
+			View: U.makeClass({ name: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name */) {
+						this.name = U.param(params, 'name');
+						if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
+						
+						this.par = null;
+						this.domRoot = null;
+						this.millisAlive = 0;
+					},
+					
+					// Heirarchy
+					getAncestry: function() {
+						var ret = [];
+						var ptr = this;
+						while(ptr !== null) {
+							ret.push(ptr);
+							ptr = ptr.par;
+						}
+						return ret;
+					},
+					getNameChain: function() {
+						return this.getAncestry().reverse().map(function(ptr) {
+							return ptr.name.toString();
+						});
+					},
+					getAddress: function() {
+						return this.getNameChain().join('.');
+					},
+					getRoot: function() {
+						var ptr = this;
+						while (ptr.par) ptr = ptr.par;
+						return ptr;
+					},
+					
+					// DOM
+					createDomRoot: function() {
+						return document.createElement('div');
+					},
+					getContainer: function() {
+						if (this.par === null) return document.body;
+						return this.par.provideContainer(this);
+					},
+					$update: function(millis) {
+						if (this.domRoot === null) {
+							this.domRoot = this.createDomRoot();
+							this.domRoot.id = this.getNameChain().join('-');
+							this.domRoot.classList.add(this.name);
+							this.getContainer().appendChild(this.domRoot);
+						}
+						
+						this.tick(millis);
+						this.millisAlive += millis;
+						
+						return PACK.p.$null;
+					},
+					tick: function(millis) {
+						throw new Error('not implemented for ' + this.constructor.title);
+					},
+					
+					fini: function() {
+						if (this.domRoot && this.domRoot.parentNode) this.domRoot.parentNode.removeChild(this.domRoot);
+						this.domRoot = null;
+					}
+				};}
+			}),
+			TextView: U.makeClass({ name: 'TextView',
+				superclassName: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name, data */) {
+						sc.init.call(this, params);
+						this.data = U.param(params, 'data');
+					},
+					
+					createDomRoot: function() {
+						return document.createElement('span');
+					},
+					tick: function(millis) {
+						uf.domSetText(this.domRoot, this.data.getValue());
+					},
+					
+					fini: function() {
+						sc.fini.call(this);
+						
+						// TODO: THERE WILL BE A BUG WITH THIS!! While $update restarts `this`, nothing ever restarts `this.data` once it's been `fini()`'d
+						this.data.fini();
+					}
+				};}
+			}),
+			InputView: U.makeClass({ name: 'InputView',
+				superclassName: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name, textData, placeholderData */) {
+						sc.init.call(this, params);
+						this.textData = U.param(params, 'textData', uf.emptyData);
+						this.placeholderData = U.param(params, 'placeholderData', uf.emptyData);
+					},
+					
+					createDomRoot: function() {
+						var ret = document.createElement('div');
+						ret.classList.add('_ufInput');
+						
+						var input = document.createElement('div');
+						input.setAttribute('contenteditable', true);
+						input.setAttribute('tabindex', 0);
+						input.classList.add('_widget');
+						ret.appendChild(input);
+						
+						var placeholder = document.createElement('div');
+						placeholder.classList.add('_placeholder');
+						ret.appendChild(placeholder);
+						
+						var anim = document.createElement('div');
+						anim.classList.add('_anim');
+						for (var i = 0; i < 4; i++) {
+							var a = document.createElement('div');
+							a.classList.add('_a');
+							a.classList.add('_a' + (i + 1));
+							anim.appendChild(a);
+						}
+						ret.appendChild(anim);
+						
+						return ret;
+					},
+					tick: function() {
+						var input = this.domRoot.childNodes[0];
+						
+						// Update the placeholder value
+						uf.domSetText(this.domRoot.childNodes[1], this.placeholderData.getValue());
+						
+						// Update the "_empty" class
+						if (input.innerHTML)	this.domRoot.classList.remove('_empty');
+						else 									this.domRoot.classList.add('_empty');
+						
+						if (document.activeElement === input && !this.domRoot.classList.contains('_focus')) {
+							this.domRoot.classList.add('_focus');
+							var animSet = this.domRoot.childNodes[2].childNodes;
+							for (var i = 0, len = animSet.length; i < len; i++) uf.domRestartAnimation(animSet[i]);
+						} else if (document.activeElement !== input) {
+							this.domRoot.classList.remove('_focus');
+						}
+						
+						this.textData.setValue(input.innerHTML);
+					}
+				};}
+			}),
+			ActionView: U.makeClass({ name: 'ActionView',
+				superclassName: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name, $action, textData */) {
+						sc.init.call(this, params);
+						this.$action = U.param(params, '$action');
+						this.waiting = false;
+						this.textData = U.param(params, 'textData');
+					},
+					
+					createDomRoot: function() {
+						var button = document.createElement('div');
+						button.classList.add('_button');
+						button.classList.add('_widget');
+						button.setAttribute('tabindex', 0);
+						button.onkeypress = function(e) {
+							if (e.keyCode === 13 || e.keyCode === 32) {
+								button.onclick();
+								e.preventDefault();
+							}
+						};
+						button.onclick = function() {
+							if (this.waiting) return;
+							this.waiting = true;
+							this.$action().then(function() {
+								this.waiting = false;
+							}.bind(this)).done();
+						}.bind(this);
+						
+						return button;
+					},
+					tick: function() {
+						uf.domSetText(this.domRoot, this.textData.getValue());
+						
+						if (this.waiting)	this.domRoot.classList.add('_waiting');
+						else 							this.domRoot.classList.remove('_waiting');
+					}
+				};}
+			}),
+			AbstractSetView: U.makeClass({ name: 'AbstractSetView',
+				superclassName: 'View',
+				methods: function(sc, c) { return {
+					init: function(params /* name, children */) {
+						sc.init.call(this, params);
+						this.children = {};
+						
+						var children = U.param(params, 'children', []);
+						for (var i = 0, len = children.length; i < len; i++)
+							this.addChild(children[i]);
+					},
+					
+					addChild: function(child) {
+						if (child.par === this) return;
+						if (child.par !== null) throw new Error('Tried to add View with parent: ' + child.getAddress());
+						if (child.name in this.children) throw new Error('Already have a child named "' + child.name + '"');
+						
+						child.par = this;
+						this.children[child.name] = child;
+					},
+					remChild: function(name) {
+						if (!U.isObj(name, String)) name = name.name;
+						
+						if (!(name in this.children)) return false;
+						
+						var child = this.children[name];
+						child.fini();								// Detach dom
+						child.par = null;						// Detach data step 1
+						delete this.children[name];	// Detach data step 2
+						
+						return child;
+					},
+					provideContainer: function() {
+						throw new Error('not implemented');
+					},
+					
+					fini: function() {
+						for (var k in this.children) this.children[k].fini();
+						sc.fini.call(this);
+					}
+				};}
+			}),
+			SetView: U.makeClass({ name: 'SetView',
+				superclassName: 'AbstractSetView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, children */) {
+						sc.init.call(this, params);
+					},
+					
+					provideContainer: function() {
+						return this.domRoot;
+					},
+					$update: function(millis) {
+						var children = this.children;
+						
+						return sc.$update.call(this, millis)
+							.then(function() {
+								return new PACK.p.P({
+									all: children.map(function(child) { return child.$update() })
+								});
+							});
+					},
+					tick: function(millis) {
+					}
+					
+				};}
+			}),
+			ChoiceView: U.makeClass({ name: 'ChoiceView',
+				superclassName: 'AbstractSetView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, choiceData, children */) {
 						sc.init.call(this, params);
 						
-						this.folder = U.param(params, 'folder');
+						// Data returning the name of one of the children
+						this.choiceData = U.param(params, 'choiceData');
+						
+						// Property to keep track of the currently active child
+						this.currentChild = null;
+					},
+					
+					provideContainer: function() {
+						return this.domRoot;
+					},
+					$update: function(millis) {
+						var choice = this.choiceData.getValue();
+						
+						if (choice === null) {
+							var nextChild = null;
+						} else {
+							if (!(choice in this.children)) throw new Error('Bad view choice: "' + choice + '"');
+							var nextChild = this.children[choice];
+						}
+						
+						if (nextChild !== this.currentChild) {
+							if (this.currentChild) this.currentChild.fini();
+							this.currentChild = nextChild;
+						}
+						
+						return sc.$update.call(this, millis)
+							.then(function() {
+								return this.currentChild ? this.currentChild.$update(millis) : PACK.p.$null;
+							}.bind(this));
+					},
+					tick: function() {
+					}
+				};}
+			}),
+			TextHideView: U.makeClass({ name: 'TextHideView',
+				superclassName: 'ChoiceView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, data */) {
+						var data = U.param(params, 'data');
+						sc.init.call(this, params.update({
+							choiceData: new uf.CalculatedData({ getFunc: function() { return data.getValue() ? 'text' : null; } }),
+							children: [	new uf.TextView({ name: 'text', data: data })	]
+						}));
+					}
+				};}
+			}),
+			
+			GraphView: U.makeClass({ name: 'GraphView',
+				superclassName: 'SetView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, relationData, classifyRelation, createNode */) {
+						sc.init.call(this, params);
+						
+						this.relationData = U.param(params, 'relationData');
+						this.classifyRelation = U.param(params, 'classifyRelation');
+						this.createNode = U.param(params, 'createNode');
 					}
 				};}
 			})
 			
 		});
 		
-		ret.update({} || {
+		uf.update({
+			emptyData: new uf.CalculatedData({ getFunc: function() { return ''; }, setFunc: function() {} })
+		});
+		
+		uf.update({} || {
 			View: U.makeClass({ name: 'View', namespace: namespace,
 				methods: function(sc, c) { return {
 					init: function(params /* name, doss */) {
@@ -170,7 +575,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						/*
 						`childName` can be either a string or a View
 						*/
-						if (U.isInstance(name, PACK.userify.View)) name = name.name;
+						if (U.isInstance(name, uf.View)) name = name.name;
 						
 						if (!(name in this.children)) return false;
 						
@@ -499,11 +904,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var view = this.genView(doss);
 						this.addView(view);
 						
-						view.addView(new PACK.userify.SetView({ name: 'controls', children: [
+						view.addView(new uf.SetView({ name: 'controls', children: [
 							
-							new PACK.userify.SetView({ name: 'associations', 
+							new uf.SetView({ name: 'associations', 
 								children: this.associationData.map(function(data) {
-									return new PACK.userify.ActionView({ name: data.name,
+									return new uf.ActionView({ name: data.name,
 										titleDoss: data.titleDoss,
 										action: function(view) {
 											// par reverse-order: associations, controls, graph-node
@@ -518,7 +923,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 								}
 							)}),
 							
-							/*new PACK.userify.ActionView({ name: 'delete',
+							/*new uf.ActionView({ name: 'delete',
 								titleDoss: null,
 								action: function(view) {
 									console
@@ -586,7 +991,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 			})
 		});
 		
-		return ret;
+		return uf;
 	}
 });
 package.build();

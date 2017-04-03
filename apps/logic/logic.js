@@ -2,9 +2,66 @@ var package = new PACK.pack.Package({ name: 'logic',
 	dependencies: [ 'quickDev', 'userify', 'p', 'queries' ],
 	buildFunc: function(packageName, qd, userify, p) {
 		
-		var ret = {
+		var lg = {
 			resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
 			versionString: '0.0.1',
+			LogicApp: U.makeClass({ name: 'LogicApp',
+				superclass: PACK.quickDev.DossierDict,
+				methods: function(sc, c) { return {
+					init: function(params /* outline */) {
+						sc.init.call(this, params);
+					},
+					
+					$handleQuery: function(params /* command */) {
+						var command = U.param(params, 'command');
+						
+						if (command === 'getToken') {
+							
+							var reqParams = U.param(params, 'params');
+							var username = U.param(reqParams, 'username');
+							var password = U.param(reqParams, 'password');
+							
+							var user = this.children.userSet.children[username];
+							if (!user) throw new Error('Couldn\'t find user "' + username + '"');
+							if (user.getChild('password').value !== password) throw new Error('Incorrect password');
+							
+							return PACK.p.$({
+								username: user.getChild('username').value,
+								token: user.getToken()
+							});
+							
+						}
+						
+						return sc.$handleQuery.call(this, params);
+					}
+				};}
+			}),
+			LogicUser: U.makeClass({ name: 'LogicUser',
+				superclass: PACK.quickDev.DossierDict,
+				methods: function(sc, c) { return {
+					init: function(params /* outline */) {
+						sc.init.call(this, params);
+					},
+					
+					getToken: function(user) {
+						var u = this.getChild('username').value;
+						var p = this.getChild('password').value;
+						
+						var str = '';
+						var val = 9;
+						var chars = '0ab45cd21ef58gh02ij0klm0no23p9qr62stu92vwxyz5AB8C0D37EF5GH7I4JKL2M4NO4PQR6ST8U39VW9998XYZ';
+						
+						for (var i = 0; i < 12; i++) {
+							var v1 = u[(val + 19) % u.length].charCodeAt(0);
+							var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
+							val = ((v1 + 3) * (v2 + 11) * 11239) + 3 + i + v1;
+							str += chars[val % chars.length];
+						}
+						
+						return str;
+					}
+				};}
+			})
 		};
 		
 		var versioner = new qd.Versioner({ versions: [
@@ -12,10 +69,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 				detect: function(doss) { return doss === null; },
 				$apply: function(doss) {
 					
-					var outline = new qd.Outline({ c: qd.DossierDict, p: { name: 'app' }, i: [
+					var outline = new qd.Outline({ c: lg.LogicApp, p: { name: 'app' }, i: [
 						{ c: qd.DossierString, p: { name: 'version' } },
 						{ c: qd.DossierList, p: { name: 'userSet',
-							innerOutline: { c: qd.DossierDict, i: [
+							innerOutline: { c: lg.LogicUser, i: [
 								{ c: qd.DossierString, p: { name: 'fname' } },
 								{ c: qd.DossierString, p: { name: 'lname' } },
 								{ c: qd.DossierString, p: { name: 'username' } },
@@ -110,19 +167,143 @@ var package = new PACK.pack.Package({ name: 'logic',
 			}
 		]});
 		
-		ret.$init = versioner.$getDoss().then(function(doss) {
-			ret.queryHandler = doss;
+		lg.$init = versioner.$getDoss().then(function(doss) {
+			lg.queryHandler = doss;
 			return doss;
 		});
 		
-		return ret;
+		return lg;
 	},
 	runAfter: function() {
 		
 		if (U.isServer()) return;
 		
+		var qd = PACK.quickDev;
+		var uf = PACK.userify;
+		
 		PACK.logic.$init.then(function(doss) {
 			U.debug('THING', doss.getDataView({}));
+			
+			var dataSet = {
+				rps: new uf.InstantData({ value: 'rps' }),
+				token: new uf.InstantData({ value: null }),
+				appVersion: new uf.UpdatingData({
+					$getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
+				}),
+				loginView: new uf.CalculatedData({
+					getFunc: function() {	return dataSet.token.getValue() ? 'in' : 'out'	}
+				}),
+				username: new uf.InstantData({ value: '' }),
+				password: new uf.InstantData({ value: '' }),
+				loginError: new uf.InstantData({ value: '' })
+			};
+			
+			var view = new uf.SetView({ name: 'root', children: [
+				
+				new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
+					
+					new uf.SetView({ name: 'out', children: [
+						
+						new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
+						
+						new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: new uf.InstantData({ value: 'Username' }) }),
+						new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: new uf.InstantData({ value: 'Password' }) }),
+						new uf.ActionView({ name: 'submit', textData: new uf.InstantData({ value: 'Submit!' }), $action: function() {
+							return doss.$doRequest({ command: 'getToken', params: {
+								username: dataSet.username.getValue(),
+								password: dataSet.password.getValue()
+							}}).then(function(data) {
+								dataSet.token.setValue(data.token);
+							}).fail(function(err) {
+								dataSet.loginError.setValue(err.message);
+								new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
+							});
+						}})
+						
+					]}),
+					
+					new uf.SetView({ name: 'in', children: [
+						
+						new uf.SetView({ name: 'controls', children: [
+							
+						]}),
+						
+						new uf.GraphView({ name: 'graph',
+							relationData: {
+								
+							},
+							classifyRelation: function() {
+								
+							},
+							createNode: function(name, data) {
+								/*
+								data = {
+									username: 'username',
+									theory: 'theory text...',
+									date: 'date string',
+									prereqs: [
+										'app.theorySet.list',
+										'app.theorySet.of',
+										'app.theorySet.supporting',
+										'app.theorySet.theories',
+										.
+										.
+										.
+									],
+									challengers: [
+										'app.theorySet.list',
+										'app.theorySet.of',
+										'app.theorySet.challenging',
+										'app.theorySet.theories',
+										.
+										.
+										.
+									],
+									votes: [
+										{ username: 'username1', value: {-5:+5} }
+										{ username: 'username2', value: {-5:+5} }
+										{ username: 'username3', value: {-5:+5} }
+										{ username: 'username4', value: {-5:+5} }
+										.
+										.
+										.
+									]
+								}
+								*/
+								
+								return new uf.SetView({ name: name, children: [
+									new uf.SetView({ name: 'controls', children: [
+										
+									]}),
+									new uf.SetView({ name: 'data', children: [
+										new uf.TextView({ name: 'user', data: new uf.InstantData({ value: 'User: ' + data.username }) }),
+										new uf.TextView({ name: 'theory', data: new uf.InstantData({ value: 'Theory: ' + data.theory }) })
+									]})
+								]});
+							}
+						})
+							
+						
+					]}),
+					
+				]}),
+				new uf.TextView({ name: 'version', data: dataSet.appVersion }),
+				new uf.TextView({ name: 'rps', data: dataSet.rps })
+				
+			]});
+			
+			var updateFunc = function() {
+				var time = +new Date();
+				view.$update(1000 / 60).then(function() {
+					dataSet.rps.setValue('update: ' + (new Date() - time) + 'ms')
+					requestAnimationFrame(updateFunc);
+				}).done();
+			};
+			requestAnimationFrame(updateFunc);
+			
+			window.root = doss;
+			window.view = view;
+			
 		}).done();
 		
 		return;

@@ -17,7 +17,8 @@ run on server or client side:
 
 // Add convenience methods to pre-existing classes
 
-[	{	target: Object.prototype,
+[	
+	{	target: Object.prototype,
 		props: {
 			update: function(obj) {
 				for (var k in obj) this[k] = obj[k];
@@ -33,24 +34,15 @@ run on server or client side:
 			clone: function(props) {
 				return {}.update(this).update(props ? props : {});
 			},
-			instanceProperties: function() {
-				return this.propertyNames.reduce(function(ret, v1) {
-					ret[v1] = this[v1];
-					return ret;
-				}, {});
-			},
-			instanceCopy: function(params) {
-				var properties = this.instanceProperties();
-				if (U.def(params)) properties.update(params);
-				
-				return new this.constructor(properties);
-			},
 			forEach: function(it) {
 				for (var k in this) it(this[k], k, this);
 			},
 			map: function(it) {
 				var ret = {};
-				for (var k in this) ret[k] = it(this[k], k, this);
+				for (var k in this) {
+					var v = it(this[k], k, this);
+					if (v !== U.SKIP) ret[k] = v;
+				}
 				return ret;
 			},
 			every: function(it) {
@@ -117,8 +109,10 @@ run on server or client side:
 			},
 			map: function(it) {
 				var ret = [];
-				for (var i = 0, len = this.length; i < len; i++)
-					ret.push(it(this[i], i, this));
+				for (var i = 0, len = this.length; i < len; i++) {
+					var v = it(this[i], i, this);
+					if (v !== U.SKIP) ret.push(v);
+				}
 				return ret;
 			},
 			clone: function() {
@@ -152,6 +146,8 @@ global.S = {};		// All serializables are stored here
 global.C = {};		// All classes are stored here
 global.PACK = {};	// All packages are stored here
 global.U = {
+	SKIP: { SKIP: true }, // directive to exclude an item during iteration
+	
 	isServer: typeof window === 'undefined' ? function() { return true; } : function() { return false; },
 	
 	// Parameter utility
@@ -279,22 +275,21 @@ global.U = {
 	},
 	
 	// Class utility
-	makeClass: function(params /* namespace, name, superclass, superclassName, propertyNames, methods, statik */) {
-		var namespace = U.param(params, 'namespace', global.C);
+	makeClass: function(params /* namespace, name, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
 		
+		// `namespace` may either be an object or a string naming the namespace
+		var namespace = U.param(params, 'namespace', global.C);
 		if (namespace.constructor === String) {
 			var comps = namespace.split('.');
 			var dir = global.C;
 			namespace = U.deepGet({ name: namespace, root: dir, createIfNone: false });
 		}
 		
-		var name = U.param(params, 'name');
-		var methods = U.param(params, 'methods');
-		var statik = U.param(params, 'statik', {});
-		var propertyNames = U.param(params, 'propertyNames', []);
-		
+		// Class `name` properties cannot clash within the namespace
+		var name = U.param(params, 'name'); // TODO: this should be "title", not "name"
 		if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
 		
+		// `superclass` is calculated either via `superclassName`, or provided directly with `superclass`
 		var superclassName = U.param(params, 'superclassName', null);
 		if (superclassName) {
 			
@@ -303,69 +298,78 @@ global.U = {
 			
 		} else {
 			
-			var superclass = U.param(params, 'superclass', null);
+			var superclass = U.param(params, 'superclass', Object);
 			
 		}
 		
-		var heirName = superclass ? (superclass.heirName + '.' + name) : name;
+		// Generate `heirName`
+		var heirName = (superclass === Object) ? (Object.name + '.' + name) : (superclass.heirName + '.' + name);
 		
-		eval([ // Needed to eval in order to have a named function in debug. Is there a better way??
-			'var ' + name + ' = function(params) {',
-				'/*\n',
-				'Class: ' + name + '\n',
-				'Heirarchy: ' + heirName.replace(/\./g, ' / ') + '\n',
-				'*/\n',
-				//'if (!(\'init\' in this)) console.log(\'' + name + '\');',
-				'this.init(U.exists(params) ? params : {});',
-			'};',
-			'namespace[name] = ' + name + ';',
-			'delete ' + name + ';',
-		].join(''));
-		var c = namespace[name];
-		c.title = name;
+		// Use eval to get a named constructor
+		var cls = namespace[name] = eval('(function ' + name + '(params) { this.init(params ? params : {}); })');
 		
-		c.heirName = heirName;
+		// `methods` can be either an object or a function returning an object
+		var methods = U.param(params, 'methods');
+		if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, cls);
+		[	// Validate required methods
+			'init'
+		].forEach(function(required) { if (!methods.hasOwnProperty(required)) throw new Error('Missing required property: "' + required + '"'); });
+		[	// Validate illegal methods
+			'constructor'
+		].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw new Error('Illegal property: "' + reserved + '"'); });
 		
-		if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, c);
+		// `statik` is an object naming class properties
+		var statik = U.param(params, 'statik', {});
+		[	// Validate required statik properties
+		].forEach(function(required) { if (!statik.hasOwnProperty(required)) throw new Error('Missing required statik property: "' + required + '"'); });
+		[	// Validate illegal statik properties
+			'title',
+			'heirName',
+			'par',
+			'toString'
+		].forEach(function(reserved) { if (statik.hasOwnProperty(reserved)) throw new Error('Illegal statik property: "' + reserved + '"'); });
+		statik = {
+			toString: function() { return heirName; }
+		}.update(statik);
 		
-		if (!('init' in methods)) throw new Error('missing "init" class method');
 		
-		[	'constructor',
-			'parent',
-			'propertyNames',
-			'instanceProperties',
-			'instanceCopy',
-			'update'
-		].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw new Error('bad property: "' + reserved + '"'); } );
+		// Inherit superclass methods
+		if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); } 
 		
-		[	'name'
-		].forEach(function(reserved) { if (statik.hasOwnProperty(reserved)) throw 'bad statik property: "' + reserved + '"'; });
+		/*
+		// Handle mixins
+		var mixins = U.param(params, 'mixins', []);
+		var mixinResolvers = U.param(params, 'mixinResolvers', {});
+		var methodSet = methods.map(function
+		*/
 		
-		if (superclass) { c.prototype = Object.create(superclass.prototype); }
-		
-		methods.update({
-			constructor: c,
-			parent: superclass ? superclass.prototype : null,
-			propertyNames: (superclass ? superclass.prototype.propertyNames : []).concat(propertyNames)
+		// Update prototype properties
+		cls.prototype.update(methods);
+		cls.prototype.update({
+			constructor: cls
 		});
 		
-		c.prototype.update(methods);
-		c.update(statik);
+		// Update statik properties
+		cls.update(statik);
+		cls.update({
+			title: name,
+			heirName: heirName,
+			par: superclass
+		});
 		
-		return c;
+		return cls;
 	},
 	
 	// Serialization utility
 	straighten: function(item) {
 		var arr = [];
-		U.straighten0(item.clone(), arr);
+		U.straighten0(item, arr);
 		return arr.map(function(item) { return item.calc; });
 	},
 	straighten0: function(item, items) {
 		
-		var found = null;
-		for (var i = 0, len = items.length; i < len; i++) // This is O(n^2) complexity :(
-			if (items[i].orig === item) return { items: items, ind: i };
+		for (var i = 0, len = items.length; i < len; i++) // This is O(n^2) :(
+			if (items[i].orig === item) return i;
 		
 		var ind = items.length;
 		
@@ -375,7 +379,7 @@ global.U = {
 			items.push({ orig: item, calc: obj });
 			for (var k in item)
 				obj[k] = U.straighten0(item[k], items);
-			
+				
 		} else if (U.isObj(item, Array)) {
 			
 			var arr = [];
@@ -424,7 +428,7 @@ global.U = {
 		return item;
 	},
 	thingToString: function(thing) {
-		var st = U.straighten(thing);
+		var st = U.straighten(thing);		
 		return JSON.stringify(st);
 	},
 	stringToThing: function(string) {
@@ -552,7 +556,6 @@ itself.
 // PACKAGE: Packaging
 global.PACK.pack = {
 	Package: U.makeClass({ name: 'Package',
-		propertyNames: [ 'name', 'buildFunc', ],
 		methods: {
 			init: function(params /* name, dependencies, buildFunc, runAfter */) {
 				this.name = U.param(params, 'name');
