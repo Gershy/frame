@@ -181,6 +181,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var qd = PACK.quickDev;
 		var uf = PACK.userify;
 		
+		var ARR = [];
+		
 		PACK.logic.$init.then(function(doss) {
 			U.debug('THING', doss.getDataView({}));
 			
@@ -195,7 +197,26 @@ var package = new PACK.pack.Package({ name: 'logic',
 				}),
 				username: new uf.InstantData({ value: '' }),
 				password: new uf.InstantData({ value: '' }),
-				loginError: new uf.InstantData({ value: '' })
+				loginError: new uf.InstantData({ value: '' }),
+				childrenData: new uf.UpdatingData({
+					initialValue: [],
+					$getFunc: function() {
+						var add = Math.ceil(Math.random() * 4) + 2;
+						for (var i = 0; i < add; i++) {
+							ARR.push({
+								name: U.id(Math.ceil(Math.random() * 10000))
+							});
+						}
+						
+						var rem = Math.min(Math.ceil(Math.random() * 5), ARR.length);
+						for (var i = 0; i < rem; i++) {
+							ARR.splice(Math.floor(Math.random() * ARR.length), 1);
+						}
+						
+						return PACK.p.$(ARR);
+					},
+					updateMillis: 3000
+				})
 			};
 			
 			var view = new uf.SetView({ name: 'root', children: [
@@ -218,7 +239,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 								dataSet.loginError.setValue(err.message);
 								new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
 							});
-						}})
+						}}),
+						
+						new uf.DynamicSetView({ name: 'dynamic', framesPerTick: 10,
+							data: dataSet.childrenData,
+							getDataId: function(data){ return data.name; },
+							genChildView: function(name, rawData) {
+								return new uf.TextView({ name: name, data: new uf.InstantData({ value: rawData.name }) });
+							},
+						})
 						
 					]}),
 					
@@ -232,7 +261,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 							relationData: {
 								
 							},
-							classifyRelation: function() {
+							classifyRelation: function(data1, data2) {
 								
 							},
 							createNode: function(name, data) {
@@ -259,15 +288,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 										.
 										.
 									],
-									votes: [
-										{ username: 'username1', value: {-5:+5} }
-										{ username: 'username2', value: {-5:+5} }
-										{ username: 'username3', value: {-5:+5} }
-										{ username: 'username4', value: {-5:+5} }
-										.
-										.
-										.
-									]
+									rating: 1000, // net sum of votes
 								}
 								*/
 								
@@ -280,10 +301,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 										new uf.TextView({ name: 'theory', data: new uf.InstantData({ value: 'Theory: ' + data.theory }) })
 									]})
 								]});
+								
 							}
 						})
 							
-						
 					]}),
 					
 				]}),

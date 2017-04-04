@@ -7,6 +7,7 @@ TODO: This is one UGLY goddang file
 TODO: The DB connection at this end of this file needs its own paradigm
 TODO: Responses for non-existing files are no good, try removing favicon and loading
 TODO: Dependency loading should be done via promises
+TODO: Websockets eventually?
 */
 require('./common.js');
 
@@ -23,14 +24,11 @@ var package = new PACK.pack.Package({ name: 'server',
 		return {
 			ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
 			$readFile: function(filepath, isBinary) {
-				return new PACK.p.P({
-					custom: function(resolve, reject) {
-						fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
-							if (err)	reject(err);
-							else 			resolve(data);
-						});
-					}
-				});
+				return new PACK.p.P({ custom: function(resolve, reject) {
+					fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
+						return err ? reject(err) : resolve(data);
+					});
+				}});
 			},
 			ResponseData: U.makeClass({ name: 'ResponseData',
 				methods: function(sc) { return {

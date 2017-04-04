@@ -161,7 +161,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
 						for (var i = 0; i < 12; i++) {
 							var v1 = u[(val + 19) % u.length].charCodeAt(0);
 							var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
-							val = ((v1 + 3) * (v2 + 11) * 11239) + 3 + i + v1;
+							val = ((v1 + 3) * (v2 + 11) * 1139) + 3 + i + v1;
 							str += chars[val % chars.length];
 						}
 						

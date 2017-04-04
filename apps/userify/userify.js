@@ -57,13 +57,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 			UpdatingData: U.makeClass({ name: 'UpdatingData',
 				superclassName: 'Data',
 				methods: function(sc, c) { return {
-					init: function(params /* $getFunc, updateMillis */) {
+					init: function(params /* $getFunc, updateMillis, initialValue */) {
 						sc.init.call(this, params);
 						this.$getFunc = U.param(params, '$getFunc');
 						this.$setFunc = U.param(params, '$setFunc', null);
 						this.doingSet = false;
 						this.updateMillis = U.param(params, 'updateMillis', 0);
-						this.value = null;
+						this.value = U.param(params, 'initialValue', null);
 						
 						this.refresh();
 						this.interval = this.updateMillis
@@ -109,9 +109,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 			NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
 			View: U.makeClass({ name: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name */) {
+					init: function(params /* name, framesPerTick */) {
 						this.name = U.param(params, 'name');
 						if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
+						
+						this.framesPerTick = U.param(params, 'framesPerTick', 1);
+						this.delay = this.framesPerTick; // `delay` starting full ensures 1st tick not skipped
 						
 						this.par = null;
 						this.domRoot = null;
@@ -152,13 +155,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					$update: function(millis) {
 						if (this.domRoot === null) {
+							// Calling `$update` ensures that `domRoot` is initialized
 							this.domRoot = this.createDomRoot();
 							this.domRoot.id = this.getNameChain().join('-');
 							this.domRoot.classList.add(this.name);
 							this.getContainer().appendChild(this.domRoot);
 						}
 						
-						this.tick(millis);
+						if (++this.delay >= this.framesPerTick) {
+							this.tick(millis);
+							this.delay = 0;
+						}
 						this.millisAlive += millis;
 						
 						return PACK.p.$null;
@@ -305,17 +312,19 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					
 					addChild: function(child) {
-						if (child.par === this) return;
+						if (child.par === this) return child;
 						if (child.par !== null) throw new Error('Tried to add View with parent: ' + child.getAddress());
 						if (child.name in this.children) throw new Error('Already have a child named "' + child.name + '"');
 						
 						child.par = this;
 						this.children[child.name] = child;
+						
+						return child;
 					},
 					remChild: function(name) {
 						if (!U.isObj(name, String)) name = name.name;
 						
-						if (!(name in this.children)) return false;
+						if (!(name in this.children)) return null;
 						
 						var child = this.children[name];
 						child.fini();								// Detach dom
@@ -399,8 +408,59 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
+			DynamicSetView: U.makeClass({ name: 'DynamicSetView',
+				superclassName: 'SetView',
+				description: 'A SetView whose children are based on Data. ' +
+					'Modifications to the Data instantly modify the children of ' +
+					'the DynamicSetView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, data, getDataId, genChildView, comparator */) {
+						sc.init.call(this, params);
+						this.data = U.param(params, 'data');
+						this.getDataId = U.param(params, 'getDataId'), 	// Returns a unique id for a piece of data (will be used for child.name)
+						this.genChildView = U.param(params, 'genChildView'),		// function(name, rawData) { /* generates a View */ };
+						this.comparator = U.param(params, 'comparator', null);
+						
+						this.count = 0;
+					},
+					
+					tick: function(millis) {
+						var data = this.data.getValue();
+						
+						if (!U.isObj(data, Array)) throw new Error('DynamicSetView\'s data returned non-Array');
+						
+						var rem = this.children.clone(); // Initially mark all children for removal
+						var add = {};	// Initially mark no children for addition
+						
+						for (var i = 0, len = data.length; i < len; i++) {
+							var item = data[i];
+							var itemId = this.getDataId(item); // `itemId` is also always the name of the corresponding child
+							
+							// Each item in `data` is unmarked for removal
+							delete rem[itemId];	
+							
+							// Items which don't already exist as children are marked for addition
+							if (!(itemId in this.children)) add[itemId] = item;	
+						}
+						
+						// Remove all children as necessary
+						for (var k in rem) {
+							if (!this.remChild(k)) throw new Error('Couldn\'t remove child: "' + k + '" (error in getDataId?)');
+						}
+						
+						// Add all children as necessary
+						for (var k in add) {
+							var child = this.genChildView(k, add[k]);
+							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
+							this.addChild(child);
+						}
+						
+					}
+				};}
+			}),
 			TextHideView: U.makeClass({ name: 'TextHideView',
 				superclassName: 'ChoiceView',
+				description: 'A text field that is hidden when its text is empty',
 				methods: function(sc, c) { return {
 					init: function(params /* name, data */) {
 						var data = U.param(params, 'data');

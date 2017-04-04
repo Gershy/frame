@@ -275,7 +275,7 @@ global.U = {
 	},
 	
 	// Class utility
-	makeClass: function(params /* namespace, name, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
+	makeClass: function(params /* namespace, name, description, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
 		
 		// `namespace` may either be an object or a string naming the namespace
 		var namespace = U.param(params, 'namespace', global.C);
@@ -305,8 +305,11 @@ global.U = {
 		// Generate `heirName`
 		var heirName = (superclass === Object) ? (Object.name + '.' + name) : (superclass.heirName + '.' + name);
 		
+		// Check for `description`
+		var description = U.param(params, 'description', heirName);
+		
 		// Use eval to get a named constructor
-		var cls = namespace[name] = eval('(function ' + name + '(params) { this.init(params ? params : {}); })');
+		var cls = namespace[name] = eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params ? params : {}); })');
 		
 		// `methods` can be either an object or a function returning an object
 		var methods = U.param(params, 'methods');
