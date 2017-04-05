@@ -158,10 +158,9 @@ var package = new PACK.pack.Package({ name: 'logic',
 								}
 							}
 						]
-					})
-						.then(function() {
-							return root;
-						});
+					}).then(function() {
+						return root;
+					});
 					
 				}
 			}
@@ -197,29 +196,75 @@ var package = new PACK.pack.Package({ name: 'logic',
 				}),
 				username: new uf.InstantData({ value: '' }),
 				password: new uf.InstantData({ value: '' }),
-				loginError: new uf.InstantData({ value: '' }),
-				childrenData: new uf.UpdatingData({
-					initialValue: [],
-					$getFunc: function() {
-						var add = Math.ceil(Math.random() * 4) + 2;
-						for (var i = 0; i < add; i++) {
-							ARR.push({
-								name: U.id(Math.ceil(Math.random() * 10000))
-							});
-						}
-						
-						var rem = Math.min(Math.ceil(Math.random() * 5), ARR.length);
-						for (var i = 0; i < rem; i++) {
-							ARR.splice(Math.floor(Math.random() * ARR.length), 1);
-						}
-						
-						return PACK.p.$(ARR);
-					},
-					updateMillis: 3000
-				})
+				loginError: new uf.InstantData({ value: '' })
 			};
 			
-			var view = new uf.SetView({ name: 'root', children: [
+			var graphView = new uf.GraphView({ name: 'graph',
+				relationData: {
+					dependsOn: {},
+					challengedBy: {}
+				},
+				classifyRelation: function(data1, data2) {
+					
+				},
+				getDataId: function(data) {
+					return data.quickName;
+				},
+				genChildView: function(name, data) {
+					/*
+					data = {
+						quickName: 'quickName',
+						username: 'username',
+						theory: 'theory text...',
+						date: 'date string',
+						prereqs: [
+							'app.theorySet.list',
+							'app.theorySet.of',
+							'app.theorySet.supporting',
+							'app.theorySet.theories',
+							.
+							.
+							.
+						],
+						challengers: [
+							'app.theorySet.list',
+							'app.theorySet.of',
+							'app.theorySet.challenging',
+							'app.theorySet.theories',
+							.
+							.
+							.
+						],
+						rating: 1000, // net sum of votes
+					}
+					*/
+					
+					return new uf.SetView({ name: name, children: [
+						new uf.SetView({ name: 'controls', children: [
+							new uf.ActionView({ name: 'loadDependencies', textData: new uf.InstantData({ value: 'Dependencies...' }), $action: function() {
+								console.log('Dependencies for ' + data.quickName);
+								return doss.$doRequest({
+									address: [ 'theorySet', data.quickName, 'dependencySet' ].join('.'),
+									command: 'getRawData'
+								}).then(function(data) {
+									console.log('GOT DATA', data);
+								});
+							}}),
+							new uf.ActionView({ name: 'loadChallenges', textData: new uf.InstantData({ value: 'Challenges...' }), $action: function() {
+								return PACK.p.$null;
+							}})
+						]}),
+						new uf.SetView({ name: 'data', children: [
+							new uf.TextView({ name: 'quickName', data: new uf.InstantData({ value: 'Name: ' + data.quickName }) }),
+							new uf.TextView({ name: 'user', data: new uf.InstantData({ value: 'User: ' + data.username }) }),
+							new uf.TextView({ name: 'theory', data: new uf.InstantData({ value: 'Theory: ' + data.theory }) })
+						]})
+					]});
+					
+				}
+			});
+							
+			var rootView = new uf.SetView({ name: 'root', children: [
 				
 				new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
 					
@@ -239,15 +284,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 								dataSet.loginError.setValue(err.message);
 								new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
 							});
-						}}),
-						
-						new uf.DynamicSetView({ name: 'dynamic', framesPerTick: 10,
-							data: dataSet.childrenData,
-							getDataId: function(data){ return data.name; },
-							genChildView: function(name, rawData) {
-								return new uf.TextView({ name: name, data: new uf.InstantData({ value: rawData.name }) });
-							},
-						})
+						}})
 						
 					]}),
 					
@@ -257,54 +294,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 							
 						]}),
 						
-						new uf.GraphView({ name: 'graph',
-							relationData: {
-								
-							},
-							classifyRelation: function(data1, data2) {
-								
-							},
-							createNode: function(name, data) {
-								/*
-								data = {
-									username: 'username',
-									theory: 'theory text...',
-									date: 'date string',
-									prereqs: [
-										'app.theorySet.list',
-										'app.theorySet.of',
-										'app.theorySet.supporting',
-										'app.theorySet.theories',
-										.
-										.
-										.
-									],
-									challengers: [
-										'app.theorySet.list',
-										'app.theorySet.of',
-										'app.theorySet.challenging',
-										'app.theorySet.theories',
-										.
-										.
-										.
-									],
-									rating: 1000, // net sum of votes
-								}
-								*/
-								
-								return new uf.SetView({ name: name, children: [
-									new uf.SetView({ name: 'controls', children: [
-										
-									]}),
-									new uf.SetView({ name: 'data', children: [
-										new uf.TextView({ name: 'user', data: new uf.InstantData({ value: 'User: ' + data.username }) }),
-										new uf.TextView({ name: 'theory', data: new uf.InstantData({ value: 'Theory: ' + data.theory }) })
-									]})
-								]});
-								
-							}
-						})
-							
+						graphView
+						
 					]}),
 					
 				]}),
@@ -315,7 +306,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 			
 			var updateFunc = function() {
 				var time = +new Date();
-				view.$update(1000 / 60).then(function() {
+				rootView.$update(1000 / 60).then(function() {
 					dataSet.rps.setValue('update: ' + (new Date() - time) + 'ms')
 					requestAnimationFrame(updateFunc);
 				}).done();
@@ -323,12 +314,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 			requestAnimationFrame(updateFunc);
 			
 			window.root = doss;
-			window.view = view;
+			window.view = rootView;
 			
 		}).done();
 		
 		return;
 		
+		/*
 		var root = PACK.logic.queryHandler;
 		var qd = PACK.quickDev;
 		var us = PACK.userify;
@@ -377,7 +369,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 							}),
 							_initChild: U.addSerializable({
 								name: 'logic.text.temp.initChild',
-								value: function(child, params /* */) {}
+								value: function(child, params /* * /) {}
 							}),
 							prop: '/name'
 						})
@@ -524,6 +516,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 			})
 			.done();
 		
+		*/
 	}
 });
 package.build();

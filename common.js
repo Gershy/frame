@@ -328,13 +328,8 @@ global.U = {
 		[	// Validate illegal statik properties
 			'title',
 			'heirName',
-			'par',
-			'toString'
+			'par'
 		].forEach(function(reserved) { if (statik.hasOwnProperty(reserved)) throw new Error('Illegal statik property: "' + reserved + '"'); });
-		statik = {
-			toString: function() { return heirName; }
-		}.update(statik);
-		
 		
 		// Inherit superclass methods
 		if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); } 
@@ -347,18 +342,15 @@ global.U = {
 		*/
 		
 		// Update prototype properties
-		cls.prototype.update(methods);
-		cls.prototype.update({
-			constructor: cls
-		});
+		cls.prototype.constructor = cls;
+		for (var k in methods) cls.prototype[k] = methods[k];
 		
 		// Update statik properties
-		cls.update(statik);
-		cls.update({
-			title: name,
-			heirName: heirName,
-			par: superclass
-		});
+		cls.toString = function() { return heirName; };
+		cls.title = name;
+		cls.heirName = heirName;
+		cls.par = superclass;
+		for (var k in statik) cls[k] = statik[k];
 		
 		return cls;
 	},
@@ -465,10 +457,10 @@ global.U = {
 		
 		- If `arrayLike` is an int n, return an array of n `null`s
 		- If `arrayLike` is an object, return an array of all the object's
-		  properties.
+			properties.
 		- Otherwise apply `Array.prototype.slice` which will look a
-		  `length` property, and return an array consisting of all the
-		  index values of the input between 0 and the `length` value.
+			`length` property, and return an array consisting of all the
+			index values of the input between 0 and the `length` value.
 		*/
 		if (arrayLike.constructor === Number) {
 			if (!U.exists(v)) v = null;

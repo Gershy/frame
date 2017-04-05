@@ -1,17 +1,17 @@
 #root-rps {
-  position: absolute;
-  left: 0; bottom: 0;
-  font-family: monospace;
+	position: absolute;
+	left: 0; bottom: 0;
+	font-family: monospace;
 }
 #root-version {
-  position: absolute;
-  right: 0; bottom: 0;
-  font-family: monospace;
+	position: absolute;
+	right: 0; bottom: 0;
+	font-family: monospace;
 }
 #root-login-out-dynamic {
-  max-height: 200px;
-  overflow-y: auto;
+	max-height: 200px;
+	overflow-y: auto;
 }
 #root-login-out-dynamic > span {
-  display: block;
+	display: block;
 }

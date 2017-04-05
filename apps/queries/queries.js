@@ -70,7 +70,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 						// Need to have one of the handler's children respond to the query
 						var child = this.getNamedChild(address[0]);
 						
-						if (!child) return new PACK.p.P({ err: new Error('Invalid address: "' + address + '"') });
+						if (!child) return new PACK.p.P({ err: new Error('Invalid address: "' + address.join('.') + '"') });
 						
 						// Consume the address
 						params.address = params.address.slice(1);

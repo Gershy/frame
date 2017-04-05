@@ -19,7 +19,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 			},
 			domRestartAnimation: function(elem) {
 				elem.style.animation = 'none';
-				setTimeout(function() { elem.style.animation = ''; }, 10);
+				requestAnimationFrame(function() { elem.style.animation = ''; }, 10);
 			},
 			
 			Data: U.makeClass({ name: 'Data',
@@ -162,7 +162,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.getContainer().appendChild(this.domRoot);
 						}
 						
-						if (++this.delay >= this.framesPerTick) {
+						if (this.framesPerTick && (++this.delay >= this.framesPerTick)) {
 							this.tick(millis);
 							this.delay = 0;
 						}
@@ -238,7 +238,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return ret;
 					},
-					tick: function() {
+					tick: function(millis) {
 						var input = this.domRoot.childNodes[0];
 						
 						// Update the placeholder value
@@ -291,7 +291,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return button;
 					},
-					tick: function() {
+					tick: function(millis) {
 						uf.domSetText(this.domRoot, this.textData.getValue());
 						
 						if (this.waiting)	this.domRoot.classList.add('_waiting');
@@ -404,7 +404,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 								return this.currentChild ? this.currentChild.$update(millis) : PACK.p.$null;
 							}.bind(this));
 					},
-					tick: function() {
+					tick: function(millis) {
 					}
 				};}
 			}),
@@ -424,38 +424,41 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.count = 0;
 					},
 					
-					tick: function(millis) {
-						var data = this.data.getValue();
-						
-						if (!U.isObj(data, Array)) throw new Error('DynamicSetView\'s data returned non-Array');
+					update: function() {
 						
 						var rem = this.children.clone(); // Initially mark all children for removal
 						var add = {};	// Initially mark no children for addition
 						
-						for (var i = 0, len = data.length; i < len; i++) {
-							var item = data[i];
-							var itemId = this.getDataId(item); // `itemId` is also always the name of the corresponding child
+						this.data.getValue().forEach(function(item, k) {
+							
+							// `itemId` is also always the name of the corresponding child
+							var itemId = this.getDataId(item, k); 
 							
 							// Each item in `data` is unmarked for removal
 							delete rem[itemId];	
 							
 							// Items which don't already exist as children are marked for addition
-							if (!(itemId in this.children)) add[itemId] = item;	
-						}
+							if (!(itemId in this.children)) add[itemId] = item;
+							
+						}.bind(this));
 						
 						// Remove all children as necessary
 						for (var k in rem) {
-							if (!this.remChild(k)) throw new Error('Couldn\'t remove child: "' + k + '" (error in getDataId?)');
+							if (!this.remChild(k)) throw new Error('Couldn\'t remove child: "' + k + '"');
 						}
 						
 						// Add all children as necessary
 						for (var k in add) {
-							var child = this.genChildView(k, add[k]);
+							var child = this.genChildView(k, add[k], this);
 							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
 							this.addChild(child);
 						}
 						
+					},
+					tick: function(millis) {
+						this.update();
 					}
+				
 				};}
 			}),
 			TextHideView: U.makeClass({ name: 'TextHideView',
@@ -473,14 +476,15 @@ var package = new PACK.pack.Package({ name: 'userify',
 			}),
 			
 			GraphView: U.makeClass({ name: 'GraphView',
-				superclassName: 'SetView',
+				superclassName: 'DynamicSetView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, relationData, classifyRelation, createNode */) {
+					init: function(params /* name, getDataId, genChildView, relationData, classifyRelation */) {
+						this.childDataSet = {};
+						params.data = new uf.InstantData({ value: this.childDataSet });
 						sc.init.call(this, params);
 						
 						this.relationData = U.param(params, 'relationData');
 						this.classifyRelation = U.param(params, 'classifyRelation');
-						this.createNode = U.param(params, 'createNode');
 					}
 				};}
 			})
