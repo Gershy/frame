@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'userify',
-	dependencies: [ 'quickDev', 'p' ],
+	dependencies: [ 'quickDev', 'p', 'geom' ],
 	buildFunc: function() {
 		var namespace = {};
 		
@@ -10,16 +10,22 @@ var package = new PACK.pack.Package({ name: 'userify',
 		var P = PACK.p.P;
 		var E = PACK.e.E;
 		
-		var uf = {}
-		
-		uf.update({
+		var uf = {
 			
 			domSetText: function(elem, text) {
 				if (elem.innerHTML !== text) elem.innerHTML = text;
 			},
+			domSetValue: function(elem, value) {
+				if (elem.value !== value) elem.value = value;
+			},
 			domRestartAnimation: function(elem) {
 				elem.style.animation = 'none';
 				requestAnimationFrame(function() { elem.style.animation = ''; }, 10);
+			},
+			padam: function(params, name, def) {
+				// Data-param; ensures the return value is an instance of PACK.userify.Data (defaulting to SimpleData)
+				var ret = U.param(params, name, def);
+				return U.isInstance(ret, uf.Data) ? ret : new uf.SimpleData({ value: ret });
 			},
 			
 			Data: U.makeClass({ name: 'Data',
@@ -38,7 +44,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
-			InstantData: U.makeClass({ name: 'InstantData',
+			SimpleData: U.makeClass({ name: 'SimpleData',
 				superclassName: 'Data',
 				methods: function(sc, c) { return {
 					init: function(params /* value */) {
@@ -109,10 +115,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 			NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
 			View: U.makeClass({ name: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, framesPerTick */) {
+					init: function(params /* name, framesPerTick, cssClasses, onClick */) {
 						this.name = U.param(params, 'name');
 						if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
 						
+						this.cssClasses = U.param(params, 'cssClasses', []);
+						this.onClick = U.param(params, 'onClick', null);
 						this.framesPerTick = U.param(params, 'framesPerTick', 1);
 						this.delay = this.framesPerTick; // `delay` starting full ensures 1st tick not skipped
 						
@@ -149,18 +157,34 @@ var package = new PACK.pack.Package({ name: 'userify',
 					createDomRoot: function() {
 						return document.createElement('div');
 					},
+					initDomRoot: function() {
+						// Create the element
+						this.domRoot = this.createDomRoot();
+						
+						// Reverse-reference the View from the html element (useful for debugging)
+						this.domRoot.__view = this;
+						
+						// Set the id property
+						this.domRoot.id = this.getNameChain().join('-');
+						
+						// Set desired css classes
+						this.domRoot.classList.add('_' + this.name);
+						for (var i = 0, len = this.cssClasses.length; i < len; i++)
+							this.domRoot.classList.add(this.cssClasses[i]);
+						
+						// Set up any desired click handlers
+						if (this.onClick)
+							this.domRoot.onclick = this.onClick.bind(this);
+						
+						this.getContainer().appendChild(this.domRoot);
+					},
 					getContainer: function() {
 						if (this.par === null) return document.body;
 						return this.par.provideContainer(this);
 					},
 					$update: function(millis) {
-						if (this.domRoot === null) {
-							// Calling `$update` ensures that `domRoot` is initialized
-							this.domRoot = this.createDomRoot();
-							this.domRoot.id = this.getNameChain().join('-');
-							this.domRoot.classList.add(this.name);
-							this.getContainer().appendChild(this.domRoot);
-						}
+						// Calling `$update` ensures that `domRoot` is initialized
+						if (this.domRoot === null) this.initDomRoot();
 						
 						if (this.framesPerTick && (++this.delay >= this.framesPerTick)) {
 							this.tick(millis);
@@ -185,11 +209,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 				methods: function(sc, c) { return {
 					init: function(params /* name, data */) {
 						sc.init.call(this, params);
-						this.data = U.param(params, 'data');
+						this.data = uf.padam(params, 'data');
 					},
 					
 					createDomRoot: function() {
-						return document.createElement('span');
+						var ret = document.createElement('span');
+						ret.classList.add('_text');
+						return ret;
 					},
 					tick: function(millis) {
 						uf.domSetText(this.domRoot, this.data.getValue());
@@ -206,20 +232,23 @@ var package = new PACK.pack.Package({ name: 'userify',
 			InputView: U.makeClass({ name: 'InputView',
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, textData, placeholderData */) {
+					init: function(params /* name, multiline, initialValue, textData, placeholderData */) {
 						sc.init.call(this, params);
-						this.textData = U.param(params, 'textData', uf.emptyData);
-						this.placeholderData = U.param(params, 'placeholderData', uf.emptyData);
+						this.multiline = U.param(params, 'multiline', false);
+						this.textData = uf.padam(params, 'textData', '');
+						this.placeholderData = uf.padam(params, 'placeholderData', '');
 					},
 					
 					createDomRoot: function() {
 						var ret = document.createElement('div');
-						ret.classList.add('_ufInput');
+						ret.classList.add('_input');
+						ret.classList.add(this.multiline ? '_multiline' : '_inline');
 						
-						var input = document.createElement('div');
-						input.setAttribute('contenteditable', true);
-						input.setAttribute('tabindex', 0);
+						var input = document.createElement(this.multiline ? 'textarea' : 'input');
 						input.classList.add('_widget');
+						input.oninput = function(e) {
+							this.textData.setValue(input.value);
+						}.bind(this);
 						ret.appendChild(input);
 						
 						var placeholder = document.createElement('div');
@@ -240,14 +269,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					tick: function(millis) {
 						var input = this.domRoot.childNodes[0];
+						var inputText = this.textData.getValue();
 						
-						// Update the placeholder value
+						// Update text items
 						uf.domSetText(this.domRoot.childNodes[1], this.placeholderData.getValue());
+						uf.domSetValue(input, inputText);
 						
 						// Update the "_empty" class
-						if (input.innerHTML)	this.domRoot.classList.remove('_empty');
-						else 									this.domRoot.classList.add('_empty');
+						if (inputText)	this.domRoot.classList.remove('_empty');
+						else 						this.domRoot.classList.add('_empty');
 						
+						// Update the "_focus" class
 						if (document.activeElement === input && !this.domRoot.classList.contains('_focus')) {
 							this.domRoot.classList.add('_focus');
 							var animSet = this.domRoot.childNodes[2].childNodes;
@@ -255,8 +287,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						} else if (document.activeElement !== input) {
 							this.domRoot.classList.remove('_focus');
 						}
-						
-						this.textData.setValue(input.innerHTML);
 					}
 				};}
 			}),
@@ -267,7 +297,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						sc.init.call(this, params);
 						this.$action = U.param(params, '$action');
 						this.waiting = false;
-						this.textData = U.param(params, 'textData');
+						this.textData = uf.padam(params, 'textData');
 					},
 					
 					createDomRoot: function() {
@@ -359,7 +389,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return sc.$update.call(this, millis)
 							.then(function() {
 								return new PACK.p.P({
-									all: children.map(function(child) { return child.$update() })
+									all: children.map(function(child) { return child.$update(millis) })
 								});
 							});
 					},
@@ -375,7 +405,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						sc.init.call(this, params);
 						
 						// Data returning the name of one of the children
-						this.choiceData = U.param(params, 'choiceData');
+						this.choiceData = uf.padam(params, 'choiceData');
 						
 						// Property to keep track of the currently active child
 						this.currentChild = null;
@@ -385,6 +415,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return this.domRoot;
 					},
 					$update: function(millis) {
+						return sc.$update.call(this, millis)
+							.then(function() {
+								return this.currentChild ? this.currentChild.$update(millis) : PACK.p.$null;
+							}.bind(this));
+					},
+					tick: function(millis) {
 						var choice = this.choiceData.getValue();
 						
 						if (choice === null) {
@@ -395,16 +431,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 						}
 						
 						if (nextChild !== this.currentChild) {
-							if (this.currentChild) this.currentChild.fini();
+							if (this.currentChild) {
+								this.domRoot.classList.remove('_choose-' + this.currentChild.name);
+								this.currentChild.fini();
+							}
 							this.currentChild = nextChild;
+							this.domRoot.classList.add('_choose-' + this.currentChild.name);
 						}
-						
-						return sc.$update.call(this, millis)
-							.then(function() {
-								return this.currentChild ? this.currentChild.$update(millis) : PACK.p.$null;
-							}.bind(this));
-					},
-					tick: function(millis) {
 					}
 				};}
 			}),
@@ -412,11 +445,14 @@ var package = new PACK.pack.Package({ name: 'userify',
 				superclassName: 'SetView',
 				description: 'A SetView whose children are based on Data. ' +
 					'Modifications to the Data instantly modify the children of ' +
-					'the DynamicSetView',
+					'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
+					'raw data that the child was built from.',
 				methods: function(sc, c) { return {
 					init: function(params /* name, data, getDataId, genChildView, comparator */) {
+						if ('children' in params) throw new Error('Initialized DynamicSetView with `children` param');
+						
 						sc.init.call(this, params);
-						this.data = U.param(params, 'data');
+						this.data = uf.padam(params, 'data');
 						this.getDataId = U.param(params, 'getDataId'), 	// Returns a unique id for a piece of data (will be used for child.name)
 						this.genChildView = U.param(params, 'genChildView'),		// function(name, rawData) { /* generates a View */ };
 						this.comparator = U.param(params, 'comparator', null);
@@ -424,7 +460,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.count = 0;
 					},
 					
-					update: function() {
+					tick: function(millis) {
 						
 						var rem = this.children.clone(); // Initially mark all children for removal
 						var add = {};	// Initially mark no children for addition
@@ -432,7 +468,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.data.getValue().forEach(function(item, k) {
 							
 							// `itemId` is also always the name of the corresponding child
-							var itemId = this.getDataId(item, k); 
+							var itemId = this.getDataId(item); 
 							
 							// Each item in `data` is unmarked for removal
 							delete rem[itemId];	
@@ -451,14 +487,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 						for (var k in add) {
 							var child = this.genChildView(k, add[k], this);
 							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
-							this.addChild(child);
+							this.addChild(child, add[k]);
 						}
 						
-					},
-					tick: function(millis) {
-						this.update();
 					}
-				
 				};}
 			}),
 			TextHideView: U.makeClass({ name: 'TextHideView',
@@ -466,7 +498,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 				description: 'A text field that is hidden when its text is empty',
 				methods: function(sc, c) { return {
 					init: function(params /* name, data */) {
-						var data = U.param(params, 'data');
+						var data = uf.padam(params, 'data');
 						sc.init.call(this, params.update({
 							choiceData: new uf.CalculatedData({ getFunc: function() { return data.getValue() ? 'text' : null; } }),
 							children: [	new uf.TextView({ name: 'text', data: data })	]
@@ -474,586 +506,249 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
-			
-			GraphView: U.makeClass({ name: 'GraphView',
-				superclassName: 'DynamicSetView',
+			DynamicTextView: U.makeClass({ name: 'DynamicTextView',
+				superclassName: 'ChoiceView',
+				description: 'A text field which is conditionally editable',
 				methods: function(sc, c) { return {
-					init: function(params /* name, getDataId, genChildView, relationData, classifyRelation */) {
-						this.childDataSet = {};
-						params.data = new uf.InstantData({ value: this.childDataSet });
-						sc.init.call(this, params);
-						
-						this.relationData = U.param(params, 'relationData');
-						this.classifyRelation = U.param(params, 'classifyRelation');
+					init: function(params /* name, editableData, textData, inputViewParams */) {
+						var editableData = uf.padam(params, 'editableData');
+						var textData = uf.padam(params, 'textData');
+						var inputViewParams = U.param(params, 'inputViewParams', {});
+						sc.init.call(this, params.update({
+							choiceData: new uf.CalculatedData({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
+							children: [
+								new uf.InputView(inputViewParams.update({ name: 'edit', textData: textData })),
+								new uf.TextView({ name: 'display', data: textData })
+							]
+						}));
 					}
 				};}
-			})
-			
-		});
-		
-		uf.update({
-			emptyData: new uf.CalculatedData({ getFunc: function() { return ''; }, setFunc: function() {} })
-		});
-		
-		uf.update({} || {
-			View: U.makeClass({ name: 'View', namespace: namespace,
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss */) {
-						this.name = U.param(params, 'name');
-						this.doss = U.param(params, 'doss', '');
-						this.par = null;
-						this.elem = null;
-					},
-					getChain: function() {
-						var views = [];
-						var view = this;
-						while (view.par) { views.push(view); view = view.par; }
-						return views.reverse();
-					},
-					getAddress: function() {
-						return this.getChain().map(function(view) { return view.name; }).join('.');
-					},
-					$getDoss: function(doss) {
-						
-						var pass = this;
-						
-						var $doss1 = ensurePromise(U.exists(doss) ? doss : null);
-						var $doss2 = ensurePromise(this.doss)
-							.then(function(doss2) {
-								// `doss2` is either a String address or a `QElem`
-								if (U.isInstance(doss2, PACK.quickDev.QElem)) return doss2;
-								
-								// `doss2` must be a String; if there's no parent, impossible to get `QElem`
-								if (!pass.par) throw new Error('View has no parent or explicit doss');
-								
-								return pass.par.$getDoss()
-									// Retrieve from the parent
-									.then(function(parDoss) { return parDoss.getChild(doss2) })
-									// Replace the address with the `Dossier` itself
-									.then(function(doss) { return pass.doss = doss; });
-								
-							});
-						
-						return $doss1.then(function(doss1) {
-							
-							if (!doss1) return $doss2;
-							
-							if (U.isInstance(doss1, PACK.quickDev.QElem)) return doss1;
-							
-							// `doss1` is a String address
-							return $doss2.then(function(doss2) { return doss2.getChild(doss1); });
-							
-						});
-						
-					},
-					$startRender: function() {
-						if (this.elem !== null) throw new Error('`$startRender` called while already rendering ' + this.constructor.title + ' (' + this.getAddress() + ')');
-						
-						return new P({ args: [ this, this.$createElem(), this.$getContainer() ] })
-							.then(function(pass, elem, container) {
-								pass.elem = elem;
-								pass.elem.listAttr({ class: [ '+name-' + pass.name ] });
-								
-								if (container) container.append(elem);
-							});
-					},
-					ceaseRender: function() {
-						if (this.elem === null) throw new Error('`ceaseRender` called while not rendering');
-						this.elem.remove();
-						this.elem = null;
-					},
-					$getContainer: function() {
-						if (this.par !== null) return this.par.$provideContainer(this);
-						return $null;
-					},
-					$createElem: function() { throw new Error('not implemented'); },
-					$updateElem: function() { throw new Error('not implemented'); }
-				}; }
 			}),
-			SetView: U.makeClass({ name: 'SetView', namespace: namespace,
-				superclassName: 'View',
+			GraphView: U.makeClass({ name: 'GraphView',
+				superclassName: 'DynamicSetView',
+				description: 'A DynamicSetView which keeps track of directed ' +
+					'relationships between every pair of its children.',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children, flow */) {
-						var children = U.param(params, 'children', []);
-						var flow = U.param(params, 'flow', 'block');
+					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData */) {
+						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
+						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
+						sc.init.call(this, params.update({ data: this.childDataSet }));
 						
-						sc.init.call(this, params);
-						this.children = {};
-						this.childrenElems = {};
-						this.flow = flow;
+						// Given the raw data of two nodes, returns the name of the relationship between those nodes
+						this.classifyRelation = U.param(params, 'classifyRelation');
 						
-						for (var i = 0, len = children.length; i < len; i++) this.addView(children[i]);
+						// Defines relations; the "schema"
+						this.relations = U.param(params, 'relations');
+						
+						// Stores the name of the currently focused element
+						this.focusedNameData = uf.padam(params, 'focusedNameData', null);
+						
+						// Stores relations; the "data"
+						this.relationMap = {};
+						
+						// Reference to currently focused view
+						this.focused = null;
 					},
-					getChildWrapper: function() {
-						/*
-						Returns the element to which children can be directly added
-						*/
-						return this.elem;
-					},
-					getChildContainer: function(view) {
-						return ({
-							block:	function() { return new E('<div class="child ' + view.name + '"></div>'); },
-							inline:	function() { return new E('<span class="child ' + view.name + '"></span>'); },
-						})[this.flow]();
-					},
-					$provideContainer: function(view) {
-						/*
-						Creates and attaches a container for the provided element.
-						*/
+					
+					createDomRoot: function() {
+						var ret = document.createElement('div');
+						ret.classList.add('_graph');
 						
-						// Try to reuse a pre-existing container
-						if (view.name in this.childrenElems) return ensurePromise(this.childrenElems[view.name]);
+						var canvas = document.createElement('canvas');
+						canvas.classList.add('_canvas');
+						ret.append(canvas);
 						
-						// Otherwise create and contain a new container
-						var container = this.childrenElems[view.name] = this.getChildContainer(view);
-						this.getChildWrapper().append(container);
-						return ensurePromise(container);
-					},
-					orderChildren: function(compareFunc) {
-						var data = [];
-						for (var k in this.childrenElems) {
-							var elem = this.children[k];
-							elem.__childContainer = this.childrenElems[k];
-							elem.__childContainer.remove();
-							data.push(elem);
-						}
-						
-						data.sort(compareFunc);
-						
-						var wrapper = this.getChildWrapper();
-						for (var i = 0, len = data.length; i < len; i++) {
-							wrapper.append(data[i].__childContainer);
-							delete data[i].__childContainer;
-						}
-						
-						return data;
-					},
-					addView: function(view) {
-						if (view.par !== null) throw new Error('Tried to add view which already has parent');
-						if (view.name in this.children) throw new Error('Tried to add "' + view.name + '" multiple times');
-						
-						this.children[view.name] = view;
-						view.par = this;
-					},
-					remView: function(name) {
-						/*
-						`childName` can be either a string or a View
-						*/
-						if (U.isInstance(name, uf.View)) name = name.name;
-						
-						if (!(name in this.children)) return false;
-						
-						var ret = this.children[name];
-						delete this.children[name];
-						ret.par = null;
-						
-						this.childrenElems[name].remove();
-						delete this.childrenElems[name];
+						var children = document.createElement('div');
+						children.classList.add('_nodes');
+						ret.append(children);
 						
 						return ret;
 					},
-					doChildrenUpdates: function() {
-						return true;
+					provideContainer: function() {
+						return this.domRoot.childNodes[1];
 					},
-					$startRender: function() {
+					addRawData: function(rawData) {
+						if (!U.isObj(rawData, Array)) rawData = [ rawData ];
 						
-						return new P({ args: [ this, sc.$startRender.call(this) ] })
-							.then(function(pass) {
-								
-								return pass.doChildrenUpdates()
-									? new P({ all: pass.children.map(function(child) {	return child.$startRender(); }) })
-									: $null;
-								
-							});
+						for (var i = 0, len = rawData.length; i < len; i++) {
+							var d = rawData[i];
+							var id = this.getDataId(d);
+							if (id in this.childRawData) return;
+							
+							this.childDataSet.push(rawData[i]);
+						}
 					},
-					ceaseRender: function() {
-						for (var k in this.children) this.children[k].ceaseRender();
-						sc.ceaseRender.call(this);
-					},
-					$createElem: function() {
-						return ensurePromise(new E('<div class="setView"></div>'));
-					},
-					$updateElem: function() {
-						return this.doChildrenUpdates()
-							? new P({ all: this.children.map(function(child) { return child.$updateElem();	})})
-							: $null;
-					}
-				}; }
-			}),
-			TabView: U.makeClass({ name: 'TabView', namespace: namespace,
-				superclassName: 'SetView',
-				methods: function(sc, c) { return {
-					init: function(params /* name, children, flow, getTabDoss */) {
-						sc.init.call(this, params);
+					addChild: function(child, rawData) {
+						var c = sc.addChild.call(this, child);
 						
-						this.getTabDoss = U.param(params, 'getTabDoss'); // A method which takes a view and returns a `Dossier`
+						if (!c) return; // Add failed!
 						
-						this.activeTab = null;
-						this.activeContainer = null;
-						this.activeElem = null;
+						this.childRawData[c.name] = {
+							id: c.name,
+							raw: rawData,
+							physics: {
+								weight: 1,
+								r: 150,
+								loc: new PACK.geom.Point({ x: U.randInt(-200, 200), y: U.randInt(-200, 200) }),
+								vel: new PACK.geom.Point(),
+								acl: new PACK.geom.Point()
+							}
+						};
+						
+						for (var k in this.children) {
+							var c2 = this.children[k];
+							var r1 = this.relationKey(c, c2);
+							var r2 = this.relationKey(c2, c);
+							
+							this.relationMap[r1] = 'RELATION ' + c.name + ' -> ' + c2.name;
+							this.relationMap[r2] = 'RELATION ' + c2.name + ' -> ' + c.name;
+						}
 					},
-					getChildWrapper: function() {
-						return this.elem.find('.children');
+					remChild: function(child) {
+						var c = sc.remChild.call(this, child);
+						
+						if (!c) return; // Rem failed!
+						
+						// Ensure to unfocus the child if necessary
+						if (c === this.focused) {
+							this.focusedNameData.setValue(null);
+							this.focused = null;
+						}
+						
+						delete this.childRawData[c.name];
+						
+						for (var k in this.children) {
+							var c2 = this.children[k];
+							delete this.relationMap[this.relationKey(c, c2)];
+							delete this.relationMap[this.relationKey(c2, c)];
+						}
 					},
-					$provideContainer: function(view) {
+					relationKey: function(child1, child2) {
+						return child1 !== child2 ? child1.name + '-' + child2.name : child1.name;
+					},
+					updateChild: function(child) {
+						var phys = this.childRawData[child.name].physics;
+					},
+					tick: function(millis) {
+						var w = Math.round(this.domRoot.offsetWidth);
+						var h = Math.round(this.domRoot.offsetHeight);
+						var hw = w >> 1;
+						var hh = h >> 1;
+						var scale = 1 / 150;
+						var secs = millis / 1000;
+						
 						/*
-						When a `TabView` provides a container, it also adds a tab to
-						access it.
+						var dampenGlobal = 0.85;
+						var dampenGravity = 1 / 100;
+						var focusSize = 150;
+						var unfocusSize = 80;
+						var separation = 20;
+						var tooFar = 500;
+						var repulseMult = 20;
+						var repulseMinDivisor = 0.15;
+						var focusSpeed = 2000;
 						*/
 						
-						return new P({ args: [ this, this.$getDoss(this.getTabDoss(view)) ] })
-							.then(function(pass, tabDoss) {
-								var tab = new E('<div class="tab ' + view.name + '">' + tabDoss.value + '</div>');
-								tab.handle('click', function() { pass.setActiveView(view); });
-								pass.elem.find('.tabs').append(tab);
-								return pass;
-							})
-							.then(function(pass) {
-								return sc.$provideContainer.call(pass, view)
-							});
-					},
-					setActiveView: function(view) {
-						/*
-						This method just alters classnames to correctly mark the active
-						container and tab.
+						// These are quite good settings
+						var dampenGlobal = 0.60;
+						var dampenGravity = 1 / 200;
+						var focusSize = 150;
+						var unfocusSize = 80;
+						var separation = 20;
+						var tooFar = 500;
+						var repulseMult = 10;
+						var repulseMinDivisor = 0.08;
+						var focusSpeed = 2000;
 						
-						TODO: Consider doing the actual dom changes in $updateElem,
-						and only changing the doss here
-						*/
-						if (view === this.activeElem) return;
+						// Ensure the canvas size maps directly to the dom space
+						this.domRoot.childNodes[0].width = w;
+						this.domRoot.childNodes[0].height = h;
 						
-						if (this.activeTab) {
-							this.activeTab.listAttr({ class: [ '-active' ] });
-							this.activeContainer.listAttr({ class: [ '-active' ] });
-						}
+						var cs = this.children.toArray();
+						var ncs = cs.length;
 						
-						this.activeElem = view;
-						
-						if (this.activeElem) {
-							this.activeTab = this.elem.find('.tabs > .tab.' + this.activeElem.name);
-							this.activeTab.listAttr({ class: [ '+active' ] });
+						// Update physics for all nodes
+						for (var i = 0; i < ncs; i++) {
 							
-							this.activeContainer = this.elem.find('.children > .child.' + this.activeElem.name);
-							this.activeContainer.listAttr({ class: [ '+active' ] });
+							var c1 = cs[i];
+							var phys1 = this.childRawData[c1.name].physics;
+							phys1.vel = phys1.vel.scale(dampenGlobal);
+							phys1.loc = phys1.loc.add(phys1.vel.scale(secs));
+							phys1.r = c1 === this.focused ? focusSize : unfocusSize;
+							
+							// Always have impulse towards origin
+							var d2 = phys1.loc.distSqr(PACK.geom.ORIGIN);
+							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (dampenGravity * dampenGravity) }));
+							
 						}
-					},
-					// TODO: `orderChildren` needs to be overridden here (need to reorder tabs too)
-					$createElem: function() {
-						return ensurePromise(new E([
-							'<div class="tabView">',
-								'<div class="tabs"></div>',
-								'<div class="children"></div>',
-							'</div>'
-						].join('')));
-					},
-					$updateElem: function() {
-						// If no active elem, set 1st child active
-						if (!this.activeElem && !U.isEmptyObj(this.children))
-							this.setActiveView(U.firstVal(this.children));
 						
-						return this.activeElem
-							? this.activeElem.$updateElem()
-							: $null;
-					}
-				}; }
-			}),
-			RootView: U.makeClass({ name: 'RootView', namespace: namespace,
-				superclassName: 'SetView',
-				methods: function(sc, c) { return {
-					init: function(params /* name, children, doss, rootElem */) {
-						var rootElem = U.param(params, 'elem');
-						
-						sc.init.call(this, params);
-						this.rootElem = PACK.e.e(rootElem);
-						this.interval = null;
-					},
-					$startRender: function() {
-						var pass = this;
-						
-						var p2 = sc.$startRender.call(this).then(function(v) { return v; });
-						
-						return new P({ args: [ this, p2 ] })
-							.then(function(pass) {
+						// Become affected by other nodes
+						for (var i = 0; i < ncs; i++) {
+							var c1 = cs[i];
+							var phys1 = this.childRawData[c1.name].physics;
+							var inertiaRatio = 1 / phys1.r;
+							
+							for (var j = 0; j < ncs; j++) {
+								if (i === j) continue; // Don't interact with self
 								
-								var updateFunc = function() { pass.$updateElem().done(); };
-								updateFunc();	// Call immediately...
-								pass.interval = setInterval(updateFunc, 1000); // And then once per second
+								var c2 = cs[j];
+								var phys2 = this.childRawData[c2.name].physics;
 								
-							});
-						
-					},
-					$getContainer: function() { return $null; },
-					$createElem: function() {
-						// RootView is the one class that doesn't actually "create" an elem
-						this.rootElem.listAttr({ class: [ '+rootView' ] });
-						return ensurePromise(this.rootElem);
-					}
-				}; }
-			}),
-			
-			ConditionView: U.makeClass({ name: 'ConditionView', namespace: namespace,
-				superclassName: 'SetView',
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss, condition, children */) {
-						sc.init.call(this, params);
-						this.condition = U.param(params, 'condition');
-						this.currentView = null;
-					},
-					doChildrenUpdates: function() {
-						// Turn of `SetView` children updates; this
-						// class will manually perform updates on
-						// children
-						return false;
-					},
-					$provideContainer: function(view) {
-						return ensurePromise(this.elem);
-					},
-					$createElem: function() {
-						return ensurePromise(new E('<div class="conditionView"></div>'));
-					},
-					$updateElem: function() {
-						
-						var nextName = this.condition();
-						if (!(nextName in this.children)) throw new Error('Invalid conditional name "' + nextName + '"');
-						var nextView = this.children[nextName];
-						
-						if (nextView !== this.currentView) {
-							
-							// `this.currentView` may be `null` if it's the first call to `$updateElem`
-							if (this.currentView !== null) this.currentView.ceaseRender();
-							this.currentView = nextView;
-							var $update = this.currentView.$startRender();
-							
-						} else {
-							
-							var $update = $null;
-							
-						}
-						
-						var pass = this;
-						return $update.then(function() { pass.currentView.$updateElem(); });
-						
-					}
-					
-				}; }
-			}),
-			
-			ValueView: U.makeClass({ name: 'ValueView', namespace: namespace,
-				superclassName: 'View',
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss, editable */) {
-						sc.init.call(this, params);
-						this.editable = U.param(params, 'editable', true);
-					},
-					$appValue: function(v) {
-						return this.$getDoss().then(function(doss) {
-							return U.exists(v) ? doss.value = v : doss.value;
-						});
-					}
-				}; }
-			}),
-			TextView: U.makeClass({ name: 'TextView', namespace: namespace,
-				superclassName: 'ValueView',
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss */) {
-						sc.init.call(this, params);
-					},
-					$createElem: function() {
-						return this.$appValue().then(function(val) {
-							return new E('<span class="stringView">' + val + '</span>');
-						});
-					},
-					$updateElem: function() {
-						if (!this.elem) throw new Error(this.getAddress() + ' has no elem');
-						
-						var pass = this;
-						var input = this.elem.find('input');
-						var currentlyEditable = !input.empty();
-						
-						if (this.editable !== currentlyEditable) {
-							if (currentlyEditable) { 	// Set to editable, but shouldn't be
-								input.remove();
-							} else {									// Set to uneditable, but shouldn't be
-								input = new E('<input type="text"/>');
-								input.fieldValue(this.elem.text());
-								this.elem.clear();
-								this.elem.append(input);
+								var dist = phys1.loc.dist(phys2.loc) - (phys1.r + phys2.r) - separation;
+								if (dist > tooFar) continue;
+								
+								var mag = repulseMult / Math.max(repulseMinDivisor, dist);
+								var repulse = new PACK.geom.Point({ ang: phys2.loc.angTo(phys1.loc), mag: mag }).scale(phys2.r * inertiaRatio);
+								phys1.vel = phys1.vel.add(repulse);
 							}
 						}
 						
-						// Update either the field or the value
-						var $val = this.editable
-							? this.$appValue(input.fieldValue())
-							: this.$appValue().then(function(val) { pass.elem.text(val); return val; });
-						
-						return $val.then(function(val) {
-							pass.elem.listAttr({ class: [
-								(!val.length ? '+' : '-') + 'empty',
-								(pass.editable ? '+' : '-') + 'editable'
-							]});
-						});
-						
-					}
-				}; }
-			}),
-			FieldView: U.makeClass({ name: 'FieldView', namespace: namespace,
-				superclassName: 'View',
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss, field, titleDoss */) {
-						sc.init.call(this, params);
-						this.field = U.param(params, 'field');
-						this.titleDoss = U.param(params, 'titleDoss');
-					},
-					$provideContainer: function(view) {
-						return ensurePromise(this.elem.find('.field'));
-					},
-					$startRender: function() {
-						var pass = this;
-						return sc.$startRender.call(this).then(function() {
-							return pass.field.$startRender();
-						});
-					},
-					$createElem: function() {
-						return ensurePromise(new E([
-							'<div class="fieldView">',
-								'<div class="title"></div>',
-								'<div class="field"></div>',
-							'</div>'
-						].join('')));
-					},
-					$updateElem: function() {
-						var pass = this;
-						return this.$getDoss(this.titleDoss)
-							.then(function(doss) {
-								pass.elem.find('.title').text(doss.value);
-							});
-					}
-				}; }
-			}),
-			ActionView: U.makeClass({ name: 'ActionView', namespace: namespace,
-				superclassName: 'View',
-				methods: function(sc, c) { return {
-					init: function(params /* name, doss, titleDoss, action */) {
-						sc.init.call(this, params);
-						this.titleDoss = U.param(params, 'titleDoss');
-						this.action = U.param(params, 'action'); // Function which is called when the action occurs
-					},
-					$createElem: function() {
-						return new P({ args: [ this, this.$getDoss(this.titleDoss) ] })
-							.then(function(pass, doss) {
-								var elem = new E('<button type="button" class="actionView">' + doss.value + '</button>')
-								elem.handle('click', function() { pass.action(pass); });
-								return elem;
-							});
-					},
-					$updateElem: function() {
-						return $null;
-					}
-				}; }
-			}),
-		
-			// TODO: This class would possibly benefit from using a <canvas>
-			GenGraphView: U.makeClass({ name: 'GenGraphView', namespace: namespace,
-				superclassName: 'SetView',
-				methods: function(sc, c) { return {
-					init: function(params /* genView, associationData, $initialDoss */) {
-						
-						this.genView = U.param(params, 'genView');
-						this.associationData = U.param(params, 'associationData');
-						this.$initialDoss = U.param(params, '$initialDoss');
-						
-						sc.init.call(this, params);
-					},
-					generateNodeView: function(doss) {
-						var view = this.genView(doss);
-						this.addView(view);
-						
-						view.addView(new uf.SetView({ name: 'controls', children: [
+						// Update styling based on physics
+						for (var i = 0, len = cs.length; i < len; i++) {
+							var c = cs[i];
+							var phys = this.childRawData[c.name].physics;
 							
-							new uf.SetView({ name: 'associations', 
-								children: this.associationData.map(function(data) {
-									return new uf.ActionView({ name: data.name,
-										titleDoss: data.titleDoss,
-										action: function(view) {
-											// par reverse-order: associations, controls, graph-node
-											var graphNode = view.par.par.par;
-											
-											// HEEERE TODO: Clicking the links to follow blows up the server!!
-											data.$follow(doss).then(function(associatedDossSet) {
-												console.log('HA', associatedDossSet);
-											});
-										}
-									});
-								}
-							)}),
-							
-							/*new uf.ActionView({ name: 'delete',
-								titleDoss: null,
-								action: function(view) {
-									console
-								}
-							})*/
-							
-						]}));
+							c.domRoot.style.left = (hw + (phys.loc.x - phys.r)) + 'px';
+							c.domRoot.style.top = (hh + (phys.loc.y - phys.r)) + 'px';
+							c.domRoot.style.transform = 'scale(' + phys.r * scale + ')';
+						}
 						
-						return view;
-					},
-					getChildWrapper: function() {
-						return this.elem.find('.children');
-					},
-					getChildContainer: function(view) {
-						var ret = new E([
-							'<div class="graphNode">',
-							'</div>'
-						].join(''));
+						var f = this.focused;
+						if (f) {
+							var physF = this.childRawData[f.name].physics;
+							physF.vel = PACK.geom.ORIGIN;
+							physF.loc = physF.loc.moveTowards(PACK.geom.ORIGIN, focusSpeed * secs);
+						}
 						
-						// TODO: Add controls to focus clicked graphNodes
-						// Focussing should decorate the `.genGraphView > .controls`
-						// element with the focussed view's controls
+						/*
+						Here's why sc.tick is called AFTER the physics update:
+						If it isn't, it's possible some children will not have their
+						`domRoot` initialized yet. `sc.tick` would call `addChild`
+						for any un-added children, but those children would never
+						have `$update` called on them before their `domRoot`
+						property was accessed in `this.tick`.
 						
-						return ret;
-					},
-					$addDoss: function(doss, association, doss2) {
-						var pass = this;
-						var $doss = ensurePromise(doss);
-						var $startView = $doss.then(function(doss) {
-							return pass.generateNodeView(doss).$startRender();
-						});
+						Instead, what happens is that the physics update is applied,
+						and then `sc.tick` is called which will set up any new,
+						un-added children for the next call to `this.tick`.
+						*/
+						sc.tick.call(this);
 						
-						if (!U.exists(association)) return $doss;
-						
-						return new P({ args: [ $doss, association, doss2, $startView ] })
-							.then(function(doss1, association, doss2) {
-								if (!U.exists(doss2)) throw new Error('If providing association need to also provide 2nd Dossier');
-								
-								console.log('Associating', doss1.getAddress(), 'and', doss2.getAddress());
-								
-								return doss1;
-							});
-					},
-					$createElem: function() {
-						return ensurePromise(new E([
-							'<div class="genGraphView">',
-								'<div class="children"></div>',
-								'<div class="controls"></div>',
-							'</div>'
-						].join('')));
-					},
-					$updateElem: function() {
-							
-						var $update = U.isEmpty(this.children)
-							? this.$addDoss(this.$initialDoss)
-							: $null;
-						
-						var pass = this;
-						return $update.then(function() {
-							return sc.$updateElem.call(pass);
-						});
-						
+						// Update the focus
+						var nextFocusedName = this.focusedNameData.getValue();
+						if (!this.focused || nextFocusedName !== this.focused.name) {
+							if (this.focused) this.focused.domRoot.classList.remove('_graphFocus');
+							if (nextFocusedName) {
+								if (!(nextFocusedName in this.children)) throw new Error('Bad child name for focus: "' + nextFocusedName + '"');
+								this.focused = this.children[nextFocusedName];
+								if (this.focused) this.focused.domRoot.classList.add('_graphFocus');
+							}
+						}
 					}
 				};}
 			})
-		});
+			
+		};
 		
 		return uf;
 	}

@@ -127,6 +127,11 @@ run on server or client side:
 				for (var i = 0, len = this.length; i < len; i++)
 					if (!func(this[i])) return false;
 				return true;
+			},
+			toObject: function(nameFunc) {
+				var ret = {};
+				for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
+				return ret;
 			}
 		},
 	},
@@ -355,6 +360,19 @@ global.U = {
 		return cls;
 	},
 	
+	// Randomness utility
+	randFloat: function() {
+		return Math.random();
+	},
+	randInt: function(v1, v2) {
+		if (v1 > v2) {
+			var t = v1;
+			v1 = v2;
+			v2 = t;
+		}
+		return v1 + Math.floor(Math.random() * (v2 + 1 - v1));
+	},
+	
 	// Serialization utility
 	straighten: function(item) {
 		var arr = [];
@@ -515,19 +533,6 @@ global.U = {
 		}
 		
 		return letters;
-	},
-	createDelay: function(params /* task, delay, repeat */) {
-		var task = U.param(params, 'task');
-		var delay = U.param(params, 'delay');
-		var repeat = U.param(params, 'repeat', false);
-		
-		var start = repeat ? setInterval : setTimeout;
-		var end = repeat ? clearInterval : clearTimeout;
-		
-		return {
-			ref: start(task, delay),
-			end: function() { end(U.ref); }
-		};
 	},
 	debug: function(/* ... */) {
 		var stuff = [];

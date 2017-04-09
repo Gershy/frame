@@ -186,21 +186,22 @@ var package = new PACK.pack.Package({ name: 'logic',
 			U.debug('THING', doss.getDataView({}));
 			
 			var dataSet = {
-				rps: new uf.InstantData({ value: 'rps' }),
-				token: new uf.InstantData({ value: null }),
+				rps: new uf.SimpleData({ value: 'rps' }),
+				token: new uf.SimpleData({ value: null }),
 				appVersion: new uf.UpdatingData({
 					$getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
 				}),
 				loginView: new uf.CalculatedData({
 					getFunc: function() {	return dataSet.token.getValue() ? 'in' : 'out'	}
 				}),
-				username: new uf.InstantData({ value: '' }),
-				password: new uf.InstantData({ value: '' }),
-				loginError: new uf.InstantData({ value: '' })
+				username: new uf.SimpleData({ value: '' }),
+				password: new uf.SimpleData({ value: '' }),
+				loginError: new uf.SimpleData({ value: '' }),
+				focusedNodeName: new uf.SimpleData({ value: null })
 			};
 			
 			var graphView = new uf.GraphView({ name: 'graph',
-				relationData: {
+				relations: {
 					dependsOn: {},
 					challengedBy: {}
 				},
@@ -239,29 +240,77 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 					*/
 					
-					return new uf.SetView({ name: name, children: [
-						new uf.SetView({ name: 'controls', children: [
-							new uf.ActionView({ name: 'loadDependencies', textData: new uf.InstantData({ value: 'Dependencies...' }), $action: function() {
-								console.log('Dependencies for ' + data.quickName);
-								return doss.$doRequest({
-									address: [ 'theorySet', data.quickName, 'dependencySet' ].join('.'),
-									command: 'getRawData'
-								}).then(function(data) {
-									console.log('GOT DATA', data);
-								});
-							}}),
-							new uf.ActionView({ name: 'loadChallenges', textData: new uf.InstantData({ value: 'Challenges...' }), $action: function() {
-								return PACK.p.$null;
-							}})
-						]}),
-						new uf.SetView({ name: 'data', children: [
-							new uf.TextView({ name: 'quickName', data: new uf.InstantData({ value: 'Name: ' + data.quickName }) }),
-							new uf.TextView({ name: 'user', data: new uf.InstantData({ value: 'User: ' + data.username }) }),
-							new uf.TextView({ name: 'theory', data: new uf.InstantData({ value: 'Theory: ' + data.theory }) })
-						]})
-					]});
+					var owned = data.username === dataSet.username.getValue();
+					var saved = false; // TODO: how do we get this...
 					
-				}
+					return new uf.SetView({ name: name,
+						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
+						onClick: function(e) {
+							console.log('Updated focus');
+							dataSet.focusedNodeName.setValue(this.name);
+						},
+						children: [
+							new uf.SetView({ name: 'controls', children: [
+								new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
+									console.log('Dependencies for ' + data.quickName);
+									return doss.$doRequest({
+										address: [ 'theorySet', data.quickName, 'dependencySet' ].join('.'),
+										command: 'getRawData'
+									}).then(function(data) {
+										console.log('GOT DATA', data);
+									}).fail(function(err) {
+										
+										console.log('Loading duds (' + err.message + ')');
+										graphView.addRawData([
+											{
+												quickName: 'thinghaha',
+												username: 'MyManStan',
+												theory: 'I\'m so fucking coolio bro bro'
+											},
+											{
+												quickName: 'swaswa',
+												username: 'GarbageCan',
+												theory: 'recyclables do not go in the trash u idgit'
+											},
+											{
+												quickName: 'banana',
+												username: 'IAteABananaOnce',
+												theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
+											}
+										]);
+										
+									});
+								}}),
+								new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
+									return PACK.p.$null;
+								}})
+							]}),
+							new uf.SetView({ name: 'data', children: [
+								new uf.DynamicTextView({ name: 'quickName',
+									editableData: owned && !saved,
+									textData: data.quickName,
+									inputViewParams: {
+										placeholderData: 'Quick Name',
+										cssClasses: [ 'centered' ]
+									}
+								}),
+								new uf.TextView({ name: 'user', // This one can't be edited!
+									data: data.username
+								}),
+								new uf.DynamicTextView({ name: 'theory',
+									editableData: owned,
+									textData: data.theory,
+									inputViewParams: {
+										placeholderData: 'Theory',
+										multiline: true
+									}
+								})
+							]})
+						]
+					});
+					
+				},
+				focusedNameData: dataSet.focusedNodeName
 			});
 							
 			var rootView = new uf.SetView({ name: 'root', children: [
@@ -272,9 +321,9 @@ var package = new PACK.pack.Package({ name: 'logic',
 						
 						new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
 						
-						new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: new uf.InstantData({ value: 'Username' }) }),
-						new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: new uf.InstantData({ value: 'Password' }) }),
-						new uf.ActionView({ name: 'submit', textData: new uf.InstantData({ value: 'Submit!' }), $action: function() {
+						new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
+						new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
+						new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
 							return doss.$doRequest({ command: 'getToken', params: {
 								username: dataSet.username.getValue(),
 								password: dataSet.password.getValue()
@@ -290,11 +339,32 @@ var package = new PACK.pack.Package({ name: 'logic',
 					
 					new uf.SetView({ name: 'in', children: [
 						
-						new uf.SetView({ name: 'controls', children: [
-							
-						]}),
+						graphView,
 						
-						graphView
+						new uf.SetView({ name: 'controls', children: [
+							new uf.SetView({ name: 'global', cssClasses: [ 'subControls' ], children: [
+								new uf.ActionView({ name: 'new', textData: 'New Theory', $action: function() {
+									graphView.childDataSet.push({
+										quickName: 'newTheory',
+										username: dataSet.username.getValue(),
+										theory: 'The sky is blue.'
+									});
+									return PACK.p.$null;
+								}}),
+								new uf.ActionView({ name: 'exit', textData: 'Log Out', $action: function() {
+									dataSet.token.setValue('');
+									return PACK.p.$null;
+								}})
+							]}),
+							new uf.SetView({ name: 'specific', cssClasses: [ 'subControls' ], children: [
+								new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
+									console.log('edit!');
+								}}),
+								new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
+									console.log('delete!');
+								}})
+							]})
+						]})
 						
 					]}),
 					
@@ -313,210 +383,44 @@ var package = new PACK.pack.Package({ name: 'logic',
 			};
 			requestAnimationFrame(updateFunc);
 			
+			/* ======= TESTING STUFF ======== */
+			
 			window.root = doss;
 			window.view = rootView;
+			window.data = dataSet;
+			
+			doss.$doRequest({ command: 'getToken', params: {
+				username: 'admin',
+				password: 'adminadmin123'
+			}}).then(function(data) {
+				dataSet.token.setValue(data.token);
+			});
+			
+			dataSet.username.setValue('admin');
+			dataSet.password.setValue('adminadmin123');
+			
+			graphView.addRawData([
+				{
+					quickName: 'newTheory',
+					username: 'admin',
+					theory: 'The sky is blue.'
+				}
+			].concat(U.range({0:4}).map(function(i) {
+				return {
+					quickName: U.id(i),
+					username: U.id(i),
+					theory: U.id(i) + ', ' + U.id(i * 20)
+				};
+			})));
+			
+			graphView.childDataSet.push({
+				quickName: 'newTheory',
+				username: 'admin',
+				theory: 'The sky is blue.'
+			});
 			
 		}).done();
 		
-		return;
-		
-		/*
-		var root = PACK.logic.queryHandler;
-		var qd = PACK.quickDev;
-		var us = PACK.userify;
-		var e = PACK.e.e;
-		var P = PACK.p.P;
-		
-		var selAll = qd.sel.all;
-		var selTheory = new qd.QSelInc({ selNames: {
-			timestamp: selAll,
-			quickName: selAll,
-			title: selAll,
-			essay: selAll
-		}});
-		
-		root.$load({ selection: new qd.QSelAll() })
-			.then(function(app) {					// Add static elements to `app`
-				
-				app.addChild(new qd.QDict({ name: 'static', children: [
-					new qd.QDict({ name: 'credentials', children: [
-						new qd.QString({ name: 'token', value: '' }),
-						new qd.QRef({ name: 'user', value: null })
-					]}),
-					new qd.QDict({ name: 'forms', children: [
-						new qd.QDict({ name: 'login', children: [
-							new qd.QString({ name: 'username', value: '' }),
-							new qd.QString({ name: 'password', value: '' })
-						]}),
-						new qd.QDict({ name: 'createAccount', children: [
-							new qd.QString({ name: 'username', value: '' }),
-							new qd.QString({ name: 'password', value: '' })
-						]}),
-					]}),
-					new qd.QDict({ name: 'text', children: [
-						new qd.QString({ name: 'marker', value: 'HELLOOOO' }),
-						new qd.QString({ name: 'version', value: 'Version:' }),
-						new qd.QString({ name: 'accountLogin', value: 'Login' }),
-						new qd.QString({ name: 'accountLoginTitle', value: 'Enter credentials:' }),
-						new qd.QString({ name: 'accountCreate', value: 'Create Account' }),
-						new qd.QString({ name: 'accountCreateTitle', value: 'Fill out the fields:' }),
-						new qd.QString({ name: 'prerequisiteAssocName', value: 'Prerequisite' }),
-						new qd.QString({ name: 'challengerAssocName', value: 'Challenger' }),
-						new qd.QGen({ name: 'temp',
-							_schema: U.addSerializable({
-								name: 'logic.text.temp.schema',
-								value: new qd.QSchema({ c: qd.QString, p: {} })
-							}),
-							_initChild: U.addSerializable({
-								name: 'logic.text.temp.initChild',
-								value: function(child, params /* * /) {}
-							}),
-							prop: '/name'
-						})
-					]})
-				]}));
-				
-				return app;
-				
-			})
-			.then(function(rootDoss) {		// Define the view
-				
-				var view = new us.RootView({ name: 'root', doss: rootDoss, elem: PACK.e.e('body'), children: [
-					
-					new us.ConditionView({ name: 'checkLogin',
-						
-						condition: function() {
-							return !rootDoss.getChild('static.credentials.token').value ? 'loggedOut'	: 'loggedIn';
-						},
-						
-						children: [
-							new us.SetView({ name: 'loggedOut', children: [
-							
-								new us.TabView({ name: 'loginOrCreate',
-									getTabDoss: function(elem) {
-										return ({
-											create: 'static.text.accountCreate',
-											login: 'static.text.accountLogin',
-										})[elem.name];
-									},
-									children: [
-										
-										new us.SetView({ name: 'create', children: [
-											
-											new us.TextView({ name: 'title', doss: 'static.text.accountCreateTitle', editable: false }),
-											new us.TextView({ name: 'username', doss: 'static.forms.createAccount.username', editable: true }),
-											new us.TextView({ name: 'password', doss: 'static.forms.createAccount.password', editable: true }),
-											new us.ActionView({ name: 'submit', titleDoss: 'static.text.accountCreate',
-												action: function(view) {
-													
-													var $username = view.par.children.username.$appValue();
-													var $password = view.par.children.password.$appValue()
-													
-													new P({ args: [ view.$getDoss(), $username, $password ] })
-														.then(function(doss, username, password) {
-															return doss.$request({
-																command: 'createAccount',
-																params: { username: username, password: password }
-															});
-														})
-														.then(function(responseData) {
-															rootDoss.getChild('static.credentials.token').setValue(responseData.token);
-														});
-												}
-											})
-											
-										]}),
-										new us.SetView({ name: 'login', children: [
-											
-											new us.TextView({ name: 'title', doss: 'static.text.accountLoginTitle', editable: false }),
-											new us.TextView({ name: 'username', doss: 'static.forms.login.username', editable: true }),
-											new us.TextView({ name: 'password', doss: 'static.forms.login.password', editable: true }),
-											new us.ActionView({ name: 'submit', titleDoss: 'static.text.accountLogin',
-												action: function(view) {
-													view.getDoss().$request({
-														command: 'getUserToken',
-														params: {
-															username: view.par.children.username.appValue(),
-															password: view.par.children.username.appValue()
-														}
-													}).then(function(res) {
-														console.log('LOGGED IN??', res);
-														rootDoss.getChild('static.credentials.token').setValue(res.token);
-													});
-												}
-											})
-											
-										]})
-										
-									]
-								})
-								
-							]}),
-							new us.SetView({ name: 'loggedIn', children: [
-								
-								new us.GenGraphView({ name: 'theories',
-									
-									genView: function(doss) {
-										return new us.SetView({ name: doss.name, doss: doss, children: [
-											new us.TextView({ name: 'name', doss: 'quickName', editable: false }),
-											new us.TextView({ name: 'content', doss: 'title', editable: false }),
-											//new us.TextView({ name: 'essay', doss: '@essay.markup', editable: false })
-										]});
-									},
-									
-									associationData: [
-										{	
-											name: 'prerequisite',
-											titleDoss: rootDoss.getChild('static.text.prerequisiteAssocName'),
-											$follow: function(doss) {
-												console.log('Getting child from:', doss);
-												//return doss.$getChild('prerequisites');
-												return doss.$load({ selection: qd.sel.all })
-													.then(function(loadedDoss) {
-														console.log('LOADED', loadedDoss);
-														return loadedDoss;
-													})
-													.fail(function(err) {
-														console.log('ERR:', err);
-													});
-											}
-										},
-										{	
-											name: 'challenger',
-											titleDoss: rootDoss.getChild('static.text.challengerAssocName'),
-											$follow: function(doss) { return doss.$getChild('challengers'); }
-										}
-									],
-									
-									$initialDoss: rootDoss.$getChild({ address: 'theories.townSurvivorsSolved', selection: selTheory })
-									
-								})
-								
-							]})
-						]
-						
-					}),
-					
-					new us.SetView({ name: 'versionText', flow: 'inline', children: [
-						new us.TextView({ name: '1', doss: 'static.text.version', editable: false }),
-						new us.TextView({ name: '2', doss: 'version', editable: false })
-					]})
-					
-				]});
-				
-				// Nice to make `root` and `view` vars available on client-side terminal
-				window.view = view;
-				window.root = root;
-				
-				return view.$startRender();
-				
-			})
-			.then(function() {
-				console.log('Began rendering');
-			})
-			.done();
-		
-		*/
 	}
 });
 package.build();

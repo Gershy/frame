@@ -27,15 +27,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 	dependencies: [ 'queries', 'e', 'p' ],
 	buildFunc: function() {
 		
-		var ret = {};
+		var qd = {};
 		
-		// Add classes
-		ret.update({
+		qd.update({
 			
 			NAME_REGEX: /^[a-zA-Z0-9-_]+$/,
 			NEXT_TEMP: 0,
 			getTempName: function() {
-				var id = U.id(PACK.quickDev.NEXT_TEMP++);
+				var id = U.id(qd.NEXT_TEMP++);
 				
 				if (id === 'ffffffff') throw new Error('EXHAUSTED IDS');
 				
@@ -63,8 +62,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						for (var k in i) {
 							var outline = i[k];
 							
-							if (!U.isInstance(outline, PACK.quickDev.Outline))
-								outline = new PACK.quickDev.Outline(outline);
+							if (!U.isInstance(outline, qd.Outline))
+								outline = new qd.Outline(outline);
 							
 							this.i[outline.getProperty('name')] = outline;
 						}
@@ -351,7 +350,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					init: function(params /* outline */) {
 						sc.init.call(this, params);
 						
-						this.name = PACK.quickDev.getTempName();
+						this.name = qd.getTempName();
 						this.outline = U.param(params, 'outline');
 						
 						this.par = null;
@@ -362,7 +361,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return this.name.substr(0, 5) !== 'TEMP(';
 					},
 					updateName: function(name) {
-						if (!PACK.quickDev.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
+						if (!qd.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
 						
 						var par = this.par;
 						
@@ -502,7 +501,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					},
 					remChild: function(child) {
 						// If `child` was supplied as a number or a string, resolve it
-						if (!U.isInstance(child, PACK.quickDev.Dossier)) child = this.children[child];
+						if (!U.isInstance(child, qd.Dossier)) child = this.children[child];
 						
 						if (!child || !(child.name in this.children)) throw new Error('Couldn\'t remove child "' + child.getAddress() + '"');
 						
@@ -585,7 +584,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						this.nextInd = 0;
 						
 						// Convert outline params to Outline
-						if (U.isObj(this.innerOutline, Object)) this.innerOutline = new PACK.quickDev.Outline(this.innerOutline);
+						if (U.isObj(this.innerOutline, Object)) this.innerOutline = new qd.Outline(this.innerOutline);
 					},
 					
 					// Child methods
@@ -738,9 +737,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 			
 		});
 		
-		/*1278*/
-		
-		return ret;
+		return qd;
 	}
 });
 package.build();

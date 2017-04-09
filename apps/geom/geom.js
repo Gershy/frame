@@ -1,26 +1,40 @@
 var package = new PACK.pack.Package({ name: 'geom',
 	dependencies: [ ],
 	buildFunc: function() {
-		return {
-			Geom: PACK.uth.makeClass({ name: 'Geom',
+		var geom = {
+			Geom: U.makeClass({ name: 'Geom',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
 					}
 				};}
 			}),
-			Point: PACK.uth.makeClass({ name: 'Point',
+			Point: U.makeClass({ name: 'Point',
 				superclassName: 'Geom',
 				methods: function(sc, c) { return {
-					init: function(params /* x, y */) {
+					init: function(params /* x, y | ang, mag */) {
 						sc.init.call(this, params);
-						this.x = U.param(params, 'x', 0);
-						this.y = U.param(params, 'y', 0);
+						if ('ang' in params) {
+							var ang = U.param(params, 'ang');
+							var mag = U.param(params, 'mag', 1);
+							this.x = Math.cos(ang) * mag;
+							this.y = Math.sin(ang) * mag;
+						} else {
+							this.x = U.param(params, 'x', 0);
+							this.y = U.param(params, 'y', 0);
+						}
 					},
 					angleMove: function(ang, dist) {
 						return new PACK.geom.Point({
 							x: this.x + (Math.cos(ang) * dist),
 							y: this.y + (Math.sin(ang) * dist)
 						});
+					},
+					moveTowards: function(loc, amt) {
+						var amt2 = amt * amt;
+						var d2 = this.distSqr(loc);
+						if (amt2 >= d2) return loc;
+						
+						return this.angleMove(this.angTo(loc), amt);
 					},
 					angTo: function(pt2) { 
 						return Math.atan2(pt2.y - this.y, pt2.x - this.x); 
@@ -86,7 +100,7 @@ var package = new PACK.pack.Package({ name: 'geom',
 					}
 				};}
 			}),
-			Bound: PACK.uth.makeClass({ name: 'Bound',
+			Bound: U.makeClass({ name: 'Bound',
 				superclassName: 'Geom',
 				methods: function(sc, c) { return {
 					init: function(params /* x, y, rot */) {
@@ -95,7 +109,7 @@ var package = new PACK.pack.Package({ name: 'geom',
 					}
 				};}
 			}),
-			Circle: PACK.uth.makeClass({ name: 'Circle',
+			Circle: U.makeClass({ name: 'Circle',
 				superclassName: 'Bound',
 				methods: function(sc, c) { return {
 					init: function(params /* x, y, rot, r */) {
@@ -112,7 +126,7 @@ var package = new PACK.pack.Package({ name: 'geom',
 					},
 				};}
 			}),
-			Rect: PACK.uth.makeClass({ name: 'Rect',
+			Rect: U.makeClass({ name: 'Rect',
 				superclassName: 'Bound',
 				methods: function(sc, c) { return {
 					init: function(params /* x, y, rot, w, h */) {
@@ -123,8 +137,11 @@ var package = new PACK.pack.Package({ name: 'geom',
 					}
 				};}
 			})
-				 
 		};
+		
+		geom.ORIGIN = new geom.Point();
+		
+		return geom;
 	},
 });
 package.build();
