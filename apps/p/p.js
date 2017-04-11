@@ -93,7 +93,9 @@ var package = new PACK.pack.Package({ name: 'p',
                 setTimeout(resolve, 1000);
               }});
               */
-              params.custom(this.resolve.bind(this), this.reject.bind(this));
+              try {
+                params.custom(this.resolve.bind(this), this.reject.bind(this));
+              } catch(err) { this.reject(err); }
               
             } else if ('all' in params) {     // Allow a list of promises to be treated as a single promise
               

@@ -200,7 +200,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 				focusedNodeName: new uf.SimpleData({ value: null })
 			};
 			
-			var graphView = new uf.GraphView({ name: 'graph',
+			var graphView = new uf.GraphView({ name: 'graph', /* framesPerTick: 5, */
 				relations: {
 					dependsOn: {},
 					challengedBy: {}
@@ -240,13 +240,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 					*/
 					
+					// TODO: `data` is becoming an instance of PACK.userify.Data!!!
+					
 					var owned = data.username === dataSet.username.getValue();
 					var saved = false; // TODO: how do we get this...
+					var editing = false;
 					
-					return new uf.SetView({ name: name,
+					var view = new uf.SetView({ name: name,
 						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
 						onClick: function(e) {
-							console.log('Updated focus');
 							dataSet.focusedNodeName.setValue(this.name);
 						},
 						children: [
@@ -283,11 +285,38 @@ var package = new PACK.pack.Package({ name: 'logic',
 								}}),
 								new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
 									return PACK.p.$null;
-								}})
+								}}),
+								new uf.ChoiceView({ name: 'owner',
+									choiceData: new uf.CalculatedData({ getFunc: function() {
+										return owned && view === graphView.focused ? 'show' : null;
+									}}),
+									children: [
+										new uf.SetView({ name: 'show', children: [
+											new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
+												editing = true;
+												return PACK.p.$null;
+											}}),
+											new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
+												return PACK.p.$null;
+											}}),
+											new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
+												editing = false;
+												graphView.updateRawData(view, {
+													quickName: view.children.data.children.quickName.textData.getValue(),
+													username: data.username,
+													theory: view.children.data.children.theory.textData.getValue()
+												});
+												return PACK.p.$null;
+											}})
+										]})
+									]
+								})
 							]}),
 							new uf.SetView({ name: 'data', children: [
 								new uf.DynamicTextView({ name: 'quickName',
-									editableData: owned && !saved,
+									editableData: new uf.CalculatedData({ getFunc: function() {
+										return editing && owned && !saved;
+									}}),
 									textData: data.quickName,
 									inputViewParams: {
 										placeholderData: 'Quick Name',
@@ -298,7 +327,9 @@ var package = new PACK.pack.Package({ name: 'logic',
 									data: data.username
 								}),
 								new uf.DynamicTextView({ name: 'theory',
-									editableData: owned,
+									editableData: new uf.CalculatedData({ getFunc: function() {
+										return editing && owned;
+									}}),
 									textData: data.theory,
 									inputViewParams: {
 										placeholderData: 'Theory',
@@ -309,8 +340,16 @@ var package = new PACK.pack.Package({ name: 'logic',
 						]
 					});
 					
+					return view;
 				},
-				focusedNameData: dataSet.focusedNodeName
+				focusedNameData: dataSet.focusedNodeName,
+				physicsSettings: {
+					dampenGlobal: 0.5,
+					unfocusR: 60,
+					separation: 5,
+					repulseMult: 20,
+					dampenGravity: 1 / 30
+				}
 			});
 							
 			var rootView = new uf.SetView({ name: 'root', children: [
@@ -405,19 +444,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 					username: 'admin',
 					theory: 'The sky is blue.'
 				}
-			].concat(U.range({0:4}).map(function(i) {
+			].concat(U.range({0:20}).map(function(i) {
 				return {
-					quickName: U.id(i),
-					username: U.id(i),
-					theory: U.id(i) + ', ' + U.id(i * 20)
+					quickName: U.charId(i),
+					username: U.charId(i),
+					theory: U.id(i) + U.id(i * 20) + U.id((i + 30) * 17)
 				};
 			})));
-			
-			graphView.childDataSet.push({
-				quickName: 'newTheory',
-				username: 'admin',
-				theory: 'The sky is blue.'
-			});
 			
 		}).done();
 		

@@ -24,6 +24,7 @@
 	position: absolute;
 	width: 100%; height: 100%;
 	left: 0; top: 0;
+	overflow: hidden;
 }
 #root-login-in-graph > ._nodes > .theory {
 	display: block;
@@ -32,9 +33,9 @@
 	pointer-events: none;
 	
 	transform-origin: 0% 0%;
-	transition: transform 200ms ease-out/*, left 200ms ease-out, top 200ms ease-out */;
+	transition: left 200ms ease-out, top 200ms ease-out, transform 200ms linear;
 }
-#root-login-in-graph > ._nodes > .theory ._widget {
+#root-login-in-graph > ._nodes > .theory ._interactive {
 	background-color: transparent;
 	color: #000000;
 	box-shadow: inset 0 0 0 1px #dadada;
@@ -48,7 +49,7 @@
 	border-radius: 100%;
   box-shadow: 0 0 0 2px #d0d0d0;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._widget {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive {
 	position: absolute;
 	width: 70px; height: 64px;
 	border-radius: 100%;
@@ -57,21 +58,52 @@
 	
 	transition: box-shadow 500ms ease-out;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._widget._loadDependencies {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies {
 	box-shadow: inset 0 0 0 6px #09bd3c;
 	background-color: #0be74a;
 	left: -5px;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._widget._loadDependencies:hover {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies:hover {
 	box-shadow: inset 0 0 0 34px #09bd3c;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._widget._loadChallenges {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges {
 	box-shadow: inset 0 0 0 6px #f44c05;
 	background-color: #ff8552;
 	right: -5px;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._widget._loadChallenges:hover {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges:hover {
 	box-shadow: inset 0 0 0 34px #f44c05;
+}
+#root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show {
+	position: absolute;
+	width: 108px; height: 108px;
+	right: -56px;
+  bottom: -37px;
+	border-radius: 100%;
+	background-color: #ffffff;
+	box-shadow: 0 0 0 2px #d0d0d0;
+	text-align: center;
+	overflow: hidden;
+}
+#root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show {
+	display: inline-block;
+	width: 108px;
+	vertical-align: middle;
+}
+#root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show > ._button {
+	position: relative;
+	display: block;
+	width: 100%; height: 36px; line-height: 36px; padding: 0;
+	
+	box-shadow: none;
+	background-color: #transparent;
+	color: #000000;
+	
+	transition: background-color 200ms linear, color 200ms linear;
+}
+#root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show > ._button:hover {
+	background-color: #a0a0a0;
+	color: #ffffff;
 }
 #root-login-in-graph > ._nodes > .theory > ._data {
 	position: absolute;
@@ -79,7 +111,6 @@
 	border-radius: 100%;
 	background-color: #ffffff;
 	text-align: center;
-	overflow: hidden;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._quickName {
 	display: block;
@@ -104,9 +135,10 @@
 	overflow: hidden;
 	font-size: 16px;
 	font-family: serif;
-	text-align: justify;
+	text-align: left;
 	pointer-events: all;
 	cursor: pointer;
+	white-space: pre-wrap; /* this is a simple stand-in for advanced text formatting */
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._theory._choose-display:after {
 	content: "";

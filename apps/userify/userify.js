@@ -176,11 +176,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (this.onClick)
 							this.domRoot.onclick = this.onClick.bind(this);
 						
-						this.getContainer().appendChild(this.domRoot);
-					},
-					getContainer: function() {
-						if (this.par === null) return document.body;
-						return this.par.provideContainer(this);
+						(this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
 					},
 					$update: function(millis) {
 						// Calling `$update` ensures that `domRoot` is initialized
@@ -229,10 +225,26 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
-			InputView: U.makeClass({ name: 'InputView',
+			InteractiveView: U.makeClass({ name: 'InteractiveView',
 				superclassName: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, multiline, initialValue, textData, placeholderData */) {
+					init: function(params /* name, enabledData */) {
+						sc.init.call(this, params);
+						this.enabledData = uf.padam(params, 'enabledData', true);
+					},
+					
+					tick: function(millis) {
+						if (this.enabledData.getValue())
+							this.domRoot.classList.remove('_disabled');
+						else
+							this.domRoot.classList.add('_disabled');
+					}
+				};}
+			}),
+			InputView: U.makeClass({ name: 'InputView',
+				superclassName: 'InteractiveView',
+				methods: function(sc, c) { return {
+					init: function(params /* name, multiline, initialValue, textData, placeholderData, enabledData */) {
 						sc.init.call(this, params);
 						this.multiline = U.param(params, 'multiline', false);
 						this.textData = uf.padam(params, 'textData', '');
@@ -245,7 +257,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						ret.classList.add(this.multiline ? '_multiline' : '_inline');
 						
 						var input = document.createElement(this.multiline ? 'textarea' : 'input');
-						input.classList.add('_widget');
+						input.classList.add('_interactive');
 						input.oninput = function(e) {
 							this.textData.setValue(input.value);
 						}.bind(this);
@@ -268,6 +280,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return ret;
 					},
 					tick: function(millis) {
+						sc.tick.call(this, millis);
+						
 						var input = this.domRoot.childNodes[0];
 						var inputText = this.textData.getValue();
 						
@@ -291,9 +305,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 				};}
 			}),
 			ActionView: U.makeClass({ name: 'ActionView',
-				superclassName: 'View',
+				superclassName: 'InteractiveView',
 				methods: function(sc, c) { return {
-					init: function(params /* name, $action, textData */) {
+					init: function(params /* name, $action, textData, enabledData */) {
 						sc.init.call(this, params);
 						this.$action = U.param(params, '$action');
 						this.waiting = false;
@@ -303,7 +317,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					createDomRoot: function() {
 						var button = document.createElement('div');
 						button.classList.add('_button');
-						button.classList.add('_widget');
+						button.classList.add('_interactive');
 						button.setAttribute('tabindex', 0);
 						button.onkeypress = function(e) {
 							if (e.keyCode === 13 || e.keyCode === 32) {
@@ -322,6 +336,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return button;
 					},
 					tick: function(millis) {
+						sc.tick.call(this, millis);
+						
 						uf.domSetText(this.domRoot, this.textData.getValue());
 						
 						if (this.waiting)	this.domRoot.classList.add('_waiting');
@@ -375,13 +391,28 @@ var package = new PACK.pack.Package({ name: 'userify',
 			}),
 			SetView: U.makeClass({ name: 'SetView',
 				superclassName: 'AbstractSetView',
+				description: 'The simplest implementation of AbstractSetView. ' +
+					'Updates all child views.',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children */) {
+					init: function(params /* name, children, numWrappers */) {
 						sc.init.call(this, params);
+						this.numWrappers = U.param(params, 'numWrappers', 0);
 					},
 					
+					createDomRoot: function() {
+						var ret = sc.createDomRoot.call(this);
+						var ptr = ret;
+						for (var i = 0, len = this.numWrappers; i < len; i++) {
+							ptr.appendChild(document.createElement('div'));
+							ptr = ptr.childNodes[0];
+							ptr.classList.add('_wrap');
+						}
+						return ret;
+					},
 					provideContainer: function() {
-						return this.domRoot;
+						var ret = this.domRoot;
+						for (var i = 0, len = this.numWrappers; i < len; i++) ret = ret.childNodes[0];
+						return ret;
 					},
 					$update: function(millis) {
 						var children = this.children;
@@ -436,60 +467,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 								this.currentChild.fini();
 							}
 							this.currentChild = nextChild;
-							this.domRoot.classList.add('_choose-' + this.currentChild.name);
+							if (this.currentChild) {
+								this.domRoot.classList.add('_choose-' + this.currentChild.name);
+							}
 						}
-					}
-				};}
-			}),
-			DynamicSetView: U.makeClass({ name: 'DynamicSetView',
-				superclassName: 'SetView',
-				description: 'A SetView whose children are based on Data. ' +
-					'Modifications to the Data instantly modify the children of ' +
-					'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
-					'raw data that the child was built from.',
-				methods: function(sc, c) { return {
-					init: function(params /* name, data, getDataId, genChildView, comparator */) {
-						if ('children' in params) throw new Error('Initialized DynamicSetView with `children` param');
-						
-						sc.init.call(this, params);
-						this.data = uf.padam(params, 'data');
-						this.getDataId = U.param(params, 'getDataId'), 	// Returns a unique id for a piece of data (will be used for child.name)
-						this.genChildView = U.param(params, 'genChildView'),		// function(name, rawData) { /* generates a View */ };
-						this.comparator = U.param(params, 'comparator', null);
-						
-						this.count = 0;
-					},
-					
-					tick: function(millis) {
-						
-						var rem = this.children.clone(); // Initially mark all children for removal
-						var add = {};	// Initially mark no children for addition
-						
-						this.data.getValue().forEach(function(item, k) {
-							
-							// `itemId` is also always the name of the corresponding child
-							var itemId = this.getDataId(item); 
-							
-							// Each item in `data` is unmarked for removal
-							delete rem[itemId];	
-							
-							// Items which don't already exist as children are marked for addition
-							if (!(itemId in this.children)) add[itemId] = item;
-							
-						}.bind(this));
-						
-						// Remove all children as necessary
-						for (var k in rem) {
-							if (!this.remChild(k)) throw new Error('Couldn\'t remove child: "' + k + '"');
-						}
-						
-						// Add all children as necessary
-						for (var k in add) {
-							var child = this.genChildView(k, add[k], this);
-							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
-							this.addChild(child, add[k]);
-						}
-						
 					}
 				};}
 			}),
@@ -512,15 +493,73 @@ var package = new PACK.pack.Package({ name: 'userify',
 				methods: function(sc, c) { return {
 					init: function(params /* name, editableData, textData, inputViewParams */) {
 						var editableData = uf.padam(params, 'editableData');
-						var textData = uf.padam(params, 'textData');
+						this.textData = uf.padam(params, 'textData');
 						var inputViewParams = U.param(params, 'inputViewParams', {});
 						sc.init.call(this, params.update({
 							choiceData: new uf.CalculatedData({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
 							children: [
-								new uf.InputView(inputViewParams.update({ name: 'edit', textData: textData })),
-								new uf.TextView({ name: 'display', data: textData })
+								new uf.InputView(inputViewParams.update({ name: 'edit', textData: this.textData })),
+								new uf.TextView({ name: 'display', data: this.textData })
 							]
 						}));
+					}
+				};}
+			}),
+			
+			DynamicSetView: U.makeClass({ name: 'DynamicSetView',
+				superclassName: 'SetView',
+				description: 'A SetView whose children are based on Data. ' +
+					'Modifications to the Data instantly modify the children of ' +
+					'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
+					'raw data that the child was built from.',
+				methods: function(sc, c) { return {
+					init: function(params /* name, data, getDataId, genChildView, comparator */) {
+						if ('children' in params) throw new Error('Initialized DynamicSetView with `children` param');
+						
+						sc.init.call(this, params);
+						this.data = uf.padam(params, 'data');
+						this.getDataId = U.param(params, 'getDataId'), 	// Returns a unique id for a piece of data (will be used for child.name)
+						this.genChildView = U.param(params, 'genChildView'),		// function(name, rawData) { /* generates a View */ };
+						this.comparator = U.param(params, 'comparator', null);
+						
+						this.count = 0;
+					},
+					
+					tick: function(millis) {
+						
+						var addr = this.getAddress();
+						
+						var rem = this.children.clone(); // Initially mark all children for removal
+						var add = {};	// Initially mark no children for addition
+						
+						this.data.getValue().forEach(function(item, k) {
+							
+							// `itemId` is also always the name of the corresponding child
+							var itemId = this.getDataId(item);
+							
+							// Each item in `data` is unmarked for removal
+							delete rem[itemId];	
+							
+							// Items which don't already exist as children are marked for addition
+							if (!(itemId in this.children)) add[itemId] = item;
+							
+						}.bind(this));
+						
+						// Remove all children as necessary
+						for (var k in rem) {
+							if (!this.remChild(k)) {
+								console.log(rem, this.getAddress(), this.children);
+								throw new Error('Couldn\'t remove child: "' + k + '"');
+							}
+						}
+						
+						// Add all children as necessary
+						for (var k in add) {
+							var child = this.genChildView(k, add[k], this);
+							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
+							this.addChild(child, add[k]);
+						}
+						
 					}
 				};}
 			}),
@@ -529,10 +568,23 @@ var package = new PACK.pack.Package({ name: 'userify',
 				description: 'A DynamicSetView which keeps track of directed ' +
 					'relationships between every pair of its children.',
 				methods: function(sc, c) { return {
-					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData */) {
+					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData, physicsSettings */) {
 						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
 						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
 						sc.init.call(this, params.update({ data: this.childDataSet }));
+						
+						var physicsSettings = U.param(params, 'physicsSettings', {});
+						this.physicsSettings = {
+							dampenGlobal: 0.6,
+							dampenGravity: 1 / 100,
+							focusR: 150,
+							unfocusR: 80,
+							separation: 20,
+							tooFar: 500,
+							repulseMult: 10,
+							repulseMinDivisor: 0.08,
+							focusSpeed: 2000
+						}.update(physicsSettings);
 						
 						// Given the raw data of two nodes, returns the name of the relationship between those nodes
 						this.classifyRelation = U.param(params, 'classifyRelation');
@@ -564,19 +616,83 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						return ret;
 					},
-					provideContainer: function() {
+					provideContainer: function(view) {
+						var w = Math.round(this.domRoot.offsetWidth);
+						var h = Math.round(this.domRoot.offsetHeight);
+						
+						view.domRoot.style.left = (w >> 1) - this.physicsSettings.unfocusR;
+						view.domRoot.style.top = (h >> 1) - this.physicsSettings.unfocusR;
+						view.domRoot.style.transform = 'scale(' + this.physicsSettings.unfocusR / this.physicsSettings.focusR + ')';
+						view.domRoot.classList.add('_node');
+						
 						return this.domRoot.childNodes[1];
 					},
-					addRawData: function(rawData) {
-						if (!U.isObj(rawData, Array)) rawData = [ rawData ];
+					addRawData: function(rawDataSet) {
+						// TODO: Need way to specify initial node location.
+						// The issue is that initial location has no access to rawData;
+						// it only has access to the child, and then it generates the
+						// raw data from scratch.
+						if (!U.isObj(rawDataSet, Array)) rawDataSet = [ rawDataSet ];
 						
-						for (var i = 0, len = rawData.length; i < len; i++) {
-							var d = rawData[i];
+						for (var i = 0, len = rawDataSet.length; i < len; i++) {
+							var d = rawDataSet[i];
 							var id = this.getDataId(d);
 							if (id in this.childRawData) return;
 							
-							this.childDataSet.push(rawData[i]);
+							this.childDataSet.push(d);
 						}
+					},
+					updateRawData: function(view, newRawData) {
+						/*
+						TODO: simple, static data is being sent to genChildView.
+						This means that when data updates here, there is no way to
+						inform any elements generated through genChildView that they
+						need to update their values. Looks like genChildView needs
+						to be getting
+						*/
+						
+						var oldId = view.name;
+						var oldRawData = this.childRawData[oldId].raw;
+						
+						var newId = this.getDataId(newRawData);
+						console.log('replacing', oldRawData, newRawData);
+						
+						// If the key is updating, need to delete old keyed data
+						if (newId !== oldId) {
+							if (newId in this.children) throw new Error('Updating "' + oldId + '" to "' + newId + '" causes overwrite');
+							
+							this.childRawData[newId] = { physics: this.childRawData[oldId].physics }; // Need to retain the `physics` property
+							delete this.childRawData[oldId];
+							
+							this.children[newId] = this.children[oldId]; // Update the child key name
+							this.children[newId].name = newId; // This seems risky :(
+							delete this.children[oldId];
+							
+							// TODO: Need to anticipate any static behaviour that occurs when a view generates its dom root :(
+							view.domRoot.classList.remove('_' + oldId);
+							view.domRoot.classList.add('_' + newId);
+						}
+						
+						// Update the `raw` property of the raw data container
+						this.childRawData[newId].raw = newRawData;
+						this.childRawData[newId].id = newId;
+						
+						/*
+						Need to O(n) search `this.childDataSet` - which is a pity
+						and possibly suggests it should be an object whose key is
+						always the id??? In which case there would be no more need
+						for `this.getDataId`, but is that a loss of power?
+						*/ 
+						for (var i = 0, len = this.childDataSet.length; i < len; i++) {
+							if (this.getDataId(this.childDataSet[i]) === oldId) {
+								this.childDataSet[i] = newRawData;
+								break;
+							}
+						}
+						
+						// TODO: Need to update relations with `this.classifyRelation`!
+						console.log('Done update', this.getAddress(), this.children);
+						
 					},
 					addChild: function(child, rawData) {
 						var c = sc.addChild.call(this, child);
@@ -589,7 +705,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							physics: {
 								weight: 1,
 								r: 150,
-								loc: new PACK.geom.Point({ x: U.randInt(-200, 200), y: U.randInt(-200, 200) }),
+								loc: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.0001 }),
 								vel: new PACK.geom.Point(),
 								acl: new PACK.geom.Point()
 							}
@@ -607,7 +723,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					remChild: function(child) {
 						var c = sc.remChild.call(this, child);
 						
-						if (!c) return; // Rem failed!
+						if (!c) return null; // Rem failed!
 						
 						// Ensure to unfocus the child if necessary
 						if (c === this.focused) {
@@ -622,12 +738,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 							delete this.relationMap[this.relationKey(c, c2)];
 							delete this.relationMap[this.relationKey(c2, c)];
 						}
+						
+						return c;
 					},
 					relationKey: function(child1, child2) {
 						return child1 !== child2 ? child1.name + '-' + child2.name : child1.name;
-					},
-					updateChild: function(child) {
-						var phys = this.childRawData[child.name].physics;
 					},
 					tick: function(millis) {
 						var w = Math.round(this.domRoot.offsetWidth);
@@ -637,32 +752,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var scale = 1 / 150;
 						var secs = millis / 1000;
 						
-						/*
-						var dampenGlobal = 0.85;
-						var dampenGravity = 1 / 100;
-						var focusSize = 150;
-						var unfocusSize = 80;
-						var separation = 20;
-						var tooFar = 500;
-						var repulseMult = 20;
-						var repulseMinDivisor = 0.15;
-						var focusSpeed = 2000;
-						*/
-						
-						// These are quite good settings
-						var dampenGlobal = 0.60;
-						var dampenGravity = 1 / 200;
-						var focusSize = 150;
-						var unfocusSize = 80;
-						var separation = 20;
-						var tooFar = 500;
-						var repulseMult = 10;
-						var repulseMinDivisor = 0.08;
-						var focusSpeed = 2000;
+						var ps = this.physicsSettings;
 						
 						// Ensure the canvas size maps directly to the dom space
-						this.domRoot.childNodes[0].width = w;
-						this.domRoot.childNodes[0].height = h;
+						var canvas = this.domRoot.childNodes[0];
+						if (canvas.width !== w) canvas.width = w;
+						if (canvas.height !== h) canvas.height = h;
 						
 						var cs = this.children.toArray();
 						var ncs = cs.length;
@@ -672,13 +767,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 							
 							var c1 = cs[i];
 							var phys1 = this.childRawData[c1.name].physics;
-							phys1.vel = phys1.vel.scale(dampenGlobal);
+							phys1.vel = phys1.vel.scale(ps.dampenGlobal);
 							phys1.loc = phys1.loc.add(phys1.vel.scale(secs));
-							phys1.r = c1 === this.focused ? focusSize : unfocusSize;
+							phys1.r = c1 === this.focused ? ps.focusR : ps.unfocusR;
 							
 							// Always have impulse towards origin
 							var d2 = phys1.loc.distSqr(PACK.geom.ORIGIN);
-							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (dampenGravity * dampenGravity) }));
+							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (ps.dampenGravity * ps.dampenGravity) }));
 							
 						}
 						
@@ -694,13 +789,22 @@ var package = new PACK.pack.Package({ name: 'userify',
 								var c2 = cs[j];
 								var phys2 = this.childRawData[c2.name].physics;
 								
-								var dist = phys1.loc.dist(phys2.loc) - (phys1.r + phys2.r) - separation;
-								if (dist > tooFar) continue;
+								var dist = phys1.loc.dist(phys2.loc) - (phys1.r + phys2.r) - ps.separation;
+								if (dist > ps.tooFar) continue;
 								
-								var mag = repulseMult / Math.max(repulseMinDivisor, dist);
+								var mag = ps.repulseMult / Math.max(ps.repulseMinDivisor, dist);
 								var repulse = new PACK.geom.Point({ ang: phys2.loc.angTo(phys1.loc), mag: mag }).scale(phys2.r * inertiaRatio);
 								phys1.vel = phys1.vel.add(repulse);
 							}
+						}
+						
+						// Update the focused node independently
+						var f = this.focused;
+						if (f) {
+							var physF = this.childRawData[f.name].physics;
+							physF.vel = PACK.geom.ORIGIN;
+							//physF.loc = PACK.geom.ORIGIN;
+							physF.loc = physF.loc.moveTowards(PACK.geom.ORIGIN, ps.focusSpeed * secs);
 						}
 						
 						// Update styling based on physics
@@ -711,13 +815,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 							c.domRoot.style.left = (hw + (phys.loc.x - phys.r)) + 'px';
 							c.domRoot.style.top = (hh + (phys.loc.y - phys.r)) + 'px';
 							c.domRoot.style.transform = 'scale(' + phys.r * scale + ')';
-						}
-						
-						var f = this.focused;
-						if (f) {
-							var physF = this.childRawData[f.name].physics;
-							physF.vel = PACK.geom.ORIGIN;
-							physF.loc = physF.loc.moveTowards(PACK.geom.ORIGIN, focusSpeed * secs);
 						}
 						
 						/*
