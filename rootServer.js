@@ -68,8 +68,6 @@ var package = new PACK.pack.Package({ name: 'server',
 					},
 					getFileContents: function(filepath) {
 						// Find the static file, serve it
-						// Not a static method (TODO:) because different sessions will
-						// restrict which files are servable in different ways.
 						
 						var ext = path.extname(filepath);
 						if (!(ext in config.legalExtensions)) throw new Error('Illegal extension: "' + ext + '"');

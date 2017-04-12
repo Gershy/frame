@@ -157,7 +157,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return ptr;
 					},
 					getChild: function(address) {
-						// TODO: is it safe to assume this will never be overloaded?
 						if (address.length === 0) return this; // Works for both strings and arrays
 						
 						if (!U.isObj(address, Array)) address = address.toString().split('.');
@@ -665,19 +664,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 						}
 					},
 					updateRawData: function(view, newRawData) {
-						/*
-						TODO: simple, static data is being sent to genChildView.
-						This means that when data updates here, there is no way to
-						inform any elements generated through genChildView that they
-						need to update their values. Looks like genChildView needs
-						to be getting
-						*/
 						
 						var oldId = view.name;
 						var oldRawData = this.childRawData[oldId].raw;
 						
 						var newId = this.getDataId(newRawData);
-						console.log('replacing', oldRawData, newRawData);
 						
 						// If the key is updating, need to delete old keyed data
 						if (newId !== oldId) {
@@ -713,7 +704,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						}
 						
 						// TODO: Need to update relations with `this.classifyRelation`!
-						console.log('Done update', this.getAddress(), this.children);
 						
 					},
 					addChild: function(child, rawData) {
@@ -853,7 +843,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 							// Focus the next view if there is one
 							if (nextFocusedName && nextFocusedName in this.children) {
 								this.focused = this.children[nextFocusedName];
-								console.log(nextFocusedName, this.focused);
 								this.focused.domRoot.classList.add('_graphFocus');
 							}
 							

@@ -441,7 +441,7 @@ global.U = {
 		return item;
 	},
 	thingToString: function(thing) {
-		var st = U.straighten(thing);		
+		var st = U.straighten(thing);	
 		return JSON.stringify(st);
 	},
 	stringToThing: function(string) {

@@ -21,8 +21,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 							var username = U.param(reqParams, 'username');
 							var password = U.param(reqParams, 'password');
 							
-							var user = this.children.userSet.children[username];
-							if (!user) throw new Error('Couldn\'t find user "' + username + '"');
+							var user = this.requireUser(username);
 							if (user.getChild('password').value !== password) throw new Error('Incorrect password');
 							
 							return PACK.p.$({
@@ -30,9 +29,78 @@ var package = new PACK.pack.Package({ name: 'logic',
 								token: user.getToken()
 							});
 							
+						} else if (command === 'saveTheory') { // TODO: Consider writing a TheorySet DossierDict subclass, and implementing this there?
+							
+							var reqParams = U.param(params, 'params');
+							var token = U.param(reqParams, 'token');
+							var quickName = U.param(reqParams, 'quickName');
+							var theoryUsername = U.param(reqParams, 'username');
+							var theoryText = U.param(reqParams, 'theory');
+							
+							// The theory's user needs to correspond to the user's token (users can only edit their own theories)
+							var user = this.requireUser(theoryUsername, token);
+							var theorySet = this.children.theorySet;
+							
+							console.log('Saving theory to ' + theorySet.getAddress());
+							
+							if (quickName in theorySet.children) {
+								var $theory = PACK.p.$(theorySet.children[quickName]);
+							} else {
+								
+								var editor = new qd.Editor();
+								var essaySet = this.children.essaySet;
+								
+								// TODO: essay should be created empty...
+								var $theory = editor.$addFast({
+									par: essaySet,
+									data: {
+										markup: theoryText
+									}
+								}).then(function(essay) {
+									
+									console.log('GOT ESSAY:', essay.getAddress());
+									
+									var t = +new Date();
+									
+									// Create the theory
+									return editor.$addFast({
+										par: theorySet,
+										name: quickName,
+										data: {
+											createdTime: t,
+											editedTime: t,
+											quickName: quickName,
+											title: 'Really, REALLY awesome theory',
+											user: user,
+											essay: essay,
+											dependencySet: [],
+											challengeSet: [],
+											voterSet: []
+										}
+									});
+									
+								})
+								
+							}
+							
+							// TODO: and then updated over here
+							return $theory.then(function(theory) {
+								
+								console.log('GOT THEORY:', theory.getAddress());
+								
+								return theory.getDataView({});
+								
+							});
+							
 						}
 						
 						return sc.$handleQuery.call(this, params);
+					},
+					requireUser: function(username, token) {
+						var user = this.children.userSet.children[username];
+						if (!user) throw new Error('Couldn\'t find user "' + username + '"');
+						if (token && user.getToken() !== token) throw new Error('Incorrects token for user "' + username + '"');
+						return user;
 					}
 				};}
 			}),
@@ -87,7 +155,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 						}},
 						{ c: qd.DossierList, p: { name: 'theorySet',
 							innerOutline: { c: qd.DossierDict, i: [
-								{ c: qd.DossierInt,			p: { name: 'timestamp' } },
+								{ c: qd.DossierInt,			p: { name: 'createdTime' } },
+								{ c: qd.DossierInt,			p: { name: 'editedTime' } },
 								{ c: qd.DossierString,	p: { name: 'quickName' } },
 								{ c: qd.DossierString,	p: { name: 'title' } },
 								{ c: qd.DossierRef,			p: { name: 'user', baseAddress: '~root.userSet' } },
@@ -216,16 +285,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 					data = {
 						quickName: 'quickName',
 						username: 'username',
-						theory: 'theory text...'
+						theory: 'theory text...',
+						saved: true | false
 					}
 					*/
-					
-					// TODO: `data` is becoming an instance of PACK.userify.Data!!!
 					
 					var username = data.getValue().username;
 					var owned = username === dataSet.username.getValue();
 					var saved = data.getValue().saved;
-					var editing = !saved; // non-saved nodes should be editing by default
+					var editing = !saved; // non-saved nodes should be editing initially
 					
 					var view = new uf.SetView({ name: name,
 						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
@@ -287,12 +355,24 @@ var package = new PACK.pack.Package({ name: 'logic',
 											}}),
 											new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
 												editing = false;
-												graphView.updateRawData(view, {
+												var saveData = {
 													quickName: view.getChild('data.quickName').textData.getValue(),
 													username: data.getValue().username,
 													theory: view.getChild('data.theory').textData.getValue()
+												};
+												
+												console.log('SAVING:', saveData);
+												
+												return doss.$doRequest({
+													command: 'saveTheory',
+													params: saveData.update({ token: dataSet.token.getValue() })
+												}).then(function(response) {
+													console.log('SAVED', response);
+													graphView.updateRawData(view, saveData);
+												}).fail(function(err) {
+													editing = true; // Didn't save; go back to editing
+													console.error(err.message);
 												});
-												return PACK.p.$null;
 											}})
 										]})
 									]
@@ -365,10 +445,11 @@ var package = new PACK.pack.Package({ name: 'logic',
 						new uf.SetView({ name: 'controls', children: [
 							new uf.SetView({ name: 'global', cssClasses: [ 'subControls' ], children: [
 								new uf.ActionView({ name: 'new', textData: 'New Theory', $action: function() {
-									graphView.childDataSet.push({
+									graphView.addRawData({
 										quickName: 'newTheory',
 										username: dataSet.username.getValue(),
-										theory: 'The sky is blue.'
+										theory: 'The sky is blue.',
+										saved: false
 									});
 									return PACK.p.$null;
 								}}),
