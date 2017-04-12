@@ -216,35 +216,16 @@ var package = new PACK.pack.Package({ name: 'logic',
 					data = {
 						quickName: 'quickName',
 						username: 'username',
-						theory: 'theory text...',
-						date: 'date string',
-						prereqs: [
-							'app.theorySet.list',
-							'app.theorySet.of',
-							'app.theorySet.supporting',
-							'app.theorySet.theories',
-							.
-							.
-							.
-						],
-						challengers: [
-							'app.theorySet.list',
-							'app.theorySet.of',
-							'app.theorySet.challenging',
-							'app.theorySet.theories',
-							.
-							.
-							.
-						],
-						rating: 1000, // net sum of votes
+						theory: 'theory text...'
 					}
 					*/
 					
 					// TODO: `data` is becoming an instance of PACK.userify.Data!!!
 					
-					var owned = data.username === dataSet.username.getValue();
-					var saved = false; // TODO: how do we get this...
-					var editing = false;
+					var username = data.getValue().username;
+					var owned = username === dataSet.username.getValue();
+					var saved = data.getValue().saved;
+					var editing = !saved; // non-saved nodes should be editing by default
 					
 					var view = new uf.SetView({ name: name,
 						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
@@ -254,13 +235,20 @@ var package = new PACK.pack.Package({ name: 'logic',
 						children: [
 							new uf.SetView({ name: 'controls', children: [
 								new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
-									console.log('Dependencies for ' + data.quickName);
+									
+									var raw = data.getValue();
+									
+									console.log('Dependencies for ' + raw.quickName);
 									return doss.$doRequest({
-										address: [ 'theorySet', data.quickName, 'dependencySet' ].join('.'),
+										address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
 										command: 'getRawData'
-									}).then(function(data) {
-										console.log('GOT DATA', data);
+									}).then(function(dependencySetData) {
+										
+										console.log('GOT DATA', dependencySetData);
+										
 									}).fail(function(err) {
+										
+										return;
 										
 										console.log('Loading duds (' + err.message + ')');
 										graphView.addRawData([
@@ -287,9 +275,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 									return PACK.p.$null;
 								}}),
 								new uf.ChoiceView({ name: 'owner',
-									choiceData: new uf.CalculatedData({ getFunc: function() {
-										return owned && view === graphView.focused ? 'show' : null;
-									}}),
+									choiceData: function() { return owned && view === graphView.focused ? 'show' : null; },
 									children: [
 										new uf.SetView({ name: 'show', children: [
 											new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
@@ -302,9 +288,9 @@ var package = new PACK.pack.Package({ name: 'logic',
 											new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
 												editing = false;
 												graphView.updateRawData(view, {
-													quickName: view.children.data.children.quickName.textData.getValue(),
-													username: data.username,
-													theory: view.children.data.children.theory.textData.getValue()
+													quickName: view.getChild('data.quickName').textData.getValue(),
+													username: data.getValue().username,
+													theory: view.getChild('data.theory').textData.getValue()
 												});
 												return PACK.p.$null;
 											}})
@@ -314,23 +300,19 @@ var package = new PACK.pack.Package({ name: 'logic',
 							]}),
 							new uf.SetView({ name: 'data', children: [
 								new uf.DynamicTextView({ name: 'quickName',
-									editableData: new uf.CalculatedData({ getFunc: function() {
-										return editing && owned && !saved;
-									}}),
-									textData: data.quickName,
+									editableData: function() { return editing && owned && !saved; },
+									textData: data.getValue().quickName,
 									inputViewParams: {
 										placeholderData: 'Quick Name',
 										cssClasses: [ 'centered' ]
 									}
 								}),
-								new uf.TextView({ name: 'user', // This one can't be edited!
-									data: data.username
+								new uf.TextView({ name: 'user',
+									data: username
 								}),
 								new uf.DynamicTextView({ name: 'theory',
-									editableData: new uf.CalculatedData({ getFunc: function() {
-										return editing && owned;
-									}}),
-									textData: data.theory,
+									editableData: function() { return editing && owned; },
+									textData: data.getValue().theory,
 									inputViewParams: {
 										placeholderData: 'Theory',
 										multiline: true
@@ -347,7 +329,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					dampenGlobal: 0.5,
 					unfocusR: 60,
 					separation: 5,
-					repulseMult: 20,
+					repulseMult: 15,
 					dampenGravity: 1 / 30
 				}
 			});
@@ -442,15 +424,18 @@ var package = new PACK.pack.Package({ name: 'logic',
 				{
 					quickName: 'newTheory',
 					username: 'admin',
-					theory: 'The sky is blue.'
+					theory: 'The sky is blue.',
+					saved: false
 				}
-			].concat(U.range({0:20}).map(function(i) {
+			].concat(U.range({0:0}).map(function(i) {
 				return {
 					quickName: U.charId(i),
 					username: U.charId(i),
-					theory: U.id(i) + U.id(i * 20) + U.id((i + 30) * 17)
+					theory: U.id(i) + U.id(i * 20) + U.id((i + 30) * 17),
+					saved: false
 				};
 			})));
+			dataSet.focusedNodeName.setValue('newTheory');
 			
 		}).done();
 		

@@ -403,7 +403,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (!U.isObj(address, Array)) address = address.toString().split('.');
 						
 						var ptr = this;
-						for (var i = 0, len = address.length; (i < len) && (ptr !== null); i++)	{
+						for (var i = 0, len = address.length; (i < len) && ptr; i++)	{
 							var a = address[i];
 							if (a[0] === '@') {	// Handle dereferenced child
 								ptr = ptr.getNamedChild(a.substr(1));

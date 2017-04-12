@@ -25,7 +25,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 			padam: function(params, name, def) {
 				// Data-param; ensures the return value is an instance of PACK.userify.Data (defaulting to SimpleData)
 				var ret = U.param(params, name, def);
-				return U.isInstance(ret, uf.Data) ? ret : new uf.SimpleData({ value: ret });
+				if (U.isInstance(ret, uf.Data)) return ret;
+				return U.isObj(ret, Function)
+					? new uf.CalculatedData({ getFunc: ret })
+					: new uf.SimpleData({ value: ret });
 			},
 			
 			Data: U.makeClass({ name: 'Data',
@@ -108,7 +111,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 					setValue: function(value) {
 						if (!this.setFunc) throw new Error('No `setFunc`');
 						this.setFunc(value);
-					}
+					},
+					fini: function() {}
 				};}
 			}),
 			
@@ -122,7 +126,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.cssClasses = U.param(params, 'cssClasses', []);
 						this.onClick = U.param(params, 'onClick', null);
 						this.framesPerTick = U.param(params, 'framesPerTick', 1);
-						this.delay = this.framesPerTick; // `delay` starting full ensures 1st tick not skipped
+						this.frameCount = this.framesPerTick; // `frameCount` starting full ensures 1st tick not skipped
 						
 						this.par = null;
 						this.domRoot = null;
@@ -150,6 +154,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 					getRoot: function() {
 						var ptr = this;
 						while (ptr.par) ptr = ptr.par;
+						return ptr;
+					},
+					getChild: function(address) {
+						// TODO: is it safe to assume this will never be overloaded?
+						if (address.length === 0) return this; // Works for both strings and arrays
+						
+						if (!U.isObj(address, Array)) address = address.toString().split('.');
+						
+						var ptr = this;
+						for (var i = 0, len = address.length; (i < len) && ptr; i++) ptr = ptr.children[address[i]];
 						return ptr;
 					},
 					
@@ -182,9 +196,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Calling `$update` ensures that `domRoot` is initialized
 						if (this.domRoot === null) this.initDomRoot();
 						
-						if (this.framesPerTick && (++this.delay >= this.framesPerTick)) {
+						if (this.framesPerTick && (++this.frameCount >= this.framesPerTick)) {
 							this.tick(millis);
-							this.delay = 0;
+							this.frameCount = 0;
 						}
 						this.millisAlive += millis;
 						
@@ -514,13 +528,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 					'raw data that the child was built from.',
 				methods: function(sc, c) { return {
 					init: function(params /* name, data, getDataId, genChildView, comparator */) {
-						if ('children' in params) throw new Error('Initialized DynamicSetView with `children` param');
+						if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
 						
 						sc.init.call(this, params);
 						this.data = uf.padam(params, 'data');
-						this.getDataId = U.param(params, 'getDataId'), 	// Returns a unique id for a piece of data (will be used for child.name)
-						this.genChildView = U.param(params, 'genChildView'),		// function(name, rawData) { /* generates a View */ };
+						this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of data (will be used for child.name)
+						this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, data) { /* generates a View */ };
 						this.comparator = U.param(params, 'comparator', null);
+						
+						// Enable `this` inside `this.genChildView`
+						this.genChildView = this.genChildView.bind(this);
 						
 						this.count = 0;
 					},
@@ -555,11 +572,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						// Add all children as necessary
 						for (var k in add) {
-							var child = this.genChildView(k, add[k], this);
+							var calc = new uf.CalculatedData({ getFunc: function(rawData) { return rawData; }.bind(null, add[k]) });
+							var child = this.genChildView(k, calc);
 							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
+							calc.getFunc = function(child) { return this.getChildRawData(child); }.bind(this, child);
 							this.addChild(child, add[k]);
 						}
 						
+					},
+					getChildRawData: function() {
+						return null;
 					}
 				};}
 			}),
@@ -817,8 +839,28 @@ var package = new PACK.pack.Package({ name: 'userify',
 							c.domRoot.style.transform = 'scale(' + phys.r * scale + ')';
 						}
 						
+						// Update the focus
+						// TODO: invalid `nextFocusedName` should be tolerated? (It can be set, but won't apply until there is a corresponding view)
+						var nextFocusedName = this.focusedNameData.getValue();
+						if (!this.focused || nextFocusedName !== this.focused.name) {
+							
+							// Unfocus any currently focused element
+							if (this.focused) {
+								this.focused.domRoot.classList.remove('_graphFocus');
+								this.focused = null;
+							}
+							
+							// Focus the next view if there is one
+							if (nextFocusedName && nextFocusedName in this.children) {
+								this.focused = this.children[nextFocusedName];
+								console.log(nextFocusedName, this.focused);
+								this.focused.domRoot.classList.add('_graphFocus');
+							}
+							
+						}
+						
 						/*
-						Here's why sc.tick is called AFTER the physics update:
+						Here's why sc.tick is called AFTER the other updates:
 						If it isn't, it's possible some children will not have their
 						`domRoot` initialized yet. `sc.tick` would call `addChild`
 						for any un-added children, but those children would never
@@ -830,17 +872,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						un-added children for the next call to `this.tick`.
 						*/
 						sc.tick.call(this);
-						
-						// Update the focus
-						var nextFocusedName = this.focusedNameData.getValue();
-						if (!this.focused || nextFocusedName !== this.focused.name) {
-							if (this.focused) this.focused.domRoot.classList.remove('_graphFocus');
-							if (nextFocusedName) {
-								if (!(nextFocusedName in this.children)) throw new Error('Bad child name for focus: "' + nextFocusedName + '"');
-								this.focused = this.children[nextFocusedName];
-								if (this.focused) this.focused.domRoot.classList.add('_graphFocus');
-							}
-						}
+					},
+					getChildRawData: function(child) {
+						return this.childRawData[child.name].raw;
 					}
 				};}
 			})
