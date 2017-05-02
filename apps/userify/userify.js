@@ -9,10 +9,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 		var $null = ensurePromise(null);
 		var P = PACK.p.P;
 		var E = PACK.e.E;
+		var geom = PACK.geom;
 		
 		var uf = {
 			
 			domSetText: function(elem, text) {
+				// TODO: Escaping can occur here
 				if (elem.innerHTML !== text) elem.innerHTML = text;
 			},
 			domSetValue: function(elem, value) {
@@ -21,6 +23,40 @@ var package = new PACK.pack.Package({ name: 'userify',
 			domRestartAnimation: function(elem) {
 				elem.style.animation = 'none';
 				requestAnimationFrame(function() { elem.style.animation = ''; }, 10);
+			},
+			domAddListener: function(elem, type, func) {
+				// Key the set at an index that isn't already in use
+				var setName = '~' + type + 'Set';
+				
+				// If no set already exists for this type of listener, create it
+				if (!(setName in elem)) {
+					
+					// Create the set...
+					elem[setName] = [];							
+					
+					// Set up a function at "type" to call every function at "setName"
+					elem[type] = function(listenerSet, event) {
+						listenerSet.forEach(function(listener) { listener(event); });
+					}.bind(null, elem[setName]);
+					
+				}
+				
+				// Add the listener
+				elem[setName].push(func);
+			},
+			domRemListener: function(elem, type, func) {
+				// Key the set at an index that isn't already in use
+				var setName = '~' + type + 'Set';
+				
+				if (!(setName in elem)) return;
+				
+				var listenerSet = elem[setName];
+				
+				if (listenerSet.remove(func) && U.isEmpty(listenerSet)) {
+					// Clean up set and listener-calling-function
+					delete elem[type];
+					delete elem[setName];
+				}
 			},
 			padam: function(params, name, def) {
 				// Data-param; ensures the return value is an instance of PACK.userify.Data (defaulting to SimpleData)
@@ -31,20 +67,180 @@ var package = new PACK.pack.Package({ name: 'userify',
 					: new uf.SimpleData({ value: ret });
 			},
 			
+			/* DECORATOR */
+			Decorator: U.makeClass({ name: 'Decorator',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						this.id = U.id(c.NEXT_ID++);
+					},
+					start: function(view) { },
+					update: function(view) { },
+					stop: function(view) { }
+				};},
+				statik: function() {
+					NEXT_ID: 0
+				}
+			}),
+			ClickDecorator: U.makeClass({ name: 'ClickDecorator',
+				superclassName: 'Decorator',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						sc.init.call(this, params);
+						this.data = new uf.SimpleData({ value: false });
+						
+						this.clickFuncDn = c.clickFuncDn.bind(this);
+						this.clickFuncUp = c.clickFuncUp.bind(this);
+					},
+					start: function(view) {
+						uf.domAddListener(view.domRoot, 'onmousedown', this.clickFuncDn);
+					},
+					stop: function(view) {
+						uf.domRemListener(view.domRoot, 'onmousedown', this.clickFuncDn);
+						uf.domRemListener(document.body, 'onmouseup', this.clickFuncUp);	// If stopped during mousedown, this is necessary
+					}
+				};},
+				statik: {
+					clickFuncDn: function(event) { // Mouse down - add up listener, modify `this.data`
+						uf.domAddListener(document.body, 'onmouseup', this.clickFuncUp);
+						this.data.setValue(true);
+					},
+					clickFuncUp: function(event) { // Mouse up - modify `this.data`, remove up listener
+						this.data.setValue(false);
+						uf.domRemListener(document.body, 'onmouseup', this.clickFuncUp);
+					}
+				}
+			}),
+			DragDecorator: U.makeClass({ name: 'DragDecorator',
+				superclassName: 'Decorator',
+				methods: function(sc, c) { return {
+					init: function(params /* tolerance */) {
+						sc.init.call(this, params);
+						this.data = new uf.SimpleData({ value: { drag: false, mouseDown: false, view: null } });
+						this.tolerance = U.param(params, 'tolerance', 0);
+						
+						this.clickFuncDn = c.clickFuncDn.bind(this);
+						this.clickFuncUp = c.clickFuncUp.bind(this);
+						this.mouseMove = c.mouseMove.bind(this);
+					},
+					start: function(view) {
+						// Store properties on the view
+						view['~' + this.id + '.' + 'clickFuncDn'] = c.clickFuncDn.bind(this, view);
+						view['~' + this.id + '.' + 'clickFuncUp'] = c.clickFuncUp.bind(this, view);
+						view['~' + this.id + '.' + 'mouseMove'] = c.mouseMove.bind(this, view);
+						
+						uf.domAddListener(view.domRoot, 'onmousedown', view['~' + this.id + '.' + 'clickFuncDn']);
+					},
+					stop: function(view) {
+						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.' + 'clickFuncDn']);
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);		// If stopped during mousedown, this is necessary
+						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);	// If stopped during mousedown, this is necessary
+						
+						// Delete properties from the view
+						delete view['~' + this.id + '.' + 'clickFuncDn'];
+						delete view['~' + this.id + '.' + 'clickFuncUp'];
+						delete view['~' + this.id + '.' + 'mouseMove'];
+					}
+				};},
+				statik: {
+					clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
+						// Add listeners
+						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);
+						uf.domAddListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);
+						
+						var rect = view.domRoot.getBoundingClientRect();
+						
+						// Update data
+						this.data.setValue({
+							drag: false,
+							mouseDown: true,
+							view: view,
+							domPt1: new geom.Point({ x: rect.left, y: rect.top }),
+							pt1: new geom.Point({ x: event.clientX, y: event.clientY }),
+							pt2: new geom.Point({ x: event.clientX, y: event.clientY })
+						});
+					},
+					clickFuncUp: function(view, event) { // Mouse up - modify `this.data`, remove up listener
+						// Remove listeners
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);
+						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);
+						
+						// Reset data
+						this.data.setValue({
+							drag: false,
+							mouseDown: false,
+							view: null
+						});
+					},
+					mouseMove: function(view, event) {	 // Mouse move
+						// Update values in `this.data`
+						var pt2 = new geom.Point({ x: event.clientX, y: event.clientY });
+						var data = this.data.getValue(); // We know `this.data` is a SimpleData, so just updating its value works here
+						data.pt2 = pt2;
+						if (!data.drag && pt2.dist(data.pt1) > this.tolerance) data.drag = true;
+						if (data.drag) {
+							data.dragged = data.pt2.sub(data.pt1);
+							console.log('DRAG: (' + data.dragged.x + ', ' + data.dragged.y + ')');
+						}
+					}
+				}
+			}),
+			ClassDecorator: U.makeClass({ name: 'ClassDecorator',
+				superclassName: 'Decorator',
+				description: 'Dynamically changes html classes on an element',
+				methods: function(sc, c) { return {
+					init: function(params /* data, possibleClasses */) {
+						sc.init.call(this, params);
+						this.possibleClasses = U.param(params, 'possibleClasses');
+						this.data = uf.padam(params, 'data');
+					},
+					start: function(view) {
+					},
+					update: function(view) {
+						var nextClass = this.data.getValue();
+						var classList = view.domRoot.classList;
+						if (!classList.contains(nextClass)) {
+							classList.remove.apply(classList, this.possibleClasses);
+							classList.add(nextClass);
+						}
+					},
+					end: function(view) {
+						var classList = view.domRoot.classList;
+						classList.remove.apply(classList, this.possibleClasses);
+					}
+				};}
+			}),
+			CssDecorator: U.makeClass({ name: 'CssDecorator',
+				superclassName: 'Decorator',
+				description: 'Dynamically changes css properties on an element',
+				methods: function(sc, c) { return {
+					init: function(params /* data, properties */) {
+						sc.init.call(this, params);
+					},
+					start: function(view) {
+					},
+					update: function(view) {
+					},
+					stop: function() {
+					}
+				};}
+			}),
+			
+			/* DATA */
 			Data: U.makeClass({ name: 'Data',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
 						this.value = null;
 					},
+					
 					getValue: function() {
 						throw new Error('Not implemented');
 					},
 					setValue: function() {
 						throw new Error('Not implemented');
 					},
-					fini: function() {
-						throw new Error('Not implemented');
-					}
+					
+					start: function() {},
+					stop: function() {}
 				};}
 			}),
 			SimpleData: U.makeClass({ name: 'SimpleData',
@@ -54,13 +250,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 						sc.init.call(this, params);
 						this.value = U.param(params, 'value');
 					},
+					
 					getValue: function() {
 						return this.value;
 					},
 					setValue: function(value) {
 						this.value = value;
-					},
-					fini: function() {}
+					}
 				};}
 			}),
 			UpdatingData: U.makeClass({ name: 'UpdatingData',
@@ -73,15 +269,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.doingSet = false;
 						this.updateMillis = U.param(params, 'updateMillis', 0);
 						this.value = U.param(params, 'initialValue', null);
+						this.interval = null;
 						
-						this.refresh();
-						this.interval = this.updateMillis
-							? setInterval(function(){ this.refresh(); }.bind(this), this.updateMillis)
-							: null;
+						this.start();
 					},
-					fini: function() {
-						if (this.interval !== null) clearInterval(this.interval);
-					},
+					
 					getValue: function() {
 						if (!this.$getFunc) throw new Error('No `$getFunc`');
 						return this.value;
@@ -94,7 +286,18 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					refresh: function() {
 						this.$getFunc().then(function(val) { if (!this.doingSet) this.value = val; }.bind(this)).done();
-					}
+					},
+					
+					start: function() {
+						// TODO: Shouldn't be setInterval - should be setTimeout, timeout taking promise latency into account
+						this.refresh();
+						this.interval = this.updateMillis
+							? setInterval(function(){ this.refresh(); }.bind(this), this.updateMillis)
+							: null;
+					},
+					stop: function() {
+						if (this.interval !== null) clearInterval(this.interval);
+					},
 				};}
 			}),
 			CalculatedData: U.makeClass({ name: 'CalculatedData',
@@ -105,26 +308,28 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.getFunc = U.param(params, 'getFunc');
 						this.setFunc = U.param(params, 'setFunc', null);
 					},
+					
 					getValue: function() {
 						return this.getFunc();
 					},
 					setValue: function(value) {
 						if (!this.setFunc) throw new Error('No `setFunc`');
 						this.setFunc(value);
-					},
-					fini: function() {}
+					}
 				};}
 			}),
 			
+			/* VIEW */
 			NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
 			View: U.makeClass({ name: 'View',
 				methods: function(sc, c) { return {
-					init: function(params /* name, framesPerTick, cssClasses, onClick */) {
+					init: function(params /* name, framesPerTick, cssClasses, onClick, decorators */) {
 						this.name = U.param(params, 'name');
 						if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
 						
 						this.cssClasses = U.param(params, 'cssClasses', []);
 						this.onClick = U.param(params, 'onClick', null);
+						this.decorators = U.param(params, 'decorators', []);
 						this.framesPerTick = U.param(params, 'framesPerTick', 1);
 						this.frameCount = this.framesPerTick; // `frameCount` starting full ensures 1st tick not skipped
 						
@@ -170,10 +375,29 @@ var package = new PACK.pack.Package({ name: 'userify',
 					createDomRoot: function() {
 						return document.createElement('div');
 					},
-					initDomRoot: function() {
-						// Create the element
-						this.domRoot = this.createDomRoot();
+					update: function(millis) {
+						// Calling `update` ensures that `domRoot` is initialized
+						if (this.domRoot === null) {
+							this.domRoot = this.createDomRoot();
+							this.start();
+						}
 						
+						if (this.framesPerTick && (++this.frameCount >= this.framesPerTick)) {
+							for (var i = 0, len = this.decorators.length; i < len; i++)
+								this.decorators[i].update(this);
+							
+							this.tick(millis);
+							this.frameCount = 0;
+						}
+						this.millisAlive += millis;
+						
+						return PACK.p.$null;
+					},
+					tick: function(millis) {
+						throw new Error('not implemented for ' + this.constructor.title);
+					},
+					
+					start: function() {
 						// Reverse-reference the View from the html element (useful for debugging)
 						this.domRoot.__view = this;
 						
@@ -190,24 +414,14 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.domRoot.onclick = this.onClick.bind(this);
 						
 						(this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
-					},
-					$update: function(millis) {
-						// Calling `$update` ensures that `domRoot` is initialized
-						if (this.domRoot === null) this.initDomRoot();
 						
-						if (this.framesPerTick && (++this.frameCount >= this.framesPerTick)) {
-							this.tick(millis);
-							this.frameCount = 0;
-						}
-						this.millisAlive += millis;
+						for (var i = 0, len = this.decorators.length; i < len; i++)
+							this.decorators[i].start(this);
+					},
+					stop: function() {
+						for (var i = 0, len = this.decorators.length; i < len; i++)
+							this.decorators[i].stop(this);
 						
-						return PACK.p.$null;
-					},
-					tick: function(millis) {
-						throw new Error('not implemented for ' + this.constructor.title);
-					},
-					
-					fini: function() {
 						if (this.domRoot && this.domRoot.parentNode) this.domRoot.parentNode.removeChild(this.domRoot);
 						this.domRoot = null;
 					}
@@ -230,11 +444,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 						uf.domSetText(this.domRoot, this.data.getValue());
 					},
 					
-					fini: function() {
-						sc.fini.call(this);
-						
-						// TODO: THERE WILL BE A BUG WITH THIS!! While $update restarts `this`, nothing ever restarts `this.data` once it's been `fini()`'d
-						this.data.fini();
+					start: function() {
+						sc.start.call(this);
+						this.data.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.data.stop();
 					}
 				};}
 			}),
@@ -251,6 +467,15 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.domRoot.classList.remove('_disabled');
 						else
 							this.domRoot.classList.add('_disabled');
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.enabledData.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.enabledData.stop();
 					}
 				};}
 			}),
@@ -314,6 +539,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 						} else if (document.activeElement !== input) {
 							this.domRoot.classList.remove('_focus');
 						}
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.textData.start();
+						this.placeholderData.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.textData.stop();
+						this.placeholderData.stop();
 					}
 				};}
 			}),
@@ -355,6 +591,15 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						if (this.waiting)	this.domRoot.classList.add('_waiting');
 						else 							this.domRoot.classList.remove('_waiting');
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.textData.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.textData.stop();
 					}
 				};}
 			}),
@@ -386,7 +631,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (!(name in this.children)) return null;
 						
 						var child = this.children[name];
-						child.fini();								// Detach dom
+						child.stop();								// Detach dom
 						child.par = null;						// Detach data step 1
 						delete this.children[name];	// Detach data step 2
 						
@@ -396,9 +641,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						throw new Error('not implemented');
 					},
 					
-					fini: function() {
-						for (var k in this.children) this.children[k].fini();
-						sc.fini.call(this);
+					stop: function() {
+						for (var k in this.children) this.children[k].stop();
+						sc.stop.call(this);
 					}
 				};}
 			}),
@@ -427,15 +672,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 						for (var i = 0, len = this.numWrappers; i < len; i++) ret = ret.childNodes[0];
 						return ret;
 					},
-					$update: function(millis) {
+					update: function(millis) {
 						var children = this.children;
 						
-						return sc.$update.call(this, millis)
-							.then(function() {
-								return new PACK.p.P({
-									all: children.map(function(child) { return child.$update(millis) })
-								});
-							});
+						sc.update.call(this, millis);
+						for (var k in this.children)
+							this.children[k].update(millis);
 					},
 					tick: function(millis) {
 					}
@@ -458,11 +700,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 					provideContainer: function() {
 						return this.domRoot;
 					},
-					$update: function(millis) {
-						return sc.$update.call(this, millis)
-							.then(function() {
-								return this.currentChild ? this.currentChild.$update(millis) : PACK.p.$null;
-							}.bind(this));
+					update: function(millis) {
+						sc.update.call(this, millis);
+						if (this.currentChild) this.currentChild.update(millis);
 					},
 					tick: function(millis) {
 						var choice = this.choiceData.getValue();
@@ -477,13 +717,22 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (nextChild !== this.currentChild) {
 							if (this.currentChild) {
 								this.domRoot.classList.remove('_choose-' + this.currentChild.name);
-								this.currentChild.fini();
+								this.currentChild.stop();
 							}
 							this.currentChild = nextChild;
 							if (this.currentChild) {
 								this.domRoot.classList.add('_choose-' + this.currentChild.name);
 							}
 						}
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.choiceData.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.choiceData.stop();
 					}
 				};}
 			}),
@@ -515,10 +764,20 @@ var package = new PACK.pack.Package({ name: 'userify',
 								new uf.TextView({ name: 'display', data: this.textData })
 							]
 						}));
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.textData.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.textData.stop();
 					}
 				};}
 			}),
 			
+			/* COMPLEX VIEW */
 			DynamicSetView: U.makeClass({ name: 'DynamicSetView',
 				superclassName: 'SetView',
 				description: 'A SetView whose children are based on Data. ' +
@@ -581,6 +840,15 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					getChildRawData: function() {
 						return null;
+					},
+					
+					start: function() {
+						sc.start.call(this);
+						this.data.start();
+					},
+					stop: function() {
+						sc.stop.call(this);
+						this.data.stop();
 					}
 				};}
 			}),
@@ -592,12 +860,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData, physicsSettings */) {
 						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
 						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
+						var genChildView = U.param(params, 'genChildView');
+						params.genChildView = function() {
+							
+						};
+						
 						sc.init.call(this, params.update({ data: this.childDataSet }));
 						
 						var physicsSettings = U.param(params, 'physicsSettings', {});
 						this.physicsSettings = {
 							dampenGlobal: 0.6,
-							dampenGravity: 1 / 100,
+							gravityMult: 1 / 100,
 							focusR: 150,
 							unfocusR: 80,
 							separation: 20,
@@ -613,14 +886,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Defines relations; the "schema"
 						this.relations = U.param(params, 'relations');
 						
+						// TODO: Consider if "focused" functionality should even be provided by this class
 						// Stores the name of the currently focused element
 						this.focusedNameData = uf.padam(params, 'focusedNameData', null);
+						
+						// Reference to currently focused view
+						this.focused = null;
 						
 						// Stores relations; the "data"
 						this.relationMap = {};
 						
-						// Reference to currently focused view
-						this.focused = null;
 					},
 					
 					createDomRoot: function() {
@@ -670,7 +945,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						var newId = this.getDataId(newRawData);
 						
-						// If the key is updating, need to delete old keyed data
+						// Special changes need to be made if the id is changing
 						if (newId !== oldId) {
 							if (newId in this.children) throw new Error('Updating "' + oldId + '" to "' + newId + '" causes overwrite');
 							
@@ -681,6 +956,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.children[newId].name = newId; // This seems risky :(
 							delete this.children[oldId];
 							
+							// If the child was already focused, update focusedNameData
+							if (this.focusedNameData.getValue() === oldId) {
+								this.focusedNameData.setValue(newId);
+							}
+							
 							// TODO: Need to anticipate any static behaviour that occurs when a view generates its dom root :(
 							view.domRoot.classList.remove('_' + oldId);
 							view.domRoot.classList.add('_' + newId);
@@ -689,6 +969,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Update the `raw` property of the raw data container
 						this.childRawData[newId].raw = newRawData;
 						this.childRawData[newId].id = newId;
+						
 						
 						/*
 						Need to O(n) search `this.childDataSet` - which is a pity
@@ -785,7 +1066,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							
 							// Always have impulse towards origin
 							var d2 = phys1.loc.distSqr(PACK.geom.ORIGIN);
-							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (ps.dampenGravity * ps.dampenGravity) }));
+							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (ps.gravityMult * ps.gravityMult) }));
 							
 						}
 						
@@ -853,8 +1134,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						If it isn't, it's possible some children will not have their
 						`domRoot` initialized yet. `sc.tick` would call `addChild`
 						for any un-added children, but those children would never
-						have `$update` called on them before their `domRoot`
-						property was accessed in `this.tick`.
+						have `update` called on them before their `domRoot` property
+						was accessed in `this.tick`.
 						
 						Instead, what happens is that the physics update is applied,
 						and then `sc.tick` is called which will set up any new,

@@ -25,7 +25,7 @@ var package = new PACK.pack.Package({ name: 'p',
         Convert a value into a promise.
         If `val` is a promise return it, otherwise return a promise wrapping `val`.
         */
-        return U.instanceOf(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
+        return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
       },
       P: U.makeClass({ name: 'P',
         methods: function(sc) { return {

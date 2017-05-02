@@ -16,7 +16,6 @@ run on server or client side:
 */
 
 // Add convenience methods to pre-existing classes
-
 [	
 	{	target: Object.prototype,
 		props: {
@@ -132,6 +131,19 @@ run on server or client side:
 				var ret = {};
 				for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
 				return ret;
+			},
+			remove: function(elem) {
+				var rem = false;
+				
+				for (var i = 0, len = this.length; i < len; i++) {
+					var e = this[i];
+					if (!rem && e === elem) rem = true;
+					if (rem) this[i] = this[i + 1];
+				}
+				
+				if (rem) this.length--;
+				
+				return rem;
 			}
 		},
 	},
@@ -196,6 +208,9 @@ global.U = {
 	exists: function(p) {
 		return typeof p !== 'undefined';
 	},
+	valid: function(p) {
+		return p !== null && U.exists(p);
+	},
 	
 	// Object utility
 	isObj: function(obj, cls) {
@@ -203,16 +218,12 @@ global.U = {
 		return false;
 	},
 	isClassedObj: function(obj) {
-		// TODO: Checking for a "title" attribute is sort of a hack...
-		try { return ('constructor' in obj) && ('title' in obj.constructor) } catch(e) {};
+		// TODO: Checking for a "title" attribute is hackish...
+		try { return 'constructor' in obj && 'title' in obj.constructor; } catch(e) {};
 		return false;
 	},
 	isInstance: function(obj, cls) {
 		return U.isObj(obj) && (obj instanceof cls);
-	},
-	instanceOf: function(obj, cls) {
-		// TODO: This is deprecated in favour of "isInstance"
-		return U.isInstance(obj, cls);
 	},
 	isEmptyObj: function(v) {
 		for (k in v) return false;
@@ -432,7 +443,7 @@ global.U = {
 			// value is an array
 			var arr = built[ind] = [];
 			for (var i = 0; i < item.length; i++)
-				arr.push(	U.unstraighten0(items, item[i], built, unbuilt));
+				arr.push(U.unstraighten0(items, item[i], built, unbuilt));
 			return arr;
 			
 		}
@@ -538,7 +549,7 @@ global.U = {
 		var stuff = [];
 		console.log('----------------------');
 		if (arguments.length > 1) console.log('::::' + arguments[0] + '::::');
-		console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) { if (~stuff.indexOf(v)) return '--CIRC--'; stuff.push(v); return v; }, 2));
+		console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) { if (~stuff.indexOf(v)) return '--LOOP--'; stuff.push(v); return v; }, 2));
 		console.log('');
 	}
 	
@@ -653,8 +664,8 @@ global.PACK.pack = {
 						// Get the asset version by checking the version of common.js
 						// (common.js is guaranteed to exist)
 						var ver = document.querySelector('script[src^="common.js"]').src;
-						if (ver.contains('?')) 	ver = '?' + ver.split('?')[1];
-						else 					ver = '';
+						if (ver.contains('?'))	ver = '?' + ver.split('?')[1];
+						else 										ver = '';
 						
 						// The src ends with the version
 						var src = 'apps/' + depName + '/' + depName + '.js' + ver;

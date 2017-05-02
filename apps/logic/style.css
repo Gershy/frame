@@ -115,29 +115,51 @@
 #root-login-in-graph > ._nodes > .theory > ._data > ._quickName {
 	display: block;
 	position: relative;
-	font-size: 18px;
-	margin: 32px 67px 0;
+	font-size: 16px;
+	margin: 24px 78px 0;
 	pointer-events: all;
 	cursor: pointer;
 }
+#root-login-in-graph > ._nodes > .theory > ._data > ._quickName > ._text {
+	display: inline-block;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
 #root-login-in-graph > ._nodes > .theory > ._data > ._user {
 	display: block;
-	margin: 5px 34px;
+	margin: 5px 34px 3px;
 	font-size: 12px;
 	color: #606060;
 	pointer-events: all;
 }
+#root-login-in-graph > ._nodes > .theory > ._data > ._title {
+	display: block;
+	position: relative;
+	margin: 0 34px;
+	height: 24px; line-height: 24px;
+	font-size: 20px;
+	pointer-events: all;
+}
+#root-login-in-graph > ._nodes > .theory > ._data > ._title > ._input {
+	height: 24px;
+	font-size: inherit;
+}
+#root-login-in-graph > ._nodes > .theory > ._data > ._title > ._input > ._interactive {
+	height: 24px;
+	text-align: center;
+	font-size: inherit;
+}
 #root-login-in-graph > ._nodes > .theory > ._data > ._theory {
 	display: block;
 	position: relative;
-	margin: 0 30px;
-	height: 145px;
+	margin: 2px 30px 0;
+	height: 136px;
 	overflow: hidden;
 	font-size: 16px;
 	font-family: serif;
 	text-align: left;
 	pointer-events: all;
-	cursor: pointer;
 	white-space: pre-wrap; /* this is a simple stand-in for advanced text formatting */
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._theory._choose-display:after {

@@ -143,31 +143,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						}
 						
 						// Step 3: Attach to parent
-						if (par) par.addChild(doss); // TODO: Mystery why this can't happen right in the beginning of `$add`???
+						if (par) par.addChild(doss); // Better to do it after `updateName` (avoids detaching and re-attaching)
 						
 						// Step 4: Add the data; either directly or with requirements
-						if (data) {
-							
-							promises.push(doss.$loadFromRawData(data, this));
-							
-						} else {
-							
-							// TODO: Is it even possible to get here...? Maybe if `name` is provided but `data` isn't?
-							throw new Error('reqData not implemented yet!!!');
-							
-							// Here's the recursive case through requirements
-							promises.push(new PACK.p.P({ custom: function(resolve, reject) {
-									
-								reqs.push({
-									reqFunc: c.reqData,
-									reqParams: [ doss ],
-									resolve: resolve,
-									reject: reject
-								});
-								
-							}}));
-							
-						}
+						promises.push(doss.$loadFromRawData(data, this));
 						
 						return new PACK.p.P({ all: promises }).then(function() { return doss; });
 					},
@@ -182,17 +161,41 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 					$rem0: function(params /* */) {
 						throw new Error('not implemented');
 					},
-					$editFast: function(params /* add, rem */) {
+					$modFast: function(params /* */) {
+						var $ret = this.$mod(params);
+						this.resolveReqs();
+						return $ret;
+					},
+					$mod: function(params /* doss, data */) {
+						var doss = U.param(params, 'doss');
+						var data = U.param(params, 'data');
+						
+						var reqs = this.curReqs;
+						
+						return new PACK.p.P({ custom: function(resolve, reject) {
+							
+							reqs.push({
+								reqFunc: c.reqModData,
+								reqParams: [ doss, data ],
+								resolve: resolve,
+								reject: reject
+							});
+							
+						}});
+					},
+					$editFast: function(params /* add, mod, rem */) {
 						var $ret = this.$edit(params);
 						this.resolveReqs();
 						return $ret;
 					},
-					$edit: function(params /* add, rem */) {
+					$edit: function(params /* add, mod, rem */) {
 						var add = U.param(params, 'add', []);
+						var mod = U.param(params, 'mod', []);
 						var rem = U.param(params, 'rem', []);
 						
 						var promises = [];
 						for (var i = 0, len = add.length; i < len; i++) promises.push(this.$add(add[i]));
+						for (var i = 0, len = mod.length; i < len; i++) promises.push(this.$mod(mod[i]));
 						for (var i = 0, len = rem.length; i < len; i++) promises.push(this.$rem(rem[i]));
 						return new PACK.p.P({ all: promises });
 					},
@@ -289,12 +292,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 							
 						} catch (err) { console.log('REQCALC ERR:', err.message); return false; }
 					},
-					reqData: function(doss) {
+					reqModData: function(doss, data) {
 						try {
 							
-							// TODO: Add a value and children to `doss` as appropriate
+							for (var k in data) {
+								var child = doss.getChild(k);
+								if (!child) throw new Error('Couldn\'t get doss child: ' + doss.getAddress() + ' @ ' + k);
+								child.setValue(data[k]);
+							}
+							return true;
 							
-						} catch (err) { console.log('REQDATA ERR:', err.message); return false; }
+						} catch(err) { console.log('REQMOD ERR:', err.message); return false; }
 					},
 					
 					rollBackAdd: function(doss) {
@@ -345,7 +353,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						if (!qd.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
 						
 						var par = this.par;
-						
 						if (par) par.remChild(this);
 						this.name = name.toString();
 						if (par) par.addChild(this);
@@ -378,7 +385,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						return ptr;
 					},
 					getChild: function(address) {
-						// TODO: is it safe to assume this will never be overloaded?
 						if (address.length === 0) return this; // Works for both strings and arrays
 						
 						if (!U.isObj(address, Array)) address = address.toString().split('.');

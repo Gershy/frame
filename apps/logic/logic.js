@@ -1,3 +1,15 @@
+/*
+Checklist:
+- Determine how dragging overrides graphnode positioning behaviour
+- Dragging for moving nodes, or linking, or both???
+- Should GraphView provide the canvas?
+- Dragging css
+	- can apply `pointer-events: none;` globally when dragging (`pointer-events: all;` for drag targets)
+- Reconsider having node focus implemented by GraphView
+	- Should instead be a decorator that changes classes based on focus
+	- Focus clicking should be detected through decorators, not GraphView
+*/
+
 var package = new PACK.pack.Package({ name: 'logic',
 	dependencies: [ 'quickDev', 'userify', 'p', 'queries' ],
 	buildFunc: function(packageName, qd, userify, p) {
@@ -5,6 +17,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 		var lg = {
 			resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
 			versionString: '0.0.1',
+			theoryNameRegex: /^[a-z][a-zA-Z]+$/,
 			LogicApp: U.makeClass({ name: 'LogicApp',
 				superclass: PACK.quickDev.DossierDict,
 				methods: function(sc, c) { return {
@@ -12,6 +25,23 @@ var package = new PACK.pack.Package({ name: 'logic',
 						sc.init.call(this, params);
 					},
 					
+					validateTheoryName: function(name) {
+						
+						if (name.length > 24)
+							return { valid: false, msg: 'theoryName.tooLong' };
+						
+						if (name.length < 3)
+							return { valid: false, msg: 'theoryName.tooShort' };
+						
+						if (!lg.theoryNameRegex.test(name))
+							return { valid: false, msg: 'theoryName.invalid' };
+						
+						if (name in this.children.theorySet.children)
+							return { valid: false, msg: 'theoryName.unavailable' };
+						
+						return { valid: true };
+						
+					},
 					$handleQuery: function(params /* command */) {
 						var command = U.param(params, 'command');
 						
@@ -29,48 +59,60 @@ var package = new PACK.pack.Package({ name: 'logic',
 								token: user.getToken()
 							});
 							
+						} else if (command === 'validateTheoryName') {
+							
+							var reqParams = U.param(params, 'params');
+							var name = U.param(reqParams, 'name');
+							return PACK.p.$(this.validateTheoryName(name));
+							
 						} else if (command === 'saveTheory') { // TODO: Consider writing a TheorySet DossierDict subclass, and implementing this there?
 							
 							var reqParams = U.param(params, 'params');
 							var token = U.param(reqParams, 'token');
 							var quickName = U.param(reqParams, 'quickName');
 							var theoryUsername = U.param(reqParams, 'username');
+							var theoryTitle = U.param(reqParams, 'title');
 							var theoryText = U.param(reqParams, 'theory');
 							
 							// The theory's user needs to correspond to the user's token (users can only edit their own theories)
 							var user = this.requireUser(theoryUsername, token);
 							var theorySet = this.children.theorySet;
+							var essaySet = this.children.essaySet;
 							
-							console.log('Saving theory to ' + theorySet.getAddress());
+							var timestamp = +new Date();
+							var editor = new qd.Editor();
 							
 							if (quickName in theorySet.children) {
+								
+								console.log('Updating theory ' + theorySet.children[quickName].getAddress());
 								var $theory = PACK.p.$(theorySet.children[quickName]);
+								
 							} else {
 								
-								var editor = new qd.Editor();
+								var valid = this.validateTheoryName(quickName);
+								if (!valid.valid) throw new Error(valid.msg);
+								
+								console.log('Saving theory to ' + theorySet.getAddress());
 								var essaySet = this.children.essaySet;
 								
-								// TODO: essay should be created empty...
 								var $theory = editor.$addFast({
 									par: essaySet,
 									data: {
-										markup: theoryText
+										markup: '- placeholder -'
 									}
 								}).then(function(essay) {
 									
 									console.log('GOT ESSAY:', essay.getAddress());
-									
-									var t = +new Date();
 									
 									// Create the theory
 									return editor.$addFast({
 										par: theorySet,
 										name: quickName,
 										data: {
-											createdTime: t,
-											editedTime: t,
+											createdTime: timestamp,
+											editedTime: 0,
 											quickName: quickName,
-											title: 'Really, REALLY awesome theory',
+											title: '- placeholder -', // theoryTitle
 											user: user,
 											essay: essay,
 											dependencySet: [],
@@ -83,8 +125,20 @@ var package = new PACK.pack.Package({ name: 'logic',
 								
 							}
 							
-							// TODO: and then updated over here
 							return $theory.then(function(theory) {
+								
+								var $modTheory = editor.$modFast({ doss: theory, data: {
+									title: theoryTitle,
+									editedTime: timestamp
+								}});
+								
+								var $modEssay = editor.$modFast({ doss: theory.getChild('@essay'), data: {
+									markup: theoryText
+								}});
+								
+								return new PACK.p.P({ all: [ theory, $modTheory, $modEssay ] })
+								
+							}).them(function(theory) {
 								
 								console.log('GOT THEORY:', theory.getAddress());
 								
@@ -269,6 +323,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 				focusedNodeName: new uf.SimpleData({ value: null })
 			};
 			
+			var dragNode = new uf.DragDecorator({ tolerance: 0 });
 			var graphView = new uf.GraphView({ name: 'graph', /* framesPerTick: 5, */
 				relations: {
 					dependsOn: {},
@@ -290,13 +345,16 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 					*/
 					
-					var username = data.getValue().username;
+					var val = data.getValue();
+					
+					var username = val.username; // Can't change
+					var saved = val.saved;
 					var owned = username === dataSet.username.getValue();
-					var saved = data.getValue().saved;
 					var editing = !saved; // non-saved nodes should be editing initially
 					
 					var view = new uf.SetView({ name: name,
 						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
+						decorators: [ dragNode ],
 						onClick: function(e) {
 							dataSet.focusedNodeName.setValue(this.name);
 						},
@@ -308,8 +366,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 									
 									console.log('Dependencies for ' + raw.quickName);
 									return doss.$doRequest({
+										
 										address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
 										command: 'getRawData'
+										
 									}).then(function(dependencySetData) {
 										
 										console.log('GOT DATA', dependencySetData);
@@ -323,16 +383,19 @@ var package = new PACK.pack.Package({ name: 'logic',
 											{
 												quickName: 'thinghaha',
 												username: 'MyManStan',
+												title: 'So Cool',
 												theory: 'I\'m so fucking coolio bro bro'
 											},
 											{
 												quickName: 'swaswa',
 												username: 'GarbageCan',
+												title: 'Bad bad',
 												theory: 'recyclables do not go in the trash u idgit'
 											},
 											{
 												quickName: 'banana',
 												username: 'IAteABananaOnce',
+												title: '2messy4me',
 												theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
 											}
 										]);
@@ -358,6 +421,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 												var saveData = {
 													quickName: view.getChild('data.quickName').textData.getValue(),
 													username: data.getValue().username,
+													title: view.getChild('data.title').textData.getValue(),
 													theory: view.getChild('data.theory').textData.getValue()
 												};
 												
@@ -368,6 +432,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 													params: saveData.update({ token: dataSet.token.getValue() })
 												}).then(function(response) {
 													console.log('SAVED', response);
+													saved = true;
 													graphView.updateRawData(view, saveData);
 												}).fail(function(err) {
 													editing = true; // Didn't save; go back to editing
@@ -390,6 +455,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 								new uf.TextView({ name: 'user',
 									data: username
 								}),
+								new uf.DynamicTextView({ name: 'title',
+									editableData: function() { return editing && owned; },
+									textData: data.getValue().title,
+									inputViewParams: {
+										placeholderData: 'Title'
+									}
+								}),
 								new uf.DynamicTextView({ name: 'theory',
 									editableData: function() { return editing && owned; },
 									textData: data.getValue().theory,
@@ -410,10 +482,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 					unfocusR: 60,
 					separation: 5,
 					repulseMult: 15,
-					dampenGravity: 1 / 30
+					gravityMult: 1 / 30
 				}
 			});
-							
+			
 			var rootView = new uf.SetView({ name: 'root', children: [
 				
 				new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
@@ -448,6 +520,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 									graphView.addRawData({
 										quickName: 'newTheory',
 										username: dataSet.username.getValue(),
+										title: 'Look up',
 										theory: 'The sky is blue.',
 										saved: false
 									});
@@ -477,11 +550,12 @@ var package = new PACK.pack.Package({ name: 'logic',
 			]});
 			
 			var updateFunc = function() {
+				
 				var time = +new Date();
-				rootView.$update(1000 / 60).then(function() {
-					dataSet.rps.setValue('update: ' + (new Date() - time) + 'ms')
-					requestAnimationFrame(updateFunc);
-				}).done();
+				rootView.update(1000 / 60);
+				dataSet.rps.setValue('update: ' + (new Date() - time) + 'ms')
+				
+				requestAnimationFrame(updateFunc);
 			};
 			requestAnimationFrame(updateFunc);
 			
@@ -505,13 +579,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 				{
 					quickName: 'newTheory',
 					username: 'admin',
+					title: 'Look up',
 					theory: 'The sky is blue.',
 					saved: false
 				}
-			].concat(U.range({0:0}).map(function(i) {
+			].concat(U.range({0:10}).map(function(i) {
 				return {
 					quickName: U.charId(i),
 					username: U.charId(i),
+					title: U.id((i * 93824793287) % 134),
 					theory: U.id(i) + U.id(i * 20) + U.id((i + 30) * 17),
 					saved: false
 				};
