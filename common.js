@@ -127,7 +127,7 @@ run on server or client side:
 					if (!func(this[i])) return false;
 				return true;
 			},
-			toObject: function(nameFunc) {
+			toObj: function(nameFunc) {
 				var ret = {};
 				for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
 				return ret;

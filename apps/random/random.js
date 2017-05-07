@@ -7,9 +7,10 @@ var package = new PACK.pack.Package({ name: 'random',
 				methods: {
 					init: function(params /* seed */) {
 						// TODO: this.seed is being ignored!!!
-						this.seed = U.param(params, 'seed', null);
+						this.seed = U.param(params, 'seed', 0);
+						this.val = 0.8947396847931;
 					},
-					randFloat: function() {
+					randFloat: function() { // Returns random float between 0 and 1
 						return Math.random();
 					},
 					randInt: function(params /* hi, lo | {x:y} */) {
@@ -30,7 +31,7 @@ var package = new PACK.pack.Package({ name: 'random',
 			}),
 			def: null,
 			getDefault: function() {
-				if (PACK.random.def === null) PACK.random.def = new PACK.random.Random();
+				if (!PACK.random.def) PACK.random.def = new PACK.random.Random();
 				return PACK.random.def;
 			}
 		};
