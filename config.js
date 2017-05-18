@@ -5,8 +5,8 @@
 //module.exports.defaultApp = 'match';
 //module.exports.defaultApp = 'userify';
 //module.exports.defaultApp = 'ctrl';
-//module.exports.defaultApp = 'logic';
-module.exports.defaultApp = 'parse';
+//module.exports.defaultApp = 'parse';
+module.exports.defaultApp = 'logic';
 
 module.exports.legalExtensions = {
 	// "!" preceeding the extension name indicates a binary filetype

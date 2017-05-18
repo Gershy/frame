@@ -3,7 +3,7 @@ TODO: Long polling
 TODO: Abstract tree class in separate package!!!
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
-	dependencies: [ 'queries', 'e', 'p' ],
+	dependencies: [ 'queries', 'p' ],
 	buildFunc: function() {
 		
 		var qd = {};

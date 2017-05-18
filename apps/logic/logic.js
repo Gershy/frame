@@ -8,10 +8,11 @@ Checklist:
 - Reconsider having node focus implemented by GraphView
 	- Should instead be a decorator that changes classes based on focus
 	- Focus clicking should be detected through decorators, not GraphView
+- There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
 */
 
 var package = new PACK.pack.Package({ name: 'logic',
-	dependencies: [ 'quickDev', 'userify', 'p', 'queries' ],
+	dependencies: [ 'quickDev', 'userify', 'p', 'queries', 'geom' ],
 	buildFunc: function(packageName, qd, userify, p) {
 		
 		var lg = {
@@ -323,8 +324,16 @@ var package = new PACK.pack.Package({ name: 'logic',
 				focusedNodeName: new uf.SimpleData({ value: null })
 			};
 			
-			var dragNode = new uf.DragDecorator({ tolerance: 0 });
-			var graphView = new uf.GraphView({ name: 'graph', /* framesPerTick: 5, */
+			// Makes graph nodes draggable
+			var dragNode = new uf.DragDecorator({
+				tolerance: 0,
+				validTargets: [
+					'._text._user',
+					'._choose-display'
+				]
+			});
+			
+			var graphView = new uf.GraphView({ name: 'graph', framesPerTick: 10,
 				relations: {
 					dependsOn: {},
 					challengedBy: {}
@@ -345,209 +354,321 @@ var package = new PACK.pack.Package({ name: 'logic',
 					}
 					*/
 					
+					// This is the view that will be returned
+					var view = new uf.SetView({ name: name, framesPerTick: 1 });
+					
+					// Get the initial data value for `view`
 					var val = data.getValue();
 					
-					var username = val.username; // Can't change
-					var saved = val.saved;
+					// Substitute custom Data objects in `val`
+					var oldLocData = val.physics.loc;
+					val.physics.r = new uf.SimpleData({ value: 60/*74*/ });
+					
+					// new loc Data proxies to the original, but can take drags into account
+					val.physics.loc = new uf.CalculatedData({
+						getFunc: function() {
+							var dragData = dragNode.data.getValue();
+							if (dragData.view && dragData.view === view) {
+								// TODO: MESSY! No access to the original `physics` coordinates, so need to store data in `dragData`
+								// Also a bug, because it's usually making DragDecorator unable to detect tolerance crossing
+								var diff = dragData.pt2.sub(dragData.pt1);
+								dragData.pt1 = dragData.pt2; // Don't apply this `diff` more than once
+								
+								return oldLocData.modValue(function(loc) { return loc.add(diff); });
+							}
+							
+							return oldLocData.getValue();
+						},
+						setFunc: function(val) {
+							// Only updates the location if not dragging
+							var dragData = dragNode.data.getValue();
+							if (!dragData.view || dragData.view !== view)
+								oldLocData.setValue(val);
+						}
+					});
+					
+					var username = val.raw.username; // Can't change
+					var saved = val.raw.saved;
 					var owned = username === dataSet.username.getValue();
 					var editing = !saved; // non-saved nodes should be editing initially
 					
-					var view = new uf.SetView({ name: name,
-						cssClasses: [ 'theory', owned ? 'owned' : 'foreign' ],
-						decorators: [ dragNode ],
-						onClick: function(e) {
-							dataSet.focusedNodeName.setValue(this.name);
-						},
-						children: [
-							new uf.SetView({ name: 'controls', children: [
-								new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
+					view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Ownership can NEVER change, so safe to hardcode
+					view.decorators = [
+						dragNode,
+						new uf.CssDecorator({
+							possibleProperties: [ 'left', 'top', 'transform' ],
+							data: function() {
+								var phys = data.getValue().physics;
+								var loc = phys.loc.getValue();
+								var r = phys.r.getValue();
+								
+								return {
+									left: (loc.x - r) + 'px',
+									top: (loc.y - r) + 'px',
+									transform: 'scale(' + r / 150 + ')' // 150 is the natural width
+								}
+							}
+						}),
+						new uf.ClassDecorator({
+							possibleClasses: [ 'dragging' ],
+							data: function() {
+								var dragData = dragNode.data.getValue();
+								return dragData.view && dragData.view === view ? 'dragging' : null;
+							}
+						})
+					]
+					view.addChildren([
+						new uf.SetView({ name: 'controls', children: [
+							new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
+								
+								var val = data.getValue();
+								
+								console.log(val);
+								
+								return PACK.p.$null;
+								
+								var raw = data.getValue().raw;
+								
+								console.log('Dependencies for ' + raw.quickName);
+								return doss.$doRequest({
 									
-									var raw = data.getValue();
+									address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
+									command: 'getRawData'
 									
-									console.log('Dependencies for ' + raw.quickName);
-									return doss.$doRequest({
-										
-										address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
-										command: 'getRawData'
-										
-									}).then(function(dependencySetData) {
-										
-										console.log('GOT DATA', dependencySetData);
-										
-									}).fail(function(err) {
-										
-										return;
-										
-										console.log('Loading duds (' + err.message + ')');
-										graphView.addRawData([
-											{
-												quickName: 'thinghaha',
-												username: 'MyManStan',
-												title: 'So Cool',
-												theory: 'I\'m so fucking coolio bro bro'
-											},
-											{
-												quickName: 'swaswa',
-												username: 'GarbageCan',
-												title: 'Bad bad',
-												theory: 'recyclables do not go in the trash u idgit'
-											},
-											{
-												quickName: 'banana',
-												username: 'IAteABananaOnce',
-												title: '2messy4me',
-												theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
-											}
-										]);
-										
-									});
-								}}),
-								new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
-									return PACK.p.$null;
-								}}),
-								new uf.ChoiceView({ name: 'owner',
-									choiceData: function() { return owned && view === graphView.focused ? 'show' : null; },
-									children: [
-										new uf.SetView({ name: 'show', children: [
-											new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
-												editing = true;
-												return PACK.p.$null;
-											}}),
-											new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
-												return PACK.p.$null;
-											}}),
-											new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
-												editing = false;
-												var saveData = {
-													quickName: view.getChild('data.quickName').textData.getValue(),
-													username: data.getValue().username,
-													title: view.getChild('data.title').textData.getValue(),
-													theory: view.getChild('data.theory').textData.getValue()
-												};
-												
-												console.log('SAVING:', saveData);
-												
-												return doss.$doRequest({
-													command: 'saveTheory',
-													params: saveData.update({ token: dataSet.token.getValue() })
-												}).then(function(response) {
-													console.log('SAVED', response);
-													saved = true;
-													graphView.updateRawData(view, saveData);
-												}).fail(function(err) {
-													editing = true; // Didn't save; go back to editing
-													console.error(err.message);
-												});
-											}})
-										]})
-									]
-								})
-							]}),
-							new uf.SetView({ name: 'data', children: [
-								new uf.DynamicTextView({ name: 'quickName',
-									editableData: function() { return editing && owned && !saved; },
-									textData: data.getValue().quickName,
-									inputViewParams: {
-										placeholderData: 'Quick Name',
-										cssClasses: [ 'centered' ]
-									}
-								}),
-								new uf.TextView({ name: 'user',
-									data: username
-								}),
-								new uf.DynamicTextView({ name: 'title',
-									editableData: function() { return editing && owned; },
-									textData: data.getValue().title,
-									inputViewParams: {
-										placeholderData: 'Title'
-									}
-								}),
-								new uf.DynamicTextView({ name: 'theory',
-									editableData: function() { return editing && owned; },
-									textData: data.getValue().theory,
-									inputViewParams: {
-										placeholderData: 'Theory',
-										multiline: true
-									}
-								})
-							]})
-						]
-					});
+								}).then(function(dependencySetData) {
+									
+									console.log('GOT DATA', dependencySetData);
+									
+								}).fail(function(err) {
+									
+									return;
+									
+									console.log('Loading duds (' + err.message + ')');
+									graphView.addRawData([
+										{
+											quickName: 'thinghaha',
+											username: 'MyManStan',
+											title: 'So Cool',
+											theory: 'I\'m so fucking coolio bro bro'
+										},
+										{
+											quickName: 'swaswa',
+											username: 'GarbageCan',
+											title: 'Bad bad',
+											theory: 'recyclables do not go in the trash u idgit'
+										},
+										{
+											quickName: 'banana',
+											username: 'IAteABananaOnce',
+											title: '2messy4me',
+											theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
+										}
+									]);
+									
+								});
+							}}),
+							new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
+								return PACK.p.$null;
+							}}),
+							new uf.ChoiceView({ name: 'owner',
+								choiceData: function() { return owned && view === graphView.focused ? 'show' : null; },
+								children: [
+									new uf.SetView({ name: 'show', children: [
+										new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
+											editing = true;
+											return PACK.p.$null;
+										}}),
+										new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
+											return PACK.p.$null;
+										}}),
+										new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
+											editing = false;
+											var saveData = {
+												quickName: view.getChild('data.quickName').textData.getValue(),
+												username: data.getValue().raw.username,
+												title: view.getChild('data.title').textData.getValue(),
+												theory: view.getChild('data.theory').textData.getValue()
+											};
+											
+											console.log('SAVING:', saveData);
+											
+											return doss.$doRequest({
+												command: 'saveTheory',
+												params: saveData.update({ token: dataSet.token.getValue() })
+											}).then(function(response) {
+												console.log('SAVED', response);
+												saved = true;
+												graphView.updateRawData(view, saveData);
+											}).fail(function(err) {
+												editing = true; // Didn't save; go back to editing
+												console.error(err.message);
+											});
+										}})
+									]})
+								]
+							})
+						]}),
+						new uf.SetView({ name: 'data', children: [
+							new uf.DynamicTextView({ name: 'quickName',
+								editableData: function() { return editing && owned && !saved; },
+								textData: data.getValue().raw.quickName,
+								inputViewParams: {
+									placeholderData: 'Quick Name',
+									cssClasses: [ 'centered' ]
+								}
+							}),
+							new uf.TextView({ name: 'user',
+								data: username
+							}),
+							new uf.DynamicTextView({ name: 'title',
+								editableData: function() { return editing && owned; },
+								textData: data.getValue().raw.title,
+								inputViewParams: {
+									placeholderData: 'Title'
+								}
+							}),
+							new uf.DynamicTextView({ name: 'theory',
+								editableData: function() { return editing && owned; },
+								textData: data.getValue().raw.theory,
+								inputViewParams: {
+									placeholderData: 'Theory',
+									multiline: true
+								}
+							})
+						]})
+					]);
 					
 					return view;
 				},
 				focusedNameData: dataSet.focusedNodeName,
 				physicsSettings: {
+					dampenGlobal: 0.75,
+					separation: 1,
+					repulseMult: 200,
+					repulseMinDivisor: 4,
+					gravityPow: 2,
+					gravityMult: 1 / 600,
+					gravityMax: 60 // Only necessary for lots of nodes
+				}
+				/*
+				// THIS ONE IS SO COOL BUT I DON'T UNDERSTAND IT???
+				physicsSettings: {
+					dampenGlobal: 0.4,
+					separation: 1,
+					repulseMult: 200,
+					repulseMinDivisor: -1,
+					gravityPow: 2,
+					gravityMult: 1 / 600,
+					gravityMax: 2000
+				}
+				*/
+				/*
+				// THIS ONE IS VERY SMOOTH!!
+				physicsSettings: {
 					dampenGlobal: 0.5,
-					unfocusR: 60,
+					separation: 1,
+					repulseMult: 200,
+					repulseMinDivisor: 4,
+					gravityPow: 2,
+					gravityMult: 1 / 600
+				}
+				*/
+				/*
+				// THIS ONE IS STABLE
+				physicsSettings: {
+					dampenGlobal: 0.3,
+					separation: 5,
+					repulseMult: 100,
+					repulseMinDivisor: 0.5,
+					gravityPow: 2,
+					gravityMult: 1 / 900
+				}
+				*/
+				/*
+				// Trying to get far-dragged nodes to come back to center faster...
+				physicsSettings: {
+					dampenGlobal: 0.5,
 					separation: 5,
 					repulseMult: 15,
-					gravityMult: 1 / 30
+					repulseMinDivisor: 0.15,
+					gravityPow: 2.2,
+					gravityMult: 1 / 1000
 				}
+				*/
 			});
 			
-			var rootView = new uf.SetView({ name: 'root', children: [
-				
-				new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
+			var rootView = new uf.SetView({ name: 'root',
+				decorators: [
+					new uf.ClassDecorator({
+						possibleClasses: [ 'dragging' ],
+						data: function() {
+							return dragNode.data.getValue().drag ? 'dragging' : null;
+						}
+					})
+				],
+				children: [
 					
-					new uf.SetView({ name: 'out', children: [
+					new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
 						
-						new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
+						new uf.SetView({ name: 'out', children: [
+							
+							new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
+							
+							new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
+							new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
+							new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
+								return doss.$doRequest({ command: 'getToken', params: {
+									username: dataSet.username.getValue(),
+									password: dataSet.password.getValue()
+								}}).then(function(data) {
+									dataSet.token.setValue(data.token);
+								}).fail(function(err) {
+									dataSet.loginError.setValue(err.message);
+									new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
+								});
+							}})
+							
+						]}),
 						
-						new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
-						new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
-						new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
-							return doss.$doRequest({ command: 'getToken', params: {
-								username: dataSet.username.getValue(),
-								password: dataSet.password.getValue()
-							}}).then(function(data) {
-								dataSet.token.setValue(data.token);
-							}).fail(function(err) {
-								dataSet.loginError.setValue(err.message);
-								new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
-							});
-						}})
-						
-					]}),
-					
-					new uf.SetView({ name: 'in', children: [
-						
-						graphView,
-						
-						new uf.SetView({ name: 'controls', children: [
-							new uf.SetView({ name: 'global', cssClasses: [ 'subControls' ], children: [
-								new uf.ActionView({ name: 'new', textData: 'New Theory', $action: function() {
-									graphView.addRawData({
-										quickName: 'newTheory',
-										username: dataSet.username.getValue(),
-										title: 'Look up',
-										theory: 'The sky is blue.',
-										saved: false
-									});
-									return PACK.p.$null;
-								}}),
-								new uf.ActionView({ name: 'exit', textData: 'Log Out', $action: function() {
-									dataSet.token.setValue('');
-									return PACK.p.$null;
-								}})
-							]}),
-							new uf.SetView({ name: 'specific', cssClasses: [ 'subControls' ], children: [
-								new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
-									console.log('edit!');
-								}}),
-								new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
-									console.log('delete!');
-								}})
+						new uf.SetView({ name: 'in', children: [
+							
+							graphView,
+							
+							new uf.SetView({ name: 'controls', children: [
+								new uf.SetView({ name: 'global', cssClasses: [ 'subControls' ], children: [
+									new uf.ActionView({ name: 'new', textData: 'New Theory', $action: function() {
+										graphView.addRawData({
+											quickName: 'newTheory',
+											username: dataSet.username.getValue(),
+											title: 'Look up',
+											theory: 'The sky is blue.',
+											saved: false
+										});
+										return PACK.p.$null;
+									}}),
+									new uf.ActionView({ name: 'exit', textData: 'Log Out', $action: function() {
+										dataSet.token.setValue('');
+										return PACK.p.$null;
+									}})
+								]}),
+								new uf.SetView({ name: 'specific', cssClasses: [ 'subControls' ], children: [
+									new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
+										console.log('edit!');
+									}}),
+									new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
+										console.log('delete!');
+									}})
+								]})
 							]})
-						]})
+							
+						]}),
 						
 					]}),
+					new uf.TextView({ name: 'version', data: dataSet.appVersion }),
+					new uf.TextView({ name: 'rps', data: dataSet.rps })
 					
-				]}),
-				new uf.TextView({ name: 'version', data: dataSet.appVersion }),
-				new uf.TextView({ name: 'rps', data: dataSet.rps })
-				
-			]});
+				]}
+			);
 			
 			var updateFunc = function() {
 				
@@ -583,7 +704,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					theory: 'The sky is blue.',
 					saved: false
 				}
-			].concat(U.range({0:10}).map(function(i) {
+			].concat(U.range({0:120}).map(function(i) {
 				return {
 					quickName: U.charId(i),
 					username: U.charId(i),

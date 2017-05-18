@@ -1,5 +1,5 @@
 var package = new PACK.pack.Package({ name: 'parse',
-	dependencies: [ 'e' ],
+	dependencies: [ 'e', 'permute' ],
 	buildFunc: function() {
 		var namespace = {};
 		
@@ -103,12 +103,42 @@ var package = new PACK.pack.Package({ name: 'parse',
 			}),
 			ParsedObj: U.makeClass({ name: 'ParsedObj', namespace: namespace,
 				methods: function(sc, c) { return {
-					init: function(params /* textObj, numItemsConsumed, parser, data */) {
+					init: function(params /* textObj, numItemsConsumed, parser, data, lastResult */) {
 						this.textObj = U.param(params, 'textObj');
 						this.numItemsConsumed = U.param(params, 'numItemsConsumed');
 						this.numCharsConsumed = U.param(params, 'numCharsConsumed', 0);
 						this.parser = U.param(params, 'parser');
 						this.data = U.param(params, 'data', {});
+						this.lastResult = U.param(params, 'lastResult', null);
+					},
+					sameAs: function(parsedObj) {
+						return U.isObj(parsedObj, obf.ParsedObj)
+							&& this.parser === parsedObj.parser
+							&& this.textObj === parsedObj.textObj
+							&& this.numItemsConsumed === parsedObj.numItemsConsumed
+							&& this.numCharsConsumed === parsedObj.numCharsConsumed;
+					},
+					invalidates: function(parsedObj) {
+						var ptr = this;
+						while (ptr) {
+							if (ptr.sameAs(parsedObj)) return true;
+							ptr = ptr.lastResult;
+						}
+						return false;
+					},
+					eq: function(parsedObj) {
+						return parsedObj.numItemsConsumed === this.numItemsConsumed && parsedObj.numCharsConsumed === this.numCharsConsumed;
+					},
+					gt: function(parsedObj) {
+						if (this.numItemsConsumed > parsedObj.numItemsConsumed) return true;
+						if (this.numItemsConsumed === parsedObj.numItemsConsumed && this.numCharsConsumed > parsedObj.numCharsConsumed) return true;
+						return false;
+					},
+					chainLength: function() {
+						var ret = 0;
+						var ptr = this;
+						while (ptr) { ret++; ptr = ptr.lastResult; }
+						return ret;
 					},
 					toString: function() {
 						return this.parser.toString(this.data);
@@ -121,7 +151,9 @@ var package = new PACK.pack.Package({ name: 'parse',
 					init: function(params /* name */) {
 						this.name = U.param(params, 'name', null);
 					},
-					parse: function(params /* */) {
+					parse: function(params /* lastResult */) {
+						if (DEPTH > 100) { console.log('BIG ERROR'); throw new Error('BIG ERROR'); }
+						
 						var err = null;
 						var ret = null;
 						
@@ -129,11 +161,21 @@ var package = new PACK.pack.Package({ name: 'parse',
 						DEPTH++;
 						try {
 							ret = this.parse0(params);
-						} catch(err0) {
-							err = err0;
-						}
+							if (this.mustBeUniqueOnReattempt) {
+								var lastResult = U.param(params, 'lastResult', null);
+								if (lastResult && lastResult.invalidates(ret)) throw new Error('No difference on reattempt');
+							}
+						} catch(err0) { err = err0; }
 						DEPTH--;
-						console.log(' '.repeat(DEPTH) + '< "' + this.name + '" ' + (err ? 'failure' : 'success'));
+						console.log(' '.repeat(DEPTH) + '< "' + this.name + '" ' + (err ? 'failure (' + err.message + ')' : 'success'));
+						
+						if (err) {
+							[
+								'Cannot read property'
+							].forEach(function(val) {
+								if (err.message.substr(0, val.length) === val) console.error(err.stack);
+							});
+						}
 						
 						if (err) throw err;
 						
@@ -144,54 +186,168 @@ var package = new PACK.pack.Package({ name: 'parse',
 					},
 					toString: function(data) {
 						throw new Error('not implemented');
+					},
+					mustBeUniqueOnReattempt: false
+				};}
+			}),
+			MultiParser: U.makeClass({ name: 'MultiParser', namespace: namespace,
+				superclassName: 'AbstractParser',
+				methods: function(sc, c) { return {
+					init: function(params /* name, maxReattempts */) {
+						sc.init.call(this, params);
+						this.maxReattempts = U.param(params, 'maxReattempts', 30); // TODO: In production default value should be 0.
+					},
+					parse0: function(params /* textObj, childInd, strInd, lastResult */) {
+						var textObj = U.param(params, 'textObj');
+						var childInd = U.param(params, 'childInd', 0);
+						var strInd = U.param(params, 'strInd', 0);
+						var lastResult = U.param(params, 'lastResult', null);
+						
+						// The initial previous results
+						// `lastObjs` will potentially change after the 1st iteration
+						//var lastObjs = lastResult ? lastResult.data.parsedObjSet : [];
+						var lastObjs = [];
+						var count = 0;
+						
+						if (!lastObjs) console.error(new Error().stack);
+						
+						/*
+						TODO: A problem with this approach involves "alternating" invalid
+						child parsers.
+						
+						On reattempts, each child is only getting the most recent `lastResult`,
+						when they should really be getting the full history of all attempted
+						lastResults. If the 1st child of a MultiParser has 2 children that both
+						succeed on the input, but invalidate the MultiParser's 2nd child, the
+						2nd child will always be invalidated because it's impossible for the
+						1st child to know that there are MULTIPLE invalid values it should
+						skip.
+						*/
+						
+						do {
+							
+							var parsedObjSet = []; // The final result
+							
+							try {
+								
+								var loopData = {
+									textObj: textObj,
+									index: 0,
+									nextChildInd: childInd,
+									nextStrInd: strInd,
+									numItemsConsumed: 0
+								};
+								
+								while (this.loopCondition(loopData)) {
+									
+									var child = this.getLoopChild(loopData);
+									
+									var parsedObj = child.parse({
+										textObj: textObj,
+										childInd: loopData.nextChildInd,
+										strInd: loopData.nextStrInd,
+										lastResult: lastObjs[loopData.index] || null
+									});
+									
+									// Forget all `lastObjs` after `index`, and store the most recently parsed value at `index`.
+									parsedObj.lastResult = lastObjs[loopData.index] || null;
+									lastObjs[loopData.index] = parsedObj;
+									
+									if (parsedObj.numItemsConsumed) {
+										loopData.nextChildInd += parsedObj.numItemsConsumed;
+										loopData.numItemsConsumed += parsedObj.numItemsConsumed;
+										loopData.nextStrInd = parsedObj.numCharsConsumed;
+									} else {
+										loopData.nextStrInd += parsedObj.numCharsConsumed;
+									}
+									parsedObjSet.push(parsedObj);
+									
+									loopData.index++;
+									
+								}
+								
+								// The loop continued until `this.loopCondition` was false
+								return new obf.ParsedObj({
+									textObj: textObj,
+									numItemsConsumed: loopData.nextChildInd - childInd,
+									numCharsConsumed: loopData.nextStrInd,
+									parser: this,
+									data: {
+										parsedObjSet: parsedObjSet
+									}
+								});
+								
+							} catch(err) { }
+							
+							count++;
+							
+						} while(this.reattemptMaySucceed(loopData) && (!this.maxReattempts || count < this.maxReattempts));
+						
+						throw new Error('Failed all reattempts');
+						
 					}
 				};}
 			}),
 			AllParser: U.makeClass({ name: 'AllParser', namespace: namespace,
-				superclassName: 'AbstractParser',
+				superclassName: 'MultiParser',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children, mustComplete */) {
+					init: function(params /* name, children */) {
 						sc.init.call(this, params);
 						this.children = U.param(params, 'children');
-						this.mustExhaust = U.param(params, 'mustExhaust', false);
 					},
-					parse0: function(params /* textObj, childInd, strInd */) {
-						var textObj = U.param(params, 'textObj');
-						var childInd = U.param(params, 'childInd', 0);
-						var strInd = U.param(params, 'strInd', 0);
-						var nextChildInd = childInd;
-						var nextStrInd = strInd;
-						var parsedObjSet = [];
+					loopCondition: function(data /* index */) { return data.index < this.children.length; },
+					getLoopChild: function(data /* index */) { return this.children[data.index]; },
+					reattemptMaySucceed: function(data /* numItemsConsumed */) {
+						/*
+						AllParser may fail a parse because children ordered earlier in
+						its `children` array may consume too much or too little input,
+						thereby preventing later children from being able to parse.
+						E.g. parsing 'aaa.aaa = "hi"' should be parseable with:
 						
-						for (var i = 0; i < this.children.length; i++) {
-							try {
-								var child = this.children[i];
-								var parsedObj = child.parse({ textObj: textObj, childInd: nextChildInd, strInd: nextStrInd });
-								if (parsedObj.numItemsConsumed) {
-									nextChildInd += parsedObj.numItemsConsumed;
-									nextStrInd = parsedObj.numCharsConsumed;
-								} else {
-									nextStrInd += parsedObj.numCharsConsumed;
-								}
-								parsedObjSet.push(parsedObj);
-							} catch(err) {
-								throw new Error('AllParser failed at children[' + i + '] (' + this.children[i].constructor.title + ' "' + this.children[i].name + '"): ' + err.message);
-							}
-						}
+						"assignment"
+							&& "reference"
+								|| "identifier"
+								|| "delimiterDot"
+								|| "delimiterSqr"
+							&& "equals"
+							&& "value"
+								|| "integer"
+								|| "string"
 						
-						if (this.mustExhaust && nextChildInd !== textObj.children.length) throw new Error('AllParser didn\'t consume all input');
+						But on a 1st iteration, "identifier" will consume 'aaa' forcing
+						"equals" to fail parsing '.aaa = "hi"'. At this point,
+						`reattemptMaySucceed` should return `true` because it's possible
+						that earlier children can be reattempted in order to allow later
+						children to work. In this case reattempting "reference" will
+						cause "delimiterDot" to consume 'aaa.aaa', allowing "equals" to
+						successfully parse ' = "hi"', and allowing "value" to
+						successfully parse '"hi"'.
 						
-						return new obf.ParsedObj({
-							textObj: textObj,
-							numItemsConsumed: nextChildInd - childInd,
-							numCharsConsumed: nextStrInd,
-							parser: this,
-							data: {
-								parsedObjSet: parsedObjSet
-							}
-						});
+						`AllParser.prototype.reattemptMaySucceed` returns `true` if at
+						least 2 children were never reached for parsing - because the
+						2nd last child could be reattempted in order to allow the final
+						child to succeed.
+						*/
 						
+						return data.numItemsConsumed <= (this.children.length - 2);
 					},
+					toString: function(data) {
+						var ret = '';
+						for (var i = 0; i < data.parsedObjSet.length; i++) ret += data.parsedObjSet[i];
+						return ret;
+					}
+				};}
+			}),
+			RepeatParser: U.makeClass({ name: 'RepeatParser', namespace: namespace,
+				superclassName: 'MultiParser',
+				methods: function(sc, c) { return {
+					init: function(params /* name, child */) {
+						sc.init.call(this, params);
+						this.child = U.param(params, 'child');
+					},
+					loopCondition: function(data /* nextChildInd, textObj */) { return data.nextChildInd < data.textObj.children.length; },
+					getLoopChild: function(data /* */) { return this.child; },
+					reattemptMaySucceed: function(data) { return false; },
 					toString: function(data) {
 						var ret = '';
 						for (var i = 0; i < data.parsedObjSet.length; i++) ret += data.parsedObjSet[i];
@@ -202,71 +358,58 @@ var package = new PACK.pack.Package({ name: 'parse',
 			AnyParser: U.makeClass({ name: 'AnyParser', namespace: namespace,
 				superclassName: 'AbstractParser',
 				methods: function(sc, c) { return {
-					init: function(params /* name, children */) {
+					init: function(params /* name, children, mustExhaust */) {
 						sc.init.call(this, params);
 						this.children = U.param(params, 'children');
+						this.mustExhaust = U.param(params, 'mustExhaust', false);
 					},
-					parse0: function(params /* textObj, childInd, strInd */) {
+					parse0: function(params /* textObj, childInd, strInd, lastResult */) {
 						var textObj = U.param(params, 'textObj');
 						var childInd = U.param(params, 'childInd', 0);
 						var strInd = U.param(params, 'strInd', 0);
+						var lastResult = U.param(params, 'lastResult', null);
 						
-						for (var i = 0; i < this.children.length; i++) {
-							var child = this.children[i];
+						// The starting iteration index changes on reattempts
+						var startInd = lastResult ? lastResult.data.ind : 0;
+						
+						for (var i = startInd; i < this.children.length; i++) {
+							
+							var childParsedObj = lastResult ? lastResult.data.childParsedObj : null;
+							
 							try {
-								return child.parse({ textObj: textObj, childInd: childInd, strInd: strInd });
-							} catch(err) {}
+								
+								do {
+									
+									if (this.mustExhaust && childParsedObj) console.log('"' + this.name + '" didn\'t exhaust (' + childParsedObj.toString().length + ' / ' + textObj.toString().length + ' chars)');
+									childParsedObj = this.children[i].parse({
+										textObj: textObj,
+										childInd: childInd,
+										strInd: strInd,
+										lastResult: childParsedObj
+									});
+									
+								} while(this.mustExhaust && (childParsedObj.numItemsConsumed + childInd < textObj.children.length));
+								
+								// Return a new ParsedObj containing the child's ParsedObj
+								return new obf.ParsedObj({
+									textObj: textObj,
+									numItemsConsumed: childParsedObj.numItemsConsumed,
+									numCharsConsumed: childParsedObj.numCharsConsumed,
+									parser: this,
+									data: {
+										ind: i,
+										childParsedObj: childParsedObj
+									}
+								});
+								
+							} catch(err) { } // Absorb errors - let the next child try instead
+							
 						}
 						
-						throw new Error('None of AnyParser\'s children could match');
+						throw new Error('No child matched');
 					},
 					toString: function(data) {
-						throw new Error('AnyParser.prototype.toString shouldn\'t be called');
-					}
-				};}
-			}),
-			RepeatParser: U.makeClass({ name: 'RepeatParser', namespace: namespace,
-				superclassName: 'AbstractParser',
-				methods: function(sc, c) { return {
-					init: function(params /* name, child */) {
-						sc.init.call(this, params);
-						this.child = U.param(params, 'child');
-					},
-					parse0: function(params /* textObj, childInd, strInd */) {
-						var textObj = U.param(params, 'textObj');
-						var childInd = U.param(params, 'childInd', 0);
-						var strInd = U.param(params, 'strInd', 0);
-						
-						var nextChildInd = childInd;
-						var nextStrInd = strInd;
-						
-						var parsedObjSet = [];
-						
-						while (nextChildInd < textObj.children.length) {
-							var parsedObj = this.child.parse({ textObj: textObj, childInd: nextChildInd, strInd: nextStrInd });
-							if (parsedObj.numItemsConsumed) {
-								nextChildInd += parsedObj.numItemsConsumed;
-								nextStrInd = parsedObj.numCharsConsumed;
-							} else {
-								nextStrInd += parsedObj.numCharsConsumed;
-							}
-							parsedObjSet.push(parsedObj);
-						}
-						
-						return new obf.ParsedObj({
-							textObj: textObj,
-							numItemsConsumed: nextChildInd - childInd,
-							numCharsConsumed: nextStrInd,
-							parser: this,
-							data: {
-								parsedObjSet: parsedObjSet
-							}
-						});
-					},
-					toString: function(data) {
-						var ret = '';
-						for (var i = 0; i < data.parsedObjSet.length; i++) ret += data.parsedObjSet[i];
-						return ret;
+						return data.childParsedObj.toString();
 					}
 				};}
 			}),
@@ -279,13 +422,13 @@ var package = new PACK.pack.Package({ name: 'parse',
 					parse0: function(params /* textObj, childInd, strInd */) {
 						var textObj = U.param(params, 'textObj');
 						var childInd = U.param(params, 'childInd', 0);
-						var strInd = U.param(params, 'strInd', 0);
 						
-						if (strInd !== 0) throw new Error('DelimitedParser requires strInd to be 0');
+						var lastResult = U.param(params, 'lastResult', null);
+						// if (lastResult) throw new Error('Got `lastResult` but no reattempts allowed');
 						
 						return new obf.ParsedObj({
 							textObj: textObj,
-							numItemsConsumed: textObj.children.length,
+							numItemsConsumed: textObj.children.length - childInd,
 							numCharsConsumed: 0,
 							parser: this,
 							data: {
@@ -296,7 +439,6 @@ var package = new PACK.pack.Package({ name: 'parse',
 					toString: function(data) {
 						var ret = '';
 						for (var i = 0; i < data.textObjChildren.length; i++) ret += data.textObjChildren[i];
-						console.log('BLIND:', ret);
 						return ret;
 					}
 				};}
@@ -312,12 +454,14 @@ var package = new PACK.pack.Package({ name: 'parse',
 					parse0: function(params /* textObj, childInd, strInd */) {
 						var textObj = U.param(params, 'textObj');
 						var childInd = U.param(params, 'childInd', 0);
-						var strInd = U.param(params, 'strInd', 0);
 						
-						if (strInd !== 0) throw new Error('DelimitedParser requires strInd to be 0');
+						var strInd = U.param(params, 'strInd', 0);
+						if (strInd !== 0) throw new Error('`strInd` required to be 0');
+						
+						var lastResult = U.param(params, 'lastResult', null);
 						
 						var childTextObj = textObj.children[childInd];
-						if (!childTextObj.delims) throw new Error('DelimitedParser didn\'t find delimiters');
+						if (!childTextObj.delims) throw new Error('Didn\'t find delimiters');
 						
 						var foundDelims = false;
 						for (var i = 0; i < this.delimiters.length; i++) {
@@ -328,15 +472,16 @@ var package = new PACK.pack.Package({ name: 'parse',
 							}
 						}
 						
-						if (!foundDelims) throw new Error('DelimitedParser couldn\'t match delimiters');
+						if (!foundDelims) throw new Error('Couldn\'t match delimiters');
 						
 						var childParsedObj = this.child
-							? this.child.parse({ textObj: childTextObj, childInd: 0, strInd: 0 })
+							? this.child.parse({ textObj: childTextObj, childInd: 0, strInd: 0, lastResult: lastResult ? lastResult.childParsedObj : null })
 							: null;
 						
 						return new obf.ParsedObj({
 							textObj: textObj,
 							numItemsConsumed: 1,
+							numCharsConsumed: 0,
 							parser: this,
 							data: {
 								textObj: textObj,
@@ -367,17 +512,16 @@ var package = new PACK.pack.Package({ name: 'parse',
 						
 						var childTextObj = textObj.children[childInd];
 						
-						if (!U.isObj(childTextObj, String)) throw new Error('RegexParser received non-String input');
+						if (!U.isObj(childTextObj, String)) throw new Error('Received non-String input');
 						
-						var childTextUntrimmed = childTextObj.substr(strInd); // Get any remaining text after strInd
-						var childText = childTextUntrimmed.trim();
 						// TODO: should the trim() be optional?
+						var childTextUntrimmed = childTextObj.substr(strInd); // Get any remaining text after strInd
+						var childText = childTextUntrimmed.trimLeft();
 						
-						console.log('REG: "' + this.regex + '" TEXT: "' + childText + '"');
 						var match = childText.match(this.regex);
-						if (!match) throw new Error('RegexParser couldn\'t match input');
+						if (!match) throw new Error('Couldn\'t match input "' + childText + '"');
 						
-						match = match[0];
+						match = match[0]; // The 0th index is the full matching text
 						var isFullMatch = match.length === childText.length;
 						
 						return new obf.ParsedObj({
@@ -392,7 +536,8 @@ var package = new PACK.pack.Package({ name: 'parse',
 					},
 					toString: function(data) {
 						return data.content;
-					}
+					},
+					mustBeUniqueOnReattempt: true
 				};}
 			}),
 			
@@ -403,6 +548,22 @@ var package = new PACK.pack.Package({ name: 'parse',
 	},
 	runAfter: function() {
 		if (U.isServer()) return;
+		
+		var Permute = PACK.permute.Permute;
+		
+		var per = new Permute({ limits: [ 3, 2, 2 ] })
+		
+		while (per.increment()) {
+			console.log(per.value());
+		}
+		
+		console.log('HAHAHA');
+		
+		while (per.increment()) {
+			console.log(per.value());
+		}
+		
+		return;
 		
 		console.log('Starting...');
 		
@@ -420,6 +581,8 @@ var package = new PACK.pack.Package({ name: 'parse',
 		});
 		
 		var prsValue = new obf.AnyParser({ name: 'value', children: [] });
+		var prsReference = new obf.AnyParser({ name: 'reference', children: [] });
+		
 		var prsString = new obf.DelimitedParser({ name: 'string',
 			child: new obf.BlindParser({ name: 'stringContents' }),
 			delimiters: [
@@ -430,7 +593,8 @@ var package = new PACK.pack.Package({ name: 'parse',
 		var prsInteger = new obf.RegexParser({ name: 'integer', regex: '[1-9][0-9]*' });
 		var prsComma = new obf.RegexParser({ name: 'comma', regex: ',' });
 		var prsColon = new obf.RegexParser({ name: 'colon', regex: ':' });
-		
+		var prsDot = new obf.RegexParser({ name: 'dot', regex: '\\.' });
+		var prsEqual = new obf.RegexParser({ name: 'equals', regex: '=' });
 		var prsArray = new obf.DelimitedParser({ name: 'array', delimiters: [ [ '[', ']' ] ],
 			child: new obf.RepeatParser({ name: 'arrayEntrySet',
 				child: new obf.AllParser({ name: 'arrayEntry', children: [
@@ -446,22 +610,49 @@ var package = new PACK.pack.Package({ name: 'parse',
 				]})
 			})
 		});
+		var prsBracketedValue = new obf.DelimitedParser({ name: 'bracketedValue', delimiters: [ [ '(', ')' ] ],
+			child: prsValue
+		});
 		
-		prsValue.children.push(prsInteger, prsString, prsArray, prsObject);
+		var prsIdentifier = new obf.RegexParser({ name: 'identifier', regex: '[a-zA-Z][a-zA-Z0-9]*' });
+		var prsDereference1 = new obf.AllParser({ name: 'dereferenceDot', children: [ prsValue, prsDot, prsIdentifier ]});
+		var prsDereference2 = new obf.AllParser({ name: 'dereferenceSqr', children: [
+			prsValue,
+			new obf.DelimitedParser({ name: 'dereferenceIndex', delimiters: [ [ '[', ']' ] ],
+				child: prsValue
+			})
+		]});
 		
-		var parseTree = new obf.AnyParser({ name: 'root', parser: parser, children: [
-			prsValue
+		prsReference.children.push(
+			prsIdentifier,
+			//new obf.RegexParser({ name: 'identifierHa', regex: '[a-zA-Z][a-zA-Z0-9]*' }),
+			//new obf.RegexParser({ name: 'identifierHaha', regex: '[a-zA-Z][a-zA-Z0-9]*' }),
+			prsDereference1,
+			prsDereference2
+		);
+		prsValue.children.push(prsInteger, prsString, prsArray, prsObject, prsIdentifier, prsDereference1, prsDereference2);
+		
+		var prsAssignment = new obf.AllParser({ name: 'assignment', children: [ prsReference, prsEqual, prsValue ] });
+		
+		var prsFinal = new obf.AnyParser({ name: 'root', mustExhaust: true, children: [
+			//prsValue,
+			//prsArray,
+			//prsAssignment,
+			prsReference
 		]});
 		
 		var ret = parser.parse({
-			text: '{ 123: ["abc","def",], \'hi\': 123, }',
-			tree: parseTree
+			//text: '{ 123: ["abc","def",], \'hi\': 123, }',
+			//text: 'jkdhfkj = 2',
+			//text: 'aaa.bbb = "hi"',
+			text: 'aaa.bbb.ccc.ddd',
+			//text: '[ "a", "b", "c", ]',
+			tree: prsFinal
 		});
 		
 		console.log('RESULT', ret);
 		console.log('STR', ret.toString());
 	}
-	
 });
 
 package.build();

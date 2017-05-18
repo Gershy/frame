@@ -1,9 +1,22 @@
+/*
+Previously:
+	._theory had no pointer events,
+	._theory > ._controls && ._theory > ._data had all pointer events
+
+Currently:
+	._theory has full pointer events
+	._theory > ._controls && ._theory > ._data have none, but their children have full
+*/
+
 #root {
 	position: absolute;
 	box-sizing: border-box;
 	width: 100%; height: 100%;
 	left: 0; top: 0;
 	padding-bottom: 20px;
+}
+#root.dragging {
+	user-select: none;
 }
 #root-rps, #root-version {
 	position: absolute;
@@ -30,10 +43,17 @@
 	display: block;
 	position: absolute;
 	width: 300px; height: 300px;
-	pointer-events: none;
+	border-radius: 100%;
+	z-index: 1;
 	
 	transform-origin: 0% 0%;
-	transition: left 200ms ease-out, top 200ms ease-out, transform 200ms linear;
+	transition: left 200ms ease-out, top 200ms ease-out, transform 200ms linear, box-shadow 500ms linear;
+}
+#root-login-in-graph > ._nodes > .theory.dragging {
+	z-index: 2;
+	box-shadow: 0 0 30px 10px #0000ff;
+	
+	transition: transform 200ms linear, box-shadow 500ms linear;
 }
 #root-login-in-graph > ._nodes > .theory ._interactive {
 	background-color: transparent;
@@ -44,10 +64,11 @@
 	position: absolute;
 	left: 0; top: 0;
 	width: 100%; height: 100%;
-	pointer-events: all;
 	
 	border-radius: 100%;
   box-shadow: 0 0 0 2px #d0d0d0;
+  
+  pointer-events: none;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive {
 	position: absolute;
@@ -57,6 +78,11 @@
 	top: 26px;
 	
 	transition: box-shadow 500ms ease-out;
+	
+	pointer-events: all;
+}
+#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive {
+	box-shadow: 0 0 30px 10px #0000ff !important;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies {
 	box-shadow: inset 0 0 0 6px #09bd3c;
@@ -73,6 +99,9 @@
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges:hover {
 	box-shadow: inset 0 0 0 34px #f44c05;
+}
+#root-login-in-graph > ._nodes > .theory > ._controls > ._owner {
+	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show {
 	position: absolute;
@@ -105,20 +134,24 @@
 	background-color: #a0a0a0;
 	color: #ffffff;
 }
+
 #root-login-in-graph > ._nodes > .theory > ._data {
 	position: absolute;
 	width: 100%; height: 100%;
 	border-radius: 100%;
 	background-color: #ffffff;
 	text-align: center;
+	
+	pointer-events: none;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._quickName {
 	display: block;
 	position: relative;
 	font-size: 16px;
 	margin: 24px 78px 0;
-	pointer-events: all;
 	cursor: pointer;
+	
+	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._quickName > ._text {
 	display: inline-block;
@@ -131,6 +164,7 @@
 	margin: 5px 34px 3px;
 	font-size: 12px;
 	color: #606060;
+	
 	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._title {
@@ -139,6 +173,7 @@
 	margin: 0 34px;
 	height: 24px; line-height: 24px;
 	font-size: 20px;
+	
 	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._title > ._input {
@@ -159,8 +194,9 @@
 	font-size: 16px;
 	font-family: serif;
 	text-align: left;
-	pointer-events: all;
 	white-space: pre-wrap; /* this is a simple stand-in for advanced text formatting */
+	
+	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._theory._choose-display:after {
 	content: "";

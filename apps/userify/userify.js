@@ -1,15 +1,14 @@
+// TODO: Some Data objects can be optimized to cache previous values until the end of the frame (or some other condition?)
+// E.g. Would stop 1000 elements all connected to the same CalculatedData from repeating the calculation 1000 times
+
 var package = new PACK.pack.Package({ name: 'userify',
 	dependencies: [ 'quickDev', 'p', 'geom' ],
 	buildFunc: function() {
 		var namespace = {};
 		
-		var ensurePromise = function(val) {
-			return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val });
-		};
-		var $null = ensurePromise(null);
 		var P = PACK.p.P;
-		var E = PACK.e.E;
-		var geom = PACK.geom;
+		var Point = PACK.geom.Point;
+		var origin = PACK.geom.ORIGIN;
 		
 		var uf = {
 			
@@ -113,10 +112,24 @@ var package = new PACK.pack.Package({ name: 'userify',
 			DragDecorator: U.makeClass({ name: 'DragDecorator',
 				superclassName: 'Decorator',
 				methods: function(sc, c) { return {
-					init: function(params /* tolerance */) {
+					init: function(params /* tolerance, validTargets, captureOnStart */) {
 						sc.init.call(this, params);
 						this.data = new uf.SimpleData({ value: { drag: false, mouseDown: false, view: null } });
 						this.tolerance = U.param(params, 'tolerance', 0);
+						
+						// TODO: Function to capture arbitrary data when drag begins
+						this.captureOnStart = U.param(params, 'captureOnStart', null);
+						
+						/*
+						DragDecorators can be configured to fire on only specific children of
+						the decorated element. If `validTargets` is an empty array, it means
+						drags can only occur when the root element is clicked, and not its
+						children. If `validTargets === null` then drags can be initiated by
+						clicking on any child, or the root element. Otherwise, `validTargets`
+						is an array of css-selectors and only child elements which match one
+						of those selectors will be able to initiate drag events.
+						*/
+						this.validTargets = U.param(params, 'validTargets', []);
 						
 						this.clickFuncDn = c.clickFuncDn.bind(this);
 						this.clickFuncUp = c.clickFuncUp.bind(this);
@@ -132,8 +145,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					stop: function(view) {
 						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.' + 'clickFuncDn']);
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);		// If stopped during mousedown, this is necessary
-						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);	// If stopped during mousedown, this is necessary
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']); // If stopped during mousedown, this is necessary
+						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']); // If stopped during mousedown, this is necessary
 						
 						// Delete properties from the view
 						delete view['~' + this.id + '.' + 'clickFuncDn'];
@@ -144,6 +157,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 				statik: {
 					clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
 						// Add listeners
+						if (this.validTargets && view.domRoot !== event.target) {
+							// Return if no selector in `validTargets` matches `event.target`
+							if (!this.validTargets.any(function(sel) { return event.target.matches(sel); })) return;
+						}
+						
 						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);
 						uf.domAddListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);
 						
@@ -154,9 +172,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 							drag: false,
 							mouseDown: true,
 							view: view,
-							domPt1: new geom.Point({ x: rect.left, y: rect.top }),
-							pt1: new geom.Point({ x: event.clientX, y: event.clientY }),
-							pt2: new geom.Point({ x: event.clientX, y: event.clientY })
+							domPt1: new Point({ x: rect.left, y: rect.top }),
+							pt1: new Point({ x: event.clientX, y: event.clientY }),
+							pt2: new Point({ x: event.clientX, y: event.clientY })
 						});
 					},
 					clickFuncUp: function(view, event) { // Mouse up - modify `this.data`, remove up listener
@@ -173,14 +191,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					mouseMove: function(view, event) {	 // Mouse move
 						// Update values in `this.data`
-						var pt2 = new geom.Point({ x: event.clientX, y: event.clientY });
 						var data = this.data.getValue(); // We know `this.data` is a SimpleData, so just updating its value works here
-						data.pt2 = pt2;
-						if (!data.drag && pt2.dist(data.pt1) > this.tolerance) data.drag = true;
-						if (data.drag) {
-							data.dragged = data.pt2.sub(data.pt1);
-							console.log('DRAG: (' + data.dragged.x + ', ' + data.dragged.y + ')');
+						
+						// It's possible for mousemove to fire after mouseup; detectable if data.pt1 is undefined
+						if (!data.pt1) {
+							
+							return;
 						}
+						
+						data.pt2 = new Point({ x: event.clientX, y: event.clientY });
+						if (!data.drag && data.pt2.dist(data.pt1) > this.tolerance) data.drag = true;
+						if (data.drag) data.dragged = data.pt2.sub(data.pt1);
 					}
 				}
 			}),
@@ -198,9 +219,14 @@ var package = new PACK.pack.Package({ name: 'userify',
 					update: function(view) {
 						var nextClass = this.data.getValue();
 						var classList = view.domRoot.classList;
-						if (!classList.contains(nextClass)) {
-							classList.remove.apply(classList, this.possibleClasses);
-							classList.add(nextClass);
+						if (!nextClass || !classList.contains(nextClass)) {
+							
+							// Remove all possible classes
+							classList.remove.apply(classList, this.possibleClasses); 
+							
+							// Add the current class
+							if (nextClass) classList.add(nextClass);
+							
 						}
 					},
 					end: function(view) {
@@ -213,14 +239,30 @@ var package = new PACK.pack.Package({ name: 'userify',
 				superclassName: 'Decorator',
 				description: 'Dynamically changes css properties on an element',
 				methods: function(sc, c) { return {
-					init: function(params /* data, properties */) {
+					init: function(params /* data, possibleProperties */) {
 						sc.init.call(this, params);
+						this.possibleProperties = U.param(params, 'possibleProperties');
+						this.data = uf.padam(params, 'data');
 					},
 					start: function(view) {
 					},
 					update: function(view) {
+						var nextProps = this.data.getValue();
+						var diff = {};
+						var style = view.domRoot.style;
+						
+						// Calculate the difference...
+						for (var i = 0; i < this.possibleProperties.length; i++) {
+							var prop = this.possibleProperties[i];
+							var val = (prop in nextProps) ? nextProps[prop] : ''; // Unspecified properties are removed
+							if (val !== style[prop]) diff[prop] = val;
+						}
+						
+						for (var k in diff) style[k] = diff[k]; // Only update the style props that changed (in `diff`)
 					},
-					stop: function() {
+					end: function(view) {
+						for (var i = 0; i < this.possibleProperties.length; i++)
+							view.domRoot.style[this.possibleProperties[i]] = '';
 					}
 				};}
 			}),
@@ -237,6 +279,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					setValue: function() {
 						throw new Error('Not implemented');
+					},
+					modValue: function(modFunc) {
+						var val = modFunc(this.getValue());
+						this.setValue(val);
+						return val;
 					},
 					
 					start: function() {},
@@ -318,6 +365,37 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
+			CachedData: U.makeClass({ name: 'CachedData',
+				// TODO: Need a way to register this badboy in a list so the whole list can be reset at once
+				// Will require modifications to CachedData.prototype.stop/start; to register/unregister itself
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* data */) {
+						sc.init.call(this, params);
+						this.data = uf.padam(params, 'data');
+						this.cached = c.NO_VALUE;
+					},
+					getValue: function() {
+						if (this.cached === c.NO_VALUE) this.cached = this.data.getValue();
+						return this.cached;
+					},
+					setValue: function(val) {
+						this.cached = val;
+					},
+					reset: function() {
+						if (this.cached === c.NO_VALUE) return;
+						
+						this.data.setValue(this.cached);
+						this.cached = c.NO_VALUE;
+					},
+					stop: function() {
+						this.reset();
+					}
+				};},
+				statik: {
+					NO_VALUE: { NO_VALUE: true }
+				}
+			}),
 			
 			/* VIEW */
 			NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
@@ -382,11 +460,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.start();
 						}
 						
-						if (this.framesPerTick && (++this.frameCount >= this.framesPerTick)) {
+						if (++this.frameCount >= this.framesPerTick) {
 							for (var i = 0, len = this.decorators.length; i < len; i++)
 								this.decorators[i].update(this);
 							
-							this.tick(millis);
+							this.tick(millis * this.framesPerTick);
 							this.frameCount = 0;
 						}
 						this.millisAlive += millis;
@@ -609,12 +687,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 					init: function(params /* name, children */) {
 						sc.init.call(this, params);
 						this.children = {};
-						
-						var children = U.param(params, 'children', []);
+						this.addChildren(U.param(params, 'children', []));
+					},
+					
+					addChildren: function(children) {
 						for (var i = 0, len = children.length; i < len; i++)
 							this.addChild(children[i]);
 					},
-					
 					addChild: function(child) {
 						if (child.par === this) return child;
 						if (child.par !== null) throw new Error('Tried to add View with parent: ' + child.getAddress());
@@ -794,9 +873,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, data) { /* generates a View */ };
 						this.comparator = U.param(params, 'comparator', null);
 						
-						// Enable `this` inside `this.genChildView`
-						this.genChildView = this.genChildView.bind(this);
-						
 						this.count = 0;
 					},
 					
@@ -830,15 +906,20 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						// Add all children as necessary
 						for (var k in add) {
-							var calc = new uf.CalculatedData({ getFunc: function(rawData) { return rawData; }.bind(null, add[k]) });
-							var child = this.genChildView(k, calc);
+							var rawData = this.initChildRawData(k, add[k]).update({ raw: add[k] });
+							var calc = new uf.CalculatedData({ getFunc: function() { return rawData; } });
+							var child = this.genChildView.call(this, k, calc);
+							
 							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
-							calc.getFunc = function(child) { return this.getChildRawData(child); }.bind(this, child);
-							this.addChild(child, add[k]);
+							calc.getFunc = this.getChildRawData.bind(this, child);
+							if (!this.addChild(child, add[k])) throw new Error('DynamicSetView `addChild` failed');
 						}
 						
 					},
-					getChildRawData: function() {
+					initChildRawData: function(name, rawData) {
+						return {};
+					},
+					getChildRawData: function(child) {
 						return null;
 					},
 					
@@ -852,32 +933,31 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};}
 			}),
+			// TODO: Consider a class between DynamicSetView and GraphView which
+			// simply stores arbitrary data alongside every child node. Move
+			// GraphView.prototype.addRawData, GraphView.prototype.updateRawData
+			// to this class instead.
 			GraphView: U.makeClass({ name: 'GraphView',
 				superclassName: 'DynamicSetView',
 				description: 'A DynamicSetView which keeps track of directed ' +
 					'relationships between every pair of its children.',
 				methods: function(sc, c) { return {
 					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData, physicsSettings */) {
+						
 						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
 						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
-						var genChildView = U.param(params, 'genChildView');
-						params.genChildView = function() {
-							
-						};
-						
 						sc.init.call(this, params.update({ data: this.childDataSet }));
 						
 						var physicsSettings = U.param(params, 'physicsSettings', {});
 						this.physicsSettings = {
 							dampenGlobal: 0.6,
+							gravityPow: 2,
 							gravityMult: 1 / 100,
-							focusR: 150,
-							unfocusR: 80,
+							gravityMax: 500,
 							separation: 20,
 							tooFar: 500,
 							repulseMult: 10,
 							repulseMinDivisor: 0.08,
-							focusSpeed: 2000
 						}.update(physicsSettings);
 						
 						// Given the raw data of two nodes, returns the name of the relationship between those nodes
@@ -885,13 +965,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						// Defines relations; the "schema"
 						this.relations = U.param(params, 'relations');
-						
-						// TODO: Consider if "focused" functionality should even be provided by this class
-						// Stores the name of the currently focused element
-						this.focusedNameData = uf.padam(params, 'focusedNameData', null);
-						
-						// Reference to currently focused view
-						this.focused = null;
 						
 						// Stores relations; the "data"
 						this.relationMap = {};
@@ -913,15 +986,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return ret;
 					},
 					provideContainer: function(view) {
-						var w = Math.round(this.domRoot.offsetWidth);
-						var h = Math.round(this.domRoot.offsetHeight);
-						
-						view.domRoot.style.left = (w >> 1) - this.physicsSettings.unfocusR;
-						view.domRoot.style.top = (h >> 1) - this.physicsSettings.unfocusR;
-						view.domRoot.style.transform = 'scale(' + this.physicsSettings.unfocusR / this.physicsSettings.focusR + ')';
-						view.domRoot.classList.add('_node');
-						
-						return this.domRoot.childNodes[1];
+						view.domRoot.classList.add('_node'); // TODO: This is no good!! Can't add classes like this...
+						return this.domRoot.childNodes[1]; // Return ._nodes
 					},
 					addRawData: function(rawDataSet) {
 						// TODO: Need way to specify initial node location.
@@ -931,11 +997,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (!U.isObj(rawDataSet, Array)) rawDataSet = [ rawDataSet ];
 						
 						for (var i = 0, len = rawDataSet.length; i < len; i++) {
-							var d = rawDataSet[i];
-							var id = this.getDataId(d);
-							if (id in this.childRawData) return;
-							
-							this.childDataSet.push(d);
+							var data = rawDataSet[i];
+							var id = this.getDataId(data);
+							if (!(id in this.childRawData))	this.childDataSet.push(data);
 						}
 					},
 					updateRawData: function(view, newRawData) {
@@ -949,11 +1013,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 						if (newId !== oldId) {
 							if (newId in this.children) throw new Error('Updating "' + oldId + '" to "' + newId + '" causes overwrite');
 							
-							this.childRawData[newId] = { physics: this.childRawData[oldId].physics }; // Need to retain the `physics` property
+							this.childRawData[newId] = this.childRawData[oldId].clone(); // Retain all properties
 							delete this.childRawData[oldId];
 							
 							this.children[newId] = this.children[oldId]; // Update the child key name
-							this.children[newId].name = newId; // This seems risky :(
+							this.children[newId].name = newId;
 							delete this.children[oldId];
 							
 							// If the child was already focused, update focusedNameData
@@ -970,7 +1034,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.childRawData[newId].raw = newRawData;
 						this.childRawData[newId].id = newId;
 						
-						
 						/*
 						Need to O(n) search `this.childDataSet` - which is a pity
 						and possibly suggests it should be an object whose key is
@@ -986,32 +1049,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						// TODO: Need to update relations with `this.classifyRelation`!
 						
-					},
-					addChild: function(child, rawData) {
-						var c = sc.addChild.call(this, child);
-						
-						if (!c) return; // Add failed!
-						
-						this.childRawData[c.name] = {
-							id: c.name,
-							raw: rawData,
-							physics: {
-								weight: 1,
-								r: 150,
-								loc: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.0001 }),
-								vel: new PACK.geom.Point(),
-								acl: new PACK.geom.Point()
-							}
-						};
-						
-						for (var k in this.children) {
-							var c2 = this.children[k];
-							var r1 = this.relationKey(c, c2);
-							var r2 = this.relationKey(c2, c);
-							
-							this.relationMap[r1] = 'RELATION ' + c.name + ' -> ' + c2.name;
-							this.relationMap[r2] = 'RELATION ' + c2.name + ' -> ' + c.name;
-						}
 					},
 					remChild: function(child) {
 						var c = sc.remChild.call(this, child);
@@ -1035,13 +1072,19 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return c;
 					},
 					relationKey: function(child1, child2) {
-						return child1 !== child2 ? child1.name + '-' + child2.name : child1.name;
+						if (!U.isObj(child1, String)) child1 = child1.name;
+						if (!U.isObj(child2, String)) child2 = child2.name;
+						
+						return child1 !== child2 ? child1 + '-' + child2 : child1;
 					},
 					tick: function(millis) {
+						// TODO: On really unstable configurations, something breaks here
+						// Probably a NaN value propagating to all other values or something
+						// of the sort
+						
 						var w = Math.round(this.domRoot.offsetWidth);
 						var h = Math.round(this.domRoot.offsetHeight);
-						var hw = w >> 1;
-						var hh = h >> 1;
+						var screenCenter = new Point({ x: w >> 1, y: h >> 1 });
 						var scale = 1 / 150;
 						var secs = millis / 1000;
 						
@@ -1059,74 +1102,56 @@ var package = new PACK.pack.Package({ name: 'userify',
 						for (var i = 0; i < ncs; i++) {
 							
 							var c1 = cs[i];
-							var phys1 = this.childRawData[c1.name].physics;
-							phys1.vel = phys1.vel.scale(ps.dampenGlobal);
-							phys1.loc = phys1.loc.add(phys1.vel.scale(secs));
-							phys1.r = c1 === this.focused ? ps.focusR : ps.unfocusR;
+							var phys = this.childRawData[c1.name].physics;
 							
-							// Always have impulse towards origin
-							var d2 = phys1.loc.distSqr(PACK.geom.ORIGIN);
-							phys1.vel = phys1.vel.add(new PACK.geom.Point({ ang: phys1.loc.angTo(PACK.geom.ORIGIN), mag: d2 * (ps.gravityMult * ps.gravityMult) }));
+							// Dampen velocity
+							phys.vel = phys.vel.scale(ps.dampenGlobal);
+							
+							// Increment location based on velocity
+							var loc = phys.loc.modValue(function(loc) { return loc.add(phys.vel.scale(secs)); });
+							
+							// Always have impulse towards screenCenter
+							// TODO: This may be optimizable if ps.gravityRow is 2 (using distSqr), or 0 (using 1)
+							var attractor = screenCenter;
+							var d2 = Math.pow(loc.dist(attractor), ps.gravityPow);
+							
+							// Make gravity much weaker close to the center
+							//var d2 = Math.pow(Math.max(0, loc.dist(attractor) - 100), ps.gravityPow);
+							
+							phys.vel = phys.vel.add(new Point({ ang: loc.angTo(attractor), mag: Math.min(d2 * ps.gravityMult, ps.gravityMax) }));
 							
 						}
 						
-						// Become affected by other nodes
+						// Modify velocities based on other nodes
 						for (var i = 0; i < ncs; i++) {
 							var c1 = cs[i];
+							
 							var phys1 = this.childRawData[c1.name].physics;
-							var inertiaRatio = 1 / phys1.r;
+							var loc1 = phys1.loc.getValue();
+							var r1 = phys1.r.getValue();
+							
+							var inertiaRatio = 1 / r1;
 							
 							for (var j = 0; j < ncs; j++) {
 								if (i === j) continue; // Don't interact with self
 								
 								var c2 = cs[j];
-								var phys2 = this.childRawData[c2.name].physics;
 								
-								var dist = phys1.loc.dist(phys2.loc) - (phys1.r + phys2.r) - ps.separation;
+								var phys2 = this.childRawData[c2.name].physics;
+								var loc2 = phys2.loc.getValue();
+								var r2 = phys2.r.getValue();
+								
+								var dist = loc1.dist(loc2) - (r1 + r2 + ps.separation);
 								if (dist > ps.tooFar) continue;
 								
 								var mag = ps.repulseMult / Math.max(ps.repulseMinDivisor, dist);
-								var repulse = new PACK.geom.Point({ ang: phys2.loc.angTo(phys1.loc), mag: mag }).scale(phys2.r * inertiaRatio);
+								
+								// TODO: Repulsion should scale with incident velocity (collisions will be much softer)
+								var repulse = new Point({ ang: loc2.angTo(loc1), mag: mag }).scale(r2 * inertiaRatio);
+								
+								// Here's the result of all these calculations
 								phys1.vel = phys1.vel.add(repulse);
 							}
-						}
-						
-						// Update the focused node independently
-						var f = this.focused;
-						if (f) {
-							var physF = this.childRawData[f.name].physics;
-							physF.vel = PACK.geom.ORIGIN;
-							//physF.loc = PACK.geom.ORIGIN;
-							physF.loc = physF.loc.moveTowards(PACK.geom.ORIGIN, ps.focusSpeed * secs);
-						}
-						
-						// Update styling based on physics
-						for (var i = 0, len = cs.length; i < len; i++) {
-							var c = cs[i];
-							var phys = this.childRawData[c.name].physics;
-							
-							c.domRoot.style.left = (hw + (phys.loc.x - phys.r)) + 'px';
-							c.domRoot.style.top = (hh + (phys.loc.y - phys.r)) + 'px';
-							c.domRoot.style.transform = 'scale(' + phys.r * scale + ')';
-						}
-						
-						// Update the focus
-						// TODO: invalid `nextFocusedName` should be tolerated? (It can be set, but won't apply until there is a corresponding view)
-						var nextFocusedName = this.focusedNameData.getValue();
-						if (!this.focused || nextFocusedName !== this.focused.name) {
-							
-							// Unfocus any currently focused element
-							if (this.focused) {
-								this.focused.domRoot.classList.remove('_graphFocus');
-								this.focused = null;
-							}
-							
-							// Focus the next view if there is one
-							if (nextFocusedName && nextFocusedName in this.children) {
-								this.focused = this.children[nextFocusedName];
-								this.focused.domRoot.classList.add('_graphFocus');
-							}
-							
 						}
 						
 						/*
@@ -1143,8 +1168,34 @@ var package = new PACK.pack.Package({ name: 'userify',
 						*/
 						sc.tick.call(this);
 					},
+					getScreenCenter: function() {
+						// TODO: Consider retrieving data from a Data object instead of the DOM?
+						return new Point({
+							x: Math.round(this.domRoot.offsetWidth) >> 1,
+							y: Math.round(this.domRoot.offsetHeight) >> 1
+						});
+					},
+					initChildRawData: function(name, rawData) {
+						for (var k in this.children) {
+							var name2 = this.children[k].name;
+							this.relationMap[this.relationKey(name, name2)] = 'RELATION ' + name + ' -> ' + name2;
+							this.relationMap[this.relationKey(name2, name)] = 'RELATION ' + name2 + ' -> ' + name;
+						}
+						
+						// The return value is also stored in `childRawData`
+						return this.childRawData[name] = {
+							id: name,
+							physics: {
+								weight: 1,
+								r: new uf.SimpleData({ value: 150 }), // Initial radius
+								loc: new uf.SimpleData({ value: this.getScreenCenter().angleMove(Math.random() * Math.PI * 2, 0.0001) }),
+								vel: new Point(),
+								acl: new Point()
+							}
+						};
+					},
 					getChildRawData: function(child) {
-						return this.childRawData[child.name].raw;
+						return this.childRawData[child.name];
 					}
 				};}
 			})
