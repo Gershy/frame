@@ -117,7 +117,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.data = new uf.SimpleData({ value: { drag: false, mouseDown: false, view: null } });
 						this.tolerance = U.param(params, 'tolerance', 0);
 						
-						// TODO: Function to capture arbitrary data when drag begins
+						// TODO: Function to capture arbitrary data when drag begins (will allow physics values to be captured)
 						this.captureOnStart = U.param(params, 'captureOnStart', null);
 						
 						/*
@@ -155,6 +155,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					}
 				};},
 				statik: {
+					// For these methods `this` still refers to the DragDecorator even though these methods are static
 					clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
 						// Add listeners
 						if (this.validTargets && view.domRoot !== event.target) {
@@ -172,7 +173,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							drag: false,
 							mouseDown: true,
 							view: view,
-							domPt1: new Point({ x: rect.left, y: rect.top }),
+							capturedData: this.captureOnStart ? this.captureOnStart(view) : null,
 							pt1: new Point({ x: event.clientX, y: event.clientY }),
 							pt2: new Point({ x: event.clientX, y: event.clientY })
 						});
@@ -191,17 +192,19 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					mouseMove: function(view, event) {	 // Mouse move
 						// Update values in `this.data`
-						var data = this.data.getValue(); // We know `this.data` is a SimpleData, so just updating its value works here
+						var data = this.data.getValue(); // We know `this.data` is a SimpleData, so just updating it normally works here
 						
 						// It's possible for mousemove to fire after mouseup; detectable if data.pt1 is undefined
-						if (!data.pt1) {
-							
-							return;
+						if (!data.pt1) return;
+						
+						// Update `drag`
+						data.pt2 = new Point({ x: event.clientX, y: event.clientY });
+						if (!data.drag && data.pt2.dist(data.pt1) > this.tolerance) {
+							data.drag = true;
+							// TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
 						}
 						
-						data.pt2 = new Point({ x: event.clientX, y: event.clientY });
-						if (!data.drag && data.pt2.dist(data.pt1) > this.tolerance) data.drag = true;
-						if (data.drag) data.dragged = data.pt2.sub(data.pt1);
+						event.preventDefault();
 					}
 				}
 			}),
@@ -239,30 +242,27 @@ var package = new PACK.pack.Package({ name: 'userify',
 				superclassName: 'Decorator',
 				description: 'Dynamically changes css properties on an element',
 				methods: function(sc, c) { return {
-					init: function(params /* data, possibleProperties */) {
+					init: function(params /* data, properties */) {
 						sc.init.call(this, params);
-						this.possibleProperties = U.param(params, 'possibleProperties');
+						this.properties = U.param(params, 'properties');
 						this.data = uf.padam(params, 'data');
 					},
 					start: function(view) {
 					},
 					update: function(view) {
 						var nextProps = this.data.getValue();
-						var diff = {};
 						var style = view.domRoot.style;
 						
 						// Calculate the difference...
-						for (var i = 0; i < this.possibleProperties.length; i++) {
-							var prop = this.possibleProperties[i];
+						for (var i = 0; i < this.properties.length; i++) {
+							var prop = this.properties[i];
 							var val = (prop in nextProps) ? nextProps[prop] : ''; // Unspecified properties are removed
-							if (val !== style[prop]) diff[prop] = val;
+							if (val !== style[prop]) style[prop] = val; // Only update the style props that have changed
 						}
-						
-						for (var k in diff) style[k] = diff[k]; // Only update the style props that changed (in `diff`)
 					},
 					end: function(view) {
-						for (var i = 0; i < this.possibleProperties.length; i++)
-							view.domRoot.style[this.possibleProperties[i]] = '';
+						var style = view.domRoot.style;
+						for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
 					}
 				};}
 			}),
@@ -969,10 +969,15 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Stores relations; the "data"
 						this.relationMap = {};
 						
+						this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
+						this.updateIndex = 0;
+						
 					},
 					
 					createDomRoot: function() {
 						var ret = document.createElement('div');
+						// TODO: Should occur via decorator. Prevents accidental drags on the GraphView from highlighting text
+						ret.onmouseup = ret.onmousedown = ret.onmousemove = function(e) { return e.preventDefault(); };
 						ret.classList.add('_graph');
 						
 						var canvas = document.createElement('canvas');
@@ -1097,36 +1102,73 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						var cs = this.children.toArray();
 						var ncs = cs.length;
+						var mncs = Math.min(ncs, this.maxUpdatesPerFrame);
 						
 						// Update physics for all nodes
-						for (var i = 0; i < ncs; i++) {
+						for (var n = 0; n < mncs; n++) { // Iterate maximum `this.maxUpdatesPerFrame` times
+							
+							var i = this.updateIndex; // Storing before incrementing allows beginning at 0 instead of 1)
+							this.updateIndex = (++this.updateIndex >= cs.length) ? 0 : this.updateIndex;
 							
 							var c1 = cs[i];
-							var phys = this.childRawData[c1.name].physics;
+							var phys1 = this.childRawData[c1.name].physics;
+							var loc1 = phys1.loc.getValue();
+							var r1 = phys1.r.getValue();
 							
 							// Dampen velocity
-							phys.vel = phys.vel.scale(ps.dampenGlobal);
+							phys1.vel = phys1.vel.scale(ps.dampenGlobal);
 							
 							// Increment location based on velocity
-							var loc = phys.loc.modValue(function(loc) { return loc.add(phys.vel.scale(secs)); });
+							loc1 = loc1.add(phys1.vel.scale(secs));
 							
+							// Increment velocity based on acceleration
+							phys1.vel = phys1.vel.add(phys1.acl);
+							
+							// Reset acceleration
+							phys1.acl = new Point({
+								ang: loc1.angleTo(screenCenter),
+								mag: 30
+							})
+							
+							var inertiaRatio = 1 / r1;
+							
+							for (var j = 0; j < ncs; j++) {
+								if (i === j) continue;
+								
+								var c2 = cs[j];
+								var phys2 = this.childRawData[c2.name].physics;
+								var loc2 = phys2.loc.getValue();
+								var r2 = phys2.r.getValue();
+								
+								var sepDist = r1 + r2 + ps.separation;
+								var dist = loc1.dist(loc2);
+								var gap = dist - sepDist;
+								
+								phys1.acl = phys1.acl.add(new Point({
+									ang: loc1.angleTo(loc2),
+									mag: (ps.gravityMult * r2 * inertiaRatio) / Math.max(Math.pow(dist, ps.gravityPow), 1)
+								}));
+								
+								if (gap < 0) {
+									
+									loc1 = loc2.angleMove(loc2.angleTo(loc1), sepDist);
+									
+								}
+								
+							}
+							
+							phys1.loc.setValue(loc1);
+							
+							/*
 							// Always have impulse towards screenCenter
 							// TODO: This may be optimizable if ps.gravityRow is 2 (using distSqr), or 0 (using 1)
 							var attractor = screenCenter;
-							var d2 = Math.pow(loc.dist(attractor), ps.gravityPow);
+							var mag = ps.gravityMult * Math.pow(loc.dist(attractor), ps.gravityPow);
+							if (ps.gravityMax && ps.gravityMax < mag) mag = ps.gravityMax;
 							
-							// Make gravity much weaker close to the center
-							//var d2 = Math.pow(Math.max(0, loc.dist(attractor) - 100), ps.gravityPow);
+							phys1.vel = phys1.vel.add(new Point({ ang: loc.angTo(attractor), mag: mag }));
 							
-							phys.vel = phys.vel.add(new Point({ ang: loc.angTo(attractor), mag: Math.min(d2 * ps.gravityMult, ps.gravityMax) }));
-							
-						}
-						
-						// Modify velocities based on other nodes
-						for (var i = 0; i < ncs; i++) {
-							var c1 = cs[i];
-							
-							var phys1 = this.childRawData[c1.name].physics;
+							// Modify velocity based on all other nodes
 							var loc1 = phys1.loc.getValue();
 							var r1 = phys1.r.getValue();
 							
@@ -1152,6 +1194,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 								// Here's the result of all these calculations
 								phys1.vel = phys1.vel.add(repulse);
 							}
+							
+							*/
+							
+							
+							
 						}
 						
 						/*

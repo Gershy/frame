@@ -328,12 +328,15 @@ var package = new PACK.pack.Package({ name: 'logic',
 			var dragNode = new uf.DragDecorator({
 				tolerance: 0,
 				validTargets: [
-					'._text._user',
-					'._choose-display'
-				]
+					'._text._user',			// Dragging on the username
+					'._choose-display'	// Dragging on either the title or the content when they're not editable
+				],
+				captureOnStart: function(view) {
+					return graphView.getChildRawData(view).physics.loc.getValue();
+				}
 			});
 			
-			var graphView = new uf.GraphView({ name: 'graph', framesPerTick: 10,
+			var graphView = new uf.GraphView({ name: 'graph', maxUpdatesPerFrame: 10,
 				relations: {
 					dependsOn: {},
 					challengedBy: {}
@@ -355,35 +358,30 @@ var package = new PACK.pack.Package({ name: 'logic',
 					*/
 					
 					// This is the view that will be returned
-					var view = new uf.SetView({ name: name, framesPerTick: 1 });
+					var view = new uf.SetView({ name: name });
 					
 					// Get the initial data value for `view`
 					var val = data.getValue();
 					
 					// Substitute custom Data objects in `val`
-					var oldLocData = val.physics.loc;
-					val.physics.r = new uf.SimpleData({ value: 60/*74*/ });
+					var origLocData = val.physics.loc;
+					val.physics.r = new uf.SimpleData({ value: 30/*74*/ });
 					
 					// new loc Data proxies to the original, but can take drags into account
 					val.physics.loc = new uf.CalculatedData({
 						getFunc: function() {
 							var dragData = dragNode.data.getValue();
-							if (dragData.view && dragData.view === view) {
-								// TODO: MESSY! No access to the original `physics` coordinates, so need to store data in `dragData`
-								// Also a bug, because it's usually making DragDecorator unable to detect tolerance crossing
-								var diff = dragData.pt2.sub(dragData.pt1);
-								dragData.pt1 = dragData.pt2; // Don't apply this `diff` more than once
-								
-								return oldLocData.modValue(function(loc) { return loc.add(diff); });
+							if (dragData.view === view) {
+								// Updating the original location ensures when the drag ends the element remains in place
+								return origLocData.modValue(function(loc) { return dragData.capturedData.sub(dragData.pt1).add(dragData.pt2); });
 							}
 							
-							return oldLocData.getValue();
+							return origLocData.getValue();
 						},
 						setFunc: function(val) {
 							// Only updates the location if not dragging
 							var dragData = dragNode.data.getValue();
-							if (!dragData.view || dragData.view !== view)
-								oldLocData.setValue(val);
+							if (dragData.view !== view) origLocData.setValue(val);
 						}
 					});
 					
@@ -396,7 +394,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					view.decorators = [
 						dragNode,
 						new uf.CssDecorator({
-							possibleProperties: [ 'left', 'top', 'transform' ],
+							properties: [ 'left', 'top', 'transform' ],
 							data: function() {
 								var phys = data.getValue().physics;
 								var loc = phys.loc.getValue();
@@ -413,7 +411,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 							possibleClasses: [ 'dragging' ],
 							data: function() {
 								var dragData = dragNode.data.getValue();
-								return dragData.view && dragData.view === view ? 'dragging' : null;
+								return dragData.view === view ? 'dragging' : null;
 							}
 						})
 					]
@@ -542,13 +540,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 				},
 				focusedNameData: dataSet.focusedNodeName,
 				physicsSettings: {
-					dampenGlobal: 0.75,
-					separation: 1,
-					repulseMult: 200,
-					repulseMinDivisor: 4,
-					gravityPow: 2,
-					gravityMult: 1 / 600,
-					gravityMax: 60 // Only necessary for lots of nodes
+					dampenGlobal: 0.9,
+					separation: 10,
+					gravityPow: 1.5,
+					gravityMult: 200,
 				}
 				/*
 				// THIS ONE IS SO COOL BUT I DON'T UNDERSTAND IT???
@@ -704,7 +699,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					theory: 'The sky is blue.',
 					saved: false
 				}
-			].concat(U.range({0:120}).map(function(i) {
+			].concat(U.range({0:10}).map(function(i) {
 				return {
 					quickName: U.charId(i),
 					username: U.charId(i),

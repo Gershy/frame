@@ -36,7 +36,7 @@ var package = new PACK.pack.Package({ name: 'geom',
 						
 						return this.angleMove(this.angTo(loc), amt);
 					},
-					angTo: function(pt2) { 
+					angleTo: function(pt2) { 
 						return Math.atan2(pt2.y - this.y, pt2.x - this.x); 
 					},
 					rotate: function(pt, rot) {
@@ -52,8 +52,11 @@ var package = new PACK.pack.Package({ name: 'geom',
 					dist: function(pt2) {
 						return Math.sqrt(this.distSqr(pt2));
 					},
+					magSqr: function() {
+						return (this.x * this.x) + (this.y * this.y);
+					},
 					mag: function() {
-						return Math.sqrt((this.x * this.x) + (this.y * this.y));
+						return Math.sqrt(this.magSqr());
 					},
 					add: function(pt2) {
 						return new PACK.geom.Point({

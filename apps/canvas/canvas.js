@@ -2,7 +2,7 @@ var package = new PACK.pack.Package({ name: 'canvas',
 	dependencies: [ 'geom' ],
 	buildFunc: function() {
 		return {
-			CanvasGraphics: PACK.uth.makeClass({ name: 'CanvasGraphics',
+			CanvasGraphics: U.makeClass({ name: 'CanvasGraphics',
 				methods: function(sc, c) { return {
 					init: function(params /* canvas */) {
 						this.canvas = U.param(params, 'canvas');
@@ -11,10 +11,14 @@ var package = new PACK.pack.Package({ name: 'canvas',
 					clear: function() {
 						this.g.clearRect(0, 0, this.canvas.width, this.canvas.height);
 					},
+					prepareDraw: function(params /* */) {
+						
+					},
 					circle: function(pt, r) {
 						this.g.beginPath();
 						this.g.arc(pt.x, pt.y, r, 0, 2 * Math.PI);
 						this.g.stroke();
+						this.g.fill();
 					},
 					line: function(pt1, pt2) {
 						this.g.beginPath();
@@ -22,26 +26,24 @@ var package = new PACK.pack.Package({ name: 'canvas',
 						this.g.lineTo(pt2.x, pt2.y);
 						this.g.stroke();
 					},
-					push: function(params /* translate, rotate, scale */) {
+					push: function(params /* translate, rotate, scale, stroke */) {
 						this.g.save();
-						
-						for (var k in params) {
-							var v = params[k];
-							if (k === 'scale') {
-								this.g.scale(v, v)
-							} else if (k === 'translate') {
-								this.g.translate(v.x, v.y)
-							} else if (k === 'rotate') {
-								this.g.rotate(v);
-							}
-						}
+						for (var k in params) c[k](this.g, params[k]);
 					},
 					pop: function() {
 						this.g.restore();
 					}
-				};}
+				};},
+				statik: {
+					scale: 			function(g, v) { g.scale(v, v); },
+					translate: 	function(g, v) { g.translate(v.x, v.y); },
+					rotate:			function(g, v) { g.rotate(v); },
+					width:			function(g, v) { g.lineWidth = v; },
+					stroke:			function(g, v) { g.strokeStyle = v; },
+					fill:				function(g, v) { g.fillStyle = v; }
+				}
 			}),
-			Canvas: PACK.uth.makeClass({ name: 'Canvas',
+			Canvas: U.makeClass({ name: 'Canvas',
 				methods: function(sc, c) { return {
 					init: function(params /* canvas, dataUpdate, dataUpdateFps, graphicsUpdate, resizeChecking, trackMouse, trackKeys */) {
 						this.canvas = U.param(params, 'canvas');
@@ -59,7 +61,7 @@ var package = new PACK.pack.Package({ name: 'canvas',
 						
 						// Set up values to track keys if necessary
 						if (this.trackKeys) {
-							this.keys = U.rng(256).map(function(n) { return true; });
+							this.keys = U.range(256).map(function(n) { return true; });
 							console.log(this.keys);
 						} else {
 							this.keys = null;
@@ -73,9 +75,10 @@ var package = new PACK.pack.Package({ name: 'canvas',
 								buttons: [ 0, 0, 0 ]
 							};
 							this.canvas.addEventListener('mousemove', function(e) {
+								var canvasBound = pass.canvas.getBoundingClientRect();
 								pass.mouse.pt = new PACK.geom.Point({
-									x: e.layerX - (pass.canvas.width * 0.5),
-									y: e.layerY - (pass.canvas.height * 0.5)
+									x: (e.clientX - canvasBound.left) * 2 - pass.canvas.width,
+									y: (e.clientY - canvasBound.top) * 2 - pass.canvas.height
 								});
 							});
 							this.canvas.onmousedown = function(e) { pass.mouse.buttons[0] = true; };

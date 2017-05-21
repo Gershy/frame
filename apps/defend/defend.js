@@ -1,3 +1,5 @@
+// ZOOM OUT would be a really cool feature
+
 var package = new PACK.pack.Package({ name: 'defend',
 	dependencies: [ 'canvas', 'geom' ],
 	buildFunc: function() {
@@ -6,10 +8,14 @@ var package = new PACK.pack.Package({ name: 'defend',
 		return {
 			resources: { css: [ 'apps/defend/style.css' ] },
 			
-			Realm: PACK.uth.makeClass({ name: 'Realm',
+			Realm: U.makeClass({ name: 'Realm',
 				namespace: classes,
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
+					init: function(params /* enemyFreq */) {
+						this.enemyFunc = U.param(params, 'enemyFunc');
+						this.enemyFreq = U.param(params, 'enemyFreq', 5);
+						this.spawnDist = U.param(params, 'spawnDist', 1000);
+						
 						this.id = 0;
 						
 						this.base = null;
@@ -31,18 +37,19 @@ var package = new PACK.pack.Package({ name: 'defend',
 						this.calcs = 0;
 						
 						var seconds = U.param(params, 'seconds');
-						if (Math.random() < 20 * seconds) {
-							var unit = new PACK.defend.AttackingUnit({ realm: this, name: 'enemy', img: null, r: 10,
-								speed: 35,
-								maxHealth: 15,
-								damage: 20
-							});
+						
+						// THIS DOESN'T MAKE SENSE ENEMY FREQUENCY IS MESSSSED RIGHT NOW
+						var n = this.enemyFreq * seconds;
+						
+						while (Math.random() < n) {
+							var unit = this.enemyFunc();
 							var rot = Math.random() * Math.PI * 2;
-							var dist = 400 + (Math.random() * 100);
-							unit.bound.pt = new PACK.geom.Point({ x: Math.cos(rot) * dist, y: Math.sin(rot) * dist });
+							unit.bound.pt = new PACK.geom.Point({ x: Math.cos(rot) * this.spawnDist, y: Math.sin(rot) * this.spawnDist });
 							unit.bound.rot = (rot + (Math.PI)) % (Math.PI * 2);
 				
 							this.addEnemy(unit);
+							
+							n -= Math.random();
 						}
 						
 						// Add in any enemies/bullets
@@ -88,15 +95,7 @@ var package = new PACK.pack.Package({ name: 'defend',
 					}
 				};}
 			}),
-			Renderable: PACK.uth.makeClass({ name: 'Renderable',
-				namespace: classes,
-				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						
-					}
-				};}
-			}),
-			Unit: PACK.uth.makeClass({ name: 'Unit',
+			Unit: U.makeClass({ name: 'Unit',
 				namespace: classes,
 				methods: function(sc, c) { return {
 					init: function(params /* realm, name, img, r, speed */) {
@@ -118,25 +117,26 @@ var package = new PACK.pack.Package({ name: 'defend',
 					}
 				};}
 			}),
-			Weapon: PACK.uth.makeClass({ name: 'Weapon',
+			Weapon: U.makeClass({ name: 'Weapon',
 				namespace: classes,
 				superclassName: 'Unit',
 				methods: function(sc, c) { return {
 					init: function(params /* */) {
 						sc.init.call(this, params);
 						this.active = false;
-						this.bound.r = 35;
 					},
 					step: function(params /* seconds */) {
 						if (this.active) this.attack(params);
 					},
 					attack: function() { throw new Error('not implemented'); },
 					draw: function(graphics) {
+						graphics.push({ width: 10, stroke: '#aa0000' });
 						graphics.line(this.bound.pt, this.bound.pt.angleMove(this.bound.rot, this.bound.r));
+						graphics.pop();
 					}
 				};}
 			}),
-			AutomaticWeapon: PACK.uth.makeClass({ name: 'AutomaticWeapon',
+			AutomaticWeapon: U.makeClass({ name: 'AutomaticWeapon',
 				namespace: classes,
 				superclassName: 'Weapon',
 				methods: function(sc, c) { return {
@@ -160,34 +160,30 @@ var package = new PACK.pack.Package({ name: 'defend',
 					fire: function() { throw new Error('not implemented'); },
 				};}
 			}),
-			BulletWeapon: PACK.uth.makeClass({ name: 'BulletWeapon',
+			BulletWeapon: U.makeClass({ name: 'BulletWeapon',
 				namespace: classes,
 				superclassName: 'AutomaticWeapon',
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
+					init: function(params /* numBullets, arc */) {
 						sc.init.call(this, params);
+						this.bulletFunc = U.param(params, 'bulletFunc');
+						this.numBullets = U.param(params, 'numBullets', 10);
+						this.arc = U.param(params, 'arc', Math.PI * 0.06);
 					},
 					fire: function() {
-						var ang = Math.PI * 0.6;
-						var num = 100;
-						for (var i = 0; i < num; i++) {
-							var bullet = new PACK.defend.Bullet({
-								realm: this.realm,
-								name: 'bullet',
-								speed: 200,
-								damage: 30,
-								penetration: 1,
-								range: 600
-							});
+						for (var i = 0; i < this.numBullets; i++) {
+							var bullet = this.bulletFunc();
 							bullet.bound.pt = this.bound.pt;
-							bullet.bound.r = 2;
-							bullet.bound.rot = this.bound.rot + (num === 1 ? 0 : (-ang + (ang * 2 * (i / (num - 1)))));
+							bullet.bound.rot = this.bound.rot + (this.numBullets !== 1
+								? (-this.arc + (this.arc * 2 * (i / (this.numBullets - 1))))
+								: 0
+							);
 							this.realm.addBullet(bullet);
 						}
 					}
 				};}
 			}),
-			Bullet: PACK.uth.makeClass({ name: 'Bullet',
+			Bullet: U.makeClass({ name: 'Bullet',
 				namespace: classes,
 				superclassName: 'Unit',
 				methods: function(sc, c) { return {
@@ -212,25 +208,36 @@ var package = new PACK.pack.Package({ name: 'defend',
 						var enemies = this.realm.enemies;
 						for (var k in enemies) {
 							var enemy = enemies[k];
+							if (!enemy.isAlive()) continue;
 							if (this.bound.collides(enemy.bound) && !(enemy.id in this.hitSet)) {
 								this.hitSet[enemy.id] = true;
 								this.numHit++;
-								enemy.health = Math.max(0, enemy.health - this.damage);
+								this.hit(enemy);
 							}
 							this.realm.calcs++;
 						}
+					},
+					hit: function(target) {
+						target.health = Math.max(0, target.health - this.damage);
+					},
+					draw: function(graphics) {
+						graphics.push({ stroke: '#aa0000', fill: '#aa0000' });
+						sc.draw.call(this, graphics);
+						graphics.pop();
 					}
 				};}
 			}),
 				
-			Base: PACK.uth.makeClass({ name: 'Base',
+			Base: U.makeClass({ name: 'Base',
 				namespace: classes,
 				superclassName: 'Unit',
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
+					init: function(params /* weapon */) {
 						sc.init.call(this, params);
-						this.weapon = new PACK.defend.BulletWeapon({ realm: this.realm, name: 'wep', bulletsPerSecond: 3 });
+						this.weapon = U.param(params, 'weapon');
 						this.alive = true;
+						
+						this.pt = PACK.geom.ORIGIN;
 					},
 					isAlive: function() { return this.alive; },
 					step: function(params /* seconds */) {
@@ -240,6 +247,8 @@ var package = new PACK.pack.Package({ name: 'defend',
 						var mousePt = mouse.pt;
 						var mousePress = mouse.buttons[0];
 						
+						this.pt = mouse.pt;
+						
 						this.weapon.pt = this.bound.pt;
 						this.weapon.bound.rot = this.bound.pt.angTo(mousePt);
 						this.weapon.active = mousePress;
@@ -248,13 +257,20 @@ var package = new PACK.pack.Package({ name: 'defend',
 					},
 					draw: function(graphics) {
 						sc.draw.call(this, graphics);
-						graphics.line(this.bound.pt, this.bound.pt.angleMove(this.aimAngle, 30));
+						
+						graphics.push({ width: 0.4, stroke: '#ff0000' });
+						graphics.line(this.bound.pt, this.bound.pt.angleMove(this.weapon.bound.rot, 1000));
+						graphics.pop();
+						
+						graphics.push({ stroke: '#a05000', fill: '#a05000' });
+						graphics.circle(this.pt, 10);
+						graphics.pop();
 						
 						this.weapon.draw(graphics);
 					}
 				};}
 			}),
-			AttackingUnit: PACK.uth.makeClass({ name: 'AttackingUnit',
+			AttackingUnit: U.makeClass({ name: 'AttackingUnit',
 				namespace: classes,
 				superclassName: 'Unit',
 				methods: function(sc, c) { return {
@@ -293,9 +309,43 @@ var package = new PACK.pack.Package({ name: 'defend',
 			var body = document.getElementsByTagName('body')[0];
 			body.appendChild(container);
 			
-			var realm = new PACK.defend.Realm();
+			var realm = new PACK.defend.Realm({
+				enemyFreq: 10,
+				enemyFunc: function() {
+					return new PACK.defend.AttackingUnit({ realm: realm, name: 'enemy', img: null, r: 10,
+						speed: 35,
+						maxHealth: 15,
+						damage: 20
+					});
+				}
+			});
 			
-			realm.base = new PACK.defend.Base({ realm: realm, name: 'base', img: null, r: 30, speed: 0 });
+			realm.base = new PACK.defend.Base({
+				realm: realm,
+				name: 'base',
+				img: null,
+				r: 30,
+				speed: 0,
+				weapon: new PACK.defend.BulletWeapon({
+					realm: realm,
+					name: 'wep',
+					bulletsPerSecond: 5,
+					numBullets: 10,
+					arc: Math.PI * 0.035,
+					r: 40,
+					bulletFunc: function() {
+						return new PACK.defend.Bullet({
+							realm: realm,
+							name: 'bullet',
+							speed: 500,
+							damage: 30,
+							penetration: 1,
+							range: 1200,
+							r: 8
+						});
+					}
+				})
+			});
 			
 			var canvas = new PACK.canvas.Canvas({
 				canvas: canvas,
