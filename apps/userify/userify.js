@@ -1,5 +1,7 @@
 // TODO: Some Data objects can be optimized to cache previous values until the end of the frame (or some other condition?)
 // E.g. Would stop 1000 elements all connected to the same CalculatedData from repeating the calculation 1000 times
+// TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
+// to implement.
 
 var package = new PACK.pack.Package({ name: 'userify',
 	dependencies: [ 'quickDev', 'p', 'geom' ],
@@ -27,6 +29,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 				// Key the set at an index that isn't already in use
 				var setName = '~' + type + 'Set';
 				
+				if (!func) throw new Error('Bad func:', func);
+				
 				// If no set already exists for this type of listener, create it
 				if (!(setName in elem)) {
 					
@@ -35,10 +39,13 @@ var package = new PACK.pack.Package({ name: 'userify',
 					
 					// Set up a function at "type" to call every function at "setName"
 					elem[type] = function(listenerSet, event) {
-						listenerSet.forEach(function(listener) { listener(event); });
+						// TODO: `clone` listenerSet before iteration in case of listeners which add more listeners?
+						for (var i = 0; i < listenerSet.length; i++) listenerSet[i](event);
 					}.bind(null, elem[setName]);
 					
 				}
+				
+				if (~elem[setName].indexOf(func)) throw new Error('Func already added');
 				
 				// Add the listener
 				elem[setName].push(func);
@@ -51,10 +58,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 				
 				var listenerSet = elem[setName];
 				
+				var len = listenerSet.length;
 				if (listenerSet.remove(func) && U.isEmpty(listenerSet)) {
 					// Clean up set and listener-calling-function
-					delete elem[type];
-					delete elem[setName];
+					elem[type] = null; // The `type` property shouldn't be delete-able (e.g. "onmousemove", "onmouseup", etc.)
+					delete elem[setName]; // But this is a custom property, so it's delete-able
 				}
 			},
 			padam: function(params, name, def) {
@@ -76,36 +84,53 @@ var package = new PACK.pack.Package({ name: 'userify',
 					update: function(view) { },
 					stop: function(view) { }
 				};},
-				statik: function() {
+				statik: {
 					NEXT_ID: 0
 				}
 			}),
 			ClickDecorator: U.makeClass({ name: 'ClickDecorator',
 				superclassName: 'Decorator',
 				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						sc.init.call(this, params);
-						this.data = new uf.SimpleData({ value: false });
+					init: function(params /* action */) {
+						sc.init.call(this, params); // TODO: Needs parent class with `validTargets`
 						
-						this.clickFuncDn = c.clickFuncDn.bind(this);
-						this.clickFuncUp = c.clickFuncUp.bind(this);
+						this.action = U.param(params, 'action', null);
+						this.data = new uf.SimpleData({ value: false });
 					},
 					start: function(view) {
-						uf.domAddListener(view.domRoot, 'onmousedown', this.clickFuncDn);
+						view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
+						view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
+						
+						uf.domAddListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']); // Up listener is only added after mousedown
 					},
 					stop: function(view) {
-						uf.domRemListener(view.domRoot, 'onmousedown', this.clickFuncDn);
-						uf.domRemListener(document.body, 'onmouseup', this.clickFuncUp);	// If stopped during mousedown, this is necessary
+						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						
+						delete view['~' + this.id + '.clickFuncDn'];
+						delete view['~' + this.id + '.clickFuncUp'];
 					}
 				};},
 				statik: {
-					clickFuncDn: function(event) { // Mouse down - add up listener, modify `this.data`
-						uf.domAddListener(document.body, 'onmouseup', this.clickFuncUp);
+					clickFuncDn: function(view, event) {
+						// TODO: COPY-PASTED FROM DRAGDECORATOR!! Consolidate in superclass
+						if (this.validTargets && view.domRoot !== event.target) {
+							// Return if no selector in `validTargets` matches `event.target`
+							if (!this.validTargets.any(function(sel) { return event.target.matches(sel); })) return;
+						}
+						
 						this.data.setValue(true);
+						
+						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domAddListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 					},
-					clickFuncUp: function(event) { // Mouse up - modify `this.data`, remove up listener
+					clickFuncUp: function(view, event) {
+						if (!this.data.getValue()) return; // Could get called x2 with listeners on both document and `view.domRoot`
+						
 						this.data.setValue(false);
-						uf.domRemListener(document.body, 'onmouseup', this.clickFuncUp);
+						if (this.action) this.action(view);
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domRemListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 					}
 				}
 			}),
@@ -130,41 +155,37 @@ var package = new PACK.pack.Package({ name: 'userify',
 						of those selectors will be able to initiate drag events.
 						*/
 						this.validTargets = U.param(params, 'validTargets', []);
-						
-						this.clickFuncDn = c.clickFuncDn.bind(this);
-						this.clickFuncUp = c.clickFuncUp.bind(this);
-						this.mouseMove = c.mouseMove.bind(this);
 					},
 					start: function(view) {
 						// Store properties on the view
-						view['~' + this.id + '.' + 'clickFuncDn'] = c.clickFuncDn.bind(this, view);
-						view['~' + this.id + '.' + 'clickFuncUp'] = c.clickFuncUp.bind(this, view);
-						view['~' + this.id + '.' + 'mouseMove'] = c.mouseMove.bind(this, view);
+						view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
+						view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
+						view['~' + this.id + '.mouseMove'] = c.mouseMove.bind(this, view);
 						
-						uf.domAddListener(view.domRoot, 'onmousedown', view['~' + this.id + '.' + 'clickFuncDn']);
+						uf.domAddListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
 					},
 					stop: function(view) {
-						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.' + 'clickFuncDn']);
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']); // If stopped during mousedown, this is necessary
-						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']); // If stopped during mousedown, this is necessary
+						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']); // If stopped during mousedown, this is necessary
+						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']); // If stopped during mousedown, this is necessary
 						
 						// Delete properties from the view
-						delete view['~' + this.id + '.' + 'clickFuncDn'];
-						delete view['~' + this.id + '.' + 'clickFuncUp'];
-						delete view['~' + this.id + '.' + 'mouseMove'];
+						delete view['~' + this.id + '.clickFuncDn'];
+						delete view['~' + this.id + '.clickFuncUp'];
+						delete view['~' + this.id + '.mouseMove'];
 					}
 				};},
 				statik: {
 					// For these methods `this` still refers to the DragDecorator even though these methods are static
 					clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
-						// Add listeners
 						if (this.validTargets && view.domRoot !== event.target) {
 							// Return if no selector in `validTargets` matches `event.target`
 							if (!this.validTargets.any(function(sel) { return event.target.matches(sel); })) return;
 						}
 						
-						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);
-						uf.domAddListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);
+						// Add listeners
+						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domAddListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']);
 						
 						var rect = view.domRoot.getBoundingClientRect();
 						
@@ -180,8 +201,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					clickFuncUp: function(view, event) { // Mouse up - modify `this.data`, remove up listener
 						// Remove listeners
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.' + 'clickFuncUp']);
-						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.' + 'mouseMove']);
+						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']);
+						
+						var dragOccurred = this.data.getValue().drag;
 						
 						// Reset data
 						this.data.setValue({
@@ -189,6 +212,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 							mouseDown: false,
 							view: null
 						});
+						
+						// If the drag happened prevent any clicks from going through on mouseup
+						if (dragOccurred) event.preventDefault();
 					},
 					mouseMove: function(view, event) {	 // Mouse move
 						// Update values in `this.data`
@@ -204,7 +230,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							// TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
 						}
 						
-						event.preventDefault();
+						event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional? Probably.
 					}
 				}
 			}),
@@ -645,7 +671,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var button = document.createElement('div');
 						button.classList.add('_button');
 						button.classList.add('_interactive');
-						button.setAttribute('tabindex', 0);
 						button.onkeypress = function(e) {
 							if (e.keyCode === 13 || e.keyCode === 32) {
 								button.onclick();
@@ -942,7 +967,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 				description: 'A DynamicSetView which keeps track of directed ' +
 					'relationships between every pair of its children.',
 				methods: function(sc, c) { return {
-					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, focusedNameData, physicsSettings */) {
+					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, physicsSettings */) {
 						
 						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
 						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
@@ -977,7 +1002,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 					createDomRoot: function() {
 						var ret = document.createElement('div');
 						// TODO: Should occur via decorator. Prevents accidental drags on the GraphView from highlighting text
-						ret.onmouseup = ret.onmousedown = ret.onmousemove = function(e) { return e.preventDefault(); };
+						// Disabling onmouseup and onmousedown makes it impossible to focus any inputs which are children
+						// ret.onmouseup = ret.onmousedown = ret.onmousemove = function(e) { return e.preventDefault(); };
+						ret.onmousemove = function(e) { return e.preventDefault(); };
+						
 						ret.classList.add('_graph');
 						
 						var canvas = document.createElement('canvas');
@@ -1025,11 +1053,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.children[newId].name = newId;
 							delete this.children[oldId];
 							
-							// If the child was already focused, update focusedNameData
-							if (this.focusedNameData.getValue() === oldId) {
-								this.focusedNameData.setValue(newId);
-							}
-							
 							// TODO: Need to anticipate any static behaviour that occurs when a view generates its dom root :(
 							view.domRoot.classList.remove('_' + oldId);
 							view.domRoot.classList.add('_' + newId);
@@ -1059,12 +1082,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var c = sc.remChild.call(this, child);
 						
 						if (!c) return null; // Rem failed!
-						
-						// Ensure to unfocus the child if necessary
-						if (c === this.focused) {
-							this.focusedNameData.setValue(null);
-							this.focused = null;
-						}
 						
 						delete this.childRawData[c.name];
 						
@@ -1127,10 +1144,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 							// Reset acceleration
 							phys1.acl = new Point({
 								ang: loc1.angleTo(screenCenter),
-								mag: 30
+								mag: 10
 							})
-							
-							var inertiaRatio = 1 / r1;
 							
 							for (var j = 0; j < ncs; j++) {
 								if (i === j) continue;
@@ -1146,7 +1161,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 								
 								phys1.acl = phys1.acl.add(new Point({
 									ang: loc1.angleTo(loc2),
-									mag: (ps.gravityMult * r2 * inertiaRatio) / Math.max(Math.pow(dist, ps.gravityPow), 1)
+									mag: (ps.gravityMult * r2) / (Math.max(Math.pow(dist, ps.gravityPow), 1) * r1)
 								}));
 								
 								if (gap < 0) {
@@ -1158,46 +1173,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 							}
 							
 							phys1.loc.setValue(loc1);
-							
-							/*
-							// Always have impulse towards screenCenter
-							// TODO: This may be optimizable if ps.gravityRow is 2 (using distSqr), or 0 (using 1)
-							var attractor = screenCenter;
-							var mag = ps.gravityMult * Math.pow(loc.dist(attractor), ps.gravityPow);
-							if (ps.gravityMax && ps.gravityMax < mag) mag = ps.gravityMax;
-							
-							phys1.vel = phys1.vel.add(new Point({ ang: loc.angTo(attractor), mag: mag }));
-							
-							// Modify velocity based on all other nodes
-							var loc1 = phys1.loc.getValue();
-							var r1 = phys1.r.getValue();
-							
-							var inertiaRatio = 1 / r1;
-							
-							for (var j = 0; j < ncs; j++) {
-								if (i === j) continue; // Don't interact with self
-								
-								var c2 = cs[j];
-								
-								var phys2 = this.childRawData[c2.name].physics;
-								var loc2 = phys2.loc.getValue();
-								var r2 = phys2.r.getValue();
-								
-								var dist = loc1.dist(loc2) - (r1 + r2 + ps.separation);
-								if (dist > ps.tooFar) continue;
-								
-								var mag = ps.repulseMult / Math.max(ps.repulseMinDivisor, dist);
-								
-								// TODO: Repulsion should scale with incident velocity (collisions will be much softer)
-								var repulse = new Point({ ang: loc2.angTo(loc1), mag: mag }).scale(r2 * inertiaRatio);
-								
-								// Here's the result of all these calculations
-								phys1.vel = phys1.vel.add(repulse);
-							}
-							
-							*/
-							
-							
 							
 						}
 						

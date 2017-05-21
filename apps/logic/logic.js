@@ -321,7 +321,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 				username: new uf.SimpleData({ value: '' }),
 				password: new uf.SimpleData({ value: '' }),
 				loginError: new uf.SimpleData({ value: '' }),
-				focusedNodeName: new uf.SimpleData({ value: null })
+				focusedNode: new uf.SimpleData({ value: null })
 			};
 			
 			// Makes graph nodes draggable
@@ -333,6 +333,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 				],
 				captureOnStart: function(view) {
 					return graphView.getChildRawData(view).physics.loc.getValue();
+				}
+			});
+			var clickNode = new uf.ClickDecorator({
+				action: function(view) {
+					// Don't count clicks if dragging
+					var drg = dragNode.data.getValue();
+					if (!drg.drag || view !== drg.view) dataSet.focusedNode.setValue(view);
 				}
 			});
 			
@@ -364,24 +371,24 @@ var package = new PACK.pack.Package({ name: 'logic',
 					var val = data.getValue();
 					
 					// Substitute custom Data objects in `val`
-					var origLocData = val.physics.loc;
-					val.physics.r = new uf.SimpleData({ value: 30/*74*/ });
+					val.physics.r = new uf.CalculatedData({
+						getFunc: function() {
+							return view === dataSet.focusedNode.getValue() ? 150 : 65;
+						}
+					});
 					
-					// new loc Data proxies to the original, but can take drags into account
+					// Replace the `loc` item with one that takes drags into account
+					var loc = val.physics.loc.getValue();
 					val.physics.loc = new uf.CalculatedData({
 						getFunc: function() {
-							var dragData = dragNode.data.getValue();
-							if (dragData.view === view) {
-								// Updating the original location ensures when the drag ends the element remains in place
-								return origLocData.modValue(function(loc) { return dragData.capturedData.sub(dragData.pt1).add(dragData.pt2); });
-							}
+							var drg = dragNode.data.getValue();
+							if (drg.drag && drg.view === view) return drg.capturedData.sub(drg.pt1).add(drg.pt2);
+							if (dataSet.focusedNode.getValue() === view) return graphView.getScreenCenter();
 							
-							return origLocData.getValue();
+							return loc;
 						},
-						setFunc: function(val) {
-							// Only updates the location if not dragging
-							var dragData = dragNode.data.getValue();
-							if (dragData.view !== view) origLocData.setValue(val);
+						setFunc: function(newLoc) {
+							loc = newLoc;
 						}
 					});
 					
@@ -393,6 +400,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Ownership can NEVER change, so safe to hardcode
 					view.decorators = [
 						dragNode,
+						clickNode,
 						new uf.CssDecorator({
 							properties: [ 'left', 'top', 'transform' ],
 							data: function() {
@@ -411,7 +419,13 @@ var package = new PACK.pack.Package({ name: 'logic',
 							possibleClasses: [ 'dragging' ],
 							data: function() {
 								var dragData = dragNode.data.getValue();
-								return dragData.view === view ? 'dragging' : null;
+								return dragData.drag && dragData.view === view ? 'dragging' : null;
+							}
+						}),
+						new uf.ClassDecorator({
+							possibleClasses: [ 'focused' ],
+							data: function() {
+								return dataSet.focusedNode.getValue() === view ? 'focused' : null;
 							}
 						})
 					]
@@ -419,15 +433,10 @@ var package = new PACK.pack.Package({ name: 'logic',
 						new uf.SetView({ name: 'controls', children: [
 							new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
 								
-								var val = data.getValue();
-								
-								console.log(val);
-								
-								return PACK.p.$null;
 								
 								var raw = data.getValue().raw;
+								console.log('Dependencies for ' + raw.quickName, raw);
 								
-								console.log('Dependencies for ' + raw.quickName);
 								return doss.$doRequest({
 									
 									address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
@@ -438,6 +447,8 @@ var package = new PACK.pack.Package({ name: 'logic',
 									console.log('GOT DATA', dependencySetData);
 									
 								}).fail(function(err) {
+									
+									console.log('DEPENDENCIES FAILED:', err);
 									
 									return;
 									
@@ -469,7 +480,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 								return PACK.p.$null;
 							}}),
 							new uf.ChoiceView({ name: 'owner',
-								choiceData: function() { return owned && view === graphView.focused ? 'show' : null; },
+								choiceData: function() { return owned && view === dataSet.focusedNode.getValue() ? 'show' : null; },
 								children: [
 									new uf.SetView({ name: 'show', children: [
 										new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
@@ -499,7 +510,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 												graphView.updateRawData(view, saveData);
 											}).fail(function(err) {
 												editing = true; // Didn't save; go back to editing
-												console.error(err.message);
+												console.error(err.stack);
 											});
 										}})
 									]})
@@ -538,58 +549,12 @@ var package = new PACK.pack.Package({ name: 'logic',
 					
 					return view;
 				},
-				focusedNameData: dataSet.focusedNodeName,
 				physicsSettings: {
 					dampenGlobal: 0.9,
 					separation: 10,
 					gravityPow: 1.5,
 					gravityMult: 200,
 				}
-				/*
-				// THIS ONE IS SO COOL BUT I DON'T UNDERSTAND IT???
-				physicsSettings: {
-					dampenGlobal: 0.4,
-					separation: 1,
-					repulseMult: 200,
-					repulseMinDivisor: -1,
-					gravityPow: 2,
-					gravityMult: 1 / 600,
-					gravityMax: 2000
-				}
-				*/
-				/*
-				// THIS ONE IS VERY SMOOTH!!
-				physicsSettings: {
-					dampenGlobal: 0.5,
-					separation: 1,
-					repulseMult: 200,
-					repulseMinDivisor: 4,
-					gravityPow: 2,
-					gravityMult: 1 / 600
-				}
-				*/
-				/*
-				// THIS ONE IS STABLE
-				physicsSettings: {
-					dampenGlobal: 0.3,
-					separation: 5,
-					repulseMult: 100,
-					repulseMinDivisor: 0.5,
-					gravityPow: 2,
-					gravityMult: 1 / 900
-				}
-				*/
-				/*
-				// Trying to get far-dragged nodes to come back to center faster...
-				physicsSettings: {
-					dampenGlobal: 0.5,
-					separation: 5,
-					repulseMult: 15,
-					repulseMinDivisor: 0.15,
-					gravityPow: 2.2,
-					gravityMult: 1 / 1000
-				}
-				*/
 			});
 			
 			var rootView = new uf.SetView({ name: 'root',
@@ -632,8 +597,12 @@ var package = new PACK.pack.Package({ name: 'logic',
 							new uf.SetView({ name: 'controls', children: [
 								new uf.SetView({ name: 'global', cssClasses: [ 'subControls' ], children: [
 									new uf.ActionView({ name: 'new', textData: 'New Theory', $action: function() {
+										var num = 2;
+										var name = 'newTheory';
+										while (name in graphView.children) name = name.substr(0, 9) + (num++);
+										
 										graphView.addRawData({
-											quickName: 'newTheory',
+											quickName: name,
 											username: dataSet.username.getValue(),
 											title: 'Look up',
 											theory: 'The sky is blue.',
@@ -708,7 +677,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					saved: false
 				};
 			})));
-			dataSet.focusedNodeName.setValue('newTheory');
+			dataSet.focusedNode.setValue(graphView.children.newTheory);
 			
 		}).done();
 		

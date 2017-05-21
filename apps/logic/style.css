@@ -50,10 +50,13 @@ Currently:
 	transition: left 800ms ease-out, top 800ms ease-out, transform 200ms linear, box-shadow 500ms linear;
 }
 #root-login-in-graph > ._nodes > .theory.dragging {
-	z-index: 2;
+	z-index: 3;
 	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
 	
 	transition: transform 200ms linear, box-shadow 500ms linear;
+}
+#root-login-in-graph > ._nodes > .theory.focused {
+	z-index: 2; /* Drags appear above focused node */
 }
 #root-login-in-graph > ._nodes > .theory ._interactive {
 	background-color: transparent;
@@ -208,7 +211,6 @@ Currently:
 	font-size: 16px;
 	font-family: serif;
 	text-align: left;
-	white-space: pre-wrap; /* this is a simple stand-in for advanced text formatting */
 	
 	pointer-events: all;
 }
