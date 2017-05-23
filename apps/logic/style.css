@@ -15,9 +15,6 @@ Currently:
 	left: 0; top: 0;
 	padding-bottom: 20px;
 }
-#root.dragging {
-	user-select: none;
-}
 #root-rps, #root-version {
 	position: absolute;
 	bottom: 0;
@@ -33,11 +30,17 @@ Currently:
 	background-color: #f8f8f8;
 }
 
+/* Graph + Nodes */
 #root-login-in-graph {
+	position: absolute;
+	width: 100%; height: 100%;
+	left: 0; top: 0;
+	overflow: hidden;
+}
+#root-login-in-graph > ._nodes {
 	position: absolute;
 	width: 0; height: 0;
 	left: 50%; top: 50%;
-	/*overflow: hidden;*/
 }
 #root-login-in-graph > ._nodes > .theory {
 	display: block;
@@ -48,12 +51,6 @@ Currently:
 	
 	transform-origin: 0% 0%;
 	transition: left 800ms ease-out, top 800ms ease-out, transform 200ms linear, box-shadow 500ms linear;
-}
-#root-login-in-graph > ._nodes > .theory.dragging {
-	z-index: 3;
-	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
-	
-	transition: transform 200ms linear, box-shadow 500ms linear;
 }
 #root-login-in-graph > ._nodes > .theory.focused {
 	z-index: 2; /* Drags appear above focused node */
@@ -80,9 +77,10 @@ Currently:
 	font-size: 0;
 	top: 26px;
 	
-	transition: box-shadow 500ms ease-out;
+	transition: box-shadow 500ms ease-out, width 500ms linear, height 500ms linear, transform 500ms ease-in-out;
 	
 	pointer-events: all;
+	cursor: pointer;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive:after {
 	/* Used to illuminate the border of the theory on drag */
@@ -97,9 +95,6 @@ Currently:
 	pointer-events: none;
 	
 	transition: box-shadow 500ms linear;
-}
-#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive:after {
-	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies {
 	box-shadow: inset 0 0 0 6px #09bd3c;
@@ -151,7 +146,6 @@ Currently:
 	background-color: #a0a0a0;
 	color: #ffffff;
 }
-
 #root-login-in-graph > ._nodes > .theory > ._data {
 	position: absolute;
 	width: 100%; height: 100%;
@@ -223,6 +217,39 @@ Currently:
 	box-shadow: 0 0 50px 24px #ffffff;
 }
 
+/* Dragging */
+#root.dragging {
+	user-select: none;
+}
+#root-login-in-graph > ._nodes > .theory.dragging {
+	z-index: 3;
+	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
+	opacity: 0.5;
+	pointer-events: none;
+	
+	transition: transform 200ms linear, box-shadow 500ms linear;
+}
+#root-login-in-graph > ._nodes > .theory.dragging * {
+	pointer-events: none !important;
+}
+#root.dragging #root-login-in-graph > ._nodes > .theory {
+	pointer-events: none;
+}
+#root.dragging #root-login-in-graph > ._nodes > .theory > ._controls {
+	z-index: 100;
+}
+#root.dragging #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive {
+	pointer-events: all;
+	transform: scale(1.4);
+}
+#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive {
+	transform: scale(0) !important;
+}
+#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive:after {
+	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
+}
+
+/* Controls */
 #root-login-in-controls {
 	display: block;
 	position: absolute;

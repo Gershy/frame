@@ -34,13 +34,13 @@ var package = new PACK.pack.Package({ name: 'geom',
 						var d2 = this.distSqr(loc);
 						if (amt2 >= d2) return loc;
 						
-						return this.angleMove(this.angTo(loc), amt);
+						return this.angleMove(this.angleTo(loc), amt);
 					},
 					angleTo: function(pt2) { 
 						return Math.atan2(pt2.y - this.y, pt2.x - this.x); 
 					},
 					rotate: function(pt, rot) {
-						var ang = pt.angTo(this);
+						var ang = pt.angleTo(this);
 						var dist = pt.dist(this);
 						return pt.angleMove(ang + rot, dist);
 					},

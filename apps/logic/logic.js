@@ -335,13 +335,35 @@ var package = new PACK.pack.Package({ name: 'logic',
 					return graphView.getChildRawData(view).physics.loc.getValue();
 				}
 			});
+			var dragDependency = new uf.DragActionDecorator({
+				dragDecorator: dragNode,
+				action: function(params /* target, dropZone */) {
+					var target = U.param(params, 'target');
+					var dropZone = U.param(params, 'dropZone');
+					
+					// `d1` relies on `d0` as a dependency
+					var d0 = target;
+					var d1 = dropZone.par.par;
+					
+					var d0Data = graphView.getChildRawData(d0).raw.theory;
+					var d1Data = graphView.getChildRawData(d1).raw.theory;
+					
+					console.log(d0Data, '--->', d1Data);
+				}
+			});
 			var clickNode = new uf.ClickDecorator({
+				validTargets: [
+					'._text._user',			// Dragging on the username
+					'._choose-display'	// Dragging on either the title or the content when they're not editable
+				],
 				action: function(view) {
 					// Don't count clicks if dragging
 					var drg = dragNode.data.getValue();
 					if (!drg.drag || view !== drg.view) dataSet.focusedNode.setValue(view);
 				}
 			});
+			
+			var graphNodeInvRadius = 1 / 150;
 			
 			var graphView = new uf.GraphView({ name: 'graph', maxUpdatesPerFrame: 10,
 				relations: {
@@ -374,6 +396,14 @@ var package = new PACK.pack.Package({ name: 'logic',
 					val.physics.r = new uf.CalculatedData({
 						getFunc: function() {
 							return view === dataSet.focusedNode.getValue() ? 150 : 65;
+						}
+					});
+					
+					val.physics.weight = new uf.CalculatedData({
+						getFunc: function() {
+							// Nodes being dragged have 0 weight
+							var drg = dragNode.data.getValue();
+							return (drg.drag && drg.view === view) ? 0 : 1;
 						}
 					});
 					
@@ -411,7 +441,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 								return {
 									left: (loc.x - r) + 'px',
 									top: (loc.y - r) + 'px',
-									transform: 'scale(' + r / 150 + ')' // 150 is the natural width
+									transform: 'scale(' + r * graphNodeInvRadius + ')' // 150 is the natural width
 								}
 							}
 						}),
@@ -431,51 +461,57 @@ var package = new PACK.pack.Package({ name: 'logic',
 					];
 					view.addChildren([
 						new uf.SetView({ name: 'controls', children: [
-							new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
-								
-								
-								var raw = data.getValue().raw;
-								console.log('Dependencies for ' + raw.quickName, raw);
-								
-								return doss.$doRequest({
+							new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...',
+								decorators: [
+									dragDependency
+								],
+								$action: function() {
 									
-									address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
-									command: 'getRawData'
+									var raw = data.getValue().raw;
+									console.log('Dependencies for ' + raw.quickName, raw);
 									
-								}).then(function(dependencySetData) {
+									return PACK.p.$null;
 									
-									console.log('GOT DATA', dependencySetData);
-									
-								}).fail(function(err) {
-									
-									console.log('DEPENDENCIES FAILED:', err);
-									
-									return;
-									
-									console.log('Loading duds (' + err.message + ')');
-									graphView.addRawData([
-										{
-											quickName: 'thinghaha',
-											username: 'MyManStan',
-											title: 'So Cool',
-											theory: 'I\'m so fucking coolio bro bro'
-										},
-										{
-											quickName: 'swaswa',
-											username: 'GarbageCan',
-											title: 'Bad bad',
-											theory: 'recyclables do not go in the trash u idgit'
-										},
-										{
-											quickName: 'banana',
-											username: 'IAteABananaOnce',
-											title: '2messy4me',
-											theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
-										}
-									]);
-									
-								});
-							}}),
+									return doss.$doRequest({
+										
+										address: [ 'theorySet', raw.quickName, 'dependencySet' ].join('.'),
+										command: 'getRawData'
+										
+									}).then(function(dependencySetData) {
+										
+										console.log('GOT DATA', dependencySetData);
+										
+									}).fail(function(err) {
+										
+										console.log('DEPENDENCIES FAILED:', err);
+										
+										return;
+										
+										console.log('Loading duds (' + err.message + ')');
+										graphView.addRawData([
+											{
+												quickName: 'thinghaha',
+												username: 'MyManStan',
+												title: 'So Cool',
+												theory: 'I\'m so fucking coolio bro bro'
+											},
+											{
+												quickName: 'swaswa',
+												username: 'GarbageCan',
+												title: 'Bad bad',
+												theory: 'recyclables do not go in the trash u idgit'
+											},
+											{
+												quickName: 'banana',
+												username: 'IAteABananaOnce',
+												title: '2messy4me',
+												theory: 'when u eat bananas remember to have napkins available for any collateral banana splatter'
+											}
+										]);
+										
+									});
+								}
+							}),
 							new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
 								return PACK.p.$null;
 							}}),
@@ -550,10 +586,11 @@ var package = new PACK.pack.Package({ name: 'logic',
 					return view;
 				},
 				physicsSettings: {
-					dampenGlobal: 0.9,
+					dampenGlobal: 0.89,
 					separation: 10,
 					gravityPow: 1.5,
-					gravityMult: 200,
+					gravityMult: 300,
+					centerAclMag: 1000
 				}
 			});
 			

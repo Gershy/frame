@@ -2,6 +2,8 @@
 // E.g. Would stop 1000 elements all connected to the same CalculatedData from repeating the calculation 1000 times
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
 // to implement.
+// TODO: RENAME `DATA` CLASSES!!!!
+// TODO: Rename `childRawData`, `getChildRawData`, etc... they don't return raw data!!! lolol
 
 var package = new PACK.pack.Package({ name: 'userify',
 	dependencies: [ 'quickDev', 'p', 'geom' ],
@@ -39,8 +41,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 					
 					// Set up a function at "type" to call every function at "setName"
 					elem[type] = function(listenerSet, event) {
-						// TODO: `clone` listenerSet before iteration in case of listeners which add more listeners?
-						for (var i = 0; i < listenerSet.length; i++) listenerSet[i](event);
+						// `clone` listenerSet before iteration in case of listeners which add/remove more listeners
+						var ls = listenerSet.clone();
+						for (var i = 0; i < ls.length; i++) ls[i](event);
 					}.bind(null, elem[setName]);
 					
 				}
@@ -88,11 +91,37 @@ var package = new PACK.pack.Package({ name: 'userify',
 					NEXT_ID: 0
 				}
 			}),
-			ClickDecorator: U.makeClass({ name: 'ClickDecorator',
+			PointerDecorator: U.makeClass({ name: 'PointerDecorator',
 				superclassName: 'Decorator',
 				methods: function(sc, c) { return {
-					init: function(params /* action */) {
-						sc.init.call(this, params); // TODO: Needs parent class with `validTargets`
+					init: function(params /* validTargets */) {
+						sc.init.call(this, params);
+						
+						/*
+						PointerDecorators can be configured to fire on only specific children
+						of the decorated element. If `validTargets` is an empty array, it
+						means drags can only occur when the root element is clicked, and not
+						its children. If `validTargets === null` then drags can be initiated
+						by clicking on any child, or the root element. Otherwise,
+						`validTargets` is an array of css-selectors and only child elements
+						which match one of those selectors will be able to initiate drag
+						events.
+						*/
+						this.validTargets = U.param(params, 'validTargets', []);
+					},
+					validTarget: function(view, target) {
+						// Returns true if `validTargets` is empty, the target is the view's root, or the target matches any selector
+						return !this.validTargets.length
+							|| view.domRoot === target
+							|| this.validTargets.any(function(sel) { return target.matches(sel); });
+					}
+				};}
+			}),
+			ClickDecorator: U.makeClass({ name: 'ClickDecorator',
+				superclassName: 'PointerDecorator',
+				methods: function(sc, c) { return {
+					init: function(params /* action, validTargets */) {
+						sc.init.call(this, params);
 						
 						this.action = U.param(params, 'action', null);
 						this.data = new uf.SimpleData({ value: false });
@@ -113,29 +142,28 @@ var package = new PACK.pack.Package({ name: 'userify',
 				};},
 				statik: {
 					clickFuncDn: function(view, event) {
-						// TODO: COPY-PASTED FROM DRAGDECORATOR!! Consolidate in superclass
-						if (this.validTargets && view.domRoot !== event.target) {
-							// Return if no selector in `validTargets` matches `event.target`
-							if (!this.validTargets.any(function(sel) { return event.target.matches(sel); })) return;
-						}
+						if (!this.validTarget(view, event.target)) return;
 						
 						this.data.setValue(true);
 						
-						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domAddListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 						uf.domAddListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 					},
 					clickFuncUp: function(view, event) {
 						if (!this.data.getValue()) return; // Could get called x2 with listeners on both document and `view.domRoot`
 						
-						this.data.setValue(false);
-						if (this.action) this.action(view);
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 						uf.domRemListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						
+						this.data.setValue(false); // The mouse is up so change data to reflect that
+						
+						// Only run the action for valid targets
+						if (this.validTarget(view, event.target) && this.action) this.action(view);
 					}
 				}
 			}),
 			DragDecorator: U.makeClass({ name: 'DragDecorator',
-				superclassName: 'Decorator',
+				superclassName: 'PointerDecorator',
 				methods: function(sc, c) { return {
 					init: function(params /* tolerance, validTargets, captureOnStart */) {
 						sc.init.call(this, params);
@@ -144,17 +172,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						
 						// TODO: Function to capture arbitrary data when drag begins (will allow physics values to be captured)
 						this.captureOnStart = U.param(params, 'captureOnStart', null);
-						
-						/*
-						DragDecorators can be configured to fire on only specific children of
-						the decorated element. If `validTargets` is an empty array, it means
-						drags can only occur when the root element is clicked, and not its
-						children. If `validTargets === null` then drags can be initiated by
-						clicking on any child, or the root element. Otherwise, `validTargets`
-						is an array of css-selectors and only child elements which match one
-						of those selectors will be able to initiate drag events.
-						*/
-						this.validTargets = U.param(params, 'validTargets', []);
 					},
 					start: function(view) {
 						// Store properties on the view
@@ -166,7 +183,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					stop: function(view) {
 						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']); // If stopped during mousedown, this is necessary
+						uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']); // If stopped during mousedown, this is necessary
 						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']); // If stopped during mousedown, this is necessary
 						
 						// Delete properties from the view
@@ -178,13 +195,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 				statik: {
 					// For these methods `this` still refers to the DragDecorator even though these methods are static
 					clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
-						if (this.validTargets && view.domRoot !== event.target) {
-							// Return if no selector in `validTargets` matches `event.target`
-							if (!this.validTargets.any(function(sel) { return event.target.matches(sel); })) return;
-						}
+						if (!this.validTarget(view, event.target)) return;
 						
 						// Add listeners
-						uf.domAddListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domAddListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 						uf.domAddListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']);
 						
 						var rect = view.domRoot.getBoundingClientRect();
@@ -201,7 +215,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					},
 					clickFuncUp: function(view, event) { // Mouse up - modify `this.data`, remove up listener
 						// Remove listeners
-						uf.domRemListener(document.body, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
 						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']);
 						
 						var dragOccurred = this.data.getValue().drag;
@@ -226,11 +240,35 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Update `drag`
 						data.pt2 = new Point({ x: event.clientX, y: event.clientY });
 						if (!data.drag && data.pt2.dist(data.pt1) > this.tolerance) {
-							data.drag = true;
 							// TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
+							data.drag = true;
 						}
 						
 						event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional? Probably.
+					}
+				}
+			}),
+			DragActionDecorator: U.makeClass({ name: 'DragActionDecorator',
+				superclassName: 'Decorator',
+				methods: function(sc, c) { return {
+					init: function(params /* dragDecorator, action({ target, dropZone }) */) {
+						sc.init.call(this, params);
+						this.dragDecorator = U.param(params, 'dragDecorator');
+						this.action = U.param(params, 'action');
+					},
+					start: function(view) {
+						view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
+						uf.domAddListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+					},
+					stop: function(view) {
+						uf.domRemListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						delete view['~' + this.id + '.clickFuncUp'];
+					}
+				};},
+				statik: {
+					clickFuncUp: function(view, event) {
+						var drg = this.dragDecorator.data.getValue();
+						if (drg.drag) this.action({ target: drg.view, dropZone: view });
 					}
 				}
 			}),
@@ -503,7 +541,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 					
 					start: function() {
 						// Reverse-reference the View from the html element (useful for debugging)
-						this.domRoot.__view = this;
+						this.domRoot['~view'] = this;
 						
 						// Set the id property
 						this.domRoot.id = this.getNameChain().join('-');
@@ -983,6 +1021,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							tooFar: 500,
 							repulseMult: 10,
 							repulseMinDivisor: 0.08,
+							centerAclMag: 10
 						}.update(physicsSettings);
 						
 						// Given the raw data of two nodes, returns the name of the relationship between those nodes
@@ -1001,10 +1040,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 					
 					createDomRoot: function() {
 						var ret = document.createElement('div');
-						// TODO: Should occur via decorator. Prevents accidental drags on the GraphView from highlighting text
-						// Disabling onmouseup and onmousedown makes it impossible to focus any inputs which are children
-						// ret.onmouseup = ret.onmousedown = ret.onmousemove = function(e) { return e.preventDefault(); };
-						ret.onmousemove = function(e) { return e.preventDefault(); };
 						
 						ret.classList.add('_graph');
 						
@@ -1104,9 +1139,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Probably a NaN value propagating to all other values or something
 						// of the sort
 						
-						var scale = 1 / 150;
-						var secs = millis / 1000;
-						
+						var secs = millis * 0.001;
 						var ps = this.physicsSettings;
 						
 						/*
@@ -1130,6 +1163,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							var phys1 = this.childRawData[c1.name].physics;
 							var loc1 = phys1.loc.getValue();
 							var r1 = phys1.r.getValue();
+							var w1 = phys1.weight.getValue();
 							
 							// Dampen velocity
 							phys1.vel = phys1.vel.scale(ps.dampenGlobal);
@@ -1138,12 +1172,12 @@ var package = new PACK.pack.Package({ name: 'userify',
 							loc1 = loc1.add(phys1.vel.scale(secs));
 							
 							// Increment velocity based on acceleration
-							phys1.vel = phys1.vel.add(phys1.acl);
+							phys1.vel = phys1.vel.add(phys1.acl.scale(secs));
 							
 							// Reset acceleration
 							phys1.acl = new Point({
 								ang: loc1.angleTo(origin),
-								mag: 10
+								mag: ps.centerAclMag
 							})
 							
 							for (var j = 0; j < ncs; j++) {
@@ -1153,17 +1187,21 @@ var package = new PACK.pack.Package({ name: 'userify',
 								var phys2 = this.childRawData[c2.name].physics;
 								var loc2 = phys2.loc.getValue();
 								var r2 = phys2.r.getValue();
+								var w2 = phys2.weight.getValue();
 								
 								var sepDist = r1 + r2 + ps.separation;
 								var dist = loc1.dist(loc2);
 								var gap = dist - sepDist;
 								
-								phys1.acl = phys1.acl.add(new Point({
-									ang: loc1.angleTo(loc2),
-									mag: (ps.gravityMult * r2) / (Math.max(Math.pow(dist, ps.gravityPow), 1) * r1)
-								}));
+								// Look out for division by 0
+								var denom = (Math.max(Math.pow(dist, ps.gravityPow), 1) * r1 * w1);
+								if (denom)
+									phys1.acl = phys1.acl.add(new Point({
+										ang: loc1.angleTo(loc2),
+										mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
+									}));
 								
-								if (gap < 0) {
+								if (gap < 0 && w1 <= w2) { // The lighter node always moves out of the way for the heavier node
 									
 									loc1 = loc2.angleMove(loc2.angleTo(loc1), sepDist);
 									
@@ -1200,7 +1238,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return this.childRawData[name] = {
 							id: name,
 							physics: {
-								weight: 1,
+								weight: new uf.SimpleData({ value: 1 }),
 								r: new uf.SimpleData({ value: 150 }), // Initial radius
 								loc: new uf.SimpleData({ value: new Point({ ang: Math.random() * Math.PI * 2, mag: 0.0001 }) }),
 								vel: new Point(),

@@ -250,7 +250,7 @@ var package = new PACK.pack.Package({ name: 'defend',
 						this.pt = mouse.pt;
 						
 						this.weapon.pt = this.bound.pt;
-						this.weapon.bound.rot = this.bound.pt.angTo(mousePt);
+						this.weapon.bound.rot = this.bound.pt.angleTo(mousePt);
 						this.weapon.active = mousePress;
 						
 						this.weapon.step(params);
