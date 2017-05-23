@@ -1104,18 +1104,17 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Probably a NaN value propagating to all other values or something
 						// of the sort
 						
-						var w = Math.round(this.domRoot.offsetWidth);
-						var h = Math.round(this.domRoot.offsetHeight);
-						var screenCenter = new Point({ x: w >> 1, y: h >> 1 });
 						var scale = 1 / 150;
 						var secs = millis / 1000;
 						
 						var ps = this.physicsSettings;
 						
+						/*
 						// Ensure the canvas size maps directly to the dom space
 						var canvas = this.domRoot.childNodes[0];
 						if (canvas.width !== w) canvas.width = w;
 						if (canvas.height !== h) canvas.height = h;
+						*/
 						
 						var cs = this.children.toArray();
 						var ncs = cs.length;
@@ -1143,7 +1142,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							
 							// Reset acceleration
 							phys1.acl = new Point({
-								ang: loc1.angleTo(screenCenter),
+								ang: loc1.angleTo(origin),
 								mag: 10
 							})
 							
@@ -1190,13 +1189,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						*/
 						sc.tick.call(this);
 					},
-					getScreenCenter: function() {
-						// TODO: Consider retrieving data from a Data object instead of the DOM?
-						return new Point({
-							x: Math.round(this.domRoot.offsetWidth) >> 1,
-							y: Math.round(this.domRoot.offsetHeight) >> 1
-						});
-					},
 					initChildRawData: function(name, rawData) {
 						for (var k in this.children) {
 							var name2 = this.children[k].name;
@@ -1210,7 +1202,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							physics: {
 								weight: 1,
 								r: new uf.SimpleData({ value: 150 }), // Initial radius
-								loc: new uf.SimpleData({ value: this.getScreenCenter().angleMove(Math.random() * Math.PI * 2, 0.0001) }),
+								loc: new uf.SimpleData({ value: new Point({ ang: Math.random() * Math.PI * 2, mag: 0.0001 }) }),
 								vel: new Point(),
 								acl: new Point()
 							}

@@ -378,12 +378,12 @@ var package = new PACK.pack.Package({ name: 'logic',
 					});
 					
 					// Replace the `loc` item with one that takes drags into account
-					var loc = val.physics.loc.getValue();
+					var loc = val.physics.loc.getValue(); // Initialize to the original loc's value
 					val.physics.loc = new uf.CalculatedData({
 						getFunc: function() {
 							var drg = dragNode.data.getValue();
 							if (drg.drag && drg.view === view) return drg.capturedData.sub(drg.pt1).add(drg.pt2);
-							if (dataSet.focusedNode.getValue() === view) return graphView.getScreenCenter();
+							if (dataSet.focusedNode.getValue() === view) return PACK.geom.ORIGIN;
 							
 							return loc;
 						},
@@ -397,7 +397,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 					var owned = username === dataSet.username.getValue();
 					var editing = !saved; // non-saved nodes should be editing initially
 					
-					view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Ownership can NEVER change, so safe to hardcode
+					view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Ownership can never change, so safe to hardcode
 					view.decorators = [
 						dragNode,
 						clickNode,
@@ -428,7 +428,7 @@ var package = new PACK.pack.Package({ name: 'logic',
 								return dataSet.focusedNode.getValue() === view ? 'focused' : null;
 							}
 						})
-					]
+					];
 					view.addChildren([
 						new uf.SetView({ name: 'controls', children: [
 							new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
