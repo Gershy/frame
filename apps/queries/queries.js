@@ -29,7 +29,6 @@ var package = new PACK.pack.Package({ name: 'queries',
 			},
 			
 			$doQuery: function(params /* address, command, params */) {
-				
 				return PACK.queries.$doRawQuery(U.thingToString({
 					address: U.param(params, 'address'),
 					command: U.param(params, 'command'),

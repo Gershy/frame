@@ -419,11 +419,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
 						var address = U.param(params, 'address', '');
 						var reqParams = U.param(params, 'params', {});
 						
+						if (U.isObj(address, String)) address = address ? address.split('.') : [];
 						
 						return PACK.queries.$doQuery({
-							address:		this.getAddress() + (address ? '.' + address : ''),
-							command:		command,
-							params:			reqParams,
+							address: this.getNameChain().concat(address),//this.getAddress() + (address ? '.' + address : ''),
+							command: command,
+							params: reqParams,
 						});
 					},
 					$handleQuery: function(params /* command */) {

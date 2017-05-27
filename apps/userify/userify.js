@@ -3,7 +3,6 @@
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
 // to implement.
 // TODO: RENAME `DATA` CLASSES!!!!
-// TODO: Rename `childRawData`, `getChildRawData`, etc... they don't return raw data!!! lolol
 
 var package = new PACK.pack.Package({ name: 'userify',
 	dependencies: [ 'quickDev', 'p', 'geom' ],
@@ -63,9 +62,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 				
 				var len = listenerSet.length;
 				if (listenerSet.remove(func) && U.isEmpty(listenerSet)) {
-					// Clean up set and listener-calling-function
-					elem[type] = null; // The `type` property shouldn't be delete-able (e.g. "onmousemove", "onmouseup", etc.)
-					delete elem[setName]; // But this is a custom property, so it's delete-able
+					// Clean up listener-set and calling-function
+					elem[type] = null; // The `type` property isn't removable (e.g. "onmousemove", "onmouseup", etc.)
+					delete elem[setName]; // But this is a custom property, so it can be removed
 				}
 			},
 			padam: function(params, name, def) {
@@ -76,6 +75,186 @@ var package = new PACK.pack.Package({ name: 'userify',
 					? new uf.CalculatedData({ getFunc: ret })
 					: new uf.SimpleData({ value: ret });
 			},
+			
+			/* DATA */
+			Data: U.makeClass({ name: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* */) {
+						this.value = null;
+					},
+					
+					getValue: function() {
+						throw new Error('Not implemented');
+					},
+					setValue: function() {
+						throw new Error('Not implemented');
+					},
+					modValue: function(modFunc) {
+						var val = modFunc(this.getValue());
+						
+						if (!U.exists(val)) throw new Error('modFunc shouldn\'t return `undefined`');
+						
+						this.setValue(val);
+						return val;
+					},
+					
+					start: function() {},
+					stop: function() {}
+				};}
+			}),
+			SimpleData: U.makeClass({ name: 'SimpleData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* value */) {
+						sc.init.call(this, params);
+						this.value = U.param(params, 'value');
+					},
+					
+					getValue: function() {
+						return this.value;
+					},
+					setValue: function(value) {
+						this.value = value;
+					}
+				};}
+			}),
+			UpdatingData: U.makeClass({ name: 'UpdatingData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* $getFunc, $setFunc, updateMillis, initialValue */) {
+						sc.init.call(this, params);
+						this.$getFunc = U.param(params, '$getFunc');
+						this.$setFunc = U.param(params, '$setFunc', null);
+						this.updateMillis = U.param(params, 'updateMillis', 0);
+						this.value = U.param(params, 'initialValue', null);
+						
+						this.num = 0;
+						this.freshestNum = -1; // The numbering of the most recent value that's been set
+						this.timeout = null;
+						
+						this.start();
+					},
+					
+					getValue: function() {
+						return this.value;
+					},
+					setValue: function(value) {
+						if (!this.$setFunc) throw new Error('No `$setFunc`');
+						
+						this.freshestNum = this.num; // Invalidates any pending requests
+						this.value = value;
+						
+						this.$setFunc(value).done();
+					},
+					refresh: function() {
+						clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
+						
+						this.$getFunc().then(function(num, val) {
+							if (num > this.freshestNum) {
+								this.freshestNum = num;
+								this.value = val;
+							}
+						}.bind(this, this.num++)).done();
+						
+						if (this.updateMillis) {
+							this.timeout = setTimeout(function() {
+								this.refresh();
+							}.bind(this), this.updateMillis); // The timeout delay should compensate for latency
+						}
+					},
+					
+					start: function() {
+						// TODO: Shouldn't be setInterval - should be setTimeout; timeout should take promise latency into account
+						this.refresh();
+					},
+					stop: function() {
+						if (this.timeout !== null) clearTimeout(this.timeout);
+					},
+				};}
+			}),
+			CalculatedData: U.makeClass({ name: 'CalculatedData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* getFunc */) {
+						sc.init.call(this, params);
+						this.getFunc = U.param(params, 'getFunc');
+						this.setFunc = U.param(params, 'setFunc', null);
+					},
+					
+					getValue: function() {
+						return this.getFunc();
+					},
+					setValue: function(value) {
+						if (!this.setFunc) throw new Error('No `setFunc`');
+						this.setFunc(value);
+					}
+				};}
+			}),
+			CachedData: U.makeClass({ name: 'CachedData',
+				// TODO: Need a way to register this badboy in a list so the whole list can be reset at once
+				// Will require modifications to CachedData.prototype.stop/start; to register/unregister itself
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* data */) {
+						sc.init.call(this, params);
+						this.data = uf.padam(params, 'data');
+						this.cached = c.NO_VALUE;
+					},
+					getValue: function() {
+						if (this.cached === c.NO_VALUE) this.cached = this.data.getValue();
+						return this.cached;
+					},
+					setValue: function(val) {
+						this.cached = val;
+					},
+					reset: function() {
+						if (this.cached === c.NO_VALUE) return;
+						
+						this.data.setValue(this.cached);
+						this.cached = c.NO_VALUE;
+					},
+					stop: function() {
+						this.reset();
+					}
+				};},
+				statik: {
+					NO_VALUE: { NO_VALUE: true }
+				}
+			}),
+			ProxyData: U.makeClass({ name: 'ProxyData',
+				superclassName: 'Data',
+				methods: function(sc, c) { return {
+					init: function(params /* data, path */) {
+						sc.init.call(this, params);
+						this.data = U.param(params, 'data');
+						this.path = U.param(params, 'path');
+						
+						if (U.isObj(this.path, String)) this.path = this.path ? this.path.split('.') : [];
+					},
+					getValue: function() {
+						var obj = this.data;
+						
+						for (var i = 0, len = this.path.length; i < len; i++) {
+							var pathPc = this.path[i];
+							obj = pathPc === '~' ? obj.getValue() : obj[pathPc];
+						}
+						
+						return obj;
+					},
+					setValue: function(val) {
+						var obj = this.data;
+						
+						for (var i = 0, len = this.path.length - 1; i < len; i++) {
+							var pathPc = this.path[i];
+							obj = pathPc === '~' ? obj.getValue() : obj[pathPc];
+						}
+						
+						var pathPc = this.path[this.path.length - 1];
+						if (pathPc === '~') obj.setValue(val);
+						else 								obj[pathPc] = val;
+					}
+				};}
+			}),
 			
 			/* DECORATOR */
 			Decorator: U.makeClass({ name: 'Decorator',
@@ -178,13 +357,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 						view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
 						view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
 						view['~' + this.id + '.mouseMove'] = c.mouseMove.bind(this, view);
+						view['~' + this.id + '.mouseOver'] = function() { return false; };
 						
 						uf.domAddListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
+						uf.domAddListener(view.domRoot, 'onmouseover', view['~' + this.id + '.mouseOver']);
 					},
 					stop: function(view) {
 						uf.domRemListener(view.domRoot, 'onmousedown', view['~' + this.id + '.clickFuncDn']);
 						uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']); // If stopped during mousedown, this is necessary
 						uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']); // If stopped during mousedown, this is necessary
+						uf.domRemListener(view.domRoot, 'onmousemove', view['~' + this.id + '.mouseOver']); // If stopped during mousedown, this is necessary
 						
 						// Delete properties from the view
 						delete view['~' + this.id + '.clickFuncDn'];
@@ -206,6 +388,11 @@ var package = new PACK.pack.Package({ name: 'userify',
 						// Update data
 						this.data.setValue({
 							drag: false,
+							lastDragMs: null,
+							getWaitTimeMs: function() {
+								var ms = this.data.getValue().lastDragMs;
+								return ms ? new Date() - ms : null;
+							}.bind(this),
 							mouseDown: true,
 							view: view,
 							capturedData: this.captureOnStart ? this.captureOnStart(view) : null,
@@ -244,7 +431,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 							data.drag = true;
 						}
 						
-						event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional? Probably.
+						data.lastDragMs = +new Date();
+						
+						event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional?
 					}
 				}
 			}),
@@ -255,20 +444,53 @@ var package = new PACK.pack.Package({ name: 'userify',
 						sc.init.call(this, params);
 						this.dragDecorator = U.param(params, 'dragDecorator');
 						this.action = U.param(params, 'action');
+						this.data = new uf.SimpleData({ value: null });
 					},
 					start: function(view) {
 						view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
+						view['~' + this.id + '.mouseEnter'] = c.mouseEnter.bind(this, view);
+						view['~' + this.id + '.mouseLeave'] = c.mouseLeave.bind(this, view);
+						
 						uf.domAddListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domAddListener(view.domRoot, 'onmouseenter', view['~' + this.id + '.mouseEnter']);
+						uf.domAddListener(view.domRoot, 'onmouseleave', view['~' + this.id + '.mouseLeave']);
 					},
 					stop: function(view) {
 						uf.domRemListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
+						uf.domRemListener(view.domRoot, 'onmouseenter', view['~' + this.id + '.mouseEnter']);
+						uf.domRemListener(view.domRoot, 'onmouseleave', view['~' + this.id + '.mouseLeave']);
+						
 						delete view['~' + this.id + '.clickFuncUp'];
+						delete view['~' + this.id + '.mouseEnter'];
+						delete view['~' + this.id + '.mouseLeave'];
 					}
 				};},
 				statik: {
 					clickFuncUp: function(view, event) {
+						// Note that if the mouseup event occurs when multiple overlapping
+						// views are hovered, the one that is used is the one in `this.data`.
+						// This means that the view on which the mouseup is occurring is not
+						// necessarily the view which is being passed to `this.action`.
 						var drg = this.dragDecorator.data.getValue();
-						if (drg.drag) this.action({ target: drg.view, dropZone: view });
+						var dropZone = this.data.getValue();
+						if (dropZone === null) {
+							console.error('DragActionDecorator `this.data.getValue()` was null on mouseup');
+							dropZone = view;
+						}
+						if (drg.drag) this.action({ target: drg.view, dropZone: dropZone });
+					},
+					mouseEnter: function(view, event) {
+						this.data.modValue(function(view0) {
+							// Won't overwrite an old value unless the old value is `null`
+							// Should make drags over multiple targets more stable
+							return view0 ? view0 : view;
+						});
+					},
+					mouseLeave: function(view, event) {
+						this.data.modValue(function(view0) {
+							// Won't clear the old value unless the leave event occurred on that value
+							return view0 === view ? null : view0;
+						});
 					}
 				}
 			}),
@@ -329,136 +551,6 @@ var package = new PACK.pack.Package({ name: 'userify',
 						for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
 					}
 				};}
-			}),
-			
-			/* DATA */
-			Data: U.makeClass({ name: 'Data',
-				methods: function(sc, c) { return {
-					init: function(params /* */) {
-						this.value = null;
-					},
-					
-					getValue: function() {
-						throw new Error('Not implemented');
-					},
-					setValue: function() {
-						throw new Error('Not implemented');
-					},
-					modValue: function(modFunc) {
-						var val = modFunc(this.getValue());
-						this.setValue(val);
-						return val;
-					},
-					
-					start: function() {},
-					stop: function() {}
-				};}
-			}),
-			SimpleData: U.makeClass({ name: 'SimpleData',
-				superclassName: 'Data',
-				methods: function(sc, c) { return {
-					init: function(params /* value */) {
-						sc.init.call(this, params);
-						this.value = U.param(params, 'value');
-					},
-					
-					getValue: function() {
-						return this.value;
-					},
-					setValue: function(value) {
-						this.value = value;
-					}
-				};}
-			}),
-			UpdatingData: U.makeClass({ name: 'UpdatingData',
-				superclassName: 'Data',
-				methods: function(sc, c) { return {
-					init: function(params /* $getFunc, updateMillis, initialValue */) {
-						sc.init.call(this, params);
-						this.$getFunc = U.param(params, '$getFunc');
-						this.$setFunc = U.param(params, '$setFunc', null);
-						this.doingSet = false;
-						this.updateMillis = U.param(params, 'updateMillis', 0);
-						this.value = U.param(params, 'initialValue', null);
-						this.interval = null;
-						
-						this.start();
-					},
-					
-					getValue: function() {
-						if (!this.$getFunc) throw new Error('No `$getFunc`');
-						return this.value;
-					},
-					setValue: function(value) {
-						if (!this.$setFunc) throw new Error('No `$setFunc`');
-						this.value = value;
-						this.doingSet = true;
-						this.$setFunc(value).then(function() { this.doingSet = false; }.bind(this)).done();
-					},
-					refresh: function() {
-						this.$getFunc().then(function(val) { if (!this.doingSet) this.value = val; }.bind(this)).done();
-					},
-					
-					start: function() {
-						// TODO: Shouldn't be setInterval - should be setTimeout, timeout taking promise latency into account
-						this.refresh();
-						this.interval = this.updateMillis
-							? setInterval(function(){ this.refresh(); }.bind(this), this.updateMillis)
-							: null;
-					},
-					stop: function() {
-						if (this.interval !== null) clearInterval(this.interval);
-					},
-				};}
-			}),
-			CalculatedData: U.makeClass({ name: 'CalculatedData',
-				superclassName: 'Data',
-				methods: function(sc, c) { return {
-					init: function(params /* getFunc */) {
-						sc.init.call(this, params);
-						this.getFunc = U.param(params, 'getFunc');
-						this.setFunc = U.param(params, 'setFunc', null);
-					},
-					
-					getValue: function() {
-						return this.getFunc();
-					},
-					setValue: function(value) {
-						if (!this.setFunc) throw new Error('No `setFunc`');
-						this.setFunc(value);
-					}
-				};}
-			}),
-			CachedData: U.makeClass({ name: 'CachedData',
-				// TODO: Need a way to register this badboy in a list so the whole list can be reset at once
-				// Will require modifications to CachedData.prototype.stop/start; to register/unregister itself
-				superclassName: 'Data',
-				methods: function(sc, c) { return {
-					init: function(params /* data */) {
-						sc.init.call(this, params);
-						this.data = uf.padam(params, 'data');
-						this.cached = c.NO_VALUE;
-					},
-					getValue: function() {
-						if (this.cached === c.NO_VALUE) this.cached = this.data.getValue();
-						return this.cached;
-					},
-					setValue: function(val) {
-						this.cached = val;
-					},
-					reset: function() {
-						if (this.cached === c.NO_VALUE) return;
-						
-						this.data.setValue(this.cached);
-						this.cached = c.NO_VALUE;
-					},
-					stop: function() {
-						this.reset();
-					}
-				};},
-				statik: {
-					NO_VALUE: { NO_VALUE: true }
-				}
 			}),
 			
 			/* VIEW */
@@ -818,8 +910,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var children = this.children;
 						
 						sc.update.call(this, millis);
-						for (var k in this.children)
-							this.children[k].update(millis);
+						for (var k in this.children) this.children[k].update(millis);
 					},
 					tick: function(millis) {
 					}
@@ -927,14 +1018,16 @@ var package = new PACK.pack.Package({ name: 'userify',
 					'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
 					'raw data that the child was built from.',
 				methods: function(sc, c) { return {
-					init: function(params /* name, data, getDataId, genChildView, comparator */) {
+					init: function(params /* name, childData, getDataId, genChildView, comparator */) {
 						if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
 						
 						sc.init.call(this, params);
-						this.data = uf.padam(params, 'data');
+						this.childData = uf.padam(params, 'childData');
 						this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of data (will be used for child.name)
 						this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, data) { /* generates a View */ };
-						this.comparator = U.param(params, 'comparator', null);
+						this.comparator = U.param(params, 'comparator', null); // TODO: implement!
+						
+						this.childFullData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
 						
 						this.count = 0;
 					},
@@ -946,60 +1039,132 @@ var package = new PACK.pack.Package({ name: 'userify',
 						var rem = this.children.clone(); // Initially mark all children for removal
 						var add = {};	// Initially mark no children for addition
 						
-						this.data.getValue().forEach(function(item, k) {
+						this.childData.getValue().forEach(function(item, ind) {
 							
 							// `itemId` is also always the name of the corresponding child
 							var itemId = this.getDataId(item);
 							
-							// Each item in `data` is unmarked for removal
+							// Each item in `data` and in `rem` is unmarked for removal
 							delete rem[itemId];	
 							
-							// Items which don't already exist as children are marked for addition
+							// Each item not in `data` and in `add` is marked for addition
 							if (!(itemId in this.children)) add[itemId] = item;
 							
 						}.bind(this));
 						
 						// Remove all children as necessary
 						for (var k in rem) {
-							if (!this.remChild(k)) {
+							var child = this.remChild(k);
+							delete this.childFullData[child.name];
+							
+							if (child) { // TODO: This is just for sanity; should never occur
 								console.log(rem, this.getAddress(), this.children);
 								throw new Error('Couldn\'t remove child: "' + k + '"');
 							}
+							
 						}
 						
 						// Add all children as necessary
 						for (var k in add) {
-							var rawData = this.initChildRawData(k, add[k]).update({ raw: add[k] });
-							var calc = new uf.CalculatedData({ getFunc: function() { return rawData; } });
-							var child = this.genChildView.call(this, k, calc);
-							
-							if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
-							calc.getFunc = this.getChildRawData.bind(this, child);
-							if (!this.addChild(child, add[k])) throw new Error('DynamicSetView `addChild` failed');
+							this.addChildFromRawData(k, add[k]);
 						}
 						
 					},
-					initChildRawData: function(name, rawData) {
-						return {};
+					addChildFromRawData: function(name, rawData) {
+						if (name in this.children) return;
+						
+						var fullData = this.initChildFullData(name, rawData);
+						return this.addChildFromFullData(name, fullData);
 					},
-					getChildRawData: function(child) {
-						return null;
+					addChildFromFullData: function(name, fullData) {
+						if (name in this.children) return;
+						
+						// `this.genChildView` will have access to `fullData`, and can even overwrite it (due to the "setFunc" property)
+						var calc = new uf.CalculatedData({ getFunc: function() { return fullData; }, setFunc: function(val) { fullData = val; } });
+						
+						// After this line `fullData` is finalized
+						var child = this.genChildView.call(this, name, calc);
+						if (child.name !== name) throw new Error('Child named "' + child.name + '" needs to be named "' + name + '"');
+						
+						// The Data that `child` has access to will now properly query `this.getChildFullData`.
+						this.childFullData[child.name] = fullData;
+						calc.getFunc = this.getChildFullData.bind(this, child);
+						
+						var child = this.addChild(child);
+						if (!child) throw new Error('DynamicSetView `addChild` failed');
+						return child;
+					},
+					initChildFullData: function(name, rawData) {
+						return { raw: rawData };
+					},
+					getChildFullData: function(child) {
+						return this.childFullData[child.name];
+					},
+					
+					// TODO: `DynamicSetView` shouldn't really be updating raw data because updates should occur in it's `childData`...
+					updateRawData: function(view, newRawData) {
+						
+						var oldId = view.name;
+						var oldRawData = this.childFullData[oldId].raw;
+						
+						var newId = this.getDataId(newRawData);
+						
+						// Special changes need to be made if the id is changing
+						if (newId !== oldId) {
+							if (newId in this.children) throw new Error('Updating "' + oldId + '" to "' + newId + '" causes overwrite');
+							
+							this.childFullData[newId] = this.childFullData[oldId].clone(); // Retain all properties
+							delete this.childFullData[oldId];
+							
+							this.children[newId] = this.children[oldId]; // Update the child key name
+							this.children[newId].name = newId;
+							delete this.children[oldId];
+							
+							// TODO: Need to anticipate any static behaviour that occurs when a view generates its dom root :(
+							view.domRoot.classList.remove('_' + oldId);
+							view.domRoot.classList.add('_' + newId);
+						}
+						
+						// Update the `raw` property of the raw data container
+						this.childFullData[newId].raw = newRawData;
+						this.childFullData[newId].id = newId;
+						
+						/*
+						Need to O(n) search `this.childData.getValue()` - which is a pity
+						and possibly suggests it should be an object whose key is
+						always the id??? In which case there would be no more need
+						for `this.getDataId`, but is that a loss of power?
+						*/ 
+						this.childData.modValue(function(childArr) {
+							// Update the single item in `this.childData` that corresponds
+							for (var i = 0, len = childArr.length; i < len; i++) {
+								if (this.getDataId(childArr[i]) === oldId) {
+									childArr[i] = newRawData;
+									break;
+								}
+							}
+							
+							return childArr;
+						}.bind(this));
+						
 					},
 					
 					start: function() {
 						sc.start.call(this);
-						this.data.start();
+						this.childData.start();
 					},
 					stop: function() {
 						sc.stop.call(this);
-						this.data.stop();
+						this.childData.stop();
 					}
 				};}
 			}),
+			
 			// TODO: Consider a class between DynamicSetView and GraphView which
 			// simply stores arbitrary data alongside every child node. Move
 			// GraphView.prototype.addRawData, GraphView.prototype.updateRawData
 			// to this class instead.
+			
 			GraphView: U.makeClass({ name: 'GraphView',
 				superclassName: 'DynamicSetView',
 				description: 'A DynamicSetView which keeps track of directed ' +
@@ -1007,9 +1172,10 @@ var package = new PACK.pack.Package({ name: 'userify',
 				methods: function(sc, c) { return {
 					init: function(params /* name, getDataId, genChildView, relations, classifyRelation, physicsSettings */) {
 						
-						this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
-						this.childRawData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
-						sc.init.call(this, params.update({ data: this.childDataSet }));
+						//this.childDataSet = []; // An arbitrarily-keyed list of data items. The key is provided by `getDataId`.
+						//sc.init.call(this, params.update({ childData: this.childDataSet }));
+						
+						sc.init.call(this, params);
 						
 						var physicsSettings = U.param(params, 'physicsSettings', {});
 						this.physicsSettings = {
@@ -1024,6 +1190,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							centerAclMag: 10
 						}.update(physicsSettings);
 						
+						// TODO: Start using this!!
 						// Given the raw data of two nodes, returns the name of the relationship between those nodes
 						this.classifyRelation = U.param(params, 'classifyRelation');
 						
@@ -1036,6 +1203,50 @@ var package = new PACK.pack.Package({ name: 'userify',
 						this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
 						this.updateIndex = 0;
 						
+					},
+					
+					addChild: function(child) {
+						if (!sc.addChild.call(this, child)) return null;
+						
+						var n1 = child.name;
+						
+						for (var k in this.children) {
+							var child2 = this.children[k];
+							var n2 = child2.name;
+							
+							this.relationMap[this.relationKey(n1, n2)] = 'RELATION ' + n1 + ' -> ' + n2;
+							this.relationMap[this.relationKey(n2, n1)] = 'RELATION ' + n2 + ' -> ' + n1;
+						}
+						
+						return child;
+					},
+					remChild: function(child) {
+						if (!sc.remChild.call(this, child)) return null;
+						
+						var n1 = child.name;
+						
+						for (var k in this.children) {
+							var child2 = this.children[k];
+							var n2 = child2.name;
+							
+							delete this.relationMap[this.relationKey(n1, n2)];
+							delete this.relationMap[this.relationKey(n2, n1)];
+						}
+						
+						return child;
+					},
+					
+					addRawData: function(rawData) {
+						var id = this.getDataId(rawData);
+						if (id in this.children) return null;
+						
+						this.childDataSet.push(rawData);
+						return this.addChildFromRawData(id, rawData);
+					},
+					updateRawData: function(view, rawData) {
+						sc.updateRawData.call(this, view, rawData);
+						
+						// TODO: Need to update relations!
 					},
 					
 					createDomRoot: function() {
@@ -1054,80 +1265,9 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return ret;
 					},
 					provideContainer: function(view) {
-						view.domRoot.classList.add('_node'); // TODO: This is no good!! Can't add classes like this...
-						return this.domRoot.childNodes[1]; // Return ._nodes
+						return this.domRoot.childNodes[1]; // Return `._nodes`
 					},
-					addRawData: function(rawDataSet) {
-						// TODO: Need way to specify initial node location.
-						// The issue is that initial location has no access to rawData;
-						// it only has access to the child, and then it generates the
-						// raw data from scratch.
-						if (!U.isObj(rawDataSet, Array)) rawDataSet = [ rawDataSet ];
-						
-						for (var i = 0, len = rawDataSet.length; i < len; i++) {
-							var data = rawDataSet[i];
-							var id = this.getDataId(data);
-							if (!(id in this.childRawData))	this.childDataSet.push(data);
-						}
-					},
-					updateRawData: function(view, newRawData) {
-						
-						var oldId = view.name;
-						var oldRawData = this.childRawData[oldId].raw;
-						
-						var newId = this.getDataId(newRawData);
-						
-						// Special changes need to be made if the id is changing
-						if (newId !== oldId) {
-							if (newId in this.children) throw new Error('Updating "' + oldId + '" to "' + newId + '" causes overwrite');
-							
-							this.childRawData[newId] = this.childRawData[oldId].clone(); // Retain all properties
-							delete this.childRawData[oldId];
-							
-							this.children[newId] = this.children[oldId]; // Update the child key name
-							this.children[newId].name = newId;
-							delete this.children[oldId];
-							
-							// TODO: Need to anticipate any static behaviour that occurs when a view generates its dom root :(
-							view.domRoot.classList.remove('_' + oldId);
-							view.domRoot.classList.add('_' + newId);
-						}
-						
-						// Update the `raw` property of the raw data container
-						this.childRawData[newId].raw = newRawData;
-						this.childRawData[newId].id = newId;
-						
-						/*
-						Need to O(n) search `this.childDataSet` - which is a pity
-						and possibly suggests it should be an object whose key is
-						always the id??? In which case there would be no more need
-						for `this.getDataId`, but is that a loss of power?
-						*/ 
-						for (var i = 0, len = this.childDataSet.length; i < len; i++) {
-							if (this.getDataId(this.childDataSet[i]) === oldId) {
-								this.childDataSet[i] = newRawData;
-								break;
-							}
-						}
-						
-						// TODO: Need to update relations with `this.classifyRelation`!
-						
-					},
-					remChild: function(child) {
-						var c = sc.remChild.call(this, child);
-						
-						if (!c) return null; // Rem failed!
-						
-						delete this.childRawData[c.name];
-						
-						for (var k in this.children) {
-							var c2 = this.children[k];
-							delete this.relationMap[this.relationKey(c, c2)];
-							delete this.relationMap[this.relationKey(c2, c)];
-						}
-						
-						return c;
-					},
+					
 					relationKey: function(child1, child2) {
 						if (!U.isObj(child1, String)) child1 = child1.name;
 						if (!U.isObj(child2, String)) child2 = child2.name;
@@ -1135,9 +1275,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						return child1 !== child2 ? child1 + '-' + child2 : child1;
 					},
 					tick: function(millis) {
-						// TODO: On really unstable configurations, something breaks here
-						// Probably a NaN value propagating to all other values or something
-						// of the sort
+						// TODO: On really unstable configurations something breaks here
+						// Probably a NaN value propagating to all other values
 						
 						var secs = millis * 0.001;
 						var ps = this.physicsSettings;
@@ -1160,7 +1299,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 							this.updateIndex = (++this.updateIndex >= cs.length) ? 0 : this.updateIndex;
 							
 							var c1 = cs[i];
-							var phys1 = this.childRawData[c1.name].physics;
+							var phys1 = this.getChildFullData(c1).physics;
 							var loc1 = phys1.loc.getValue();
 							var r1 = phys1.r.getValue();
 							var w1 = phys1.weight.getValue();
@@ -1184,7 +1323,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 								if (i === j) continue;
 								
 								var c2 = cs[j];
-								var phys2 = this.childRawData[c2.name].physics;
+								var phys2 = this.getChildFullData(c2).physics;
 								var loc2 = phys2.loc.getValue();
 								var r2 = phys2.r.getValue();
 								var w2 = phys2.weight.getValue();
@@ -1227,15 +1366,8 @@ var package = new PACK.pack.Package({ name: 'userify',
 						*/
 						sc.tick.call(this);
 					},
-					initChildRawData: function(name, rawData) {
-						for (var k in this.children) {
-							var name2 = this.children[k].name;
-							this.relationMap[this.relationKey(name, name2)] = 'RELATION ' + name + ' -> ' + name2;
-							this.relationMap[this.relationKey(name2, name)] = 'RELATION ' + name2 + ' -> ' + name;
-						}
-						
-						// The return value is also stored in `childRawData`
-						return this.childRawData[name] = {
+					initChildFullData: function(name, rawData) {
+						return sc.initChildFullData.call(this, name, rawData).update({
 							id: name,
 							physics: {
 								weight: new uf.SimpleData({ value: 1 }),
@@ -1244,10 +1376,7 @@ var package = new PACK.pack.Package({ name: 'userify',
 								vel: new Point(),
 								acl: new Point()
 							}
-						};
-					},
-					getChildRawData: function(child) {
-						return this.childRawData[child.name];
+						});
 					}
 				};}
 			})

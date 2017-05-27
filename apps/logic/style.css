@@ -72,7 +72,7 @@ Currently:
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive {
 	position: absolute;
-	width: 70px; height: 64px;
+	width: 64px; height: 64px;
 	border-radius: 100%;
 	font-size: 0;
 	top: 26px;
@@ -101,7 +101,8 @@ Currently:
 	background-color: #0be74a;
 	left: -5px;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies:hover {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies:hover,
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadDependencies.dragHover {
 	box-shadow: inset 0 0 0 34px #09bd3c;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges {
@@ -109,7 +110,8 @@ Currently:
 	background-color: #ff8552;
 	right: -5px;
 }
-#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges:hover {
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges:hover,
+#root-login-in-graph > ._nodes > .theory > ._controls > ._interactive._loadChallenges.dragHover {
 	box-shadow: inset 0 0 0 34px #f44c05;
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._owner {
@@ -125,6 +127,9 @@ Currently:
 	box-shadow: 0 0 0 2px #d0d0d0;
 	text-align: center;
 	overflow: hidden;
+	
+	transform-origin: -10% -10%; /* Allows the element to fold into its parent */
+	transition: transform 500ms ease-in-out; /* Dragged focused theories should hide their `._controls > ._owner` */
 }
 #root-login-in-graph > ._nodes > .theory > ._controls > ._owner > ._show {
 	display: inline-block;
@@ -137,7 +142,7 @@ Currently:
 	width: 100%; height: 36px; line-height: 36px; padding: 0;
 	
 	box-shadow: none;
-	background-color: #transparent;
+	background-color: transparent;
 	color: #000000;
 	
 	transition: background-color 200ms linear, color 200ms linear;
@@ -169,6 +174,7 @@ Currently:
 	max-width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	font-family: monospace;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._user {
 	display: block;
@@ -206,6 +212,8 @@ Currently:
 	font-family: serif;
 	text-align: left;
 	
+	white-space: pre-wrap; /* allow newline to render */
+	
 	pointer-events: all;
 }
 #root-login-in-graph > ._nodes > .theory > ._data > ._theory._choose-display:after {
@@ -224,25 +232,26 @@ Currently:
 #root-login-in-graph > ._nodes > .theory.dragging {
 	z-index: 3;
 	box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
-	opacity: 0.5;
-	pointer-events: none;
+	opacity: 0.6;
 	
 	transition: transform 200ms linear, box-shadow 500ms linear;
 }
+#root-login-in-graph > ._nodes > .theory.dragging,
 #root-login-in-graph > ._nodes > .theory.dragging * {
 	pointer-events: none !important;
 }
 #root.dragging #root-login-in-graph > ._nodes > .theory {
 	pointer-events: none;
 }
-#root.dragging #root-login-in-graph > ._nodes > .theory > ._controls {
-	z-index: 100;
-}
 #root.dragging #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive {
 	pointer-events: all;
-	transform: scale(1.4);
+	transform: scale(1.8);
 }
-#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive {
+#root.dragging #root-login-in-graph > ._nodes > .theory > ._controls > ._interactive.dragHover {
+	transform: scale(2.4);
+}
+#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive,
+#root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._owner > ._show {
 	transform: scale(0) !important;
 }
 #root-login-in-graph > ._nodes > .theory.dragging > ._controls > ._interactive:after {

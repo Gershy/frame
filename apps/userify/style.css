@@ -106,9 +106,3 @@
 	width: 100%; height: 100%;
 	left: 0; top: 0;
 }
-._graph > ._nodes > ._node {
-	z-index: 0;
-}
-._graph > ._nodes > ._node._graphFocus {
-	z-index: 1;
-}
