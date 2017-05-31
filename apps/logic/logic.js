@@ -31,7 +31,7 @@ INDEFINITE:
 - Error reporting (toast-style notifications on errors)
 - Get rid of persistent sessions...?
 - Dependency/support loading should trigger a search (only within those dependencies/supports) for very large sets (to avoid hundreds of theories being loaded on-click)
-- Need a way of preventing tons of views, all wired to the same Data, from running the same calculation over and over again (caching + reset() called before main update)
+- Need a way of preventing tons of views, all wired to the same Info, from running the same calculation over and over again (caching + reset() called before main update)
 
 */
 
@@ -406,23 +406,23 @@ var package = new PACK.pack.Package({ name: 'logic',
       U.debug('THING', doss.getDataView({}));
       
       var dataSet = {
-        rps: new uf.SimpleData({ value: 'rps' }),
-        token: new uf.SimpleData({ value: null }),
-        appVersion: new uf.UpdatingData({
+        rps: new uf.SimpleInfo({ value: 'rps' }),
+        token: new uf.SimpleInfo({ value: null }),
+        appVersion: new uf.UpdatingInfo({
           $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
         }),
-        loginView: new uf.CalculatedData({
+        loginView: new uf.CalculatedInfo({
           getFunc: function() {  return dataSet.token.getValue() ? 'in' : 'out'  }
         }),
-        username: new uf.SimpleData({ value: '' }),
-        password: new uf.SimpleData({ value: '' }),
-        loginError: new uf.SimpleData({ value: '' }),
-        focusedNode: new uf.SimpleData({ value: null }),
-        activeNodes: new uf.SimpleData({ value: {} })
+        username: new uf.SimpleInfo({ value: '' }),
+        password: new uf.SimpleInfo({ value: '' }),
+        loginError: new uf.SimpleInfo({ value: '' }),
+        focusedNode: new uf.SimpleInfo({ value: null }),
+        activeNodes: new uf.SimpleInfo({ value: {} })
       };
       
       /*
-      dataSet.nodeList = new uf.UpdatingData({
+      dataSet.nodeList = new uf.UpdatingInfo({
         initialValue: [],
         updateMillis: 2000,
         $getFunc: function() {
@@ -515,7 +515,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               gravityMult: 300,
               separation: 10,
               centerAclMag: 1000,
-              minVel: 22
+              minVel: 0
             }
           })
         ],
@@ -531,21 +531,21 @@ var package = new PACK.pack.Package({ name: 'logic',
           var owned = nodeData.username.getValue() === dataSet.username.getValue();
           nodeData.update({
             // "owned" is immutable
-            owned: new uf.SimpleData({ value: owned }),
+            owned: new uf.SimpleInfo({ value: owned }),
             
-            // "saved" links directly to the raw `Data`
+            // "saved" links directly to the raw `Info`
             saved: nodeData.saved,
             
             // "editing' is initially enabled for owned theories if either the title or theory is blank
-            editing: new uf.SimpleData({ value: owned && (!nodeData.title.getValue() || !nodeData.theory.getValue()) })
+            editing: new uf.SimpleInfo({ value: owned && (!nodeData.title.getValue() || !nodeData.theory.getValue()) })
           });
           nodeData.physics.update({
-            r: new uf.CalculatedData({
+            r: new uf.CalculatedInfo({
               getFunc: function() {
                 return view === dataSet.focusedNode.getValue() ? 150 : 65;
               }
             }),
-            weight: new uf.CalculatedData({
+            weight: new uf.CalculatedInfo({
               getFunc: function() {
                 // Nodes being dragged have 0 weight
                 var drg = dragNode.data.getValue();
@@ -564,7 +564,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 return (drg.drag && drg.view === view) ? 0 : 1;
               }
             }),
-            loc: new uf.CalculatedData({
+            loc: new uf.CalculatedInfo({
               getFunc: function() {
                 // Priority:
                 // 1) Nodes being dragged position to cursor
@@ -794,9 +794,21 @@ var package = new PACK.pack.Package({ name: 'logic',
             new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeData.saved.getValue() ? 'saved' : 'unsaved' }, children: [
               // Shows up on unsaved theories (allows editing only quickName)
               new uf.SetView({ name: 'unsaved', children: [
-                new uf.TextEditView({ name: 'quickName', textData: nodeData.quickName, placeholderData: 'quickName' }),
-                new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
+                new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textData: nodeData.quickName, placeholderData: 'quickName' }),
+                new uf.ActionView({ name: 'save', textData: 'Save', numWrappers: 1, $action: function() {
                   console.log('Saved! nodeData.saved.setValue(true) // which should trigger a request to the server');
+                  
+                  nodeData.saved.setValue(true);
+                  
+                  dataSet.activeNodes.modValue(function(activeNodes) {
+                    if (name !== nodeData.quickName.getValue()) {
+                      activeNodes[nodeData.quickName.getValue()] = activeNodes[name];
+                      delete activeNodes[name];
+                    }
+                    return activeNodes;
+                  });
+                  
+                  graphView.renameChild(view, nodeData.quickName.getValue()); // Should only happen on save success
                   
                   return PACK.p.$null;
                 }})
@@ -919,32 +931,25 @@ var package = new PACK.pack.Package({ name: 'logic',
                     dataSet.activeNodes.modValue(function(val) {
                       val[name] = {
                         physics: {
-                          r: new uf.SimpleData({ value: 65 }),
-                          weight: new uf.SimpleData({ value: 1 }),
-                          loc: new uf.SimpleData({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
+                          r: new uf.SimpleInfo({ value: 65 }),
+                          weight: new uf.SimpleInfo({ value: 1 }),
+                          loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
                           vel: PACK.geom.ORIGIN,
                           acl: PACK.geom.ORIGIN
                         },
                         username: dataSet.username,
-                        quickName: new uf.SimpleData({ value: name }),
-                        title: new uf.SimpleData({ value: 'New Theory' }),
-                        theory: new uf.SimpleData({ value: 'QED' }),
-                        saved: new uf.SimpleData({ value: false })
+                        quickName: new uf.SimpleInfo({ value: name }),
+                        title: new uf.SimpleInfo({ value: 'New Theory' }),
+                        theory: new uf.SimpleInfo({ value: 'QED' }),
+                        saved: new uf.SimpleInfo({ value: false })
                       };
+                      
                       
                       return val;
                     });
                     
-                    /*
-                    var node = graphView.addRawData({
-                      quickName: name,
-                      username: dataSet.username.getValue(),
-                      title: 'Look up',
-                      theory: 'The sky is blue.',
-                      saved: false
-                    });
-                    dataSet.focusedNode.setValue(node);
-                    */
+                    var child = graphView.updateChildren().add[name];
+                    dataSet.focusedNode.setValue(child);
                     
                     return PACK.p.$null;
                     

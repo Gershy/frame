@@ -1,5 +1,5 @@
-// TODO: Some Data objects can be optimized to cache previous values until the end of the frame (or some other condition?)
-// E.g. Would stop 1000 elements all connected to the same CalculatedData from repeating the calculation 1000 times
+// TODO: Some Info objects can be optimized to cache previous values until the end of the frame (or some other condition?)
+// E.g. Would stop 1000 elements all connected to the same CalculatedInfo from repeating the calculation 1000 times
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
 // to implement.
 // TODO: RENAME `DATA` CLASSES!!!!
@@ -67,17 +67,17 @@ var package = new PACK.pack.Package({ name: 'userify',
           delete elem[setName]; // But this is a custom property, so it can be removed
         }
       },
-      padam: function(params, name, def) {
-        // Data-param; ensures the return value is an instance of PACK.userify.Data (defaulting to SimpleData)
+      pafam: function(params, name, def) {
+        // Info-param; ensures the return value is an instance of PACK.userify.Info (defaulting to SimpleInfo)
         var ret = U.param(params, name, def);
-        if (U.isInstance(ret, uf.Data)) return ret;
+        if (U.isInstance(ret, uf.Info)) return ret;
         return U.isObj(ret, Function)
-          ? new uf.CalculatedData({ getFunc: ret })
-          : new uf.SimpleData({ value: ret });
+          ? new uf.CalculatedInfo({ getFunc: ret })
+          : new uf.SimpleInfo({ value: ret });
       },
       
       /* DATA */
-      Data: U.makeClass({ name: 'Data',
+      Info: U.makeClass({ name: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* */) {
             this.value = null;
@@ -87,20 +87,20 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (U.isObj(path, String)) path = path ? path.split('.') : [];
             var obj = this;
             for (var i = 0, len = path.length; i < len; i++) {
-              if (U.isInstance(obj, uf.Data)) obj = obj.getValue();
+              if (U.isInstance(obj, uf.Info)) obj = obj.getValue();
               obj = obj[path[i]];
             }
             return obj;
           },
           walkGet: function(path) {
             var result = this.walk(path);
-            return U.isInstance(result, uf.Data) ? result.getValue() : result;
+            return U.isInstance(result, uf.Info) ? result.getValue() : result;
           },
           walkSet: function(path, value) {
             if (U.isObj(path, String)) path = path ? path.split('.') : [];
             
             var result = this.walk(path);
-            if (!U.isInstance(result, uf.Data)) throw new Error('walkSet with path "' + path.join('.') + '" did not retrieve an instance of Data');
+            if (!U.isInstance(result, uf.Info)) throw new Error('walkSet with path "' + path.join('.') + '" did not retrieve an instance of Info');
             
             result.setValue(value);
           },
@@ -123,8 +123,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           stop: function() {}
         };}
       }),
-      SimpleData: U.makeClass({ name: 'SimpleData',
-        superclassName: 'Data',
+      SimpleInfo: U.makeClass({ name: 'SimpleInfo',
+        superclassName: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* value */) {
             sc.init.call(this, params);
@@ -139,8 +139,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      UpdatingData: U.makeClass({ name: 'UpdatingData',
-        superclassName: 'Data',
+      UpdatingInfo: U.makeClass({ name: 'UpdatingInfo',
+        superclassName: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* $getFunc, $setFunc, updateMillis, initialValue */) {
             sc.init.call(this, params);
@@ -193,8 +193,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
         };}
       }),
-      CalculatedData: U.makeClass({ name: 'CalculatedData',
-        superclassName: 'Data',
+      CalculatedInfo: U.makeClass({ name: 'CalculatedInfo',
+        superclassName: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* getFunc */) {
             sc.init.call(this, params);
@@ -211,14 +211,14 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      CachedData: U.makeClass({ name: 'CachedData',
+      CachedInfo: U.makeClass({ name: 'CachedInfo',
         // TODO: Need a way to register this badboy in a list so the whole list can be reset at once
-        // Will require modifications to CachedData.prototype.stop/start; to register/unregister itself
-        superclassName: 'Data',
+        // Will require modifications to CachedInfo.prototype.stop/start; to register/unregister itself
+        superclassName: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* data */) {
             sc.init.call(this, params);
-            this.data = uf.padam(params, 'data');
+            this.data = uf.pafam(params, 'data');
             this.cached = c.NO_VALUE;
           },
           getValue: function() {
@@ -242,8 +242,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           NO_VALUE: { NO_VALUE: true }
         }
       }),
-      ProxyData: U.makeClass({ name: 'ProxyData',
-        superclassName: 'Data',
+      ProxyInfo: U.makeClass({ name: 'ProxyInfo',
+        superclassName: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* data, path */) {
             sc.init.call(this, params);
@@ -324,7 +324,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.action = U.param(params, 'action', null);
-            this.data = new uf.SimpleData({ value: false });
+            this.data = new uf.SimpleInfo({ value: false });
           },
           start: function(view) {
             view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
@@ -367,7 +367,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* tolerance, validTargets, captureOnStart */) {
             sc.init.call(this, params);
-            this.data = new uf.SimpleData({ value: { drag: false, mouseDown: false, view: null } });
+            this.data = new uf.SimpleInfo({ value: { drag: false, mouseDown: false, view: null } });
             this.tolerance = U.param(params, 'tolerance', 0);
             
             // TODO: Function to capture arbitrary data when drag begins (will allow physics values to be captured)
@@ -440,7 +440,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           mouseMove: function(view, event) {   // Mouse move
             // Update values in `this.data`
-            var data = this.data.getValue(); // We know `this.data` is a SimpleData, so just updating it normally works here
+            var data = this.data.getValue(); // We know `this.data` is a SimpleInfo, so just updating it normally works here
             
             // It's possible for mousemove to fire after mouseup; detectable if data.pt1 is undefined
             if (!data.pt1) return;
@@ -465,7 +465,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             this.dragDecorator = U.param(params, 'dragDecorator');
             this.action = U.param(params, 'action');
-            this.data = new uf.SimpleData({ value: null });
+            this.data = new uf.SimpleInfo({ value: null });
           },
           start: function(view) {
             view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
@@ -522,7 +522,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* data, possibleClasses */) {
             sc.init.call(this, params);
             this.possibleClasses = U.param(params, 'possibleClasses');
-            this.data = uf.padam(params, 'data');
+            this.data = uf.pafam(params, 'data');
           },
           start: function(view) {
           },
@@ -552,7 +552,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* data, properties */) {
             sc.init.call(this, params);
             this.properties = U.param(params, 'properties');
-            this.data = uf.padam(params, 'data');
+            this.data = uf.pafam(params, 'data');
           },
           start: function(view) {
           },
@@ -578,12 +578,11 @@ var package = new PACK.pack.Package({ name: 'userify',
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
         methods: function(sc, c) { return {
-          init: function(params /* name, framesPerTick, cssClasses, onClick, decorators */) {
+          init: function(params /* name, framesPerTick, cssClasses, decorators */) {
             this.name = U.param(params, 'name');
             if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
             
             this.cssClasses = U.param(params, 'cssClasses', []);
-            this.onClick = U.param(params, 'onClick', null);
             this.decorators = U.param(params, 'decorators', []);
             this.framesPerTick = U.param(params, 'framesPerTick', 1);
             this.frameCount = this.framesPerTick; // `frameCount` starting full ensures 1st tick not skipped
@@ -664,10 +663,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             for (var i = 0, len = this.cssClasses.length; i < len; i++)
               this.domRoot.classList.add(this.cssClasses[i]);
             
-            // Set up any desired click handlers
-            if (this.onClick)
-              this.domRoot.onclick = this.onClick.bind(this);
-            
             (this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
             
             for (var i = 0, len = this.decorators.length; i < len; i++)
@@ -687,7 +682,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* name, data */) {
             sc.init.call(this, params);
-            this.data = uf.padam(params, 'data');
+            this.data = uf.pafam(params, 'data');
           },
           
           createDomRoot: function() {
@@ -714,7 +709,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* name, enabledData */) {
             sc.init.call(this, params);
-            this.enabledData = uf.padam(params, 'enabledData', true);
+            this.enabledData = uf.pafam(params, 'enabledData', true);
           },
           
           tick: function(millis) {
@@ -740,8 +735,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* name, multiline, initialValue, textData, placeholderData, enabledData */) {
             sc.init.call(this, params);
             this.multiline = U.param(params, 'multiline', false);
-            this.textData = uf.padam(params, 'textData', '');
-            this.placeholderData = uf.padam(params, 'placeholderData', '');
+            this.textData = uf.pafam(params, 'textData', '');
+            this.placeholderData = uf.pafam(params, 'placeholderData', '');
           },
           
           createDomRoot: function() {
@@ -815,7 +810,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             this.$action = U.param(params, '$action');
             this.waiting = false;
-            this.textData = uf.padam(params, 'textData');
+            this.textData = uf.pafam(params, 'textData');
           },
           
           createDomRoot: function() {
@@ -944,8 +939,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* name, choiceData, children */) {
             sc.init.call(this, params);
             
-            // Data returning the name of one of the children
-            this.choiceData = uf.padam(params, 'choiceData');
+            // Info returning the name of one of the children
+            this.choiceData = uf.pafam(params, 'choiceData');
             
             // Property to keep track of the currently active child
             this.currentChild = null;
@@ -995,9 +990,9 @@ var package = new PACK.pack.Package({ name: 'userify',
         description: 'A text field that is hidden when its text is empty',
         methods: function(sc, c) { return {
           init: function(params /* name, data */) {
-            var data = uf.padam(params, 'data');
+            var data = uf.pafam(params, 'data');
             sc.init.call(this, params.update({
-              choiceData: new uf.CalculatedData({ getFunc: function() { return data.getValue() ? 'text' : null; } }),
+              choiceData: new uf.CalculatedInfo({ getFunc: function() { return data.getValue() ? 'text' : null; } }),
               children: [  new uf.TextView({ name: 'text', data: data })  ]
             }));
           }
@@ -1008,11 +1003,11 @@ var package = new PACK.pack.Package({ name: 'userify',
         description: 'A text field which is conditionally editable',
         methods: function(sc, c) { return {
           init: function(params /* name, editableData, textData, inputViewParams */) {
-            var editableData = uf.padam(params, 'editableData');
-            this.textData = uf.padam(params, 'textData');
+            var editableData = uf.pafam(params, 'editableData');
+            this.textData = uf.pafam(params, 'textData');
             var inputViewParams = U.param(params, 'inputViewParams', {});
             sc.init.call(this, params.update({
-              choiceData: new uf.CalculatedData({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
+              choiceData: new uf.CalculatedInfo({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
               children: [
                 new uf.TextEditView(inputViewParams.update({ name: 'edit', textData: this.textData })),
                 new uf.TextView({ name: 'display', data: this.textData })
@@ -1034,8 +1029,8 @@ var package = new PACK.pack.Package({ name: 'userify',
       /* COMPLEX VIEW */
       DynamicSetView: U.makeClass({ name: 'DynamicSetView',
         superclassName: 'SetView',
-        description: 'A SetView whose children are based on Data. ' +
-          'Modifications to the Data instantly modify the children of ' +
+        description: 'A SetView whose children are based on Info. ' +
+          'Modifications to the Info instantly modify the children of ' +
           'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
           'raw data that the child was built from.',
         methods: function(sc, c) { return {
@@ -1043,7 +1038,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
             
             sc.init.call(this, params);
-            this.childData = uf.padam(params, 'childData');
+            this.childData = uf.pafam(params, 'childData');
             //this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of data (will be used for child.name)
             this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, data) { /* generates a View */ };
             this.comparator = U.param(params, 'comparator', null); // TODO: implement!
@@ -1055,7 +1050,17 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           tick: function(millis) {
             
-            var addr = this.getAddress();
+            this.updateChildren();
+            
+          },
+          
+          updateChildren: function() {
+            /*
+            Fully compares `this.children` to `this.childData.getValue()`
+            Adds/removes any elements in `this.children` based on their
+            existence in `this.childData`. Returns values showing which
+            children were added and which were removed.
+            */
             
             var rem = this.children.clone(); // Initially mark all children for removal
             var add = {};  // Initially mark no children for addition
@@ -1071,21 +1076,6 @@ var package = new PACK.pack.Package({ name: 'userify',
               if (!(k in this.children)) add[k] = cd[k];
               
             }
-            
-            /*
-            this.childData.getValue().forEach(function(item, ind) {
-              
-              // `itemId` is also always the name of the corresponding child
-              var itemId = this.getDataId(item);
-              
-              // Each item in `data` and in `rem` is unmarked for removal
-              delete rem[itemId];  
-              
-              // Each item not in `data` and in `add` is marked for addition
-              if (!(itemId in this.children)) add[itemId] = item;
-              
-            }.bind(this));
-            */
             
             // Remove all children as necessary
             for (var k in rem) {
@@ -1104,14 +1094,17 @@ var package = new PACK.pack.Package({ name: 'userify',
               var child = this.genChildView.call(this, k, add[k]); // TODO: Or should `add[k]` be provided here?
               if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
               
-              var child = this.addChild(child);
-              if (!child) throw new Error('DynamicSetView `addChild` failed');
-              return child;
+              add[k] = this.addChild(child);
+              if (!add[k]) throw new Error('DynamicSetView `addChild` failed');
             }
+            
+            return { rem: rem, add: add };
             
           },
           
           renameChild: function(view, newName) {
+            if (newName === view.name) return;
+            
             if (newName in this.children) throw new Error('A child is already named "' + newName + '"; can\'t rename');
             if (!(newName in this.childData.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any data. Update `childData` before calling `renameChild`.');
             
@@ -1119,6 +1112,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             delete this.children[view.name];
             
             if (view.domRoot) {
+              // Get the name-chain, but replace the last item with the new name
+              var nameChain = view.getNameChain();
+              nameChain[nameChain.length - 1] = newName;
+              view.domRoot.id = nameChain.join('-');
+              
+              // Replace the naming class
               view.domRoot.classList.remove('_' + view.name);
               view.domRoot.classList.add('_' + newName);
             }

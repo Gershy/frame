@@ -58,6 +58,7 @@
 	left: 0; top: 0;
 	color: rgba(176, 176, 176, 0);
 	pointer-events: none;
+  user-select: none;
 	
 	transition: background-color 200ms linear, color 200ms linear;
 }

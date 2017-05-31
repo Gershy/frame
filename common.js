@@ -528,7 +528,7 @@ global.U = {
     return ret;
   },
   id: function(n, len) {
-    if (!U.exists(len)) len = 8;
+    if (!U.exists(len)) len = 6;
     var hex = n.toString(16);
     
     while(hex.length < len) hex = '0' + hex;
