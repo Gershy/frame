@@ -10,13 +10,29 @@ There should be limited ways to reject a supported theory
     and add a challenge against that support. This challenge should be
     automatically defeated as soon as the support is filled in.
 
-a LOT of support is needed for editing quickName on unsaved theories... make quickName immutable?
-
-TODO:
-1) `childFullData` should be stored in DynamicSetView, not GraphView
-2) logic graphView should use server-linked UpdatingData for nodes (eliminate need for updateRawData)
-
 Can automatic defeat of challenges ensure that only axioms remain challengable?
+
+==== THE LIST ====
+
+NEAR-TERM:
+1) Sort out quickName + auto-saving theories. Shouldn't be editable after save. Unsaved nodes should appear with only a "quickName" field.
+2) Create a data controller for sets (the set of names of all theories active on the client-side)
+  - Theories are added using the "New Theory" button, support/challenge loading, search function
+  - Theories are deleted by dragging them to "remove" and "delete" dropzones
+3) `dataSet.activeNodes` should be auto-updating
+  - Server-side edits should automatically appear for all clients
+  - Server-side deletes should automatically appear for all clients
+3) Get relations down.
+  - Should be implemented through a decorator
+  - Physics decorator should allow for a function that determines gravitational strength between any 2 nodes
+  - Canvas graphics to link relations to the `._interactive` elements of standing theories
+
+INDEFINITE:
+- Error reporting (toast-style notifications on errors)
+- Get rid of persistent sessions...?
+- Dependency/support loading should trigger a search (only within those dependencies/supports) for very large sets (to avoid hundreds of theories being loaded on-click)
+- Need a way of preventing tons of views, all wired to the same Data, from running the same calculation over and over again (caching + reset() called before main update)
+
 */
 
 var package = new PACK.pack.Package({ name: 'logic',
@@ -184,6 +200,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               var incomingQuickName = U.param(reqParams, 'incomingQuickName');
               var incoming = theorySet.children[incomingQuickName];
               if (!incoming) throw new Error ('Invalid incoming quickName: "' + incomingQuickName + '"');
+              
+              if (incoming === standing) throw new Error('A theory cannot relate to itself');
               
               var relationType = U.param(reqParams, 'relationType');
               
@@ -496,25 +514,30 @@ var package = new PACK.pack.Package({ name: 'logic',
               gravityPow: 1.5,
               gravityMult: 300,
               separation: 10,
-              centerAclMag: 1000
+              centerAclMag: 1000,
+              minVel: 22
             }
           })
         ],
         genChildView: function(name, nodeData) {
           
-          // Note: `nodeData` === dataSet.activeNodes.getValue()[name]
+          // Note: `nodeData` === graphView.childData.getValue()[name] === dataSet.activeNodes.getValue()[name]
           
           // This is the view that will be returned
           var view = new uf.SetView({ name: name });
           
           // Add data to the `activeNodes` object: physics, owned, saved, and editing
-          // TODO: Would be nice if raw and active data was all initialized in same spot
-          // TODO: Should `nodeData` be a SimpleData instead of a plain Object?
           var loc = nodeData.physics.loc.getValue();
+          var owned = nodeData.username.getValue() === dataSet.username.getValue();
           nodeData.update({
-            owned: new uf.SimpleData({ value: nodeData.username.getValue() === dataSet.username.getValue() }),
+            // "owned" is immutable
+            owned: new uf.SimpleData({ value: owned }),
+            
+            // "saved" links directly to the raw `Data`
             saved: nodeData.saved,
-            editing: new uf.SimpleData({ value: !nodeData.saved.getValue() })
+            
+            // "editing' is initially enabled for owned theories if either the title or theory is blank
+            editing: new uf.SimpleData({ value: owned && (!nodeData.title.getValue() || !nodeData.theory.getValue()) })
           });
           nodeData.physics.update({
             r: new uf.CalculatedData({
@@ -549,7 +572,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 // 3) Position to the calculated physics `loc`
                 var drg = dragNode.data.getValue();
                 if (drg.drag && drg.view === view) return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
-                if (dataSet.focusedNode.getValue() === view) return PACK.geom.ORIGIN;
+                if (dataSet.focusedNode.getValue() === view) return loc = PACK.geom.ORIGIN;
                 return loc;
               },
               setFunc: function(newLoc) {
@@ -632,12 +655,12 @@ var package = new PACK.pack.Package({ name: 'logic',
             }
           });
           
-          // Install other attributes on `view` before returning it
-          view.cssClasses = [ 'theory', nodeData.owned.getValue() ? 'owned' : 'foreign' ]; // Ownership can never change, so safe to hardcode
+          // Install all necessary attributes on `view` before returning it
+          view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Set static classes
           view.decorators = [
             dragNode,   // Dragging affects position
             clickNode,  // Clicking focuses node
-            new uf.CssDecorator({    // Modify position and radius based on physics
+            new uf.CssDecorator({   // Modify position and radius based on physics
               properties: [ 'left', 'top', 'transform' ],
               data: function() {
                 var phys = nodeData.physics;
@@ -645,13 +668,13 @@ var package = new PACK.pack.Package({ name: 'logic',
                 var r = phys.r.getValue();
                 
                 return {
-                  left: (loc.x - r) + 'px',
-                  top: (loc.y - r) + 'px',
+                  left: Math.round(loc.x - r) + 'px',
+                  top: Math.round(loc.y - r) + 'px',
                   transform: 'scale(' + r * graphNodeInvRadius + ')' // 150 is the natural width
                 }
               }
             }),
-            new uf.ClassDecorator({  // Add a "dragging" class when dragged
+            new uf.ClassDecorator({ // Add a "dragging" class when dragged
               possibleClasses: [ 'dragging' ],
               data: function() {
                 var dragData = dragNode.data.getValue();
@@ -663,14 +686,20 @@ var package = new PACK.pack.Package({ name: 'logic',
               data: function() {
                 return dataSet.focusedNode.getValue() === view ? 'focused' : null;
               }
+            }),
+            new uf.ClassDecorator({ // Add "saved"/"unsaved" classes
+              possibleClasses: [ 'saved', 'unsaved' ],
+              data: function() {
+                return nodeData.saved.getValue() ? 'saved' : 'unsaved'
+              }
             })
           ];
           view.addChildren([
             new uf.SetView({ name: 'controls', children: [
               loadDependenciesButton,
               loadChallengesButton,
-              // TODO: Can "owner" controls be eliminated fully? Drag nodes to trash to delete; auto-save nodes; only focused nodes are editable
               /*
+              // TODO: Can "owner" controls be eliminated fully? Drag nodes to trash to delete; auto-save nodes; only focused nodes are editable
               new uf.ChoiceView({ name: 'owner',
                 choiceData: function() {
                   // Controls show up on owned, focused nodes
@@ -762,47 +791,83 @@ var package = new PACK.pack.Package({ name: 'logic',
               })
               */
             ]}),
-            new uf.SetView({ name: 'data', children: [
-              new uf.DynamicTextView({ name: 'quickName',
-                editableData: function() {
-                  // quickName cannot be edited after being saved
-                  return !nodeData.saved.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
-                },
-                textData: nodeData.quickName,
-                inputViewParams: {
-                  placeholderData: 'Quick Name',
-                  cssClasses: [ 'centered' ]
-                }
-              }),
-              new uf.TextView({ name: 'user',
-                data: nodeData.username
-              }),
-              new uf.DynamicTextView({ name: 'title',
-                editableData: function() {
-                  return nodeData.editing.getValue() && nodeData.owned.getValue()
-                },
-                textData: nodeData.title,
-                inputViewParams: {
-                  placeholderData: 'Title'
-                }
-              }),
-              new uf.DynamicTextView({ name: 'theory',
-                editableData: function() {
-                  return nodeData.editing.getValue() && nodeData.owned.getValue();
-                },
-                textData: nodeData.theory,
-                inputViewParams: {
-                  placeholderData: 'Theory',
-                  multiline: true
-                }
-              })
+            new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeData.saved.getValue() ? 'saved' : 'unsaved' }, children: [
+              // Shows up on unsaved theories (allows editing only quickName)
+              new uf.SetView({ name: 'unsaved', children: [
+                new uf.TextEditView({ name: 'quickName', textData: nodeData.quickName, placeholderData: 'quickName' }),
+                new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
+                  console.log('Saved! nodeData.saved.setValue(true) // which should trigger a request to the server');
+                  
+                  return PACK.p.$null;
+                }})
+              ]}),
+              
+              // Shows up for saved theories (allows editing title and essay)
+              new uf.SetView({ name: 'saved', children: [
+                new uf.TextView({ name: 'user', data: nodeData.username }),
+                new uf.DynamicTextEditView({ name: 'title',
+                  editableData: function() {
+                    return nodeData.editing.getValue() && nodeData.owned.getValue()
+                  },
+                  textData: nodeData.title,
+                  inputViewParams: {
+                    placeholderData: 'Title'
+                  }
+                }),
+                new uf.DynamicTextEditView({ name: 'theory',
+                  editableData: function() {
+                    return nodeData.editing.getValue() && nodeData.owned.getValue();
+                  },
+                  textData: nodeData.theory,
+                  inputViewParams: {
+                    placeholderData: 'Theory',
+                    multiline: true
+                  }
+                })
+                
+              ]})
+              
             ]})
           ]);
           
           return view;
           
-        },
-        
+          
+          new uf.SetView({ name: 'data', children: [
+            new uf.DynamicTextEditView({ name: 'quickName',
+              editableData: function() {
+                // quickName cannot be edited after being saved
+                return !nodeData.saved.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
+              },
+              textData: nodeData.quickName,
+              inputViewParams: {
+                placeholderData: 'Quick Name',
+                cssClasses: [ 'centered' ]
+              }
+            }),
+            new uf.TextView({ name: 'user', data: nodeData.username }),
+            new uf.DynamicTextEditView({ name: 'title',
+              editableData: function() {
+                return nodeData.editing.getValue() && nodeData.owned.getValue()
+              },
+              textData: nodeData.title,
+              inputViewParams: {
+                placeholderData: 'Title'
+              }
+            }),
+            new uf.DynamicTextEditView({ name: 'theory',
+              editableData: function() {
+                return nodeData.editing.getValue() && nodeData.owned.getValue();
+              },
+              textData: nodeData.theory,
+              inputViewParams: {
+                placeholderData: 'Theory',
+                multiline: true
+              }
+            })
+          ]});
+          
+        }
       });
       
       var rootView = new uf.SetView({ name: 'root',
@@ -822,8 +887,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               
               new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
               
-              new uf.InputView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
-              new uf.InputView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
+              new uf.TextEditView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
+              new uf.TextEditView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
               new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
                 return doss.$doRequest({ command: 'getToken', params: {
                   username: dataSet.username.getValue(),

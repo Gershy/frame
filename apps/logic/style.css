@@ -150,6 +150,18 @@ Currently:
 	background-color: #a0a0a0;
 	color: #ffffff;
 }
+
+#root-login-in-graph > .theory > ._data {
+  position: absolute;
+  width: 100%; height: 100%;
+  border-radius: 100%;
+  background-color: #ffffff;
+  text-align: center;
+  
+  pointer-events: none;
+}
+
+/*
 #root-login-in-graph > .theory > ._data {
 	position: absolute;
 	width: 100%; height: 100%;
@@ -211,7 +223,7 @@ Currently:
 	font-family: serif;
 	text-align: left;
 	
-	white-space: pre-wrap; /* allow newline to render */
+	white-space: pre-wrap; /* allow newline to render * /
 	
 	pointer-events: all;
 }
@@ -223,6 +235,8 @@ Currently:
 	left: 0; top: 100%;
 	box-shadow: 0 0 50px 24px #ffffff;
 }
+*/
+
 
 /* Dragging */
 #root.dragging {

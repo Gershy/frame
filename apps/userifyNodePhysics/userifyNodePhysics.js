@@ -20,10 +20,9 @@ var package = new PACK.pack.Package({ name: 'userifyNodePhysics',
               gravityPow: 2,
               gravityMult: 1 / 100,
               separation: 20,
-              centerAclMag: 10
+              centerAclMag: 10,
+              minVel: 0
             }.update(physicsSettings);
-            
-            console.log(this.physicsSettings);
             
             this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
             this.updateIndex = 0;
@@ -55,6 +54,8 @@ var package = new PACK.pack.Package({ name: 'userifyNodePhysics',
               
               // Increment velocity based on acceleration
               phys1.vel = phys1.vel.add(phys1.acl.scale(secs));
+              
+              if (phys1.vel.magSqr() < (ps.minVel * ps.minVel)) phys1.vel = PACK.geom.ORIGIN;
               
               // Reset acceleration
               phys1.acl = new Point({

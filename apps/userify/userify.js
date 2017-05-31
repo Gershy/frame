@@ -734,7 +734,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      InputView: U.makeClass({ name: 'InputView',
+      TextEditView: U.makeClass({ name: 'TextEditView',
         superclassName: 'InteractiveView',
         methods: function(sc, c) { return {
           init: function(params /* name, multiline, initialValue, textData, placeholderData, enabledData */) {
@@ -1003,7 +1003,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      DynamicTextView: U.makeClass({ name: 'DynamicTextView',
+      DynamicTextEditView: U.makeClass({ name: 'DynamicTextEditView',
         superclassName: 'ChoiceView',
         description: 'A text field which is conditionally editable',
         methods: function(sc, c) { return {
@@ -1014,7 +1014,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params.update({
               choiceData: new uf.CalculatedData({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
               children: [
-                new uf.InputView(inputViewParams.update({ name: 'edit', textData: this.textData })),
+                new uf.TextEditView(inputViewParams.update({ name: 'edit', textData: this.textData })),
                 new uf.TextView({ name: 'display', data: this.textData })
               ]
             }));
