@@ -767,7 +767,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 new uf.TextView({ name: 'user', data: nodeData.username }),
                 new uf.DynamicTextEditView({ name: 'title',
                   editableData: function() {
-                    return nodeData.editing.getValue() && nodeData.owned.getValue()
+                    return view === dataSet.focusedNode.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
                   },
                   textData: new uf.ProxyInfo({ data: nodeData, path: 'title' }),
                   inputViewParams: {
@@ -777,7 +777,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }),
                 new uf.DynamicTextEditView({ name: 'theory',
                   editableData: function() {
-                    return nodeData.editing.getValue() && nodeData.owned.getValue();
+                    return view === dataSet.focusedNode.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
                   },
                   textData: new uf.ProxyInfo({ data: nodeData, path: 'theory' }),
                   inputViewParams: {
@@ -789,6 +789,22 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
               ]})
               
+            ]}),
+            new uf.ChoiceView({ name: 'toggleEdit', choiceData: function() { return nodeData.owned.getValue() && nodeData.saved.getValue() ? 'view' : null }, children: [
+              new uf.ActionView({ name: 'view', textData: '',
+                decorators: [
+                  new uf.ClassDecorator({
+                    possibleClasses: [ 'editing' ],
+                    data: function() {
+                      return nodeData.editing.getValue() ? 'editing' : null;
+                    }
+                  })
+                ],
+                $action: function() {
+                  nodeData.editing.modValue(function(val) { return !val; });
+                  return PACK.p.$null;
+                }
+              })
             ]})
           ]);
           
@@ -949,29 +965,6 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       dataSet.username.setValue('admin');
       dataSet.password.setValue('adminadmin123');
-      
-      /*
-      graphView.addRawData({
-        quickName: 'newTheory',
-        username: 'admin',
-        title: 'Look up',
-        theory: 'The sky is blue.',
-        saved: false
-      });
-      
-      for (var i = 0; i < 10; i++) {
-        graphView.addRawData({
-          quickName: U.charId(i),
-          username: U.charId(i),
-          title: U.id((i * 93824793287) % 134),
-          theory: U.id(i) + U.id(i * 20) + U.id((i + 30) * 17),
-          saved: false
-        });
-      }
-      
-      dataSet.focusedNode.setValue(graphView.children.newTheory);
-      */
-      
       
     }).done();
     

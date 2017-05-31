@@ -116,40 +116,6 @@ Currently:
 #root-login-in-graph > .theory > ._controls > ._owner {
   pointer-events: all;
 }
-#root-login-in-graph > .theory > ._controls > ._owner > ._show {
-  position: absolute;
-  width: 108px; height: 108px;
-  right: -56px;
-  bottom: -37px;
-  border-radius: 100%;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 2px #d0d0d0;
-  text-align: center;
-  overflow: hidden;
-  
-  transform-origin: -10% -10%; /* Allows the element to fold into its parent */
-  transition: transform 500ms ease-in-out; /* Dragged focused theories should hide their `._controls > ._owner` */
-}
-#root-login-in-graph > .theory > ._controls > ._owner > ._show {
-  display: inline-block;
-  width: 108px;
-  vertical-align: middle;
-}
-#root-login-in-graph > .theory > ._controls > ._owner > ._show > ._button {
-  position: relative;
-  display: block;
-  width: 100%; height: 36px; line-height: 36px; padding: 0;
-  
-  box-shadow: none;
-  background-color: transparent;
-  color: #000000;
-  
-  transition: background-color 200ms linear, color 200ms linear;
-}
-#root-login-in-graph > .theory > ._controls > ._owner > ._show > ._button:hover {
-  background-color: #a0a0a0;
-  color: #ffffff;
-}
 
 #root-login-in-graph > .theory > ._data {
   position: absolute;
@@ -217,7 +183,7 @@ Currently:
   display: block;
   height: 20px; line-height: 20px;
   margin: 23px 34px 14px;
-  font-size: 20px;
+  font-size: 13px;
   color: #606060;
   
   pointer-events: all;
@@ -230,6 +196,11 @@ Currently:
   font-size: 16px;
   
   pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._text {
+  display: inline-block;
+  height: 24px;
+  line-height: 24px;
 }
 #root-login-in-graph > .theory > ._data > ._saved > ._title > ._input {
   height: 24px;
@@ -254,6 +225,14 @@ Currently:
   
   pointer-events: all;
 }
+#root-login-in-graph > .theory > ._data > ._saved > ._theory._choose-display {
+  box-sizing: border-box;
+  padding: 2px 4px 0;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory > ._input > ._interactive {
+  font-family: serif;
+  font-size: 16px;
+}
 #root-login-in-graph > .theory > ._data > ._saved > ._theory._choose-display:after {
   content: "";
   display: block;
@@ -270,82 +249,39 @@ Currently:
   pointer-events: all;
 }
 
-/*
-#root-login-in-graph > .theory > ._data {
+#root-login-in-graph > .theory > ._toggleEdit {
   position: absolute;
-  width: 100%; height: 100%;
+  width: 0; height: 0; 
+  right: 18px; top: 135px;
+}
+#root-login-in-graph > .theory > ._toggleEdit > ._view {
+  position: absolute;
+  width: 30px; height: 30px; 
+  left: 0; top: 0;
   border-radius: 100%;
   background-color: #ffffff;
-  text-align: center;
-  
-  pointer-events: none;
-}
-#root-login-in-graph > .theory > ._data > ._quickName {
-  display: block;
-  position: relative;
-  font-size: 16px;
-  margin: 24px 78px 0;
-  cursor: pointer;
+  box-shadow: inset 0 0 0 1px #dadada;
   
   pointer-events: all;
-}
-#root-login-in-graph > .theory > ._data > ._quickName > ._text {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: monospace;
-}
-#root-login-in-graph > .theory > ._data > ._user {
-  display: block;
-  margin: 5px 34px 3px;
-  font-size: 12px;
-  color: #606060;
   
-  pointer-events: all;
+  transition: background-color 200ms linear, box-shadow 200ms linear;
 }
-#root-login-in-graph > .theory > ._data > ._title {
-  display: block;
-  position: relative;
-  margin: 0 34px;
-  height: 24px; line-height: 24px;
-  font-size: 20px;
-  
-  pointer-events: all;
-}
-#root-login-in-graph > .theory > ._data > ._title > ._input {
-  height: 24px;
-  font-size: inherit;
-}
-#root-login-in-graph > .theory > ._data > ._title > ._input > ._interactive {
-  height: 24px;
-  text-align: center;
-  font-size: inherit;
-}
-#root-login-in-graph > .theory > ._data > ._theory {
-  display: block;
-  position: relative;
-  margin: 2px 30px 0;
-  height: 136px;
-  overflow: hidden;
-  font-size: 16px;
-  font-family: serif;
-  text-align: left;
-  
-  white-space: pre-wrap; /* allow newline to render * /
-  
-  pointer-events: all;
-}
-#root-login-in-graph > .theory > ._data > ._theory._choose-display:after {
+#root-login-in-graph > .theory > ._toggleEdit > ._view:after {
   content: "";
-  display: block;
   position: absolute;
   width: 100%; height: 100%;
-  left: 0; top: 100%;
-  box-shadow: 0 0 50px 24px #ffffff;
+  left: 0; top: 0;
+  
+  background-color: #ffa040;
+  
+  border-radius: 100%;
+  
+  transform: scale(0);
+  transition: transform 200ms ease-in-out;
 }
-*/
-
+#root-login-in-graph > .theory > ._toggleEdit > ._view.editing:after {
+  transform: scale(0.2);
+}
 
 /* Dragging */
 #root.dragging {
