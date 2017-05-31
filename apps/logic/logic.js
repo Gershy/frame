@@ -1,37 +1,29 @@
 /*
-Checklist:
-- Should GraphView provide the canvas?
-- There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
-
-There should be limited ways to reject a supported theory
-- Should be prompted to reject the support instead of the theory
-- Only exception: rejecting a theory on the basis of missing support
-  - Should automatically create a new empty theory supporting that theory,
-    and add a challenge against that support. This challenge should be
-    automatically defeated as soon as the support is filled in.
-
-Can automatic defeat of challenges ensure that only axioms remain challengable?
-
-==== THE LIST ====
 
 NEAR-TERM:
-1) Sort out quickName + auto-saving theories. Shouldn't be editable after save. Unsaved nodes should appear with only a "quickName" field.
-2) Create a data controller for sets (the set of names of all theories active on the client-side)
-  - Theories are added using the "New Theory" button, support/challenge loading, search function
-  - Theories are deleted by dragging them to "remove" and "delete" dropzones
-3) `dataSet.activeNodes` should be auto-updating
-  - Server-side edits should automatically appear for all clients
-  - Server-side deletes should automatically appear for all clients
-3) Get relations down.
+- Search to add theories to clientside
+- Checkbox to "solidify" editable theories; button to edit "solified" theories
+- Get relations down.
   - Should be implemented through a decorator
   - Physics decorator should allow for a function that determines gravitational strength between any 2 nodes
   - Canvas graphics to link relations to the `._interactive` elements of standing theories
+- The current paradigm makes handling server-side deletes awkward. Need to detect and delete.
 
 INDEFINITE:
+- Essay can't validate with `verifySetValue` because it has no notion of the user who owns it
 - Error reporting (toast-style notifications on errors)
 - Get rid of persistent sessions...?
 - Dependency/support loading should trigger a search (only within those dependencies/supports) for very large sets (to avoid hundreds of theories being loaded on-click)
 - Need a way of preventing tons of views, all wired to the same Info, from running the same calculation over and over again (caching + reset() called before main update)
+- When a database is implemented `someDoss.getChild(...)` will need to become `someDoss.$getChild(...)` (which is a pity)
+- Can automatic defeat of challenges ensure that only axioms remain challengable?
+  - There should be limited ways to reject a supported theory
+    - Should be prompted to reject the support instead of the theory
+    - Only exception: rejecting a theory on the basis of missing support
+      - Should automatically create a new empty theory supporting that theory,
+        and add a challenge against that support. This challenge should be
+        automatically defeated as soon as the support is filled in.
+- There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
 
 */
 
@@ -285,8 +277,12 @@ var package = new PACK.pack.Package({ name: 'logic',
       }),
     };
     
+    var verifyUser = function(user, params) {
+      if (user.name !== U.param(params, 'username')) throw new Error('Wrong user');
+      if (user.getToken() !== U.param(params, 'token')) throw new Error('Bad token');
+    };
     var versioner = new qd.Versioner({ versions: [
-      {  name: 'initial',
+      { name: 'initial',
         detect: function(doss) { return doss === null; },
         $apply: function(doss) {
           
@@ -303,18 +299,22 @@ var package = new PACK.pack.Package({ name: 'logic',
             }},
             { c: qd.DossierList, p: { name: 'essaySet',
               innerOutline: { c: qd.DossierDict, i: [
-                { c: qd.DossierString, p: { name: 'markup' } }
+                { c: qd.DossierString, p: { name: 'markup',
+                  verifySetValue: function(markupDoss, params /* token, username */) { /* TODO: No way to check essay's user at the moment */ }
+                }}
               ]}
             }},
             { c: qd.DossierList, p: { name: 'theorySet',
               innerOutline: { c: qd.DossierDict, i: [
-                { c: qd.DossierInt,      p: { name: 'createdTime' } },
-                { c: qd.DossierInt,      p: { name: 'editedTime' } },
+                { c: qd.DossierInt,     p: { name: 'createdTime' } },
+                { c: qd.DossierInt,     p: { name: 'editedTime' } },
                 { c: qd.DossierString,  p: { name: 'quickName' } },
-                { c: qd.DossierString,  p: { name: 'title' } },
-                { c: qd.DossierRef,      p: { name: 'user', baseAddress: '~root.userSet' } },
-                { c: qd.DossierRef,      p: { name: 'essay', baseAddress: '~root.essaySet' } },
-                { c: qd.DossierRef,      p: { name: 'duplicate', baseAddress: '~root.theorySet' } },
+                { c: qd.DossierString,  p: { name: 'title',
+                  verifySetValue: function(titleDoss, params /* token, username */) { verifyUser(titleDoss.par.getChild('@user'), params); }
+                }},
+                { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
+                { c: qd.DossierRef,     p: { name: 'essay', baseAddress: '~root.essaySet' } },
+                { c: qd.DossierRef,     p: { name: 'duplicate', baseAddress: '~root.theorySet' } },
                 { c: qd.DossierList,    p: { name: 'dependencySet',
                   innerOutline: { c: qd.DossierDict, i: [
                     { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
@@ -420,27 +420,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         focusedNode: new uf.SimpleInfo({ value: null }),
         activeNodes: new uf.SimpleInfo({ value: {} })
       };
-      
-      /*
-      dataSet.nodeList = new uf.UpdatingInfo({
-        initialValue: [],
-        updateMillis: 2000,
-        $getFunc: function() {
-          return new PACK.p.P({
-            all: dataSet.activeNodeNames.getValue().map(function(v, quickName) {
-              return doss.$doRequest({
-                address: [ 'theorySet', quickName ],
-                command: 'getData'
-              }).fail(function(err) {
-                return err.message;
-              });
-            })
-          }).then(function(remoteTheoryDataSet) {
-            
-          });
-        }
-      });
-      */
       
       var relateTheories = function(relationType, params /* target, dropZone */) {
         // `incoming` justifies or challenges `standing`
@@ -698,131 +677,101 @@ var package = new PACK.pack.Package({ name: 'logic',
             new uf.SetView({ name: 'controls', children: [
               loadDependenciesButton,
               loadChallengesButton,
-              /*
-              // TODO: Can "owner" controls be eliminated fully? Drag nodes to trash to delete; auto-save nodes; only focused nodes are editable
-              new uf.ChoiceView({ name: 'owner',
-                choiceData: function() {
-                  // Controls show up on owned, focused nodes
-                  return nodeData.owned.getValue() && view === dataSet.focusedNode.getValue() ? 'show' : null;
-                  //return data.getValue().raw.owned && view === dataSet.focusedNode.getValue() ? 'show' : null;
-                },
-                children: [
-                  new uf.SetView({ name: 'show', children: [
-                    new uf.ActionView({ name: 'edit', textData: 'Edit', $action: function() {
-                      data.modValue(function(val) {
-                        val.raw.editing = true;
-                        return val;
-                      });
-                      return PACK.p.$null;
-                    }}),
-                    new uf.ActionView({ name: 'delete', textData: 'Delete', $action: function() {
-                      return PACK.p.$null;
-                    }}),
-                    new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
-                      // Disable text boxes as soon as save is clicked
-                      data.modValue(function(val) {
-                        val.raw.editing = false;
-                        return val;
-                      });
-                      
-                      var rawData = data.getValue().raw;
-                      
-                      var saveData = {
-                        quickName: view.getChild('data.quickName').textData.getValue(),
-                        title: view.getChild('data.title').textData.getValue(),
-                        theory: view.getChild('data.theory').textData.getValue()
-                      };
-                      
-                      return new PACK.p.P({ custom: function(resolve) {
-                        
-                        // 1) update the graphView raw data (which may fail)
-                        graphView.updateRawData(view, rawData.clone(saveData));
-                        resolve(null);
-                        
-                      }}).then(function() {
-                        
-                        // 2) perform the update query
-                        return doss.$doRequest({
-                          command: 'saveTheory',
-                          params: saveData.update({
-                            username: rawData.username,
-                            token: dataSet.token.getValue(),
-                            type: rawData.saved ? 'update' : 'create'
-                          })
-                        })
-                        
-                      }).then(function(response) {
-                        
-                        console.log('SAVED', response);
-                        
-                        // Update the client data with the server data
-                        var updatedData = data.modValue(function(val) {
-                          val.raw.update({
-                            quickName: response.quickName,
-                            title: response.title,
-                            theory: response.essay.markup,
-                            saved: true
-                          });
-                          return val;
-                        });
-                        
-                        // 3) update the graphview using the response (which should be able to fail)
-                        graphView.updateRawData(view, updatedData.raw);
-                        
-                      }).fail(function(err) {
-                        
-                        // TODO: Cleanup things like these are a sign of bad paradigm (need more userification)
-                        
-                        // On failure go back to editing
-                        var fullData = data.modValue(function(val) {
-                          val.raw.editing = true;
-                          return val;
-                        });
-                        
-                        // It can get confusing if the visible quickName doesn't mirror the actual quickName
-                        view.getChild('data.quickName').textData.setValue(fullData.raw.quickName)
-                        
-                        console.error(err.stack);
-                        
-                      });
-                    }})
-                  ]})
-                ]
-              })
-              */
             ]}),
             new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeData.saved.getValue() ? 'saved' : 'unsaved' }, children: [
               // Shows up on unsaved theories (allows editing only quickName)
               new uf.SetView({ name: 'unsaved', children: [
                 new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textData: nodeData.quickName, placeholderData: 'quickName' }),
-                new uf.ActionView({ name: 'save', textData: 'Save', numWrappers: 1, $action: function() {
-                  console.log('Saved! nodeData.saved.setValue(true) // which should trigger a request to the server');
-                  
-                  nodeData.saved.setValue(true);
-                  
-                  dataSet.activeNodes.modValue(function(activeNodes) {
-                    if (name !== nodeData.quickName.getValue()) {
-                      activeNodes[nodeData.quickName.getValue()] = activeNodes[name];
-                      delete activeNodes[name];
+                new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
+                  return doss.$doRequest({
+                    command: 'saveTheory',
+                    params: {
+                      token: dataSet.token.getValue(),
+                      username: dataSet.username.getValue(),
+                      quickName: nodeData.quickName.getValue(),
+                      title: '',
+                      theory: '',
+                      type: 'create' // 'create' | 'update'
                     }
-                    return activeNodes;
+                  }).then(function(response) {
+                    
+                    var savedQuickName = response.quickName;
+                    
+                    // If the quickName has changed re-key the view...
+                    if (savedQuickName !== name) {
+                      // Re-key the value
+                      dataSet.activeNodes.modValue(function(activeNodes) {
+                        activeNodes[savedQuickName] = activeNodes[name];
+                        delete activeNodes[name];
+                        return activeNodes;
+                      });
+                      
+                      // and ensure `graphView` knows about the re-keying
+                      graphView.renameChild(view, nodeData.quickName.getValue()); // Should only happen on save success
+                    }
+                    
+                    // Update all the `Info` objects so that they are set to sync with the server:
+                    
+                    // "quickName" is now immutable
+                    nodeData.quickName.setValue(savedQuickName);
+                    
+                    // "saved" is now fixed to the value `true`
+                    nodeData.saved.setValue(true);
+                    
+                    // "title" syncs with the `theorySet.<theoryId>.title` value server-side
+                    nodeData.title = new uf.UpdatingInfo({
+                      initialValue: '- not loaded -',
+                      $getFunc: function() {
+                        return doss.$doRequest({ command: 'getRawData', address: [ 'theorySet', nodeData.quickName.getValue(), 'title' ] });
+                      },
+                      $setFunc: function(val) {
+                        return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeData.quickName.getValue(), 'title' ],
+                          params: {
+                            token: dataSet.token.getValue(),
+                            username: dataSet.username.getValue(),
+                            value: val
+                          }
+                        });
+                      },
+                      updateMillis: 5000
+                    });
+                    nodeData.title.start();
+                    
+                    // "theory" syncs with the `theorySet.<theoryId>.@essay.markup` value server-side
+                    nodeData.theory = new uf.UpdatingInfo({
+                      initialValue: '- not loaded -',
+                      $getFunc: function() {
+                        return doss.$doRequest({ command: 'getRawData', address: [ 'theorySet', nodeData.quickName.getValue(), '@essay', 'markup' ] });
+                      },
+                      $setFunc: function(val) {
+                        return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeData.quickName.getValue(), '@essay', 'markup' ],
+                          params: {
+                            token: dataSet.token.getValue(),
+                            username: dataSet.username.getValue(),
+                            value: val
+                          }
+                        });
+                      }
+                    });
+                    nodeData.theory.start();
+                    
+                  }).fail(function(err) {
+                    console.log('Couldn\'t create theory: ' + err.message);
                   });
-                  
-                  graphView.renameChild(view, nodeData.quickName.getValue()); // Should only happen on save success
-                  
-                  return PACK.p.$null;
                 }})
               ]}),
               
               // Shows up for saved theories (allows editing title and essay)
               new uf.SetView({ name: 'saved', children: [
+                
                 new uf.TextView({ name: 'user', data: nodeData.username }),
                 new uf.DynamicTextEditView({ name: 'title',
                   editableData: function() {
                     return nodeData.editing.getValue() && nodeData.owned.getValue()
                   },
-                  textData: nodeData.title,
+                  textData: new uf.ProxyInfo({ data: nodeData, path: 'title' }),
                   inputViewParams: {
+                    cssClasses: [ 'centered' ],
                     placeholderData: 'Title'
                   }
                 }),
@@ -830,12 +779,13 @@ var package = new PACK.pack.Package({ name: 'logic',
                   editableData: function() {
                     return nodeData.editing.getValue() && nodeData.owned.getValue();
                   },
-                  textData: nodeData.theory,
+                  textData: new uf.ProxyInfo({ data: nodeData, path: 'theory' }),
                   inputViewParams: {
                     placeholderData: 'Theory',
                     multiline: true
                   }
-                })
+                }),
+                new uf.TextView({ name: 'quickName', data: nodeData.quickName }),
                 
               ]})
               
@@ -844,7 +794,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           
           return view;
           
-          
+          // This is the old `.graphView > .theory > .data` view
           new uf.SetView({ name: 'data', children: [
             new uf.DynamicTextEditView({ name: 'quickName',
               editableData: function() {
@@ -939,8 +889,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                         },
                         username: dataSet.username,
                         quickName: new uf.SimpleInfo({ value: name }),
-                        title: new uf.SimpleInfo({ value: 'New Theory' }),
-                        theory: new uf.SimpleInfo({ value: 'QED' }),
+                        title: new uf.SimpleInfo({ value: '' }),
+                        theory: new uf.SimpleInfo({ value: '' }),
                         saved: new uf.SimpleInfo({ value: false })
                       };
                       

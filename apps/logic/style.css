@@ -161,19 +161,16 @@ Currently:
   overflow: hidden;
   pointer-events: none;
 }
-#root-login-in-graph > .theory > ._data ._interactive {
-  pointer-events: all;
-}
-#root-login-in-graph > .theory > ._data ._placeholder {
-  line-height: 34px;
-  font-size: 20px;
-}
 #root-login-in-graph > .theory > ._data > ._unsaved,
 #root-login-in-graph > .theory > ._data > ._saved {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
 }
+#root-login-in-graph > .theory > ._data ._interactive {
+  pointer-events: all;
+}
+
 #root-login-in-graph > .theory > ._data > ._unsaved > ._quickName {
   position: absolute;
   width: 260px; margin-left: -130px;
@@ -181,6 +178,10 @@ Currently:
   left: 50%; height: 38px;
 }
 #root-login-in-graph > .theory > ._data > ._unsaved > ._quickName > ._interactive { font-size: 24px; }
+#root-login-in-graph > .theory > ._data > ._unsaved > ._quickName > ._placeholder {
+  line-height: 34px;
+  font-size: 20px;
+}
 #root-login-in-graph > .theory > ._data > ._unsaved > ._save {
   position: absolute;
   width: 300px; height: 136px;
@@ -209,6 +210,63 @@ Currently:
 #root-login-in-graph > .theory > ._data > ._unsaved > ._save:after {
   /* The clickable part of the "save" button */
   
+  pointer-events: all;
+}
+
+#root-login-in-graph > .theory > ._data > ._saved > ._user {
+  display: block;
+  height: 20px; line-height: 20px;
+  margin: 23px 34px 14px;
+  font-size: 20px;
+  color: #606060;
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title {
+  display: block;
+  position: relative;
+  margin: 0 47px;
+  height: 24px; line-height: 20px; /* line-height shouldn't include padding */
+  font-size: 16px;
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._input {
+  height: 24px;
+  font-size: inherit;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._input > ._interactive {
+  height: 24px;
+  text-align: center;
+  font-size: inherit;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory {
+  display: block;
+  position: relative;
+  margin: 6px 30px 0;
+  height: 130px;
+  overflow: hidden;
+  font-size: 16px;
+  font-family: serif;
+  text-align: left;
+  
+  white-space: pre-wrap; /* allow newline to render */
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory._choose-display:after {
+  content: "";
+  display: block;
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 100%;
+  box-shadow: 0 0 50px 24px #ffffff;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._quickName {
+  padding: 0 10px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  font-family: monospace;
   pointer-events: all;
 }
 

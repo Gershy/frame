@@ -57,12 +57,17 @@ var package = new PACK.pack.Package({ name: 'queries',
 					init: function(params /* */) {
 					},
 					$respondToQuery: function(params /* address */) {
+            // TODO: This is messy! `getChild` should never be `null`.
+            
 						/*
 						QueryHandlers respond to queries by forwarding them to children
 						if the address has not been exhausted yet, otherwise they
 						process them using their `$handleQuery` method.
 						*/
 						var address = U.param(params, 'address');
+            
+            // QueryHandlers that implement `getChild` end here:
+            if (this.getChild) return this.getChild(address).$handleQuery(params);
 						
 						if (!address.length) return this.$handleQuery(params);
 						
@@ -76,6 +81,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 						
 						return child.$respondToQuery(params);
 					},
+          getChild: null,
 					getNamedChild: function(name) { throw new Error('not implemented'); },
 					$handleQuery: function(params /* */) { throw new Error('not implemented'); },
 				}; }

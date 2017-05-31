@@ -76,16 +76,16 @@ var package = new PACK.pack.Package({ name: 'userify',
           : new uf.SimpleInfo({ value: ret });
       },
       
-      /* DATA */
+      /* INFO */
       Info: U.makeClass({ name: 'Info',
         methods: function(sc, c) { return {
           init: function(params /* */) {
             this.value = null;
           },
           
-          walk: function(path) {
+          walk: function(path, start) {
             if (U.isObj(path, String)) path = path ? path.split('.') : [];
-            var obj = this;
+            var obj = U.exists(start) ? start : this;
             for (var i = 0, len = path.length; i < len; i++) {
               if (U.isInstance(obj, uf.Info)) obj = obj.getValue();
               obj = obj[path[i]];
@@ -151,9 +151,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             this.num = 0;
             this.freshestNum = -1; // The numbering of the most recent value that's been set
+            this.setPending = false;
             this.timeout = null;
-            
-            this.start();
           },
           
           getValue: function() {
@@ -162,16 +161,17 @@ var package = new PACK.pack.Package({ name: 'userify',
           setValue: function(value) {
             if (!this.$setFunc) throw new Error('No `$setFunc`');
             
-            this.freshestNum = this.num; // Invalidates any pending requests
+            this.freshestNum = this.num;  // Invalidates any pending requests
+            this.setPending = true;       // Invalidates any fresher pending requests
             this.value = value;
             
-            this.$setFunc(value).done();
+            this.$setFunc(value).then(function() { this.setPending = false; }.bind(this)).done();
           },
           refresh: function() {
             clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
             
             this.$getFunc().then(function(num, val) {
-              if (num > this.freshestNum) {
+              if (!this.setPending && num > this.freshestNum) {
                 this.freshestNum = num;
                 this.value = val;
               }
@@ -252,27 +252,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             if (U.isObj(this.path, String)) this.path = this.path ? this.path.split('.') : [];
           },
+          
           getValue: function() {
-            var obj = this.data;
-            
-            for (var i = 0, len = this.path.length; i < len; i++) {
-              var pathPc = this.path[i];
-              obj = pathPc === '~' ? obj.getValue() : obj[pathPc];
-            }
-            
-            return obj;
+            return this.walk(this.path, this.data).getValue();
           },
           setValue: function(val) {
-            var obj = this.data;
-            
-            for (var i = 0, len = this.path.length - 1; i < len; i++) {
-              var pathPc = this.path[i];
-              obj = pathPc === '~' ? obj.getValue() : obj[pathPc];
-            }
-            
-            var pathPc = this.path[this.path.length - 1];
-            if (pathPc === '~') obj.setValue(val);
-            else                 obj[pathPc] = val;
+            return this.walk(this.path, this.data).setValue(val);
           }
         };}
       }),

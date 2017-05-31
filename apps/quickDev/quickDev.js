@@ -633,6 +633,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           getDataView0: function(existing) {
             return this.value;
+          },
+          
+          $handleQuery: function(params) {
+            var command = U.param(params, 'command');
+            
+            if (command === 'setValue') {
+              
+              var reqParams = U.param(params, 'params');
+              var value = U.param(reqParams, 'value');
+              
+              // TODO: Various `DossierValue` subclasses should validate `value`
+              
+              if (!this.outline.p.verifySetValue) throw new Error('Cannot "setValue" on "' + this.getAddress() + '"');
+              
+              this.outline.p.verifySetValue(this, reqParams); // May throw errors
+              
+              this.setValue(value);
+              
+              return new PACK.p.P({ val: { address: this.getAddress(), value: this.value } });
+              
+            }
+            
+            return sc.$handleQuery.call(this, params);
           }
           
         };}
