@@ -338,8 +338,10 @@ global.U = {
     // `methods` can be either an object or a function returning an object
     var methods = U.param(params, 'methods');
     if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, cls);
+    if (superclass === Object && !methods.hasOwnProperty('init'))
+      throw new Error('Missing `init` initializer for base-class "' + name + '"');
+    
     [  // Validate required methods
-      'init'
     ].forEach(function(required) { if (!methods.hasOwnProperty(required)) throw new Error('Missing required property: "' + required + '"'); });
     [  // Validate illegal methods
       'constructor'

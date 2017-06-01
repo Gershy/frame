@@ -624,6 +624,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return PACK.p.$null;
           },
           
+          getValue: function(value) {
+            return this.value;
+          },
           setValue: function(value) {
             this.value = value;
           },
@@ -653,11 +656,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               return new PACK.p.P({ val: { address: this.getAddress(), value: this.value } });
               
+            } else if (command === 'getValue') {
+              
+              return new PACK.p.P({ val: this.getValue() });
+              
             }
             
             return sc.$handleQuery.call(this, params);
           }
-          
         };}
       }),
       DossierString: U.makeClass({ name: 'DossierString',
@@ -665,6 +671,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         methods: function(sc) { return {
           init: function(params /* outline */) {
             sc.init.call(this, params);
+          },
+          getLowerValue: function() {
+            return this.value.toLowerCase();
           }
         }; }
       }),

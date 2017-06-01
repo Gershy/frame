@@ -139,6 +139,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      
+      // TODO: `UpdatingInfo` should be named `SyncedInfo` and subclassed based on
+      // when updates should occur. E.g. `RepeatSyncedInfo` could use setInterval,
+      // but `ReactSyncedInfo` could listen for changes on another `Info` object,
+      // and only update when that `Info` object updates.
       UpdatingInfo: U.makeClass({ name: 'UpdatingInfo',
         superclassName: 'Info',
         methods: function(sc, c) { return {
@@ -171,17 +176,17 @@ var package = new PACK.pack.Package({ name: 'userify',
             clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
             
             this.$getFunc().then(function(num, val) {
+              
               if (!this.setPending && num > this.freshestNum) {
                 this.freshestNum = num;
                 this.value = val;
               }
+              
+              if (this.updateMillis)
+                this.timeout = setTimeout(this.refresh.bind(this), this.updateMillis); // TODO: timeout delay should compensate for latency
+              
             }.bind(this, this.num++)).done();
             
-            if (this.updateMillis) {
-              this.timeout = setTimeout(function() {
-                this.refresh();
-              }.bind(this), this.updateMillis); // The timeout delay should compensate for latency
-            }
           },
           
           start: function() {
