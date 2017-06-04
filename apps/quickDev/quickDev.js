@@ -453,13 +453,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getDataView: function(existing) {
             if (!existing) throw new Error('Called `getDataView` without `existing` set');
             
+            // But `existing` should be filled out before the call to `getDataView0`...
             var addr = this.getAddress();
-            if (addr in existing) return existing[addr];
+            if (!(addr in existing)) existing[addr] = this.getDataView0(existing);
             
-            var ret = this.getDataView0(existing);
-            existing[addr] = ret;
-            
-            return ret;
+            return existing[addr];
           },
           getDataView0: function(existing) {
             throw new Error('not implemented');
@@ -532,7 +530,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           getDataView0: function(existing) {
             var ret = {};
-            for (var k in this.children) ret[k] = this.children[k].getDataView(existing);
+            for (var k in this.children) {
+              ret[k] = this.children[k].getDataView(existing);
+            }
             return ret;
           }
         };}

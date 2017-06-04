@@ -1,8 +1,8 @@
 // TODO: Some Info objects can be optimized to cache previous values until the end of the frame (or some other condition?)
 // E.g. Would stop 1000 elements all connected to the same CalculatedInfo from repeating the calculation 1000 times
+//
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
 // to implement.
-// TODO: RENAME `DATA` CLASSES!!!!
 
 var package = new PACK.pack.Package({ name: 'userify',
   dependencies: [ 'quickDev', 'p', 'geom' ],
@@ -363,6 +363,10 @@ var package = new PACK.pack.Package({ name: 'userify',
             // TODO: Function to capture arbitrary data when drag begins (will allow physics values to be captured)
             this.captureOnStart = U.param(params, 'captureOnStart', null);
           },
+          isDragging: function(view) {
+            var val = this.data.getValue();
+            return val.drag && (!view || view === val.view);
+          },
           start: function(view) {
             // Store properties on the view
             view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
@@ -457,6 +461,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.action = U.param(params, 'action');
             this.data = new uf.SimpleInfo({ value: null });
           },
+          createClassDecorator: function(view) {
+            return new uf.ClassDecorator({
+              list: [ 'dragHover' ],
+              data: function(view) { return this.data.getValue() === view ? 'dragHover' : null; }.bind(this, view)
+            })
+          },
           start: function(view) {
             view['~' + this.id + '.clickFuncUp'] = c.clickFuncUp.bind(this, view);
             view['~' + this.id + '.mouseEnter'] = c.mouseEnter.bind(this, view);
@@ -485,17 +495,19 @@ var package = new PACK.pack.Package({ name: 'userify',
             var drg = this.dragDecorator.data.getValue();
             var dropZone = this.data.getValue();
             if (dropZone === null) {
+              // TODO: Clicking on a dropzone triggers this
               console.error('DragActionDecorator `this.data.getValue()` was null on mouseup');
               dropZone = view;
             }
             if (drg.drag) this.action({ target: drg.view, dropZone: dropZone });
           },
           mouseEnter: function(view, event) {
-            this.data.modValue(function(view0) {
-              // Won't overwrite an old value unless the old value is `null`
-              // Should make drags over multiple targets more stable
-              return view0 ? view0 : view;
-            });
+            if (this.dragDecorator.isDragging())
+              this.data.modValue(function(view0) {
+                // Won't overwrite an old value unless the old value is `null`
+                // Should make drags over multiple targets more stable
+                return view0 ? view0 : view;
+              });
           },
           mouseLeave: function(view, event) {
             this.data.modValue(function(view0) {
@@ -509,9 +521,9 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'Decorator',
         description: 'Dynamically changes html classes on an element',
         methods: function(sc, c) { return {
-          init: function(params /* data, possibleClasses */) {
+          init: function(params /* data, list */) {
             sc.init.call(this, params);
-            this.possibleClasses = U.param(params, 'possibleClasses');
+            this.list = U.param(params, 'list');
             this.data = uf.pafam(params, 'data');
           },
           start: function(view) {
@@ -522,7 +534,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (!nextClass || !classList.contains(nextClass)) {
               
               // Remove all possible classes
-              classList.remove.apply(classList, this.possibleClasses); 
+              classList.remove.apply(classList, this.list); 
               
               // Add the current class
               if (nextClass) classList.add(nextClass);
@@ -531,7 +543,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           end: function(view) {
             var classList = view.domRoot.classList;
-            classList.remove.apply(classList, this.possibleClasses);
+            classList.remove.apply(classList, this.list);
           }
         };}
       }),

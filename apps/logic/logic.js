@@ -1,17 +1,23 @@
 /*
 
 NEAR-TERM:
+- delete dropzone functionality
+- animation + delay on theory deletion
+- equivalent of validateSetValue for sets; allow native insertion/removal of elements from sets
+- Caching/resetting Info capability (a new class or a property?)
+- Searchbar css is ugly
 - Circularity between atoms (e.g. atom1 challenges atom2, atom2 supports atom1) results in stack overflow
-- Need better search css
-- Need other sources which can load atoms (e.g. all the user's atoms, all the user's atoms within an argument)
-- Remove and delete dropzones
+- Need other sources which can load atoms
+  - all the user's atoms
+  - all of any user's atoms
+  - all the atoms within an argument
 - Get relations sorted out
   - Should be implemented through a decorator
   - Physics decorator should allow for a function that determines gravitational strength between any 2 nodes
   - Canvas graphics to link relations to the `._interactive` elements of standing theories
-- The current paradigm makes handling server-side deletes awkward. Need to detect and delete. Dis a bad sign?
 
 INDEFINITE:
+- The current paradigm makes handling server-side deletes awkward. Need to detect and delete. Dis a bad sign?
 - Essay can't validate with `verifySetValue` because it has no notion of the user who owns it
 - Error reporting (toast-style notifications on errors)
 - UpdatingInfo should use long-polling
@@ -499,6 +505,11 @@ var package = new PACK.pack.Package({ name: 'logic',
       U.debug('THING', doss.getDataView({}));
       
       var dataSet = {
+        icons: {
+          remove: new uf.SimpleInfo({ value: String.fromCharCode(0xe900) }),
+          close: new uf.SimpleInfo({ value: String.fromCharCode(0xf00d) }),
+          del: new uf.SimpleInfo({ value: String.fromCharCode(0xf014) }),
+        },
         rps: new uf.SimpleInfo({ value: 'rps' }),
         token: new uf.SimpleInfo({ value: null }),
         appVersion: new uf.UpdatingInfo({
@@ -558,7 +569,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         
       };
       
-      // Makes graph nodes draggable
+      // Makes graph nodes interactive (dragging + clicking)
       var dragNode = new uf.DragDecorator({
         tolerance: 0,
         validTargets: [
@@ -566,6 +577,8 @@ var package = new PACK.pack.Package({ name: 'logic',
           '._choose-display'  // Dragging on either the title or the content when they're not editable
         ],
         captureOnStart: function(view) {
+          // The view isn't seen exactly at its physics "loc" due to transition delays
+          // TODO: Can subtract the client bound loc from the css loc to offset this difference...
           return dataSet.activeNodes.getValue()[view.name].physics.loc.getValue();
         }
       });
@@ -578,24 +591,58 @@ var package = new PACK.pack.Package({ name: 'logic',
           // '._toggleEdit > ._view'   // Clicking the edit toggler // TODO: Bad because toggling off editing always unfocuses :(
         ],
         action: function(view) {
-          // Don't count clicks if dragging
-          var drg = dragNode.data.getValue();
           // No click action should apply during a drag. Prevents drag mouseup from focusing node.
-          if (!drg.drag || view !== drg.view)
-            dataSet.focusedNode.modValue(function(view0) {
-              // Clicking a focused node unfocuses it. Clicking an unfocused node focuses it.
-              // Unfocusing a node sets its "editing" property to `false`
-              if (view0 === view) {
-                dataSet.activeNodes.getValue()[view.name].editing.setValue(false);
-                return null;
-              }
-              return view;
-            });
+          if (dragNode.isDragging(view)) return;
+          
+          dataSet.focusedNode.modValue(function(view0) {
+            // Clicking a focused node unfocuses it. Clicking an unfocused node focuses it.
+            // Unfocusing a node sets its "editing" property to `false`
+            if (view0 === view) {
+              dataSet.activeNodes.getValue()[view.name].editing.setValue(false);
+              return null;
+            }
+            return view;
+          });
         }
       });
       
-      var graphNodeInvRadius = 1 / 150;
+      // Drag nodes to this view to remove them
+      var removeNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
+        
+        var target = U.param(params, 'target');
+        dataSet.activeNodes.modValue(function(activeNodes) {
+          delete activeNodes[target.name];
+          return activeNodes;
+        });
+        
+      }});
+      var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', data: dataSet.icons.remove }) ] });
+      removeNodeView.decorators = [ removeNode, removeNode.createClassDecorator(removeNodeView) ];
       
+      // Drag nodes to this view to delete them
+      var deleteNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
+        
+        var target = U.param(params, 'target');
+        doss.$doRequest({
+          
+          command: 'deleteTheory'
+          
+        }).then(function(response) {
+          
+          var deletedName = response.quickName;
+          
+          dataSet.activeNodes.modValue(function(activeNodes) {
+            delete activeNodes[deletedName];
+            return activeNodes;
+          });
+          
+        });
+        
+      }});
+      var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', data: dataSet.icons.del }) ] });
+      deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
+      
+      var graphNodeInvRadius = 1 / 150;
       var graphView = new uf.DynamicSetView({ name: 'graph',
         childData: dataSet.activeNodes,
         decorators: [
@@ -636,7 +683,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           nodeData.physics.update({
             r: new uf.CalculatedInfo({
               getFunc: function() {
-                return view === dataSet.focusedNode.getValue() ? 150 : 65;
+                return view === dataSet.focusedNode.getValue() /*&& !dragNode.isDragging(view)*/ ? 150 : 65;
               }
             }),
             weight: new uf.CalculatedInfo({
@@ -644,30 +691,37 @@ var package = new PACK.pack.Package({ name: 'logic',
                 // Nodes being dragged have 0 weight
                 var drg = dragNode.data.getValue();
                 
-                if (drg.drag && drg.view === view) {
-                  
-                  // No movement for 0.5s, when no drag action is being hovered, causes
-                  // the node to become heavy.
-                  if (drg.getWaitTimeMs() > 500 && !dragAddDependency.data.getValue() && !dragAddChallenger.data.getValue())
-                    return 3;
-                  
-                  return 0;
-                  
-                }
+                // 1) Nodes that aren't being dragging have a weight of `1`
+                if (!dragNode.isDragging(view)) return 1;
                 
-                return (drg.drag && drg.view === view) ? 0 : 1;
+                var waitTimeMs = dragNode.data.getValue().getWaitTimeMs();
+                
+                // 2) Dragged nodes that are held in place for a moment can gain weight...
+                if (waitTimeMs > 500)
+                  
+                  // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
+                  if (!dragAddDependency.data.getValue() && !dragAddChallenger.data.getValue()) return 3;
+                
+                // 4) All dragged nodes have a weight of `0`
+                return 0;
               }
             }),
             loc: new uf.CalculatedInfo({
               getFunc: function() {
-                // Priority:
+                
                 // 1) Nodes being dragged position to cursor
+                if (dragNode.isDragging(view)) {
+                  var drg = dragNode.data.getValue();
+                  // return loc = drg.pt2.add(drg.capturedData); // Note that `loc` is also updated here
+                  return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
+                }
+                
                 // 2) Focused node positions to center
-                // 3) Position to the calculated physics `loc`
-                var drg = dragNode.data.getValue();
-                if (drg.drag && drg.view === view) return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
                 if (dataSet.focusedNode.getValue() === view) return loc = PACK.geom.ORIGIN;
+                
+                // 3) Position to the calculated physics `loc`
                 return loc;
+                
               },
               setFunc: function(newLoc) {
                 loc = newLoc;
@@ -676,78 +730,69 @@ var package = new PACK.pack.Package({ name: 'logic',
           });
           
           // Create the dropzones for support and challenges
-          var loadDependenciesButton = new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...',
-            decorators: [
-              dragAddDependency,
-              new uf.ClassDecorator({
-                possibleClasses: [ 'dragHover' ],
-                data: function() {
-                  return dragAddDependency.data.getValue() === loadDependenciesButton ? 'dragHover' : null;
-                }
-              })
-            ],
-            $action: function() {
-              var quickName = nodeData.quickName.getValue();
-              console.log('Dependencies for ' + quickName, raw);
+          var loadDependenciesButton = new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
+            
+            var quickName = nodeData.quickName.getValue();
+            console.log('Dependencies for ' + quickName, raw);
+            
+            return doss.$doRequest({
               
-              return doss.$doRequest({
-                
-                address: [ 'theorySet', quickName, 'dependencySet' ],
-                command: 'getData'
-                
-              }).then(function(dependencySetData) {
-                
-                for (var k in dependencySetData) {
-                  
-                  var theoryData = dependencySetData[k].theory;
-                  
-                  console.log('Dependency:', theoryData);
-                  
-                }
-                
-              }).fail(function(err) {
-                
-                console.log('DEPENDENCIES FAILED:', err);
-                
-              });
-            }
-          });
-          var loadChallengesButton = new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...',
-            decorators: [
-              dragAddChallenger,
-              new uf.ClassDecorator({
-                possibleClasses: [ 'dragHover' ],
-                data: function() {
-                  return dragAddChallenger.data.getValue() === loadChallengesButton ? 'dragHover' : null;
-                }
-              })
-            ],
-            $action: function() {
-              var quickName = nodeData.quickName.getValue();
-              console.log('Challengers for ' + quickName, raw);
+              address: [ 'theorySet', quickName, 'dependencySet' ],
+              command: 'getData'
               
-              return doss.$doRequest({
+            }).then(function(dependencySetData) {
+              
+              for (var k in dependencySetData) {
                 
-                address: [ 'theorySet', quickName, 'challengeSet' ],
-                command: 'getData'
+                var theoryData = dependencySetData[k].theory;
                 
-              }).then(function(challengeSetData) {
+                console.log('Dependency:', theoryData);
                 
-                for (var k in challengeSetData) {
-                  
-                  var theoryData = challengeSetData[k].theory;
-                  
-                  console.log('Challenge:', theoryData);
-                  
-                }
+              }
+              
+            }).fail(function(err) {
+              
+              console.log('DEPENDENCIES FAILED:', err);
+              
+            });
+            
+          }});
+          loadDependenciesButton.decorators = [
+            dragAddDependency,
+            dragAddDependency.createClassDecorator(loadDependenciesButton)
+          ];
+          
+          var loadChallengesButton = new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
+            
+            var quickName = nodeData.quickName.getValue();
+            console.log('Challengers for ' + quickName, raw);
+            
+            return doss.$doRequest({
+              
+              address: [ 'theorySet', quickName, 'challengeSet' ],
+              command: 'getData'
+              
+            }).then(function(challengeSetData) {
+              
+              for (var k in challengeSetData) {
                 
-              }).fail(function(err) {
+                var theoryData = challengeSetData[k].theory;
                 
-                console.log('CHALLENGES FAILED:', err);
+                console.log('Challenge:', theoryData);
                 
-              });
-            }
-          });
+              }
+              
+            }).fail(function(err) {
+              
+              console.log('CHALLENGES FAILED:', err);
+              
+            });
+            
+          }});
+          loadChallengesButton.decorators = [
+            dragAddChallenger,
+            dragAddChallenger.createClassDecorator(loadChallengesButton)
+          ];
           
           // Install all necessary attributes on `view` before returning it
           view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Set static classes
@@ -769,20 +814,19 @@ var package = new PACK.pack.Package({ name: 'logic',
               }
             }),
             new uf.ClassDecorator({ // Add a "dragging" class when dragged
-              possibleClasses: [ 'dragging' ],
+              list: [ 'dragging' ],
               data: function() {
-                var dragData = dragNode.data.getValue();
-                return dragData.drag && dragData.view === view ? 'dragging' : null;
+                return dragNode.isDragging(view) ? 'dragging' : null;
               }
             }),
             new uf.ClassDecorator({ // Add a "focused" class when focused
-              possibleClasses: [ 'focused' ],
+              list: [ 'focused' ],
               data: function() {
                 return dataSet.focusedNode.getValue() === view ? 'focused' : null;
               }
             }),
             new uf.ClassDecorator({ // Add "saved"/"unsaved" classes
-              possibleClasses: [ 'saved', 'unsaved' ],
+              list: [ 'saved', 'unsaved' ],
               data: function() {
                 return nodeData.saved.getValue() ? 'saved' : 'unsaved'
               }
@@ -909,7 +953,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               new uf.ActionView({ name: 'view', textData: '',
                 decorators: [
                   new uf.ClassDecorator({
-                    possibleClasses: [ 'editing' ],
+                    list: [ 'editing' ],
                     data: function() {
                       return nodeData.editing.getValue() ? 'editing' : null;
                     }
@@ -925,48 +969,13 @@ var package = new PACK.pack.Package({ name: 'logic',
           
           return view;
           
-          // This is the old `.graphView > .theory > .data` view
-          new uf.SetView({ name: 'data', children: [
-            new uf.DynamicTextEditView({ name: 'quickName',
-              editableData: function() {
-                // quickName cannot be edited after being saved
-                return !nodeData.saved.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
-              },
-              textData: nodeData.quickName,
-              inputViewParams: {
-                placeholderData: 'Quick Name',
-                cssClasses: [ 'centered' ]
-              }
-            }),
-            new uf.TextView({ name: 'user', data: nodeData.username }),
-            new uf.DynamicTextEditView({ name: 'title',
-              editableData: function() {
-                return nodeData.editing.getValue() && nodeData.owned.getValue()
-              },
-              textData: nodeData.title,
-              inputViewParams: {
-                placeholderData: 'Title'
-              }
-            }),
-            new uf.DynamicTextEditView({ name: 'theory',
-              editableData: function() {
-                return nodeData.editing.getValue() && nodeData.owned.getValue();
-              },
-              textData: nodeData.theory,
-              inputViewParams: {
-                placeholderData: 'Theory',
-                multiline: true
-              }
-            })
-          ]});
-          
         }
       });
       
       var rootView = new uf.SetView({ name: 'root',
         decorators: [
           new uf.ClassDecorator({
-            possibleClasses: [ 'dragging' ],
+            list: [ 'dragging' ],
             data: function() {
               return dragNode.data.getValue().drag ? 'dragging' : null;
             }
@@ -995,11 +1004,11 @@ var package = new PACK.pack.Package({ name: 'logic',
               }})
               
             ]}),
-            
             new uf.SetView({ name: 'in', children: [
               
               graphView,
               
+              new uf.SetView({ name: 'dropZones', children: [ removeNodeView, deleteNodeView ]}),
               new uf.SetView({ name: 'controls', children: [
                 new uf.SetView({ name: 'search', cssClasses: [ 'control' ], children: [
                   new uf.TextEditView({ name: 'bar', textData: dataSet.searchTerm, placeholderData: 'Search' }),
@@ -1016,7 +1025,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       view.cssClasses = [ 'result' ];
                       view.decorators = [
                         new uf.ClassDecorator({
-                          possibleClasses: [ 'active' ],
+                          list: [ 'active' ],
                           data: function() {
                             return (nodeData.quickName in dataSet.activeNodes.getValue()) ? 'active' : null;
                           }

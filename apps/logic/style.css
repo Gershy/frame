@@ -1,12 +1,29 @@
-/*
-Previously:
-  ._theory had no pointer events,
-  ._theory > ._controls && ._theory > ._data had all pointer events
+@font-face {
+  font-family: 'icomoon';
+  src: url('/apps/logic/resources/fonts/icons.woff') format('woff');
+  /*
+  src: url('/apps/logic/resources/fonts/icons.eot');
+  src: url('/apps/logic/resources/fonts/icons.eot#iefix') format('embedded-opentype')
+    url('/apps/logic/resources/fonts/icons.ttf') format('truetype')
+    url('/apps/logic/resources/fonts/icons.woff') format('woff')
+    url('/apps/logic/resources/fonts/icons.svg') format('svg');*/
+  font-weight: normal;
+  font-style: normal;
+}
 
-Currently:
-  ._theory has full pointer events
-  ._theory > ._controls && ._theory > ._data have none, but their children have full
-*/
+@keyframes dragHoverExplode {
+  0% { opacity: 0; tranform: scale(0); }
+  50% { opacity: 0.25; }
+  60% { opacity: 0.6; }
+  70% { opacity: 0.25; }
+  100% { opacity: 0; transform: scale(6); }
+}
+
+/* icons */
+.icon:before { font-family: 'icomoon'; }
+.icon.icon-remove { content: "\e900"; }
+.icon.icon-close { content: "\f00d"; }
+.icon.icon-delete { content: "\f014"; }
 
 #root {
   position: absolute;
@@ -29,6 +46,10 @@ Currently:
   width: 100%; height: 100%;
   background-color: #f8f8f8;
   overflow: hidden;
+}
+#root-login-in, #root-login-out {
+  position: relative;
+  width: 100%; height: 100%;
 }
 
 /* Graph + Nodes */
@@ -195,6 +216,9 @@ Currently:
   margin: 0 47px;
   height: 24px; line-height: 20px; /* line-height shouldn't include padding */
   font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   
   pointer-events: all;
 }
@@ -284,7 +308,7 @@ Currently:
   transform: scale(0.2);
 }
 
-/* Dragging */
+/* Dragging nodes */
 #root.dragging {
   user-select: none;
 }
@@ -316,6 +340,68 @@ Currently:
 #root-login-in-graph > .theory.dragging > ._controls > ._interactive:after {
   box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
 }
+
+/* Dropzones */
+#root-login-in-dropZones {
+  position: absolute;
+  right: -80px; top: 0;
+  width: 80px; height: 100%;
+  
+  transition: right 200ms ease-in;
+  
+  pointer-events: none;
+  
+  z-index: 20;
+}
+#root.dragging #root-login-in-dropZones {
+  right: 0;
+}
+#root-login-in-dropZones > .dropZone {
+  position: absolute;
+  width: 60px; height: 60px; line-height: 59px; /* line-height should theoretically be 60px but it isn't centered that way */
+  left: 50%; margin-left: -30px;
+  top: 50%; margin-top: -30px;
+  border-radius: 100%;
+  background-color: #ffffff;
+  box-shadow: inset 0 0 0 2px #d0d0d0;
+  
+  font-family: 'icomoon';
+  font-size: 40px;
+  text-align: center;
+  
+  pointer-events: all;
+  cursor: pointer;
+  
+  transition: box-shadow 400ms linear, background-color 400ms linear, color 400ms linear, font-size 400ms linear;
+  
+  /* TODO: `background: ...` ADD ICONS */
+}
+#root-login-in-dropZones > .dropZone:before {
+  content: "";
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  border-radius: 100%;
+  opacity: 0;
+  
+  pointer-events: none;
+}
+
+#root-login-in-dropZones > .dropZone.dragHover {
+  font-size: 54px;
+  background-color: transparent;
+}
+#root-login-in-dropZones > .dropZone.dragHover:before {
+  animation: dragHoverExplode 350ms ease-in-out forwards;
+}
+#root-login-in-dropZones > ._remove { top: 33.3333%; }
+#root-login-in-dropZones > ._remove:before { background-color: #dc7309; }
+#root-login-in-dropZones > ._remove.dragHover { box-shadow: inset 0 0 0 30px #dc7309; color: #ffffff; }
+
+#root-login-in-dropZones > ._delete { top: 66.6666%; }
+#root-login-in-dropZones > ._delete:before { background-color: #cf1313; }
+#root-login-in-dropZones > ._delete.dragHover { box-shadow: inset 0 0 0 30px #cf1313; color: #ffffff; }
+
 
 /* Controls */
 #root-login-in-controls {
@@ -364,6 +450,7 @@ Currently:
   overflow: hidden;
 }
 #root-login-in-controls > ._search > ._results > .result {
+  position: relative;
   width: 100%; height: 40px;
   font-size: 12px;
 }
