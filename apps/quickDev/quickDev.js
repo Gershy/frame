@@ -477,7 +477,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             // But `existing` should be filled out before the call to `getDataView0`...
             var addr = this.getAddress();
-            if (!(addr in existing)) existing[addr] = this.getDataView0(existing);
+            if (!(addr in existing)) {
+              existing[addr] = 'DUMMY_VAL'; // Mark the element as existing (with a dummy value) before the recursion
+              existing[addr] = this.getDataView0(existing); // Fill in the actual value
+            }
             
             return existing[addr];
           },
@@ -567,12 +570,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var fields = U.param(reqParams, 'fields');
               
               var ret = {};
+              var existing = {};
               for (var i = 0, len = fields.length; i < len; i++) {
                 var k = fields[i];
-                ret[k] = this.getChild(k).getDataView(ret);
+                ret[k] = this.getChild(k).getDataView(existing);
               }
               
-              return PACK.p.$null;
+              return new PACK.p.P({ val: ret });
               
             }
             

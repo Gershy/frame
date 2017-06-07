@@ -543,12 +543,9 @@ var package = new PACK.pack.Package({ name: 'userify',
             // necessarily the view which is being passed to `this.action`.
             var drg = this.dragDecorator.info.getValue();
             var dropZone = this.info.getValue();
-            if (dropZone === null) {
-              // TODO: Clicking on a dropzone triggers this
-              console.error('DragActionDecorator `this.info.getValue()` was null on mouseup');
-              dropZone = view;
-            }
-            if (drg.drag) this.action({ target: drg.view, dropZone: dropZone });
+            
+            // It's possible `dropZone` is null if the mouseup is occuring not as the final step of a drag action
+            if (dropZone && drg.drag) this.action({ target: drg.view, dropZone: dropZone });
           },
           mouseEnter: function(view, event) {
             if (this.dragDecorator.isDragging())

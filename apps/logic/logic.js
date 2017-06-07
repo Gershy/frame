@@ -22,8 +22,8 @@ INDEFINITE:
   - And OOP server queries:
     - `doss.getClientChild('theorySet.newTheory.@essay.markup').$setValue('some new essay markup value')`
     - `doss.getClientChild('theorySet').$addDossier({ quickName: 'newTheory', title: 'New Theory', user: 'userSet.admin', essay: { markup: 'This theory is new.' } })`
-      - This one is especially tricky; need defaults for "editedTime" and "createdTime", but also need to get the user from a reference and generate a new "essay" from raw data
-      - The baseAddress of a theory's essay reference can inform which dossier the raw essay data conforms to
+      - This one is especially tricky; need defaults for "editedTime" and "createdTime", but also need to get the user from a reference and generate a new "essay" from simple data
+      - The baseAddress of a theory's essay reference can inform which dossier the simple essay data conforms to
     - `doss.getClientChild('theorySet').$remDossier('newTheory')
 - The current paradigm makes handling server-side deletes awkward. Need to detect and delete. Dis a bad sign?
 - Essay can't validate with `verifySetValue` because it has no notion of the user who owns it
@@ -42,10 +42,13 @@ INDEFINITE:
         automatically defeated as soon as the support is filled in.
 - There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
 - Minification (and once files are being pre-processed, programatic separation between client/server)
+- The PACK.p.P constructor is HORRIBLE
 - Security issues
   - Username/password is sent via plaintext
   - No restriction on $doRequest requesting sensitive fields
   - Session creation is a hazard
+
+theory deletion, better preloaded test data, dataSet.activeNodes entries simplified, CachedInfo, (Repeating|Reacting)?SyncedInfo, RootView
 
 */
 
@@ -718,6 +721,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       };
       
       var relateTheories = function(relationType, params /* target, dropZone */) {
+        
         // `incoming` justifies or challenges `standing`
         var standing = U.param(params, 'dropZone').par.par; // Walk to theory view
         var incoming = U.param(params, 'target');
@@ -741,6 +745,46 @@ var package = new PACK.pack.Package({ name: 'logic',
           console.log('RELATION COMPLETE??', data);
         }).fail(function(err) {
           console.error('Error adding relation: ', err.message);
+        });
+        
+      };
+      var $loadRelatedTheories = function(theoryQuickName, relationSetName) {
+        
+        return doss.$doRequest({
+              
+          address: [ 'theorySet', theoryQuickName, relationSetName ],
+          command: 'getRawData'
+          
+        }).then(function(relationSet) {
+          
+          return new PACK.p.P({ all: relationSet.map(function(relation) {
+            return doss.$doRequest({
+              address: relation.theory,
+              command: 'getPickedFields',
+              params: {
+                fields: [ 'title', '@user', 'quickName' ]
+              }
+            })
+          })})
+        
+        }).then(function(pickedFieldSet) {
+          
+          dataSet.activeNodes.modValue(function(activeNodes) {
+            
+            for (var k in pickedFieldSet) {
+              var quickName = pickedFieldSet[k].quickName;
+              var username = pickedFieldSet[k]['@user'].username;
+              
+              activeNodes[quickName] = saveNodeData(makeNodeData({
+                quickName: quickName,
+                username: username
+              }));
+            }
+            
+            return activeNodes;
+            
+          });
+          
         });
         
       };
@@ -851,14 +895,14 @@ var package = new PACK.pack.Package({ name: 'logic',
           // This is the view that will be returned
           var view = new uf.SetView({ name: name });
           
-          // Add data to the `Info` object: physics, owned, saved, and editing
+          // Add data to the `Info` object: owned, saved, and editing, and physics
           var loc = nodeInfo.physics.loc.getValue();
           var owned = nodeInfo.username.getValue() === dataSet.username.getValue();
           nodeInfo.update({
             // "owned" is immutable
             owned: new uf.SimpleInfo({ value: owned }),
             
-            // "saved" links directly to the raw `Info` (actually this is redundant; setting a property to itself)
+            // "saved" links directly to the original `Info` (actually this is redundant; setting a property to itself)
             saved: nodeInfo.saved,
             
             // "editing' is initially enabled for owned theories if either the title or theory is blank
@@ -916,34 +960,8 @@ var package = new PACK.pack.Package({ name: 'logic',
           // Create the dropzones for support and challenges
           var loadDependenciesButton = new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
             
-            var quickName = nodeInfo.quickName.getValue();
-            console.log('Dependencies for ' + quickName);
-            
-            return doss.$doRequest({
-              
-              address: [ 'theorySet', quickName, 'dependencySet' ],
-              command: 'getRawData'
-              
-            }).then(function(dependencySetData) {
-              
-              new PACK.p.P({ all: dependencySetData.map(function(v) {
-                return doss.$doRequest({
-                  address: v.theory,
-                  command: 'getPickedFields',
-                  params: {
-                    fields: [ 'title', '@user', 'quickName' ]
-                  }
-                })
-              })}).then(function(pickedFieldSet) {
-                console.log(pickedFieldSet);
-              }).fail(function(err) {
-                console.error(err.stack);
-              });
-              
-            }).fail(function(err) {
-              
+            return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'dependencySet').fail(function(err) {
               console.log('DEPENDENCIES FAILED:', err);
-              
             });
             
           }});
@@ -954,28 +972,8 @@ var package = new PACK.pack.Package({ name: 'logic',
           
           var loadChallengesButton = new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
             
-            var quickName = nodeInfo.quickName.getValue();
-            console.log('Challengers for ' + quickName, raw);
-            
-            return doss.$doRequest({
-              
-              address: [ 'theorySet', quickName, 'challengeSet' ],
-              command: 'getData'
-              
-            }).then(function(challengeSetData) {
-              
-              for (var k in challengeSetData) {
-                
-                var theoryData = challengeSetData[k].theory;
-                
-                console.log('Challenge:', theoryData);
-                
-              }
-              
-            }).fail(function(err) {
-              
+            return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'challengeSet').fail(function(err) {
               console.log('CHALLENGES FAILED:', err);
-              
             });
             
           }});
@@ -1290,18 +1288,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo + 'ms' } })
         
       ]);
-      
-      /*
-      var updateMs = 1000 / 60;
-      var updateFunc = function() {
-        var time = +new Date();
-        rootView.update(updateMs);
-        dataSet.rps.setValue('update: ' + (new Date() - time) + 'ms')
-        requestAnimationFrame(updateFunc);
-      };
-      requestAnimationFrame(updateFunc);
-      */
-      
       rootView.start();
       
       // Make some stuff accessible on the command line
@@ -1320,6 +1306,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       dataSet.username.setValue('admin');
       dataSet.password.setValue('adminadmin123');
+      dataSet.searchTerm.setValue('zero');
       
     }).done();
     
