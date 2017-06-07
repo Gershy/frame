@@ -1,9 +1,7 @@
 var package = new PACK.pack.Package({ name: 'queries',
 	dependencies: [ 'p' ],
 	buildFunc: function() {
-		
 		return {
-			
 			$doRawQuery: function(data /* */) {
 				
 				return new PACK.p.P({ custom: function(resolve, reject) {
@@ -67,7 +65,10 @@ var package = new PACK.pack.Package({ name: 'queries',
 						var address = U.param(params, 'address');
             
             // QueryHandlers that implement `getChild` end here:
-            if (this.getChild) return this.getChild(address).$handleQuery(params);
+            if (this.getChild) {
+              console.log('QUERY "' + address + '":\n\t' + params.command, params.params);
+              return this.getChild(address).$handleQuery(params);
+            }
 						
 						if (!address.length) return this.$handleQuery(params);
 						

@@ -30,7 +30,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Outlines for DossierLists
             var c = U.param(params, 'c');
             var p = U.param(params, 'p', {});
-            var i = U.param(params, 'i', {});
+            var i = U.param(params, 'i', []);
             
             if (!('name' in p)) p.name = null;
             
@@ -38,8 +38,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.p = p;
             this.i = {};
             
-            for (var k in i) {
-              var outline = i[k];
+            for (var j = 0, len = i.length; j < len; j++) {
+              var outline = i[j];
               
               if (!U.isInstance(outline, qd.Outline))
                 outline = new qd.Outline(outline);
@@ -150,16 +150,30 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return new PACK.p.P({ all: promises }).then(function() { return doss; });
           },
-          $remFast: function(params /* */) {
+          $remFast: function(params /* par, name */) {
             var $ret = this.$rem(params);
             this.resolveReqs();
             return $ret;
           },
-          $rem: function(params /* */) {
-            throw new Error('not implemented');
+          $rem: function(params /* par, name */) {
+            return this.$rem0(params);
           },
-          $rem0: function(params /* */) {
-            throw new Error('not implemented');
+          $rem0: function(params /* par, name */) {
+            var par = U.param(params, 'par');
+            var name = U.param(params, 'name');
+            
+            var reqs = this.curReqs;
+            
+            return new PACK.p.P({ custom: function(resolve, reject) {
+              
+              reqs.push({
+                reqFunc: c.reqRemChild,
+                reqParams: [ par, name ],
+                resolve: resolve,
+                reject: reject
+              });
+              
+            }});
           },
           $modFast: function(params /* */) {
             var $ret = this.$mod(params);
@@ -303,6 +317,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               return true;
               
             } catch(err) { console.log('REQMOD ERR:', err.message); return false; }
+          },
+          reqRemChild: function(doss, childName) {
+            try {
+              
+              doss.remChild(childName);
+              return true;
+              
+            } catch(err) { console.log('REQREM ERR:', err.message); return false; }
           },
           
           rollBackAdd: function(doss) {
@@ -523,6 +545,40 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return new PACK.p.P({ all: promiseSet });
           },
           
+          $handleQuery: function(params /* command */) {
+            var command = U.param(params, 'command');
+            
+            if (command === 'getRawPickedFields') {
+              
+              var reqParams = U.param(params, 'params');
+              var fields = U.param(reqParams, 'fields');
+              
+              var ret = {};
+              for (var i = 0, len = fields.length; i < len; i++) {
+                var k = fields[i];
+                ret[k] = this.children[k].getRawDataView();
+              }
+              
+              return PACK.p.$null;
+              
+            } else if (command === 'getPickedFields') {
+              
+              var reqParams = U.param(params, 'params');
+              var fields = U.param(reqParams, 'fields');
+              
+              var ret = {};
+              for (var i = 0, len = fields.length; i < len; i++) {
+                var k = fields[i];
+                ret[k] = this.getChild(k).getDataView(ret);
+              }
+              
+              return PACK.p.$null;
+              
+            }
+            
+            return sc.$handleQuery.call(this, params);
+          },
+          
           getRawDataView: function() {
             var ret = {};
             for (var k in this.children) ret[k] = this.children[k].getRawDataView();
@@ -578,15 +634,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           // Child methods
           addChild: function(child) {
             child = sc.addChild.call(this, child);
-            while (this.nextInd in this.children) this.nextInd++;
+            while (this.nextInd in this.children) this.nextInd++; // A hole has just been filled. Ensure the next index is available
           },
           remChild: function(child) {
-            child = sc.remChild.call(this, child); // sc.remChild alters the parameter being dealt with
+            // note that sc.remChild may alter the parameter being dealt with (resolve String to named Dossier)
+            child = sc.remChild.call(this, child);
             
             // Two different possibilities here:
-            // 1) Fill holes whenever possible adding
-            // 2) Always cascade to fill holes
-            // Implementing #1
+            // 1) Fill holes whenever there is an opportunity
+            // 2) Always immediately cascade to fill holes
+            // Implementing #1: there is definitely a hole at the child's name (since it has been removed), so set the next index to be there
             if (!isNaN(child.name)) this.nextInd = parseInt(child.name, 10);
             
             return child;
@@ -606,6 +663,102 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // All DossierList children have the same outline
             return this.innerOutline;
           }
+          
+          /*
+          $handleQuery: function(params) {
+            var command = U.param(params, 'command');
+            
+            if (command === 'addDossier') {
+              
+              var reqParams = U.param(params, 'params');
+              var dossierData = U.param(reqParams, 'dossierData');
+              
+              if (!this.outline.p.verifyAddDossier) throw new Error('Cannot "addDossier" on "' + this.getAddress() + '"');
+              this.outline.p.verifyAddDossier(this, reqParams); // May throw errors
+              
+              // Need a value for every innerOutline property
+              var promiseValues = {};
+              var values = {};
+              
+              for (var k in this.innerOutline.i) {
+                
+                var outline = this.innerOutline.i[k];
+                
+                // Each value must be provided, or available as a default
+                if (k in dossierData) {
+                  
+                  var type = U.param(dossierData[k], 'type');
+                  var val = U.param(dossierData[k], 'value');
+                  
+                  if (type === 'simple') {
+                    values[k] = val;
+                  } else if (type === 'oldRef') {
+                    values[k] = null;
+                    promiseValues[k] = dossierData[k];
+                  } else if (type === 'newRef') {
+                    values[k] = null;
+                    promiseValues[k] = dossierData[k];
+                  } else {
+                    throw new Error('Unexpected "type": "' + type + '"');
+                  }
+                  
+                } else if ('defaultValue' in outline.p) {
+                  
+                  values[k] = outline.p.defaultValue()
+                  
+                } else {
+                  
+                  throw new Error('Missing value for "' + k + '"');
+                  
+                }
+                
+              }
+              
+              var editor = new qd.Editor();
+              return editor.$addFast({ par: this, data: values }).then(function(doss) {
+                
+                var $promisedVals = new PACK.p.P({ all: promiseValues.map(function(promiseVal, k) {
+                  
+                  var type = promiseVal.type;
+                  var value = promiseVal.value;
+                  
+                  if (type === 'oldRef') {
+                    return value; // Return the simple string value
+                  } else if (type === 'newRef') {
+                    // TODO: HERE (need to create a new object with `editor`
+                  } else {
+                    throw new Error('Invalid type: "' + type + '"');
+                  }
+                  
+                })});
+                
+                return [ doss, $promisedVals ];
+                
+              }).them(function(doss, promisedVals) {
+                // TODO: set all the `promisedVals` values into `doss`
+                
+                return doss.getDataView({});
+              });
+              
+            } else if (command === 'remDossier') {
+              
+              var reqParams = U.param(params, 'params');
+              var dossierName = U.param(reqParams, 'dossierName');
+              
+              var doss = this.children[dossierName];
+              
+              if (!doss) throw new Error('No child named "' + dossierName + '" exists');
+              
+              if (!this.outline.p.verifyRemDossier) throw new Error('Cannot "remDossier" on "' + this.getAddress() + '"');
+              this.outline.p.verifyRemDossier(this, doss, reqParams); // May throw errors
+              
+              // TODO: Do dossier removal
+              
+            }
+            
+            return sc.$handleQuery.call(this, params);
+          }
+          */
           
         };}
       }),
@@ -649,7 +802,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               // TODO: Various `DossierValue` subclasses should validate `value`
               
               if (!this.outline.p.verifySetValue) throw new Error('Cannot "setValue" on "' + this.getAddress() + '"');
-              
               this.outline.p.verifySetValue(this, reqParams); // May throw errors
               
               this.setValue(value);
@@ -693,11 +845,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           setValue: function(value) {
+            if (value === null) { sc.setValue.call(this, null); return; }
+            
             // Dossiers are valid values for `DossierRef.prototype.setValue`; resolve them to their addresses
             if (U.isInstance(value, PACK.quickDev.Dossier)) value = value.getAddress();
             
             base = this.getChild(this.outline.getProperty('baseAddress', '~root')).getAddress() + '.';
-            if (base.length > value || value.substr(0, base.length) !== base)
+            if (value.substr(0, base.length) !== base)
               throw new Error('Invalid address "' + value + '" doesn\'t begin with base "' + base + '"');
             
             sc.setValue.call(this, value.substr(base.length));
@@ -710,13 +864,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.outline.getProperty('baseAddress', '~root') + '.' + this.value;
           },
           dereference: function() {
-            return this.getChild(this.getRefAddress());
+            return this.value !== null ? this.getChild(this.getRefAddress()) : null;
           },
           getRawDataView: function() {
-            return 'GET: ' + this.getRefAddress();
+            return this.value !== null ? this.getRefAddress() : 'NULL';
           },
           getDataView0: function(existing) {
-            return this.dereference().getDataView(existing);
+            return this.value !== null ? this.dereference().getDataView(existing) : null;
           }
         }; }
       }),

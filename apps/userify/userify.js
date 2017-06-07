@@ -120,7 +120,9 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           
           start: function() {},
-          stop: function() {}
+          stop: function() {},
+          
+          valueOf: function() { return this.getValue(); }
         };}
       }),
       SimpleInfo: U.makeClass({ name: 'SimpleInfo',
@@ -137,65 +139,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           setValue: function(value) {
             this.value = value;
           }
-        };}
-      }),
-      
-      // TODO: `UpdatingInfo` should be named `SyncedInfo` and subclassed based on
-      // when updates should occur. E.g. `RepeatSyncedInfo` could use setInterval,
-      // but `ReactSyncedInfo` could listen for changes on another `Info` object,
-      // and only update when that `Info` object updates.
-      UpdatingInfo: U.makeClass({ name: 'UpdatingInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, updateMillis, initialValue */) {
-            sc.init.call(this, params);
-            this.$getFunc = U.param(params, '$getFunc');
-            this.$setFunc = U.param(params, '$setFunc', null);
-            this.updateMillis = U.param(params, 'updateMillis', 0);
-            this.value = U.param(params, 'initialValue', null);
-            
-            this.num = 0;
-            this.freshestNum = -1; // The numbering of the most recent value that's been set
-            this.setPending = false;
-            this.timeout = null;
-          },
-          
-          getValue: function() {
-            return this.value;
-          },
-          setValue: function(value) {
-            if (!this.$setFunc) throw new Error('No `$setFunc`');
-            
-            this.freshestNum = this.num;  // Invalidates any pending requests
-            this.setPending = true;       // Invalidates any fresher pending requests
-            this.value = value;
-            
-            this.$setFunc(value).then(function() { this.setPending = false; }.bind(this)).done();
-          },
-          refresh: function() {
-            clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
-            
-            this.$getFunc().then(function(num, val) {
-              
-              if (!this.setPending && num > this.freshestNum) {
-                this.freshestNum = num;
-                this.value = val;
-              }
-              
-              if (this.updateMillis)
-                this.timeout = setTimeout(this.refresh.bind(this), this.updateMillis); // TODO: timeout delay should compensate for latency
-              
-            }.bind(this, this.num++)).done();
-            
-          },
-          
-          start: function() {
-            // TODO: Shouldn't be setInterval - should be setTimeout; timeout should take promise latency into account
-            this.refresh();
-          },
-          stop: function() {
-            if (this.timeout !== null) clearTimeout(this.timeout);
-          },
         };}
       }),
       CalculatedInfo: U.makeClass({ name: 'CalculatedInfo',
@@ -217,17 +160,17 @@ var package = new PACK.pack.Package({ name: 'userify',
         };}
       }),
       CachedInfo: U.makeClass({ name: 'CachedInfo',
-        // TODO: Need a way to register this badboy in a list so the whole list can be reset at once
-        // Will require modifications to CachedInfo.prototype.stop/start; to register/unregister itself
         superclassName: 'Info',
         methods: function(sc, c) { return {
-          init: function(params /* data */) {
+          init: function(params /* rootView, info */) {
             sc.init.call(this, params);
-            this.data = uf.pafam(params, 'data');
+            this.rootView = U.param(params, 'rootView');
+            this.info = uf.pafam(params, 'info');
             this.cached = c.NO_VALUE;
+            this.id = c.NEXT_ID++;
           },
           getValue: function() {
-            if (this.cached === c.NO_VALUE) this.cached = this.data.getValue();
+            if (this.cached === c.NO_VALUE) this.cached = this.info.getValue();
             return this.cached;
           },
           setValue: function(val) {
@@ -236,34 +179,140 @@ var package = new PACK.pack.Package({ name: 'userify',
           reset: function() {
             if (this.cached === c.NO_VALUE) return;
             
-            this.data.setValue(this.cached);
+            this.info.setValue(this.cached);
             this.cached = c.NO_VALUE;
           },
+          
+          start: function() {
+            this.rootView.addCache(this);
+          },
           stop: function() {
+            this.rootView.remCache(this);
             this.reset();
           }
         };},
         statik: {
+          NEXT_ID: 0,
           NO_VALUE: { NO_VALUE: true }
         }
       }),
       ProxyInfo: U.makeClass({ name: 'ProxyInfo',
         superclassName: 'Info',
         methods: function(sc, c) { return {
-          init: function(params /* data, path */) {
+          init: function(params /* info, path */) {
             sc.init.call(this, params);
-            this.data = U.param(params, 'data');
+            this.info = U.param(params, 'info');
             this.path = U.param(params, 'path');
             
             if (U.isObj(this.path, String)) this.path = this.path ? this.path.split('.') : [];
           },
           
           getValue: function() {
-            return this.walk(this.path, this.data).getValue();
+            return this.walk(this.path, this.info).getValue();
           },
           setValue: function(val) {
-            return this.walk(this.path, this.data).setValue(val);
+            return this.walk(this.path, this.info).setValue(val);
           }
+        };}
+      }),
+      
+      /* SYNCED INFO */
+      SyncedInfo: U.makeClass({ name: 'SyncedInfo',
+        superclassName: 'Info',
+        methods: function(sc, c) { return {
+          init: function(params /* $getFunc, $setFunc, initialValue, updateMillis */) {
+            sc.init.call(this, params);
+            this.$getFunc = U.param(params, '$getFunc');
+            this.$setFunc = U.param(params, '$setFunc', null);
+            this.value = U.param(params, 'initialValue', null);
+            
+            this.num = 0;
+            this.freshestNum = -1; // The numbering of the most recent value that's been set
+            this.setPending = false;
+          },
+          
+          getValue: function() {
+            return this.value;
+          },
+          setValue: function(value) {
+            if (!this.$setFunc) throw new Error('No `$setFunc`');
+            
+            this.freshestNum = this.num;  // Invalidates any pending requests
+            this.setPending = true;       // Invalidates any fresher pending requests
+            this.value = value;
+            
+            this.$setFunc(value).then(function() { this.setPending = false; }.bind(this)).done();
+          },
+          updateValue: function(num, value) {
+            if (!this.setPending && num > this.freshestNum) {
+              this.freshestNum = num;
+              this.value = value;
+            }
+          }
+        };}
+      }),
+      RepeatingSyncedInfo: U.makeClass({ name: 'RepeatingSyncedInfo',
+        superclassName: 'SyncedInfo',
+        methods: function(sc, c) { return {
+          init: function(params /* $getFunc, $setFunc, initialValue, updateMillis, jitterMillis */) {
+            sc.init.call(this, params);
+            this.updateMillis = U.param(params, 'updateMillis', 0);
+            this.jitterMillis = U.param(params, 'jitterMillis', this.updateMillis * 0.19);
+            
+            this.timeout = null;
+          },
+          
+          refresh: function() {
+            
+            clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
+            
+            this.$getFunc().then(function(num, value) {
+              
+              this.updateValue(num, value);
+              
+              if (this.updateMillis) {
+                var randJitter = ((Math.random() - 0.5) * 2 * this.jitterMillis);
+                this.timeout = setTimeout(this.refresh.bind(this), this.updateMillis + randJitter); // TODO: timeout delay should compensate for latency
+              }
+              
+            }.bind(this, this.num++)).done();
+            
+          },
+          
+          start: function() {
+            this.refresh();
+          },
+          stop: function() {
+            if (this.timeout !== null) clearTimeout(this.timeout);
+          }
+        };}
+      }),
+      ReactingSyncedInfo: U.makeClass({ name: 'ReactingSyncedInfo',
+        superclassName: 'SyncedInfo',
+        methods: function(sc, c) { return {
+          init: function(params /* $getFunc, $setFunc, initialValue, info */) {
+            sc.init.call(this, params);
+            
+            this.info = U.param(params, 'info');
+            this.infoLatestValue = this.info.getValue();
+          },
+          getValue: function() {
+            var val = this.info.getValue();
+            
+            // If no change, simply return latest value without any modification
+            if (U.isStdObj(this.infoLatestValue)
+              ? this.infoLatestValue.shallowCompare(val)
+              : (this.infoLatestValue === val)) return this.value;
+            
+            // Hold clones of std objects, regular assignment otherwise
+            this.infoLatestValue = U.isStdObj(val) ? val.clone() : val;
+            
+            // Begin an update to react to the new value
+            this.$getFunc().then(this.updateValue.bind(this, this.num++)).done();
+            
+            return this.value;
+          }
+          // TODO
         };}
       }),
       
@@ -314,7 +363,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.action = U.param(params, 'action', null);
-            this.data = new uf.SimpleInfo({ value: false });
+            this.info = new uf.SimpleInfo({ value: false });
           },
           start: function(view) {
             view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
@@ -334,18 +383,18 @@ var package = new PACK.pack.Package({ name: 'userify',
           clickFuncDn: function(view, event) {
             if (!this.validTarget(view, event.target)) return;
             
-            this.data.setValue(true);
+            this.info.setValue(true);
             
             uf.domAddListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
             uf.domAddListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
           },
           clickFuncUp: function(view, event) {
-            if (!this.data.getValue()) return; // Could get called x2 with listeners on both document and `view.domRoot`
+            if (!this.info.getValue()) return; // Could get called x2 with listeners on both document and `view.domRoot`
             
             uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
             uf.domRemListener(view.domRoot, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
             
-            this.data.setValue(false); // The mouse is up so change data to reflect that
+            this.info.setValue(false); // The mouse is up so change info to reflect that
             
             // Only run the action for valid targets
             if (this.validTarget(view, event.target) && this.action) this.action(view);
@@ -357,14 +406,14 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* tolerance, validTargets, captureOnStart */) {
             sc.init.call(this, params);
-            this.data = new uf.SimpleInfo({ value: { drag: false, mouseDown: false, view: null } });
+            this.info = new uf.SimpleInfo({ value: { drag: false, mouseDown: false, view: null } });
             this.tolerance = U.param(params, 'tolerance', 0);
             
-            // TODO: Function to capture arbitrary data when drag begins (will allow physics values to be captured)
+            // TODO: Function to capture arbitrary info when info begins (will allow physics values to be captured)
             this.captureOnStart = U.param(params, 'captureOnStart', null);
           },
           isDragging: function(view) {
-            var val = this.data.getValue();
+            var val = this.info.getValue();
             return val.drag && (!view || view === val.view);
           },
           start: function(view) {
@@ -391,7 +440,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         };},
         statik: {
           // For these methods `this` still refers to the DragDecorator even though these methods are static
-          clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.data`
+          clickFuncDn: function(view, event) { // Mouse down - add up listener, modify `this.info`
             if (!this.validTarget(view, event.target)) return;
             
             // Add listeners
@@ -400,12 +449,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             var rect = view.domRoot.getBoundingClientRect();
             
-            // Update data
-            this.data.setValue({
+            // Update info
+            this.info.setValue({
               drag: false,
               lastDragMs: null,
               getWaitTimeMs: function() {
-                var ms = this.data.getValue().lastDragMs;
+                var ms = this.info.getValue().lastDragMs;
                 return ms ? new Date() - ms : null;
               }.bind(this),
               mouseDown: true,
@@ -415,15 +464,15 @@ var package = new PACK.pack.Package({ name: 'userify',
               pt2: new Point({ x: event.clientX, y: event.clientY })
             });
           },
-          clickFuncUp: function(view, event) { // Mouse up - modify `this.data`, remove up listener
+          clickFuncUp: function(view, event) { // Mouse up - modify `this.info`, remove up listener
             // Remove listeners
             uf.domRemListener(window, 'onmouseup', view['~' + this.id + '.clickFuncUp']);
             uf.domRemListener(document.body, 'onmousemove', view['~' + this.id + '.mouseMove']);
             
-            var dragOccurred = this.data.getValue().drag;
+            var dragOccurred = this.info.getValue().drag;
             
-            // Reset data
-            this.data.setValue({
+            // Reset info
+            this.info.setValue({
               drag: false,
               mouseDown: false,
               view: null
@@ -433,20 +482,20 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (dragOccurred) event.preventDefault();
           },
           mouseMove: function(view, event) {   // Mouse move
-            // Update values in `this.data`
-            var data = this.data.getValue(); // We know `this.data` is a SimpleInfo, so just updating it normally works here
+            // Update values in `this.info`
+            var info = this.info.getValue(); // We know `this.info` is a SimpleInfo, so just updating it normally works here
             
-            // It's possible for mousemove to fire after mouseup; detectable if data.pt1 is undefined
-            if (!data.pt1) return;
+            // It's possible for mousemove to fire after mouseup; detectable if info.pt1 is undefined
+            if (!info.pt1) return;
             
             // Update `drag`
-            data.pt2 = new Point({ x: event.clientX, y: event.clientY });
-            if (!data.drag && data.pt2.dist(data.pt1) > this.tolerance) {
+            info.pt2 = new Point({ x: event.clientX, y: event.clientY });
+            if (!info.drag && info.pt2.dist(info.pt1) > this.tolerance) {
               // TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
-              data.drag = true;
+              info.drag = true;
             }
             
-            data.lastDragMs = +new Date();
+            info.lastDragMs = +new Date();
             
             event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional?
           }
@@ -459,12 +508,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             this.dragDecorator = U.param(params, 'dragDecorator');
             this.action = U.param(params, 'action');
-            this.data = new uf.SimpleInfo({ value: null });
+            this.info = new uf.SimpleInfo({ value: null });
           },
           createClassDecorator: function(view) {
             return new uf.ClassDecorator({
               list: [ 'dragHover' ],
-              data: function(view) { return this.data.getValue() === view ? 'dragHover' : null; }.bind(this, view)
+              info: function(view) { return this.info.getValue() === view ? 'dragHover' : null; }.bind(this, view)
             })
           },
           start: function(view) {
@@ -489,28 +538,28 @@ var package = new PACK.pack.Package({ name: 'userify',
         statik: {
           clickFuncUp: function(view, event) {
             // Note that if the mouseup event occurs when multiple overlapping
-            // views are hovered, the one that is used is the one in `this.data`.
+            // views are hovered, the one that is used is the one in `this.info`.
             // This means that the view on which the mouseup is occurring is not
             // necessarily the view which is being passed to `this.action`.
-            var drg = this.dragDecorator.data.getValue();
-            var dropZone = this.data.getValue();
+            var drg = this.dragDecorator.info.getValue();
+            var dropZone = this.info.getValue();
             if (dropZone === null) {
               // TODO: Clicking on a dropzone triggers this
-              console.error('DragActionDecorator `this.data.getValue()` was null on mouseup');
+              console.error('DragActionDecorator `this.info.getValue()` was null on mouseup');
               dropZone = view;
             }
             if (drg.drag) this.action({ target: drg.view, dropZone: dropZone });
           },
           mouseEnter: function(view, event) {
             if (this.dragDecorator.isDragging())
-              this.data.modValue(function(view0) {
+              this.info.modValue(function(view0) {
                 // Won't overwrite an old value unless the old value is `null`
                 // Should make drags over multiple targets more stable
                 return view0 ? view0 : view;
               });
           },
           mouseLeave: function(view, event) {
-            this.data.modValue(function(view0) {
+            this.info.modValue(function(view0) {
               // Won't clear the old value unless the leave event occurred on that value
               return view0 === view ? null : view0;
             });
@@ -521,15 +570,15 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'Decorator',
         description: 'Dynamically changes html classes on an element',
         methods: function(sc, c) { return {
-          init: function(params /* data, list */) {
+          init: function(params /* info, list */) {
             sc.init.call(this, params);
             this.list = U.param(params, 'list');
-            this.data = uf.pafam(params, 'data');
+            this.info = uf.pafam(params, 'info');
           },
           start: function(view) {
           },
           update: function(view) {
-            var nextClass = this.data.getValue();
+            var nextClass = this.info.getValue();
             var classList = view.domRoot.classList;
             if (!nextClass || !classList.contains(nextClass)) {
               
@@ -551,15 +600,15 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'Decorator',
         description: 'Dynamically changes css properties on an element',
         methods: function(sc, c) { return {
-          init: function(params /* data, properties */) {
+          init: function(params /* info, properties */) {
             sc.init.call(this, params);
             this.properties = U.param(params, 'properties');
-            this.data = uf.pafam(params, 'data');
+            this.info = uf.pafam(params, 'info');
           },
           start: function(view) {
           },
           update: function(view) {
-            var nextProps = this.data.getValue();
+            var nextProps = this.info.getValue();
             var style = view.domRoot.style;
             
             // Calculate the difference...
@@ -682,9 +731,9 @@ var package = new PACK.pack.Package({ name: 'userify',
       TextView: U.makeClass({ name: 'TextView',
         superclassName: 'View',
         methods: function(sc, c) { return {
-          init: function(params /* name, data */) {
+          init: function(params /* name, info */) {
             sc.init.call(this, params);
-            this.data = uf.pafam(params, 'data');
+            this.info = uf.pafam(params, 'info');
           },
           
           createDomRoot: function() {
@@ -693,16 +742,16 @@ var package = new PACK.pack.Package({ name: 'userify',
             return ret;
           },
           tick: function(millis) {
-            uf.domSetText(this.domRoot, this.data.getValue());
+            uf.domSetText(this.domRoot, this.info.getValue());
           },
           
           start: function() {
             sc.start.call(this);
-            this.data.start();
+            this.info.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.data.stop();
+            this.info.stop();
           }
         };}
       }),
@@ -854,6 +903,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      
+      /* SET VIEW */
       AbstractSetView: U.makeClass({ name: 'AbstractSetView',
         superclassName: 'View',
         methods: function(sc, c) { return {
@@ -877,15 +928,15 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             return child;
           },
-          remChild: function(name) {
-            if (!U.isObj(name, String)) name = name.name;
+          remChild: function(child) {
+            // Resolve string to child
+            if (U.isObj(child, String)) child = this.children[child];
             
-            if (!(name in this.children)) return null;
+            if (!child || !(child.name in this.children)) return null;
             
-            var child = this.children[name];
-            child.stop();                // Detach dom
-            child.par = null;            // Detach data step 1
-            delete this.children[name];  // Detach data step 2
+            child.stop(); // Detach dom
+            child.par = null; // Detach info step 1
+            delete this.children[child.name]; // Detach info step 2
             
             return child;
           },
@@ -933,6 +984,47 @@ var package = new PACK.pack.Package({ name: 'userify',
           tick: function(millis) {
           }
           
+        };}
+      }),
+      RootView: U.makeClass({ name: 'RootView',
+        superclassName: 'SetView',
+        description: '',
+        methods: function(sc, c) { return {
+          init: function(params /* */) {
+            sc.init.call(this, params);
+            this.cachedInfos = {};
+            this.updateTimingInfo = new uf.SimpleInfo({ value: 0 });
+            this.running = false;
+            this.updateMs = 1000 / 60; // 60fps
+          },
+          addCache: function(cachedInfo) {
+            this.cachedInfos[cachedInfo.id] = cachedInfo;
+          },
+          remCache: function(cachedInfo) {
+            delete this.cachedInfos[cachedInfo.id];
+          },
+          update: function(millis) {
+            sc.update.call(this, millis);
+            for (var k in this.cachedInfos) this.cachedInfos[k].reset();
+          },
+          animationLoop: function() {
+            if (!this.running) return;
+            
+            var time0 = +new Date();
+            this.update(this.updateMs);
+            this.updateTimingInfo.setValue(new Date() - time0);
+            requestAnimationFrame(this.animationLoop.bind(this));
+          },
+          start: function() {
+            this.domRoot = this.createDomRoot();
+            sc.start.call(this);
+            this.running = true;
+            requestAnimationFrame(this.animationLoop.bind(this));
+          },
+          stop: function() {
+            sc.stop.call(this);
+            this.running = false;
+          }
         };}
       }),
       ChoiceView: U.makeClass({ name: 'ChoiceView',
@@ -991,11 +1083,11 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'ChoiceView',
         description: 'A text field that is hidden when its text is empty',
         methods: function(sc, c) { return {
-          init: function(params /* name, data */) {
-            var data = uf.pafam(params, 'data');
+          init: function(params /* name, info */) {
+            var info = uf.pafam(params, 'info');
             sc.init.call(this, params.update({
-              choiceData: new uf.CalculatedInfo({ getFunc: function() { return data.getValue() ? 'text' : null; } }),
-              children: [  new uf.TextView({ name: 'text', data: data })  ]
+              choiceData: new uf.CalculatedInfo({ getFunc: function() { return info.getValue() ? 'text' : null; } }),
+              children: [  new uf.TextView({ name: 'text', info: info })  ]
             }));
           }
         };}
@@ -1012,7 +1104,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               choiceData: new uf.CalculatedInfo({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
               children: [
                 new uf.TextEditView(inputViewParams.update({ name: 'edit', textData: this.textData })),
-                new uf.TextView({ name: 'display', data: this.textData })
+                new uf.TextView({ name: 'display', info: this.textData })
               ]
             }));
           },
@@ -1027,25 +1119,23 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      
-      /* COMPLEX VIEW */
       DynamicSetView: U.makeClass({ name: 'DynamicSetView',
         superclassName: 'SetView',
         description: 'A SetView whose children are based on Info. ' +
           'Modifications to the Info instantly modify the children of ' +
           'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
-          'raw data that the child was built from.',
+          'raw info that the child was built from.',
         methods: function(sc, c) { return {
           init: function(params /* name, childData, getDataId, genChildView, comparator */) {
             if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
             
             sc.init.call(this, params);
             this.childData = uf.pafam(params, 'childData');
-            //this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of data (will be used for child.name)
-            this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, data) { /* generates a View */ };
+            //this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of info (will be used for child.name)
+            this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
             this.comparator = U.param(params, 'comparator', null); // TODO: implement!
             
-            this.childFullData = {}; // A properly-keyed list of raw data items. The child's name corresponds to the data's key.
+            this.childFullData = {}; // A properly-keyed list of raw info items. The child's name corresponds to the info's key.
             
             this.count = 0;
           },
@@ -1083,11 +1173,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             for (var k in rem) {
               var child = this.remChild(k);
               delete this.childFullData[child.name];
-              
-              if (!child) { // TODO: This is just for sanity; should never occur
-                console.log(rem, this.getAddress(), this.children);
-                throw new Error('Couldn\'t remove child: "' + k + '"');
-              }
             }
             
             // Add all children as necessary
@@ -1108,7 +1193,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (newName === view.name) return;
             
             if (newName in this.children) throw new Error('A child is already named "' + newName + '"; can\'t rename');
-            if (!(newName in this.childData.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any data. Update `childData` before calling `renameChild`.');
+            if (!(newName in this.childData.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childData` before calling `renameChild`.');
             
             this.children[newName] = this.children[view.name];
             delete this.children[view.name];

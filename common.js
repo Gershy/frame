@@ -77,6 +77,11 @@ run on server or client side:
         
         return true;
       },
+      shallowCompare: function(obj) {
+        if (!U.isObj(obj, Object)) return false;
+        for (var k in this) if (!(k in obj) || obj[k] !== this[k]) return false;
+        return true;
+      }
     },
   },
   {  target: String.prototype,
@@ -144,6 +149,11 @@ run on server or client side:
         if (rem) this.length--;
         
         return rem;
+      },
+      shallowCompare: function(arr) {
+        if (!U.isObj(arr, Array) || this.length !== arr.length) return false;
+        for (var i = 0; i < this.length; i++) if (this[i] !== arr[i]) return false;
+        return true;
       }
     },
   },
@@ -222,6 +232,9 @@ global.U = {
   isObj: function(obj, cls) {
     try { return cls ? obj.constructor === cls : ('constructor' in obj); } catch(e) {};
     return false;
+  },
+  isStdObj: function(obj) {
+    return U.isObj(obj, Array) || U.isObj(obj, Object);
   },
   isClassedObj: function(obj) {
     // TODO: Checking for a "title" attribute is hackish...

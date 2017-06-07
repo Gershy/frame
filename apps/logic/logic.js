@@ -1,26 +1,34 @@
 /*
 
 NEAR-TERM:
-- delete dropzone functionality
+- Get relations sorted out
+  - Should be implemented through a decorator
+  - Physics decorator should allow for a function that determines gravitational strength between any 2 nodes
+  - Canvas graphics to link relations to the `._interactive` elements of standing theories
 - animation + delay on theory deletion
-- equivalent of validateSetValue for sets; allow native insertion/removal of elements from sets
-- Caching/resetting Info capability (a new class or a property?)
-- Searchbar css is ugly
 - Circularity between atoms (e.g. atom1 challenges atom2, atom2 supports atom1) results in stack overflow
 - Need other sources which can load atoms
   - all the user's atoms
   - all of any user's atoms
   - all the atoms within an argument
-- Get relations sorted out
-  - Should be implemented through a decorator
-  - Physics decorator should allow for a function that determines gravitational strength between any 2 nodes
-  - Canvas graphics to link relations to the `._interactive` elements of standing theories
+- Dragging a node to a dropzone throws an error if the cursor is simultaneously hovering over an "addDependency" dropzone
 
 INDEFINITE:
+- Info objects should have an "altered" broadcast ability
+  - No changes should occur unless there have been alterations
+  - e.g. SetViews shouldn't update unless any relevant data has updated
+  - Could make CachedInfo obsolete...
+- equivalent of validateSetValue for sets; allow native insertion/removal of elements from sets
+  - And OOP server queries:
+    - `doss.getClientChild('theorySet.newTheory.@essay.markup').$setValue('some new essay markup value')`
+    - `doss.getClientChild('theorySet').$addDossier({ quickName: 'newTheory', title: 'New Theory', user: 'userSet.admin', essay: { markup: 'This theory is new.' } })`
+      - This one is especially tricky; need defaults for "editedTime" and "createdTime", but also need to get the user from a reference and generate a new "essay" from raw data
+      - The baseAddress of a theory's essay reference can inform which dossier the raw essay data conforms to
+    - `doss.getClientChild('theorySet').$remDossier('newTheory')
 - The current paradigm makes handling server-side deletes awkward. Need to detect and delete. Dis a bad sign?
 - Essay can't validate with `verifySetValue` because it has no notion of the user who owns it
 - Error reporting (toast-style notifications on errors)
-- UpdatingInfo should use long-polling
+- Long-polling support? (for use with RepeatingSyncedInfo - although RepeatingSyncedInfo should be unaware of whether or not it is long-polling)
 - Get rid of persistent sessions...?
 - Dependency/support loading should trigger a search (only within those dependencies/supports) for very large sets (to avoid hundreds of theories being loaded on-click)
 - Need a way of preventing tons of views, all wired to the same Info, from running the same calculation over and over again (caching + reset() called before main update)
@@ -33,6 +41,11 @@ INDEFINITE:
         and add a challenge against that support. This challenge should be
         automatically defeated as soon as the support is filled in.
 - There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
+- Minification (and once files are being pre-processed, programatic separation between client/server)
+- Security issues
+  - Username/password is sent via plaintext
+  - No restriction on $doRequest requesting sensitive fields
+  - Session creation is a hazard
 
 */
 
@@ -181,6 +194,29 @@ var package = new PACK.pack.Package({ name: 'logic',
                 return theory.getDataView({});
                 
               });
+            
+            } else if (command === 'deleteTheory') {
+              
+              var reqParams = U.param(params, 'params');
+              
+              var token = U.param(reqParams, 'token');
+              var quickName = U.param(reqParams, 'quickName');
+              
+              var theorySet = this.children.theorySet;
+              
+              var theory = theorySet.children[quickName];
+              if (!theory) throw new Error('Couldn\'t find theory named "' + quickName + '"');
+              
+              var user = theory.getChild('@user');
+              this.requireUser(user, token);
+              
+              var editor = new qd.Editor();
+              return editor.$remFast({ par: theorySet, name: theory.name }).then(function() {
+                return {
+                  msg: 'delete successful',
+                  quickName: theory.name
+                };
+              });
               
             } else if (command === 'relateTheories') {
               
@@ -258,14 +294,24 @@ var package = new PACK.pack.Package({ name: 'logic',
               
               return new PACK.p.P({ val: matched });
               
+            } else if (command === 'fullData') {
+              
+              return new PACK.p.P({ val: this.getDataView({}) });
+              
             }
             
             return sc.$handleQuery.call(this, params);
           },
-          requireUser: function(username, token) {
-            var user = this.children.userSet.children[username];
-            if (!user) throw new Error('Couldn\'t find user "' + username + '"');
-            if (token && user.getToken() !== token) throw new Error('Incorrect token for user "' + username + '"');
+          requireUser: function(user, token) {
+            if (U.isObj(user, String)) {
+              var username = user;
+              user = this.getChild([ 'userSet', user ]);
+              if (!user) throw new Error('Couldn\'t find user "' + username + '"');
+            } else if (!U.isInstance(user, lg.LogicUser)) {
+              throw new Error('Invalid user type: ' + user);
+            }
+            
+            if (token && user.getToken() !== token) throw new Error('Incorrect token for user "' + user.name + '"');
             return user;
           }
         };}
@@ -304,7 +350,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           },
           overviewData: function() {
             var theory = this.getChild('@essay.markup').getValue();
-            if (theory.length > 20) theory = theory.substr(0, 20) + '...';
+            if (theory.length > 50) theory = theory.substr(0, 50) + '...';
             
             return {
               username: this.getChild('@user').name,
@@ -346,36 +392,41 @@ var package = new PACK.pack.Package({ name: 'logic',
             }},
             { c: qd.DossierList, p: { name: 'theorySet',
               innerOutline: { c: lg.LogicTheory, i: [
-                { c: qd.DossierInt,     p: { name: 'createdTime' } },
-                { c: qd.DossierInt,     p: { name: 'editedTime' } },
+                { c: qd.DossierInt,     p: { name: 'createdTime', defaultValue: function() { return +new Date(); } } },
+                { c: qd.DossierInt,     p: { name: 'editedTime', defaultValue: function() { return +new Date(); } } },
                 { c: qd.DossierString,  p: { name: 'quickName' } },
                 { c: qd.DossierString,  p: { name: 'title',
                   verifySetValue: function(titleDoss, params /* token, username */) { verifyUser(titleDoss.par.getChild('@user'), params); }
                 }},
                 { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
                 { c: qd.DossierRef,     p: { name: 'essay', baseAddress: '~root.essaySet' } },
-                { c: qd.DossierRef,     p: { name: 'duplicate', baseAddress: '~root.theorySet' } },
+                { c: qd.DossierRef,     p: { name: 'duplicate', baseAddress: '~root.theorySet', defaultValue: function() { return null; } } },
                 { c: qd.DossierList,    p: { name: 'dependencySet',
                   innerOutline: { c: qd.DossierDict, i: [
                     { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                   ]},
-                  prop: '@theory.quickName/value'
+                  prop: '@theory.quickName/value',
+                  defaultValue: function() { return []; }
                 }},
                 { c: qd.DossierList,    p: { name: 'challengeSet',
                   innerOutline: { c: qd.DossierDict, i: [
                     { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                   ]},
-                  prop: '@theory.quickName/value'
+                  prop: '@theory.quickName/value',
+                  defaultValue: function() { return []; }
                 }},
                 { c: qd.DossierList,    p: { name: 'voterSet',
                   innerOutline: { c: qd.DossierDict, i: [
                     { c: qd.DossierRef, p: { name: 'user', baseAddress: '~root.userSet' } },
                     { c: qd.DossierInt, p: { name: 'value' } }
                   ]},
-                  prop: '@user.username/value'
+                  prop: '@user.username/value',
+                  defaultValue: function() { return []; }
                 }}
               ]},
-              prop: 'quickName/value'
+              prop: 'quickName/value',
+              verifyAddDossier: function(params /*  */) {}, // TODO: implement in quickDev
+              verifyRemDossier: function(params /*  */) {}  // TODO: implement in quickDev
             }}
           ]});
           var data = {
@@ -423,13 +474,18 @@ var package = new PACK.pack.Package({ name: 'logic',
           });
           
           var $addEssays = $addUsers.then(function(users) {
-            console.log('Adding essays from', users);
             return editor.$editFast({
               add: [
                 {
                   par: root.getChild('essaySet'),
                   data: {
                     markup: 'Essay written by ' + users[0].name
+                  }
+                },
+                {
+                  par: root.getChild('essaySet'),
+                  data: {
+                    markup: 'I, ' + users[0].name + ', confirm that admin wrote this'
                   }
                 },
                 {
@@ -462,6 +518,21 @@ var package = new PACK.pack.Package({ name: 'logic',
                 },
                 {
                   par: root.getChild('theorySet'),
+                  name: 'testimony',
+                  data: {
+                    createdTime: +new Date(),
+                    editedTime: +new Date(),
+                    quickName: 'testimony',
+                    title: 'My Testimony',
+                    user: users[0],
+                    essay: essays[1],
+                    dependencySet: [],
+                    challengeSet: [],
+                    voterSet: []
+                  }
+                },
+                {
+                  par: root.getChild('theorySet'),
                   name: 'userOneTheory',
                   data: {
                     createdTime: +new Date(),
@@ -469,7 +540,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     quickName: 'userOneTheory',
                     title: 'Written by ' + users[1].name,
                     user: users[1],
-                    essay: essays[1],
+                    essay: essays[2],
                     dependencySet: [],
                     challengeSet: [],
                     voterSet: []
@@ -479,7 +550,21 @@ var package = new PACK.pack.Package({ name: 'logic',
             });
           });
           
-          return new PACK.p.P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
+          var $relateTheories = new PACK.p.P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
+            return editor.$editFast({
+              add: [
+                {
+                  par: root.getChild('theorySet.userZeroTheory.dependencySet'),
+                  name: 'testimony',
+                  data: {
+                    theory: root.getChild('theorySet.testimony')
+                  }
+                }
+              ]
+            });
+          });
+          
+          return new PACK.p.P({ all: [ $addUsers, $addEssays, $addTheories, $relateTheories ] }).then(function() {
             return root;
           });
           
@@ -502,17 +587,18 @@ var package = new PACK.pack.Package({ name: 'logic',
     var uf = PACK.userify;
     
     PACK.logic.$init.then(function(doss) {
-      U.debug('THING', doss.getDataView({}));
+      U.debug(doss.getDataView({}));
       
       var dataSet = {
         icons: {
           remove: new uf.SimpleInfo({ value: String.fromCharCode(0xe900) }),
+          insert: new uf.SimpleInfo({ value: String.fromCharCode(0xf055) }),
           close: new uf.SimpleInfo({ value: String.fromCharCode(0xf00d) }),
           del: new uf.SimpleInfo({ value: String.fromCharCode(0xf014) }),
         },
         rps: new uf.SimpleInfo({ value: 'rps' }),
         token: new uf.SimpleInfo({ value: null }),
-        appVersion: new uf.UpdatingInfo({
+        appVersion: new uf.RepeatingSyncedInfo({
           $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
         }),
         loginView: new uf.CalculatedInfo({
@@ -522,23 +608,113 @@ var package = new PACK.pack.Package({ name: 'logic',
         password: new uf.SimpleInfo({ value: '' }),
         loginError: new uf.SimpleInfo({ value: '' }),
         focusedNode: new uf.SimpleInfo({ value: null }),
-        activeNodes: new uf.SimpleInfo({ value: {} }),
-        searchTerm: new uf.SimpleInfo({ value: '' }),
-        searchResults: new uf.UpdatingInfo({ // This should be a `ReactingSyncedInfo`
-          initialValue: {},
+        activeNodes: new uf.SimpleInfo({ value: {} })
+      };
+      dataSet.searchTerm = new uf.SimpleInfo({ value: '' });
+      dataSet.searchResults = new uf.ReactingSyncedInfo({
+        initialValue: {},
+        info: dataSet.searchTerm,
+        $getFunc: function() {
+          var searchTerm = dataSet.searchTerm.getValue();
+          if (searchTerm === '') return new PACK.p.P({ val: {} });
+          
+          return doss.$doRequest({
+            command: 'searchTheories',
+            params: {
+              searchTerm: searchTerm
+            }
+          });
+        }
+      });
+      
+      var makeNodeData = function(params /* quickName, username */) {
+        return {
+          physics: {
+            r: new uf.SimpleInfo({ value: 65 }),
+            weight: new uf.SimpleInfo({ value: 1 }),
+            loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
+            vel: PACK.geom.ORIGIN,
+            acl: PACK.geom.ORIGIN
+          },
+          username: uf.pafam(params, 'username'),
+          quickName: uf.pafam(params, 'quickName'),
+          title: new uf.SimpleInfo({ value: '' }),
+          theory: new uf.SimpleInfo({ value: '' }),
+          saved: new uf.SimpleInfo({ value: false })
+        };
+      };
+      var saveNodeData = function(nodeInfo) {
+        // "saved" is now fixed to the value `true`
+        nodeInfo.saved.setValue(true);
+        
+        // "title" syncs with the `theorySet.<theoryId>.title` value server-side
+        nodeInfo.title = new uf.RepeatingSyncedInfo({
+          initialValue: '- not loaded -',
           $getFunc: function() {
-            var searchTerm = dataSet.searchTerm.getValue();
-            if (searchTerm === '') return new PACK.p.P({ val: {} });
-            
-            return doss.$doRequest({
-              command: 'searchTheories',
+            return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), 'title' ] });
+          },
+          $setFunc: function(val) {
+            return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), 'title' ],
               params: {
-                searchTerm: searchTerm
+                token: dataSet.token.getValue(),
+                username: dataSet.username.getValue(),
+                value: val
               }
             });
           },
-          updateMillis: 2000
-        })
+          updateMillis: 5000
+        });
+        nodeInfo.title.start();
+        
+        // "theory" syncs with the `theorySet.<theoryId>.@essay.markup` value server-side
+        nodeInfo.theory = new uf.RepeatingSyncedInfo({
+          initialValue: '- not loaded -',
+          $getFunc: function() {
+            return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), '@essay', 'markup' ] });
+          },
+          $setFunc: function(val) {
+            return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), '@essay', 'markup' ],
+              params: {
+                token: dataSet.token.getValue(),
+                username: dataSet.username.getValue(),
+                value: val
+              }
+            });
+          },
+          updateMillis: 5000
+        });
+        nodeInfo.theory.start();
+        
+        return nodeInfo;
+      };
+      var renameNodeData = function(params /* oldName, newName */) {
+        var oldName = U.param(params, 'oldName');
+        var newName = U.param(params, 'newName');
+        
+        dataSet.activeNodes.modValue(function(activeNodes) {
+          // Re-key...
+          activeNodes[newName] = activeNodes[oldName];
+          delete activeNodes[oldName];
+          
+          // ... and update the quickName
+          activeNodes[newName].quickName.setValue(newName);
+          
+          return activeNodes;
+        });
+      };
+      var removeNodeData = function(name) {
+        dataSet.activeNodes.modValue(function(activeNodes) {
+          var obj = activeNodes[name];
+          [
+            obj.physics.r, obj.physics.weight, obj.physics.loc,
+            obj.username, obj.quickName, obj.title, obj.theory, obj.saved
+          ].forEach(function(info) {
+            info.stop();
+          });
+          
+          delete activeNodes[name];
+          return activeNodes;
+        });
       };
       
       var relateTheories = function(relationType, params /* target, dropZone */) {
@@ -610,36 +786,44 @@ var package = new PACK.pack.Package({ name: 'logic',
       var removeNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
         
         var target = U.param(params, 'target');
-        dataSet.activeNodes.modValue(function(activeNodes) {
-          delete activeNodes[target.name];
-          return activeNodes;
-        });
+        removeNodeData(target.name);
         
       }});
-      var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', data: dataSet.icons.remove }) ] });
+      var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: dataSet.icons.remove }) ] });
       removeNodeView.decorators = [ removeNode, removeNode.createClassDecorator(removeNodeView) ];
       
       // Drag nodes to this view to delete them
       var deleteNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
         
         var target = U.param(params, 'target');
-        doss.$doRequest({
+        var targetData = dataSet.activeNodes.getValue()[target.name];
+        
+        // If the theory is saved ask the server to delete it, otherwise simply remove it
+        if (targetData.saved.getValue()) {
           
-          command: 'deleteTheory'
-          
-        }).then(function(response) {
-          
-          var deletedName = response.quickName;
-          
-          dataSet.activeNodes.modValue(function(activeNodes) {
-            delete activeNodes[deletedName];
-            return activeNodes;
+          var $delete = doss.$doRequest({
+            command: 'deleteTheory',
+            params: { token: dataSet.token.getValue(), quickName: targetData.quickName.getValue() }
           });
+          
+        } else {
+          
+          var $delete = PACK.p.$null;
+          
+        }
+        
+        $delete.then(function(response) {
+          
+          removeNodeData(target.name);
+          
+        }).fail(function(err) {
+          
+          console.error(err);
           
         });
         
       }});
-      var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', data: dataSet.icons.del }) ] });
+      var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: dataSet.icons.del }) ] });
       deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
       
       var graphNodeInvRadius = 1 / 150;
@@ -647,7 +831,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         childData: dataSet.activeNodes,
         decorators: [
           new PACK.userifyNodePhysics.NodePhysicsDecorator({
-            data: dataSet.activeNodes,
+            info: dataSet.activeNodes,
             maxUpdatesPerFrame: 10,
             physicsSettings: {
               scaleTime: 1,
@@ -660,27 +844,27 @@ var package = new PACK.pack.Package({ name: 'logic',
             }
           })
         ],
-        genChildView: function(name, nodeData) {
+        genChildView: function(name, nodeInfo) {
           
-          // Note: `nodeData` === graphView.childData.getValue()[name] === dataSet.activeNodes.getValue()[name]
+          // Note: `nodeInfo` === graphView.childData.getValue()[name] === dataSet.activeNodes.getValue()[name]
           
           // This is the view that will be returned
           var view = new uf.SetView({ name: name });
           
-          // Add data to the `activeNodes` object: physics, owned, saved, and editing
-          var loc = nodeData.physics.loc.getValue();
-          var owned = nodeData.username.getValue() === dataSet.username.getValue();
-          nodeData.update({
+          // Add data to the `Info` object: physics, owned, saved, and editing
+          var loc = nodeInfo.physics.loc.getValue();
+          var owned = nodeInfo.username.getValue() === dataSet.username.getValue();
+          nodeInfo.update({
             // "owned" is immutable
             owned: new uf.SimpleInfo({ value: owned }),
             
-            // "saved" links directly to the raw `Info`
-            saved: nodeData.saved,
+            // "saved" links directly to the raw `Info` (actually this is redundant; setting a property to itself)
+            saved: nodeInfo.saved,
             
             // "editing' is initially enabled for owned theories if either the title or theory is blank
-            editing: new uf.SimpleInfo({ value: owned && (!nodeData.title.getValue() || !nodeData.theory.getValue()) })
+            editing: new uf.SimpleInfo({ value: owned && (!nodeInfo.title.getValue() || !nodeInfo.theory.getValue()) })
           });
-          nodeData.physics.update({
+          nodeInfo.physics.update({
             r: new uf.CalculatedInfo({
               getFunc: function() {
                 return view === dataSet.focusedNode.getValue() /*&& !dragNode.isDragging(view)*/ ? 150 : 65;
@@ -689,18 +873,18 @@ var package = new PACK.pack.Package({ name: 'logic',
             weight: new uf.CalculatedInfo({
               getFunc: function() {
                 // Nodes being dragged have 0 weight
-                var drg = dragNode.data.getValue();
+                var drg = dragNode.info.getValue();
                 
                 // 1) Nodes that aren't being dragging have a weight of `1`
                 if (!dragNode.isDragging(view)) return 1;
                 
-                var waitTimeMs = dragNode.data.getValue().getWaitTimeMs();
+                var waitTimeMs = dragNode.info.getValue().getWaitTimeMs();
                 
                 // 2) Dragged nodes that are held in place for a moment can gain weight...
                 if (waitTimeMs > 500)
                   
                   // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
-                  if (!dragAddDependency.data.getValue() && !dragAddChallenger.data.getValue()) return 3;
+                  if (!dragAddDependency.info.getValue() && !dragAddChallenger.info.getValue()) return 3;
                 
                 // 4) All dragged nodes have a weight of `0`
                 return 0;
@@ -711,7 +895,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
                 // 1) Nodes being dragged position to cursor
                 if (dragNode.isDragging(view)) {
-                  var drg = dragNode.data.getValue();
+                  var drg = dragNode.info.getValue();
                   // return loc = drg.pt2.add(drg.capturedData); // Note that `loc` is also updated here
                   return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
                 }
@@ -732,23 +916,29 @@ var package = new PACK.pack.Package({ name: 'logic',
           // Create the dropzones for support and challenges
           var loadDependenciesButton = new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
             
-            var quickName = nodeData.quickName.getValue();
-            console.log('Dependencies for ' + quickName, raw);
+            var quickName = nodeInfo.quickName.getValue();
+            console.log('Dependencies for ' + quickName);
             
             return doss.$doRequest({
               
               address: [ 'theorySet', quickName, 'dependencySet' ],
-              command: 'getData'
+              command: 'getRawData'
               
             }).then(function(dependencySetData) {
               
-              for (var k in dependencySetData) {
-                
-                var theoryData = dependencySetData[k].theory;
-                
-                console.log('Dependency:', theoryData);
-                
-              }
+              new PACK.p.P({ all: dependencySetData.map(function(v) {
+                return doss.$doRequest({
+                  address: v.theory,
+                  command: 'getPickedFields',
+                  params: {
+                    fields: [ 'title', '@user', 'quickName' ]
+                  }
+                })
+              })}).then(function(pickedFieldSet) {
+                console.log(pickedFieldSet);
+              }).fail(function(err) {
+                console.error(err.stack);
+              });
               
             }).fail(function(err) {
               
@@ -764,7 +954,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           
           var loadChallengesButton = new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
             
-            var quickName = nodeData.quickName.getValue();
+            var quickName = nodeInfo.quickName.getValue();
             console.log('Challengers for ' + quickName, raw);
             
             return doss.$doRequest({
@@ -801,8 +991,8 @@ var package = new PACK.pack.Package({ name: 'logic',
             clickNode,  // Clicking focuses node
             new uf.CssDecorator({   // Modify position and radius based on physics
               properties: [ 'left', 'top', 'transform' ],
-              data: function() {
-                var phys = nodeData.physics;
+              info: function() {
+                var phys = nodeInfo.physics;
                 var loc = phys.loc.getValue();
                 var r = phys.r.getValue();
                 
@@ -815,20 +1005,20 @@ var package = new PACK.pack.Package({ name: 'logic',
             }),
             new uf.ClassDecorator({ // Add a "dragging" class when dragged
               list: [ 'dragging' ],
-              data: function() {
+              info: function() {
                 return dragNode.isDragging(view) ? 'dragging' : null;
               }
             }),
             new uf.ClassDecorator({ // Add a "focused" class when focused
               list: [ 'focused' ],
-              data: function() {
+              info: function() {
                 return dataSet.focusedNode.getValue() === view ? 'focused' : null;
               }
             }),
             new uf.ClassDecorator({ // Add "saved"/"unsaved" classes
               list: [ 'saved', 'unsaved' ],
-              data: function() {
-                return nodeData.saved.getValue() ? 'saved' : 'unsaved'
+              info: function() {
+                return nodeInfo.saved.getValue() ? 'saved' : 'unsaved'
               }
             })
           ];
@@ -837,98 +1027,73 @@ var package = new PACK.pack.Package({ name: 'logic',
               loadDependenciesButton,
               loadChallengesButton,
             ]}),
-            new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeData.saved.getValue() ? 'saved' : 'unsaved' }, children: [
+            new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeInfo.saved.getValue() ? 'saved' : 'unsaved' }, children: [
               // Shows up on unsaved theories (allows editing only quickName)
               new uf.SetView({ name: 'unsaved', children: [
-                new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textData: nodeData.quickName, placeholderData: 'quickName' }),
+                new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textData: nodeInfo.quickName, placeholderData: 'quickName' }),
                 new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
-                  return doss.$doRequest({
+                  
+                  /*
+                  var $saveTheory = doss.$doRequest({ address: 'theorySet', command: 'addDossier', params: {
+                    token: dataSet.token.getValue(),
+                    dossierData: {
+                      user:       { type: 'oldRef', value: [ 'userSet', dataSet.username.getValue() ] },
+                      quickName:  { type: 'simple', value: nodeInfo.quickName.getValue() },
+                      title:      { type: 'simple', value: '' },
+                      essay:      { type: 'newRef', value: { markup: '' } }
+                    }
+                  }});
+                  */
+                  
+                  var $saveTheory = doss.$doRequest({
                     command: 'saveTheory',
                     params: {
                       token: dataSet.token.getValue(),
                       username: dataSet.username.getValue(),
-                      quickName: nodeData.quickName.getValue(),
+                      quickName: nodeInfo.quickName.getValue(),
                       title: '',
                       theory: '',
                       type: 'create' // 'create' | 'update'
                     }
-                  }).then(function(response) {
+                  });
+                  
+                  return $saveTheory.then(function(response) {
                     
+                    console.log(response);
+                    
+                    var originalName = view.name;
                     var savedQuickName = response.quickName;
                     
                     // If the quickName has changed re-key the view...
-                    if (savedQuickName !== name) {
-                      // Re-key the value
-                      dataSet.activeNodes.modValue(function(activeNodes) {
-                        activeNodes[savedQuickName] = activeNodes[name];
-                        delete activeNodes[name];
-                        return activeNodes;
-                      });
+                    if (savedQuickName !== originalName) {
                       
-                      // and ensure `graphView` knows about the re-keying
-                      graphView.renameChild(view, nodeData.quickName.getValue()); // Should only happen on save success
+                      // ... both in `activeNodes`...
+                      renameNodeData({ oldName: originalName, newName: savedQuickName }); // This will update `quickName` Info
+                      
+                      // ... and in `graphView`
+                      graphView.renameChild(view, nodeInfo.quickName.getValue()); // Should only happen on save success
+                      
                     }
                     
-                    // Update all the `Info` objects so that they are set to sync with the server:
-                    
-                    // "quickName" is now immutable
-                    nodeData.quickName.setValue(savedQuickName);
-                    
-                    // "saved" is now fixed to the value `true`
-                    nodeData.saved.setValue(true);
-                    
-                    // "title" syncs with the `theorySet.<theoryId>.title` value server-side
-                    nodeData.title = new uf.UpdatingInfo({
-                      initialValue: '- not loaded -',
-                      $getFunc: function() {
-                        return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeData.quickName.getValue(), 'title' ] });
-                      },
-                      $setFunc: function(val) {
-                        return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeData.quickName.getValue(), 'title' ],
-                          params: {
-                            token: dataSet.token.getValue(),
-                            username: dataSet.username.getValue(),
-                            value: val
-                          }
-                        });
-                      },
-                      updateMillis: 5000
-                    });
-                    nodeData.title.start();
-                    
-                    // "theory" syncs with the `theorySet.<theoryId>.@essay.markup` value server-side
-                    nodeData.theory = new uf.UpdatingInfo({
-                      initialValue: '- not loaded -',
-                      $getFunc: function() {
-                        return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeData.quickName.getValue(), '@essay', 'markup' ] });
-                      },
-                      $setFunc: function(val) {
-                        return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeData.quickName.getValue(), '@essay', 'markup' ],
-                          params: {
-                            token: dataSet.token.getValue(),
-                            username: dataSet.username.getValue(),
-                            value: val
-                          }
-                        });
-                      }
-                    });
-                    nodeData.theory.start();
+                    // Insert all server-syncing properties now that this theory is saved
+                    saveNodeData(nodeInfo);
                     
                   }).fail(function(err) {
                     console.log('Couldn\'t create theory: ' + err.message);
                   });
+                  
                 }})
               ]}),
               
               // Shows up for saved theories (allows editing title and essay)
               new uf.SetView({ name: 'saved', children: [
                 
-                new uf.TextView({ name: 'user', data: nodeData.username }),
+                new uf.TextView({ name: 'user', info: nodeInfo.username }),
                 new uf.DynamicTextEditView({ name: 'title',
                   editableData: function() {
-                    return view === dataSet.focusedNode.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
+                    return view === dataSet.focusedNode.getValue() && nodeInfo.editing.getValue() && nodeInfo.owned.getValue();
                   },
-                  textData: new uf.ProxyInfo({ data: nodeData, path: 'title' }),
+                  textData: new uf.ProxyInfo({ info: nodeInfo, path: 'title' }),
                   inputViewParams: {
                     cssClasses: [ 'centered' ],
                     placeholderData: 'Title'
@@ -936,31 +1101,31 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }),
                 new uf.DynamicTextEditView({ name: 'theory',
                   editableData: function() {
-                    return view === dataSet.focusedNode.getValue() && nodeData.editing.getValue() && nodeData.owned.getValue();
+                    return view === dataSet.focusedNode.getValue() && nodeInfo.editing.getValue() && nodeInfo.owned.getValue();
                   },
-                  textData: new uf.ProxyInfo({ data: nodeData, path: 'theory' }),
+                  textData: new uf.ProxyInfo({ info: nodeInfo, path: 'theory' }),
                   inputViewParams: {
                     placeholderData: 'Theory',
                     multiline: true
                   }
                 }),
-                new uf.TextView({ name: 'quickName', data: nodeData.quickName }),
+                new uf.TextView({ name: 'quickName', info: nodeInfo.quickName }),
                 
               ]})
               
             ]}),
-            new uf.ChoiceView({ name: 'toggleEdit', choiceData: function() { return nodeData.owned.getValue() && nodeData.saved.getValue() ? 'view' : null }, children: [
+            new uf.ChoiceView({ name: 'toggleEdit', choiceData: function() { return nodeInfo.owned.getValue() && nodeInfo.saved.getValue() ? 'view' : null }, children: [
               new uf.ActionView({ name: 'view', textData: '',
                 decorators: [
                   new uf.ClassDecorator({
                     list: [ 'editing' ],
-                    data: function() {
-                      return nodeData.editing.getValue() ? 'editing' : null;
+                    info: function() {
+                      return nodeInfo.editing.getValue() ? 'editing' : null;
                     }
                   })
                 ],
                 $action: function() {
-                  nodeData.editing.modValue(function(val) { return !val; });
+                  nodeInfo.editing.modValue(function(val) { return !val; });
                   return PACK.p.$null;
                 }
               })
@@ -972,194 +1137,161 @@ var package = new PACK.pack.Package({ name: 'logic',
         }
       });
       
-      var rootView = new uf.SetView({ name: 'root',
-        decorators: [
-          new uf.ClassDecorator({
-            list: [ 'dragging' ],
-            data: function() {
-              return dragNode.data.getValue().drag ? 'dragging' : null;
-            }
-          })
-        ],
-        children: [
+      var rootView = new uf.RootView({ name: 'root' });
+      rootView.decorators = [
+        new uf.ClassDecorator({
+          list: [ 'dragging' ],
+          info: function() {
+            return dragNode.info.getValue().drag ? 'dragging' : null;
+          }
+        })
+      ];
+      rootView.addChildren([
+        
+        new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
           
-          new uf.ChoiceView({ name: 'login', choiceData: dataSet.loginView, children: [
+          new uf.SetView({ name: 'out', children: [
             
-            new uf.SetView({ name: 'out', children: [
-              
-              new uf.TextHideView({ name: 'loginError', data: dataSet.loginError }),
-              
-              new uf.TextEditView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
-              new uf.TextEditView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
-              new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
-                return doss.$doRequest({ command: 'getToken', params: {
-                  username: dataSet.username.getValue(),
-                  password: dataSet.password.getValue()
-                }}).then(function(data) {
-                  dataSet.token.setValue(data.token);
-                }).fail(function(err) {
-                  dataSet.loginError.setValue(err.message);
-                  new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
-                });
-              }})
-              
-            ]}),
-            new uf.SetView({ name: 'in', children: [
-              
-              graphView,
-              
-              new uf.SetView({ name: 'dropZones', children: [ removeNodeView, deleteNodeView ]}),
-              new uf.SetView({ name: 'controls', children: [
-                new uf.SetView({ name: 'search', cssClasses: [ 'control' ], children: [
-                  new uf.TextEditView({ name: 'bar', textData: dataSet.searchTerm, placeholderData: 'Search' }),
-                  // TODO: What about an unsaved atom that has the same quickName (e.g. "newTheory") as a saved atom?
-                  // Loading it in will clobber the unsaved atom for what will look like no reason
-                  new uf.DynamicSetView({ name: 'results',
-                    childData: dataSet.searchResults,
-                    decorators: [
-                    ],
-                    genChildView: function(name, nodeData) {
-                      
-                      var view = new uf.SetView({ name: name });
-                      
-                      view.cssClasses = [ 'result' ];
-                      view.decorators = [
-                        new uf.ClassDecorator({
-                          list: [ 'active' ],
-                          data: function() {
-                            return (nodeData.quickName in dataSet.activeNodes.getValue()) ? 'active' : null;
-                          }
-                        })
-                      ];
-                      view.addChildren([
-                        new uf.TextView({ name: 'username', cssClasses: [ 'item' ], data: nodeData.username }),
-                        new uf.TextView({ name: 'quickName', cssClasses: [ 'item' ], data: nodeData.quickName }),
-                        new uf.TextView({ name: 'title', cssClasses: [ 'item' ], data: nodeData.title }),
-                        new uf.TextView({ name: 'theory', cssClasses: [ 'item' ], data: nodeData.theory }),
-                        new uf.ActionView({ name: 'choose', textData: 'Pick', $action: function() {
-                          
-                          if (!(nodeData.quickName in graphView.children)) {
-                          
-                            dataSet.activeNodes.modValue(function(activeNodes) {
-                              var activeNodeData = {
-                                physics: {
-                                  r: new uf.SimpleInfo({ value: 65 }),
-                                  weight: new uf.SimpleInfo({ value: 1 }),
-                                  loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
-                                  vel: PACK.geom.ORIGIN,
-                                  acl: PACK.geom.ORIGIN
-                                },
-                                username: new uf.SimpleInfo({ value: nodeData.username }),
-                                quickName: new uf.SimpleInfo({ value: nodeData.quickName }),
-                                title: new uf.UpdatingInfo({
-                                  initialValue: '- not loaded -',
-                                  $getFunc: function() {
-                                    return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', activeNodeData.quickName.getValue(), 'title' ] });
-                                  },
-                                  $setFunc: function(val) { // This will never be used if the node doesn't belong to the client
-                                    return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', activeNodeData.quickName.getValue(), 'title' ],
-                                      params: {
-                                        token: dataSet.token.getValue(),
-                                        username: dataSet.username.getValue(),
-                                        value: val
-                                      }
-                                    });
-                                  },
-                                  updateMillis: 5000
-                                }),
-                                theory: new uf.UpdatingInfo({
-                                  initialValue: '- not loaded -',
-                                  $getFunc: function() {
-                                    return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', activeNodeData.quickName.getValue(), '@essay', 'markup' ] });
-                                  },
-                                  $setFunc: function(val) {
-                                    return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', activeNodeData.quickName.getValue(), '@essay', 'markup' ],
-                                      params: {
-                                        token: dataSet.token.getValue(),
-                                        username: dataSet.username.getValue(),
-                                        value: val
-                                      }
-                                    });
-                                  }
-                                }),
-                                saved: new uf.SimpleInfo({ value: true })
-                              };
-                              
-                              activeNodeData.title.start();
-                              activeNodeData.theory.start();
-                              
-                              activeNodes[nodeData.quickName] = activeNodeData;
-                              
-                              return activeNodes;
-                            });
-                            graphView.updateChildren();
-                            
-                          }
-                          
-                          var pickedChild = graphView.children[nodeData.quickName];
-                          
-                          dataSet.focusedNode.setValue(pickedChild);
-                          
-                          return PACK.p.$null;
-                          
-                        }})
-                      ]);
-                      
-                      return view;
-                      
-                    }
-                  })
-                ]}),
-                new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textData: 'New Theory', $action: function() {
-                  
-                  var num = 2;
-                  var prefix = 'newTheory';
-                  var name = prefix;
-                  while (name in graphView.children) name = prefix + (num++); // Shouldn't be checking `graphView.children` - should be checking `dataSet.activeNodes` I think
-                  
-                  dataSet.activeNodes.modValue(function(val) {
-                    val[name] = {
-                      physics: {
-                        r: new uf.SimpleInfo({ value: 65 }),
-                        weight: new uf.SimpleInfo({ value: 1 }),
-                        loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
-                        vel: PACK.geom.ORIGIN,
-                        acl: PACK.geom.ORIGIN
-                      },
-                      username: dataSet.username,
-                      quickName: new uf.SimpleInfo({ value: name }),
-                      title: new uf.SimpleInfo({ value: '' }),
-                      theory: new uf.SimpleInfo({ value: '' }),
-                      saved: new uf.SimpleInfo({ value: false })
-                    };
-                    
-                    
-                    return val;
-                  });
-                  
-                  var child = graphView.updateChildren().add[name];
-                  dataSet.focusedNode.setValue(child);
-                  
-                  return PACK.p.$null;
-                  
-                }}),
-                new uf.ActionView({ name: 'exit', cssClasses: [ 'control' ], textData: 'Log Out', $action: function() {
-                  
-                  dataSet.token.setValue('');
-                  return PACK.p.$null;
-                  
-                }})
-              ]})
-              
-            ]}),
+            new uf.TextHideView({ name: 'loginError', info: dataSet.loginError }),
+            
+            new uf.TextEditView({ name: 'username', textData: dataSet.username, placeholderData: 'Username' }),
+            new uf.TextEditView({ name: 'password', textData: dataSet.password, placeholderData: 'Password' }),
+            new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
+              return doss.$doRequest({ command: 'getToken', params: {
+                username: dataSet.username.getValue(),
+                password: dataSet.password.getValue()
+              }}).then(function(data) {
+                dataSet.token.setValue(data.token);
+              }).fail(function(err) {
+                dataSet.loginError.setValue(err.message);
+                new PACK.p.P({ timeout: 3000 }).then(function() { dataSet.loginError.setValue(''); });
+              });
+            }})
             
           ]}),
-          new uf.TextView({ name: 'version', data: dataSet.appVersion }),
-          new uf.TextView({ name: 'rps', data: dataSet.rps })
+          new uf.SetView({ name: 'in', children: [
+            
+            graphView,
+            
+            new uf.SetView({ name: 'dropZones', children: [ removeNodeView, deleteNodeView ]}),
+            new uf.SetView({ name: 'controls', children: [
+              new uf.SetView({ name: 'search', cssClasses: [ 'control' ], children: [
+                new uf.TextEditView({ name: 'bar', textData: dataSet.searchTerm, placeholderData: 'Search' }),
+                // TODO: What about an unsaved atom that has the same quickName (e.g. "newTheory") as a saved atom?
+                // Loading it in will clobber the unsaved atom for what will look like no reason
+                new uf.DynamicSetView({ name: 'results',
+                  childData: dataSet.searchResults,
+                  decorators: [
+                  ],
+                  genChildView: function(name, nodeInfo) {
+                    
+                    var view = new uf.SetView({ name: name });
+                    
+                    view.cssClasses = [ 'result' ];
+                    view.decorators = [
+                      new uf.ClassDecorator({
+                        list: [ 'active' ],
+                        info: function() {
+                          return (nodeInfo.quickName in dataSet.activeNodes.getValue()) ? 'active' : null;
+                        }
+                      })
+                    ];
+                    view.addChildren([
+                      new uf.TextView({ name: 'username', cssClasses: [ 'item' ], info: nodeInfo.username }),
+                      new uf.TextView({ name: 'quickName', cssClasses: [ 'item' ], info: nodeInfo.quickName }),
+                      new uf.TextView({ name: 'title', cssClasses: [ 'item' ], info: nodeInfo.title }),
+                      new uf.TextView({ name: 'theory', cssClasses: [ 'item' ], info: nodeInfo.theory }),
+                      new uf.ActionView({ name: 'choose', textData: dataSet.icons.insert, $action: function() {
+                        
+                        if (!(nodeInfo.quickName in graphView.children)) {
+                        
+                          // A new theory has been added
+                          dataSet.activeNodes.modValue(function(activeNodes) {
+                            activeNodes[nodeInfo.quickName] = saveNodeData(makeNodeData({
+                              quickName: nodeInfo.quickName,
+                              username: nodeInfo.username
+                            }));
+                            return activeNodes;
+                          });
+                          
+                          // Ensure that `graphView` is immediately synced
+                          graphView.updateChildren();
+                          
+                        }
+                        
+                        // Focus the theory that was searched for
+                        var pickedChild = graphView.children[nodeInfo.quickName];
+                        dataSet.focusedNode.setValue(pickedChild);
+                        
+                        // Clear the search term
+                        dataSet.searchTerm.setValue('');
+                        
+                        return PACK.p.$null;
+                        
+                      }})
+                    ]);
+                    
+                    return view;
+                    
+                  }
+                })
+              ]}),
+              new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textData: 'New Theory', $action: function() {
+                
+                var num = 2;
+                var prefix = 'newTheory';
+                var name = prefix;
+                while (name in graphView.children) name = prefix + (num++); // Shouldn't be checking `graphView.children` - should be checking `dataSet.activeNodes` I think
+                
+                dataSet.activeNodes.modValue(function(val) {
+                  val[name] = makeNodeData({
+                    username: dataSet.username,
+                    quickName: name
+                  });
+                  
+                  /*
+                  val[name] = {
+                    physics: {
+                      r: new uf.SimpleInfo({ value: 65 }),
+                      weight: new uf.SimpleInfo({ value: 1 }),
+                      loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
+                      vel: PACK.geom.ORIGIN,
+                      acl: PACK.geom.ORIGIN
+                    },
+                    username: dataSet.username,
+                    quickName: new uf.SimpleInfo({ value: name }),
+                    title: new uf.SimpleInfo({ value: '' }),
+                    theory: new uf.SimpleInfo({ value: '' }),
+                    saved: new uf.SimpleInfo({ value: false })
+                  };
+                  */
+                  
+                  return val;
+                });
+                
+                var child = graphView.updateChildren().add[name];
+                dataSet.focusedNode.setValue(child);
+                
+                return PACK.p.$null;
+                
+              }}),
+              new uf.ActionView({ name: 'exit', cssClasses: [ 'control' ], textData: 'Log Out', $action: function() {
+                
+                dataSet.token.setValue('');
+                return PACK.p.$null;
+                
+              }})
+            ]})
+            
+          ]}),
           
-        ]}
-      );
+        ]}),
+        new uf.TextView({ name: 'version', info: dataSet.appVersion }),
+        new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo + 'ms' } })
+        
+      ]);
       
+      /*
       var updateMs = 1000 / 60;
       var updateFunc = function() {
         var time = +new Date();
@@ -1168,11 +1300,14 @@ var package = new PACK.pack.Package({ name: 'logic',
         requestAnimationFrame(updateFunc);
       };
       requestAnimationFrame(updateFunc);
+      */
+      
+      rootView.start();
       
       // Make some stuff accessible on the command line
       window.root = doss;
       window.view = rootView;
-      window.data = dataSet;
+      window.info = dataSet;
       
       /* ======= TESTING STUFF ======== */
       

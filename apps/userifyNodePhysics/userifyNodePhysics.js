@@ -8,10 +8,10 @@ var package = new PACK.pack.Package({ name: 'userifyNodePhysics',
       NodePhysicsDecorator: U.makeClass({ name: 'NodePhysicsDecorator',
         superclass: uf.Decorator,
         methods: function(sc, c) { return {
-          init: function(params /* data, maxUpdatesPerFrame */) {
+          init: function(params /* info, maxUpdatesPerFrame */) {
             sc.init.call(this, params);
             
-            this.data = U.param(params, 'data');
+            this.info = U.param(params, 'info');
             
             var physicsSettings = U.param(params, 'physicsSettings', {});
             this.physicsSettings = {
@@ -32,7 +32,7 @@ var package = new PACK.pack.Package({ name: 'userifyNodePhysics',
             var ps = this.physicsSettings;
             var secs = millis * 0.001 * ps.scaleTime;
             
-            var cs = this.data.getValue().toArray();
+            var cs = this.info.getValue().toArray();
             var ncs = cs.length;
             var mncs = Math.min(ncs, this.maxUpdatesPerFrame);
             
