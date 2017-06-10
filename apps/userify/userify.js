@@ -220,7 +220,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       SyncedInfo: U.makeClass({ name: 'SyncedInfo',
         superclassName: 'Info',
         methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, updateMillis */) {
+          init: function(params /* $getFunc, $setFunc, initialValue, updateMs */) {
             sc.init.call(this, params);
             this.$getFunc = U.param(params, '$getFunc');
             this.$setFunc = U.param(params, '$setFunc', null);
@@ -254,10 +254,10 @@ var package = new PACK.pack.Package({ name: 'userify',
       RepeatingSyncedInfo: U.makeClass({ name: 'RepeatingSyncedInfo',
         superclassName: 'SyncedInfo',
         methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, updateMillis, jitterMillis */) {
+          init: function(params /* $getFunc, $setFunc, initialValue, updateMs, jitterMs */) {
             sc.init.call(this, params);
-            this.updateMillis = U.param(params, 'updateMillis', 0);
-            this.jitterMillis = U.param(params, 'jitterMillis', this.updateMillis * 0.19);
+            this.updateMs = U.param(params, 'updateMs', 0);
+            this.jitterMs = U.param(params, 'jitterMs', this.updateMs * 0.19);
             
             this.timeout = null;
           },
@@ -270,9 +270,9 @@ var package = new PACK.pack.Package({ name: 'userify',
               
               this.updateValue(num, value);
               
-              if (this.updateMillis) {
-                var randJitter = ((Math.random() - 0.5) * 2 * this.jitterMillis);
-                this.timeout = setTimeout(this.refresh.bind(this), this.updateMillis + randJitter); // TODO: timeout delay should compensate for latency
+              if (this.updateMs) {
+                var randJitter = ((Math.random() - 0.5) * 2 * this.jitterMs);
+                this.timeout = setTimeout(this.refresh.bind(this), this.updateMs + randJitter); // TODO: timeout delay should compensate for latency
               }
               
             }.bind(this, this.num++)).done();
@@ -587,9 +587,11 @@ var package = new PACK.pack.Package({ name: 'userify',
               
             }
           },
-          end: function(view) {
-            var classList = view.domRoot.classList;
-            classList.remove.apply(classList, this.list);
+          stop: function(view) {
+            if (view.domRoot) {
+              var classList = view.domRoot.classList;
+              classList.remove.apply(classList, this.list);
+            }
           }
         };}
       }),
@@ -615,9 +617,11 @@ var package = new PACK.pack.Package({ name: 'userify',
               if (val !== style[prop]) style[prop] = val; // Only update the style props that have changed
             }
           },
-          end: function(view) {
-            var style = view.domRoot.style;
-            for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
+          stop: function(view) {
+            if (view.domRoot) {
+              var style = view.domRoot.style;
+              for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
+            }
           }
         };}
       }),
@@ -897,6 +901,47 @@ var package = new PACK.pack.Package({ name: 'userify',
           stop: function() {
             sc.stop.call(this);
             this.textData.stop();
+          }
+        };}
+      }),
+      CanvasView: U.makeClass({ name: 'CanvasView',
+        superclassName: 'View',
+        description: 'Generates a canvas and paint handler for ' +
+          'arbitrary graphics',
+        methods: function(sc, c) { return {
+          init: function(params /* name, options { centered }, drawFunc(graphicsContext, millis) */) {
+            sc.init.call(this, params);
+            
+            this.drawFunc = U.param(params, 'drawFunc');
+            this.options = {
+              centered: false
+            }.update(U.param(params, 'options', {}));
+            this.context = null;
+          },
+          
+          createDomRoot: function() {
+            var canvas = document.createElement('canvas');
+            this.context = canvas.getContext('2d');
+            
+            return canvas;
+          },
+          tick: function(millis) {
+            var canvas = this.domRoot;
+            var bounds = canvas.parentNode.getBoundingClientRect();
+            var bw = Math.round(bounds.width);
+            var bh = Math.round(bounds.height);
+            
+            if (canvas.width !== bw || canvas.height !== bh) {
+              canvas.width = bw;
+              canvas.height = bh;
+            }
+            
+            this.context.clearRect(0, 0, canvas.width, canvas.height)
+            
+            this.context.save();
+            if (this.options.centered) { this.context.translate(bw >> 1, bh >> 1); }
+            this.drawFunc(this.context, millis)
+            this.context.restore();
           }
         };}
       }),

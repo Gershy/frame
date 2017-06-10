@@ -81,6 +81,8 @@ rgba(0, 0, 0, 0.5): Unimportant text on white background
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
+  
+  z-index: 1;
 }
 #root-login-in-graph {
   position: absolute;
@@ -352,7 +354,7 @@ rgba(0, 0, 0, 0.5): Unimportant text on white background
 }
 #root.dragging #root-login-in-graph > .theory > ._controls > ._interactive {
   pointer-events: all;
-  transform: scale(1.8);
+  transform: scale(1.2);
 }
 #root.dragging #root-login-in-graph > .theory > ._controls > ._interactive.dragHover {
   transform: scale(2.4);
@@ -375,7 +377,7 @@ rgba(0, 0, 0, 0.5): Unimportant text on white background
   
   pointer-events: none;
   
-  z-index: 20;
+  z-index: 2;
 }
 #root.dragging #root-login-in-dropZones {
   right: 0;
@@ -426,6 +428,14 @@ rgba(0, 0, 0, 0.5): Unimportant text on white background
 #root-login-in-dropZones > ._delete:before { background-color: #cf1313; }
 #root-login-in-dropZones > ._delete.dragHover { box-shadow: inset 0 0 0 30px #cf1313; color: #ffffff; }
 
+/* Canvas */
+#root-login-in-canvas {
+  position: absolute; left: 0; top: 0;
+  z-index: 100; /* On top of everything */
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 
 /* Controls */
 #root-login-in-controls {
@@ -434,6 +444,7 @@ rgba(0, 0, 0, 0.5): Unimportant text on white background
   box-sizing: border-box;
   left: 0; bottom: 0; padding: 0 5px;
   white-space: nowrap;
+  z-index: 3; /* Controls technically cover the dropZones contain */
 }
 #root-login-in-controls {
   display: inline-block; margin-right: 10px;

@@ -30,10 +30,7 @@ var package = new PACK.pack.Package({ name: 'geom',
             });
           },
           moveTowards: function(loc, amt) {
-            var amt2 = amt * amt;
-            var d2 = this.distSqr(loc);
-            if (amt2 >= d2) return loc;
-            
+            if (this.within(amt, loc)) return loc;
             return this.angleMove(this.angleTo(loc), amt);
           },
           angleTo: function(pt2) { 
@@ -52,6 +49,9 @@ var package = new PACK.pack.Package({ name: 'geom',
           dist: function(pt2) {
             return Math.sqrt(this.distSqr(pt2));
           },
+          within: function(dist, targ) {
+            return this.distSqr(targ) <= dist * dist;
+          },
           magSqr: function() {
             return (this.x * this.x) + (this.y * this.y);
           },
@@ -69,6 +69,12 @@ var package = new PACK.pack.Package({ name: 'geom',
               x: this.x - pt2.x,
               y: this.y - pt2.y
             });
+          },
+          addN: function(x, y) { 
+            return new PACK.geom.Point({ x: this.x + x, y: this.y + y });
+          },
+          subN: function(x, y) { 
+            return new PACK.geom.Point({ x: this.x - x, y: this.y - y });
           },
           scale: function(n) {
             return new PACK.geom.Point({
