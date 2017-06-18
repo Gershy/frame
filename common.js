@@ -50,7 +50,7 @@ run on server or client side:
       },
       toArray: function() {
         var ret = [];
-        this.forEach(function(v) { ret.push(v); });
+        for (var k in this) ret.push(this[k]);
         return ret;
       },
       flatten: function(prefix) {

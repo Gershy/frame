@@ -297,16 +297,13 @@ var package = new PACK.pack.Package({ name: 'p',
             if (U.isServer()) {
               
               new PACK.p.P({ recoveryFunc: function(err) {
-                process.nextTick(function() {
-                  throw err;
-                });
+                process.nextTick(function() { throw err; });
               }}).tryResolve(this);
               
             } else {
               
               new PACK.p.P({ recoveryFunc: function(err) {
                 console.error(err.stack);
-                //setTimeout(function() { throw err; }, 10);
               }}).tryResolve(this);
               
             }

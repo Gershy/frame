@@ -5,17 +5,16 @@ NEAR-TERM:
   - Node physics
     - Related nodes should be attracted to ears, not to center
     - Gravitational strength needs to be stronger for related nodes
-- Reconcile relation terminology: "dependency", "challenge", "challenger"
-  - "supporter" and "contender" are same length (in verb form as well! :D)
 - animation + delay on theory deletion
-- Circularity between atoms (e.g. atom1 challenges atom2, atom2 supports atom1) results in stack overflow
+- Circularity between atoms (e.g. atom1 contends atom2, atom2 supports atom1) results in stack overflow
 - Need other sources which can load atoms
   - all the user's atoms
   - all of any user's atoms
   - all the atoms within an argument
-- Dragging a node to a dropzone throws an error if the cursor is simultaneously hovering over an "addDependency" dropzone
+- Dragging a node to a dropzone throws an error if the cursor is simultaneously hovering over an "addSupporter" dropzone
 
 INDEFINITE:
+- Need to introduce artificial latency and indicate all loading activities
 - Info objects should have an "altered" broadcast ability
   - No changes should occur unless there have been alterations
   - e.g. SetViews shouldn't update unless any relevant data has updated
@@ -35,15 +34,15 @@ INDEFINITE:
 - Error reporting (toast-style notifications on errors)
 - Long-polling support? (for use with RepeatingSyncedInfo - although RepeatingSyncedInfo should be unaware of whether or not it is long-polling)
 - Get rid of persistent sessions...?
-- Dependency/support loading should trigger a search (only within those dependencies/supports) for very large sets (to avoid hundreds of theories being loaded on-click)
+- Supporter/contender loading should trigger a search (only within those supporters/contenders) for very large sets (to avoid hundreds of theories being loaded on-click)
 - Need a way of preventing tons of views, all wired to the same Info, from running the same calculation over and over again (caching + reset() called before main update)
 - When a database is implemented `someDoss.getChild(...)` will need to become `someDoss.$getChild(...)` (which is a pity)
-- Can automatic defeat of challenges ensure that only axioms remain challengable?
+- Can automatic defeat of contenders ensure that only axioms remain contendable?
   - There should be limited ways to reject a supported theory
     - Should be prompted to reject the support instead of the theory
     - Only exception: rejecting a theory on the basis of missing support
       - Should automatically create a new empty theory supporting that theory,
-        and add a challenge against that support. This challenge should be
+        and add a contender against that support. This contender should be
         automatically defeated as soon as the support is filled in.
 - There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
 - Minification (and once files are being pre-processed, programatic separation between client/server)
@@ -175,8 +174,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                       title: '- placeholder -',
                       user: user,
                       essay: essay,
-                      dependencySet: [],
-                      challengeSet: [],
+                      supporterSet: [],
+                      contenderSet: [],
                       voterSet: []
                     }
                   });
@@ -249,30 +248,30 @@ var package = new PACK.pack.Package({ name: 'logic',
               
               var relationType = U.param(reqParams, 'relationType');
               
-              if (relationType === 'support') {
+              if (relationType === 'supporter') {
                 
-                if (standing.getChild([ 'challengeSet', incoming.name ]))
-                  throw new Error(incoming.name + ' already challenges ' + standing.name + '. It cannot also support it.');
+                if (standing.getChild([ 'contenderSet', incoming.name ]))
+                  throw new Error(incoming.name + ' already contends ' + standing.name + '. It cannot also support it.');
                 
-                console.log('Adding dependency');
+                console.log('Adding supporter');
                 var editor = new qd.Editor();
                 var $relation = editor.$addFast({
-                  par: standing.getChild('dependencySet'),
+                  par: standing.getChild('supporterSet'),
                   name: incoming.name,
                   data: {
                     theory: incoming
                   }
                 });
                 
-              } else if (relationType === 'challenge') {
+              } else if (relationType === 'contender') {
                 
-                if (standing.getChild([ 'dependencySet', incoming.name ]))
-                  throw new Error(incoming.name + ' already supports ' + standing.name + '. It cannot also challenge it.');
+                if (standing.getChild([ 'supporterSet', incoming.name ]))
+                  throw new Error(incoming.name + ' already supports ' + standing.name + '. It cannot also contend it.');
                 
-                console.log('Adding challenge');
+                console.log('Adding contender');
                 var editor = new qd.Editor();
                 var $relation = editor.$addFast({
-                  par: standing.getChild('challengeSet'),
+                  par: standing.getChild('contenderSet'),
                   name: incoming.name,
                   data: {
                     theory: incoming
@@ -326,8 +325,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               };
               
               return new PACK.p.P({ val: {
-                dependencies: theory.children.dependencySet.children.map(relToData),
-                challengers: theory.children.challengeSet.children.map(relToData)
+                supporters: theory.children.supporterSet.children.map(relToData),
+                contenders: theory.children.contenderSet.children.map(relToData)
               }});
               
             }
@@ -393,6 +392,12 @@ var package = new PACK.pack.Package({ name: 'logic',
           }
         };}
       }),
+      
+      nodeRelationOffsets: {
+        supporter: new Point({ x: -128, y: -98 }),
+        contender: new Point({ x: 128, y: -98 })
+      },
+      graphNodeInvRadius: 1 / 150,
       LogicPhysicsDecorator: U.makeClass({ name: 'LogicPhysicsDecorator',
         superclass: userify.Decorator,
         methods: function(sc, c) { return {
@@ -410,7 +415,11 @@ var package = new PACK.pack.Package({ name: 'logic',
               gravityMult: 1 / 100,
               separation: 20,
               centerAclMag: 10,
-              minVel: 0
+              minVel: 0,
+              relationStrength: {
+                supporter: 10,
+                contender: 10
+              }
             }.update(physicsSettings);
             
             this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
@@ -432,6 +441,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               var i = this.updateIndex;
               this.updateIndex = (++this.updateIndex >= cs.length) ? 0 : this.updateIndex;
               
+              var qn1 = cs[i].quickName.getValue();
               var phys1 = cs[i].physics;
               var loc1 = phys1.loc.getValue();
               var r1 = phys1.r.getValue();
@@ -462,21 +472,55 @@ var package = new PACK.pack.Package({ name: 'logic',
                 var r2 = phys2.r.getValue();
                 var w2 = phys2.weight.getValue();
                 
-                var sepDist = r1 + r2 + ps.separation;
-                var dist = loc1.dist(loc2);
-                var gap = dist - sepDist;
+                var centerDist = null; // Won't be calculated until necessary
                 
-                // Look out for division by 0
-                var denom = (Math.max(Math.pow(dist, ps.gravityPow), 1) * r1 * w1);
-                if (denom)
-                  phys1.acl = phys1.acl.add(new Point({
-                    ang: loc1.angleTo(loc2),
-                    mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
-                  }));
+                var incRelations = cs[j].incomingRelations.getValue();
                 
-                if (gap < 0 && w1 <= w2) { // The lighter node always moves out of the way for the heavier node
+                if (qn1 in incRelations) {
                   
-                  loc1 = loc2.angleMove(loc2.angleTo(loc1), sepDist);
+                  var points = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
+                  var attractor = loc2.add(PACK.geom.midPoint(points.toArray()));
+                  var dist = loc1.dist(attractor);
+                  /*
+                  var denom = Math.max(dist, 3) * r1 * w1;
+                  if (denom)
+                    phys1.acl = phys1.acl.add(new Point({
+                      ang: loc1.angleTo(attractor),
+                      mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
+                    }));
+                  */
+                  
+                  // TODO: HERE!!!!
+                  var sqr = dist * dist;
+                  var cube = sqr * dist;
+                  phys1.acl = phys1.acl.add(new Point({
+                    ang: loc1.angleTo(attractor),
+                    mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / (r1 * w1)
+                  }));
+                  
+                } else {
+                
+                  centerDist = loc1.dist(loc2);
+                  var denom = Math.max(Math.pow(centerDist, ps.gravityPow), 1) * r1 * w1;
+                  if (denom) // Look out for division by 0
+                    phys1.acl = phys1.acl.add(new Point({
+                      ang: loc1.angleTo(loc2),
+                      mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
+                    }));
+                  
+                }
+                
+                if (w1 <= w2) { // If node1 is lighter, it may be displaced by node2
+                  
+                  if (!centerDist) centerDist = loc1.dist(loc2); // `centerDist` may already be calculated
+                  
+                  var sepDist = r1 + r2 + ps.separation;
+                  var gap = centerDist - sepDist;
+                  if (gap < 0) { 
+                    
+                    loc1 = loc2.angleMove(loc2.angleTo(loc1), sepDist);
+                    
+                  }
                   
                 }
                 
@@ -489,6 +533,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           }
         };}
       })
+      
     };
     
     if (U.isServer()) {
@@ -533,14 +578,14 @@ var package = new PACK.pack.Package({ name: 'logic',
                   { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
                   { c: qd.DossierRef,     p: { name: 'essay', baseAddress: '~root.essaySet' } },
                   { c: qd.DossierRef,     p: { name: 'duplicate', baseAddress: '~root.theorySet', defaultValue: function() { return null; } } },
-                  { c: qd.DossierList,    p: { name: 'dependencySet',
+                  { c: qd.DossierList,    p: { name: 'supporterSet',
                     innerOutline: { c: qd.DossierDict, i: [
                       { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                     ]},
                     prop: '@theory.quickName/value',
                     defaultValue: function() { return []; }
                   }},
-                  { c: qd.DossierList,    p: { name: 'challengeSet',
+                  { c: qd.DossierList,    p: { name: 'contenderSet',
                     innerOutline: { c: qd.DossierDict, i: [
                       { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                     ]},
@@ -643,8 +688,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                       title: 'Written by ' + users[0].name,
                       user: users[0],
                       essay: essays[0],
-                      dependencySet: [],
-                      challengeSet: [],
+                      supporterSet: [],
+                      contenderSet: [],
                       voterSet: []
                     }
                   },
@@ -658,8 +703,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                       title: 'My Testimony',
                       user: users[0],
                       essay: essays[1],
-                      dependencySet: [],
-                      challengeSet: [],
+                      supporterSet: [],
+                      contenderSet: [],
                       voterSet: []
                     }
                   },
@@ -673,8 +718,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                       title: 'Written by ' + users[1].name,
                       user: users[1],
                       essay: essays[2],
-                      dependencySet: [],
-                      challengeSet: [],
+                      supporterSet: [],
+                      contenderSet: [],
                       voterSet: []
                     }
                   }
@@ -686,7 +731,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               return editor.$editFast({
                 add: [
                   {
-                    par: root.getChild('theorySet.userZeroTheory.dependencySet'),
+                    par: root.getChild('theorySet.userZeroTheory.supporterSet'),
                     name: 'testimony',
                     data: {
                       theory: root.getChild('theorySet.testimony')
@@ -746,7 +791,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       loginError: new uf.SimpleInfo({ value: '' }),
       focusedNode: new uf.SimpleInfo({ value: null }),
       activeNodes: new uf.SimpleInfo({ value: {} }),
-      physicsEnabled: new uf.SimpleInfo({ value: false })
+      physicsEnabled: new uf.SimpleInfo({ value: true })
     };
     infoSet.searchTerm = new uf.SimpleInfo({ value: '' });
     infoSet.searchResults = new uf.ReactingSyncedInfo({
@@ -780,7 +825,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         title: new uf.SimpleInfo({ value: '' }),
         theory: new uf.SimpleInfo({ value: '' }),
         saved: new uf.SimpleInfo({ value: false }),
-        relations: new uf.SimpleInfo({ value: [] })
+        incomingRelations: new uf.SimpleInfo({ value: [] })
       };
     };
     var saveNodeData = function(nodeInfo) {
@@ -825,7 +870,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       });
       nodeInfo.theory.start();
       
-      nodeInfo.relations = new uf.RepeatingSyncedInfo({
+      nodeInfo.incomingRelations = new uf.RepeatingSyncedInfo({
         initialValue: [],
         $getFunc: function() {
           
@@ -838,22 +883,20 @@ var package = new PACK.pack.Package({ name: 'logic',
             
           }).then(function(related) {
             
-            var ret = [];
+            var ret = {};
             
-            var deps = related.dependencies;
-            var chls = related.challengers;
+            var supps = related.supporters;
+            var conts = related.contenders;
             
-            for (k in deps) ret.push({
-              quickName: k,
-              relation: 'dependency',
-              data: {}
-            });
+            for (k in supps) {
+              if (!(k in ret)) ret[k] = { quickName: k, relations: {}, data: {} };
+              ret[k].relations.supporter = {}; // Can store any arbitrary data on the relation
+            }
             
-            for (k in chls) ret.push({
-              quickName: k,
-              relation: 'challenge',
-              data: {}
-            });
+            for (k in conts) {
+              if (!(k in ret)) ret[k] = { quickName: k, relations: {}, data: {} };
+              ret[k].relations.contender = {}; // Can store any arbitrary data on the relation
+            }
             
             return ret;
             
@@ -862,7 +905,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         },
         updateMs: 60000
       });
-      nodeInfo.relations.start();
+      nodeInfo.incomingRelations.start();
       
       return nodeInfo;
     };
@@ -885,7 +928,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       infoSet.activeNodes.modValue(function(activeNodes) {
         var o = activeNodes[name];
         var p = o.physics;
-        [ p.r, p.weight, p.loc, o.username, o.quickName, o.title, o.theory, o.saved, o.relations
+        [ p.r, p.weight, p.loc, o.username, o.quickName, o.title, o.theory, o.saved, o.incomingRelations
         ].forEach(function(info) {
           info.stop();
         });
@@ -897,7 +940,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     
     var $relateTheories = function(relationType, params /* target, dropZone */) {
       
-      // `incoming` justifies or challenges `standing`
+      // `incoming` supports or contends `standing`
       var standing = U.param(params, 'dropZone').par.par; // Walk to theory view
       var incoming = U.param(params, 'target');
       
@@ -916,13 +959,13 @@ var package = new PACK.pack.Package({ name: 'logic',
         relationType: relationType
       }}).then(function(data) {
         console.log('RELATION COMPLETE??', data);
-        standingData.relations.refresh();
+        standingData.incomingRelations.refresh();
       }).fail(function(err) {
         console.error('Error adding relation: ', err.message);
       });
       
     };
-    var $loadRelatedTheories = function(theoryQuickName, relationSetName) {
+    var $loadRelatedTheories = function(theoryQuickName, relationName, relationSetName) {
       
       return doss.$doRequest({
         
@@ -945,7 +988,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       }).then(function(pickedFieldSet) {
         
-        infoSet.activeNodes.modValue(function(activeNodes) {
+        var activeNodes = infoSet.activeNodes.modValue(function(activeNodes) {
           
           for (var k in pickedFieldSet) {
             var quickName = pickedFieldSet[k].quickName;
@@ -961,6 +1004,20 @@ var package = new PACK.pack.Package({ name: 'logic',
           
         });
         
+        if (theoryQuickName in activeNodes) {
+          var phys = activeNodes[theoryQuickName].physics;
+          console.log(info);
+          var loc = phys.loc.getValue();
+          var r = phys.r.getValue();
+          
+          var addOrigin = loc.add(lg.nodeRelationOffsets[relationName].scale(r * lg.graphNodeInvRadius));
+          
+          var added = graphView.updateChildren().add;
+          for (var k in added) {
+            // Set the loc to be right at the relation ear
+            activeNodes[k].physics.loc.setValue(addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
+          }
+        }
       });
       
     };
@@ -978,8 +1035,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         return infoSet.activeNodes.getValue()[view.name].physics.loc.getValue();
       }
     });
-    var dragAddDependency = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'support') });
-    var dragAddChallenger = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'challenge') });
+    var dragAddSupporter = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'supporter') });
+    var dragAddContender = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'contender') });
     var clickNode = new uf.ClickDecorator({
       validTargets: [
         '._text._user',           // Clicking on the username
@@ -1046,7 +1103,6 @@ var package = new PACK.pack.Package({ name: 'logic',
     var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.icons.del }) ] });
     deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
     
-    var graphNodeInvRadius = 1 / 150;
     var graphView = new uf.DynamicSetView({ name: 'graph',
       childData: infoSet.activeNodes,
       decorators: [
@@ -1058,7 +1114,7 @@ var package = new PACK.pack.Package({ name: 'logic',
             dampenGlobal: 0.82,
             gravityPow: 1.5,
             gravityMult: 300,
-            separation: 10,
+            separation: 20,
             centerAclMag: 1000,
             minVel: 0
           }
@@ -1104,7 +1160,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               if (waitTimeMs > 500)
                 
                 // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
-                if (!dragAddDependency.info.getValue() && !dragAddChallenger.info.getValue()) return 3;
+                if (!dragAddSupporter.info.getValue() && !dragAddContender.info.getValue()) return 3;
               
               // 4) All dragged nodes have a weight of `0`
               return 0;
@@ -1133,29 +1189,31 @@ var package = new PACK.pack.Package({ name: 'logic',
           }),
         });
         
-        // Create the dropzones for support and challenges
-        var loadDependenciesButton = new uf.ActionView({ name: 'loadDependencies', textData: 'Dependencies...', $action: function() {
+        // Create the dropzones for supporting and contending
+        var loadSupportersButton = new uf.ActionView({ name: 'loadSupporters', textData: 'Supporters...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'dependencySet').fail(function(err) {
-            console.log('DEPENDENCIES FAILED:', err);
+          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'supporter', 'supporterSet').fail(function(err) {
+            console.log('SUPPORTERS FAILED');
+            console.error(err.stack);
           });
           
         }});
-        loadDependenciesButton.decorators = [
-          dragAddDependency,
-          dragAddDependency.createClassDecorator(loadDependenciesButton)
+        loadSupportersButton.decorators = [
+          dragAddSupporter,
+          dragAddSupporter.createClassDecorator(loadSupportersButton)
         ];
         
-        var loadChallengesButton = new uf.ActionView({ name: 'loadChallenges', textData: 'Challenges...', $action: function() {
+        var loadContendersButton = new uf.ActionView({ name: 'loadContenders', textData: 'Contenders...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'challengeSet').fail(function(err) {
-            console.log('CHALLENGES FAILED:', err);
+          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'contender', 'contenderSet').fail(function(err) {
+            console.log('CONTENDERS FAILED');
+            console.error(err.stack);
           });
           
         }});
-        loadChallengesButton.decorators = [
-          dragAddChallenger,
-          dragAddChallenger.createClassDecorator(loadChallengesButton)
+        loadContendersButton.decorators = [
+          dragAddContender,
+          dragAddContender.createClassDecorator(loadContendersButton)
         ];
         
         // Install all necessary attributes on `view` before returning it
@@ -1173,7 +1231,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               return {
                 left: Math.round(loc.x - r) + 'px',
                 top: Math.round(loc.y - r) + 'px',
-                transform: 'scale(' + r * graphNodeInvRadius + ')' // 150 is the natural width
+                transform: 'scale(' + r * lg.graphNodeInvRadius + ')' // 150 is the natural width
               }
             }
           }),
@@ -1198,8 +1256,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         ];
         view.addChildren([
           new uf.SetView({ name: 'controls', children: [
-            loadDependenciesButton,
-            loadChallengesButton,
+            loadSupportersButton,
+            loadContendersButton,
           ]}),
           new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeInfo.saved.getValue() ? 'saved' : 'unsaved' }, children: [
             // Shows up on unsaved theories (allows editing only quickName)
@@ -1311,13 +1369,9 @@ var package = new PACK.pack.Package({ name: 'logic',
       }
     });
     
-    var offsets = {
-      dependency: new PACK.geom.Point({ x: -128, y: -98 }),
-      challenge: new PACK.geom.Point({ x: 128, y: -98 })
-    };
     var strokes = {
-      dependency: 'rgba(100, 255, 100, 0.65)',
-      challenge: 'rgba(255, 100, 100, 0.65)'
+      supporter: 'rgba(100, 255, 100, 0.65)',
+      contender: 'rgba(255, 100, 100, 0.65)'
     };
     var canvasView = new uf.CanvasView({ name: 'canvas', options: { centered: true }, drawFunc: function(ctx, millis) {
       ctx.lineWidth = 12;
@@ -1332,40 +1386,47 @@ var package = new PACK.pack.Package({ name: 'logic',
         
         if (!standingElem.domRoot) continue;
         
-        var standingBound = graphView.children[k].domRoot.getBoundingClientRect()
-        var relations = standingInfo.relations.getValue();
+        var canvas = canvasView.domRoot;
+        var hw = canvas.width >> 1;
+        var hh = canvas.height >> 1;
+        var incomingRelations = standingInfo.incomingRelations.getValue();
         
-        for (var i = 0, len = relations.length; i < len; i++) {
-          var qn = relations[i].quickName;
-          if (!(qn in items) || !(qn in graphView.children)) continue; // The incoming theory isn't loaded client-side
+        var b1 = graphView.children[k].domRoot.getBoundingClientRect()
+        var r1 = b1.width * 0.5; // width and height are equal so either works
+        var loc1 = new PACK.geom.Point({ x: b1.left + r1 - hw, y: b1.top + r1 - hh });
+        var ratio = r1 * lg.graphNodeInvRadius;
+        
+        for (var qn in incomingRelations) {
+          
+          // TODO: This is bad!! Possible for `qn` to be in the graphView, but for its domRoot to not be initialized :(
+          if (!(qn in items) || !(qn in graphView.children) || !graphView.children[qn].domRoot) continue; // The incoming theory isn't fully loaded client-side
           
           var incomingInfo = items[qn];
-          var relationType = relations[i].relation;
           
-          var canvas = canvasView.domRoot;
-          var hw = canvas.width >> 1;
-          var hh = canvas.height >> 1;
+          var b2 = graphView.children[qn].domRoot.getBoundingClientRect();
+          var r2 = incomingInfo.physics.r.getValue();
+          var loc2 = new PACK.geom.Point({ x: b2.left + r2 - hw, y: b2.top + r2 - hh });
           
-          var r1 = incomingInfo.physics.r.getValue();
-          var b1 = graphView.children[qn].domRoot.getBoundingClientRect();
-          var loc1 = new PACK.geom.Point({ x: b1.left + r1 - hw, y: b1.top + r1 - hh });
-          
-          var r2 = standingInfo.physics.r.getValue();
-          var loc2 = new PACK.geom.Point({ x: standingBound.left + r2 - hw, y: standingBound.top + r2 - hh });
-          var ratio2 = r2 * graphNodeInvRadius;
-          
-          loc2 = loc2.add(offsets[relationType].scale(ratio2));
-          
-          var ang = loc1.angleTo(loc2);
-          loc1 = loc1.angleMove(ang, r1);
-          
-          ctx.strokeStyle = strokes[relationType];
-          ctx.beginPath();
-          ctx.moveTo(loc1.x, loc1.y);
-          ctx.lineTo(loc2.x, loc2.y);
-          ctx.stroke();
+          var relations = incomingRelations[qn].relations;
+          for (var relationType in relations) {
+            
+            var relLoc = loc1.add(lg.nodeRelationOffsets[relationType].scale(ratio));
+            
+            var ang = loc2.angleTo(relLoc);
+            loc2 = loc2.angleMove(ang, r2);
+            
+            ctx.strokeStyle = strokes[relationType];
+            ctx.beginPath();
+            ctx.moveTo(loc2.x, loc2.y);
+            ctx.lineTo(relLoc.x, relLoc.y);
+            ctx.stroke();
+            
+          }
+        
         }
+        
       }
+      
     }});
     
     var rootView = new uf.RootView({ name: 'root' });
@@ -1505,12 +1566,12 @@ var package = new PACK.pack.Package({ name: 'logic',
     ]);
     rootView.start();
     
+    /* ======= TESTING STUFF ======== */
+    
     // Make some stuff accessible on the command line
     window.root = doss;
     window.view = rootView;
     window.info = infoSet;
-    
-    /* ======= TESTING STUFF ======== */
     
     doss.$doRequest({ command: 'getToken', params: {
       username: 'admin',

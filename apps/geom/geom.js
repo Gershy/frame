@@ -146,9 +146,16 @@ var package = new PACK.pack.Package({ name: 'geom',
           }
         };}
       })
+      
     };
     
     geom.ORIGIN = new geom.Point();
+    geom.midPoint = function(pointArr) {
+      var ret = geom.ORIGIN;
+      var len = pointArr.length;
+      for (var i = 0; i < len; i++) ret = ret.add(pointArr[i]);
+      return ret.scale(1 / len);
+    };
     
     return geom;
   },
