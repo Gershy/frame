@@ -204,6 +204,7 @@ var package = new PACK.pack.Package({ name: 'server',
                 return html;
               })
               .fail(function(err) {
+                console.error(err.stack);
                 return new PACK.server.ResponseData({
                   data: [
                     '<!DOCTYPE html>',

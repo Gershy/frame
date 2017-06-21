@@ -1,4 +1,4 @@
-module.exports.defaultApp = 'defend';
+module.exports.defaultApp = 'logic';
 
 module.exports.legalExtensions = {
   // "!" preceeding the extension name indicates a binary filetype

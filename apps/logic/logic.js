@@ -1,17 +1,27 @@
 /*
 
 NEAR-TERM:
-- RELATIONS
-  - Node physics
-    - Related nodes should be attracted to ears, not to center
-    - Gravitational strength needs to be stronger for related nodes
 - animation + delay on theory deletion
+- Same hover animation for remove/delete actions should exist on relation dropzones
 - Circularity between atoms (e.g. atom1 contends atom2, atom2 supports atom1) results in stack overflow
 - Need other sources which can load atoms
   - all the user's atoms
   - all of any user's atoms
   - all the atoms within an argument
 - Dragging a node to a dropzone throws an error if the cursor is simultaneously hovering over an "addSupporter" dropzone
+- Need a way of distinguishing global relations from loaded relations
+  - e.g. can know all the theories a node is related to, but how to determine which ones are actually on-screen?
+- Data quality control
+  - Who can create theories?
+  - Who can delete theories?
+  - Who can support a theory? Which of the incoming and standing theories can be unowned?
+  - Who can contend a theory? Which of the incoming and standing theories can be unowned?
+  - Theory "privileges"?
+    - Should users have (and be able to grant) per-theory privileges to other users?
+- Relation physics should be better
+  - Consider
+- Camera controls? Panning/zooming?
+  - Minimap?? (this could be a canvas; it could have a low framerate; it would honestly be beautiful)
 
 INDEFINITE:
 - Need to introduce artificial latency and indicate all loading activities
@@ -285,7 +295,62 @@ var package = new PACK.pack.Package({ name: 'logic',
               }
               
               return $relation.then(function(data) {
-                return standing.getDataView({});
+                return {
+                  msg: relationType + ' added',
+                  standing: standing.getDataView({})
+                }
+              });
+              
+            } else if (command === 'unrelateTheories') {
+              
+              var reqParams = U.param(params, 'params');
+              
+              var token = U.param(reqParams, 'token');
+              
+              var theorySet = this.children.theorySet;
+              
+              var standingQuickName = U.param(reqParams, 'standingQuickName');
+              var standing = theorySet.children[standingQuickName];
+              if (!standing) throw new Error ('Invalid standing quickName: "' + standingQuickName + '"');
+              
+              var incomingQuickName = U.param(reqParams, 'incomingQuickName');
+              var incoming = theorySet.children[incomingQuickName];
+              if (!incoming) throw new Error ('Invalid incoming quickName: "' + incomingQuickName + '"');
+              
+              if (incoming === standing) throw new Error('Cannot unrelate a theory from itself');
+              
+              var relationType = U.param(reqParams, 'relationType');
+              
+              if (relationType === 'supporter') {
+                
+                console.log('Removing supporter');
+                var editor = new qd.Editor();
+                var $unrelate = editor.$remFast({
+                  par: standing.getChild('supporterSet'),
+                  name: incomingQuickName
+                });
+                
+              } else if (relationType === 'contender') {
+                
+                console.log('Removing contender');
+                var editor = new qd.Editor();
+                var $unrelate = editor.$remFast({
+                  par: standing.getChild('contenderSet'),
+                  name: incomingQuickName
+                });
+                
+              } else {
+                
+                throw new Error('Invalid relationType: "' + relationType + '"');
+                
+              }
+              
+              return $unrelate.then(function(data) {
+                return {
+                  msg: relationType + ' removed',
+                  standing: standing.getDataView({}),
+                  incoming: incoming.getDataView({})
+                }
               });
               
             } else if (command === 'searchTheories') {
@@ -425,6 +490,21 @@ var package = new PACK.pack.Package({ name: 'logic',
             this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
             this.updateIndex = 0;
           },
+          sigmoid: function(x) {
+            /*
+            This is a great smooth curve; begins at (0,0), ends at (1,1),
+            approachs 0 quickly towards the left, then approaches 1 quickly
+            towards the right. Nodes will quickly decelerate as they reach
+            their destination, and will quickly accelerate when they are
+            far from where they're meant to be
+            */
+            if (x < 0) return 0;
+            if (x > 1) return 1;
+            
+            return x < 0.5
+              ? (2 * x * x)
+              : (-0.5 * (4 * x * x - (8 * x)) - 1);
+          },
           update: function(view, millis) {
             
             if (!this.enabledInfo.getValue()) return;
@@ -447,25 +527,27 @@ var package = new PACK.pack.Package({ name: 'logic',
               var r1 = phys1.r.getValue();
               var w1 = phys1.weight.getValue();
               
-              // Dampen velocity
-              phys1.vel = phys1.vel.scale(ps.dampenGlobal);
-              
               // Increment location based on velocity
               loc1 = loc1.add(phys1.vel.scale(secs));
               
               // Increment velocity based on acceleration
               phys1.vel = phys1.vel.add(phys1.acl.scale(secs));
               
-              if (phys1.vel.magSqr() < (ps.minVel * ps.minVel)) phys1.vel = PACK.geom.ORIGIN;
+              // Dampen velocity
+              phys1.vel = phys1.vel.scale(ps.dampenGlobal);
               
-              // Reset acceleration
-              phys1.acl = new Point({
-                ang: loc1.angleTo(geom.ORIGIN),
-                mag: ps.centerAclMag
-              });
+              // if (phys1.vel.magSqr() < (ps.minVel * ps.minVel)) phys1.vel = PACK.geom.ORIGIN;
+              
+              // Reset acceleration to 0. Acceleration will go towards the center for
+              // any theories that are NOT incoming theories (incoming theories already
+              // attract towards a standing theory; they don't need central gravitation)
+              var isIncoming = false;
+              phys1.acl = geom.ORIGIN;
               
               for (var j = 0; j < ncs; j++) {
                 if (i === j) continue;
+                
+                // Note that phys1 is the incoming theory, and phys2 is the standing theory
                 
                 var phys2 = cs[j].physics;
                 var loc2 = phys2.loc.getValue();
@@ -478,28 +560,21 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
                 if (qn1 in incRelations) {
                   
-                  var points = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
-                  var attractor = loc2.add(PACK.geom.midPoint(points.toArray()));
-                  var dist = loc1.dist(attractor);
-                  /*
-                  var denom = Math.max(dist, 3) * r1 * w1;
-                  if (denom)
-                    phys1.acl = phys1.acl.add(new Point({
-                      ang: loc1.angleTo(attractor),
-                      mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
-                    }));
-                  */
+                  isIncoming = true;
+                  var attractors = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
+                  var attractor = PACK.geom.midPoint(attractors.toArray()).scale(r2 * lg.graphNodeInvRadius);
+                  attractor = attractor.add(loc2);
                   
-                  // TODO: HERE!!!!
-                  var sqr = dist * dist;
-                  var cube = sqr * dist;
+                  
                   phys1.acl = phys1.acl.add(new Point({
                     ang: loc1.angleTo(attractor),
-                    mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / (r1 * w1)
+                    mag: (this.sigmoid(loc1.dist(attractor) * 0.01)) * ps.gravityMult
                   }));
                   
                 } else {
                 
+                  /*
+                  // TODO: Removed attraction between unrelated nodes; is this ok??
                   centerDist = loc1.dist(loc2);
                   var denom = Math.max(Math.pow(centerDist, ps.gravityPow), 1) * r1 * w1;
                   if (denom) // Look out for division by 0
@@ -507,6 +582,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       ang: loc1.angleTo(loc2),
                       mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
                     }));
+                  */
                   
                 }
                 
@@ -525,6 +601,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
                 
               }
+              
+              if (!isIncoming) phys1.acl = phys1.acl.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
               
               phys1.loc.setValue(loc1);
               
@@ -883,6 +961,8 @@ var package = new PACK.pack.Package({ name: 'logic',
             
           }).then(function(related) {
             
+            var activeNodes = infoSet.activeNodes.getValue();
+            
             var ret = {};
             
             var supps = related.supporters;
@@ -938,6 +1018,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       });
     };
     
+    // Function called when a theory is dragged to the dropzone of another theory
     var $relateTheories = function(relationType, params /* target, dropZone */) {
       
       // `incoming` supports or contends `standing`
@@ -952,16 +1033,19 @@ var package = new PACK.pack.Package({ name: 'logic',
       if (!standingData.saved.getValue() || !incomingData.saved.getValue())
         throw new Error('Relations cannot involve unsaved theories');
       
-      return doss.$doRequest({ command: 'relateTheories', params: {
+      var rel = standingData.incomingRelations.getValue()[incoming.name];
+      var alreadyRelated = rel && (relationType in rel.relations);
+      
+      return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
         token: infoSet.token.getValue(),
         standingQuickName: standingData.quickName.getValue(),
         incomingQuickName: incomingData.quickName.getValue(),
         relationType: relationType
       }}).then(function(data) {
-        console.log('RELATION COMPLETE??', data);
+        console.log('RELATION EDIT COMPLETE??', data);
         standingData.incomingRelations.refresh();
       }).fail(function(err) {
-        console.error('Error adding relation: ', err.message);
+        console.error('Error editing relation: ', err.message);
       });
       
     };
@@ -994,6 +1078,8 @@ var package = new PACK.pack.Package({ name: 'logic',
             var quickName = pickedFieldSet[k].quickName;
             var username = pickedFieldSet[k]['@user'].username;
             
+            if (quickName in activeNodes) continue; // TODO: Should the data be updated, considering it's immediately available?
+            
             activeNodes[quickName] = saveNodeData(makeNodeData({
               quickName: quickName,
               username: username
@@ -1006,7 +1092,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         
         if (theoryQuickName in activeNodes) {
           var phys = activeNodes[theoryQuickName].physics;
-          console.log(info);
           var loc = phys.loc.getValue();
           var r = phys.r.getValue();
           
@@ -1018,6 +1103,7 @@ var package = new PACK.pack.Package({ name: 'logic',
             activeNodes[k].physics.loc.setValue(addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
           }
         }
+        
       });
       
     };
@@ -1109,13 +1195,22 @@ var package = new PACK.pack.Package({ name: 'logic',
         new lg.LogicPhysicsDecorator({ maxUpdatesPerFrame: 10,
           info: infoSet.activeNodes,
           enabledInfo: infoSet.physicsEnabled,
-          physicsSettings: {
+          /*physicsSettings: {
             scaleTime: 1,
             dampenGlobal: 0.82,
             gravityPow: 1.5,
             gravityMult: 300,
             separation: 20,
             centerAclMag: 1000,
+            minVel: 0
+          }*/
+          physicsSettings: {
+            scaleTime: 1,
+            dampenGlobal: 0.95,
+            gravityPow: 1.5,
+            gravityMult: 300,
+            separation: 20,
+            centerAclMag: 100,
             minVel: 0
           }
         })
