@@ -1,9 +1,8 @@
 /*
 
 NEAR-TERM:
+- Relations should be normalized both client-side in `infoSet`, and server-side in the root dossier
 - animation + delay on theory deletion
-- Same hover animation for remove/delete actions should exist on relation dropzones
-- Circularity between atoms (e.g. atom1 contends atom2, atom2 supports atom1) results in stack overflow
 - Need other sources which can load atoms
   - all the user's atoms
   - all of any user's atoms
@@ -22,9 +21,10 @@ NEAR-TERM:
   - Consider
 - Camera controls? Panning/zooming?
   - Minimap?? (this could be a canvas; it could have a low framerate; it would honestly be beautiful)
+- dossier.getDataView() is not implemented correctly (some properties will wind up being 'DUMMY_VAL')
 
 INDEFINITE:
-- Need to introduce artificial latency and indicate all loading activities
+- Need to introduce artificial latency for testing and indicate all loading activities
 - Info objects should have an "altered" broadcast ability
   - No changes should occur unless there have been alterations
   - e.g. SetViews shouldn't update unless any relevant data has updated
@@ -562,9 +562,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   
                   isIncoming = true;
                   var attractors = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
-                  var attractor = PACK.geom.midPoint(attractors.toArray()).scale(r2 * lg.graphNodeInvRadius);
-                  attractor = attractor.add(loc2);
-                  
+                  var attractor = PACK.geom.midPoint(attractors.toArray()).scale(r2 * lg.graphNodeInvRadius).add(loc2);
                   
                   phys1.acl = phys1.acl.add(new Point({
                     ang: loc1.angleTo(attractor),
@@ -602,7 +600,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
               }
               
-              if (!isIncoming) phys1.acl = phys1.acl.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
+              //if (!isIncoming) phys1.acl = phys1.acl.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
+              if (!isIncoming) phys1.vel = phys1.vel.angleMove(loc1.angleTo(geom.ORIGIN), 10);
               
               phys1.loc.setValue(loc1);
               
@@ -748,6 +747,36 @@ var package = new PACK.pack.Package({ name: 'logic',
                     data: {
                       markup: 'Essay written by ' + users[1].name
                     }
+                  },
+                  {
+                    par: root.getChild('essaySet'),
+                    data: {
+                      markup: 'IMPORTANT ESSAY THREE'
+                    }
+                  },
+                  {
+                    par: root.getChild('essaySet'),
+                    data: {
+                      markup: 'IMPORTANT ESSAY FOUR'
+                    }
+                  },
+                  {
+                    par: root.getChild('essaySet'),
+                    data: {
+                      markup: 'IMPORTANT ESSAY FIVE'
+                    }
+                  },
+                  {
+                    par: root.getChild('essaySet'),
+                    data: {
+                      markup: 'IMPORTANT ESSAY SIX'
+                    }
+                  },
+                  {
+                    par: root.getChild('essaySet'),
+                    data: {
+                      markup: 'IMPORTANT ESSAY SEVEN'
+                    }
                   }
                 ]
               });
@@ -796,6 +825,81 @@ var package = new PACK.pack.Package({ name: 'logic',
                       title: 'Written by ' + users[1].name,
                       user: users[1],
                       essay: essays[2],
+                      supporterSet: [],
+                      contenderSet: [],
+                      voterSet: []
+                    }
+                  },
+                  {
+                    par: root.getChild('theorySet'),
+                    name: 'importantThree',
+                    data: {
+                      createdTime: +new Date(),
+                      editedTime: +new Date(),
+                      quickName: 'importantThree',
+                      title: 'THREE',
+                      user: users[1],
+                      essay: essays[3],
+                      supporterSet: [],
+                      contenderSet: [],
+                      voterSet: []
+                    }
+                  },
+                  {
+                    par: root.getChild('theorySet'),
+                    name: 'importantFour',
+                    data: {
+                      createdTime: +new Date(),
+                      editedTime: +new Date(),
+                      quickName: 'importantFour',
+                      title: 'FOUR',
+                      user: users[1],
+                      essay: essays[4],
+                      supporterSet: [],
+                      contenderSet: [],
+                      voterSet: []
+                    }
+                  },
+                  {
+                    par: root.getChild('theorySet'),
+                    name: 'importantFive',
+                    data: {
+                      createdTime: +new Date(),
+                      editedTime: +new Date(),
+                      quickName: 'importantFive',
+                      title: 'FIVE',
+                      user: users[1],
+                      essay: essays[5],
+                      supporterSet: [],
+                      contenderSet: [],
+                      voterSet: []
+                    }
+                  },
+                  {
+                    par: root.getChild('theorySet'),
+                    name: 'importantSix',
+                    data: {
+                      createdTime: +new Date(),
+                      editedTime: +new Date(),
+                      quickName: 'importantSix',
+                      title: 'SIX',
+                      user: users[1],
+                      essay: essays[6],
+                      supporterSet: [],
+                      contenderSet: [],
+                      voterSet: []
+                    }
+                  },
+                  {
+                    par: root.getChild('theorySet'),
+                    name: 'importantSeven',
+                    data: {
+                      createdTime: +new Date(),
+                      editedTime: +new Date(),
+                      quickName: 'importantSeven',
+                      title: 'SEVEN',
+                      user: users[1],
+                      essay: essays[7],
                       supporterSet: [],
                       contenderSet: [],
                       voterSet: []
