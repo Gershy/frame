@@ -28,6 +28,7 @@ var package = new PACK.pack.Package({ name: 'p',
         return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
       },
       P: U.makeClass({ name: 'P',
+        includeGuid: false,
         methods: function(sc) { return {
           init: function(params /* val, func | cb, cbParams, cbName, all */) {
             this.children = [];

@@ -521,42 +521,41 @@ var package = new PACK.pack.Package({ name: 'logic',
               var i = this.updateIndex;
               this.updateIndex = (++this.updateIndex >= cs.length) ? 0 : this.updateIndex;
               
-              var qn1 = cs[i].quickName.getValue();
-              var phys1 = cs[i].physics;
-              var loc1 = phys1.loc.getValue();
-              var r1 = phys1.r.getValue();
-              var w1 = phys1.weight.getValue();
+              var qn1 = cs[i].getValue('quickName');
+              var phys1 = cs[i].getChild('physics');
+              var loc1 = phys1.getValue('loc');
+              var vel1 = phys1.getValue('vel');
+              var acl1 = phys1.getValue('acl');
+              var r1 = phys1.getValue('r');
+              var w1 = phys1.getValue('weight');
               
               // Increment location based on velocity
-              loc1 = loc1.add(phys1.vel.scale(secs));
+              loc1 = loc1.add(vel1.scale(secs));
               
-              // Increment velocity based on acceleration
-              phys1.vel = phys1.vel.add(phys1.acl.scale(secs));
-              
-              // Dampen velocity
-              phys1.vel = phys1.vel.scale(ps.dampenGlobal);
-              
-              // if (phys1.vel.magSqr() < (ps.minVel * ps.minVel)) phys1.vel = PACK.geom.ORIGIN;
+              // Increment velocity based on acceleration; then dampen
+              vel1 = vel1.add(acl1.scale(secs)).scale(ps.dampenGlobal);
               
               // Reset acceleration to 0. Acceleration will go towards the center for
               // any theories that are NOT incoming theories (incoming theories already
               // attract towards a standing theory; they don't need central gravitation)
               var isIncoming = false;
-              phys1.acl = geom.ORIGIN;
+              acl1 = geom.ORIGIN;
               
               for (var j = 0; j < ncs; j++) {
                 if (i === j) continue;
                 
                 // Note that phys1 is the incoming theory, and phys2 is the standing theory
                 
-                var phys2 = cs[j].physics;
-                var loc2 = phys2.loc.getValue();
-                var r2 = phys2.r.getValue();
-                var w2 = phys2.weight.getValue();
+                var phys2 = cs[j].getChild('physics');
+                var loc2 = phys2.getValue('loc');
+                var vel2 = phys2.getValue('vel');
+                var acl2 = phys2.getValue('acl');
+                var r2 = phys2.getValue('r');
+                var w2 = phys2.getValue('weight');
                 
                 var centerDist = null; // Won't be calculated until necessary
                 
-                var incRelations = cs[j].incomingRelations.getValue();
+                var incRelations = cs[j].getValue('incomingRelations');
                 
                 if (qn1 in incRelations) {
                   
@@ -564,7 +563,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   var attractors = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
                   var attractor = PACK.geom.midPoint(attractors.toArray()).scale(r2 * lg.graphNodeInvRadius).add(loc2);
                   
-                  phys1.acl = phys1.acl.add(new Point({
+                  acl1 = acl1.add(new Point({
                     ang: loc1.angleTo(attractor),
                     mag: (this.sigmoid(loc1.dist(attractor) * 0.01)) * ps.gravityMult
                   }));
@@ -576,7 +575,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   centerDist = loc1.dist(loc2);
                   var denom = Math.max(Math.pow(centerDist, ps.gravityPow), 1) * r1 * w1;
                   if (denom) // Look out for division by 0
-                    phys1.acl = phys1.acl.add(new Point({
+                    acl1 = acl1.add(new Point({
                       ang: loc1.angleTo(loc2),
                       mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
                     }));
@@ -600,17 +599,18 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
               }
               
-              //if (!isIncoming) phys1.acl = phys1.acl.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
-              if (!isIncoming) phys1.vel = phys1.vel.angleMove(loc1.angleTo(geom.ORIGIN), 10);
+              //if (!isIncoming) acl1 = acl1.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
+              if (!isIncoming) vel1 = vel1.angleMove(loc1.angleTo(geom.ORIGIN), 10);
               
-              phys1.loc.setValue(loc1);
+              phys1.setValue('loc', loc1);
+              phys1.setValue('vel', vel1);
+              phys1.setValue('acl', acl1);
               
             }
             
           }
         };}
       })
-      
     };
     
     if (U.isServer()) {
@@ -953,36 +953,37 @@ var package = new PACK.pack.Package({ name: 'logic',
     doss.updateName('app');
     
     // Here's the `infoSet`. It's equivalent to the state of the app
-    var infoSet = {
-      icons: {
+    var infoSet = new uf.DictInfo({ children: {
+      icons: new uf.DictInfo({ children: {
         remove: new uf.SimpleInfo({ value: String.fromCharCode(0xe900) }),
         insert: new uf.SimpleInfo({ value: String.fromCharCode(0xf055) }),
         close: new uf.SimpleInfo({ value: String.fromCharCode(0xf00d) }),
         del: new uf.SimpleInfo({ value: String.fromCharCode(0xf014) }),
-      },
+      }}),
       rps: new uf.SimpleInfo({ value: 'rps' }),
       token: new uf.SimpleInfo({ value: null }),
       appVersion: new uf.RepeatingSyncedInfo({
         $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
       }),
       loginView: new uf.CalculatedInfo({
-        getFunc: function() {  return infoSet.token.getValue() ? 'in' : 'out'  }
+        getFunc: function() {  return infoSet.getValue('token') ? 'in' : 'out'  }
       }),
       username: new uf.SimpleInfo({ value: '' }),
       password: new uf.SimpleInfo({ value: '' }),
       loginError: new uf.SimpleInfo({ value: '' }),
       focusedNode: new uf.SimpleInfo({ value: null }),
-      activeNodes: new uf.SimpleInfo({ value: {} }),
-      physicsEnabled: new uf.SimpleInfo({ value: true })
-    };
-    infoSet.searchTerm = new uf.SimpleInfo({ value: '' });
-    infoSet.searchResults = new uf.ReactingSyncedInfo({
+    }});
+    infoSet.addChild('activeNodes', new uf.DictInfo({ children: {} }));
+    infoSet.addChild('physicsEnabled', new uf.SimpleInfo({ value: true }));
+    infoSet.addChild('searchTerm', new uf.SimpleInfo({ value: '' }));
+    infoSet.addChild('searchResults', new uf.ReactingSyncedInfo({
       initialValue: {},
-      info: infoSet.searchTerm,
+      info: infoSet.getChild('searchTerm'),
       $getFunc: function() {
-        var searchTerm = infoSet.searchTerm.getValue();
+        var searchTerm = infoSet.getValue('searchTerm');
         if (searchTerm === '') return new PACK.p.P({ val: {} });
         
+        // TODO: Should return an `Info` object, not a plain `Object`.
         return doss.$doRequest({
           command: 'searchTheories',
           params: {
@@ -990,69 +991,83 @@ var package = new PACK.pack.Package({ name: 'logic',
           }
         });
       }
-    });
+    }));
+    infoSet.start();
     
     // Values for controlling extra data attached to graph nodes (TODO: Subclass SetView as GraphNodeSetView; add data to subclass instead??)
-    var makeNodeData = function(params /* quickName, username */) {
-      return {
-        physics: {
+    var makeNodeData = function(params /* quickName, username, editing */) {
+      var quickNameInfo = uf.pafam(params, 'quickName');
+      var usernameInfo = uf.pafam(params, 'username');
+      var editingInfo = uf.pafam(params, 'editing');
+      
+      var owned = usernameInfo.getValue() === infoSet.getValue('username');
+      
+      var ret = new uf.DictInfo({ children: {
+        physics: new uf.DictInfo({ children: {
           r: new uf.SimpleInfo({ value: 65 }),
           weight: new uf.SimpleInfo({ value: 1 }),
           loc: new uf.SimpleInfo({ value: new PACK.geom.Point({ ang: Math.random() * Math.PI * 2, mag: 0.01 }) }),
-          vel: PACK.geom.ORIGIN,
-          acl: PACK.geom.ORIGIN
-        },
-        username: uf.pafam(params, 'username'),
-        quickName: uf.pafam(params, 'quickName'),
+          vel: new uf.SimpleInfo({ value: PACK.geom.ORIGIN }),
+          acl: new uf.SimpleInfo({ value: PACK.geom.ORIGIN })
+        }}),
+        username: usernameInfo,
+        quickName: quickNameInfo,
         title: new uf.SimpleInfo({ value: '' }),
         theory: new uf.SimpleInfo({ value: '' }),
         saved: new uf.SimpleInfo({ value: false }),
-        incomingRelations: new uf.SimpleInfo({ value: [] })
-      };
+        incomingRelations: new uf.SimpleInfo({ value: [] }),
+        owned: new uf.SimpleInfo({ value: owned }),
+        editing: editingInfo
+      }});
+      
+      ret.start();
+      
+      return ret;
     };
     var saveNodeData = function(nodeInfo) {
       // "saved" is now fixed to the value `true`
-      nodeInfo.saved.setValue(true);
+      nodeInfo.setValue('saved', true);
+      
+      console.log(nodeInfo.getValue('title'));
       
       // "title" syncs with the `theorySet.<theoryId>.title` value server-side
-      nodeInfo.title = new uf.RepeatingSyncedInfo({
-        initialValue: '- not loaded -',
+      nodeInfo.modChild('title', new uf.RepeatingSyncedInfo({
+        initialValue: nodeInfo.getValue('title'),
         $getFunc: function() {
-          return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), 'title' ] });
+          return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.getValue('quickName'), 'title' ] });
         },
         $setFunc: function(val) {
-          return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), 'title' ],
+          return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.getValue('quickName'), 'title' ],
             params: {
-              token: infoSet.token.getValue(),
-              username: infoSet.username.getValue(),
+              token: infoSet.getValue('token'),
+              username: infoSet.getValue('username'),
               value: val
             }
           });
         },
         updateMs: 60000
-      });
-      nodeInfo.title.start();
+      }));
       
       // "theory" syncs with the `theorySet.<theoryId>.@essay.markup` value server-side
-      nodeInfo.theory = new uf.RepeatingSyncedInfo({
-        initialValue: '- not loaded -',
+      nodeInfo.modChild('theory', new uf.RepeatingSyncedInfo({
+        initialValue: nodeInfo.getValue('theory'),
         $getFunc: function() {
-          return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), '@essay', 'markup' ] });
+          return doss.$doRequest({ command: 'getValue', address: [ 'theorySet', nodeInfo.getValue('quickName'), '@essay', 'markup' ] });
         },
         $setFunc: function(val) {
-          return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.quickName.getValue(), '@essay', 'markup' ],
+          return doss.$doRequest({ command: 'setValue', address: [ 'theorySet', nodeInfo.getValue('quickName'), '@essay', 'markup' ],
             params: {
-              token: infoSet.token.getValue(),
-              username: infoSet.username.getValue(),
+              token: infoSet.getValue('token'),
+              username: infoSet.getValue('username'),
               value: val
             }
           });
         },
         updateMs: 60000
-      });
-      nodeInfo.theory.start();
+      }));
       
-      nodeInfo.incomingRelations = new uf.RepeatingSyncedInfo({
+      // "incomingRelations" repetitively syncs with the server
+      nodeInfo.modChild('incomingRelations', new uf.RepeatingSyncedInfo({
         initialValue: [],
         $getFunc: function() {
           
@@ -1060,12 +1075,12 @@ var package = new PACK.pack.Package({ name: 'logic',
             
             command: 'getIncomingRelations',
             params: {
-              quickName: nodeInfo.quickName.getValue()
+              quickName: nodeInfo.getValue('quickName')
             }
             
           }).then(function(related) {
             
-            var activeNodes = infoSet.activeNodes.getValue();
+            var activeNodes = infoSet.getValue('activeNodes');
             
             var ret = {};
             
@@ -1088,8 +1103,9 @@ var package = new PACK.pack.Package({ name: 'logic',
           
         },
         updateMs: 60000
-      });
-      nodeInfo.incomingRelations.start();
+      }));
+      
+      nodeInfo.start();
       
       return nodeInfo;
     };
@@ -1097,19 +1113,37 @@ var package = new PACK.pack.Package({ name: 'logic',
       var oldName = U.param(params, 'oldName');
       var newName = U.param(params, 'newName');
       
-      infoSet.activeNodes.modValue(function(activeNodes) {
-        // Re-key...
-        activeNodes[newName] = activeNodes[oldName];
-        delete activeNodes[oldName];
+      var activeNodes = infoSet.getChild('activeNodes');
+      
+      // Get the value which is changing keys...
+      var nodeInfo = activeNodes.getChild(oldName);
+      
+      // ... update its quickName...
+      nodeInfo.setValue('quickName', newName);
+      
+      // ... and re-key it.
+      activeNodes.remChild(oldName);
+      activeNodes.addChild(newName, nodeInfo);
+      
+      /*
+      infoSet.modValue('activeNodes', function(activeNodes) {
         
+        
+        // Re-key...
+        //activeNodes[newName] = activeNodes[oldName];
+        //delete activeNodes[oldName];
         // ... and update the quickName
-        activeNodes[newName].quickName.setValue(newName);
+        //activeNodes[newName].quickName.setValue(newName);
         
         return activeNodes;
       });
+      */
     };
     var removeNodeData = function(name) {
-      infoSet.activeNodes.modValue(function(activeNodes) {
+      // TODO: BAD!
+      delete infoSet.getChild('activeNodes').children[name];
+      /*infoSet.getChild('activeNodes').remChild(name);
+      infoSet.modValue('activeNodes', function(activeNodes) {
         var o = activeNodes[name];
         var p = o.physics;
         [ p.r, p.weight, p.loc, o.username, o.quickName, o.title, o.theory, o.saved, o.incomingRelations
@@ -1119,7 +1153,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         
         delete activeNodes[name];
         return activeNodes;
-      });
+      });*/
     };
     
     // Function called when a theory is dragged to the dropzone of another theory
@@ -1129,7 +1163,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       var standing = U.param(params, 'dropZone').par.par; // Walk to theory view
       var incoming = U.param(params, 'target');
       
-      var activeNodes = infoSet.activeNodes.getValue();
+      var activeNodes = infoSet.getValue('activeNodes');
       
       var standingData = activeNodes[standing.name];
       var incomingData = activeNodes[incoming.name];
@@ -1141,7 +1175,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       var alreadyRelated = rel && (relationType in rel.relations);
       
       return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
-        token: infoSet.token.getValue(),
+        token: infoSet.getValue('token'),
         standingQuickName: standingData.quickName.getValue(),
         incomingQuickName: incomingData.quickName.getValue(),
         relationType: relationType
@@ -1176,7 +1210,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       }).then(function(pickedFieldSet) {
         
-        var activeNodes = infoSet.activeNodes.modValue(function(activeNodes) {
+        var activeNodes = infoSet.modValue('activeNodes', function(activeNodes) {
           
           for (var k in pickedFieldSet) {
             var quickName = pickedFieldSet[k].quickName;
@@ -1184,10 +1218,11 @@ var package = new PACK.pack.Package({ name: 'logic',
             
             if (quickName in activeNodes) continue; // TODO: Should the data be updated, considering it's immediately available?
             
-            activeNodes[quickName] = saveNodeData(makeNodeData({
+            activeNodes.addChild(quickName, saveNodeData(makeNodeData({
               quickName: quickName,
-              username: username
-            }));
+              username: username,
+              editing: false
+            })));
           }
           
           return activeNodes;
@@ -1222,7 +1257,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       captureOnStart: function(view) {
         // The view isn't seen exactly at its physics "loc" due to transition delays
         // TODO: Can subtract the client bound loc from the css loc to offset this difference...
-        return infoSet.activeNodes.getValue()[view.name].physics.loc.getValue();
+        return infoSet.getValue([ 'activeNodes', view.name, 'physics', 'loc' ]);
       }
     });
     var dragAddSupporter = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'supporter') });
@@ -1237,11 +1272,11 @@ var package = new PACK.pack.Package({ name: 'logic',
         // No click action should apply during a drag. Prevents drag mouseup from focusing node.
         if (dragNode.isDragging(view)) return;
         
-        infoSet.focusedNode.modValue(function(view0) {
+        infoSet.modValue('focusedNode', function(view0) {
           // Clicking a focused node unfocuses it. Clicking an unfocused node focuses it.
           // Unfocusing a node sets its "editing" property to `false`
           if (view0 === view) {
-            infoSet.activeNodes.getValue()[view.name].editing.setValue(false);
+            infoSet.getValue([ 'activeNodes', view.name, 'editing' ], false);
             return null;
           }
           return view;
@@ -1256,21 +1291,21 @@ var package = new PACK.pack.Package({ name: 'logic',
       removeNodeData(target.name);
       
     }});
-    var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.icons.remove }) ] });
+    var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.getChild('icons.remove') }) ] });
     removeNodeView.decorators = [ removeNode, removeNode.createClassDecorator(removeNodeView) ];
     
     // Drag nodes to this view to delete them
     var deleteNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
       
       var target = U.param(params, 'target');
-      var targetData = infoSet.activeNodes.getValue()[target.name];
+      var targetData = infoSet.getValue('activeNodes')[target.name];
       
       // If the theory is saved ask the server to delete it, otherwise simply remove it
       if (targetData.saved.getValue()) {
         
         var $delete = doss.$doRequest({
           command: 'deleteTheory',
-          params: { token: infoSet.token.getValue(), quickName: targetData.quickName.getValue() }
+          params: { token: infoSet.getValue('token'), quickName: targetData.quickName.getValue() }
         });
         
       } else {
@@ -1290,15 +1325,15 @@ var package = new PACK.pack.Package({ name: 'logic',
       });
       
     }});
-    var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.icons.del }) ] });
+    var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.getChild('icons.del') }) ] });
     deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
     
     var graphView = new uf.DynamicSetView({ name: 'graph',
-      childData: infoSet.activeNodes,
+      childInfo: infoSet.getChild('activeNodes'),
       decorators: [
         new lg.LogicPhysicsDecorator({ maxUpdatesPerFrame: 10,
-          info: infoSet.activeNodes,
-          enabledInfo: infoSet.physicsEnabled,
+          info: infoSet.getChild('activeNodes'),
+          enabledInfo: infoSet.getChild('physicsEnabled'),
           /*physicsSettings: {
             scaleTime: 1,
             dampenGlobal: 0.82,
@@ -1321,77 +1356,65 @@ var package = new PACK.pack.Package({ name: 'logic',
       ],
       genChildView: function(name, nodeInfo) {
         
-        // Note: `nodeInfo` === graphView.childData.getValue()[name] === infoSet.activeNodes.getValue()[name]
-        
         // This is the view that will be returned
         var view = new uf.SetView({ name: name });
         
         // Add data to the `Info` object: owned, saved, and editing, and physics
-        var loc = nodeInfo.physics.loc.getValue();
-        var owned = nodeInfo.username.getValue() === infoSet.username.getValue();
-        nodeInfo.update({
-          // "owned" is immutable
-          owned: new uf.SimpleInfo({ value: owned }),
-          
-          // "saved" links directly to the original `Info` (actually this is redundant; setting a property to itself)
-          saved: nodeInfo.saved,
-          
-          // "editing' is initially enabled for owned theories if either the title or theory is blank
-          editing: new uf.SimpleInfo({ value: owned && (!nodeInfo.title.getValue() || !nodeInfo.theory.getValue()) })
-        });
-        nodeInfo.physics.update({
-          r: new uf.CalculatedInfo({
-            getFunc: function() {
-              return view === infoSet.focusedNode.getValue() /*&& !dragNode.isDragging(view)*/ ? 150 : 65;
-            }
-          }),
-          weight: new uf.CalculatedInfo({
-            getFunc: function() {
-              // Nodes being dragged have 0 weight
+        var loc = nodeInfo.getValue('physics.loc');
+        var owned = nodeInfo.getValue('username') === infoSet.getValue('username');
+        
+        var physInfo = nodeInfo.getChild('physics');
+        physInfo.modChild('r', new uf.CalculatedInfo({
+          getFunc: function() {
+            return view === infoSet.getValue('focusedNode') ? 150 : 65;
+          }
+        }));
+        physInfo.modChild('weight', new uf.CalculatedInfo({
+          getFunc: function() {
+            // Nodes being dragged have 0 weight
+            var drg = dragNode.info.getValue();
+            
+            // 1) Nodes that aren't being dragging have a weight of `1`
+            if (!dragNode.isDragging(view)) return 1;
+            
+            var waitTimeMs = dragNode.info.getValue().getWaitTimeMs();
+            
+            // 2) Dragged nodes that are held in place for a moment can gain weight...
+            if (waitTimeMs > 500)
+              
+              // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
+              if (!dragAddSupporter.info.getValue() && !dragAddContender.info.getValue()) return 3;
+            
+            // 4) All dragged nodes have a weight of `0`
+            return 0;
+          }
+        }));
+        physInfo.modChild('loc', new uf.CalculatedInfo({
+          getFunc: function() {
+            
+            // 1) Nodes being dragged position to cursor
+            if (dragNode.isDragging(view)) {
               var drg = dragNode.info.getValue();
-              
-              // 1) Nodes that aren't being dragging have a weight of `1`
-              if (!dragNode.isDragging(view)) return 1;
-              
-              var waitTimeMs = dragNode.info.getValue().getWaitTimeMs();
-              
-              // 2) Dragged nodes that are held in place for a moment can gain weight...
-              if (waitTimeMs > 500)
-                
-                // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
-                if (!dragAddSupporter.info.getValue() && !dragAddContender.info.getValue()) return 3;
-              
-              // 4) All dragged nodes have a weight of `0`
-              return 0;
+              // return loc = drg.pt2.add(drg.capturedData); // Note that `loc` is also updated here
+              return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
             }
-          }),
-          loc: new uf.CalculatedInfo({
-            getFunc: function() {
-              
-              // 1) Nodes being dragged position to cursor
-              if (dragNode.isDragging(view)) {
-                var drg = dragNode.info.getValue();
-                // return loc = drg.pt2.add(drg.capturedData); // Note that `loc` is also updated here
-                return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
-              }
-              
-              // 2) Focused node positions to center (only when physics are running)
-              if (infoSet.focusedNode.getValue() === view && infoSet.physicsEnabled.getValue()) return loc = PACK.geom.ORIGIN;
-              
-              // 3) Position to the calculated physics `loc`
-              return loc;
-              
-            },
-            setFunc: function(newLoc) {
-              loc = newLoc;
-            }
-          }),
-        });
+            
+            // 2) Focused node positions to center (only when physics are running)
+            if (infoSet.getValue('focusedNode') === view && infoSet.getValue('physicsEnabled')) return loc = PACK.geom.ORIGIN;
+            
+            // 3) Position to the calculated physics `loc`
+            return loc;
+            
+          },
+          setFunc: function(newLoc) {
+            loc = newLoc;
+          }
+        }));
         
         // Create the dropzones for supporting and contending
-        var loadSupportersButton = new uf.ActionView({ name: 'loadSupporters', textData: 'Supporters...', $action: function() {
+        var loadSupportersButton = new uf.ActionView({ name: 'loadSupporters', textInfo: 'Supporters...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'supporter', 'supporterSet').fail(function(err) {
+          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'supporter', 'supporterSet').fail(function(err) {
             console.log('SUPPORTERS FAILED');
             console.error(err.stack);
           });
@@ -1402,9 +1425,9 @@ var package = new PACK.pack.Package({ name: 'logic',
           dragAddSupporter.createClassDecorator(loadSupportersButton)
         ];
         
-        var loadContendersButton = new uf.ActionView({ name: 'loadContenders', textData: 'Contenders...', $action: function() {
+        var loadContendersButton = new uf.ActionView({ name: 'loadContenders', textInfo: 'Contenders...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.quickName.getValue(), 'contender', 'contenderSet').fail(function(err) {
+          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'contender', 'contenderSet').fail(function(err) {
             console.log('CONTENDERS FAILED');
             console.error(err.stack);
           });
@@ -1416,21 +1439,21 @@ var package = new PACK.pack.Package({ name: 'logic',
         ];
         
         // Install all necessary attributes on `view` before returning it
-        view.cssClasses = [ 'theory', owned ? 'owned' : 'foreign' ]; // Set static classes
+        view.cssClasses = [ 'theory', nodeInfo.getValue('owned') ? 'owned' : 'foreign' ]; // Set static classes
         view.decorators = [
           dragNode,   // Dragging affects position
           clickNode,  // Clicking focuses node
           new uf.CssDecorator({   // Modify position and radius based on physics
             properties: [ 'left', 'top', 'transform' ],
             info: function() {
-              var phys = nodeInfo.physics;
-              var loc = phys.loc.getValue();
-              var r = phys.r.getValue();
+              var phys = nodeInfo.getChild('physics');
+              var loc = phys.getValue('loc');
+              var r = phys.getValue('r');
               
               return {
                 left: Math.round(loc.x - r) + 'px',
                 top: Math.round(loc.y - r) + 'px',
-                transform: 'scale(' + r * lg.graphNodeInvRadius + ')' // 150 is the natural width
+                transform: 'scale(' + r * lg.graphNodeInvRadius + ')'
               }
             }
           }),
@@ -1443,13 +1466,13 @@ var package = new PACK.pack.Package({ name: 'logic',
           new uf.ClassDecorator({ // Add a "focused" class when focused
             list: [ 'focused' ],
             info: function() {
-              return infoSet.focusedNode.getValue() === view ? 'focused' : null;
+              return infoSet.getValue('focusedNode') === view ? 'focused' : null;
             }
           }),
           new uf.ClassDecorator({ // Add "saved"/"unsaved" classes
             list: [ 'saved', 'unsaved' ],
             info: function() {
-              return nodeInfo.saved.getValue() ? 'saved' : 'unsaved'
+              return nodeInfo.getValue('saved') ? 'saved' : 'unsaved'
             }
           })
         ];
@@ -1458,30 +1481,18 @@ var package = new PACK.pack.Package({ name: 'logic',
             loadSupportersButton,
             loadContendersButton,
           ]}),
-          new uf.ChoiceView({ name: 'data', choiceData: function() { return nodeInfo.saved.getValue() ? 'saved' : 'unsaved' }, children: [
+          new uf.ChoiceView({ name: 'data', choiceInfo: function() { return nodeInfo.getValue('saved') ? 'saved' : 'unsaved' }, children: [
             // Shows up on unsaved theories (allows editing only quickName)
             new uf.SetView({ name: 'unsaved', children: [
-              new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textData: nodeInfo.quickName, placeholderData: 'quickName' }),
-              new uf.ActionView({ name: 'save', textData: 'Save', $action: function() {
-                
-                /*
-                var $saveTheory = doss.$doRequest({ address: 'theorySet', command: 'addDossier', params: {
-                  token: infoSet.token.getValue(),
-                  dossierData: {
-                    user:       { type: 'oldRef', value: [ 'userSet', infoSet.username.getValue() ] },
-                    quickName:  { type: 'simple', value: nodeInfo.quickName.getValue() },
-                    title:      { type: 'simple', value: '' },
-                    essay:      { type: 'newRef', value: { markup: '' } }
-                  }
-                }});
-                */
+              new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textInfo: nodeInfo.getChild('quickName'), placeholderData: 'quickName' }),
+              new uf.ActionView({ name: 'save', textInfo: 'Save', $action: function() {
                 
                 var $saveTheory = doss.$doRequest({
                   command: 'saveTheory',
                   params: {
-                    token: infoSet.token.getValue(),
-                    username: infoSet.username.getValue(),
-                    quickName: nodeInfo.quickName.getValue(),
+                    token: infoSet.getValue('token'),
+                    username: infoSet.getValue('username'),
+                    quickName: nodeInfo.getValue('quickName'),
                     title: '',
                     theory: '',
                     type: 'create' // 'create' | 'update'
@@ -1489,8 +1500,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 });
                 
                 return $saveTheory.then(function(response) {
-                  
-                  console.log(response);
                   
                   var originalName = view.name;
                   var savedQuickName = response.quickName;
@@ -1502,7 +1511,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     renameNodeData({ oldName: originalName, newName: savedQuickName }); // This will update `quickName` Info
                     
                     // ... and in `graphView`
-                    graphView.renameChild(view, nodeInfo.quickName.getValue()); // Should only happen on save success
+                    graphView.renameChild(view, nodeInfo.getValue('quickName')); // Should only happen on save success
                     
                   }
                   
@@ -1511,6 +1520,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   
                 }).fail(function(err) {
                   console.log('Couldn\'t create theory: ' + err.message);
+                  console.error(err.stack);
                 });
                 
               }})
@@ -1519,12 +1529,12 @@ var package = new PACK.pack.Package({ name: 'logic',
             // Shows up for saved theories (allows editing title and essay)
             new uf.SetView({ name: 'saved', children: [
               
-              new uf.TextView({ name: 'user', info: nodeInfo.username }),
+              new uf.TextView({ name: 'user', info: nodeInfo.getChild('username') }),
               new uf.DynamicTextEditView({ name: 'title',
                 editableData: function() {
-                  return view === infoSet.focusedNode.getValue() && nodeInfo.editing.getValue() && nodeInfo.owned.getValue();
+                  return view === infoSet.getValue('focusedNode') && nodeInfo.getValue('editing') && nodeInfo.getValue('owned');
                 },
-                textData: new uf.ProxyInfo({ info: nodeInfo, path: 'title' }),
+                textInfo: new uf.ProxyInfo({ info: nodeInfo, path: 'title' }),
                 inputViewParams: {
                   cssClasses: [ 'centered' ],
                   placeholderData: 'Title'
@@ -1532,31 +1542,31 @@ var package = new PACK.pack.Package({ name: 'logic',
               }),
               new uf.DynamicTextEditView({ name: 'theory',
                 editableData: function() {
-                  return view === infoSet.focusedNode.getValue() && nodeInfo.editing.getValue() && nodeInfo.owned.getValue();
+                  return view === infoSet.getValue('focusedNode') && nodeInfo.getValue('editing') && nodeInfo.getValue('owned');
                 },
-                textData: new uf.ProxyInfo({ info: nodeInfo, path: 'theory' }),
+                textInfo: new uf.ProxyInfo({ info: nodeInfo, path: 'theory' }),
                 inputViewParams: {
                   placeholderData: 'Theory',
                   multiline: true
                 }
               }),
-              new uf.TextView({ name: 'quickName', info: nodeInfo.quickName }),
+              new uf.TextView({ name: 'quickName', info: nodeInfo.getChild('quickName') }),
               
             ]})
             
           ]}),
-          new uf.ChoiceView({ name: 'toggleEdit', choiceData: function() { return nodeInfo.owned.getValue() && nodeInfo.saved.getValue() ? 'view' : null }, children: [
-            new uf.ActionView({ name: 'view', textData: '',
+          new uf.ChoiceView({ name: 'toggleEdit', choiceInfo: function() { return nodeInfo.getValue('owned') && nodeInfo.getValue('saved') ? 'view' : null }, children: [
+            new uf.ActionView({ name: 'view', textInfo: '',
               decorators: [
                 new uf.ClassDecorator({
                   list: [ 'editing' ],
                   info: function() {
-                    return nodeInfo.editing.getValue() ? 'editing' : null;
+                    return nodeInfo.getValue('editing') ? 'editing' : null;
                   }
                 })
               ],
               $action: function() {
-                nodeInfo.editing.modValue(function(val) { return !val; });
+                nodeInfo.modValue('editing', function(val) { return !val; });
                 return PACK.p.$null;
               }
             })
@@ -1575,7 +1585,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     var canvasView = new uf.CanvasView({ name: 'canvas', options: { centered: true }, drawFunc: function(ctx, millis) {
       ctx.lineWidth = 12;
       
-      var items = infoSet.activeNodes.getValue();
+      var items = infoSet.getValue('activeNodes');
       for (var k in items) {
         
         if (!(k in graphView.children)) continue;
@@ -1588,7 +1598,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         var canvas = canvasView.domRoot;
         var hw = canvas.width >> 1;
         var hh = canvas.height >> 1;
-        var incomingRelations = standingInfo.incomingRelations.getValue();
+        var incomingRelations = standingInfo.getValue('incomingRelations');
         
         var b1 = graphView.children[k].domRoot.getBoundingClientRect()
         var r1 = b1.width * 0.5; // width and height are equal so either works
@@ -1639,23 +1649,23 @@ var package = new PACK.pack.Package({ name: 'logic',
     ];
     rootView.addChildren([
       
-      new uf.ChoiceView({ name: 'login', choiceData: infoSet.loginView, children: [
+      new uf.ChoiceView({ name: 'login', choiceInfo: infoSet.getChild('loginView'), children: [
         
         new uf.SetView({ name: 'out', children: [
           
-          new uf.TextHideView({ name: 'loginError', info: infoSet.loginError }),
+          new uf.TextHideView({ name: 'loginError', info: infoSet.getChild('loginError') }),
           
-          new uf.TextEditView({ name: 'username', textData: infoSet.username, placeholderData: 'Username' }),
-          new uf.TextEditView({ name: 'password', textData: infoSet.password, placeholderData: 'Password' }),
-          new uf.ActionView({ name: 'submit', textData: 'Submit!', $action: function() {
+          new uf.TextEditView({ name: 'username', textInfo: infoSet.getChild('username'), placeholderData: 'Username' }),
+          new uf.TextEditView({ name: 'password', textInfo: infoSet.getChild('password'), placeholderData: 'Password' }),
+          new uf.ActionView({ name: 'submit', textInfo: 'Submit!', $action: function() {
             return doss.$doRequest({ command: 'getToken', params: {
-              username: infoSet.username.getValue(),
-              password: infoSet.password.getValue()
+              username: infoSet.getValue('username'),
+              password: infoSet.getValue('password')
             }}).then(function(data) {
-              infoSet.token.setValue(data.token);
+              infoSet.setValue('token', data.token);
             }).fail(function(err) {
-              infoSet.loginError.setValue(err.message);
-              new PACK.p.P({ timeout: 3000 }).then(function() { infoSet.loginError.setValue(''); });
+              infoSet.setValue('loginError', err.message);
+              new PACK.p.P({ timeout: 3000 }).then(function() { infoSet.setValue('loginError', ''); });
             });
           }})
           
@@ -1667,14 +1677,16 @@ var package = new PACK.pack.Package({ name: 'logic',
           new uf.SetView({ name: 'dropZones', children: [ removeNodeView, deleteNodeView ]}),
           new uf.SetView({ name: 'controls', children: [
             new uf.SetView({ name: 'search', cssClasses: [ 'control' ], children: [
-              new uf.TextEditView({ name: 'bar', textData: infoSet.searchTerm, placeholderData: 'Search' }),
+              new uf.TextEditView({ name: 'bar', textInfo: infoSet.getChild('searchTerm'), placeholderData: 'Search' }),
               // TODO: What about an unsaved atom that has the same quickName (e.g. "newTheory") as a saved atom?
               // Loading it in will clobber the unsaved atom for what will look like no reason
               new uf.DynamicSetView({ name: 'results',
-                childData: infoSet.searchResults,
+                childInfo: infoSet.getChild('searchResults'),
                 decorators: [
                 ],
                 genChildView: function(name, nodeInfo) {
+                  
+                  console.log('GEN', nodeInfo);
                   
                   var view = new uf.SetView({ name: name });
                   
@@ -1683,7 +1695,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     new uf.ClassDecorator({
                       list: [ 'active' ],
                       info: function() {
-                        return (nodeInfo.quickName in infoSet.activeNodes.getValue()) ? 'active' : null;
+                        return (nodeInfo.quickName in infoSet.getValue('activeNodes')) ? 'active' : null;
                       }
                     })
                   ];
@@ -1692,18 +1704,17 @@ var package = new PACK.pack.Package({ name: 'logic',
                     new uf.TextView({ name: 'quickName', cssClasses: [ 'item' ], info: nodeInfo.quickName }),
                     new uf.TextView({ name: 'title', cssClasses: [ 'item' ], info: nodeInfo.title }),
                     new uf.TextView({ name: 'theory', cssClasses: [ 'item' ], info: nodeInfo.theory }),
-                    new uf.ActionView({ name: 'choose', textData: infoSet.icons.insert, $action: function() {
+                    new uf.ActionView({ name: 'choose', textInfo: infoSet.getChild('icons.insert'), $action: function() {
                       
                       if (!(nodeInfo.quickName in graphView.children)) {
                       
                         // A new theory has been added
-                        infoSet.activeNodes.modValue(function(activeNodes) {
-                          activeNodes[nodeInfo.quickName] = saveNodeData(makeNodeData({
-                            quickName: nodeInfo.quickName,
-                            username: nodeInfo.username
-                          }));
-                          return activeNodes;
-                        });
+                        var activeNodes = infoSet.getChild('activeNodes');
+                        activeNodes.addChild(nodeInfo.quickName, saveNodeData(makeNodeData({
+                          quickName: nodeInfo.quickName,
+                          username: nodeInfo.username,
+                          editing: false
+                        })));
                         
                         // Ensure that `graphView` is immediately synced
                         graphView.updateChildren();
@@ -1712,10 +1723,10 @@ var package = new PACK.pack.Package({ name: 'logic',
                       
                       // Focus the theory that was searched for
                       var pickedChild = graphView.children[nodeInfo.quickName];
-                      infoSet.focusedNode.setValue(pickedChild);
+                      infoSet.setValue('focusedNode', pickedChild);
                       
                       // Clear the search term
-                      infoSet.searchTerm.setValue('');
+                      infoSet.setValue('searchTerm', '');
                       
                       return PACK.p.$null;
                       
@@ -1727,30 +1738,30 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
               })
             ]}),
-            new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textData: 'New Theory', $action: function() {
+            new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textInfo: 'New Theory', $action: function() {
               
+              var activeNodes = infoSet.getChild('activeNodes');
+              var activeNodeObj = activeNodes.getValue();
               var num = 2;
               var prefix = 'newTheory';
               var name = prefix;
-              while (name in graphView.children) name = prefix + (num++); // Shouldn't be checking `graphView.children` - should be checking `infoSet.activeNodes` I think
+              while (name in activeNodeObj) name = prefix + (num++);
               
-              infoSet.activeNodes.modValue(function(val) {
-                val[name] = makeNodeData({
-                  username: infoSet.username,
-                  quickName: name
-                });
-                return val;
-              });
+              activeNodes.addChild(name, makeNodeData({
+                username: infoSet.getValue('username'),
+                quickName: name,
+                editing: true
+              }));
               
               var child = graphView.updateChildren().add[name];
-              infoSet.focusedNode.setValue(child);
+              infoSet.setValue('focusedNode', child);
               
               return PACK.p.$null;
               
             }}),
-            new uf.ActionView({ name: 'exit', cssClasses: [ 'control' ], textData: 'Log Out', $action: function() {
+            new uf.ActionView({ name: 'exit', cssClasses: [ 'control' ], textInfo: 'Log Out', $action: function() {
               
-              infoSet.token.setValue('');
+              infoSet.setValue('token', '');
               return PACK.p.$null;
               
             }})
@@ -1759,7 +1770,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         ]}),
         
       ]}),
-      new uf.TextView({ name: 'version', info: infoSet.appVersion }),
+      new uf.TextView({ name: 'version', info: infoSet.getChild('appVersion') }),
       new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo + 'ms' } })
       
     ]);
@@ -1776,12 +1787,12 @@ var package = new PACK.pack.Package({ name: 'logic',
       username: 'admin',
       password: 'adminadmin123'
     }}).then(function(data) {
-      infoSet.token.setValue(data.token);
+      infoSet.setValue('token', data.token);
     });
     
-    infoSet.username.setValue('admin');
-    infoSet.password.setValue('adminadmin123');
-    infoSet.searchTerm.setValue('zero');
+    infoSet.setValue('username', 'admin');
+    infoSet.setValue('password', 'adminadmin123');
+    infoSet.setValue('searchTerm', 'zero');
     
   }
 });

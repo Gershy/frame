@@ -3,6 +3,7 @@ var package = new PACK.pack.Package({ name: 'geom',
   buildFunc: function() {
     var geom = {
       Geom: U.makeClass({ name: 'Geom',
+        includeGuid: false,
         methods: function(sc, c) { return {
           init: function(params /* */) {
           }
@@ -10,6 +11,7 @@ var package = new PACK.pack.Package({ name: 'geom',
       }),
       Point: U.makeClass({ name: 'Point',
         superclassName: 'Geom',
+        includeGuid: false,
         methods: function(sc, c) { return {
           init: function(params /* x, y | ang, mag */) {
             sc.init.call(this, params);
@@ -111,6 +113,7 @@ var package = new PACK.pack.Package({ name: 'geom',
       }),
       Bound: U.makeClass({ name: 'Bound',
         superclassName: 'Geom',
+        includeGuid: false,
         methods: function(sc, c) { return {
           init: function(params /* x, y, rot */) {
             this.pt = new PACK.geom.Point(params);
@@ -120,6 +123,7 @@ var package = new PACK.pack.Package({ name: 'geom',
       }),
       Circle: U.makeClass({ name: 'Circle',
         superclassName: 'Bound',
+        includeGuid: false,
         methods: function(sc, c) { return {
           init: function(params /* x, y, rot, r */) {
             sc.init.call(this, params);
@@ -137,6 +141,7 @@ var package = new PACK.pack.Package({ name: 'geom',
       }),
       Rect: U.makeClass({ name: 'Rect',
         superclassName: 'Bound',
+        includeGuid: false,
         methods: function(sc, c) { return {
           init: function(params /* x, y, rot, w, h */) {
             // Note that "w" and "h" refer to width/height when rotation is 0

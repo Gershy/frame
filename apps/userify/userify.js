@@ -81,6 +81,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* */) {
             this.value = null;
+            this.listeners = null;
           },
           
           walk: function(path, start) {
@@ -113,13 +114,26 @@ var package = new PACK.pack.Package({ name: 'userify',
           modValue: function(modFunc) {
             var val = modFunc(this.getValue());
             
-            if (!U.exists(val)) throw new Error('modFunc shouldn\'t return `undefined`');
+            if (!U.exists(val)) { console.log(modFunc); throw new Error('modFunc shouldn\'t return `undefined`'); }
             
             this.setValue(val);
             return val;
           },
           
-          start: function() {},
+          addListener: function(listener) {
+            if (!this.listeners) this.listeners = {};
+            this.listeners[listener.guid] = listener;
+          },
+          remListener: function(listener) {
+            if (this.listeners) delete this.listeners[listener.guid];
+            if (U.isEmptyObj(this.listeners)) this.listeners = null;
+          },
+          notifyListeners: function() {
+            if (!this.listeners) return;
+            for (var k in this.listeners) this.listeners[k].updateOccurred(this);
+          },
+          
+          start: function() { this.notifyListeners(); },
           stop: function() {},
           
           valueOf: function() { return this.getValue(); }
@@ -138,6 +152,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           setValue: function(value) {
             this.value = value;
+            this.notifyListeners();
           }
         };}
       }),
@@ -156,6 +171,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           setValue: function(value) {
             if (!this.setFunc) throw new Error('No `setFunc`');
             this.setFunc(value);
+            this.notifyListeners();
           }
         };}
       }),
@@ -168,27 +184,36 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.info = uf.pafam(params, 'info');
             this.cached = c.NO_VALUE;
             this.id = c.NEXT_ID++;
+            
+            this.info.addListener(this);
           },
+          updateOccurred: function() { this.notifyListeners(); },
           getValue: function() {
             if (this.cached === c.NO_VALUE) this.cached = this.info.getValue();
             return this.cached;
           },
           setValue: function(val) {
             this.cached = val;
+            this.notifyListeners();
           },
           reset: function() {
             if (this.cached === c.NO_VALUE) return;
             
             this.info.setValue(this.cached);
             this.cached = c.NO_VALUE;
+            this.notifyListeners();
           },
           
           start: function() {
+            this.info.addListener(this);
             this.rootView.addCache(this);
+            sc.start.call(this);
           },
           stop: function() {
-            this.rootView.remCache(this);
+            sc.stop.call(this);
             this.reset();
+            this.info.remListener(this);
+            this.rootView.remCache(this);
           }
         };},
         statik: {
@@ -207,11 +232,90 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (U.isObj(this.path, String)) this.path = this.path ? this.path.split('.') : [];
           },
           
+          // Shouldn't always notify; should only do so if the update is coming from `this.info.getChild(this.path)`
+          updateOccurred: function() { this.notifyListeners(); },
+          
           getValue: function() {
-            return this.walk(this.path, this.info).getValue();
+            return this.info.getValue(this.path);
           },
           setValue: function(val) {
-            return this.walk(this.path, this.info).setValue(val);
+            return this.info.setValue(this.path, val);
+          },
+          
+          start: function() {
+            this.info.addListener(this);
+            sc.start.call(this);
+          },
+          stop: function() {
+            sc.stop.call(this);
+            this.info.remListener(this);
+          }
+        };}
+      }),
+      DictInfo: U.makeClass({ name: 'DictInfo',
+        superclassName: 'Info',
+        methods: function(sc, c) { return {
+          init: function(params /* children */) {
+            sc.init.call(this, params);
+            this.children = {};
+            var children = U.param(params, 'children', {});
+            for (var k in children) this.addChild(k, children[k]);
+          },
+          updateOccurred: function() { this.notifyListeners(); },
+          addChild: function(name, child) {
+            if (name in this.children) throw new Error('Tried to overwrite child "' + name + '"');
+            this.children[name] = child;
+            child.addListener(this);
+            
+            this.notifyListeners();
+          },
+          remChild: function(name) {
+            var child = this.children[name];
+            if (!child) return;
+            delete this.children[name];
+            child.remListener(this);
+            child.stop();
+            
+            this.notifyListeners();
+          },
+          modChild: function(name, newChild) {
+            this.remChild(name);
+            this.addChild(name, newChild);
+          },
+          getChild: function(chain) {
+            if (U.isObj(chain, String)) chain = chain.split('.');
+            if (chain.length === 1) return this.children[chain[0]];
+            
+            var ptr = this;
+            for (var i = 0, len = chain.length; i < len; i++) ptr = ptr.children[chain[i]];
+            return ptr;
+          },
+          getValue: function(chain) {
+            if (chain) return this.getChild(chain).getValue();
+            return this.children;
+          },
+          setValue: function(chain, value) {
+            this.getChild(chain).setValue(value);
+          },
+          modValue: function(chain, func) {
+            this.getChild(chain).modValue(func);
+          },
+          getImmediateChild: function(name) {
+            return this.children[name];
+          },
+          start: function() {
+            for (var k in this.children) {
+              this.children[k].addListener(this);
+              this.children[k].start();
+            }
+            sc.start.call(this);
+          },
+          stop: function() {
+            sc.stop.call(this);
+            for (var k in this.children) {
+              this.children[k].stop();
+              this.children[k].remListener(this);
+            }
           }
         };}
       }),
@@ -240,6 +344,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.freshestNum = this.num;  // Invalidates any pending requests
             this.setPending = true;       // Invalidates any fresher pending requests
             this.value = value;
+            this.notifyListeners();
             
             this.$setFunc(value).then(function() { this.setPending = false; }.bind(this)).done();
           },
@@ -247,6 +352,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (!this.setPending && num > this.freshestNum) {
               this.freshestNum = num;
               this.value = value;
+              this.notifyListeners();
             }
           }
         };}
@@ -281,8 +387,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             this.refresh();
+            sc.start.call(this);
           },
           stop: function() {
+            sc.stop.call(this);
             if (this.timeout !== null) clearTimeout(this.timeout);
           }
         };}
@@ -294,25 +402,27 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.info = U.param(params, 'info');
-            this.infoLatestValue = this.info.getValue();
+            this.value = this.info.getValue();
+          },
+          updateOccurred: function() {
+            // Begin an update in reaction to the new value. Will modify `this.value`.
+            this.$getFunc().then(function(val) {
+              this.updateValue(this.num++, val);
+              //this.updateValue.bind(this, this.num++)
+            }.bind(this)).done();
           },
           getValue: function() {
-            var val = this.info.getValue();
-            
-            // If no change, simply return latest value without any modification
-            if (U.isStdObj(this.infoLatestValue)
-              ? this.infoLatestValue.shallowCompare(val)
-              : (this.infoLatestValue === val)) return this.value;
-            
-            // Hold clones of std objects, regular assignment otherwise
-            this.infoLatestValue = U.isStdObj(val) ? val.clone() : val;
-            
-            // Begin an update to react to the new value
-            this.$getFunc().then(this.updateValue.bind(this, this.num++)).done();
-            
             return this.value;
+          },
+          
+          start: function() {
+            this.info.addListener(this);
+            sc.start.call(this);
+          },
+          stop: function() {
+            sc.stop.call(this);
+            this.info.remListener(this);
           }
-          // TODO
         };}
       }),
       
@@ -483,19 +593,22 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           mouseMove: function(view, event) {   // Mouse move
             // Update values in `this.info`
-            var info = this.info.getValue(); // We know `this.info` is a SimpleInfo, so just updating it normally works here
-            
-            // It's possible for mousemove to fire after mouseup; detectable if info.pt1 is undefined
-            if (!info.pt1) return;
-            
-            // Update `drag`
-            info.pt2 = new Point({ x: event.clientX, y: event.clientY });
-            if (!info.drag && info.pt2.dist(info.pt1) > this.tolerance) {
-              // TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
-              info.drag = true;
-            }
-            
-            info.lastDragMs = +new Date();
+            this.info.modValue(function(info) {
+              // It's possible for mousemove to fire after mouseup; detectable if info.pt1 is undefined
+              if (!info.pt1) return info;
+              
+              // Update `drag`
+              info.pt2 = new Point({ x: event.clientX, y: event.clientY });
+              
+              if (!info.drag && info.pt2.dist(info.pt1) > this.tolerance) {
+                // TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
+                info.drag = true;
+              }
+              
+              info.lastDragMs = +new Date();
+              
+              return info;
+            }.bind(this));
             
             event.preventDefault(); // Stops annoying highlighting. TODO: Should this be optional?
           }
@@ -784,10 +897,10 @@ var package = new PACK.pack.Package({ name: 'userify',
       TextEditView: U.makeClass({ name: 'TextEditView',
         superclassName: 'InteractiveView',
         methods: function(sc, c) { return {
-          init: function(params /* name, multiline, initialValue, textData, placeholderData, enabledData */) {
+          init: function(params /* name, multiline, initialValue, textInfo, placeholderData, enabledData */) {
             sc.init.call(this, params);
             this.multiline = U.param(params, 'multiline', false);
-            this.textData = uf.pafam(params, 'textData', '');
+            this.textInfo = uf.pafam(params, 'textInfo', '');
             this.placeholderData = uf.pafam(params, 'placeholderData', '');
           },
           
@@ -799,7 +912,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             var input = document.createElement(this.multiline ? 'textarea' : 'input');
             input.classList.add('_interactive');
             input.oninput = function(e) {
-              this.textData.setValue(input.value);
+              this.textInfo.setValue(input.value);
             }.bind(this);
             ret.appendChild(input);
             
@@ -823,7 +936,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.tick.call(this, millis);
             
             var input = this.domRoot.childNodes[0];
-            var inputText = this.textData.getValue();
+            var inputText = this.textInfo.getValue();
             
             // Update text items
             uf.domSetText(this.domRoot.childNodes[1], this.placeholderData.getValue());
@@ -845,12 +958,12 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            this.textData.start();
+            this.textInfo.start();
             this.placeholderData.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.textData.stop();
+            this.textInfo.stop();
             this.placeholderData.stop();
           }
         };}
@@ -858,11 +971,11 @@ var package = new PACK.pack.Package({ name: 'userify',
       ActionView: U.makeClass({ name: 'ActionView',
         superclassName: 'InteractiveView',
         methods: function(sc, c) { return {
-          init: function(params /* name, $action, textData, enabledData */) {
+          init: function(params /* name, $action, textInfo, enabledData */) {
             sc.init.call(this, params);
             this.$action = U.param(params, '$action');
             this.waiting = false;
-            this.textData = uf.pafam(params, 'textData');
+            this.textInfo = uf.pafam(params, 'textInfo');
           },
           
           createDomRoot: function() {
@@ -888,7 +1001,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           tick: function(millis) {
             sc.tick.call(this, millis);
             
-            uf.domSetText(this.domRoot, this.textData.getValue());
+            uf.domSetText(this.domRoot, this.textInfo.getValue());
             
             if (this.waiting)  this.domRoot.classList.add('_waiting');
             else               this.domRoot.classList.remove('_waiting');
@@ -896,11 +1009,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            this.textData.start();
+            this.textInfo.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.textData.stop();
+            this.textInfo.stop();
           }
         };}
       }),
@@ -1072,11 +1185,11 @@ var package = new PACK.pack.Package({ name: 'userify',
       ChoiceView: U.makeClass({ name: 'ChoiceView',
         superclassName: 'AbstractSetView',
         methods: function(sc, c) { return {
-          init: function(params /* name, choiceData, children */) {
+          init: function(params /* name, choiceInfo, children */) {
             sc.init.call(this, params);
             
             // Info returning the name of one of the children
-            this.choiceData = uf.pafam(params, 'choiceData');
+            this.choiceInfo = uf.pafam(params, 'choiceInfo');
             
             // Property to keep track of the currently active child
             this.currentChild = null;
@@ -1090,7 +1203,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (this.currentChild) this.currentChild.update(millis);
           },
           tick: function(millis) {
-            var choice = this.choiceData.getValue();
+            var choice = this.choiceInfo.getValue();
             
             if (choice === null) {
               var nextChild = null;
@@ -1113,11 +1226,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            this.choiceData.start();
+            this.choiceInfo.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.choiceData.stop();
+            this.choiceInfo.stop();
           }
         };}
       }),
@@ -1128,7 +1241,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* name, info */) {
             var info = uf.pafam(params, 'info');
             sc.init.call(this, params.update({
-              choiceData: new uf.CalculatedInfo({ getFunc: function() { return info.getValue() ? 'text' : null; } }),
+              choiceInfo: new uf.CalculatedInfo({ getFunc: function() { return info.getValue() ? 'text' : null; } }),
               children: [  new uf.TextView({ name: 'text', info: info })  ]
             }));
           }
@@ -1138,26 +1251,26 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'ChoiceView',
         description: 'A text field which is conditionally editable',
         methods: function(sc, c) { return {
-          init: function(params /* name, editableData, textData, inputViewParams */) {
+          init: function(params /* name, editableData, textInfo, inputViewParams */) {
             var editableData = uf.pafam(params, 'editableData');
-            this.textData = uf.pafam(params, 'textData');
+            this.textInfo = uf.pafam(params, 'textInfo');
             var inputViewParams = U.param(params, 'inputViewParams', {});
             sc.init.call(this, params.update({
-              choiceData: new uf.CalculatedInfo({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
+              choiceInfo: new uf.CalculatedInfo({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
               children: [
-                new uf.TextEditView(inputViewParams.update({ name: 'edit', textData: this.textData })),
-                new uf.TextView({ name: 'display', info: this.textData })
+                new uf.TextEditView(inputViewParams.update({ name: 'edit', textInfo: this.textInfo })),
+                new uf.TextView({ name: 'display', info: this.textInfo })
               ]
             }));
           },
           
           start: function() {
             sc.start.call(this);
-            this.textData.start();
+            this.textInfo.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.textData.stop();
+            this.textInfo.stop();
           }
         };}
       }),
@@ -1168,11 +1281,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           'the DynamicSetView. Adds a 2nd parameter to `addChild`; the ' +
           'raw info that the child was built from.',
         methods: function(sc, c) { return {
-          init: function(params /* name, childData, getDataId, genChildView, comparator */) {
+          init: function(params /* name, childInfo, getDataId, genChildView, comparator */) {
             if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
             
             sc.init.call(this, params);
-            this.childData = uf.pafam(params, 'childData');
+            this.childInfo = uf.pafam(params, 'childInfo');
             //this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of info (will be used for child.name)
             this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
             this.comparator = U.param(params, 'comparator', null); // TODO: implement!
@@ -1190,16 +1303,16 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           updateChildren: function() {
             /*
-            Fully compares `this.children` to `this.childData.getValue()`
+            Fully compares `this.children` to `this.childInfo.getValue()`
             Adds/removes any elements in `this.children` based on their
-            existence in `this.childData`. Returns values showing which
+            existence in `this.childInfo`. Returns values showing which
             children were added and which were removed.
             */
             
             var rem = this.children.clone(); // Initially mark all children for removal
             var add = {};  // Initially mark no children for addition
             
-            var cd = this.childData.getValue();
+            var cd = this.childInfo.getValue();
             
             for (var k in cd) {
               
@@ -1219,7 +1332,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             // Add all children as necessary
             for (var k in add) {
-              // `add[k]` is never even accessed; add is coming from `this.childData` which the client should already have access to
+              // `add[k]` is never even accessed; add is coming from `this.childInfo` which the client should already have access to
               var child = this.genChildView.call(this, k, add[k]); // TODO: Or should `add[k]` be provided here?
               if (child.name !== k) throw new Error('Child named "' + child.name + '" needs to be named "' + k + '"');
               
@@ -1235,7 +1348,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (newName === view.name) return;
             
             if (newName in this.children) throw new Error('A child is already named "' + newName + '"; can\'t rename');
-            if (!(newName in this.childData.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childData` before calling `renameChild`.');
+            if (!(newName in this.childInfo.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childInfo` before calling `renameChild`.');
             
             this.children[newName] = this.children[view.name];
             delete this.children[view.name];
@@ -1256,11 +1369,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            this.childData.start();
+            this.childInfo.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.childData.stop();
+            this.childInfo.stop();
           }
         };}
       })

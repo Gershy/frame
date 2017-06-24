@@ -169,9 +169,10 @@ run on server or client side:
 });
 
 // Build utility library
-global.S = {};    // All serializables are stored here
 global.C = {};    // All classes are stored here
 global.PACK = {};  // All packages are stored here
+global.NEXT_ID = 0;
+global.LAST_CLASS = null;
 global.U = {
   SKIP: { SKIP: true }, // directive to exclude an item during iteration
   
@@ -310,7 +311,7 @@ global.U = {
   },
   
   // Class utility
-  makeClass: function(params /* namespace, name, description, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
+  makeClass: function(params /* namespace, name, description, includeGuid, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
     
     // `namespace` may either be an object or a string naming the namespace
     var namespace = U.param(params, 'namespace', global.C);
@@ -345,8 +346,12 @@ global.U = {
     // Check for `description`
     var description = U.param(params, 'description', heirName);
     
+    var includeGuid = U.param(params, 'includeGuid', true);
+    
     // Use eval to get a named constructor
-    var cls = namespace[name] = eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params ? params : {}); })');
+    var cls = namespace[name] = includeGuid
+      ? eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.guid=global.NEXT_ID++;LAST_CLASS=this.constructor.title;this.init(params?params:{});})')
+      : eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params?params:{});})');
     
     // `methods` can be either an object or a function returning an object
     var methods = U.param(params, 'methods');
@@ -577,6 +582,7 @@ global.U = {
   }
   
 };
+
 
 /*
 Only one package is built in an ad-hoc manner:
