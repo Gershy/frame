@@ -278,6 +278,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             this.notifyListeners();
           },
+          hasChild: function(name) { return name in this.children; },
           modChild: function(name, newChild) {
             this.remChild(name);
             this.addChild(name, newChild);
@@ -298,6 +299,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.getChild(chain).setValue(value);
           },
           modValue: function(chain, func) {
+            console.log(this, chain);
+            console.log(this.getChild(chain));
             this.getChild(chain).modValue(func);
           },
           getImmediateChild: function(name) {

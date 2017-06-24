@@ -965,15 +965,13 @@ var package = new PACK.pack.Package({ name: 'logic',
       appVersion: new uf.RepeatingSyncedInfo({
         $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
       }),
-      loginView: new uf.CalculatedInfo({
-        getFunc: function() {  return infoSet.getValue('token') ? 'in' : 'out'  }
-      }),
       username: new uf.SimpleInfo({ value: '' }),
       password: new uf.SimpleInfo({ value: '' }),
       loginError: new uf.SimpleInfo({ value: '' }),
       focusedNode: new uf.SimpleInfo({ value: null }),
     }});
     infoSet.addChild('activeNodes', new uf.DictInfo({ children: {} }));
+    infoSet.addChild('activeRelations', new uf.DictInfo({ children: {} }));
     infoSet.addChild('physicsEnabled', new uf.SimpleInfo({ value: true }));
     infoSet.addChild('searchTerm', new uf.SimpleInfo({ value: '' }));
     infoSet.addChild('searchResults', new uf.ReactingSyncedInfo({
@@ -1210,36 +1208,33 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       }).then(function(pickedFieldSet) {
         
-        var activeNodes = infoSet.modValue('activeNodes', function(activeNodes) {
+        var activeNodesInfo = infoSet.getChild('activeNodes');
+        for (var k in pickedFieldSet) {
+          var quickName = pickedFieldSet[k].quickName;
+          var username = pickedFieldSet[k]['@user'].username;
           
-          for (var k in pickedFieldSet) {
-            var quickName = pickedFieldSet[k].quickName;
-            var username = pickedFieldSet[k]['@user'].username;
-            
-            if (quickName in activeNodes) continue; // TODO: Should the data be updated, considering it's immediately available?
-            
-            activeNodes.addChild(quickName, saveNodeData(makeNodeData({
-              quickName: quickName,
-              username: username,
-              editing: false
-            })));
-          }
+          if (activeNodesInfo.hasChild(quickName)) continue; // TODO: Should the data be updated, considering it's immediately available?
           
-          return activeNodes;
-          
-        });
+          activeNodesInfo.addChild(quickName, saveNodeData(makeNodeData({
+            quickName: quickName,
+            username: username,
+            editing: false
+          })));
+        }
         
-        if (theoryQuickName in activeNodes) {
-          var phys = activeNodes[theoryQuickName].physics;
-          var loc = phys.loc.getValue();
-          var r = phys.r.getValue();
+        // Position added nodes (if the node whose relations were queried is page-active)
+        if (activeNodesInfo.hasChild(theoryQuickName)) {
+          var phys = activeNodesInfo.getChild([ theoryQuickName, 'physics' ]);
+          var loc = phys.getValue('loc');
+          var r = phys.getValue('r');
           
           var addOrigin = loc.add(lg.nodeRelationOffsets[relationName].scale(r * lg.graphNodeInvRadius));
           
+          // Determine the children added to the relation based on those included in `childUpdate` (Bad method!! Should collect them in the earlier loop!!)
           var added = graphView.updateChildren().add;
           for (var k in added) {
             // Set the loc to be right at the relation ear
-            activeNodes[k].physics.loc.setValue(addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
+            activeNodesInfo.setValue([ k, 'physics', 'loc' ], addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
           }
         }
         
@@ -1613,7 +1608,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           var incomingInfo = items[qn];
           
           var b2 = graphView.children[qn].domRoot.getBoundingClientRect();
-          var r2 = incomingInfo.physics.r.getValue();
+          var r2 = incomingInfo.getValue('physics.r');
           var loc2 = new PACK.geom.Point({ x: b2.left + r2 - hw, y: b2.top + r2 - hh });
           
           var relations = incomingRelations[qn].relations;
@@ -1649,7 +1644,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     ];
     rootView.addChildren([
       
-      new uf.ChoiceView({ name: 'login', choiceInfo: infoSet.getChild('loginView'), children: [
+      new uf.ChoiceView({ name: 'login', choiceInfo: function() { return infoSet.getValue('token') ? 'in' : 'out' }, children: [
         
         new uf.SetView({ name: 'out', children: [
           
@@ -1685,8 +1680,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 decorators: [
                 ],
                 genChildView: function(name, nodeInfo) {
-                  
-                  console.log('GEN', nodeInfo);
                   
                   var view = new uf.SetView({ name: name });
                   
