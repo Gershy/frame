@@ -5,7 +5,7 @@ DB Reference:
 
 TODO: This is one UGLY goddang file
 TODO: The DB connection at this end of this file needs its own paradigm
-TODO: Responses for non-existing files are no good, try removing favicon and loading
+TODO: Responses for non-existing files are no good, e.g. try removing favicon and loading
 TODO: Dependency loading should be done via promises
 TODO: Websockets eventually?
 */

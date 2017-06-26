@@ -17,11 +17,11 @@ NEAR-TERM:
   - Who can contend a theory? Which of the incoming and standing theories can be unowned?
   - Theory "privileges"?
     - Should users have (and be able to grant) per-theory privileges to other users?
-- Relation physics should be better
-  - Consider
 - Camera controls? Panning/zooming?
   - Minimap?? (this could be a canvas; it could have a low framerate; it would honestly be beautiful)
 - dossier.getDataView() is not implemented correctly (some properties will wind up being 'DUMMY_VAL')
+- Relation physics should be better
+  - Nodes should spread out in a widening, distancing arc depending on the number of sibling relations (this could look REALLY COOL)
 
 INDEFINITE:
 - Need to introduce artificial latency for testing and indicate all loading activities
@@ -600,7 +600,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               }
               
               //if (!isIncoming) acl1 = acl1.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
-              if (!isIncoming) vel1 = vel1.angleMove(loc1.angleTo(geom.ORIGIN), 10);
+              if (!isIncoming) vel1 = vel1.angleMove(loc1.angleTo(geom.ORIGIN), 5);
               
               phys1.setValue('loc', loc1);
               phys1.setValue('vel', vel1);
@@ -681,6 +681,23 @@ var package = new PACK.pack.Package({ name: 'logic',
                 prop: 'quickName/value',
                 verifyAddDossier: function(params /*  */) {}, // TODO: implement in quickDev
                 verifyRemDossier: function(params /*  */) {}  // TODO: implement in quickDev
+              }},
+              { c: qd.DossierList, p: { name: 'theoryRelationSet',
+                innerOutline: { c: qd.DossierDict, i: [
+                  { c: qd.DossierRef,     p: { name: 'standing', baseAddress: '~root.theorySet' } },
+                  { c: qd.DossierRef,     p: { name: 'incoming', baseAddress: '~root.theorySet' } },
+                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
+                  { c: qd.DossierString,  p: { name: 'relationType' } } // "supporter" | "contender"
+                ]},
+                prop: null // TODO!!!
+              }},
+              { c: qd.DossierList, p: { name: 'relationRelationSet',
+                innerOutline: { c: qd.DossierDict, i: [
+                  { c: qd.DossierRef,     p: { name: 'standing', baseAddress: '~root.theoryRelationSet' } },
+                  { c: qd.DossierRef,     p: { name: 'incoming', baseAddress: '~root.theorySet' } },
+                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
+                  { c: qd.DossierString,  p: { name: 'relationType' } } // probably only "contender"
+                ]}
               }}
             ]});
             var data = {
@@ -1166,20 +1183,20 @@ var package = new PACK.pack.Package({ name: 'logic',
       var standingData = activeNodes[standing.name];
       var incomingData = activeNodes[incoming.name];
       
-      if (!standingData.saved.getValue() || !incomingData.saved.getValue())
+      if (!standingData.getValue('saved') || !incomingData.getValue('saved'))
         throw new Error('Relations cannot involve unsaved theories');
       
-      var rel = standingData.incomingRelations.getValue()[incoming.name];
+      var rel = standingData.getValue('incomingRelations')[incoming.name];
       var alreadyRelated = rel && (relationType in rel.relations);
       
       return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
         token: infoSet.getValue('token'),
-        standingQuickName: standingData.quickName.getValue(),
-        incomingQuickName: incomingData.quickName.getValue(),
+        standingQuickName: standingData.getValue('quickName'),
+        incomingQuickName: incomingData.getValue('quickName'),
         relationType: relationType
       }}).then(function(data) {
         console.log('RELATION EDIT COMPLETE??', data);
-        standingData.incomingRelations.refresh();
+        standingData.getChild('incomingRelations').refresh();
       }).fail(function(err) {
         console.error('Error editing relation: ', err.message);
       });

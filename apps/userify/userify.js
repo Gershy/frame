@@ -299,8 +299,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.getChild(chain).setValue(value);
           },
           modValue: function(chain, func) {
-            console.log(this, chain);
-            console.log(this.getChild(chain));
             this.getChild(chain).modValue(func);
           },
           getImmediateChild: function(name) {
