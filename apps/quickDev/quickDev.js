@@ -1,6 +1,7 @@
 /*
 TODO: Long polling
 TODO: Abstract tree class in separate package!!!
+TODO: Is IndexedDict efficient? Probably with lots of data present
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
   dependencies: [ 'queries', 'p' ],
@@ -19,6 +20,92 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         
         return 'TEMP((' + id + '))';
       },
+      
+      /* IndexedDict - define a multi-key dict with high space usage but efficient search time */
+      IndexedDict: U.makeClass({ name: 'IndexedDict', includeGuid: false,
+        methods: function(sc) { return {
+          init: function(params /* keySize, keyDelimiter */) {
+            this.keySize = U.param(params, 'keySize');
+            this.keyDelimiter = U.param(params, 'keyDelimiter', '.');
+            this.data = {};
+            this.index = {};
+          },
+          add: function(keys, value) {
+            // Runtime is O(keySize)
+            
+            var compoundKey = keys.join(this.keyDelimiter);
+            
+            var ptr = this.data;
+            var lastInd = keys.length - 1;
+            
+            for (var i = 0; i <= lastInd; i++) {
+              var k = keys[i];
+              if (i !== lastInd)  ptr = k in ptr ? ptr[k] : (ptr[k] = {});
+              else                ptr[k] = value;
+              
+              if (!(k in this.index)) this.index[k] = {};
+              this.index[k][compoundKey] = true;
+            }
+          },
+          find: function(keys) {
+            // Runtime is O(keySize)
+            
+            var ptr = this.data;
+            for (var i = 0, len = keys.length; i < len; i++) {
+              var k = keys[i];
+              if (!(k in ptr)) return null;
+              ptr = ptr[k];
+            }
+            return ptr;
+          },
+          rem: function(key) {
+            // Runtime is O(keySize^2)
+            
+            if (!(key in this.index)) return;
+            var compoundKeyDict = this.index[key];
+            
+            for (var k in compoundKeyDict) {
+              var keys = k.split(this.keyDelimiter);
+              
+              // Use `ptrStack` instead of just `ptr` to facilitate easy empty-cleanup later
+              var ptrStack = [ this.data ];
+              for (var i1 = 0, len1 = keys.length; i1 < len1; i1++) {
+                var k = keys[i1];
+                var ptr = ptrStack[i1];
+                if (k !== key) {
+                  ptrStack.push(ptr[k]);
+                } else {
+                  delete ptr[k];
+                  break;
+                }
+              }
+              
+              // Clean up empty objects in the trail
+              var ind = ptrStack.length - 1;
+              while (ind > 0 && U.isEmptyObj(ptrStack[ind])) {
+                ind--;
+                delete ptrStack[ind][keys[ind]];
+              }
+            }
+            
+            // Delete every index which includes `key`
+            var index = this.index[key];
+            for (var compoundKey in index) {
+              
+              // Every `compoundKey` in `this.index` contains `key`, so each one has to be removed
+              var keys = compoundKey.split(this.keyDelimiter);
+              
+              for (var i = 0, len = keys.length; i < len; i++) {
+                var relatedIndexRemName = keys[i];
+                if (relatedIndexRemName in this.index) delete this.index[relatedIndexRemName][compoundKey];
+                if (U.isEmptyObj(this.index[relatedIndexRemName])) delete this.index[relatedIndexRemName];
+              }
+              
+            }
+            
+          }
+        };}
+      }),
       
       /* Outline - define what a Dossier structure looks like */
       Outline: U.makeClass({ name: 'Outline',

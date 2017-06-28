@@ -16,7 +16,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 							
 						} else {
 							
-							reject(new Error(query.responseText));
+							reject(new Error('REMOTE: ' + query.responseText));
 							
 						}
 					};
@@ -67,7 +67,9 @@ var package = new PACK.pack.Package({ name: 'queries',
             // QueryHandlers that implement `getChild` end here:
             if (this.getChild) {
               console.log('QUERY "' + address + '":\n\t' + params.command, params.params);
-              return this.getChild(address).$handleQuery(params);
+              var child = this.getChild(address);
+              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              return child.$handleQuery(params);
             }
 						
 						if (!address.length) return this.$handleQuery(params);

@@ -53,6 +53,11 @@ run on server or client side:
         for (var k in this) ret.push(this[k]);
         return ret;
       },
+      keysToArray: function() {
+        var ret = [];
+        for (var k in this) ret.push(k);
+        return ret;
+      },
       flatten: function(prefix) {
         var ret = {};
         for (var k in this) {
@@ -132,9 +137,12 @@ run on server or client side:
           if (!func(this[i])) return false;
         return true;
       },
-      toObj: function(nameFunc) {
+      toObj: function(nameFunc, valFunc) {
         var ret = {};
-        for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
+        if (valFunc)
+          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
+        else
+          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = valFunc(this[i]);
         return ret;
       },
       remove: function(elem) {

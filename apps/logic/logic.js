@@ -1,7 +1,13 @@
 /*
 
 NEAR-TERM:
-- Relations should be normalized both client-side in `infoSet`, and server-side in the root dossier
+- Relations should be normalized 
+  - on client-side in `infoSet`
+  - on server-side in the root dossier
+- New theory layout
+  - Bubbling/branching
+    - Each layer should calculate its width based on children layers widths
+  - Camera controls, good pan/zoom
 - animation + delay on theory deletion
 - Need other sources which can load atoms
   - all the user's atoms
@@ -56,14 +62,14 @@ INDEFINITE:
         automatically defeated as soon as the support is filled in.
 - There's a flicker on page-load (a stylesheet is not applying on the 1st frame I think)
 - Minification (and once files are being pre-processed, programatic separation between client/server)
-- The PACK.p.P constructor is HORRIBLE
+- The P constructor is HORRIBLE
 - Security issues
   - Username/password is sent via plaintext
   - No restriction on $doRequest requesting sensitive fields
   - Session creation is a hazard
 - Refresh page if version changes? (Will require repeated polling for `infoSet.appVersion`
 
-theory deletion, better preloaded test data, infoSet.activeNodes entries simplified, CachedInfo, (Repeating|Reacting)?SyncedInfo, RootView
+theory deletion, better preloaded test data, infoSet.activeTheories entries simplified, CachedInfo, (Repeating|Reacting)?SyncedInfo, RootView
 
 */
 
@@ -72,6 +78,7 @@ var package = new PACK.pack.Package({ name: 'logic',
   buildFunc: function(packageName, qd, userify, p, geom) {
     
     var Point = geom.Point;
+    var P = p.P;
     
     var lg = {
       resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
@@ -205,7 +212,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   markup: theoryText
                 }});
                 
-                return new PACK.p.P({ all: [ theory, $modTheory, $modEssay ] })
+                return new P({ all: [ theory, $modTheory, $modEssay ] })
                 
               }).them(function(theory) {
                 
@@ -367,11 +374,11 @@ var package = new PACK.pack.Package({ name: 'logic',
                   matched[k] = theories[k].overviewData()
               }
               
-              return new PACK.p.P({ val: matched });
+              return new P({ val: matched });
               
             } else if (command === 'fullData') {
               
-              return new PACK.p.P({ val: this.getDataView({}) });
+              return new P({ val: this.getDataView({}) });
               
             } else if (command === 'getIncomingRelations') {
               
@@ -389,10 +396,51 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
               };
               
-              return new PACK.p.P({ val: {
+              return new P({ val: {
                 supporters: theory.children.supporterSet.children.map(relToData),
                 contenders: theory.children.contenderSet.children.map(relToData)
               }});
+              
+            } else if (command === 'getAllTheoryRelations') {
+              
+              var reqParams = U.param(params, 'params');
+              var theoryNames = U.param(reqParams, 'theoryNames').toObj(function(v) { return v; }, function() { return true; });
+              
+              var theories = this.children.theorySet.children;
+              
+              var ret = [];
+              
+              for (var qn1 in theoryNames) {
+                if (!(qn1 in theories)) continue; // TODO: Tolerate invalid quickNames?
+                
+                var standing = theories[qn1];
+                
+                var incomingSources = [
+                  { type: 'supporter', incoming: standing.children.supporterSet.children },
+                  { type: 'contender', incoming: standing.children.contenderSet.children }
+                ];
+                
+                for (var i = 0; i < incomingSources.length; i++) {
+                  
+                  var incomingSource = incomingSources[i];
+                  var incomings = incomingSource.incoming;
+                  
+                  for (var qn2 in theoryNames) {
+                    if (!(qn2 in incomings)) continue;
+                    
+                    ret.push({
+                      standingQuickName: qn1,
+                      incomingQuickName: qn2,
+                      relationType: incomingSource.type,
+                      data: {}
+                    });
+                  }
+                  
+                }
+                
+              }
+              
+              return new P({ val: ret });
               
             }
             
@@ -505,7 +553,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               ? (2 * x * x)
               : (-0.5 * (4 * x * x - (8 * x)) - 1);
           },
-          update: function(view, millis) {
+          updateOld: function(view, millis) {
             
             if (!this.enabledInfo.getValue()) return;
             
@@ -555,7 +603,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                 
                 var centerDist = null; // Won't be calculated until necessary
                 
-                var incRelations = cs[j].getValue('incomingRelations');
+                var incRelations = {}; // TODO: previously `cs[j].getValue('incomingRelations');`
+                var incRelations = {};
                 
                 if (qn1 in incRelations) {
                   
@@ -608,6 +657,10 @@ var package = new PACK.pack.Package({ name: 'logic',
               
             }
             
+          },
+          update: function(view, millis) {
+            var roots = [];
+            var nodes = this.info.getValue().toArray();
           }
         };}
       })
@@ -799,7 +852,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               });
             });
             
-            var $addTheories = new PACK.p.P({ all: [ $addUsers, $addEssays ] }).them(function(users, essays) {
+            var $addTheories = new P({ all: [ $addUsers, $addEssays ] }).them(function(users, essays) {
               return editor.$editFast({
                 add: [
                   {
@@ -926,7 +979,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               });
             });
             
-            var $relateTheories = new PACK.p.P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
+            var $relateTheories = new P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
               return editor.$editFast({
                 add: [
                   {
@@ -940,7 +993,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               });
             });
             
-            return new PACK.p.P({ all: [ $addUsers, $addEssays, $addTheories, $relateTheories ] }).then(function() {
+            return new P({ all: [ $addUsers, $addEssays, $addTheories, $relateTheories ] }).then(function() {
               return root;
             });
             
@@ -964,6 +1017,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     var lg = PACK.logic;
     var qd = PACK.quickDev;
     var uf = PACK.userify;
+    var P = PACK.p.P;
     
     // `doss` provides the $doRequest method that will be used throughout this app
     var doss = new lg.LogicApp({ outline: null });
@@ -987,8 +1041,35 @@ var package = new PACK.pack.Package({ name: 'logic',
       loginError: new uf.SimpleInfo({ value: '' }),
       focusedNode: new uf.SimpleInfo({ value: null }),
     }});
-    infoSet.addChild('activeNodes', new uf.DictInfo({ children: {} }));
-    infoSet.addChild('activeRelations', new uf.DictInfo({ children: {} }));
+    infoSet.addChild('activeTheories', new uf.DictInfo({ children: {} }));
+    infoSet.addChild('activeRelations', new uf.RepeatingSyncedInfo({ // Holds ordered relations: standingQuickName -> incomingQuickName -> relationType
+      initialValue: new qd.IndexedDict({ keySize: 3 }),
+      $getFunc: function() {
+        
+        var relations = new qd.IndexedDict({ keySize: 3 });
+        var keys = infoSet.getValue('activeTheories').keysToArray();
+        if (!keys.length) return new P({ val: relations });
+        
+        return doss.$doRequest({
+          command: 'getAllTheoryRelations',
+          params: {
+            theoryNames: keys
+          }
+        }).then(function(response) {
+          
+          for (var i = 0; i < response.length; i++) {
+            var r = response[i];
+            relations.add([ r.standingQuickName, r.incomingQuickName, r.relationType ], r.data);
+          }
+          
+          return relations;
+          
+        });
+        
+      },
+      $setFunc: null, // TODO: Implement??
+      updateMs: 30000 // 60000
+    }));
     infoSet.addChild('physicsEnabled', new uf.SimpleInfo({ value: true }));
     infoSet.addChild('searchTerm', new uf.SimpleInfo({ value: '' }));
     infoSet.addChild('searchResults', new uf.ReactingSyncedInfo({
@@ -996,7 +1077,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       info: infoSet.getChild('searchTerm'),
       $getFunc: function() {
         var searchTerm = infoSet.getValue('searchTerm');
-        if (searchTerm === '') return new PACK.p.P({ val: {} });
+        if (searchTerm === '') return new P({ val: {} });
         
         // TODO: Should return an `Info` object, not a plain `Object`.
         return doss.$doRequest({
@@ -1009,7 +1090,10 @@ var package = new PACK.pack.Package({ name: 'logic',
     }));
     infoSet.start();
     
-    // Values for controlling extra data attached to graph nodes (TODO: Subclass SetView as GraphNodeSetView; add data to subclass instead??)
+    // Update relations when list of theories is updated
+    infoSet.getChild('activeTheories').addListener(infoSet.getChild('activeRelations'));
+    
+    // Values for controlling extra data attached to graph nodes
     var makeNodeData = function(params /* quickName, username, editing */) {
       var quickNameInfo = uf.pafam(params, 'quickName');
       var usernameInfo = uf.pafam(params, 'username');
@@ -1030,9 +1114,9 @@ var package = new PACK.pack.Package({ name: 'logic',
         title: new uf.SimpleInfo({ value: '' }),
         theory: new uf.SimpleInfo({ value: '' }),
         saved: new uf.SimpleInfo({ value: false }),
-        incomingRelations: new uf.SimpleInfo({ value: [] }),
         owned: new uf.SimpleInfo({ value: owned }),
-        editing: editingInfo
+        editing: editingInfo,
+        triWidth: new uf.SimpleInfo({ value: 0 })
       }});
       
       ret.start();
@@ -1042,8 +1126,6 @@ var package = new PACK.pack.Package({ name: 'logic',
     var saveNodeData = function(nodeInfo) {
       // "saved" is now fixed to the value `true`
       nodeInfo.setValue('saved', true);
-      
-      console.log(nodeInfo.getValue('title'));
       
       // "title" syncs with the `theorySet.<theoryId>.title` value server-side
       nodeInfo.modChild('title', new uf.RepeatingSyncedInfo({
@@ -1081,45 +1163,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         updateMs: 60000
       }));
       
-      // "incomingRelations" repetitively syncs with the server
-      nodeInfo.modChild('incomingRelations', new uf.RepeatingSyncedInfo({
-        initialValue: [],
-        $getFunc: function() {
-          
-          return doss.$doRequest({
-            
-            command: 'getIncomingRelations',
-            params: {
-              quickName: nodeInfo.getValue('quickName')
-            }
-            
-          }).then(function(related) {
-            
-            var activeNodes = infoSet.getValue('activeNodes');
-            
-            var ret = {};
-            
-            var supps = related.supporters;
-            var conts = related.contenders;
-            
-            for (k in supps) {
-              if (!(k in ret)) ret[k] = { quickName: k, relations: {}, data: {} };
-              ret[k].relations.supporter = {}; // Can store any arbitrary data on the relation
-            }
-            
-            for (k in conts) {
-              if (!(k in ret)) ret[k] = { quickName: k, relations: {}, data: {} };
-              ret[k].relations.contender = {}; // Can store any arbitrary data on the relation
-            }
-            
-            return ret;
-            
-          });
-          
-        },
-        updateMs: 60000
-      }));
-      
       nodeInfo.start();
       
       return nodeInfo;
@@ -1128,47 +1171,36 @@ var package = new PACK.pack.Package({ name: 'logic',
       var oldName = U.param(params, 'oldName');
       var newName = U.param(params, 'newName');
       
-      var activeNodes = infoSet.getChild('activeNodes');
+      var activeTheories = infoSet.getChild('activeTheories');
       
       // Get the value which is changing keys...
-      var nodeInfo = activeNodes.getChild(oldName);
+      var nodeInfo = activeTheories.getChild(oldName);
       
       // ... update its quickName...
       nodeInfo.setValue('quickName', newName);
       
       // ... and re-key it.
-      activeNodes.remChild(oldName);
-      activeNodes.addChild(newName, nodeInfo);
+      activeTheories.remChild(oldName);
+      activeTheories.addChild(newName, nodeInfo);
       
       /*
-      infoSet.modValue('activeNodes', function(activeNodes) {
+      infoSet.modValue('activeTheories', function(activeTheories) {
         
         
         // Re-key...
-        //activeNodes[newName] = activeNodes[oldName];
-        //delete activeNodes[oldName];
+        //activeTheories[newName] = activeTheories[oldName];
+        //delete activeTheories[oldName];
         // ... and update the quickName
-        //activeNodes[newName].quickName.setValue(newName);
+        //activeTheories[newName].quickName.setValue(newName);
         
-        return activeNodes;
+        return activeTheories;
       });
       */
     };
     var removeNodeData = function(name) {
-      // TODO: BAD!
-      delete infoSet.getChild('activeNodes').children[name];
-      /*infoSet.getChild('activeNodes').remChild(name);
-      infoSet.modValue('activeNodes', function(activeNodes) {
-        var o = activeNodes[name];
-        var p = o.physics;
-        [ p.r, p.weight, p.loc, o.username, o.quickName, o.title, o.theory, o.saved, o.incomingRelations
-        ].forEach(function(info) {
-          info.stop();
-        });
-        
-        delete activeNodes[name];
-        return activeNodes;
-      });*/
+      
+      infoSet.getChild('activeTheories').remChild(name);
+      
     };
     
     // Function called when a theory is dragged to the dropzone of another theory
@@ -1178,16 +1210,15 @@ var package = new PACK.pack.Package({ name: 'logic',
       var standing = U.param(params, 'dropZone').par.par; // Walk to theory view
       var incoming = U.param(params, 'target');
       
-      var activeNodes = infoSet.getValue('activeNodes');
+      var activeTheories = infoSet.getValue('activeTheories');
       
-      var standingData = activeNodes[standing.name];
-      var incomingData = activeNodes[incoming.name];
+      var standingData = activeTheories[standing.name];
+      var incomingData = activeTheories[incoming.name];
       
       if (!standingData.getValue('saved') || !incomingData.getValue('saved'))
         throw new Error('Relations cannot involve unsaved theories');
       
-      var rel = standingData.getValue('incomingRelations')[incoming.name];
-      var alreadyRelated = rel && (relationType in rel.relations);
+      var alreadyRelated = infoSet.getValue('activeRelations').find([ standing.name, incoming.name, relationType ]);
       
       return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
         token: infoSet.getValue('token'),
@@ -1196,7 +1227,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         relationType: relationType
       }}).then(function(data) {
         console.log('RELATION EDIT COMPLETE??', data);
-        standingData.getChild('incomingRelations').refresh();
+        infoSet.getChild('activeRelations').updateOccurred();
       }).fail(function(err) {
         console.error('Error editing relation: ', err.message);
       });
@@ -1211,7 +1242,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         
       }).then(function(relationSet) {
         
-        return new PACK.p.P({ all: relationSet.map(function(relation) {
+        return new P({ all: relationSet.map(function(relation) {
           return doss.$doRequest({
             
             address: relation.theory,
@@ -1225,14 +1256,14 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       }).then(function(pickedFieldSet) {
         
-        var activeNodesInfo = infoSet.getChild('activeNodes');
+        var activeTheoriesInfo = infoSet.getChild('activeTheories');
         for (var k in pickedFieldSet) {
           var quickName = pickedFieldSet[k].quickName;
           var username = pickedFieldSet[k]['@user'].username;
           
-          if (activeNodesInfo.hasChild(quickName)) continue; // TODO: Should the data be updated, considering it's immediately available?
+          if (activeTheoriesInfo.hasChild(quickName)) continue; // TODO: Should the data be updated, considering it's already available?
           
-          activeNodesInfo.addChild(quickName, saveNodeData(makeNodeData({
+          activeTheoriesInfo.addChild(quickName, saveNodeData(makeNodeData({
             quickName: quickName,
             username: username,
             editing: false
@@ -1240,8 +1271,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         }
         
         // Position added nodes (if the node whose relations were queried is page-active)
-        if (activeNodesInfo.hasChild(theoryQuickName)) {
-          var phys = activeNodesInfo.getChild([ theoryQuickName, 'physics' ]);
+        if (activeTheoriesInfo.hasChild(theoryQuickName)) {
+          var phys = activeTheoriesInfo.getChild([ theoryQuickName, 'physics' ]);
           var loc = phys.getValue('loc');
           var r = phys.getValue('r');
           
@@ -1251,7 +1282,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           var added = graphView.updateChildren().add;
           for (var k in added) {
             // Set the loc to be right at the relation ear
-            activeNodesInfo.setValue([ k, 'physics', 'loc' ], addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
+            activeTheoriesInfo.setValue([ k, 'physics', 'loc' ], addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
           }
         }
         
@@ -1269,7 +1300,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       captureOnStart: function(view) {
         // The view isn't seen exactly at its physics "loc" due to transition delays
         // TODO: Can subtract the client bound loc from the css loc to offset this difference...
-        return infoSet.getValue([ 'activeNodes', view.name, 'physics', 'loc' ]);
+        return infoSet.getValue([ 'activeTheories', view.name, 'physics', 'loc' ]);
       }
     });
     var dragAddSupporter = new uf.DragActionDecorator({ dragDecorator: dragNode, action: $relateTheories.bind(null, 'supporter') });
@@ -1288,7 +1319,7 @@ var package = new PACK.pack.Package({ name: 'logic',
           // Clicking a focused node unfocuses it. Clicking an unfocused node focuses it.
           // Unfocusing a node sets its "editing" property to `false`
           if (view0 === view) {
-            infoSet.getValue([ 'activeNodes', view.name, 'editing' ], false);
+            infoSet.getValue([ 'activeTheories', view.name, 'editing' ], false);
             return null;
           }
           return view;
@@ -1310,7 +1341,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     var deleteNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
       
       var target = U.param(params, 'target');
-      var targetData = infoSet.getValue('activeNodes')[target.name];
+      var targetData = infoSet.getValue('activeTheories')[target.name];
       
       // If the theory is saved ask the server to delete it, otherwise simply remove it
       if (targetData.saved.getValue()) {
@@ -1341,10 +1372,11 @@ var package = new PACK.pack.Package({ name: 'logic',
     deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
     
     var graphView = new uf.DynamicSetView({ name: 'graph',
-      childInfo: infoSet.getChild('activeNodes'),
+      childInfo: infoSet.getChild('activeTheories'),
       decorators: [
+        /*
         new lg.LogicPhysicsDecorator({ maxUpdatesPerFrame: 10,
-          info: infoSet.getChild('activeNodes'),
+          info: infoSet.getChild('activeTheories'),
           enabledInfo: infoSet.getChild('physicsEnabled'),
           /*physicsSettings: {
             scaleTime: 1,
@@ -1354,7 +1386,7 @@ var package = new PACK.pack.Package({ name: 'logic',
             separation: 20,
             centerAclMag: 1000,
             minVel: 0
-          }*/
+          }* /
           physicsSettings: {
             scaleTime: 1,
             dampenGlobal: 0.95,
@@ -1364,7 +1396,19 @@ var package = new PACK.pack.Package({ name: 'logic',
             centerAclMag: 100,
             minVel: 0
           }
-        })
+        }),
+        */
+        new uf.FuncDecorator({ func: function(view) {
+          
+          var roots = [];
+          
+          for (var k in graphView.children) {
+            
+            var info = infoSet.getChild([ 'activeTheories', k, 'physics' ]);
+            
+          }
+          
+        }})
       ],
       genChildView: function(name, nodeInfo) {
         
@@ -1519,7 +1563,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   // If the quickName has changed re-key the view...
                   if (savedQuickName !== originalName) {
                     
-                    // ... both in `activeNodes`...
+                    // ... both in `activeTheories`...
                     renameNodeData({ oldName: originalName, newName: savedQuickName }); // This will update `quickName` Info
                     
                     // ... and in `graphView`
@@ -1597,20 +1641,18 @@ var package = new PACK.pack.Package({ name: 'logic',
     var canvasView = new uf.CanvasView({ name: 'canvas', options: { centered: true }, drawFunc: function(ctx, millis) {
       ctx.lineWidth = 12;
       
-      var items = infoSet.getValue('activeNodes');
-      for (var k in items) {
+      var canvas = canvasView.domRoot;
+      var hw = canvas.width >> 1;
+      var hh = canvas.height >> 1;
+      
+      var activeTheories = infoSet.getValue('activeTheories');
+      for (var k in activeTheories) {
         
-        if (!(k in graphView.children)) continue;
+        // TODO: this shouldn't be necessary
+        if (!(k in graphView.children) || !graphView.children[k].domRoot) continue;
         
-        var standingInfo = items[k];
-        var standingElem = graphView.children[k];
-        
-        if (!standingElem.domRoot) continue;
-        
-        var canvas = canvasView.domRoot;
-        var hw = canvas.width >> 1;
-        var hh = canvas.height >> 1;
-        var incomingRelations = standingInfo.getValue('incomingRelations');
+        var standingInfo = activeTheories[k];
+        var incomingRelations = infoSet.getValue('activeRelations').find([ standingInfo.getValue('quickName') ]);
         
         var b1 = graphView.children[k].domRoot.getBoundingClientRect()
         var r1 = b1.width * 0.5; // width and height are equal so either works
@@ -1619,16 +1661,15 @@ var package = new PACK.pack.Package({ name: 'logic',
         
         for (var qn in incomingRelations) {
           
-          // TODO: This is bad!! Possible for `qn` to be in the graphView, but for its domRoot to not be initialized :(
-          if (!(qn in items) || !(qn in graphView.children) || !graphView.children[qn].domRoot) continue; // The incoming theory isn't fully loaded client-side
+          // TODO: this shouldn't be necessary
+          if (!(qn in activeTheories) || !(qn in graphView.children) || !graphView.children[qn].domRoot) continue; // The incoming theory isn't fully loaded client-side
           
-          var incomingInfo = items[qn];
-          
+          var incomingInfo = activeTheories[qn];
           var b2 = graphView.children[qn].domRoot.getBoundingClientRect();
           var r2 = incomingInfo.getValue('physics.r');
           var loc2 = new PACK.geom.Point({ x: b2.left + r2 - hw, y: b2.top + r2 - hh });
           
-          var relations = incomingRelations[qn].relations;
+          var relations = incomingRelations[qn];
           for (var relationType in relations) {
             
             var relLoc = loc1.add(lg.nodeRelationOffsets[relationType].scale(ratio));
@@ -1677,7 +1718,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               infoSet.setValue('token', data.token);
             }).fail(function(err) {
               infoSet.setValue('loginError', err.message);
-              new PACK.p.P({ timeout: 3000 }).then(function() { infoSet.setValue('loginError', ''); });
+              new P({ timeout: 3000 }).then(function() { infoSet.setValue('loginError', ''); });
             });
           }})
           
@@ -1705,7 +1746,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     new uf.ClassDecorator({
                       list: [ 'active' ],
                       info: function() {
-                        return (nodeInfo.quickName in infoSet.getValue('activeNodes')) ? 'active' : null;
+                        return (nodeInfo.quickName in infoSet.getValue('activeTheories')) ? 'active' : null;
                       }
                     })
                   ];
@@ -1719,8 +1760,8 @@ var package = new PACK.pack.Package({ name: 'logic',
                       if (!(nodeInfo.quickName in graphView.children)) {
                       
                         // A new theory has been added
-                        var activeNodes = infoSet.getChild('activeNodes');
-                        activeNodes.addChild(nodeInfo.quickName, saveNodeData(makeNodeData({
+                        var activeTheories = infoSet.getChild('activeTheories');
+                        activeTheories.addChild(nodeInfo.quickName, saveNodeData(makeNodeData({
                           quickName: nodeInfo.quickName,
                           username: nodeInfo.username,
                           editing: false
@@ -1750,14 +1791,14 @@ var package = new PACK.pack.Package({ name: 'logic',
             ]}),
             new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textInfo: 'New Theory', $action: function() {
               
-              var activeNodes = infoSet.getChild('activeNodes');
-              var activeNodeObj = activeNodes.getValue();
+              var activeTheories = infoSet.getChild('activeTheories');
+              var activeNodeObj = activeTheories.getValue();
               var num = 2;
               var prefix = 'newTheory';
               var name = prefix;
               while (name in activeNodeObj) name = prefix + (num++);
               
-              activeNodes.addChild(name, makeNodeData({
+              activeTheories.addChild(name, makeNodeData({
                 username: infoSet.getValue('username'),
                 quickName: name,
                 editing: true

@@ -132,6 +132,9 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (!this.listeners) return;
             for (var k in this.listeners) this.listeners[k].updateOccurred(this);
           },
+          updateOccurred: function() {
+            // Nothing happens to the base `Info` class on update
+          },
           
           start: function() { this.notifyListeners(); },
           stop: function() {},
@@ -265,7 +268,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           addChild: function(name, child) {
             if (name in this.children) throw new Error('Tried to overwrite child "' + name + '"');
             this.children[name] = child;
-            child.addListener(this);
             
             this.notifyListeners();
           },
@@ -273,7 +275,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             var child = this.children[name];
             if (!child) return;
             delete this.children[name];
-            child.remListener(this);
             child.stop();
             
             this.notifyListeners();
@@ -306,7 +307,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           start: function() {
             for (var k in this.children) {
-              this.children[k].addListener(this);
+              //this.children[k].addListener(this);
               this.children[k].start();
             }
             sc.start.call(this);
@@ -315,7 +316,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.stop.call(this);
             for (var k in this.children) {
               this.children[k].stop();
-              this.children[k].remListener(this);
+              //this.children[k].remListener(this);
             }
           }
         };}
@@ -384,6 +385,9 @@ var package = new PACK.pack.Package({ name: 'userify',
               
             }.bind(this, this.num++)).done();
             
+          },
+          updateOccurred: function() {
+            this.refresh();
           },
           
           start: function() {
@@ -739,7 +743,19 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      
+      FuncDecorator: U.makeClass({ name: 'FunkDecorator',
+        superclassName: 'Decorator',
+        description: 'Perform arbitrary actions as a decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* func */) {
+            this.func = U.param(params, 'func');
+          },
+          update: function(view) {
+            this.func(view);
+          }
+        };}
+      }),
+            
       /* VIEW */
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
