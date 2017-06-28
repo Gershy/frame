@@ -11,7 +11,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
     
     qd.update({
       
-      NAME_REGEX: /^[a-zA-Z0-9-_]+$/,
+      NAME_REGEX: /^[a-zA-Z0-9][a-zA-Z0-9-_<,>]*$/,
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(qd.NEXT_TEMP++);
@@ -103,6 +103,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             }
             
+          },
+          keyedData: function() {
+            return this.data.flatten(this.keySize, this.keyDelimiter);
           }
         };}
       }),
@@ -391,7 +394,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               doss.updateName(name);
               return true;
               
-            } catch (err) { console.log('REQCALC ERR:', err.message); return false; }
+            } catch (err) { console.log('REQCALC ERR:', err.message); console.error(err.stack); return false; }
           },
           reqModData: function(doss, data) {
             try {
@@ -465,6 +468,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (par) par.remChild(this);
             this.name = name.toString();
             if (par) par.addChild(this);
+            
+            return this;
           },
           $loadFromRawData: function(data, editor) {
             throw new Error('not implemented');
@@ -601,7 +606,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // If `child` was supplied as a number or a string, resolve it
             if (!U.isInstance(child, qd.Dossier)) child = this.children[child];
             
-            if (!child || !(child.name in this.children)) throw new Error('Couldn\'t remove child "' + child.getAddress() + '"');
+            if (!child || child.par !== this) throw new Error('Couldn\'t remove child "' + child.getAddress() + '"');
             
             delete this.children[child.name];
             this.length--;
@@ -704,12 +709,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       }),
       DossierList: U.makeClass({ name: 'DossierList',
         superclassName: 'DossierSet',
-        methods: function(sc) { return {
+        methods: function(sc, c) { return {
           init: function(params /* outline, innerOutline, prop */) {
             sc.init.call(this, params);
             
             this.innerOutline = U.param(params, 'innerOutline');
-            this.prop = U.param(params, 'prop', '~par/nextInd');
+            //this.prop = U.param(params, 'prop', '~par/nextInd');
+            //this.nameFunc = U.param(params, 'nameFunc', function(par, child) { return par.nextInd; });
             
             // `this.nextInd` keeps track of the lowest unused index
             // that a child is named in `this.children`. It is only
@@ -740,7 +746,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return child;
           },
           getChildName: function(doss) {
-            var pcs = this.prop.split('/');
+            /*var pcs = this.prop.split('/');
             var addr = pcs[0];
             var prop = pcs[1];
             
@@ -748,7 +754,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (!child) throw new Error('Couldn\'t get prop child: (' + doss.getAddress() + ').getChild("' + addr + '")');
             if (!(prop in child)) throw new Error('Child "' + child.getAddress() + '" missing prop "' + prop + '"');
             
-            return child[prop];
+            return child[prop];*/
+            
+            var func = this.outline.p.nameFunc;
+            var name = func ? func(this, doss) : this.nextInd;
+            if (!U.valid(name)) throw new Error('`nameFunc` returned an invalid name');
+            return name;
+            
           },
           getChildOutline: function(name) {
             // All DossierList children have the same outline
@@ -851,6 +863,23 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           }
           */
           
+        };}
+      }),
+      DossierDirectedRelations: U.makeClass({ name: 'DossierDirectRelations',
+        superclassName: 'Dossier',
+        methods: function(sc, c) { return {
+          
+          init: function(params /* outline */) {
+            sc.init.call(this, params);
+            
+            var relations = U.param(this.outline.p, 'relations');
+            this.children = new PACK.quickDev.IndexedDict({ keySize: relations.length });
+          },
+          
+          // Child methods
+          addChild: function(child) {
+            
+          }
         };}
       }),
       

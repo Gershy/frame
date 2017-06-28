@@ -15,6 +15,7 @@ var package = new PACK.pack.Package({ name: 'userify',
     
     var uf = {
       
+      /* DOM UTIL */
       domSetText: function(elem, text) {
         // TODO: Escaping can occur here
         if (elem.innerHTML !== text) elem.innerHTML = text;

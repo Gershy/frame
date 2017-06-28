@@ -4,18 +4,21 @@ NEAR-TERM:
 - Relations should be normalized 
   - on client-side in `infoSet`
   - on server-side in the root dossier
-- New theory layout
-  - Bubbling/branching
-    - Each layer should calculate its width based on children layers widths
-  - Camera controls, good pan/zoom
+- Implement `DirectedRelationInfo` in userify!
+- Relation visualization needs to be improved
+  - New theory layout
+    - Bubbling/branching
+      - Each layer should calculate its width based on children layers widths
+    - Camera controls, good pan/zoom
+    - How the FUCK to deal with circular relationships???
+  - Minimap?? (this could be a canvas; it could have a low framerate; it would honestly be beautiful)
 - animation + delay on theory deletion
 - Need other sources which can load atoms
   - all the user's atoms
   - all of any user's atoms
   - all the atoms within an argument
 - Dragging a node to a dropzone throws an error if the cursor is simultaneously hovering over an "addSupporter" dropzone
-- Need a way of distinguishing global relations from loaded relations
-  - e.g. can know all the theories a node is related to, but how to determine which ones are actually on-screen?
+- Completing a drag while hovering over another theory (but not a dropzone) activates a click on either that theory, or the theory that was being dragged
 - Data quality control
   - Who can create theories?
   - Who can delete theories?
@@ -23,11 +26,7 @@ NEAR-TERM:
   - Who can contend a theory? Which of the incoming and standing theories can be unowned?
   - Theory "privileges"?
     - Should users have (and be able to grant) per-theory privileges to other users?
-- Camera controls? Panning/zooming?
-  - Minimap?? (this could be a canvas; it could have a low framerate; it would honestly be beautiful)
 - dossier.getDataView() is not implemented correctly (some properties will wind up being 'DUMMY_VAL')
-- Relation physics should be better
-  - Nodes should spread out in a widening, distancing arc depending on the number of sibling relations (this could look REALLY COOL)
 
 INDEFINITE:
 - Need to introduce artificial latency for testing and indicate all loading activities
@@ -688,7 +687,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   { c: qd.DossierString, p: { name: 'username' } },
                   { c: qd.DossierString, p: { name: 'password' } }
                 ]},
-                prop: 'username/value'
+                nameFunc: function(par, child) { return child.getChild('username').value; }
               }},
               { c: qd.DossierList, p: { name: 'essaySet',
                 innerOutline: { c: qd.DossierDict, i: [
@@ -712,14 +711,14 @@ var package = new PACK.pack.Package({ name: 'logic',
                     innerOutline: { c: qd.DossierDict, i: [
                       { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                     ]},
-                    prop: '@theory.quickName/value',
+                    nameFunc: function(par, child) { return child.getChild('@theory.quickName').value; },
                     defaultValue: function() { return []; }
                   }},
                   { c: qd.DossierList,    p: { name: 'contenderSet',
                     innerOutline: { c: qd.DossierDict, i: [
                       { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
                     ]},
-                    prop: '@theory.quickName/value',
+                    nameFunc: function(par, child) { return child.getChild('@theory.quickName').value; },
                     defaultValue: function() { return []; }
                   }},
                   { c: qd.DossierList,    p: { name: 'voterSet',
@@ -727,11 +726,11 @@ var package = new PACK.pack.Package({ name: 'logic',
                       { c: qd.DossierRef, p: { name: 'user', baseAddress: '~root.userSet' } },
                       { c: qd.DossierInt, p: { name: 'value' } }
                     ]},
-                    prop: '@user.username/value',
+                    nameFunc: function(par, child) { return child.getChild('@user.username').value; },
                     defaultValue: function() { return []; }
                   }}
                 ]},
-                prop: 'quickName/value',
+                nameFunc: function(par, child) { return child.getChild('quickName').value; },
                 verifyAddDossier: function(params /*  */) {}, // TODO: implement in quickDev
                 verifyRemDossier: function(params /*  */) {}  // TODO: implement in quickDev
               }},
@@ -739,18 +738,31 @@ var package = new PACK.pack.Package({ name: 'logic',
                 innerOutline: { c: qd.DossierDict, i: [
                   { c: qd.DossierRef,     p: { name: 'standing', baseAddress: '~root.theorySet' } },
                   { c: qd.DossierRef,     p: { name: 'incoming', baseAddress: '~root.theorySet' } },
-                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
-                  { c: qd.DossierString,  p: { name: 'relationType' } } // "supporter" | "contender"
+                  { c: qd.DossierString,  p: { name: 'relationType' } }, // "supporter" | "contender"
+                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } }
                 ]},
-                prop: null // TODO!!!
+                prop: function(par, child) {
+                  return '<' + ([
+                    child.getChild('standing').name,
+                    child.getChild('incoming').name,
+                    child.getChild('relationType').value
+                  ].join(',')) + '>';
+                }
               }},
               { c: qd.DossierList, p: { name: 'relationRelationSet',
                 innerOutline: { c: qd.DossierDict, i: [
                   { c: qd.DossierRef,     p: { name: 'standing', baseAddress: '~root.theoryRelationSet' } },
                   { c: qd.DossierRef,     p: { name: 'incoming', baseAddress: '~root.theorySet' } },
-                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
-                  { c: qd.DossierString,  p: { name: 'relationType' } } // probably only "contender"
-                ]}
+                  { c: qd.DossierString,  p: { name: 'relationType' } }, // probably only "contender"
+                  { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } }
+                ]},
+                prop: function(par, child) {
+                  return '<' + ([
+                    child.getChild('standing').name,
+                    child.getChild('incoming').name,
+                    child.getChild('relationTYpe').value
+                  ].join('/')) + '>';
+                }
               }}
             ]});
             var data = {
@@ -1020,8 +1032,7 @@ var package = new PACK.pack.Package({ name: 'logic',
     var P = PACK.p.P;
     
     // `doss` provides the $doRequest method that will be used throughout this app
-    var doss = new lg.LogicApp({ outline: null });
-    doss.updateName('app');
+    var doss = new lg.LogicApp({ outline: null }).updateName('app');
     
     // Here's the `infoSet`. It's equivalent to the state of the app
     var infoSet = new uf.DictInfo({ children: {
@@ -1088,10 +1099,34 @@ var package = new PACK.pack.Package({ name: 'logic',
         });
       }
     }));
-    infoSet.start();
+    
+    /*
+    // TODO: Something like this, DirectedRelationalInfo
+    
+    infoSet.addChild('relationTypes', new uf.DictInfo({ children: {
+      supporter: new uf.SimpleInfo({ value: 'supporter' }),
+      contender: new uf.SimpleInfo({ value: 'contender' })
+    }}));
+    infoSet.addChild('activeRelations', new uf.DirectedRelationalInfo({
+      genRelatedData: function(keys) {
+        return {}; // Unsure what data is stored on relations for now
+      },
+      relations: [
+        infoSet.getChild('activeTheories'), // standing
+        infoSet.getChild('activeTheories'), // incoming
+        infoSet.getChild('relationTypes')
+      ]
+    });
+    
+    infoSet.getChild([ 'activeRelations', [ 'newTheoryOne', 'newTheoryTwo', 'supporter' ] ]);
+    infoSet.getChild([ 'activeRelations', 'newTheoryOne.newTheoryTwo.supporter' ]);
+    */
     
     // Update relations when list of theories is updated
     infoSet.getChild('activeTheories').addListener(infoSet.getChild('activeRelations'));
+    
+    infoSet.start();
+    
     
     // Values for controlling extra data attached to graph nodes
     var makeNodeData = function(params /* quickName, username, editing */) {

@@ -58,14 +58,20 @@ run on server or client side:
         for (var k in this) ret.push(k);
         return ret;
       },
-      flatten: function(prefix) {
+      flatten: function(depth, delim) {
+        return this.flatten0(
+          U.exists(depth) ? (depth - 1) : Number.MAX_SAFE_INTEGER,
+          U.exists(delim) ? delim : '.'
+        );
+      },
+      flatten0: function(depth, delim, prefix) {
         var ret = {};
         for (var k in this) {
-          var kk = U.exists(prefix) ? (prefix + '.' + k) : k;
+          var kk = U.exists(prefix) ? (prefix + delim + k) : k;
           var o = this[k];
-          if (U.isObj(o) && o.constructor === Object) {
+          if (U.isObj(o, Object) && depth > 0) {
             
-            var flattened = o.flatten(kk);
+            var flattened = o.flatten0(depth - 1, delim, kk);
             for (var j in flattened) ret[j] = flattened[j];
             
           } else {
