@@ -11,7 +11,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
     
     qd.update({
       
-      NAME_REGEX: /^[a-zA-Z0-9][a-zA-Z0-9-_<,>]*$/,
+      NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/,
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(qd.NEXT_TEMP++);
@@ -501,28 +501,35 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getChild: function(address) {
             if (address.length === 0) return this; // Works for both strings and arrays
             
-            if (!U.isObj(address, Array)) address = address.toString().split('.');
+            if (U.isObj(address, String)) address = address.split('.');
+            else if (!U.isObj(address, Array)) address = [ address.toString() ]; // `address` is probably numeric (or `null`?)
             
             var ptr = this;
             for (var i = 0, len = address.length; (i < len) && ptr; i++)  {
+              
               var a = address[i];
-              if (a[0] === '@') {  // Handle dereferenced child
-                ptr = ptr.getNamedChild(a.substr(1));
-                if (ptr) ptr = ptr.dereference();
-              } else {            // Handle ordinary child
-                ptr = ptr.getNamedChild(a);
-              }
+              
+              // Shave off all dereference symbols while counting them
+              var numDerefs = 0;
+              while (a[numDerefs] === '@') numDerefs++;
+              if (numDerefs) a = a.substr(numDerefs);
+              
+              // Get the child
+              ptr = ptr.getNamedChild(a);
+              
+              // Do the dereferencing as required
+              for (var j = 0; j < numDerefs; j++) ptr = ptr.dereference();
+                
             }
             
             return ptr;
           },
           getNamedChild: function(name) {
-            if (name === '')        return this;
-            if (name === '~par')    return this.par;
-            if (name === '~root')    return this.getRoot();
+            if (name === '') return this;
+            if (name === '~par') return this.par;
+            if (name === '~root') return this.getRoot();
             
             return null;
-            // throw new Error('Invalid child name: "' + name + '"');
           },
           
           // Server/client
@@ -615,6 +622,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return child;
           },
           getNamedChild: function(name) {
+            if (U.isObj(name, Object))
+              return new PACK.quickDev.FilterResults({ origChildren: this.children, filter: name });
+            
             if (name in this.children) return this.children[name];
             return sc.getNamedChild.call(this, name);
           },
@@ -626,7 +636,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
           },
-          filter: function(filter) {
+          
+          matches: function(value) {
+            
+            if (U.isObj(value, String)) {
+              return this.name === value;
+            }
+            
+            // TODO: Does using `this.getChild(k)` instead of `this.children[k]` open this to exploits??
+            for (var k in value) {
+              var child = this.getChild(k);
+              if (!child || !child.matches(value[k])) return false;
+            }
+            
+            return true;
             
           },
           
@@ -897,6 +920,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return PACK.p.$null;
           },
           
+          matches: function(value) {
+            // TODO: Purposeful loose comparison??
+            return this.value == value;
+          },
+          
           getValue: function(value) {
             return this.value;
           },
@@ -980,6 +1008,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return sc.getNamedChild.call(this, name);
           },
           
+          matches: function(value) {
+            // TODO: Does this make sense? Is it efficient?
+            return this.dereference().getAddress() === value;
+          },
+          
           getRefAddress: function() {
             return this.outline.getProperty('baseAddress', '~root') + '.' + this.value;
           },
@@ -993,6 +1026,87 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.value !== null ? this.dereference().getDataView(existing) : null;
           }
         }; }
+      }),
+      
+      /* Psuedo-Dossier */
+      FilterResults: U.makeClass({ name: 'FilterResults',
+        methods: function(sc, c) { return {
+          init: function(params /* origChildren, filter, par */) {
+            var origChildren = U.param(params, 'origChildren');
+            var filter = U.param(params, 'filter');
+            
+            this.children = {};
+            this.par = U.param(params, 'par', null);
+            
+            ({
+              // TODO: can implement more filters :D
+              match: function() {
+                var ret = {};
+                for (var k in origChildren) {
+                  var child = origChildren[k];
+                  if (child.matches(filter.params)) {
+                    this.children[k] = child;
+                  } else {
+                    console.log('DIDN\'T MATCH', child.getRawDataView());
+                  }
+                }
+              }.bind(this)
+            })[filter.type]();
+            
+          },
+          getNamedChild: function(name) {
+            return this.children[name] || null;
+          },
+          getChild: function(addr) {
+            if (U.isObj(addr, String)) addr = addr.split('.');
+            var ptr = this;
+            for (var i = 0, len = addr.length; i < len; i++)
+              ptr = ptr.getNamedChild(addr[i]);
+            
+            return ptr;
+          },
+          
+          // TODO: Next 4 methods are copy-pasted from DossierSet and Dossier
+          $handleQuery: function(params /* command */) {
+            var command = U.param(params, 'command');
+            
+            if (command === 'getRawData') {
+              
+              return PACK.p.$(this.getRawDataView());
+              
+            } else if (command === 'getData') {
+              
+              return PACK.p.$(this.getDataView({}));
+              
+            }
+            
+            throw new Error('Couldn\'t handle invalid command: "' + command + '"');
+          },
+          getRawDataView: function() {
+            var ret = {};
+            for (var k in this.children) ret[k] = this.children[k].getRawDataView();
+            return ret;
+          },
+          getDataView0: function(existing) {
+            var ret = {};
+            for (var k in this.children) {
+              ret[k] = this.children[k].getDataView(existing);
+            }
+            return ret;
+          },
+          getDataView: function(existing) {
+            if (!existing) throw new Error('Called `getDataView` without `existing` set');
+            
+            // But `existing` should be filled out before the call to `getDataView0`...
+            var addr = this.getAddress();
+            if (!(addr in existing)) {
+              existing[addr] = 'DUMMY_VAL'; // Mark the element as existing (with a dummy value) before the recursion
+              existing[addr] = this.getDataView0(existing); // Fill in the actual value
+            }
+            
+            return existing[addr];
+          },
+        };}
       }),
       
       /* Versioner - maintain evolving Dossier structures */
@@ -1010,7 +1124,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           $getDoss: function() {
             
-            var $dossData = new PACK.p.P({ val: { versionName: 'empty-state', doss: null } });
+            var $dossData = new PACK.p.P({ val: { versionName: 'emptyState', doss: null } });
             
             this.versions.forEach(function(ver) {
               

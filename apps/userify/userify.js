@@ -290,7 +290,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (chain.length === 1) return this.children[chain[0]];
             
             var ptr = this;
-            for (var i = 0, len = chain.length; i < len; i++) ptr = ptr.children[chain[i]];
+            for (var i = 0, len = chain.length; (i < len) && ptr; i++) ptr = ptr.children[chain[i]];
             return ptr;
           },
           getValue: function(chain) {

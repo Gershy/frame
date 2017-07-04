@@ -67,6 +67,7 @@ INDEFINITE:
   - No restriction on $doRequest requesting sensitive fields
   - Session creation is a hazard
 - Refresh page if version changes? (Will require repeated polling for `infoSet.appVersion`
+- Password field contents should not be allowed to reach client-side
 
 theory deletion, better preloaded test data, infoSet.activeTheories entries simplified, CachedInfo, (Repeating|Reacting)?SyncedInfo, RootView
 
@@ -189,10 +190,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: quickName,
                       title: '- placeholder -',
                       user: user,
-                      essay: essay,
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essay
                     }
                   });
                   
@@ -249,6 +247,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               var reqParams = U.param(params, 'params');
               
               var token = U.param(reqParams, 'token');
+              var username = U.param(reqParams, 'username');
+              var user = this.requireUser(username, token);
               
               var theorySet = this.children.theorySet;
               
@@ -264,6 +264,22 @@ var package = new PACK.pack.Package({ name: 'logic',
               
               var relationType = U.param(reqParams, 'relationType');
               
+              if (![ 'supporter', 'contender' ].contains(relationType)) throw new Error('Invalid relation type: "' + relationType + '"');
+              
+              var theoryRelationSet = this.children.theoryRelationSet;
+              
+              var editor = new qd.Editor();
+              var $relation = editor.$addFast({
+                par: theoryRelationSet,
+                data: {
+                  standing: standing,
+                  incoming: incoming,
+                  relationType: relationType,
+                  user: user
+                }
+              });
+              
+              /*
               if (relationType === 'supporter') {
                 
                 if (standing.getChild([ 'contenderSet', incoming.name ]))
@@ -299,6 +315,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 throw new Error('Invalid relationType: "' + relationType + '"');
                 
               }
+              */
               
               return $relation.then(function(data) {
                 return {
@@ -312,6 +329,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               var reqParams = U.param(params, 'params');
               
               var token = U.param(reqParams, 'token');
+              var username = U.param(reqParams, 'username');
+              var user = this.requireUser(username, token);
               
               var theorySet = this.children.theorySet;
               
@@ -327,6 +346,13 @@ var package = new PACK.pack.Package({ name: 'logic',
               
               var relationType = U.param(reqParams, 'relationType');
               
+              var editor = new qd.Editor();
+              var $unrelate = editor.$remFast({
+                par: this.children.theoryRelationSet,
+                name: '<' + standingQuickName + ',' + incomingQuickName + ',' + relationType + '>'
+              });
+              
+              /*
               if (relationType === 'supporter') {
                 
                 console.log('Removing supporter');
@@ -350,6 +376,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 throw new Error('Invalid relationType: "' + relationType + '"');
                 
               }
+              */
               
               return $unrelate.then(function(data) {
                 return {
@@ -403,40 +430,22 @@ var package = new PACK.pack.Package({ name: 'logic',
             } else if (command === 'getAllTheoryRelations') {
               
               var reqParams = U.param(params, 'params');
-              var theoryNames = U.param(reqParams, 'theoryNames').toObj(function(v) { return v; }, function() { return true; });
-              
-              var theories = this.children.theorySet.children;
-              
+              var theoryNames = U.param(reqParams, 'theoryNames');
+              var theoryRels = this.children.theoryRelationSet;
               var ret = [];
               
-              for (var qn1 in theoryNames) {
-                if (!(qn1 in theories)) continue; // TODO: Tolerate invalid quickNames?
-                
-                var standing = theories[qn1];
-                
-                var incomingSources = [
-                  { type: 'supporter', incoming: standing.children.supporterSet.children },
-                  { type: 'contender', incoming: standing.children.contenderSet.children }
-                ];
-                
-                for (var i = 0; i < incomingSources.length; i++) {
+              // TODO: O(n^2) IS BADDDDD
+              var len = theoryNames.length;
+              for (var i = 0; i < len; i++) {
+                for (var j = 0; j < len; j++) {
                   
-                  var incomingSource = incomingSources[i];
-                  var incomings = incomingSource.incoming;
+                  var supporter = theoryRels.getChild('<' + theoryNames[i] + ',' + theoryNames[j] + ',supporter>');
+                  if (supporter) ret.push({ standingQuickName: theoryNames[i], incomingQuickName: theoryNames[j], relationType: 'supporter', data: {} });
                   
-                  for (var qn2 in theoryNames) {
-                    if (!(qn2 in incomings)) continue;
+                  var contender = theoryRels.getChild('<' + theoryNames[i] + ',' + theoryNames[j] + ',contender>');
+                  if (contender) ret.push({ standingQuickName: theoryNames[i], incomingQuickName: theoryNames[j], relationType: 'contender', data: {} });
                     
-                    ret.push({
-                      standingQuickName: qn1,
-                      incomingQuickName: qn2,
-                      relationType: incomingSource.type,
-                      data: {}
-                    });
-                  }
-                  
                 }
-                
               }
               
               return new P({ val: ret });
@@ -707,6 +716,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                   { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } },
                   { c: qd.DossierRef,     p: { name: 'essay', baseAddress: '~root.essaySet' } },
                   { c: qd.DossierRef,     p: { name: 'duplicate', baseAddress: '~root.theorySet', defaultValue: function() { return null; } } },
+                  /*
                   { c: qd.DossierList,    p: { name: 'supporterSet',
                     innerOutline: { c: qd.DossierDict, i: [
                       { c: qd.DossierRef, p: { name: 'theory', baseAddress: '~root.theorySet' } }
@@ -729,6 +739,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     nameFunc: function(par, child) { return child.getChild('@user.username').value; },
                     defaultValue: function() { return []; }
                   }}
+                  */
                 ]},
                 nameFunc: function(par, child) { return child.getChild('quickName').value; },
                 verifyAddDossier: function(params /*  */) {}, // TODO: implement in quickDev
@@ -741,10 +752,10 @@ var package = new PACK.pack.Package({ name: 'logic',
                   { c: qd.DossierString,  p: { name: 'relationType' } }, // "supporter" | "contender"
                   { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } }
                 ]},
-                prop: function(par, child) {
+                nameFunc: function(par, child) {
                   return '<' + ([
-                    child.getChild('standing').name,
-                    child.getChild('incoming').name,
+                    child.getChild('@standing').name,
+                    child.getChild('@incoming').name,
                     child.getChild('relationType').value
                   ].join(',')) + '>';
                 }
@@ -756,10 +767,10 @@ var package = new PACK.pack.Package({ name: 'logic',
                   { c: qd.DossierString,  p: { name: 'relationType' } }, // probably only "contender"
                   { c: qd.DossierRef,     p: { name: 'user', baseAddress: '~root.userSet' } }
                 ]},
-                prop: function(par, child) {
+                nameFunc: function(par, child) {
                   return '<' + ([
-                    child.getChild('standing').name,
-                    child.getChild('incoming').name,
+                    child.getChild('@standing').name,
+                    child.getChild('@incoming').name,
                     child.getChild('relationTYpe').value
                   ].join('/')) + '>';
                 }
@@ -769,7 +780,9 @@ var package = new PACK.pack.Package({ name: 'logic',
               version: '0.0.1 (initial)',
               userSet: {},
               essaySet: {},
-              theorySet: {}
+              theorySet: {},
+              theoryRelationSet: {},
+              relationRelationSet: {}
             };
             
             var editor = new qd.Editor();
@@ -876,10 +889,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'userZeroTheory',
                       title: 'Written by ' + users[0].name,
                       user: users[0],
-                      essay: essays[0],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[0]
                     }
                   },
                   {
@@ -891,10 +901,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'testimony',
                       title: 'My Testimony',
                       user: users[0],
-                      essay: essays[1],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[1]
                     }
                   },
                   {
@@ -906,10 +913,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'userOneTheory',
                       title: 'Written by ' + users[1].name,
                       user: users[1],
-                      essay: essays[2],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[2]
                     }
                   },
                   {
@@ -921,10 +925,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'importantThree',
                       title: 'THREE',
                       user: users[1],
-                      essay: essays[3],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[3]
                     }
                   },
                   {
@@ -936,10 +937,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'importantFour',
                       title: 'FOUR',
                       user: users[1],
-                      essay: essays[4],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[4]
                     }
                   },
                   {
@@ -951,10 +949,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'importantFive',
                       title: 'FIVE',
                       user: users[1],
-                      essay: essays[5],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[5]
                     }
                   },
                   {
@@ -966,10 +961,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'importantSix',
                       title: 'SIX',
                       user: users[1],
-                      essay: essays[6],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[6]
                     }
                   },
                   {
@@ -981,16 +973,14 @@ var package = new PACK.pack.Package({ name: 'logic',
                       quickName: 'importantSeven',
                       title: 'SEVEN',
                       user: users[1],
-                      essay: essays[7],
-                      supporterSet: [],
-                      contenderSet: [],
-                      voterSet: []
+                      essay: essays[7]
                     }
                   }
                 ]
               });
             });
             
+            /*
             var $relateTheories = new P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
               return editor.$editFast({
                 add: [
@@ -1004,6 +994,25 @@ var package = new PACK.pack.Package({ name: 'logic',
                 ]
               });
             });
+            */
+            
+            var $relateTheories = new P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
+              
+              return editor.$editFast({
+                add: [
+                  {
+                    par: root.getChild('theoryRelationSet'),
+                    data: {
+                      standing: root.getChild('theorySet.userZeroTheory'),
+                      incoming: root.getChild('theorySet.testimony'),
+                      relationType: 'supporter',
+                      user: root.getChild('userSet.admin')
+                    }
+                  }
+                ]
+              });
+              
+            });
             
             return new P({ all: [ $addUsers, $addEssays, $addTheories, $relateTheories ] }).then(function() {
               return root;
@@ -1016,6 +1025,9 @@ var package = new PACK.pack.Package({ name: 'logic',
       lg.$init = versioner.$getDoss().then(function(doss) {
         lg.queryHandler = doss;
         return doss;
+      }).fail(function(err) {
+        console.log('HEEEEEEEEEEERE');
+        console.error(err.stack);
       });
       
     }
@@ -1061,12 +1073,16 @@ var package = new PACK.pack.Package({ name: 'logic',
         var keys = infoSet.getValue('activeTheories').keysToArray();
         if (!keys.length) return new P({ val: relations });
         
+        console.log('RELATIONS FOR', keys);
+        
         return doss.$doRequest({
           command: 'getAllTheoryRelations',
           params: {
             theoryNames: keys
           }
         }).then(function(response) {
+          
+          console.log('REL', response);
           
           for (var i = 0; i < response.length; i++) {
             var r = response[i];
@@ -1257,6 +1273,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       
       return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
         token: infoSet.getValue('token'),
+        username: infoSet.getValue('username'),
         standingQuickName: standingData.getValue('quickName'),
         incomingQuickName: incomingData.getValue('quickName'),
         relationType: relationType
@@ -1268,28 +1285,34 @@ var package = new PACK.pack.Package({ name: 'logic',
       });
       
     };
-    var $loadRelatedTheories = function(theoryQuickName, relationName, relationSetName) {
+    var $loadRelatedTheories = function(theoryQuickName, relationName) {
       
       return doss.$doRequest({
         
-        address: [ 'theorySet', theoryQuickName, relationSetName ],
+        address: [ 'theoryRelationSet', { type: 'match', params: {
+          '@standing': theoryQuickName,
+          'relationType': relationName
+        }}],
         command: 'getRawData'
         
       }).then(function(relationSet) {
         
+        // HERE; relationSet in unexpected format
+        console.log('LOADED RELATED THEORIES: ', relationSet);
+        
         return new P({ all: relationSet.map(function(relation) {
           return doss.$doRequest({
-            
-            address: relation.theory,
+            address: relation.incoming,
             command: 'getPickedFields',
             params: {
               fields: [ 'title', '@user', 'quickName' ]
             }
-            
           })
-        })})
+        })});
       
       }).then(function(pickedFieldSet) {
+        
+        console.log('PICKED FIELDS', pickedFieldSet);
         
         var activeTheoriesInfo = infoSet.getChild('activeTheories');
         for (var k in pickedFieldSet) {
@@ -1505,7 +1528,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         // Create the dropzones for supporting and contending
         var loadSupportersButton = new uf.ActionView({ name: 'loadSupporters', textInfo: 'Supporters...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'supporter', 'supporterSet').fail(function(err) {
+          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'supporter').fail(function(err) {
             console.log('SUPPORTERS FAILED');
             console.error(err.stack);
           });
@@ -1518,7 +1541,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         
         var loadContendersButton = new uf.ActionView({ name: 'loadContenders', textInfo: 'Contenders...', $action: function() {
           
-          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'contender', 'contenderSet').fail(function(err) {
+          return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'contender').fail(function(err) {
             console.log('CONTENDERS FAILED');
             console.error(err.stack);
           });
@@ -1683,7 +1706,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       var activeTheories = infoSet.getValue('activeTheories');
       for (var k in activeTheories) {
         
-        // TODO: this shouldn't be necessary
+        // TODO: this should be made unnecessary. Shouldn't be possible to have non-dom-initialized elements listed in `activeTheories`
         if (!(k in graphView.children) || !graphView.children[k].domRoot) continue;
         
         var standingInfo = activeTheories[k];
@@ -1710,11 +1733,11 @@ var package = new PACK.pack.Package({ name: 'logic',
             var relLoc = loc1.add(lg.nodeRelationOffsets[relationType].scale(ratio));
             
             var ang = loc2.angleTo(relLoc);
-            loc2 = loc2.angleMove(ang, r2);
+            var edgeLoc = loc2.angleMove(ang, r2);
             
             ctx.strokeStyle = strokes[relationType];
             ctx.beginPath();
-            ctx.moveTo(loc2.x, loc2.y);
+            ctx.moveTo(edgeLoc.x, edgeLoc.y);
             ctx.lineTo(relLoc.x, relLoc.y);
             ctx.stroke();
             

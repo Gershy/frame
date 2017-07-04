@@ -66,10 +66,12 @@ var package = new PACK.pack.Package({ name: 'queries',
             
             // QueryHandlers that implement `getChild` end here:
             if (this.getChild) {
-              console.log('QUERY "' + address + '":\n\t' + params.command, params.params);
+              
+              console.log('QUERY ' + JSON.stringify(address) + ':\n\t' + params.command, params.params);
               var child = this.getChild(address);
-              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              if (!child) throw new Error('Invalid address: "' + address.map(function(pc) { return U.isObj(pc, Object) ? '{{filter:' + pc.type + '}}' : pc; }).join('.') + '"');
               return child.$handleQuery(params);
+              
             }
 						
 						if (!address.length) return this.$handleQuery(params);
