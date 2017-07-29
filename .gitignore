@@ -49,3 +49,4 @@ Temporary Items
 # Frame-specific
 state/
 node_modules/
+cmp-*.js
