@@ -2,6 +2,7 @@
 TODO: Long polling
 TODO: Abstract tree class in separate package!!!
 TODO: Is IndexedDict efficient? Probably with lots of data present
+TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
   dependencies: [ 'queries', 'p' ],
@@ -157,6 +158,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
           $create: function(outline, data) {
             return this.$add({ par: null, outline: outline, name: null, data: data });
+          },
+          $createFast: function(outline, data) {
+            return this.$addFast({ par: null, outline: outline, name: null, data: data });
           },
           $addFast: function(params /* par, name, data, outline */) {
             var $ret = this.$add(params);
@@ -486,9 +490,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return ret;
           },
           getNameChain: function() {
-            return this.getAncestry().reverse().map(function(doss) {
-              return doss.name.toString();
-            });
+            return this.getAncestry().reverse().map(function(doss) { return doss.name.toString(); });
           },
           getAddress: function() {
             return this.getNameChain().join('.');
@@ -509,6 +511,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               var a = address[i];
               
+              if (U.isObj(a, Array)) a = '<' + a.join('/') + '>';
+              
               // Shave off all dereference symbols while counting them
               var numDerefs = 0;
               while (a[numDerefs] === '@') numDerefs++;
@@ -523,6 +527,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             }
             
             return ptr;
+          },
+          getChildValue: function(address) {
+            return this.getChild(address).value;
           },
           getNamedChild: function(name) {
             if (name === '') return this;
@@ -635,6 +642,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getChildOutline: function(name) {
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
+          },
+          
+          map: function(mapFunc) {
+            return this.children.map(mapFunc);
           },
           
           matches: function(value) {
@@ -780,7 +791,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return child[prop];*/
             
             var func = this.outline.p.nameFunc;
-            var name = func ? func(this, doss) : this.nextInd;
+            
+            try {
+              var name = func ? func(this, doss) : this.nextInd;
+            } catch (err) {
+              console.log(func);
+              throw new Error('Problem with `nameFunc`');
+            }
+            
             if (!U.valid(name)) throw new Error('`nameFunc` returned an invalid name');
             return name;
             
@@ -788,7 +806,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getChildOutline: function(name) {
             // All DossierList children have the same outline
             return this.innerOutline;
-          }
+          },
           
           /*
           $handleQuery: function(params) {
@@ -886,6 +904,39 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           }
           */
           
+          $handleQuery: function(params) {
+            
+            var command = U.param(params, 'command');
+            
+            if (command === 'addData') {
+              
+              var reqParams = U.param(params, 'params');
+              var data = U.param(reqParams, 'data');
+              
+              var verifyAndSanitize = this.outline.p.verifyAndSantizeData;
+              if (!verifyAndSanitize) throw new Error('Cannot "addData" on "' + this.getAddress() + '"');
+              
+              var editor = new qd.Editor();
+              return editor.$addFast({
+                par: this,
+                data: verifyAndSanitize(this, data)
+              }).then(function(child) {
+                return {
+                  msg: 'added',
+                  address: child.getAddress()
+                };
+              });
+              
+            } else if (command === 'remData') {
+              
+              throw new Error('not implemented');
+              
+            }
+            
+            return sc.$handleQuery.call(this, params);
+            
+          }
+          
         };}
       }),
       DossierDirectedRelations: U.makeClass({ name: 'DossierDirectRelations',
@@ -982,6 +1033,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         methods: function(sc) { return {
           init: function(params /* outline */) {
             sc.init.call(this, params);
+          },
+          
+          setValue: function(value) {
+            var intVal = parseInt(value);
+            if (isNaN(intVal)) throw new Error('Received non-numeric value: "' + value + '"');
+            this.value = intVal;
           }
         }; }
       }),
@@ -998,7 +1055,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Dossiers are valid values for `DossierRef.prototype.setValue`; resolve them to their addresses
             if (U.isInstance(value, PACK.quickDev.Dossier)) value = value.getAddress();
             
-            base = this.getChild(this.outline.getProperty('baseAddress', '~root')).getAddress() + '.';
+            var base = this.getChild(this.outline.getProperty('baseAddress', '~root')).getAddress() + '.';
             if (value.substr(0, base.length) !== base)
               throw new Error('Invalid address "' + value + '" doesn\'t begin with base "' + base + '"');
             
@@ -1137,13 +1194,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                   
                   console.log('Transitioning from version "' + versionName + '" to "' + ver.name + '"...');
                   return ver.$apply(doss).then(function(doss) {
-                    console.log('Success!');
                     return { versionName: ver.name, doss: doss };
                   });
                   
                 } else {
                   
-                  console.log('Skipping version "' + ver.name + '".');
                   return dossData;
                   
                 }
@@ -1152,7 +1207,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             });
             
-            return $dossData.then(function(dossData) { return dossData.doss });
+            return $dossData.then(function(dossData) {
+              console.log('Migrations successful!');
+              return dossData.doss;
+            });
             
           }
         };}

@@ -1,0 +1,140 @@
+var fs = require('fs');
+var path = require('path');
+
+exports.compile = function(appName, appDir, tabs) {
+  // If `tabs` === 'tabs', the tabbing is done with \t
+  // If `tabs` is some integer n, the tabbing is done with n spaces
+  if (!tabs) tabs = 2;
+  
+  var removeContent = function(content, inds, typeLen, delimLen, tabs) {
+    return content.substr(0, inds[0]) +     // Everything before the block
+      '{}' +                                // An empty value as a replacement for the block
+      content.substr(inds[1] + delimLen);   // Everything after the block
+  };
+  var keepContent = function(content, inds, typeLen, delimLen, tabs) {
+    
+    var ind0 = inds[0] + typeLen + delimLen; // Index of the first character inside the block
+    var blockContent = content.substr(ind0, inds[1] - ind0); // Everything from the first to last characters of the block
+    if (blockContent.replace(/[\t ]/g, '')[0] === '\n') { // If the first non-tab character is a newline (an unindent is desired)...
+      
+      // Do an unindent! Split by newline; strip first tab from each line; rejoin with newlines
+      blockContent = blockContent.split('\n');
+      blockContent = blockContent.map(function(line) {
+        
+        if (tabs === 'tabs')
+          return line[0] === '\t' ? line.substr(1) : line;
+        
+        var allSpaces = true;
+        for (var i = 0; i < tabs; i++) { if (line[i] !== ' ') allSpaces = false; break; }
+        
+        return allSpaces ? line.substr(tabs) : line;
+        
+      }).join('\n');
+      
+    }
+    blockContent = blockContent.trim();
+    
+    return content.substr(0, inds[0]) +     // Everything before the block
+      blockContent +                        // Everything inside the block
+      content.substr(inds[1] + delimLen);   // Everything after the block
+    
+  };
+  
+  var blockTypes = {
+    SERVER: {
+      contentForServer: keepContent,
+      contentForClient: removeContent
+    },
+    CLIENT: {
+      contentForServer: removeContent,
+      contentForClient: keepContent
+    }
+  };
+  
+  console.log('Compiling "' + appName + '" at "' + appDir + '"...');
+  
+  var fileName = path.join(appDir, appName + '.js');
+  var fileContents = fs.readFileSync(fileName).toString();
+  
+  var maxBlockStart = 0;
+  var blocks = [];
+  
+  for (var type in blockTypes) {
+    
+    var typeLen = type.length;
+    
+    while (true) {
+      
+      var blockStart = fileContents.indexOf(type + '([[', maxBlockStart);
+      if (blockStart === -1) break;
+      
+      maxBlockStart = blockStart + typeLen;
+      
+      var blockEnd = fileContents.indexOf(']])', maxBlockStart);
+      if (blockEnd === -1) throw new Error(type + ' block missing terminator in file "' + fileName + '"');
+      
+      blocks.push({
+        type: type,
+        inds: [ blockStart, blockEnd ]
+      });
+      
+    }
+    
+  }
+  
+  // Order by greatest last index (handle last blocks first so no re-indexing needs to be done)
+  blocks.sort(function(a, b) { return b.inds[1] - a.inds[1] });
+  
+  var serverContents = fileContents;
+  var clientContents = fileContents;
+  for (var i = 0; i < blocks.length; i++) {
+    
+    var block = blocks[i];
+    var blockType = block.type;
+    var blockTypeLen = blockType.length;
+    var blockInds = block.inds;
+    
+    // `3` is the length of the "]])" block delimiter
+    // `tabs` indicates the tab type. An integer indicates n spaces; the string "tab" indicates tabs
+    clientContents = blockTypes[blockType].contentForClient(clientContents, blockInds, blockTypeLen, 3, tabs);
+    serverContents = blockTypes[blockType].contentForServer(serverContents, blockInds, blockTypeLen, 3, tabs);
+    
+    /*
+    clientContents =
+      clientContents.substr(0, blockInds[0]) +  // Everything before the block
+      '{ denied: true }' +                      // An empty value as a replacement for the block
+      clientContents.substr(blockInds[1] + 3);  // Everything after the block (3 is constant, it's the length of "]])")
+    
+    
+    var ind1 = blockInds[0] + blockTypeLen + 3;
+    var blockContents = serverContents.substr(ind1, blockInds[1] - ind1);
+    if (blockContents.replace(/[\t ]/g, '')[0] === '\n') {
+      blockContents = blockContents.split('\n');
+      blockContents = blockContents.map(function(line) {
+        
+        if (tabs === 'tabs')
+          return line[0] === '\t' ? line.substr(1) : line;
+        
+        var allSpaces = true;
+        for (var i = 0; i < tabs; i++) { if (line[i] !== ' ') allSpaces = false; break; }
+        
+        return allSpaces ? line.substr(tabs) : line;
+        
+      }).join('\n');
+    }
+    blockContents = blockContents.trim();
+    
+    serverContents =
+      serverContents.substr(0, blockInds[0]) +  // Everything before the block
+      blockContents +                           // Everything inside the block
+      serverContents.substr(blockInds[1] + 3);  // Everything after the block
+    */
+    
+    
+  }
+  
+  fs.writeFileSync(path.join(appDir, 'cmp-server-' + appName + '.js'), serverContents, { flag: 'w' });
+  fs.writeFileSync(path.join(appDir, 'cmp-client-' + appName + '.js'), clientContents,  { flag: 'w' });
+  
+  console.log('Compilation successful!');
+};

@@ -16,7 +16,29 @@ run on server or client side:
 */
 
 // Add convenience methods to pre-existing classes
-[  
+[
+  {  target: String.prototype,
+    props: {
+      contains: function(str) {
+        return this.indexOf(str) !== -1;
+      },
+      padding: function(width, char) {
+        if (!U.exists(char)) char = ' ';
+        
+        var len = width - this.length;
+        var ret = '';
+        while (ret.length < len) ret += char;
+        
+        return ret;
+      },
+      padLeft: function(width, char) {
+        return this.padding(width, char) + this;
+      },
+      padRight: function(width, char) {
+        return this + this.padding(width, char);
+      }
+    },
+  },
   {  target: Object.prototype,
     props: {
       update: function(obj) {
@@ -48,9 +70,14 @@ run on server or client side:
         for (var k in this) if (!it(this[k], k, this)) return false;
         return true;
       },
-      toArray: function() {
+      toArray: function(func) {
         var ret = [];
-        for (var k in this) ret.push(this[k]);
+        
+        if (func)
+          for (var k in this) ret.push(func(this[k], k));
+        else
+          for (var k in this) ret.push(this[k]);
+        
         return ret;
       },
       keysToArray: function() {
@@ -95,28 +122,6 @@ run on server or client side:
       }
     },
   },
-  {  target: String.prototype,
-    props: {
-      contains: function(str) {
-        return this.indexOf(str) !== -1;
-      },
-      padding: function(width, char) {
-        if (!U.exists(char)) char = ' ';
-        
-        var len = width - this.length;
-        var ret = '';
-        while (ret.length < len) ret += char;
-        
-        return ret;
-      },
-      padLeft: function(width, char) {
-        return this.padding(width, char) + this;
-      },
-      padRight: function(width, char) {
-        return this + this.padding(width, char);
-      }
-    },
-  },
   {  target: Array.prototype,
     props: {
       contains: function(val) {
@@ -145,10 +150,12 @@ run on server or client side:
       },
       toObj: function(nameFunc, valFunc) {
         var ret = {};
+        
         if (valFunc)
-          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = this[i];
+          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = this[i];
         else
-          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i])] = valFunc(this[i]);
+          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = valFunc(this[i], i);
+        
         return ret;
       },
       remove: function(elem) {
@@ -425,6 +432,9 @@ global.U = {
     }
     return v1 + Math.floor(Math.random() * (v2 + 1 - v1));
   },
+  randElem: function(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+  },
   
   // Serialization utility
   straighten: function(item) {
@@ -522,6 +532,9 @@ global.U = {
   },
   
   // Misc
+  timeMs: function() {
+    return +new Date();
+  },
   toArray: function(arrayLike, v) {
     /*
     Useful method for constructing arrays from a variety of inputs:
@@ -647,19 +660,17 @@ global.PACK.pack = {
         this is the function that should run once all dependencies
         are loaded.
         */
-        if (this.name in PACK) throw 'double-loaded dependency "' + this.name + '"';
+        if (this.name in PACK) throw new Error('double-loaded dependency "' + this.name + '"');
         
-        var args = [ this.name ];
-        this.dependencies.forEach(function(dpName) { args.push(PACK[dpName]); });
-        PACK[this.name] = this.buildFunc.apply(null, args);
-        console.log('Built "' + this.name + '"');
+        var args = this.dependencies.map(function(n) { return U.deepGet({ name: n, root: PACK }); });
+        PACK[this.name] = this.buildFunc.apply(null, [ this.name ].concat(args));
         
         if (!U.isServer()) {
           var waiting = this.script.__waiting;
           for (var k in waiting) waiting[k].stepBuild(this.script);
         }
         
-        if (this.runAfter) this.runAfter();
+        if (this.runAfter) this.runAfter.apply(null, [ PACK[this.name] ].concat(args));
       },
       build: function() {
         /*

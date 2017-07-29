@@ -1,0 +1,554 @@
+/*
+
+Colors:
+
+#d0d0d0: Outline around items (theories, right-hand dropzones)
+#dadada: Outline around textboxes (and other interactive elements?)
+#f8f8f8: Neutral background
+
+#09bd3c: Supporter darker colour
+#0be74a: Supporter lighter colour
+
+#f44c05: Contender darker colour
+#ff8552: Contender lighter colour
+
+rgba(0, 0, 0, 0.76): Less-relevant text on white background
+rgba(0, 0, 0, 0.5): Unimportant text on white background
+
+#ffa040: Edit theory orange indication
+
+#dc7309: Removal orange
+#cf1313: Deletion red
+
+*/
+
+@font-face {
+  font-family: 'icomoon';
+  src: url('/apps/logic/resources/fonts/icons.woff') format('woff');
+  /*
+  src: url('/apps/logic/resources/fonts/icons.eot');
+  src: url('/apps/logic/resources/fonts/icons.eot#iefix') format('embedded-opentype')
+    url('/apps/logic/resources/fonts/icons.ttf') format('truetype')
+    url('/apps/logic/resources/fonts/icons.woff') format('woff')
+    url('/apps/logic/resources/fonts/icons.svg') format('svg');*/
+  font-weight: normal;
+  font-style: normal;
+}
+
+@keyframes dragHoverExplode {
+  0% { opacity: 0; tranform: scale(0); }
+  50% { opacity: 0.25; }
+  60% { opacity: 0.6; }
+  70% { opacity: 0.25; }
+  100% { opacity: 0; transform: scale(6); }
+}
+
+/* icons */
+.icon:before { font-family: 'icomoon'; }
+.icon.icon-remove { content: "\e900"; }
+.icon.icon-close { content: "\f00d"; }
+.icon.icon-delete { content: "\f014"; }
+
+#root {
+  position: absolute;
+  box-sizing: border-box;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  padding-bottom: 20px;
+}
+#root-rps, #root-version {
+  position: absolute;
+  bottom: 0;
+  margin: 0 3px;
+  font-family: monospace;
+  height: 20px; line-height: 20px;
+}
+#root-rps { left: 0; }
+#root-version { right: 0; }
+#root-login {
+  position: relative;
+  width: 100%; height: 100%;
+  background-color: #f8f8f8;
+  overflow: hidden;
+}
+#root-login-in, #root-login-out {
+  position: relative;
+  width: 100%; height: 100%;
+}
+
+/* Graph + Nodes */
+#root-login-in-graph {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  
+  z-index: 1;
+}
+#root-login-in-graph {
+  position: absolute;
+  width: 0; height: 0;
+  left: 50%; top: 50%;
+}
+#root-login-in-graph > .theory {
+  display: block;
+  position: absolute;
+  width: 300px; height: 300px;
+  border-radius: 100%;
+  z-index: 1;
+  
+  transform-origin: 0% 0%;
+  /*transition: left 500ms ease-out, top 500ms ease-out, transform 200ms linear, box-shadow 500ms linear;*/
+  transition: transform 200ms linear, box-shadow 500ms linear;
+}
+#root-login-in-graph > .theory.focused {
+  z-index: 2; /* Drags appear above focused node */
+}
+#root-login-in-graph > .theory ._interactive {
+  background-color: transparent;
+  color: #000000;
+  box-shadow: inset 0 0 0 1px #dadada;
+}
+#root-login-in-graph > .theory > ._controls {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  
+  border-radius: 100%;
+  box-shadow: 0 0 0 2px #d0d0d0;
+  
+  pointer-events: none;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive {
+  position: absolute;
+  width: 64px; height: 64px;
+  border-radius: 100%;
+  font-size: 0;
+  top: 26px;
+  
+  transition: box-shadow 500ms ease-out, width 500ms linear, height 500ms linear, transform 500ms ease-in-out;
+  
+  pointer-events: all;
+  cursor: pointer;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive:before {
+  /* Used for the dragHover explosion */
+  content: "";
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  border-radius: 100%;
+  opacity: 0;
+  
+  pointer-events: none;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive:after {
+  /* Used to illuminate the border of the theory on drag */
+  content: "";
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  z-index: -1;
+  border-radius: 100%;
+  box-shadow: 0 0 0 0 rgba(109, 109, 255, 0.8);
+  
+  pointer-events: none;
+  
+  transition: box-shadow 500ms linear;
+}
+
+#root-login-in-graph > .theory > ._controls > ._interactive._loadSupporters {
+  box-shadow: inset 0 0 0 6px #09bd3c;
+  background-color: #0be74a;
+  left: -5px;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive._loadSupporters:before {
+  background-color: #09bd3c;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive._loadSupporters:hover,
+#root-login-in-graph > .theory > ._controls > ._interactive._loadSupporters.dragHover {
+  box-shadow: inset 0 0 0 34px #09bd3c;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive._loadContenders {
+  box-shadow: inset 0 0 0 6px #f44c05;
+  background-color: #ff8552;
+  right: -5px;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive._loadContenders:before {
+ background-color: #f44c05;
+}
+#root-login-in-graph > .theory > ._controls > ._interactive._loadContenders:hover,
+#root-login-in-graph > .theory > ._controls > ._interactive._loadContenders.dragHover {
+  box-shadow: inset 0 0 0 34px #f44c05;
+}
+#root-login-in-graph > .theory > ._controls > ._owner {
+  pointer-events: all;
+}
+
+#root-login-in-graph > .theory > ._data {
+  position: absolute;
+  width: 100%; height: 100%;
+  border-radius: 100%;
+  background-color: #ffffff;
+  text-align: center;
+  
+  overflow: hidden;
+  pointer-events: none;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved,
+#root-login-in-graph > .theory > ._data > ._saved {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+}
+#root-login-in-graph > .theory > ._data ._interactive {
+  pointer-events: all;
+}
+
+#root-login-in-graph > .theory > ._data > ._unsaved > ._quickName {
+  position: absolute;
+  width: 260px; margin-left: -130px;
+  top: 108px;
+  left: 50%; height: 38px;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved > ._quickName > ._interactive { font-size: 24px; }
+#root-login-in-graph > .theory > ._data > ._unsaved > ._quickName > ._placeholder {
+  line-height: 34px;
+  font-size: 20px;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved > ._save {
+  position: absolute;
+  width: 300px; height: 136px;
+  left: 50%; top: 146px; margin-left: -150px;
+  padding: 18px 0 0 0;
+  outline: 1px solid rgba(0, 0, 0, 0.1);
+  
+  box-shadow: none;
+  overflow: hidden;
+  z-index: 0;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved > ._save:before {
+  content: "";
+  position: absolute;
+  width: 130px; height: 130px;
+  left: 85px; top: -53px;
+  background-color: rgb(218, 218, 218);
+  border-radius: 100%;
+  z-index: -1;
+  
+  transition: left ease-in-out 500ms, top ease-in-out 500ms, width ease-in-out 500ms, height ease-in-out 500ms;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved > ._save:hover:before {
+  left: -50px; top: -48px; width: 400px; height: 400px;
+}
+#root-login-in-graph > .theory > ._data > ._unsaved > ._save:after {
+  /* The clickable part of the "save" button */
+  
+  pointer-events: all;
+}
+
+#root-login-in-graph > .theory > ._data > ._saved > ._user {
+  display: block;
+  height: 20px; line-height: 20px;
+  margin: 23px 34px 14px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.76);
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title {
+  display: block;
+  position: relative;
+  margin: 0 47px;
+  height: 24px; line-height: 20px; /* line-height shouldn't include padding */
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._text {
+  display: inline-block;
+  height: 24px;
+  line-height: 24px;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._input {
+  height: 24px;
+  font-size: inherit;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._title > ._input > ._interactive {
+  height: 24px;
+  text-align: center;
+  font-size: inherit;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory {
+  display: block;
+  position: relative;
+  margin: 6px 30px 0;
+  height: 130px;
+  overflow: hidden;
+  font-size: 16px;
+  font-family: serif;
+  text-align: left;
+  
+  white-space: pre-wrap; /* allow newline to render */
+  
+  pointer-events: all;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory._choose-display {
+  box-sizing: border-box;
+  padding: 2px 4px 0;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory > ._input > ._interactive {
+  font-family: serif;
+  font-size: 16px;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._theory._choose-display:after {
+  content: "";
+  display: block;
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 100%;
+  box-shadow: 0 0 50px 24px #ffffff;
+}
+#root-login-in-graph > .theory > ._data > ._saved > ._quickName {
+  padding: 0 10px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+  font-family: monospace;
+  pointer-events: all;
+}
+
+#root-login-in-graph > .theory > ._toggleEdit {
+  position: absolute;
+  width: 0; height: 0; 
+  right: 18px; top: 135px;
+}
+#root-login-in-graph > .theory > ._toggleEdit > ._view {
+  position: absolute;
+  width: 30px; height: 30px; 
+  left: 0; top: 0;
+  border-radius: 100%;
+  background-color: #ffffff;
+  box-shadow: inset 0 0 0 1px #dadada;
+  
+  pointer-events: all;
+  
+  transition: background-color 200ms linear, box-shadow 200ms linear;
+}
+#root-login-in-graph > .theory > ._toggleEdit > ._view:after {
+  content: "";
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  
+  background-color: #ffa040;
+  
+  border-radius: 100%;
+  
+  transform: scale(0);
+  transition: transform 200ms ease-in-out;
+}
+#root-login-in-graph > .theory > ._toggleEdit > ._view.editing:after {
+  transform: scale(0.2);
+}
+
+/* Dragging nodes */
+#root.dragging {
+  user-select: none;
+}
+#root-login-in-graph > .theory.dragging {
+  z-index: 3;
+  box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
+  opacity: 0.6;
+  
+  transition: transform 200ms linear, box-shadow 500ms linear;
+}
+#root-login-in-graph > .theory.dragging,
+#root-login-in-graph > .theory.dragging * {
+  pointer-events: none !important;
+}
+#root.dragging #root-login-in-graph > .theory {
+  pointer-events: none;
+}
+#root.dragging #root-login-in-graph > .theory > ._controls > ._interactive {
+  pointer-events: all;
+  transform: scale(1.2);
+}
+#root.dragging #root-login-in-graph > .theory > ._controls > ._interactive.dragHover {
+  transform: scale(1.6);
+}
+#root-login-in-graph > .theory.dragging > ._controls > ._interactive,
+#root-login-in-graph > .theory.dragging > ._controls > ._owner > ._show {
+  transform: scale(0) !important;
+}
+#root-login-in-graph > .theory.dragging > ._controls > ._interactive:after {
+  box-shadow: 0 0 0 18px rgba(109, 109, 255, 0.8);
+}
+#root-login-in-graph > .theory > ._controls > ._interactive.dragHover:before {
+  animation: dragHoverExplode 350ms ease-in-out forwards;
+}
+
+/* Dropzones */
+#root-login-in-dropZones {
+  position: absolute;
+  right: -80px; top: 0;
+  width: 80px; height: 100%;
+  
+  transition: right 200ms ease-in;
+  
+  pointer-events: none;
+  
+  z-index: 2;
+}
+#root.dragging #root-login-in-dropZones {
+  right: 0;
+}
+#root-login-in-dropZones > .dropZone {
+  position: absolute;
+  width: 60px; height: 60px; line-height: 59px; /* line-height should theoretically be 60px but it isn't centered that way */
+  left: 50%; margin-left: -30px;
+  top: 50%; margin-top: -30px;
+  border-radius: 100%;
+  background-color: #ffffff;
+  box-shadow: inset 0 0 0 2px #d0d0d0;
+  
+  font-family: 'icomoon';
+  font-size: 40px;
+  text-align: center;
+  
+  pointer-events: all;
+  cursor: pointer;
+  
+  transition: box-shadow 400ms linear, background-color 400ms linear, color 400ms linear, font-size 400ms linear;
+  
+  /* TODO: `background: ...` ADD ICONS */
+}
+#root-login-in-dropZones > .dropZone:before {
+  content: "";
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  border-radius: 100%;
+  opacity: 0;
+  
+  pointer-events: none;
+}
+
+#root-login-in-dropZones > .dropZone.dragHover {
+  font-size: 54px;
+  background-color: transparent;
+}
+#root-login-in-dropZones > .dropZone.dragHover:before {
+  animation: dragHoverExplode 350ms ease-in-out forwards;
+}
+#root-login-in-dropZones > ._remove { top: 33.3333%; }
+#root-login-in-dropZones > ._remove:before { background-color: #dc7309; }
+#root-login-in-dropZones > ._remove.dragHover { box-shadow: inset 0 0 0 30px #dc7309; color: #ffffff; }
+
+#root-login-in-dropZones > ._delete { top: 66.6666%; }
+#root-login-in-dropZones > ._delete:before { background-color: #cf1313; }
+#root-login-in-dropZones > ._delete.dragHover { box-shadow: inset 0 0 0 30px #cf1313; color: #ffffff; }
+
+/* Canvas */
+#root-login-in-canvas {
+  position: absolute; left: 0; top: 0;
+  z-index: 100; /* On top of everything */
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+
+/* Controls */
+#root-login-in-controls {
+  display: block;
+  position: absolute;
+  box-sizing: border-box;
+  left: 0; bottom: 0; padding: 0 5px;
+  white-space: nowrap;
+  z-index: 3; /* Controls technically cover the dropZones contain */
+}
+#root-login-in-controls {
+  display: inline-block; margin-right: 10px;
+}
+#root-login-in-controls > .control {
+  position: relative;
+  display: inline-block;
+  height: 22px; line-height: 22px;
+  padding: 0px;
+  vertical-align: middle;
+  font-size: 14px;
+  margin-right: 2px;
+}
+#root-login-in-controls > .control._button {
+  padding: 0 2px;
+}
+
+#root-login-in-controls > ._search {
+  width: 160px;
+}
+#root-login-in-controls > ._search > ._bar {
+  height: 22px; line-height: 22px;
+}
+#root-login-in-controls > ._search > ._bar > ._interactive {
+  font-size: 14px;
+}
+#root-login-in-controls > ._search > ._bar > ._placeholder {
+  line-height: 18px;
+}
+#root-login-in-controls > ._search > ._results {
+  position: absolute;
+  box-sizing: border-box;
+  width: 300px;
+  left: 0; bottom: 100%;
+  border: 1px solid #d0d0d0; border-bottom: none;
+  overflow: hidden;
+}
+#root-login-in-controls > ._search > ._results > .result {
+  position: relative;
+  width: 100%; height: 58px; border-bottom: 1px solid #d0d0d0;
+  font-size: 14px;
+  background-color: #ffffff;
+}
+#root-login-in-controls > ._search > ._results > .result > .item {
+  position: absolute;
+  box-sizing: border-box;
+  display: inline-block;
+  height: 20px; line-height: 16px; padding: 2px;
+  white-space: nowrap;
+}
+#root-login-in-controls > ._search > ._results > .result > ._title {
+  left: 0; top: 0;
+  height: 24px; line-height: 20px;
+  font-size: 15px;
+}
+#root-login-in-controls > ._search > ._results > .result > ._theory {
+  width: 260px; height: 18px; line-height: 14px;
+  left: 0; top: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: serif;
+}
+#root-login-in-controls > ._search > ._results > .result > ._username {
+  left: 0; bottom: 0;
+}
+#root-login-in-controls > ._search > ._results > .result > ._quickName {
+  right: 40px; bottom: 0;
+}
+#root-login-in-controls > ._search > ._results > .result > ._username,
+#root-login-in-controls > ._search > ._results > .result > ._quickName {
+  font-family: monospace;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.5);
+}
+#root-login-in-controls > ._search > ._results > .result > ._choose {
+  position: absolute;
+  width: 40px; height: 60px; padding: 0; line-height: 60px;
+  background-color: transparent; color: #09bd3c;
+  right: 0; top: 0;
+  text-align: center;
+  font-size: 30px;
+  
+  font-family: 'icomoon';
+}

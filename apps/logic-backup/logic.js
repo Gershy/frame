@@ -85,7 +85,7 @@ var package = new PACK.pack.Package({ name: 'logic',
       versionString: '0.0.1',
       theoryNameRegex: /^[a-z][a-zA-Z]+$/,
       LogicApp: U.makeClass({ name: 'LogicApp',
-        superclass: qd.DossierDict,
+        superclass: PACK.quickDev.DossierDict,
         methods: function(sc, c) { return {
           validateTheoryName: function(name) {
             
@@ -687,8 +687,6 @@ var package = new PACK.pack.Package({ name: 'logic',
           detect: function(doss) { return doss === null; },
           $apply: function(root) {
             
-            var editor = new qd.Editor();
-            
             var outline = new qd.Outline({ c: lg.LogicApp, p: { name: 'app' }, i: [
               { c: qd.DossierString, p: { name: 'version' } },
               { c: qd.DossierList, p: { name: 'userSet',
@@ -773,20 +771,22 @@ var package = new PACK.pack.Package({ name: 'logic',
                   return '<' + ([
                     child.getChild('@standing').name,
                     child.getChild('@incoming').name,
-                    child.getChild('relationType').value
+                    child.getChild('relationTYpe').value
                   ].join('/')) + '>';
                 }
               }}
             ]});
-            
-            var $app = editor.$create(outline, {
+            var data = {
               version: '0.0.1 (initial)',
               userSet: {},
               essaySet: {},
               theorySet: {},
               theoryRelationSet: {},
               relationRelationSet: {}
-            });
+            };
+            
+            var editor = new qd.Editor();
+            var $app = editor.$create(outline, data);
             editor.resolveReqs();
             
             return $app;
@@ -1140,7 +1140,9 @@ var package = new PACK.pack.Package({ name: 'logic',
     
     // Update relations when list of theories is updated
     infoSet.getChild('activeTheories').addListener(infoSet.getChild('activeRelations'));
+    
     infoSet.start();
+    
     
     // Values for controlling extra data attached to graph nodes
     var makeNodeData = function(params /* quickName, username, editing */) {

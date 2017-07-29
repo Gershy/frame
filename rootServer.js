@@ -55,11 +55,12 @@ var package = new PACK.pack.Package({ name: 'server',
       Session: U.makeClass({ name: 'Session',
         superclassName: 'QueryHandler',
         methods: function(sc) { return {
-          init: function(params /* ip */) {
+          init: function(params /* appName, ip */) {
             this.ip = U.param(params, 'ip');
+            this.appName = U.param(params, 'appName');
             this.id = U.id(PACK.server.Session.NEXT_ID++);
-            this.appName = null;
-            this.userData = {};
+            
+            console.log('Initiated session: ' + this.ip + '; ' + this.appName);
           },
           getNamedChild: function(name) {
             if (name === 'app') return U.deepGet({ root: PACK, name: [ this.appName, 'queryHandler' ] });
@@ -113,33 +114,9 @@ var package = new PACK.pack.Package({ name: 'server',
             referenced using params.url, an array of url components.
             */
             var url = U.param(params, 'url');
-            var command = U.param(params, 'command', null);
-            
-            if (command) {
-              
-              if (command === 'getIp') {
-                
-                var promise = PACK.p.P({ val: { ip: this.ip } });
-                
-              } else {
-                
-                var promise = new PACK.p.P({ val: {
-                  code: 1,
-                  msg: 'invalid session command',
-                  command: command
-                }});
-                
-              }
-                
-              return promise.then(this.processChildResponse.bind(this));
-              
-            }
-            
-            // Zero-length urls aren't allowed
-            if (url.length === 0) throw new Error('Zero-length url');
             
             // A request that specifies a file should just serve that file
-            if (url[url.length - 1].contains('.'))
+            if (url.length && url[url.length - 1].contains('.'))
               return this.getFileContents(url.join('/'))
                 .fail(function(err) {
                   return new PACK.server.ResponseData({
@@ -150,35 +127,14 @@ var package = new PACK.pack.Package({ name: 'server',
                   });
                 });
             
-            // A mode-less request to the session just means to serve the html
-            var appName = url[0];
-            
-            // Check if it's the server's first request for this app
-            if (!(appName in PACK)) {
-              try {
-                require('./apps/' + appName + '/' + appName + '.js');
-              } catch (e) {
-                console.log('Couldn\'t load essential file "/apps/' + appName + '/' + appName + '.js"');
-                throw e;
-              }
-              
-              try {
-                require('./apps/' + appName + '/$' + appName + '.js');
-              } catch(e) {
-                if (e.message.substr(0, 18) !== 'Cannot find module') {
-                  console.error(e.stack);
-                  console.log('No server file for "' + appName + '"');
-                }
-              }
-              
-            }
-            
-            this.appName = appName;
             PACK.server.Session.SESSIONS[this.ip] = this;
+            
+            var appName = this.appName;
             
             return this.getFileContents('mainPage.html')
               .then(function(html) {
-                html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
+                // TOOD: The fact that "cmp-client-" appears client-side means the client can request server-side sources
+                html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
                 html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
                 
@@ -225,18 +181,21 @@ var package = new PACK.pack.Package({ name: 'server',
         statik: {
           NEXT_ID: 0,
           SESSIONS: {},
-          GET_SESSION: function(ip) {
+          GET_SESSION: function(appName, ip) {
+            // Note: `appName` isn't checked if the session already exists.
+            // TODO: Could be a problem if it's ever desired for the same
+            // session to serve multiple apps?
             return (ip in PACK.server.Session.SESSIONS)
               ? PACK.server.Session.SESSIONS[ip]
-              : new PACK.server.Session({ ip: ip });
+              : new PACK.server.Session({ appName: appName, ip: ip });
           }
-        },
+        }
       }),
       
-      $getSession: function(req) {
+      $getSession: function(appName, req) {
         // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
         var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/^[0-9.]/g, '');
-        return PACK.p.$(PACK.server.Session.GET_SESSION(ip));
+        return PACK.p.$(PACK.server.Session.GET_SESSION(appName, ip));
       },
       $getQuery: function(req) {
         var url = req.url.substr(1); // Strip the leading "/"
@@ -276,9 +235,6 @@ var package = new PACK.pack.Package({ name: 'server',
         // Ensure that the "url" property is represented as an array
         queryUrl = queryUrl ? queryUrl.split('/') : [];
         
-        // Ensure that empty urls refer to the default app
-        if (queryUrl.length === 0) queryUrl.push(config.defaultApp);
-        
         // Ensure that the "url" property is only provided automatically
         if ('url' in queryParams) throw new Error('Provided reserved property: "url"');
         queryParams.url = queryUrl;
@@ -293,12 +249,12 @@ var package = new PACK.pack.Package({ name: 'server',
         return PACK.p.$(queryParams);
       },
       
-      serverFunc: function(req, res) {
-        new PACK.p.P({ args: [ PACK.server.$getSession(req), PACK.server.$getQuery(req) ] })
+      serverFunc: function(appName, req, res) {
+        new PACK.p.P({ args: [ PACK.server.$getSession(appName, req), PACK.server.$getQuery(req) ] })
           .them(function(session, query) {  // Get a response based on session and query
             return session.$respondToQuery(query);
           })
-          .then(function(response) {         // Insert error message in case of 404
+          .then(function(response) {        // Insert error message in case of 404
             return response || new PACK.server.ResponseData({
               code: 404,
               binary: false,
@@ -324,11 +280,18 @@ var package = new PACK.pack.Package({ name: 'server',
   },
   runAfter: function() {
     
-    var server = http.createServer(PACK.server.serverFunc);
+    var appName = process.argv[2] || config.defaultApp;
+    
+    // Compile and load the app
+    var dirPath = path.join(__dirname, 'apps', appName);
+    require('./compilers/default.js').compile(appName, dirPath);
+    require('./apps/' + appName + '/cmp-server-' + appName + '.js');
+    
+    var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
     
     var port = process.env.PORT || 8000;
     server.listen(port);
-    console.log('Listening on port: ' + port);
+    console.log('Listening on port ' + port + '...');
     
     /*
     setInterval(function() {
@@ -338,8 +301,12 @@ var package = new PACK.pack.Package({ name: 'server',
       console.log('MEM', mb.toFixed(2).toString() + 'mb (' + perc.toFixed(1).toString() + '%)');
     }, 90 * 1000);
     */
-  },
+  }
 });
+package.build();
+
+/*
+// TODO: Old, naive db setup
 
 var dbUri = U.param(process.env, 'FRAME_DB_URI', 'mongodb://localhost:27017/frame');
 
@@ -373,3 +340,4 @@ if (db && gimmeDb) {
   package.build();
   
 }
+*/

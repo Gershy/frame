@@ -160,6 +160,25 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      TemporaryInfo: U.makeClass({ name: 'TemporaryInfo',
+        superclassName: 'SimpleInfo',
+        methods: function(sc, c) { return {
+          init: function(params /* value, memoryMs */) {
+            sc.init.call(this, params);
+            this.memoryMs = U.param(params, 'memoryMs', 1000);
+            this.timeout = null;
+          },
+          setValue: function(value) {
+            var setFunc = sc.setValue;
+            setFunc.call(this, value);
+            
+            clearTimeout(this.timeout);
+            this.timeout = setTimeout(function() {
+              setFunc.call(this, null);
+            }.bind(this), this.memoryMs);
+          }
+        };}
+      }),
       CalculatedInfo: U.makeClass({ name: 'CalculatedInfo',
         superclassName: 'Info',
         methods: function(sc, c) { return {
@@ -365,7 +384,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* $getFunc, $setFunc, initialValue, updateMs, jitterMs */) {
             sc.init.call(this, params);
-            this.updateMs = U.param(params, 'updateMs', 0);
+            this.updateMs = U.param(params, 'updateMs', 0); // 0 indicates to request once and never refresh
             this.jitterMs = U.param(params, 'jitterMs', this.updateMs * 0.19);
             
             this.timeout = null;
