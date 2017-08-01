@@ -151,10 +151,12 @@ run on server or client side:
       toObj: function(nameFunc, valFunc) {
         var ret = {};
         
-        if (valFunc)
+        if (nameFunc && valFunc)
+          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = valFunc(this[i], i);
+        else if (nameFunc)
           for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = this[i];
         else
-          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = valFunc(this[i], i);
+          for (var i = 0, len = this.length; i < len; i++) ret[i] = this[i];
         
         return ret;
       },

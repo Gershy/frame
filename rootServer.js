@@ -64,7 +64,6 @@ var package = new PACK.pack.Package({ name: 'server',
           },
           getNamedChild: function(name) {
             if (name === 'app') return U.deepGet({ root: PACK, name: [ this.appName, 'queryHandler' ] });
-            
             return null;
           },
           getFileContents: function(filepath) {
@@ -127,8 +126,6 @@ var package = new PACK.pack.Package({ name: 'server',
                   });
                 });
             
-            PACK.server.Session.SESSIONS[this.ip] = this;
-            
             var appName = this.appName;
             
             return this.getFileContents('mainPage.html')
@@ -185,9 +182,14 @@ var package = new PACK.pack.Package({ name: 'server',
             // Note: `appName` isn't checked if the session already exists.
             // TODO: Could be a problem if it's ever desired for the same
             // session to serve multiple apps?
-            return (ip in PACK.server.Session.SESSIONS)
-              ? PACK.server.Session.SESSIONS[ip]
-              : new PACK.server.Session({ appName: appName, ip: ip });
+            
+            var Session = PACK.server.Session;
+            var sessionList = Session.SESSIONS;
+            
+            if (!(ip in sessionList)) sessionList[ip] = new Session({ appName: appName, ip: ip });
+            
+            return sessionList[ip];
+            
           }
         }
       }),

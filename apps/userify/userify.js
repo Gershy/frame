@@ -316,9 +316,20 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (chain) return this.getChild(chain).getValue();
             return this.children;
           },
-          setValue: function(chain, value) {
-            this.getChild(chain).setValue(value);
+          setValue: function(arg1, arg2 /*chain, value*/) {
+            if (!U.exists(arg2)) {
+              var values = arg1;
+              for (var k in values) this.getChild(k).setValue(values[k]);
+            } else {
+              var addr = arg1;
+              var value = arg2;
+              this.getChild(addr).setValue(value);
+            }
+            
           },
+          /*setValues: function(values) {
+            for (var k in values) this.getChild(k).setValue(values[k]);
+          },*/
           modValue: function(chain, func) {
             this.getChild(chain).modValue(func);
           },
@@ -400,7 +411,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               
               if (this.updateMs) {
                 var randJitter = ((Math.random() - 0.5) * 2 * this.jitterMs);
-                this.timeout = setTimeout(this.refresh.bind(this), this.updateMs + randJitter); // TODO: timeout delay should compensate for latency
+                this.timeout = setTimeout(this.refresh.bind(this), this.updateMs + randJitter); // TODO: timeout delay should compensate for latency?
               }
               
             }.bind(this, this.num++)).done();
@@ -1327,7 +1338,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
             this.comparator = U.param(params, 'comparator', null); // TODO: implement!
             
-            this.childFullData = {}; // A properly-keyed list of raw info items. The child's name corresponds to the info's key.
+            // TODO: `this.childFullData` is hardly ever mentioned on ctrl+f, so remove it?
+            //this.childFullData = {}; // A properly-keyed list of raw info items. The child's name corresponds to the info's key.
             
             this.count = 0;
           },
@@ -1364,7 +1376,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             // Remove all children as necessary
             for (var k in rem) {
               var child = this.remChild(k);
-              delete this.childFullData[child.name];
+              // delete this.childFullData[child.name]; // TODO: This is the only other place `this.childFullData` is mentioned
             }
             
             // Add all children as necessary

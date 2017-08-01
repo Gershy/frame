@@ -6,7 +6,9 @@ TODO: Names of Outline properties are confusing; e.g. "c" could stand for "child
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
   dependencies: [ 'queries', 'p' ],
-  buildFunc: function() {
+  buildFunc: function(packName, queries, p) {
+    
+    var P = p.P;
     
     var qd = {};
     
@@ -208,7 +210,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               if (outline.p.name) {
                 
-                promises.push(new PACK.p.P({ custom: function(resolve, reject) {
+                promises.push(new P({ custom: function(resolve, reject) {
                   
                   reqs.push({
                     reqFunc: c.reqNameSimple,
@@ -221,7 +223,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 
               } else {
                 
-                promises.push(new PACK.p.P({ custom: function(resolve, reject) {
+                promises.push(new P({ custom: function(resolve, reject) {
                   
                   reqs.push({
                     reqFunc: c.reqNameCalculated,
@@ -242,7 +244,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Step 4: Add the data; either directly or with requirements
             promises.push(doss.$loadFromRawData(data, this));
             
-            return new PACK.p.P({ all: promises }).then(function() { return doss; });
+            return new P({ all: promises }).then(function() { return doss; });
           },
           $remFast: function(params /* par, name */) {
             var $ret = this.$rem(params);
@@ -258,7 +260,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             var reqs = this.curReqs;
             
-            return new PACK.p.P({ custom: function(resolve, reject) {
+            return new P({ custom: function(resolve, reject) {
               
               reqs.push({
                 reqFunc: c.reqRemChild,
@@ -280,7 +282,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             var reqs = this.curReqs;
             
-            return new PACK.p.P({ custom: function(resolve, reject) {
+            return new P({ custom: function(resolve, reject) {
               
               reqs.push({
                 reqFunc: c.reqModData,
@@ -305,7 +307,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             for (var i = 0, len = add.length; i < len; i++) promises.push(this.$add(add[i]));
             for (var i = 0, len = mod.length; i < len; i++) promises.push(this.$mod(mod[i]));
             for (var i = 0, len = rem.length; i < len; i++) promises.push(this.$rem(rem[i]));
-            return new PACK.p.P({ all: promises });
+            return new P({ all: promises });
           },
           
           resolveReqs: function() {
@@ -635,6 +637,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (name in this.children) return this.children[name];
             return sc.getNamedChild.call(this, name);
           },
+          getNameForEditor: function(data, key) {
+            // Calculates the name for the child based on data (NO INSTANCE OF THE CHILD AVAILABLE)
+            throw new Error('Not implemented');
+          },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
             throw new Error('Not implemented');
@@ -669,15 +675,26 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             var promiseSet = [];
             for (var k in data)
               // Dossier is tightly coupled with Editor, so it's fair to use a "0" method here
-              promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k]));
+              promiseSet.push(editor.$add0(this, this.getChildOutline(k), this.getNameForEditor(data, k), data[k])); // TODO: 2nd last param was `k` until recently
             
-            return new PACK.p.P({ all: promiseSet });
+            return new P({ all: promiseSet });
           },
           
           $handleQuery: function(params /* command */) {
             var command = U.param(params, 'command');
             
-            if (command === 'getRawPickedFields') {
+            if (command === 'getChildCount') {
+              
+              return new P({ val: this.length });
+              
+            } else if (command === 'getChildNames') {
+              
+              var ret = [];
+              for (var k in this.children) ret.push(k);
+              
+              return new P({ val: ret });
+              
+            } else if (command === 'getRawPickedFields') {
               
               var reqParams = U.param(params, 'params');
               var fields = U.param(reqParams, 'fields');
@@ -688,7 +705,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 ret[k] = this.children[k].getRawDataView();
               }
               
-              return PACK.p.$null;
+              return new P({ val: ret });
               
             } else if (command === 'getPickedFields') {
               
@@ -698,11 +715,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var ret = {};
               var existing = {};
               for (var i = 0, len = fields.length; i < len; i++) {
-                var k = fields[i];
-                ret[k] = this.getChild(k).getDataView(existing);
+                var fieldAddr = fields[i];
+                var fieldKey = fieldAddr;
+                
+                if (fieldAddr[0] === '(') {
+                  var rb = fieldAddr.indexOf(')');
+                  if (rb === -1) throw new Error('Found open naming bracket without closing bracket: "' + fieldAddr + '"');
+                  
+                  fieldKey = fieldAddr.substr(1, rb - 1);
+                  fieldAddr = fieldAddr.substr(rb + 1).trim();
+                }
+                
+                var child = this.getChild(fieldAddr);
+                ret[fieldKey] = child ? child.getDataView(existing) : null;
               }
               
-              return new PACK.p.P({ val: ret });
+              return new P({ val: ret });
               
             }
             
@@ -731,6 +759,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           // Child methods
+          getNameForEditor: function(data, k) {
+            return k;
+          },
           getChildName: function(child) {
             throw new Error(this.constructor.title + ' doesn\'t support `getChildName`');
           },
@@ -779,6 +810,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return child;
           },
+          getNameForEditor: function(data, k) {
+            return null; // Sets `null` as the `name` parameter to the editor
+          },
           getChildName: function(doss) {
             /*var pcs = this.prop.split('/');
             var addr = pcs[0];
@@ -794,6 +828,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             try {
               var name = func ? func(this, doss) : this.nextInd;
+              console.log('Got name for child of "' + this.getAddress() + '": ' + name);
             } catch (err) {
               console.log(func);
               throw new Error('Problem with `nameFunc`');
@@ -861,7 +896,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var editor = new qd.Editor();
               return editor.$addFast({ par: this, data: values }).then(function(doss) {
                 
-                var $promisedVals = new PACK.p.P({ all: promiseValues.map(function(promiseVal, k) {
+                var $promisedVals = new P({ all: promiseValues.map(function(promiseVal, k) {
                   
                   var type = promiseVal.type;
                   var value = promiseVal.value;
@@ -911,9 +946,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (command === 'addData') {
               
               var reqParams = U.param(params, 'params');
+              var returnType = U.param(reqParams, 'returnType', 'address');
+              
+              if (![ 'address', 'raw', 'full' ].contains(returnType))
+                throw new Error('Invalid return type: "' + returnType + '"');
+              
               var data = U.param(reqParams, 'data');
               
-              var verifyAndSanitize = this.outline.p.verifyAndSantizeData;
+              var verifyAndSanitize = this.outline.p.verifyAndSanitizeData;
               if (!verifyAndSanitize) throw new Error('Cannot "addData" on "' + this.getAddress() + '"');
               
               var editor = new qd.Editor();
@@ -921,10 +961,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 par: this,
                 data: verifyAndSanitize(this, data)
               }).then(function(child) {
-                return {
-                  msg: 'added',
-                  address: child.getAddress()
-                };
+                
+                if (returnType === 'address')
+                  return new P({ val: child.getAddress() });
+                else if (returnType === 'raw')
+                  return new P({ val: child.getRawDataView() });
+                else if (returnType === 'full')
+                  return new P({ val: child.getDataView({}) });
+                
               });
               
             } else if (command === 'remData') {
@@ -1005,11 +1049,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               this.setValue(value);
               
-              return new PACK.p.P({ val: { address: this.getAddress(), value: this.value } });
+              return new P({ val: { address: this.getAddress(), value: this.value } });
               
             } else if (command === 'getValue') {
               
-              return new PACK.p.P({ val: this.getValue() });
+              return new P({ val: this.getValue() });
               
             }
             
@@ -1095,20 +1139,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.children = {};
             this.par = U.param(params, 'par', null);
             
-            ({
+            console.log('FILTER', filter);
+            
+            var filters = {
               // TODO: can implement more filters :D
               match: function() {
                 var ret = {};
                 for (var k in origChildren) {
                   var child = origChildren[k];
-                  if (child.matches(filter.params)) {
-                    this.children[k] = child;
-                  } else {
-                    console.log('DIDN\'T MATCH', child.getRawDataView());
-                  }
+                  if (child.matches(filter.params)) this.children[k] = child;
                 }
               }.bind(this)
-            })[filter.type]();
+            };
+            
+            if (!(filter.type in filters)) throw new Error('Invalid filter type: "' + filter.type + '"');
+            
+            return filters[filter.type]();
             
           },
           getNamedChild: function(name) {
@@ -1181,7 +1227,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           $getDoss: function() {
             
-            var $dossData = new PACK.p.P({ val: { versionName: 'emptyState', doss: null } });
+            var $dossData = new P({ val: { versionName: 'emptyState', doss: null } });
             
             this.versions.forEach(function(ver) {
               
