@@ -36,6 +36,28 @@ run on server or client side:
       },
       padRight: function(width, char) {
         return this + this.padding(width, char);
+      },
+      fill: function(num) {
+        if (!this.length) throw new Error('Cannot call `fill` on empty string');
+        
+        var ind = 0;
+        var ret = '';
+        while (ret.length < num) {
+          ret += this[ind];
+          ind = ind === this.length - 1 ? 0 : (ind + 1);
+        }
+        
+        return ret;
+      },
+      hash: function(){
+        var ret = 0;
+        if (this.length == 0) return ret;
+        for (i = 0; i < this.length; i++) {
+          char = this.charCodeAt(i);
+          ret = ((ret << 5) - ret) + char;
+          ret = ret & ret; // Convert to 32bit integer
+        }
+        return ret;
       }
     },
   },
@@ -625,7 +647,7 @@ itself.
 // PACKAGE: Packaging
 global.PACK.pack = {
   Package: U.makeClass({ name: 'Package',
-    methods: {
+    methods: function(sc, c) { return {
       init: function(params /* name, dependencies, buildFunc, runAfter */) {
         this.name = U.param(params, 'name');
         this.dependencies = U.param(params, 'dependencies', []);
@@ -636,7 +658,7 @@ global.PACK.pack = {
         this.neededDeps = 0;
         this.receivedDeps = 0;
         
-        this.depErrorChecking = {};
+        this.dependencySet = {};
       },
       stepBuild: function(script) {
         /*
@@ -644,8 +666,8 @@ global.PACK.pack = {
         is loaded. The number of times this method gets called is counted,
         and once it's called for each dependency it calls this.endBuild().
         */
-        if (script.src in this.depErrorChecking) throw new Error('double-loaded dependency "' + script.src + '"');
-        this.depErrorChecking[script.src] = 'loaded';
+        if (script.src in this.dependencySet) throw new Error('double-loaded dependency "' + script.src + '"');
+        this.dependencySet[script.src] = 'loaded';
         
         this.receivedDeps++;
         if (this.receivedDeps === this.neededDeps) {
@@ -741,6 +763,6 @@ global.PACK.pack = {
           
         }
       },
-    },
-  }),
+    };}
+  })
 };

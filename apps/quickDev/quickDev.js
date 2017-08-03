@@ -530,9 +530,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return ptr;
           },
-          getChildValue: function(address) {
-            return this.getChild(address).value;
-          },
           getNamedChild: function(name) {
             if (name === '') return this;
             if (name === '~par') return this.par;
@@ -557,7 +554,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               params: reqParams,
             });
           },
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
             if (command === 'getRawData') {
@@ -641,6 +638,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Calculates the name for the child based on data (NO INSTANCE OF THE CHILD AVAILABLE)
             throw new Error('Not implemented');
           },
+          getValue: function(address) {
+            return this.getChild(address).value;
+          },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
             throw new Error('Not implemented');
@@ -680,7 +680,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return new P({ all: promiseSet });
           },
           
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
             if (command === 'getChildCount') {
@@ -734,7 +734,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             }
             
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
           },
           
           getRawDataView: function() {
@@ -824,15 +824,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return child[prop];*/
             
-            var func = this.outline.p.nameFunc;
-            
-            try {
-              var name = func ? func(this, doss) : this.nextInd;
-              console.log('Got name for child of "' + this.getAddress() + '": ' + name);
-            } catch (err) {
-              console.log(func);
-              throw new Error('Problem with `nameFunc`');
-            }
+            var nameFunc = this.outline.p.nameFunc;
+            var name = nameFunc ? nameFunc(this, doss) : this.nextInd;
             
             if (!U.valid(name)) throw new Error('`nameFunc` returned an invalid name');
             return name;
@@ -843,103 +836,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.innerOutline;
           },
           
-          /*
-          $handleQuery: function(params) {
-            var command = U.param(params, 'command');
-            
-            if (command === 'addDossier') {
-              
-              var reqParams = U.param(params, 'params');
-              var dossierData = U.param(reqParams, 'dossierData');
-              
-              if (!this.outline.p.verifyAddDossier) throw new Error('Cannot "addDossier" on "' + this.getAddress() + '"');
-              this.outline.p.verifyAddDossier(this, reqParams); // May throw errors
-              
-              // Need a value for every innerOutline property
-              var promiseValues = {};
-              var values = {};
-              
-              for (var k in this.innerOutline.i) {
-                
-                var outline = this.innerOutline.i[k];
-                
-                // Each value must be provided, or available as a default
-                if (k in dossierData) {
-                  
-                  var type = U.param(dossierData[k], 'type');
-                  var val = U.param(dossierData[k], 'value');
-                  
-                  if (type === 'simple') {
-                    values[k] = val;
-                  } else if (type === 'oldRef') {
-                    values[k] = null;
-                    promiseValues[k] = dossierData[k];
-                  } else if (type === 'newRef') {
-                    values[k] = null;
-                    promiseValues[k] = dossierData[k];
-                  } else {
-                    throw new Error('Unexpected "type": "' + type + '"');
-                  }
-                  
-                } else if ('defaultValue' in outline.p) {
-                  
-                  values[k] = outline.p.defaultValue()
-                  
-                } else {
-                  
-                  throw new Error('Missing value for "' + k + '"');
-                  
-                }
-                
-              }
-              
-              var editor = new qd.Editor();
-              return editor.$addFast({ par: this, data: values }).then(function(doss) {
-                
-                var $promisedVals = new P({ all: promiseValues.map(function(promiseVal, k) {
-                  
-                  var type = promiseVal.type;
-                  var value = promiseVal.value;
-                  
-                  if (type === 'oldRef') {
-                    return value; // Return the simple string value
-                  } else if (type === 'newRef') {
-                    // TODO: HERE (need to create a new object with `editor`
-                  } else {
-                    throw new Error('Invalid type: "' + type + '"');
-                  }
-                  
-                })});
-                
-                return [ doss, $promisedVals ];
-                
-              }).them(function(doss, promisedVals) {
-                // TODO: set all the `promisedVals` values into `doss`
-                
-                return doss.getDataView({});
-              });
-              
-            } else if (command === 'remDossier') {
-              
-              var reqParams = U.param(params, 'params');
-              var dossierName = U.param(reqParams, 'dossierName');
-              
-              var doss = this.children[dossierName];
-              
-              if (!doss) throw new Error('No child named "' + dossierName + '" exists');
-              
-              if (!this.outline.p.verifyRemDossier) throw new Error('Cannot "remDossier" on "' + this.getAddress() + '"');
-              this.outline.p.verifyRemDossier(this, doss, reqParams); // May throw errors
-              
-              // TODO: Do dossier removal
-              
-            }
-            
-            return sc.$handleQuery.call(this, params);
-          }
-          */
-          
-          $handleQuery: function(params) {
+          $handleRequest: function(params) {
             
             var command = U.param(params, 'command');
             
@@ -977,7 +874,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             }
             
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
             
           }
           
@@ -1034,7 +931,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.value;
           },
           
-          $handleQuery: function(params) {
+          $handleRequest: function(params) {
             var command = U.param(params, 'command');
             
             if (command === 'setValue') {
@@ -1057,7 +954,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             }
             
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
           }
         };}
       }),
@@ -1170,7 +1067,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           // TODO: Next 4 methods are copy-pasted from DossierSet and Dossier
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
             if (command === 'getRawData') {

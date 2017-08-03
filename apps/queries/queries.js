@@ -60,7 +60,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 						/*
 						QueryHandlers respond to queries by forwarding them to children
 						if the address has not been exhausted yet, otherwise they
-						process them using their `$handleQuery` method.
+						process them using their `$handleRequest` method.
 						*/
 						var address = U.param(params, 'address');
             
@@ -70,11 +70,11 @@ var package = new PACK.pack.Package({ name: 'queries',
               //console.log('QUERY ' + JSON.stringify(address) + ':\n\t' + params.command, params.params);
               var child = this.getChild(address);
               if (!child) throw new Error('Invalid address: "' + address.map(function(pc) { return U.isObj(pc, Object) ? '{{filter:' + pc.type + '}}' : pc; }).join('.') + '"');
-              return child.$handleQuery(params);
+              return child.$handleRequest(params);
               
             }
 						
-						if (!address.length) return this.$handleQuery(params);
+						if (!address.length) return this.$handleRequest(params);
 						
 						// Need to have one of the handler's children respond to the query
 						var child = this.getNamedChild(address[0]);
@@ -88,7 +88,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 					},
           getChild: null,
 					getNamedChild: function(name) { throw new Error('not implemented'); },
-					$handleQuery: function(params /* */) { throw new Error('not implemented'); },
+					$handleRequest: function(params /* */) { throw new Error('not implemented'); },
 				}; }
 			})
 		};

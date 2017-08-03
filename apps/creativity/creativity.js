@@ -9,14 +9,27 @@ var package = new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    var cr = SERVER([[{
+    
+    var cr = {};
+    
+    var r = 1;
+    cr.mapMillis = {
+      second: r *= 1000,
+      minute: r *= 60,
+      hour: r *= 60,
+      day: r *= 24,
+      week: r *= 7,
+      year: r *= 52.1429
+    };
+    
+    cr.update(SERVER([[{
       
       resources: { css: [ 'apps/creativity/style.css', 'apps/userify/style.css' ] },
       
       Creativity: U.makeClass({ name: 'Creativity',
         superclass: qd.DossierDict,
         methods: function(sc, c) { return {
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
             if (!command.length) throw new Error('Command cannot be empty string');
@@ -25,7 +38,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             if (funcName in this)
               return this[funcName](U.param(params, 'params', {}));
             
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
           },
           $handleCurrentTimeQuery: function(params) {
             return new P({ val: U.timeMs() });
@@ -37,7 +50,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
             var user = this.getChild([ 'userSet', username ]);
             if (!user) throw new Error('Invalid username: "' + username + '"');
-            if (user.getChildValue('password') !== password) throw new Error('Invalid password');
+            if (user.getValue('password') !== password) throw new Error('Invalid password');
             
             return new P({ val: { token: user.getToken() } });
             
@@ -89,9 +102,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
         
         if (!currentTime) currentTime = U.timeMs();
         
-        var phase = story.getChildValue('phase');
+        var phase = story.getValue('phase');
         var numAuthors = story.getChild('authorSet').length;
-        var currentContest = story.getChild([ 'contestSet', story.getChildValue('contestInd') ]);
+        var currentContest = story.getChild([ 'contestSet', story.getValue('contestInd') ]);
         
         if (numAuthors === 0) return p.$null;
         
@@ -103,8 +116,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
           
           // Writing ends when time is up, or when the max number of writes have occurred
           
-          var phaseEndTime = story.getChildValue('timePhaseStarted') + story.getChildValue('writingTime');
-          var maxWrites = story.getChildValue('maxWrites') || numAuthors;
+          var phaseEndTime = story.getValue('timePhaseStarted') + story.getValue('writingTime');
+          var maxWrites = story.getValue('maxWrites') || numAuthors;
           var numEntries = currentContest.getChild('writeSet').length;
           
           if (currentTime > phaseEndTime) {
@@ -130,14 +143,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
           
         } else if (phase === 'voting') {
           
-          var phaseEndTime = story.getChildValue('timePhaseStarted') + story.getChildValue('votingTime');
+          var phaseEndTime = story.getValue('timePhaseStarted') + story.getValue('votingTime');
           
-          var maxVotes = story.getChildValue('maxVotes') || numAuthors;
+          var maxVotes = story.getValue('maxVotes') || numAuthors;
           var votes = currentContest.getChild('writeSet').map(function(write) { // TODO: Does `DossierSet.prototype.map` work??
             
             var votesForLine = 0;
             var voteSet = write.getChild('voteSet');
-            for (var k in voteSet.children) votesForLine += voteSet.getChildValue([ k, 'value' ]);
+            for (var k in voteSet.children) votesForLine += voteSet.getValue([ k, 'value' ]);
             
             return votesForLine;
             
@@ -196,13 +209,16 @@ var package = new PACK.pack.Package({ name: 'creativity',
         
         if (!currentTime) currentTime = U.timeMs();
         
-        var editor = new qd.Editor();
-        return editor.$editFast({
-          doss: story,
-          data: {
-            phase: 'voting',
-            timePhaseStarted: currentTime
-          }
+        return cr.$resolveStoryVotePhase(story, currentTime).then(function(editor) {
+          
+          editor.$modFast({
+            doss: story,
+            data: {
+              phase: 'awaitingWrite',
+              timePhaseStarted: currentTime
+            }
+          });
+          
         });
         
       },
@@ -211,7 +227,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         if (!currentTime) currentTime = U.timeMs();
         
         var editor = new qd.Editor();
-        var currentContest = story.getChild([ 'contestSet', story.getChildValue('contestInd') ]);
+        var currentContest = story.getChild([ 'contestSet', story.getValue('contestInd') ]);
         
         if (currentContest.getChild('writeSet').length) {
           
@@ -224,7 +240,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             var numVotes = 0;
             
             var votes = write.getChild('voteSet').children;
-            for (var kk in votes) numVotes += votes[kk].getChildValue('value');
+            for (var kk in votes) numVotes += votes[kk].getValue('value');
             
             if (numVotes === writeStandard) {
               bestWrites.push(write);
@@ -236,50 +252,55 @@ var package = new PACK.pack.Package({ name: 'creativity',
           }
           
           var winningLine = U.randElem(bestWrites); // Decide on a winner amongst the highest-voted
-          
-          var $promise = p.$null.then(function() { // Compile the winning write into the story
+          var nextContestInd = story.getValue('contestInd') + 1;
+          var $resolveVotes = editor.$editFast({
             
-            return editor.$addFast({
-              doss: story.getChild('writeSet'),
-              data: winningLine
-            })
-          
-          }).then(function() {                    // Increment the contest index counter
-            
-            return editor.$modFast({
-              doss: story,
-              data: {
-                contestInd: story.getChildValue('contestInd') + 1
+            mod: [
+              // Increment the contest index counter
+              {
+                doss: story,
+                data: {
+                  contestInd: nextContestInd
+                }
               }
-            });
+            ],
             
-          }).then(function() {                    // Add on a new empty contest
-            
-            return editor.$addFast({
-              doss: story.getChild('contestSet'),
-              data: {
-                num: story.getChildValue('contestInd'),
-                writeSet: {}
+            add: [
+              // Add on a new empty contest
+              {
+                par: story.getChild('contestSet'),
+                data: {
+                  num: nextContestInd,
+                  writeSet: {}
+                }
+              },
+              
+              // Compile the winning write into the story
+              {
+                par: story.getChild('writeSet'),
+                data: winningLine
               }
-            });
+            ]
             
           });
-          
+            
         } else {
           
-          var $promise = p.$null;
+          var $resolveVotes = p.$null;
           
         }
         
-        return $promise.then(function() {
+        return $resolveVotes.then(function() {
           
           editor.$modFast({
             doss: story,
             data: {
-              phase: 'writing',
+              phase: 'awaitingWrite',
               timePhaseStarted: currentTime
             }
           });
+          
+          return editor;
           
         });
         
@@ -287,7 +308,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       
       informWriteSubmitted: function(story) {
         
-        var phase = story.getChildValue('phase');
+        var phase = story.getValue('phase');
         if (![ 'awaitingWrite', 'writing' ].contains(phase))
           throw new Error('Cannot submit writes on "' + phase + '" phase');
         
@@ -300,7 +321,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       },
       informVoteSubmitted: function(story) {
         
-        var phase = story.getChildValue('phase');
+        var phase = story.getValue('phase');
         
         if (phase === 'awaitingVote') {
           // Kick off voting phase
@@ -327,7 +348,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   { c: qd.DossierString,  p: { name: 'username' } },
                   { c: qd.DossierString,  p: { name: 'password' } }
                 ]},
-                nameFunc: function(par, child) { return child.getChildValue('username'); }
+                nameFunc: function(par, child) { return child.getValue('username'); }
               }},
               { c: qd.DossierList,    p: { name: 'storySet',
                 innerOutline: { c: qd.DossierDict, i: [
@@ -413,7 +434,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         }
                       }}
                     ]},
-                    nameFunc: function(par, child) { return child.getChildValue('num'); }
+                    nameFunc: function(par, child) { return child.getValue('num'); }
                   }},
                   
                   { c: qd.DossierList,    p: { name: 'writeSet',
@@ -421,7 +442,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   }}
                   
                 ]},
-                nameFunc: function(par, child) { return child.getChildValue('quickName'); },
+                nameFunc: function(par, child) { return child.getValue('quickName'); },
                 verifyAndSanitizeData: function(child, params) {
                   
                   var username = U.param(params, 'username');
@@ -498,7 +519,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
               }
             ]}).then(function(adminUser) {
               
-              return doss.getChild('storySet').$handleQuery({
+              return doss.getChild('storySet').$handleRequest({
                 command: 'addData',
                 params: {
                   data: {
@@ -506,7 +527,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     quickName: 'firstStory',
                     description: 'First story!!',
                     authorLimit: 10,
-                    writingTime: 1000 * 60 * 60 * 12, // 12 hours
+                    writingTime: 1000 * 60 * 0.1, // 6 seconds // 1000 * 60 * 60 * 12, // 12 hours
                     votingTime: 1000 * 60 * 60 * 8, // 8 hours
                     maxWrites: 10,
                     maxVotes: 10,
@@ -526,7 +547,142 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }
       ]})
       
-    }]]);
+    }]]));
+    
+    cr.update(CLIENT([[{
+      
+      timeComponentData: [
+        { text: [ 'second', 'seconds' ], digits: 2, mult: cr.mapMillis.second, div: 1 / cr.mapMillis.second },
+        { text: [ 'minute', 'minutes' ], digits: 2, mult: cr.mapMillis.minute, div: 1 / cr.mapMillis.minute },
+        { text: [ 'hour',   'hours'   ], digits: 2, mult: cr.mapMillis.hour,   div: 1 / cr.mapMillis.hour },
+        { text: [ 'day',    'days'    ], digits: 2, mult: cr.mapMillis.day,    div: 1 / cr.mapMillis.day },
+        { text: [ 'week',   'weeks'   ], digits: 2, mult: cr.mapMillis.week,   div: 1 / cr.mapMillis.week },
+        { text: [ 'year',   'years'   ], digits: 4, mult: cr.mapMillis.year,   div: 1 / cr.mapMillis.year }
+      ],
+      
+      ClockView: U.makeClass({ name: 'ClockView',
+        superclass: uf.View,
+        methods: function(sc, c) { return {
+          init: function(params /* name, info, format, components */) {
+            sc.init.call(this, params);
+            this.info = uf.pafam(params, 'info');
+            this.timeOffset = U.param(params, 'timeOffset', 0);
+            this.format = U.param(params, 'format', 'string'); // 'string' | 'digital'
+            this.components = U.param(params, 'components', cr.timeComponentData);
+          },
+          
+          createDomRoot: function() {
+            var ret = document.createElement('div');
+            ret.classList.add('_clock');
+            ret.classList.add('_format-' + this.format);
+          
+            for (var i = 0, len = this.components.length; i < len; i++) {
+              var c = this.components[len - i - 1];
+              
+              var comp = document.createElement('div');
+              comp.classList.add('_component');
+              comp.classList.add(c.text[0]);
+              
+              var compName = document.createElement('div');
+              if (this.format === 'digital') uf.domSetText(compName, c.text[1]);
+              compName.classList.add('_name');
+              
+              var compVal = document.createElement('div');
+              compVal.classList.add('_value');
+              
+              comp.appendChild(compVal);
+              comp.appendChild(compName);
+              
+              ret.appendChild(comp);
+              
+              if (i < len - 1) {
+                var sep = document.createElement('div');
+                sep.classList.add('_separator');
+                ret.appendChild(sep);
+              }
+              
+            }
+          
+            return ret;
+          },
+          tick: function(millis) {
+            
+            var currentTime = U.timeMs() + this.timeOffset;
+            var time = this.info.getValue();
+            
+            if (time === Number.POSITIVE_INFINITY) {
+              
+              if (this.format === 'string')
+                for (var i = 0, len = this.components.length; i < len; i++) {
+                  var c = this.components[len - i - 1];
+                  var comp = this.domRoot.childNodes[i * 2];
+                  uf.domSetText(comp.childNodes[0], 'unlimited');
+                  uf.domSetText(comp.childNodes[1], c.text[1]);
+                }
+              else if (this.format === 'digital')
+                for (var i = 0, len = this.components.length; i < len; i++) {
+                  var c = this.components[len - i - 1];
+                  uf.domSetText(this.domRoot.childNodes[i * 2].childNodes[0], '-'.fill(c.digits));
+                }
+              
+              return;
+            }
+            
+            if (this.format === 'string') {
+              
+              var gotOne = false;
+              for (var i = 0, len = this.components.length; i < len; i++) {
+                var c = this.components[len - i - 1];
+                var comp = this.domRoot.childNodes[i * 2];
+                var sep = comp.nextElementSibling;
+                
+                var val = Math.floor(time * c.div);
+                time -= val * c.mult;
+                
+                if (gotOne || val || i === len - 1) {
+                  comp.classList.remove('_empty');
+                  if (sep) sep.classList.remove('_empty');
+                  gotOne = true;
+                } else {
+                  comp.classList.add('_empty');
+                  if (sep) sep.classList.add('_empty');
+                }
+                
+                uf.domSetText(comp.childNodes[1], c.text[val === 1 ? 0 : 1]);
+                uf.domSetText(comp.childNodes[0], val.toString());
+              }
+              
+            } else if (this.format === 'digital') {
+            
+              for (var i = 0, len = this.components.length; i < len; i++) {
+                var c = this.components[len - i - 1];
+                
+                var val = Math.floor(time * c.div);
+                time -= val * c.mult;
+                
+                val = val.toString();
+                while (val.length < c.digits) val = '0' + val;
+                
+                uf.domSetText(this.domRoot.childNodes[i * 2].childNodes[0], val);
+              }
+              
+            }
+            
+          },
+          
+          start: function() {
+            sc.start.call(this);
+            this.info.start();
+          },
+          stop: function() {
+            sc.stop.call(this);
+            this.info.stop();
+          }
+          
+        };}
+      })
+      
+    }]]));
     
     return cr;
     
@@ -549,58 +705,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
       
       var doss = new qd.DossierDict({ outline: null }).updateName('app');
       
-      var ageInfo = function(timeMs, direction) {
-        
-        if (!direction) direction = 'up';
-        
-        if (!U.isInstance(timeMs, uf.Info)) timeMs = new uf.SimpleInfo({ value: timeMs });
-        
-        return new uf.CalculatedInfo({
-          getFunc: function() {
-            var timeData = [];
-            /*
-            timeData.push({ name: 'second', ratio: 1000 });
-            timeData.push({ name: 'minute', ratio: timeData[0].ratio * 60 });
-            timeData.push({ name: 'hour', ratio: timeData[1].ratio * 60 });
-            timeData.push({ name: 'day', ratio: timeData[2].ratio * 24 });
-            timeData.push({ name: 'week', ratio: timeData[3].ratio * 7 });
-            timeData.push({ name: 'year', ratio: timeData[4].ratio * 52.1429 });
-            */
-            timeData.push({ name: 'minute', ratio: 1000 * 60 });
-            timeData.push({ name: 'hour', ratio: timeData[0].ratio * 60 });
-            timeData.push({ name: 'day', ratio: timeData[1].ratio * 24 });
-            timeData.push({ name: 'week', ratio: timeData[2].ratio * 7 });
-            timeData.push({ name: 'year', ratio: timeData[3].ratio * 52.1429 });
-            
-            // Calculate value for every component...
-            
-            var timeVal = timeMs.getValue();
-            if (timeVal === Number.POSITIVE_INFINITY) return 'No time limit';
-            var time = direction === 'up' ? (U.timeMs() - timeVal) : (timeVal - U.timeMs());
-            for (var i = timeData.length - 1; i >= 0; i--) {
-              timeData[i].val = Math.floor(time / timeData[i].ratio);
-              time -= timeData[i].ratio * timeData[i].val;
-            }
-            
-            // Filter out irrelevant components...
-            var relevantTimeData = [];
-            for (var i = timeData.length - 1; i >= 0; i--)
-              if (relevantTimeData.length || timeData[i].val || (!i && !relevantTimeData.length))
-                relevantTimeData.push(timeData[i]);
-            
-            // And build a nice string
-            return relevantTimeData.map(function(timeData) {
-              
-              var val = timeData.val;
-              var name = timeData.name + (val !== 1 ? 's' : '');
-              return val + ' ' + name;
-              
-            }).join(', ');
-            
-          }
-        });
-      };
-      
       var infoSet = new uf.DictInfo({ children: {} });
       infoSet.addChild('appVersion', new uf.RepeatingSyncedInfo({
         $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
@@ -610,14 +714,19 @@ var package = new PACK.pack.Package({ name: 'creativity',
       infoSet.addChild('username', new uf.SimpleInfo({ value: '' }));
       infoSet.addChild('password', new uf.SimpleInfo({ value: '' }));
       infoSet.addChild('token', new uf.SimpleInfo({ value: null }));
-      //infoSet.addChild('currentStory', new uf.SimpleInfo({ value: null }));
       infoSet.addChild('currentStory', new uf.DictInfo({ children: {
         
+        // The owner of the story
         user: new uf.SimpleInfo({ value: null }),
+        
         createdTime: new uf.SimpleInfo({ value: 0 }),
         quickName: new uf.SimpleInfo({ value: '' }),
         description: new uf.SimpleInfo({ value: '' }),
+        
+        // Maximum number of contests in this story
         contestLimit: new uf.SimpleInfo({ value: 0 }),
+        
+        // Index of the current contest
         contestInd: new uf.RepeatingSyncedInfo({
           initialValue: -1,
           $setFunc: function(val) { return p.$null; },
@@ -634,6 +743,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
           },
           updateMs: 3000
         }),
+        
+        // Current contest
         currentContest: new uf.RepeatingSyncedInfo({
           initialValue: null,
           $getFunc: function() {
@@ -648,7 +759,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             });
             
           },
-          updateMs: 3000
+          updateMs: 0
         }),
         
         // The current user's author in the story
@@ -701,7 +812,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
           
         }}),
         
-        // The writes that have become a part of the story
+        // The writes that have won their way into the story
         writeSet: new uf.RepeatingSyncedInfo({
           initialValue: {},
           $getFunc: function() {
@@ -726,11 +837,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
                 });
                 
               })});
-              
-            }).then(function(writeSetData) {
-              
-              console.log('WSD', writeSetData);
-              return writeSetData;
               
             });
             
@@ -794,10 +900,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }})
         
       }}));
+      infoSet.getChild('currentStory.currentContest').addListener(infoSet.getChild('currentStory.contestInd'));
       infoSet.addChild('currentWrite', new uf.SimpleInfo({ value: '' }));
-      
       infoSet.start();
-      // TODO: HERE!! List of stories, current story, etc.
       
       var rootView = new uf.RootView({ name: 'root', children: [
         
@@ -875,7 +980,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
                       new uf.TextView({ name: 'user', info: info.user.fname + ' ' + info.user.lname + ' (' + info.user.username + ')' }),
                       new uf.SetView({ name: 'age', children: [
                         new uf.TextView({ name: 0, info: 'Begun' }),
-                        new uf.TextView({ name: 1, info: ageInfo(info.createdTime) }),
+                        new cr.ClockView({ name: 1,
+                          info: function() { return U.timeMs() - info.createdTime; },
+                          format: 'string',
+                          components: cr.timeComponentData.slice(1)
+                        }),
                         new uf.TextView({ name: 2, info: 'ago' })
                       ]}),
                       
@@ -888,20 +997,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         }}),
                         new uf.ActionView({ name: 'yes', textInfo: 'Select', $action: function() {
                           
-                          console.log('INFO', info);
                           infoSet.getChild('currentStory').setValue(info);
                           console.log(infoSet.valueOf());
                           return p.$null;
-                          
-                          /*var story = infoSet.getChild('currentStory');
-                          story.setValue('user', info.user);
-                          story.setValue('createdTime', info.createdTime);
-                          story.setValue('quickName', info.quickName);
-                          story.setValue('description', info.description);
-                          story.setValue('contestInd', info.contestInd);
-                          story.setValue('contestLimit', info.contestLimit);
-                          story.setValue('author', info.author);
-                          return p.$null;*/
                           
                         }})
                         
@@ -925,17 +1023,38 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   }}),
                   new uf.TextView({ name: 'title', info: infoSet.getChild('currentStory.quickName') }),
                   new uf.TextView({ name: 'phase', info: infoSet.getChild('currentStory.phase') }),
-                  new uf.TextView({ name: 'timeRemaining', info: ageInfo(infoSet.getChild('currentStory.timeEnd'), 'down') })
+                  new cr.ClockView({ name: 'timeRemaining',
+                    info: function() { return infoSet.getChild('currentStory.timeEnd') - U.timeMs(); },
+                    format: 'digital',
+                    components: cr.timeComponentData.slice(0, 3)
+                  })
                   
                 ]}),
                 new uf.DynamicSetView({ name: 'writeSet',
-                  childInfo: infoSet.getChild('currentStory.writeSet'),
+                  childInfo: function() {
+                    var writeSet = infoSet.getValue('currentStory.writeSet');
+                    
+                    var currentWrite = infoSet.getValue('currentWrite');
+                    if (!currentWrite) return writeSet;
+                    
+                    var ret = writeSet.clone();
+                    ret['preview' + Math.abs(currentWrite.hash())] = {
+                      content: currentWrite,
+                      user: '~root.userSet.' + infoSet.getValue('username')
+                    };
+                    
+                    return ret;
+                    
+                  },
                   decorators: [],
                   genChildView: function(name, info) {
                     
-                    return new uf.SetView({ name: name, children: [
+                    var userPcs = info.user.split('.');
+                    var username = userPcs[userPcs.length - 1];
+                    
+                    return new uf.SetView({ name: name, cssClasses: [ 'write' ], children: [
                       new uf.TextView({ name: 'content', info: info.content }),
-                      new uf.TextView({ name: 'user', info: info.user })
+                      new uf.TextView({ name: 'user', info: username })
                     ]});
                     
                   }
@@ -989,6 +1108,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                             val[infoSet.getValue('username')] = rawData;
                             return val;
                           });
+                          infoSet.setValue('currentWrite', '');
                           return rawData;
                           
                         });

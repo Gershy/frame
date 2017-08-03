@@ -107,7 +107,7 @@ var package = new PACK.pack.Package({ name: 'logic',
             return { valid: true };
             
           },
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
             if (command === 'getToken') {
@@ -452,7 +452,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               
             }
             
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
           },
           requireUser: function(user, token) {
             if (U.isObj(user, String)) {

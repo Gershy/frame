@@ -59,15 +59,18 @@ exports.compile = function(appName, appDir, tabs) {
   var maxBlockStart = 0;
   var blocks = [];
   
-  for (var type in blockTypes) {
+  while (true) {
     
-    var typeLen = type.length;
+    var foundOne = false;
     
-    while (true) {
+    for (var type in blockTypes) {
+      
+      var typeLen = type.length;
       
       var blockStart = fileContents.indexOf(type + '([[', maxBlockStart);
       if (blockStart === -1) break;
       
+      foundOne = true;
       maxBlockStart = blockStart + typeLen;
       
       var blockEnd = fileContents.indexOf(']])', maxBlockStart);
@@ -79,6 +82,8 @@ exports.compile = function(appName, appDir, tabs) {
       });
       
     }
+    
+    if (!foundOne) break;
     
   }
   
