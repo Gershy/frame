@@ -1,12 +1,9 @@
-// TODO: Some Info objects can be optimized to cache previous values until the end of the frame (or some other condition?)
-// E.g. Would stop 1000 elements all connected to the same CalculatedInfo from repeating the calculation 1000 times
-//
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
 // to implement.
 
 var package = new PACK.pack.Package({ name: 'userify',
   dependencies: [ 'quickDev', 'p', 'geom' ],
-  buildFunc: function() {
+  buildFunc: function(packageName, qd) {
     var namespace = {};
     
     var P = PACK.p.P;
@@ -71,7 +68,9 @@ var package = new PACK.pack.Package({ name: 'userify',
       pafam: function(params, name, def) {
         // Info-param; ensures the return value is an instance of PACK.userify.Info (defaulting to SimpleInfo)
         var ret = U.param(params, name, def);
-        if (U.isInstance(ret, uf.Info)) return ret;
+        
+        if (U.isInstance(ret, uf.Info) || U.isInstance(ret, qd.Dossier)) return ret; // TODO: Intermediate necessity while unifying
+        
         return U.isObj(ret, Function)
           ? new uf.CalculatedInfo({ getFunc: ret })
           : new uf.SimpleInfo({ value: ret });
@@ -85,27 +84,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.listeners = null;
           },
           
-          walk: function(path, start) {
-            if (U.isObj(path, String)) path = path ? path.split('.') : [];
-            var obj = U.exists(start) ? start : this;
-            for (var i = 0, len = path.length; i < len; i++) {
-              if (U.isInstance(obj, uf.Info)) obj = obj.getValue();
-              obj = obj[path[i]];
-            }
-            return obj;
-          },
-          walkGet: function(path) {
-            var result = this.walk(path);
-            return U.isInstance(result, uf.Info) ? result.getValue() : result;
-          },
-          walkSet: function(path, value) {
-            if (U.isObj(path, String)) path = path ? path.split('.') : [];
-            
-            var result = this.walk(path);
-            if (!U.isInstance(result, uf.Info)) throw new Error('walkSet with path "' + path.join('.') + '" did not retrieve an instance of Info');
-            
-            result.setValue(value);
-          },
           getValue: function() {
             throw new Error('Not implemented');
           },
@@ -417,9 +395,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             }.bind(this, this.num++)).done();
             
           },
-          updateOccurred: function() {
-            this.refresh();
-          },
+          updateOccurred: function() { this.refresh(); },
           
           start: function() {
             this.refresh();
@@ -431,21 +407,26 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      
+      /*
+      // TODO: The "listen"/"updateOccurred" methods make a reacting info type obsolete
       ReactingSyncedInfo: U.makeClass({ name: 'ReactingSyncedInfo',
         superclassName: 'SyncedInfo',
         methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, info */) {
+          init: function(params /* $getFunc, $setFunc, initialValue, info * /) {
             sc.init.call(this, params);
             
             this.info = U.param(params, 'info');
             this.value = this.info.getValue();
           },
           updateOccurred: function() {
+            
             // Begin an update in reaction to the new value. Will modify `this.value`.
             this.$getFunc().then(function(val) {
               this.updateValue(this.num++, val);
               //this.updateValue.bind(this, this.num++)
             }.bind(this)).done();
+            
           },
           getValue: function() {
             return this.value;
@@ -461,6 +442,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      */
       
       /* DECORATOR */
       Decorator: U.makeClass({ name: 'Decorator',
@@ -904,16 +886,18 @@ var package = new PACK.pack.Package({ name: 'userify',
             return ret;
           },
           tick: function(millis) {
-            uf.domSetText(this.domRoot, this.info.getValue());
+            var val = this.info.getValue();
+            uf.domSetText(this.domRoot, val);
+            //uf.domSetText(this.domRoot, this.info.getValue());
           },
           
           start: function() {
             sc.start.call(this);
-            this.info.start();
+            //this.info.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.info.stop();
+            //this.info.stop();
           }
         };}
       }),
@@ -1003,17 +987,6 @@ var package = new PACK.pack.Package({ name: 'userify',
               this.domRoot.classList.remove('_focus');
             }
           },
-          
-          start: function() {
-            sc.start.call(this);
-            this.textInfo.start();
-            this.placeholderData.start();
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.textInfo.stop();
-            this.placeholderData.stop();
-          }
         };}
       }),
       ActionView: U.makeClass({ name: 'ActionView',
@@ -1193,22 +1166,16 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'SetView',
         description: '',
         methods: function(sc, c) { return {
-          init: function(params /* */) {
+          init: function(params /* updateFunc */) {
             sc.init.call(this, params);
-            this.cachedInfos = {};
+            this.updateFunc = U.param(params, 'updateFunc', null);
             this.updateTimingInfo = new uf.SimpleInfo({ value: 0 });
             this.running = false;
             this.updateMs = 1000 / 60; // 60fps
           },
-          addCache: function(cachedInfo) {
-            this.cachedInfos[cachedInfo.id] = cachedInfo;
-          },
-          remCache: function(cachedInfo) {
-            delete this.cachedInfos[cachedInfo.id];
-          },
           update: function(millis) {
+            if (this.updateFunc) this.updateFunc();
             sc.update.call(this, millis);
-            for (var k in this.cachedInfos) this.cachedInfos[k].reset();
           },
           animationLoop: function() {
             if (!this.running) return;
@@ -1270,15 +1237,6 @@ var package = new PACK.pack.Package({ name: 'userify',
                 this.domRoot.classList.add('_choose-' + this.currentChild.name);
               }
             }
-          },
-          
-          start: function() {
-            sc.start.call(this);
-            this.choiceInfo.start();
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.choiceInfo.stop();
           }
         };}
       }),
@@ -1310,15 +1268,6 @@ var package = new PACK.pack.Package({ name: 'userify',
                 new uf.TextView({ name: 'display', info: this.textInfo })
               ]
             }));
-          },
-          
-          start: function() {
-            sc.start.call(this);
-            this.textInfo.start();
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.textInfo.stop();
           }
         };}
       }),
@@ -1361,7 +1310,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             var rem = this.children.clone(); // Initially mark all children for removal
             var add = {};  // Initially mark no children for addition
             
-            var cd = this.childInfo.getValue();
+            //var cd = this.childInfo.getValue();
+            var cd = this.childInfo.children;
             
             for (var k in cd) {
               
@@ -1375,7 +1325,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             // Remove all children as necessary
             for (var k in rem) {
-              var child = this.remChild(k);
+              this.remChild(k);
+              //var child = this.remChild(k);
               // delete this.childFullData[child.name]; // TODO: This is the only other place `this.childFullData` is mentioned
             }
             
@@ -1418,11 +1369,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            this.childInfo.start();
+            //this.childInfo.start();
           },
           stop: function() {
             sc.stop.call(this);
-            this.childInfo.stop();
+            //this.childInfo.stop();
           }
         };}
       })

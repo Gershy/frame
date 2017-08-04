@@ -217,7 +217,6 @@ run on server or client side:
 global.C = {};    // All classes are stored here
 global.PACK = {};  // All packages are stored here
 global.NEXT_ID = 0;
-global.LAST_CLASS = null;
 global.U = {
   SKIP: { SKIP: true }, // directive to exclude an item during iteration
   
@@ -391,11 +390,11 @@ global.U = {
     // Check for `description`
     var description = U.param(params, 'description', heirName);
     
-    var includeGuid = U.param(params, 'includeGuid', true);
+    var includeGuid = U.param(params, 'includeGuid', false);
     
     // Use eval to get a named constructor
     var cls = namespace[name] = includeGuid
-      ? eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.guid=global.NEXT_ID++;LAST_CLASS=this.constructor.title;this.init(params?params:{});})')
+      ? eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.guid=global.NEXT_ID++;this.init(params?params:{});})')
       : eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params?params:{});})');
     
     // `methods` can be either an object or a function returning an object
@@ -633,7 +632,6 @@ global.U = {
   }
   
 };
-
 
 /*
 Only one package is built in an ad-hoc manner:

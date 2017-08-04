@@ -131,19 +131,33 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.p = p;
             this.i = {};
             
+            if ('innerOutline' in this.p && !U.isInstance(this.p.innerOutline, qd.Outline))
+              this.p.innerOutline = new qd.Outline(this.p.innerOutline);
+            
             for (var j = 0, len = i.length; j < len; j++) {
-              var outline = i[j];
-              
-              if (!U.isInstance(outline, qd.Outline))
-                outline = new qd.Outline(outline);
-              
+              var outline = U.isInstance(i[j], qd.Outline) ? i[j] : new qd.Outline(i[j]);
               this.i[outline.getProperty('name')] = outline;
             }
+          },
+          getNamedChild: function(childName) {
+            return childName === '*' ? this.p.innerOutline : this.i[childName];
+          },
+          getChild: function(addr) {
+            if (U.isObj(addr, String)) addr = addr.split('.');
+            
+            var ptr = this;
+            for (var i = 0; (i < addr.length) && ptr; i++) ptr = ptr.getNamedChild(addr[i]);
+            
+            return ptr;
           },
           getProperty: function(name, def) {
             if (name in this.p) return this.p[name];
             if (!U.exists(def)) throw new Error('Couldn\'t get property "' + name + '"');
             return def;
+          },
+          $getDoss: function(data) {
+            var editor = new qd.Editor();
+            return editor.$createFast(this, data);
           }
           
         };}
@@ -270,6 +284,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               });
               
             }});
+          },
+          $clear: function(params /* doss */) {
+            var doss = U.param(params, 'doss');
+            var pass = this;
+            return new P({ all: doss.children.map(function(child) {
+              
+              return pass.$rem({ par: doss, name: child.name });
+              
+            })});
+          },
+          $clearFast: function(params /* doss */) {
+            var $ret = this.$clear(params);
+            this.resolveReqs();
+            return $ret;
           },
           $modFast: function(params /* */) {
             var $ret = this.$mod(params);
@@ -480,6 +508,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           $loadFromRawData: function(data, editor) {
             throw new Error('not implemented');
           },
+          fullyLoaded: function() {
+            if (this.outline.p.contentFunc && !this.content) {
+              this.content = this.outline.p.contentFunc(this);
+              this.content.start();
+            }
+          },
           
           // Heirarchy
           getAncestry: function() {
@@ -549,7 +583,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (U.isObj(address, String)) address = address ? address.split('.') : [];
             
             return PACK.queries.$doQuery({
-              address: this.getNameChain().concat(address),//this.getAddress() + (address ? '.' + address : ''),
+              address: this.getNameChain().concat(address),
               command: command,
               params: reqParams,
             });
@@ -634,12 +668,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (name in this.children) return this.children[name];
             return sc.getNamedChild.call(this, name);
           },
-          getNameForEditor: function(data, key) {
-            // Calculates the name for the child based on data (NO INSTANCE OF THE CHILD AVAILABLE)
-            throw new Error('Not implemented');
-          },
           getValue: function(address) {
-            return this.getChild(address).value;
+            if (!address) return this.getRawDataView();
+            return this.getChild(address).getValue();
+          },
+          setValue: function(address, value) {
+            this.getChild(address).setValue(value);
           },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
@@ -648,6 +682,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getChildOutline: function(name) {
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
+          },
+          
+          fullyLoaded: function() {
+            sc.fullyLoaded.call(this);
+            for (var k in this.children) this.children[k].fullyLoaded();
           },
           
           map: function(mapFunc) {
@@ -670,6 +709,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
           },
           
+          /*
           $loadFromRawData: function(data, editor) {
             // Loaded once all children have been loaded via the editor
             var promiseSet = [];
@@ -679,6 +719,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return new P({ all: promiseSet });
           },
+          */
           
           $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
@@ -758,6 +799,24 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             sc.init.call(this, params);
           },
           
+          $loadFromRawData: function(data, editor) {
+            if (!data) data = {};
+            
+            // Loaded once all children have been loaded via the editor
+            var promiseSet = [];
+            
+            for (var k in this.outline.i)
+              promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k] || null));
+            
+            /*
+            for (var k in data)
+              // Dossier is tightly coupled with Editor, so it's fair to use a "0" method here
+              promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k])); // TODO: 2nd last param was `k` until recently
+            */
+            
+            return new P({ all: promiseSet });
+          },
+          
           // Child methods
           getNameForEditor: function(data, k) {
             return k;
@@ -793,6 +852,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (U.isObj(this.innerOutline, Object)) this.innerOutline = new qd.Outline(this.innerOutline);
           },
           
+          $loadFromRawData: function(data, editor) {
+            if (!data) data = {};
+            
+            // Loaded once all children have been loaded via the editor
+            var promiseSet = [];
+            for (var k in data)
+              // Dossier is tightly coupled with Editor, so it's fair to use a "0" method here
+              promiseSet.push(editor.$add0(this, this.getChildOutline(k), null, data[k])); // TODO: 2nd last param was `k` until recently
+            
+            return new P({ all: promiseSet });
+          },
+          
           // Child methods
           addChild: function(child) {
             child = sc.addChild.call(this, child);
@@ -809,9 +880,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (!isNaN(child.name)) this.nextInd = parseInt(child.name, 10);
             
             return child;
-          },
-          getNameForEditor: function(data, k) {
-            return null; // Sets `null` as the `name` parameter to the editor
           },
           getChildName: function(doss) {
             /*var pcs = this.prop.split('/');
@@ -880,23 +948,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
         };}
       }),
-      DossierDirectedRelations: U.makeClass({ name: 'DossierDirectRelations',
-        superclassName: 'Dossier',
-        methods: function(sc, c) { return {
-          
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-            
-            var relations = U.param(this.outline.p, 'relations');
-            this.children = new PACK.quickDev.IndexedDict({ keySize: relations.length });
-          },
-          
-          // Child methods
-          addChild: function(child) {
-            
-          }
-        };}
-      }),
       
       /* DossierValue */
       DossierValue: U.makeClass({ name: 'DossierValue',
@@ -922,6 +973,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           setValue: function(value) {
             this.value = value;
+          },
+          modValue: function(modFunc) {
+            var moddedVal = modFunc(this.getValue());
+            if (!U.exists(moddedVal)) throw new Error('modFunc shouldn\'t return `undefined`');
+            this.setValue(moddedVal);
           },
           
           getRawDataView: function() {
@@ -977,9 +1033,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           setValue: function(value) {
-            var intVal = parseInt(value);
-            if (isNaN(intVal)) throw new Error('Received non-numeric value: "' + value + '"');
-            this.value = intVal;
+            if (value === null) value = 0;
+            if (isNaN(value)) throw new Error(this.getAddress() + ' received non-numeric value: "' + value + '"');
+            
+            // `parseInt` on `Number.POSITIVE_INFINITY` results in NaN! Need to avoid that.
+            this.value = U.isObj(value, String) ? parseInt(value) : value;
+          }
+        }; }
+      }),
+      DossierBoolean: U.makeClass({ name: 'DossierBoolean',
+        superclassName: 'DossierValue',
+        methods: function(sc) { return {
+          init: function(params /* outline */) {
+            sc.init.call(this, params);
+          },
+          
+          setValue: function(value) {
+            if (value === null) value = false;
+            if (value !== true && value !== false) throw new Error('Received non-boolean value: "' + value + '"');
+            this.value = value;
           }
         }; }
       }),
@@ -1159,6 +1231,152 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         };}
       }),
       
+      /* Content - control how Dossiers determine their content */
+      Content: U.makeClass({ name: 'Content',
+        methods: function(sc, c) { return {
+          init: function(params /* doss */) {
+            this.doss = U.param(params, 'doss');
+          },
+          start: function() { throw new Error('Not implemented'); },
+          stop: function() { throw new Error('Not implemented'); }
+        };}
+      }),
+      ContentCalc: U.makeClass({ name: 'ContentCalc',
+        includeGuid: true,
+        superclassName: 'Content',
+        methods: function(sc, c) { return {
+          init: function(params /* doss, func, cache */) {
+            sc.init.call(this, params);
+            this.func = U.param(params, 'func');
+            this.cache = U.param(params, 'cache');
+          },
+          update: function() {
+            var val = this.func();
+            if (val !== this.doss.getValue()) {
+              this.doss.setValue(val);
+            }
+          },
+          start: function() { this.cache[this.guid] = this; },
+          stop: function() { delete this.cache[this.guid]; }
+        };}
+      }),
+      ContentAbstractSync: U.makeClass({ name: 'ContentAbstractSync',
+        superclassName: 'Content',
+        methods: function(sc, c) { return {
+          init: function(params /* doss, address, waitMs, jitterMs */) {
+            sc.init.call(this, params);
+            this.address = U.param(params, 'address', this.doss.getAddress());
+            this.waitMs = U.param(params, 'waitMs', 0);
+            this.jitterMs = U.param(params, 'jitterMs', this.waitMs * 0.17);
+            this.timeout = null;
+          },
+          $query: function() { throw new Error('not implemented'); },
+          $applyQueryResult: function(queryResult) { throw new Error('not implemented'); },
+          update: function() {
+            
+            var pass = this;
+            
+            this.$query().then(function(result) {
+              
+              if (pass.waitMs || pass.jitterMs)
+                this.timeout = setTimeout(pass.update.bind(pass), pass.waitMs + (Math.random() * pass.jitterMs));
+              
+              return pass.$applyQueryResult(result);
+                
+            })
+            .done();
+            
+          },
+          start: function() {
+            this.update();
+          },
+          stop: function() {
+            clearTimeout(this.timeout);
+          }
+        };}
+      }),
+      ContentSync: U.makeClass({ name: 'ContentSync',
+        superclassName: 'ContentAbstractSync',
+        methods: function(sc, c) { return {
+          init: function(params /* doss, address, waitMs, jitterMs */) {
+            sc.init.call(this, params);
+          },
+          $query: function() {
+            return queries.$doQuery({
+              address: this.address,
+              command: 'getRawData'
+            });
+          },
+          $applyQueryResult: function(rawData) {
+            this.doss.setValue(rawData);
+            return p.$null;
+          }
+        };}
+      }),
+      ContentDeepSync: U.makeClass({ name: 'ContentDeepSync',
+        superclassName: 'ContentAbstractSync',
+        methods: function(sc, c) { return {
+          init: function(params /* doss, address, waitMs, jitterMs, fields */) {
+            sc.init.call(this, params);
+            this.fields = U.param(params, 'fields');
+          },
+          $query: function() {
+            
+            var address = this.address;
+            var fields = this.fields;
+            return queries.$doQuery({     // Get the names of the children...
+              address: address,
+              command: 'getChildNames'
+            }).then(function(nameSet) {   // Get the picked fields from each child
+              
+              var nameObj = nameSet.toObj(function(name) { return name; });
+              
+              return new P({ all: nameObj.map(function(name) {
+                
+                return queries.$doQuery({
+                  address: address + '.' + name,
+                  command: 'getRawPickedFields',
+                  params: {
+                    fields: fields
+                  }
+                });
+                
+              })})
+                
+            });
+          
+          },
+          $applyQueryResult: function(childData) {
+            
+            var doss = this.doss;
+            var editor = new qd.Editor();
+            editor.$clearFast({ doss: doss }).then(function() {
+              
+              var add = [];
+              for (var name in childData) {
+                add.push({
+                  par: doss,
+                  name: name,
+                  data: childData[name]
+                });
+              }
+              
+              return editor.$editFast({ add: add });
+              
+            }).then(function() {
+              
+              console.log('ADDED TO DOSS', doss.getRawDataView());
+              doss.fullyLoaded();
+              
+            }).fail(function(err) {
+              
+              console.error(err.stack);
+              
+            });
+            
+          }
+        };}
+      })
     });
     
     return qd;
