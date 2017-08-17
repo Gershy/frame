@@ -4,6 +4,7 @@
   width: 100%; height: 100%;
   left: 0; top: 0;
   padding-bottom: 20px;
+  background-color: #0a00a9;
 }
 #root-rps, #root-version {
   position: absolute;
@@ -11,37 +12,102 @@
   margin: 0 3px;
   font-family: monospace;
   height: 20px; line-height: 20px;
+  color: #ffffff;
 }
 #root-rps { left: 0; }
 #root-version { right: 0; }
-#root-login {
-  position: relative;
-  width: 100%; height: 100%;
-  background-color: #f8f8f8;
-  overflow: hidden;
-}
-#root-login-in, #root-login-out {
-  position: relative;
-  width: 100%; height: 100%;
-}
 
-#root-login-loggedIn-chooseStory {
-  position: absolute;
+#root-login, #root-login-in, #root-login-in-chooseStory {
+  position: relative;
   width: 100%; height: 100%;
   left: 0; top: 0;
 }
 
-#root-login-loggedIn-chooseStory > ._story {
+#root-login-in-chooseStory > ._lobby {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
+  background-color: #dfeff9;
 }
-#root-login-loggedIn-chooseStory > ._story > ._header {
+#root-login-in-chooseStory > ._lobby > ._title {
+  position: relative;
+  display: block;
+  width: 100%; height: 60px; line-height: 60px;
+  text-align: center;
+  font-size: 30px;
+  font-family: monospace;
+  font-weight: 100;
+  letter-spacing: 18px;
+  text-indent: 18px;
+  text-transform: uppercase;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet {
+  position: relative;
+  width: 100%;
+  overflow-y: auto;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story {
+  background-color: #ffffff;
+  padding: 20px 4px;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._quickName {
+  position: absolute;
+  display: block;
+  left: 4px; top: 0; height: 20px; line-height: 20px;
+  font-size: 12px;
+  color: #808080;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._user {
+  position: absolute;
+  display: block;
+  left: 104px; top: 0; height: 20px; line-height: 20px;
+  font-size: 12px;
+  color: #808080;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._description {
+  display: block;
+  font-family: serif;
+  font-size: 18px;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age {
+  position: absolute;
+  left: 4px; bottom: 0;
+  font-size: 12px;
+  color: #a0a0a0;
+  height: 20px; line-height: 20px;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._0,
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._1,
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._2 {
+  margin-right: 2px;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._authored {
+  position: absolute;
+  width: 40px; height: 40px;
+  top: 50%; margin-top: -20px; right: 10px;
+}
+#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._authored > ._button {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  padding: 0;
+  font-size: 0;
+  border-radius: 100%;
+  background-color: #1286c4;
+}
+
+#root-login-in-chooseStory > ._story {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  background-color: #dfeff9;
+}
+#root-login-in-chooseStory > ._story > ._header {
   position: absolute;
   width: 100%; height: 40px; line-height: 40px;
   z-index: 2;
 }
-#root-login-loggedIn-chooseStory > ._story > ._header > ._back {
+#root-login-in-chooseStory > ._story > ._header > ._back {
   position: absolute;
   width: 40px; height: 40px;
   left: 0; top: 0;
@@ -49,35 +115,39 @@
   z-index: 10;
   text-align: center;
 }
-#root-login-loggedIn-chooseStory > ._story > ._header > ._title {
+#root-login-in-chooseStory > ._story > ._header > ._title {
   position: absolute;
   width: 100%; height: 24px; line-height: 24px;
   left: 0; top: 0;
   font-size: 20px;
   text-align: center;
 }
-#root-login-loggedIn-chooseStory > ._story > ._header > ._phase {
+
+
+#root-login-in-chooseStory > ._story > ._header > ._roundInfo {
   position: absolute;
-  width: 50%; height: 16px; line-height: 16px;
-  left: 0%; top: 24px;
-  font-size: 12px;
-  text-align: right;
+  width: 100%; height: 16px;
+  left: 0; top: 24px;
+  white-space: nowrap;
+  text-align: center;
 }
-#root-login-loggedIn-chooseStory > ._story > ._header > ._phase:after {
-  content: ":";
-}
-#root-login-loggedIn-chooseStory > ._story > ._header > ._timeRemaining {
-  position: absolute;
-  box-sizing: border-box;
-  padding-left: 10px;
-  width: 50%; height: 16px; line-height: 16px;
-  right: 0%; top: 24px;
+#root-login-in-chooseStory > ._story > ._header > ._roundInfo > ._phase {
+  display: inline-block;
+  height: 16px; line-height: 16px;
+  margin-right: 10px;
   font-size: 12px;
-  text-align: left;
+  vertical-align: top;
+  display: none;
+}
+#root-login-in-chooseStory > ._story > ._header > ._roundInfo > ._phaseTimeRemaining {
+  display: inline-block;
+  height: 16px; line-height: 16px;
+  font-size: 12px;
+  vertical-align: top;
   white-space: nowrap;
 }
 
-#root-login-loggedIn-chooseStory > ._story > ._writeSet {
+#root-login-in-chooseStory > ._story > ._writeSet {
   position: absolute;
   box-sizing: border-box;
   width: 100%; height: 50%; padding-top: 40px;
@@ -86,24 +156,24 @@
   
   font-family: serif;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write {
+#root-login-in-chooseStory > ._story > ._writeSet > .write {
   display: inline;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write > ._content {
+#root-login-in-chooseStory > ._story > ._writeSet > .write > ._content {
   font-size: 14px;
   color: #040404;
   vertical-align: middle;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write:hover > ._content {
+#root-login-in-chooseStory > ._story > ._writeSet > .write:hover > ._content {
   background-color: #c0c0c0;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write[class^="_preview"] > ._content {
+#root-login-in-chooseStory > ._story > ._writeSet > .write[class^="_preview"] > ._content {
   background-color: #b0b0ff;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write > ._user {
+#root-login-in-chooseStory > ._story > ._writeSet > .write > ._user {
   box-sizing: border-box;
   border: solid 0 #8080f0;
   margin-left: 0;
@@ -115,20 +185,20 @@
   
   transition: font-size 300ms linear, border 300ms linear, margin 300ms linear, padding 300ms linear;
 }
-#root-login-loggedIn-chooseStory > ._story > ._writeSet > .write:hover > ._user {
+#root-login-in-chooseStory > ._story > ._writeSet > .write:hover > ._user {
   border: solid 1px #8080f0;
   margin-left: 3px;
   padding: 0 3px;
   font-size: 12px;
 }
 
-#root-login-loggedIn-chooseStory > ._story > ._writeOrVote {
+#root-login-in-chooseStory > ._story > ._writeOrVote {
   position: absolute;
   width: 100%; height: 50%;
   left: 0; top: 50%;
 }
 
-#root-login-loggedIn-chooseStory-story-writeOrVote-write-editor {
+#root-login-in-chooseStory > ._story > ._writeOrVote > ._write > ._editor {
   height: 200px;
 }
 

@@ -1,10 +1,13 @@
 var package = new PACK.pack.Package({ name: 'queries',
 	dependencies: [ 'p' ],
-	buildFunc: function() {
-		return {
+	buildFunc: function(packageName, p) {
+    
+    var P = p.P;
+    
+		var qr = {
 			$doRawQuery: function(data /* */) {
 				
-				return new PACK.p.P({ custom: function(resolve, reject) {
+				return new P({ custom: function(resolve, reject) {
 					var query = new XMLHttpRequest();
 					
 					query.onreadystatechange = function() {
@@ -24,10 +27,11 @@ var package = new PACK.pack.Package({ name: 'queries',
 					query.open('GET', '?_data=' + encodeURIComponent(data), true);
 					query.send();
 				}});
+        
 			},
 			
 			$doQuery: function(params /* address, command, params */) {
-				return PACK.queries.$doRawQuery(U.thingToString({
+				return qr.$doRawQuery(U.thingToString({
 					address: U.param(params, 'address'),
 					command: U.param(params, 'command'),
 					params: U.param(params, 'params', {})
@@ -42,7 +46,7 @@ var package = new PACK.pack.Package({ name: 'queries',
 						this.params = U.param(params, 'params', {});
 					},
 					$fire: function() {
-						return PACK.queries.$doQuery({
+						return qr.$doQuery({
 							address: this.address,
 							command: this.command,
 							params: this.params,
@@ -64,22 +68,24 @@ var package = new PACK.pack.Package({ name: 'queries',
 						*/
 						var address = U.param(params, 'address');
             
+            /*
             // QueryHandlers that implement `getChild` end here:
             if (this.getChild) {
               
               //console.log('QUERY ' + JSON.stringify(address) + ':\n\t' + params.command, params.params);
               var child = this.getChild(address);
-              if (!child) throw new Error('Invalid address: "' + address.map(function(pc) { return U.isObj(pc, Object) ? '{{filter:' + pc.type + '}}' : pc; }).join('.') + '"');
+              if (!child) throw new Error('Invalid address!!: "' + address.map(function(pc) { return U.isObj(pc, Object) ? '{{filter:' + pc.type + '}}' : pc; }).join('.') + '"');
               return child.$handleRequest(params);
               
             }
+            */
 						
 						if (!address.length) return this.$handleRequest(params);
 						
 						// Need to have one of the handler's children respond to the query
 						var child = this.getNamedChild(address[0]);
 						
-						if (!child) return new PACK.p.P({ err: new Error('Invalid address: "' + address.join('.') + '"') });
+						if (!child) return new P({ err: new Error('Invalid address :( : "' + address.join('.') + '" (' + this.constructor.title + ')') });
 						
 						// Consume the address
 						params.address = params.address.slice(1);
@@ -92,6 +98,8 @@ var package = new PACK.pack.Package({ name: 'queries',
 				}; }
 			})
 		};
-	},
+	
+    return qr;
+  },
 });
 package.build();

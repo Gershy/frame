@@ -62,10 +62,12 @@ var package = new PACK.pack.Package({ name: 'server',
             
             console.log('Initiated session: ' + this.ip + '; ' + this.appName);
           },
+          /*
           getNamedChild: function(name) {
             if (name === 'app') return U.deepGet({ root: PACK, name: [ this.appName, 'queryHandler' ] });
             return null;
           },
+          */
           getFileContents: function(filepath) {
             // Find the static file, serve it
             
@@ -93,9 +95,23 @@ var package = new PACK.pack.Package({ name: 'server',
             */
             if ('session' in params) throw new Error('illegal "session" param');
             
+            var address = U.param(params, 'address');
+            
             params.session = this;
             
-            return sc.$respondToQuery.call(this, params).then(function(response) {
+            if (address.length) {
+              
+              if (address[0] === 'app') address[0] = '~root';
+              var handler = PACK[this.appName].queryHandler.getChild(address);
+              if (!handler) throw new Error('Invalid address: "' + address + '"');
+              
+            } else {
+              
+              var handler = this;
+              
+            }
+            
+            return handler.$handleRequest(params).then(function(response) {
               
               /*
               The session's children all reply with objects. The session is
@@ -107,6 +123,21 @@ var package = new PACK.pack.Package({ name: 'server',
                 : new PACK.server.ResponseData({ data: response });
               
             });
+            
+            /*
+            return sc.$respondToQuery.call(this, params).then(function(response) {
+              
+              /*
+              The session's children all reply with objects. The session is
+              responsible for stringifying those objects, and clarifying that
+              they are in json format.
+              * /
+              return U.isInstance(response, PACK.server.ResponseData)
+                ? response
+                : new PACK.server.ResponseData({ data: response });
+              
+            });
+            */
           },
           $handleRequest: function(params /* session, url */) {
             /*

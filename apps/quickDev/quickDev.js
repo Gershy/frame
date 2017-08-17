@@ -12,6 +12,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
     
     var qd = {};
     
+    qd.selectAll = {};
+    qd.selectAll['*'] = qd.selectAll;
+    
     qd.update({
       
       NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/,
@@ -140,7 +143,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             }
           },
           getNamedChild: function(childName) {
-            return childName === '*' ? this.p.innerOutline : this.i[childName];
+            if (this.p.innerOutline) return this.p.innerOutline;
+            return this.i[childName];
           },
           getChild: function(addr) {
             if (U.isObj(addr, String)) addr = addr.split('.');
@@ -357,15 +361,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var reqs = this.curReqs;
               this.curReqs = []; // Resolving reqs resets all requirements no matter what
               
-              if (this.tryResolveReqs(reqs)) {
+              var errorsOccurred = this.tryResolveReqs(reqs);
+              
+              if (errorsOccurred.length === 0) {
                 
                 reqs.forEach(function(r) { r.resolve(); });
                 
               } else {
                 
-                var err = new Error('Couldn\'t resolve requirements');
-                reqs.forEach(function(r) { r.reject(err); });
                 this.rollBackChanges();
+                reqs.forEach(function(r) { r.reject(err); });
+                throw new Error(errorsOccurred.join('; '));
                 
               }
               
@@ -380,75 +386,49 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             while (unresolved.length) {
               var solvedOne = false;
               var noProgress = [];
+              var errors = [];
               
               for (var i = 0, len = unresolved.length; i < len; i++) {
                 
                 var reqDat = unresolved[i];
                 
-                var result = reqDat.reqFunc.apply(null, reqDat.reqParams);
-                
-                if (result) {
+                try {
+                  resolved.push(reqDat.reqFunc.apply(null, reqDat.reqParams));
                   solvedOne = true;
-                  resolved.push(reqDat);
-                } else {
+                } catch(err) {
+                  console.log('REQERR: ' + err.stack);
                   noProgress.push(reqDat);
+                  errors.push(err.message);
                 }
                 
               }
               
-              if (!solvedOne) {
-                console.log('Couldn\'t solve reqs', unresolved[0].reqFunc, unresolved[0].reqParams);
-                return false;
-              }
+              if (!solvedOne) return errors;
               
               unresolved = noProgress;
               
             }
             
-            return true;
+            return errors;
           },
           rollBackChanges: function() {
-            throw new Error('not implemented ur data is corrupt haha');
+            throw new Error('not implemented');
           }
         
         };},
         statik: {
           reqNameSimple: function(doss, name) {
-            try {
-              
-              doss.updateName(name);
-              return true;
-              
-            } catch(err) { console.log('REQSIMP ERR:', err.message); return false; }
+            doss.updateName(name);
           },
           reqNameCalculated: function(doss) {
-            try {
-              
-              var name = doss.par.getChildName(doss);
-              doss.updateName(name);
-              return true;
-              
-            } catch (err) { console.log('REQCALC ERR:', err.message); console.error(err.stack); return false; }
+            var name = doss.par.getChildName(doss);
+            doss.updateName(name);
           },
           reqModData: function(doss, data) {
-            try {
-              
-              for (var k in data) {
-                var child = doss.getChild(k);
-                if (!child) throw new Error('Couldn\'t get doss child: ' + doss.getAddress() + ' @ ' + k);
-                child.setValue(data[k]);
-              }
-              return true;
-              
-            } catch(err) { console.log('REQMOD ERR:', err.message); return false; }
+            doss.setValue(data);
           },
           reqRemChild: function(doss, childName) {
-            try {
-              
-              doss.remChild(childName);
-              return true;
-              
-            } catch(err) { console.log('REQREM ERR:', err.message); return false; }
+            doss.remChild(childName);
           },
           
           rollBackAdd: function(doss) {
@@ -511,7 +491,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           fullyLoaded: function() {
             if (this.outline.p.contentFunc && !this.content) {
               this.content = this.outline.p.contentFunc(this);
+              if (!U.isInstance(this.content, qd.Content)) throw new Error('Bad contentFunc');
               this.content.start();
+            }
+            
+            if (this.outline.p.changeHandler && !this.changeHandler) {
+              this.changeHandler = this.outline.p.changeHandler;
             }
           },
           
@@ -558,7 +543,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               ptr = ptr.getNamedChild(a);
               
               // Do the dereferencing as required
-              for (var j = 0; j < numDerefs; j++) ptr = ptr.dereference();
+              for (var j = 0; (j < numDerefs) && ptr; j++) ptr = ptr.dereference();
                 
             }
             
@@ -601,7 +586,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             }
             
-            throw new Error('Couldn\'t handle invalid command: "' + command + '"');
+            throw new Error(this.constructor.title + ' couldn\'t handle invalid command: "' + command + '"');
           },
           
           dereference: function() {
@@ -669,11 +654,25 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return sc.getNamedChild.call(this, name);
           },
           getValue: function(address) {
-            if (!address) return this.getRawDataView();
-            return this.getChild(address).getValue();
+            //if (!address) return this.getRawDataView();
+            if (!address) return this.children;
+            
+            var child = this.getChild(address);
+            return child ? child.getValue() : null;
           },
-          setValue: function(address, value) {
-            this.getChild(address).setValue(value);
+          setValue: function(arg1, arg2 /* address?, value */) {
+            if (U.exists(arg2)) {
+              
+              this.getChild(arg1).setValue(arg2);
+              
+            } else {
+              
+              for (var k in arg1) {
+                if (!(k in this.children)) throw new Error('Invalid `setValue` key: "' + k + '"');
+                this.children[k].setValue(arg1[k]);
+              }
+              
+            }
           },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
@@ -683,7 +682,53 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
           },
+          getSelection: function(selection) {
+            var ret = {};
+            
+            if ('*' in selection) {
+              
+              // Select all children, passing the same sub-selection in all cases
+              var subSelection = selection['*'];
+              for (var k in this.children) ret[k] = this.children[k].getSelection(subSelection);
+              
+            } else {
+              
+              // Selected listed children, respecting identifiers, using a different sub-selection for each child
+              for (var k in selection) {
+                
+                if (k[0] === '(') {
+                  
+                  var rb = k.indexOf(')');
+                  if (rb === -1) throw new Error('Missing right identifier bracket for key "' + k + '"');
+                  
+                  var identifier = k.substr(1, rb - 1);
+                  var addr = k.substr(rb + 1).trim();
+                  
+                } else {
+                  
+                  var identifier = k;
+                  var addr = k;
+                  
+                }
+                
+                var child = this.getChild(addr);
+                // if (!child) throw new Error('Invalid child address: ' + this.getAddress() + ' -> ' + addr);
+                if (child) ret[identifier] = child.getSelection(selection[k]);
+                
+              }
+            
+            }
+            
+            return ret;
+          },
           
+          // TODO: These are `Content`-related methods...
+          getRefChild: function(addr) {
+            return { getValue: function() { return this.getChild(addr); }.bind(this) };
+          },
+          getRefValue: function(addr) {
+            return { getValue: function() { return this.getValue(addr); }.bind(this) };
+          },
           fullyLoaded: function() {
             sc.fullyLoaded.call(this);
             for (var k in this.children) this.children[k].fullyLoaded();
@@ -772,6 +817,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               }
               
               return new P({ val: ret });
+              
+            } else if (command === 'getSelection') {
+              
+              var reqParams = U.param(params, 'params');
+              var selection = U.param(reqParams, 'selection');
+              
+              return new P({ val: this.getSelection(selection) });
               
             }
             
@@ -922,10 +974,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               if (!verifyAndSanitize) throw new Error('Cannot "addData" on "' + this.getAddress() + '"');
               
               var editor = new qd.Editor();
-              return editor.$addFast({
-                par: this,
-                data: verifyAndSanitize(this, data)
-              }).then(function(child) {
+              return editor.$addFast({ par: this, data: verifyAndSanitize(this, data) }).then(function(child) {
                 
                 if (returnType === 'address')
                   return new P({ val: child.getAddress() });
@@ -953,14 +1002,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierValue: U.makeClass({ name: 'DossierValue',
         superclassName: 'Dossier',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
+          init: function(params /* outline, value */) {
             sc.init.call(this, params);
-            this.value = null;
+            this.value = U.param(params, 'value', null);
           },
           
           $loadFromRawData: function(data, editor) {
             this.setValue(data);
             return PACK.p.$null;
+          },
+          
+          getSelection: function(selection) {
+            //if (!U.isEmptyObj(selection)) throw new Error('Invalid selection for "' + this.getAddress() + '": ' + JSON.stringify(selection));
+            return this.value;
           },
           
           matches: function(value) {
@@ -972,7 +1026,10 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.value;
           },
           setValue: function(value) {
-            this.value = value;
+            if (value !== this.value) {
+              this.value = value;
+              if (this.changeHandler) this.changeHandler(this);
+            }
           },
           modValue: function(modFunc) {
             var moddedVal = modFunc(this.getValue());
@@ -1020,8 +1077,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           init: function(params /* outline */) {
             sc.init.call(this, params);
           },
-          getLowerValue: function() {
-            return this.value.toLowerCase();
+          setValue: function(val) {
+            sc.setValue.call(this, val === null ? null : val.toString());
           }
         }; }
       }),
@@ -1033,11 +1090,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           setValue: function(value) {
+            // Accept the value "null"
             if (value === null) value = 0;
+            
+            // Accept any value which isn't NaN after `parseInt`
+            value = parseInt(value);
             if (isNaN(value)) throw new Error(this.getAddress() + ' received non-numeric value: "' + value + '"');
             
-            // `parseInt` on `Number.POSITIVE_INFINITY` results in NaN! Need to avoid that.
-            this.value = U.isObj(value, String) ? parseInt(value) : value;
+            sc.setValue.call(this, value);
           }
         }; }
       }),
@@ -1051,7 +1111,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           setValue: function(value) {
             if (value === null) value = false;
             if (value !== true && value !== false) throw new Error('Received non-boolean value: "' + value + '"');
-            this.value = value;
+            sc.setValue.call(this, value);
           }
         }; }
       }),
@@ -1067,12 +1127,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             // Dossiers are valid values for `DossierRef.prototype.setValue`; resolve them to their addresses
             if (U.isInstance(value, PACK.quickDev.Dossier)) value = value.getAddress();
+            else if (U.isObj(value, Array)) value = value.join('.');
+            else if (!U.isObj(value, String)) value = value.toString();
             
-            var base = this.getChild(this.outline.getProperty('baseAddress', '~root')).getAddress() + '.';
-            if (value.substr(0, base.length) !== base)
-              throw new Error('Invalid address "' + value + '" doesn\'t begin with base "' + base + '"');
+            var base = this.getBaseDoss().getAddress() + '.';
             
-            sc.setValue.call(this, value.substr(base.length));
+            // If the full address was specified, chop off the base
+            // TODO: This could cause problems if `baseAddress` coincidentally appears in `this.value` e.g. "app.appSet.app.appSet" although that's just generally a nightmare anyways
+            if (value.substr(0, base.length) === base) value = value.substr(base.length);
+            
+            sc.setValue.call(this, value);
           },
           getNamedChild: function(name) {
             return sc.getNamedChild.call(this, name);
@@ -1085,6 +1149,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
           getRefAddress: function() {
             return this.outline.getProperty('baseAddress', '~root') + '.' + this.value;
+          },
+          getBaseDoss: function() {
+            return this.getChild(this.outline.getProperty('baseAddress', '~root'));
           },
           dereference: function() {
             return this.value !== null ? this.getChild(this.getRefAddress()) : null;
@@ -1231,33 +1298,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         };}
       }),
       
+      // TODO: Need to call `.stop` (`.fullyUnloaded`?) on Content objects! It's not being done at the moment!
       /* Content - control how Dossiers determine their content */
       Content: U.makeClass({ name: 'Content',
+        includeGuid: true,
         methods: function(sc, c) { return {
-          init: function(params /* doss */) {
+          init: function(params /* doss, cache */) {
             this.doss = U.param(params, 'doss');
+            this.cache = U.param(params, 'cache', null);
           },
-          start: function() { throw new Error('Not implemented'); },
-          stop: function() { throw new Error('Not implemented'); }
+          start: function() { if (this.cache) this.cache[this.guid] = this; },
+          stop: function() { if (this.cache) delete this.cache[this.guid]; }
         };}
       }),
       ContentCalc: U.makeClass({ name: 'ContentCalc',
-        includeGuid: true,
         superclassName: 'Content',
         methods: function(sc, c) { return {
-          init: function(params /* doss, func, cache */) {
+          init: function(params /* doss, cache, func */) {
             sc.init.call(this, params);
             this.func = U.param(params, 'func');
-            this.cache = U.param(params, 'cache');
           },
           update: function() {
-            var val = this.func();
-            if (val !== this.doss.getValue()) {
-              this.doss.setValue(val);
-            }
-          },
-          start: function() { this.cache[this.guid] = this; },
-          stop: function() { delete this.cache[this.guid]; }
+            this.doss.setValue(this.func());
+          }
         };}
       }),
       ContentAbstractSync: U.makeClass({ name: 'ContentAbstractSync',
@@ -1265,6 +1328,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         methods: function(sc, c) { return {
           init: function(params /* doss, address, waitMs, jitterMs */) {
             sc.init.call(this, params);
+            
+            // TODO: Should it even be possible to have `this.address !== this.doss.getAddress()`??
             this.address = U.param(params, 'address', this.doss.getAddress());
             this.waitMs = U.param(params, 'waitMs', 0);
             this.jitterMs = U.param(params, 'jitterMs', this.waitMs * 0.17);
@@ -1283,14 +1348,20 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               return pass.$applyQueryResult(result);
                 
-            })
-            .done();
+            }).fail(function(err) {
+              
+              console.log('Sync error:');
+              console.error(err.stack);
+              
+            }).done();
             
           },
           start: function() {
+            sc.start.call(this);
             this.update();
           },
           stop: function() {
+            sc.stop.call(this);
             clearTimeout(this.timeout);
           }
         };}
@@ -1308,75 +1379,174 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             });
           },
           $applyQueryResult: function(rawData) {
+            //console.log('Syncing SMP: ' + this.doss.getAddress());
             this.doss.setValue(rawData);
             return p.$null;
-          }
+          },
         };}
       }),
-      ContentDeepSync: U.makeClass({ name: 'ContentDeepSync',
+      ContentSyncRef: U.makeClass({ name: 'ContentSyncRef',
         superclassName: 'ContentAbstractSync',
         methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs, fields */) {
+          init: function(params /* doss, address, waitMs, jitterMs, selection */) {
             sc.init.call(this, params);
-            this.fields = U.param(params, 'fields');
+            
+            if (!U.isInstance(this.doss, qd.DossierRef)) throw new Error('`ContentSyncRef` needs its doss to be a `DossierRef`');
+            
+            // Supplying `calcRef` allows
+            this.calcRef = U.param(params, 'calcRef', null);
+            this.selection = U.param(params, 'selection', qd.selectAll);
           },
           $query: function() {
             
-            var address = this.address;
-            var fields = this.fields;
-            return queries.$doQuery({     // Get the names of the children...
-              address: address,
-              command: 'getChildNames'
-            }).then(function(nameSet) {   // Get the picked fields from each child
-              
-              var nameObj = nameSet.toObj(function(name) { return name; });
-              
-              return new P({ all: nameObj.map(function(name) {
-                
-                return queries.$doQuery({
-                  address: address + '.' + name,
-                  command: 'getRawPickedFields',
-                  params: {
-                    fields: fields
-                  }
-                });
-                
-              })})
-                
+            if (this.calcRef) this.doss.setValue(this.calcRef());
+            
+            if (!this.doss.value) return p.$null;
+            
+            var addr = this.doss.getRefAddress().split('.');
+            
+            // Handle relative addresses
+            // TODO: This isn't a smart method. Does it handle ALL relative addresses?
+            // TODO: Also, `'app'` shouldn't be a keyword!! It shouldn't appear in framework code.
+            if (addr[0] !== '~root' && addr[0] !== 'app') {
+              var prefix = this.doss.getAddress().split('.');
+              while (addr[0] === '~par') {
+                addr = addr.slice(1);
+                prefix = prefix.slice(0, prefix.length - 1);
+              }
+              addr = (prefix.concat(addr)).join('.');
+            }
+            
+            return queries.$doQuery({
+              address: addr,
+              command: 'getSelection',
+              params: {
+                selection: this.selection
+              }
             });
-          
+            
           },
-          $applyQueryResult: function(childData) {
+          $applyQueryResult: function(refData) {
+            
+            // If no data is provided, or the reference already links properly, do nothing
+            if (!refData || this.doss.dereference()) return p.$null;
+            
+            //console.log('Syncing REF: ' + this.doss.getAddress());
             
             var doss = this.doss;
             var editor = new qd.Editor();
-            editor.$clearFast({ doss: doss }).then(function() {
-              
-              var add = [];
-              for (var name in childData) {
-                add.push({
-                  par: doss,
-                  name: name,
-                  data: childData[name]
-                });
-              }
-              
-              return editor.$editFast({ add: add });
-              
+            return editor.$addFast({
+              par: doss.getBaseDoss(),
+              data: refData
             }).then(function() {
-              
-              console.log('ADDED TO DOSS', doss.getRawDataView());
-              doss.fullyLoaded();
-              
-            }).fail(function(err) {
-              
-              console.error(err.stack);
-              
+              doss.dereference().fullyLoaded();
             });
             
           }
         };}
+      }),
+      ContentSyncDict: U.makeClass({ name: 'ContentSyncDict',
+        superclassName: 'ContentAbstractSync',
+        description: 'Syncs the children of a set-type Dossier. Only removes and adds children; ' +
+          'this `Content` does not update the values of a child even if those values have changed. ' +
+          'In order to update such values, children should be assigned inner `Content`s.',
+        methods: function(sc, c) { return {
+          init: function(params /* doss, address, waitMs, jitterMs, fields */) {
+            sc.init.call(this, params);
+            //this.fields = U.param(params, 'fields');
+            this.selection = U.param(params, 'selection');
+          },
+          $query: function() {
+            return queries.$doQuery({
+              address: this.address,
+              command: 'getSelection',
+              params: {
+                selection: this.selection
+              }
+            });
+          },
+          $applyQueryResult: function(childData) {
+            
+            // TODO: This method will not update children which have changed in `childData`
+            // relative to `doss`. Children are only modified when they exist in one but not
+            // the other.
+            
+            var doss = this.doss;
+            
+            var add = [];
+            var rem = [];
+            var mod = [];
+            
+            var uncovered = doss.children.clone();
+            
+            // After this loop every child in uncovered will be a child which exists in `doss`, but not in `childData`
+            for (var k in childData) {
+              
+              if (k in uncovered) {
+                
+                // Found a key which is in both `childData` and `doss`
+                delete uncovered[k];
+                
+              } else {
+                
+                // Found a key which is in `childData`, but not in `doss`
+                add.push({ par: doss, name: k, data: childData[k] });
+                
+              }
+              
+            }
+            
+            // Uncovered now contains keys which exists in `doss` but not `childData` - such keys are outdated
+            for (var k in uncovered) rem.push({ par: doss, name: k });
+            
+            //console.log('Syncing DCT: ' + doss.getAddress());
+            var editor = new qd.Editor();
+            return editor.$editFast({ add: add, rem: rem, mod: mod }).then(function() {
+              doss.fullyLoaded();
+            });
+            
+          },
+          
+          // Modifier methods:
+          $addChild: function(params /* data, localData */) {
+            var data = U.param(params, 'data');
+            var localData = U.param(params, 'localData', data);
+            
+            // Prevent any updates while adding the child
+            // (TODO: This really needs to be a stacked operation in case of multiple calls occurring before the 1st completes)
+            
+            // clearTimeout(this.timeout);
+            
+            var doss = this.doss;
+            var address = this.address;
+            
+            var editor = new qd.Editor;
+            return new P({ all: {
+              
+              local: doss.$handleRequest({
+                command: 'addData',
+                params: {
+                  data: localData
+                }
+              }),
+              
+              remote: queries.$doQuery({
+                address: address,
+                command: 'addData',
+                params: {
+                  data: data
+                }
+              })
+              
+            }}).then(function(vals) {
+              
+              return vals.local;
+              
+            });
+          }
+        };}
       })
+    
     });
     
     return qd;

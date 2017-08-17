@@ -2,13 +2,13 @@
 - Many of the sets in this app only ever increase in size, and never re-index anything.
   - These sets shouldn't be constantly getting requested; instead the size should be
     constantly requested, and when the size changes the entire set can be requested
+- Writing devices as ability names (e.g. "hyperbolize" instead of "slam")    
 */
 var package = new PACK.pack.Package({ name: 'creativity',
   dependencies: [ 'quickDev', 'userify', 'p', 'queries' ],
   buildFunc: function(packageName, qd, uf, p, qr) {
     
     var P = p.P;
-    
     
     var cr = {};
     
@@ -363,7 +363,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   { c: qd.DossierInt,     p: { name: 'maxWriteLength' } },  // Number of characters allowed in an entry
                   { c: qd.DossierInt,     p: { name: 'contestLimit' } },      // Total number of contests before the story concludes
                   { c: qd.DossierInt,     p: { name: 'slapLoadTime' } },      // Total millis to load a new slap ability
-                  { c: qd.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new tyranny ability'
+                  { c: qd.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new slam ability'
                   { c: qd.DossierString,  p: { name: 'phase' } },             // The phase: awaitingWrite | writing | awaitingVote | voting
                   { c: qd.DossierInt,     p: { name: 'timePhaseStarted' } },  // The time the phase started at
                   
@@ -375,7 +375,28 @@ var package = new PACK.pack.Package({ name: 'creativity',
                       { c: qd.DossierInt,     p: { name: 'numSlams' } },
                       { c: qd.DossierInt,     p: { name: 'lastSlamTime' } }
                     ]},
-                    nameFunc: function(par, child) { return child.getChild('@user').name; }
+                    nameFunc: function(par, child) { return child.getChild('@user').name; },
+                    verifyAndSanitizeData: function(child, params) {
+                      
+                      var username = U.param(params, 'username');
+                      
+                      var preexisting = child.getChild([ 'authorSet', username ]);
+                      if (preexisting) throw new Error('User "' + username + '" is already an author');
+                      
+                      var user = child.getChild([ '~root', 'userSet', username ]);
+                      if (!user) throw new Error('Invalid username: "' + username + '"');
+                      
+                      var currentTime = U.timeMs();
+                      
+                      return {
+                        user: user,
+                        numSlaps: 0,
+                        lastSlapTime: currentTime,
+                        numSlams: 0,
+                        lastSlamTime: currentTime
+                      };
+                      
+                    }
                   }},
                   
                   { c: qd.DossierList,    p: { name: 'contestSet',
@@ -514,6 +535,15 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   username: 'admin',
                   password: 'admin123'
                 }
+              },
+              {
+                par: doss.getChild('userSet'),
+                data: {
+                  fname: 'Gersh',
+                  lname: 'Maes',
+                  username: 'gershy',
+                  password: 'imsosmart'
+                }
               }
             ]}).then(function(adminUser) {
               
@@ -525,7 +555,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     quickName: 'firstStory',
                     description: 'First story!!',
                     authorLimit: 10,
-                    writingTime: 1000 * 60 * 0.1, // 6 seconds // 1000 * 60 * 60 * 12, // 12 hours
+                    writingTime: 1000 * 60 * 60 * 12, // 12 hours // 1000 * 60 * 0.1, // 6 seconds // 
                     votingTime: 1000 * 60 * 60 * 8, // 8 hours
                     maxWrites: 10,
                     maxVotes: 10,
@@ -534,10 +564,45 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   }
                 }
               });
+                
+            }).then(function() {
+            
+              return doss.getChild('storySet.firstStory.authorSet').$handleRequest({
+                command: 'addData',
+                params: {
+                  data: {
+                    username: 'gershy'
+                  }
+                }
+              });
+            
+            }).then(function() {
+              
+              /*return doss.getChild('storySet.firstStory.contestSet.0.writeSet').$handleRequest({
+                command: 'addData',
+                params: {
+                  data: {
+                    username: 'admin',
+                    content: 'Haha first entry LOLLL'
+                  }
+                }
+              });*/
               
             }).then(function() {
               
-              return doss;
+              return doss.getChild('storySet.firstStory.contestSet.0.writeSet').$handleRequest({
+                command: 'addData',
+                params: {
+                  data: {
+                    username: 'gershy',
+                    content: 'IM GERHSOM LOLLLLOOLOOOOO'
+                  }
+                }
+              });
+            
+            }).then(function() {
+              
+              return doss; // Ensure the root Dossier is returned no matter what
               
             });
             
@@ -557,7 +622,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
         { text: [ 'week',   'weeks'   ], digits: 2, mult: cr.mapMillis.week,   div: 1 / cr.mapMillis.week },
         { text: [ 'year',   'years'   ], digits: 4, mult: cr.mapMillis.year,   div: 1 / cr.mapMillis.year }
       ],
-      
       ClockView: U.makeClass({ name: 'ClockView',
         superclass: uf.View,
         methods: function(sc, c) { return {
@@ -608,7 +672,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             var currentTime = U.timeMs() + this.timeOffset;
             var time = this.info.getValue();
             
-            if (time === Number.POSITIVE_INFINITY) {
+            if (time === Number.MAX_SAFE_INTEGER) {
               
               if (this.format === 'string')
                 for (var i = 0, len = this.components.length; i < len; i++) {
@@ -683,6 +747,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
     var beginServer = SERVER([[
       cr.versioner.$getDoss().then(function(doss) {
         
+        // console.log(JSON.stringify(doss.getValue(), null, 2));
+        
         cr.queryHandler = doss;
         setInterval(function() { cr.$updateCreativity(doss).done(); }, 5000);
         console.log('App update loop initialized...');
@@ -694,13 +760,15 @@ var package = new PACK.pack.Package({ name: 'creativity',
       
       var outline = new qd.Outline({ c: qd.DossierDict, p: { name: 'app' }, i: [
         
+        { c: qd.DossierString,  p: { name: 'version' } },
         { c: qd.DossierString,  p: { name: 'username' } },
+        { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
         { c: qd.DossierString,  p: { name: 'password' } },
         { c: qd.DossierString,  p: { name: 'token' } },
-        { c: qd.DossierString,  p: { name: 'logged' } },
-        { c: qd.DossierString,  p: { name: 'version' } },
-        
-        // TODO: Add in current story!
+        { c: qd.DossierString,  p: { name: 'loginError' } },
+        { c: qd.DossierString,  p: { name: 'currentWrite' } },
+        { c: qd.DossierRef,     p: { name: 'currentStory',    baseAddress: '~root.storySet' } },
+        { c: qd.DossierRef,     p: { name: 'currentWriteSet', baseAddress: '~root', value: '@currentStory.@currentContest.writeSet' } },
         
         { c: qd.DossierList,    p: { name: 'userSet',
           innerOutline: { c: qd.DossierDict, i: [
@@ -713,12 +781,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }},
         { c: qd.DossierList,    p: { name: 'storySet',
           innerOutline: { c: qd.DossierDict, i: [
-            //{ c: qd.DossierRef,     p: { name: 'user',        baseAddress: '~root.userSet' } },
-            { c: qd.DossierString,  p: { name: 'user' } }, // TODO: This value is on the client-side and not the server!!
-            { c: qd.DossierBoolean, p: { name: 'isAuthored' } }, // TODO: This value is on the client-side and not the server!!
-            { c: qd.DossierString,  p: { name: 'userDisp' } }, // TODO: This value is on the client-side and not the server!!
-            { c: qd.DossierString,  p: { name: 'username' } }, // TODO: This value is on the client-side and not the server!!
+            { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
+            { c: qd.DossierString,  p: { name: 'username' } },          // TODO: This value is on the client-side and not the server!!
+            { c: qd.DossierBoolean, p: { name: 'isAuthored' } },        // TODO: This value is on the client-side and not the server!!
+            { c: qd.DossierString,  p: { name: 'userDisp' } },          // TODO: This value is on the client-side and not the server!!
             { c: qd.DossierInt,     p: { name: 'createdTime' } },
+            { c: qd.DossierInt,     p: { name: 'age' } },
             { c: qd.DossierString,  p: { name: 'quickName' } },
             { c: qd.DossierString,  p: { name: 'description' } },
             { c: qd.DossierInt,     p: { name: 'contestInd' } },        // Index of current contest
@@ -727,13 +795,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
             { c: qd.DossierInt,     p: { name: 'votingTime' } },        // Number of millis to vote on writes each contest
             { c: qd.DossierInt,     p: { name: 'maxWrites' } },         // Number of writes allowed per contest
             { c: qd.DossierInt,     p: { name: 'maxVotes' } },          // Number of votes allowed per contest
-            { c: qd.DossierInt,     p: { name: 'maxWriteLength' } },  // Number of characters allowed in an entry
+            { c: qd.DossierInt,     p: { name: 'maxWriteLength' } },    // Number of characters allowed in an entry
             { c: qd.DossierInt,     p: { name: 'contestLimit' } },      // Total number of contests before the story concludes
             { c: qd.DossierInt,     p: { name: 'slapLoadTime' } },      // Total millis to load a new slap ability
-            { c: qd.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new tyranny ability'
+            { c: qd.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new slam ability'
             { c: qd.DossierString,  p: { name: 'phase' } },             // The phase: awaitingWrite | writing | awaitingVote | voting
             { c: qd.DossierInt,     p: { name: 'timePhaseStarted' } },  // The time the phase started at
-            { c: qd.DossierInt,     p: { name: 'timeRemaining' } },     // The time the phase started at
+            { c: qd.DossierInt,     p: { name: 'phaseTimeRemaining' } },     // The time the phase started at
             
             { c: qd.DossierList,    p: { name: 'authorSet',
               innerOutline: { c: qd.DossierDict, i: [
@@ -760,143 +828,125 @@ var package = new PACK.pack.Package({ name: 'creativity',
                       ]},
                       nameFunc: function(par, child) { return child.getChild('@user').name; },
                       verifyAndSanitizeData: function(voteSet, params) {
+                        
                         var username = U.param(params, 'username');
                         var value = 1; // U.param(params, 'value');
                         
-                        // Oh boy that's a lot of parents... moving from:
-                        //  src) storySet, story, contestSet, contest, writeSet, write, voteSet
-                        //  trg) storySet, story
-                        var author = voteSet.getChild([ '~par', '~par', '~par', '~par', '~par', 'authorSet', username ]);
-                        if (!author) throw new Error('Story doesn\'t have author "' + username + '"');
-                        
-                        cr.informVoteSubmitted(author.par.par);
+                        // TODO: Should really be looking for an author, not a user. Looking for a user is just lazy.
+                        var user = voteSet.getChild([ '~root', 'userSet', username ]);
+                        if (!user) throw new Error('Can\'t find user "' + username + '"');
                         
                         return {
-                          user: author.getChild('@user'),
+                          user: user,
                           value: value
                         };
-                        
                       }
                     }}
                   ]},
-                  nameFunc: function(par, child) { return child.getChild('@user').name; },
+                  nameFunc: function(par, child) {
+                    return child.getValue('user').split('.').pop();
+                    //console.log('WRITE:', child.getRawDataView());
+                    //return child.getChild('@user').name;
+                  },
                   verifyAndSanitizeData: function(writeSet, params) {
                     var username = U.param(params, 'username');
                     var content = U.param(params, 'content');
                     
-                    // Move from:
-                    //  src) storySet, story, contestSet, contest, writeSet
-                    //  trg) storySet, story
-                    var author = writeSet.getChild([ '~par', '~par', '~par', 'authorSet', username ]);
-                    if (!author) throw new Error('Story doesn\'t have author "' + username + '"');
-                    
-                    cr.informWriteSubmitted(author.par.par);
+                    var user = writeSet.getChild([ '~root', 'userSet', username ]);
+                    if (!user) throw new Error('Can\'t find user "' + username + '"');
                     
                     return {
-                      user: author.getChild('@user'),
+                      user: user,
                       content: content,
                       voteSet: {}
                     };
                   }
-                }}
+                }},
+                { c: qd.DossierRef, p: { name: 'currentWrite',      baseAddress: '~par.writeSet' } },
+                { c: qd.DossierRef, p: { name: 'currentVote',       baseAddress: '~par.writeSet' } },
+                { c: qd.DossierRef, p: { name: 'currentVotedWrite', baseAddress: '~par.writeSet' } }
               ]},
               nameFunc: function(par, child) { return child.getValue('num'); }
             }},
+            { c: qd.DossierRef,     p: { name: 'currentContest',  baseAddress: '~par.contestSet' } },
             
             { c: qd.DossierList,    p: { name: 'writeSet',
-              innerOutline: { c: qd.DossierRef, p: { baseAddress: '~par.~par.contestSet' } }
+              innerOutline: { c: qd.DossierRef, p: {                baseAddress: '~par.~par.contestSet' } }
             }}
             
           ]},
-          nameFunc: function(par, child) { return child.getValue('quickName'); },
-          verifyAndSanitizeData: function(child, params) {
-            
-            var username = U.param(params, 'username');
-            var user = child.getChild([ '~root', 'userSet', username ]);
-            if (!user) throw new Error('Bad username: "' + username + '"');
-            
-            var currentTime = U.timeMs();
-            
-            return {
-              user: user,
-              createdTime: currentTime,
-              quickName: U.param(params, 'quickName'),
-              description: U.param(params, 'description'),
-              contestInd: 0,
-              authorLimit: U.param(params, 'authorLimit'),
-              writingTime: U.param(params, 'writingTime'),
-              votingTime: U.param(params, 'votingTime'),
-              maxWrites: U.param(params, 'maxWrites'),
-              maxVotes: U.param(params, 'maxVotes'),
-              maxWriteLength: U.param(params, 'maxWriteLength'),
-              contestLimit: U.param(params, 'contestLimit'),
-              slapLoadTime: U.param(params, 'slapLoadTime', 1000 * 60 * 60 * 100),
-              slamLoadTime: U.param(params, 'slamLoadTime', 1000 * 60 * 60 * 100),
-              phase: 'awaitingWrite',
-              timePhaseStarted: currentTime,
-              authorSet: {
-                0: {
-                  user: user,
-                  numSlaps: 0,
-                  lastSlapTime: currentTime,
-                  numSlams: 0,
-                  lastSlamTime: currentTime
-                }
-              },
-              contestSet: {
-                0: {
-                  num: 0,
-                  writeSet: {
-                  }
-                }
-              },
-              writeSet: {
-              }
-            };
-            
-          }
+          nameFunc: function(par, child) { return child.getValue('quickName'); }
         }}
         
       ]});
       
-      var rootCache = {};
+      // Build some stuff for updating content
+      var updateSet = function(sett) { for (var k in sett) sett[k].update(); };
+      var updateOnFrame = {};
+      var updateOnUsername = {};
+      
+      // Add content instructions onto outlines
+      outline.getChild('username').p.changeHandler = updateSet.bind(null, updateOnUsername);
+      
+      outline.getChild('user').p.contentFunc = function(doss) {
+        return new qd.ContentSyncRef({ doss: doss, cache: updateOnUsername,
+          calcRef: function() {
+            return doss.getChild('~root.username').value;
+          },
+          selection: {
+            fname: {},
+            lname: {},
+            username: {}
+          }
+        });
+      };
+      
       outline.getChild('version').p.contentFunc = function(doss) {
         return new qd.ContentSync({ doss: doss });
       };
       
-      outline.getChild('storySet').p.contentFunc = function(doss) {
-        return new qd.ContentDeepSync({ doss: doss, waitMs: 10000, fields: [
-          'user', 'createdTime', 'quickName', 'description', 'contestInd', 'contestLimit', 'phase', 'timePhaseStarted', 'writingTime', 'votingTime'
-        ]});
+      outline.getChild('currentStory').p.contentFunc = function(doss) {
+        return new qd.ContentSyncRef({ doss: doss });
       };
       
-      outline.getChild('logged').p.contentFunc = function(doss) {
-        return new qd.ContentCalc({ doss: doss, cache: rootCache, func: function() {
-          return doss.getValue('~root.token') ? 'in' : 'out';
+      outline.getChild('storySet').p.contentFunc = function(doss) {
+        return new qd.ContentSyncDict({ doss: doss, waitMs: 10000, selection: {
+          '*': {
+            user: {},
+            createdTime: {},
+            quickName: {},
+            description: {},
+            contestInd: {},
+            contestLimit: {},
+            phase: {},
+            timePhaseStarted: {},
+            writingTime: {},
+            votingTime: {}
+          }
         }});
+      };
+      
+      outline.getChild('storySet.*.user').p.contentFunc = function(doss) {
+        return new qd.ContentSyncRef({ doss: doss });
       };
       
       outline.getChild('storySet.*.userDisp').p.contentFunc = function(doss) {
-        return new qd.ContentCalc({ doss: doss, cache: rootCache, func: function() {
-          return doss.par.getValue('user') + ' (CALC\'D!!)';
-        }});
-      };
-      
-      outline.getChild('storySet.*.username').p.contentFunc = function(doss) {
-        return new qd.ContentCalc({ doss: doss, cache: rootCache, func: function() {
-          var pcs = doss.par.getValue('user').split('.');
-          return pcs[pcs.length - 1];
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
+          var user = doss.par.getChild('@user');
+          return user
+            ? user.getValue('fname') + ' ' + user.getValue('lname') + ' (' + user.getValue('username') + ')'
+            : '- loading -';
         }});
       };
       
       outline.getChild('storySet.*.isAuthored').p.contentFunc = function(doss) {
-        return new qd.ContentCalc({ doss: doss, cache: rootCache, func: function() {
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
           return doss.getValue('~par.username') === doss.getValue('~root.username');
         }});
       };
       
-      outline.getChild('storySet.*.timeRemaining').p.contentFunc = function(doss) {
-        return new qd.ContentCalc({ doss: doss, cache: rootCache, func: function() {
+      outline.getChild('storySet.*.phaseTimeRemaining').p.contentFunc = function(doss) {
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
           
           var story = doss.par;
           var phase = story.getValue('phase');
@@ -911,11 +961,93 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           } else {
             
-            return Number.POSITIVE_INFINITY;
+            return Number.MAX_SAFE_INTEGER;
             
           }
             
         }});
+      };
+      
+      outline.getChild('storySet.*.age').p.contentFunc = function(doss) {
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
+          
+          return U.timeMs() - doss.par.getValue('createdTime');
+          
+        }});
+      };
+      
+      outline.getChild('storySet.*.currentContest').p.contentFunc = function(doss) {
+        return new qd.ContentSyncRef({ doss: doss, calcRef: function() {
+          return doss.par.getValue('contestInd'); // The current contest's index is stored in `contestInd`
+        }});
+      };
+      
+      outline.getChild('storySet.*.contestSet.*.writeSet').p.contentFunc = function(doss) {
+        return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
+      };
+      
+      outline.getChild('storySet.*.contestSet.*.currentWrite').p.contentFunc = function(doss) {
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
+          // Return `null` if no current write, otherwise return the write
+          var username = doss.getChild('~root.username').value;
+          return doss.getChild([ '~par', 'writeSet', username ]);
+        }});
+      };
+      
+      outline.getChild('storySet.*.contestSet.*.writeSet.*.voteSet').p.contentFunc = function(doss) {
+        return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
+      };
+      
+      outline.getChild('storySet.*.contestSet.*.currentVote').p.contentFunc = function(doss) {
+        return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
+          /*
+          TODO: The vote data structure isn't great.
+          
+          Looks like:
+          - contest
+            - writeSet
+              - write1
+                - voteSet
+                  - vote11
+                  - vote12
+                  - vote13
+              - write2
+                - voteSet
+                  - vote21
+                  - vote22
+                  - vote23
+          
+          Should look like:
+          - contest
+            - writeSet
+              - write1
+              - write2
+            - voteSet
+              - vote11
+              - vote12
+              - vote21
+              - vote22
+          
+          */
+          var username = doss.getChild('~root.username').value;
+          var contest = doss.par;
+          var writeSet = contest.children.writeSet.children;
+          
+          for (var k in writeSet) {
+            var voteSet = writeSet[k].children.voteSet.children;
+            for (var kk in voteSet) {
+              if (kk === username) return voteSet[kk];
+            }
+          }
+          
+          return null;
+        }});
+      };
+      outline.getChild('storySet.*.contestSet.*.currentVote').p.changeHandler = function(currentVote) {
+        // Changing the current vote also changes the current voted write
+        var vote = currentVote.dereference();
+        var currentVotedWrite = currentVote.getChild('~par.currentVotedWrite');
+        currentVotedWrite.setValue(vote ? vote.par.par : null);
       };
       
       outline.$getDoss({
@@ -927,220 +1059,22 @@ var package = new PACK.pack.Package({ name: 'creativity',
       }).then(function(doss) {
         
         doss.fullyLoaded();
-        
-        var infoSet = new uf.DictInfo({ children: {} });
-        infoSet.addChild('appVersion', new uf.RepeatingSyncedInfo({
-          $getFunc: doss.$doRequest.bind(doss, { address: 'version', command: 'getData' })
-        }));
-        infoSet.addChild('icons', new uf.DictInfo({ children: {} }));
-        infoSet.addChild('loginError', new uf.TemporaryInfo({ value: '', memoryMs: 3000 }));
-        infoSet.addChild('username', new uf.SimpleInfo({ value: '' }));
-        infoSet.addChild('password', new uf.SimpleInfo({ value: '' }));
-        infoSet.addChild('token', new uf.SimpleInfo({ value: null }));
-        infoSet.addChild('currentStory', new uf.DictInfo({ children: {
-          
-          // The owner of the story
-          user: new uf.SimpleInfo({ value: null }),
-          
-          createdTime: new uf.SimpleInfo({ value: 0 }),
-          quickName: new uf.SimpleInfo({ value: '' }),
-          description: new uf.SimpleInfo({ value: '' }),
-          
-          // Maximum number of contests in this story
-          contestLimit: new uf.SimpleInfo({ value: 0 }),
-          
-          // Index of the current contest
-          contestInd: new uf.RepeatingSyncedInfo({
-            initialValue: -1,
-            $setFunc: function(val) { return p.$null; },
-            $getFunc: function() {
-            
-              var qn = infoSet.getValue('currentStory.quickName');
-              if (!qn) return new P({ val: -1 });
-              
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'contestInd' ],
-                command: 'getRawData'
-              });
-            
-            },
-            updateMs: 3000
-          }),
-          
-          // Current contest
-          currentContest: new uf.RepeatingSyncedInfo({
-            initialValue: null,
-            $getFunc: function() {
-              
-              var qn = infoSet.getValue('currentStory.quickName');
-              var contestInd = infoSet.getValue('currentStory.contestInd')
-              if (!qn || contestInd === -1) return new P({ val: null });
-              
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'contestSet', contestInd ],
-                command: 'getRawData'
-              });
-              
-            },
-            updateMs: 0
-          }),
-          
-          // The current user's author in the story
-          author: new uf.SimpleInfo({ value: null }),
-          
-          // The current user's write in the current contest
-          currentWriteSet: new uf.RepeatingSyncedInfo({
-            initialValue: {},
-            $setFunc: function(value) { return p.$null; },
-            $getFunc: function() {
-              
-              var qn = infoSet.getValue('currentStory.quickName');
-              var contestInd = infoSet.getValue('currentStory.contestInd');
-              if (!qn || contestInd === -1) return new P({ val: {} });
-              
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'contestSet', contestInd, 'writeSet' ],
-                command: 'getRawData'
-              });
-              
-            },
-            updateMs: 3000
-          }),
-          
-          // The address of the write currently voted on
-          currentVote: new uf.CalculatedInfo({ getFunc: function() {
-            
-            // TODO: This is called very repetitively :(
-            
-            var writeSet = infoSet.getValue('currentStory.currentWriteSet');
-            
-            var vote = '';
-            for (var writeUser in writeSet) {
-              
-              var write = writeSet[writeUser];
-              for (var voteUser in write.voteSet) {
-                
-                if (voteUser === infoSet.getValue('username')) {
-                  vote = '~root.storySet.' + infoSet.getValue('currentStory.quickName') + '.writeSet.' + writeUser + '.voteSet.' + voteUser;
-                  break;
-                }
-                
-              }
-              
-              if (vote) break;
-              
-            }
-            
-            return vote;
-            
-          }}),
-          
-          // The writes that have won their way into the story
-          writeSet: new uf.RepeatingSyncedInfo({
-            initialValue: {},
-            $getFunc: function() {
-              
-              var qn = infoSet.getValue('currentStory.quickName');
-              if (!qn) return new P({ val: {} });
-              
-              // Select the descriptive fields from every story
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'writeSet' ],
-                command: 'getChildNames'
-              }).then(function(writeSet) {
-                
-                return new P({ all: writeSet.toObj().map(function(writeName) {
-                  
-                  return doss.$doRequest({
-                    address: [ 'storySet', infoSet.getValue('currentStory.quickName'), 'writeSet', '@' + writeName ],
-                    command: 'getRawPickedFields',
-                    params: {
-                      fields: [ 'user', 'content' ]
-                    }
-                  });
-                  
-                })});
-                
-              });
-              
-            },
-            updateMs: 5000
-          }),
-                    
-          phase: new uf.RepeatingSyncedInfo({
-            initialValue: '',
-            $setFunc: function(value) { return p.$null; },
-            $getFunc: function() {
-              
-              var qn = infoSet.getValue('currentStory.quickName');
-              if (!qn) return new P({ val: '' });
-              
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'phase' ],
-                command: 'getRawData'
-              });
-              
-            },
-            updateMs: 3000
-          }),
-          timePhaseStarted: new uf.RepeatingSyncedInfo({
-            intialValue: 0,
-            $setFunc: function() { return p.$null; },
-            $getFunc: function() {
-              
-              var qn = infoSet.getValue('currentStory.quickName');
-              if (!qn) return new P({ val: 0 });
-              
-              return doss.$doRequest({
-                address: [ 'storySet', qn, 'timePhaseStarted' ],
-                command: 'getRawData'
-              });
-              
-            },
-            updateMs: 3000
-          }),
-          writingTime: new uf.SimpleInfo({ value: 0 }),
-          votingTime: new uf.SimpleInfo({ value: 0 }),
-          timeEnd: new uf.CalculatedInfo({ getFunc: function() {
-            
-            var story = infoSet.getChild('currentStory');
-            var phase = story.getValue('phase');
-            
-            if (phase === 'writing') {
-              
-              return story.getValue('timePhaseStarted') + story.getValue('writingTime');
-              
-            } else if (phase === 'voting') {
-              
-              return story.getValue('timePhaseStarted') + story.getValue('votingTime');
-              
-            } else {
-              
-              return Number.POSITIVE_INFINITY;
-              
-            }
-            
-          }})
-          
-        }}));
-        infoSet.getChild('currentStory.currentContest').addListener(infoSet.getChild('currentStory.contestInd'));
-        infoSet.addChild('currentWrite', new uf.SimpleInfo({ value: '' }));
-        infoSet.start();
-        
+
         var rootView = new uf.RootView({ name: 'root',
           children: [
             
-            new uf.ChoiceView({ name: 'login', choiceInfo: doss.getChild('logged'), children: [
+            new uf.ChoiceView({ name: 'login', choiceInfo: function () { return doss.getValue('~root.token') ? 'in' : 'out' }, children: [
               
+              // The user is logged out
               new uf.SetView({ name: 'out', children: [
                 
-                new uf.TextHideView({ name: 'loginError', info: infoSet.getChild('loginError') }),
+                new uf.TextHideView({ name: 'loginError', info: doss.getChild('loginError') }),
                 new uf.TextEditView({ name: 'username', textInfo: doss.getChild('username'), placeholderData: 'Username' }),
                 new uf.TextEditView({ name: 'password', textInfo: doss.getChild('password'), placeholderData: 'Password' }),
                 new uf.ActionView({ name: 'submit', textInfo: 'Submit!', $action: function() {
                   return doss.$doRequest({ command: 'getToken', params: {
-                    username: infoSet.getValue('username'),
-                    password: infoSet.getValue('password')
+                    username: doss.getValue('username'),
+                    password: doss.getValue('password')
                   }}).then(function(data) {
                     doss.setValue('token', data.token);
                   }).fail(function(err) {
@@ -1149,58 +1083,22 @@ var package = new PACK.pack.Package({ name: 'creativity',
                 }})
                 
               ]}),
+              
+              // The user is logged in
               new uf.SetView({ name: 'in', children: [
                 
-                new uf.ChoiceView({ name: 'chooseStory', choiceInfo: function() { return infoSet.getValue('currentStory.quickName') ? 'story' : 'lobby'; }, children: [
+                new uf.ChoiceView({ name: 'chooseStory', choiceInfo: function() { return doss.getChild('@currentStory') ? 'story' : 'lobby'; }, children: [
                   
+                  // The user is selecting which story to enter
                   new uf.SetView({ name: 'lobby', children: [
                     
+                    new uf.TextView({ name: 'title', info: 'Lobby' }),
                     new uf.DynamicSetView({ name: 'storySet',
                       childInfo: doss.getChild('storySet'),
-                      /*
-                      childInfo: new uf.RepeatingSyncedInfo({
-                        initialValue: [],
-                        $getFunc: function() {
-                          
-                          // Select the descriptive fields from every story
-                          return doss.$doRequest({ address: 'storySet', command: 'getChildNames' }).then(function(storyNames) {
-                            
-                            return new P({ all: storyNames.toObj().map(function(childName) {
-                              
-                              console.log('USERNAME:', infoSet.getValue('username'));
-                              
-                              return doss.$doRequest({
-                                address: [ 'storySet', childName ],
-                                command: 'getPickedFields',
-                                params: {
-                                  fields: [
-                                    '(user) @user',
-                                    'createdTime',
-                                    'quickName',
-                                    'description',
-                                    'contestInd',
-                                    'contestLimit',
-                                    '(author) authorSet.' + infoSet.getValue('username'),
-                                    'phase',
-                                    'timePhaseStarted',
-                                    'writingTime',
-                                    'votingTime'
-                                  ]
-                                }
-                              });
-                              
-                            })});
-                            
-                          });
-                          
-                        },
-                        updateMs: 5000
-                      }),
-                      */
                       decorators: [],
                       genChildView: function(name, info) {
                         
-                        return new uf.SetView({ name: name, children: [
+                        return new uf.SetView({ name: name, cssClasses: [ 'story' ], children: [
                           
                           new uf.TextView({ name: 'quickName', info: info.getChild('quickName') }),
                           new uf.TextView({ name: 'description', info: info.getChild('description') }),
@@ -1208,7 +1106,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           new uf.SetView({ name: 'age', children: [
                             new uf.TextView({ name: 0, info: 'Begun' }),
                             new cr.ClockView({ name: 1,
-                              info: info.getChild('timeRemaining'),
+                              info: info.getChild('age'),
                               format: 'string',
                               components: cr.timeComponentData.slice(1)
                             }),
@@ -1224,8 +1122,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
                             }}),
                             new uf.ActionView({ name: 'true', textInfo: 'Select', $action: function() {
                               
-                              infoSet.getChild('currentStory').setValue(info);
-                              console.log(infoSet.valueOf());
+                              doss.setValue('currentStory', info);
+                              console.log('CURRENT STORY', doss.getValue('currentStory'));
                               return p.$null;
                               
                             }})
@@ -1238,40 +1136,44 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     })
                     
                   ]}),
+                  
+                  // The user has selected a particular story
                   new uf.SetView({ name: 'story', children: [
                     
                     new uf.SetView({ name: 'header', children: [
                       
                       new uf.ActionView({ name: 'back', textInfo: 'Back', $action: function() {
                         
-                        infoSet.setValue('currentStory.quickName', '');
+                        doss.setValue('currentStory', null);
                         return p.$null;
                         
                       }}),
-                      new uf.TextView({ name: 'title', info: infoSet.getChild('currentStory.quickName') }),
-                      new uf.TextView({ name: 'phase', info: infoSet.getChild('currentStory.phase') }),
-                      new cr.ClockView({ name: 'timeRemaining',
-                        info: function() { return infoSet.getChild('currentStory.timeEnd') - U.timeMs(); },
-                        format: 'digital',
-                        components: cr.timeComponentData.slice(0, 3)
-                      })
-                      
+                      new uf.TextView({ name: 'title', info: doss.getRefValue('@currentStory.quickName') }),
+                      new uf.SetView({ name: 'roundInfo', children: [
+                        new uf.TextView({ name: 'phase', info: doss.getRefValue('@currentStory.phase') }),
+                        new cr.ClockView({ name: 'phaseTimeRemaining',
+                          info: doss.getRefValue('@currentStory.phaseTimeRemaining'),
+                          format: 'digital',
+                          components: cr.timeComponentData.slice(0, 3)
+                        })
+                      ]})
+                        
                     ]}),
+                    
                     new uf.DynamicSetView({ name: 'writeSet',
                       childInfo: function() {
-                        var writeSet = infoSet.getValue('currentStory.writeSet');
+                        var writeSet = doss.getValue('@currentStory.writeSet');
                         
-                        var currentWrite = infoSet.getValue('currentWrite');
+                        var currentWrite = doss.getValue('currentWrite');
                         if (!currentWrite) return writeSet;
                         
                         var ret = writeSet.clone();
                         ret['preview' + Math.abs(currentWrite.hash())] = {
                           content: currentWrite,
-                          user: '~root.userSet.' + infoSet.getValue('username')
+                          user: '~root.userSet.' + doss.getValue('username')
                         };
                         
                         return ret;
-                        
                       },
                       decorators: [],
                       genChildView: function(name, info) {
@@ -1286,21 +1188,17 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         
                       }
                     }),
+                    
                     new uf.ChoiceView({ name: 'writeOrVote',
                       choiceInfo: function() {
-                        var phase = infoSet.getValue('currentStory.phase');
+                        var phase = doss.getValue('@currentStory.phase');
                         
                         if ([ 'awaitingWrite', 'writing' ].contains(phase)) {
                           
-                          // Even if the phase is currently writing, a user who submitted should vote instead
-                          if (infoSet.getValue('username') in infoSet.getValue('currentStory.currentWriteSet'))
-                            return 'vote';
+                          // Choice depends on whether the user has already submitted
+                          return doss.getChild('@currentStory.@currentContest.@currentWrite') ? 'vote' : 'write';
                           
-                          return 'write';
-                          
-                        }
-                        
-                        else if ([ 'awaitingVote', 'voting' ].contains(phase)) {
+                        } else if ([ 'awaitingVote', 'voting' ].contains(phase)) {
                           
                           return 'vote';
                           
@@ -1312,34 +1210,27 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         
                         new uf.SetView({ name: 'write', children: [
                           
-                          new uf.TextEditView({ name: 'editor', textInfo: infoSet.getChild('currentWrite'), multiline: true, placeholderData: 'Next line of the story...' }),
+                          new uf.TextEditView({ name: 'editor', textInfo: doss.getChild('currentWrite'), multiline: true, placeholderData: 'Next line of the story...' }),
                           new uf.ActionView({ name: 'submit', textInfo: 'Submit', $action: function() {
                             
-                            return doss.$doRequest({
-                              address: [
-                                'storySet', infoSet.getValue('currentStory.quickName'),
-                                'contestSet', infoSet.getValue('currentStory.contestInd'),
-                                'writeSet'
-                              ],
-                              command: 'addData',
-                              params: {
-                                returnType: 'raw',
-                                data: {
-                                  username: infoSet.getValue('username'),
-                                  content: infoSet.getValue('currentWrite')
-                                }
+                            /*
+                            console.log(doss.getChild('@currentStory.@currentContest.writeSet').outline.p);
+                            console.log(doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild);
+                            return p.$null;
+                            */
+                            
+                            return doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild({
+                              data: {
+                                username: doss.getValue('username'),
+                                token: doss.getValue('token'),
+                                content: doss.getValue('currentWrite')
                               }
-                            }).then(function(rawData) {
+                            }).then(function() {
                               
-                              infoSet.getChild('currentStory.currentWriteSet').modValue(function(val) {
-                                val[infoSet.getValue('username')] = rawData;
-                                return val;
-                              });
-                              infoSet.setValue('currentWrite', '');
-                              return rawData;
+                              doss.setValue('currentWrite', '');
                               
                             });
-                            
+                          
                           }})
                           
                         ]}),
@@ -1347,72 +1238,34 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           
                           new uf.TextView({ name: 'title', info: 'Vote:' }),
                           new uf.DynamicSetView({ name: 'contenders',
-                            childInfo: infoSet.getChild('currentStory.currentWriteSet'),
+                            childInfo: function() { return doss.getChild('@currentStory.@currentContest.writeSet').children; },
                             genChildView: function(name, writeInfo) {
                               
-                              var writeUserPcs = writeInfo.user.split('.');
-                              var writeUsername = writeUserPcs[writeUserPcs.length - 1];
+                              var writeUsername = writeInfo.name;
+                              var writeVoteSet = doss.getChild([ '@currentStory', '@currentContest', 'writeSet', writeUsername, 'voteSet' ]);
                               
                               return new uf.SetView({ name: name, children: [
                                 
-                                new uf.TextView({ name: 'content', info: writeInfo.content }),
+                                new uf.TextView({ name: 'content', info: writeInfo.getValue('content') }),
                                 new uf.TextView({ name: 'user', info: writeUsername }),
                                 new uf.DynamicSetView({ name: 'votes',
-                                  childInfo: new uf.RepeatingSyncedInfo({
-                                    intialValue: {},
-                                    $getFunc: function() {
-                                      
-                                      return doss.$doRequest({
-                                        address: [
-                                          'storySet', infoSet.getValue('currentStory.quickName'),
-                                          'contestSet', infoSet.getValue('currentStory.contestInd'),
-                                          'writeSet', writeUsername,
-                                          'voteSet'
-                                        ],
-                                        command: 'getRawData'
-                                      });
-                                      
-                                    },
-                                    updateMs: 4000
-                                  }),
+                                  childInfo: writeVoteSet,
                                   genChildView: function(name, voteInfo) {
                                     
-                                    var voteUserPcs = voteInfo.user.split('.');
-                                    var voteUsername = voteUserPcs[voteUserPcs.length - 1];
-                                    
-                                    return new uf.TextView({ name: name, info: JSON.stringify(voteInfo) });
+                                    return new uf.TextView({ name: name, info: voteInfo.getValue('user').split('.').pop() });
                                     
                                   }
                                 }),
                                 new uf.ChoiceView({ name: 'votable',
-                                  choiceInfo: function() {
-                                    return infoSet.getValue('currentStory.currentVote') ? null : 'vote';
-                                  },
+                                  choiceInfo: function() { return doss.getValue('@currentStory.@currentContest.@currentVote') ? null : 'vote'; },
                                   children: [
                                     new uf.ActionView({ name: 'vote', textInfo: 'Select', $action: function() {
                                       
-                                      var voteSetAddr =
-                                        '~root.storySet.' + infoSet.getValue('currentStory.quickName') +
-                                        '.contestSet.' + infoSet.getValue('currentStory.contestInd') +
-                                        '.writeSet.' + writeUsername + '.voteSet';
-                                      
-                                      return doss.$doRequest({
-                                        address: voteSetAddr,
-                                        command: 'addData',
-                                        params: {
-                                          returnType: 'raw',
-                                          data: {
-                                            username: infoSet.getValue('username'),
-                                            value: 1
-                                          }
+                                      return writeVoteSet.content.$addChild({
+                                        data: {
+                                          username: doss.getValue('username'),
+                                          value: 1 // This is ignored for now
                                         }
-                                      }).then(function(voteData) {
-                                        
-                                        infoSet.getChild('currentStory.currentWriteSet').modValue(function(val) {
-                                          val[writeUsername].voteSet[infoSet.getValue('username')] = voteData;
-                                          return val;
-                                        });
-                                        
                                       });
                                       
                                     }})
@@ -1441,12 +1294,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           ],
           updateFunc: function() {
-            for (var k in rootCache) rootCache[k].update();
+            updateSet(updateOnFrame);
           }
         });
         rootView.start();
         
-        window.infoSet = infoSet;
         window.doss = doss;
         
         // Testing:

@@ -71,9 +71,11 @@ var package = new PACK.pack.Package({ name: 'userify',
         
         if (U.isInstance(ret, uf.Info) || U.isInstance(ret, qd.Dossier)) return ret; // TODO: Intermediate necessity while unifying
         
-        return U.isObj(ret, Function)
-          ? new uf.CalculatedInfo({ getFunc: ret })
-          : new uf.SimpleInfo({ value: ret });
+        if (U.isObj(ret, Function)) return { getValue: ret };
+        
+        if (U.isObj(ret, Object)) return ret;
+        
+        return { getValue: function() { return ret; } };
       },
       
       /* INFO */
@@ -773,9 +775,11 @@ var package = new PACK.pack.Package({ name: 'userify',
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
         methods: function(sc, c) { return {
-          init: function(params /* name, framesPerTick, cssClasses, decorators */) {
+          init: function(params /* name, id, framesPerTick, cssClasses, decorators */) {
             this.name = U.param(params, 'name');
             if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
+            
+            this.id = U.param(params, 'id', null); // `this.id` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
             
             this.cssClasses = U.param(params, 'cssClasses', []);
             this.decorators = U.param(params, 'decorators', []);
@@ -791,10 +795,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           getAncestry: function() {
             var ret = [];
             var ptr = this;
-            while(ptr !== null) {
-              ret.push(ptr);
-              ptr = ptr.par;
-            }
+            while(ptr !== null) { ret.push(ptr); ptr = ptr.par; }
             return ret;
           },
           getNameChain: function() {
@@ -851,7 +852,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.domRoot['~view'] = this;
             
             // Set the id property
-            this.domRoot.id = this.getNameChain().join('-');
+            var htmlId = this.getNameChain().join('-');
+            if (htmlId.length < 40) this.domRoot.id = htmlId;
             
             // Set desired css classes
             this.domRoot.classList.add('_' + this.name);
@@ -915,15 +917,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             else
               this.domRoot.classList.add('_disabled');
           },
-          
-          start: function() {
-            sc.start.call(this);
-            this.enabledData.start();
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.enabledData.stop();
-          }
         };}
       }),
       TextEditView: U.makeClass({ name: 'TextEditView',
@@ -1028,14 +1021,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             else               this.domRoot.classList.remove('_waiting');
           },
           
-          start: function() {
-            sc.start.call(this);
-            this.textInfo.start();
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.textInfo.stop();
-          }
         };}
       }),
       CanvasView: U.makeClass({ name: 'CanvasView',
@@ -1310,8 +1295,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             var rem = this.children.clone(); // Initially mark all children for removal
             var add = {};  // Initially mark no children for addition
             
-            //var cd = this.childInfo.getValue();
-            var cd = this.childInfo.children;
+            var cd = this.childInfo.getValue();
             
             for (var k in cd) {
               

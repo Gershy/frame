@@ -15,6 +15,8 @@ run on server or client side:
   -DB: Reference to the mongodb database object
 */
 
+Error.stackTraceLimit = Infinity;
+
 // Add convenience methods to pre-existing classes
 [
   {  target: String.prototype,
@@ -390,7 +392,7 @@ global.U = {
     // Check for `description`
     var description = U.param(params, 'description', heirName);
     
-    var includeGuid = U.param(params, 'includeGuid', false);
+    var includeGuid = U.param(params, 'includeGuid', (superclass === Object) ? false : (superclass.includeGuid));
     
     // Use eval to get a named constructor
     var cls = namespace[name] = includeGuid
@@ -438,6 +440,7 @@ global.U = {
     cls.title = name;
     cls.heirName = heirName;
     cls.par = superclass;
+    cls.includeGuid = includeGuid;
     for (var k in statik) cls[k] = statik[k];
     
     return cls;
