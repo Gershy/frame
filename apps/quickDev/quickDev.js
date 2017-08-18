@@ -1157,7 +1157,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.value !== null ? this.getChild(this.getRefAddress()) : null;
           },
           getRawDataView: function() {
-            return this.value !== null ? this.getRefAddress() : 'NULL';
+            return this.value !== null ? this.getRefAddress() : null;
           },
           getDataView0: function(existing) {
             return this.value !== null ? this.dereference().getDataView(existing) : null;
@@ -1350,7 +1350,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 
             }).fail(function(err) {
               
-              console.log('Sync error:');
+              console.log('Sync error on: ' + pass.doss.getAddress());
               console.error(err.stack);
               
             }).done();
@@ -1388,7 +1388,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       ContentSyncRef: U.makeClass({ name: 'ContentSyncRef',
         superclassName: 'ContentAbstractSync',
         methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs, selection */) {
+          init: function(params /* doss, address, refParAddress, waitMs, jitterMs, selection */) {
             sc.init.call(this, params);
             
             if (!U.isInstance(this.doss, qd.DossierRef)) throw new Error('`ContentSyncRef` needs its doss to be a `DossierRef`');
@@ -1428,10 +1428,19 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           $applyQueryResult: function(refData) {
             
+            // TODO: DossierRef needs to parameratize an address, so its value should only hold
+            // the values for the variable components of a static address!!
+            // E.g. instead of `dossRef.outline.p.baseAddress` it should be `dossRef.outline.p.addressVar`
+            // { c: qd.DossierRef, p: { vars: [ 'contestInd', 'writeUsername' ], addressVar: '~par.contestSet.$contestInd.writeSet.$writeUsername' } }
+            // dossRef.value === { contestInd: 12, writeUsername: 'admin' }
+            
+            // Because this isn't the case currently, need to struggle with "determining the parent who will hold the referenced object" etc.
+            // With this implemented such parent is addressed by the parameterized addressVar with the last component removed.
+            
             // If no data is provided, or the reference already links properly, do nothing
             if (!refData || this.doss.dereference()) return p.$null;
             
-            //console.log('Syncing REF: ' + this.doss.getAddress());
+            // console.log('Syncing REF: ' + this.doss.getAddress());
             
             var doss = this.doss;
             var editor = new qd.Editor();

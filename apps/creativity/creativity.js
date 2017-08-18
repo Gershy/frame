@@ -117,33 +117,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
           // Writing ends when time is up, or when the max number of writes have occurred
           
           var phaseEndTime = story.getValue('timePhaseStarted') + story.getValue('writingTime');
-          var maxWrites = story.getValue('maxWrites') || numAuthors;
-          var numEntries = currentContest.getChild('writeSet').length;
-          
-          if (currentTime > phaseEndTime) {
-            
-            console.log('RESOLVING WRITING on "' + story.name + '" because time is up');
-            return cr.$resolveStoryWritePhase(story);
-            
-          } else if (numEntries >= maxWrites) {
-            
-            console.log('RESOLVING WRITING on "' + story.name + '" because max entries received');
-            return cr.$resolveStoryWritePhase(story);
-            
-          } else {
-            
-            console.log('Story "' + story.name + '" WRITING continues...');
-            return p.$null;
-            
-          }
-          
-        } else if (phase === 'awaitingVote') {
-          
-          return p.$null;
-          
-        } else if (phase === 'voting') {
-          
-          var phaseEndTime = story.getValue('timePhaseStarted') + story.getValue('votingTime');
           
           var maxVotes = story.getValue('maxVotes') || numAuthors;
           var votes = currentContest.getChild('writeSet').map(function(write) { // TODO: Does `DossierSet.prototype.map` work??
@@ -178,24 +151,29 @@ var package = new PACK.pack.Package({ name: 'creativity',
           }
           var votesRemaining = numAuthors - numVotes;
             
-          if ((nextBest + votesRemaining) < best) { // Even if all remaining votes go to the best losing option, the leader can't be overtaken
+          if (currentTime > phaseEndTime) {
             
-            console.log('RESOLVING VOTING on "' + story.name + '" because voters decided early');
+            console.log('RESOLVING ROUND on "' + story.name + '" because time is up');
+            return cr.$resolveStoryWritePhase(story);
+            
+          } else if ((nextBest + votesRemaining) < best) { // Even if some people haven't voted pick a winner; further voting will make no difference
+            
+            console.log('RESOLVING ROUND on "' + story.name + '" because voters decided early');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else if (currentTime >= phaseEndTime) {
             
-            console.log('RESOLVING VOTING on "' + story.name + '" because time is up');
+            console.log('RESOLVING ROUND on "' + story.name + '" because time is up');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else if (votesRemaining === 0) {
             
-            console.log('RESOLVING VOTING on "' + story.name + '" because everyone has voted');
+            console.log('RESOLVING ROUND on "' + story.name + '" because everyone has voted');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
-          } else {
+          } else { 
             
-            console.log('Story "' + story.name + '" VOTING continues...');
+            console.log('Story "' + story.name + '" round continues...');
             return p.$null;
             
           }
@@ -339,6 +317,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
             return new qd.Outline({ c: cr.Creativity, p: { name: 'app' }, i: [
               
               { c: qd.DossierString,  p: { name: 'version' } },
+              // <CLIENT>
+              { c: qd.DossierString,  p: { name: 'username' } },
+              // </CLIENT>
               { c: qd.DossierList,    p: { name: 'userSet',
                 innerOutline: { c: cr.CreativityUser, i: [
                   { c: qd.DossierString,  p: { name: 'fname' } },
@@ -762,9 +743,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
         
         { c: qd.DossierString,  p: { name: 'version' } },
         { c: qd.DossierString,  p: { name: 'username' } },
-        { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
         { c: qd.DossierString,  p: { name: 'password' } },
         { c: qd.DossierString,  p: { name: 'token' } },
+        { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
         { c: qd.DossierString,  p: { name: 'loginError' } },
         { c: qd.DossierString,  p: { name: 'currentWrite' } },
         { c: qd.DossierRef,     p: { name: 'currentStory',    baseAddress: '~root.storySet' } },
@@ -781,7 +762,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }},
         { c: qd.DossierList,    p: { name: 'storySet',
           innerOutline: { c: qd.DossierDict, i: [
+            // TODO: Here's an example:
+            // { c: qd.DossierRef,     p: { name: 'user', addr: '~root.userSet.$username' } },
             { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
+            
             { c: qd.DossierString,  p: { name: 'username' } },          // TODO: This value is on the client-side and not the server!!
             { c: qd.DossierBoolean, p: { name: 'isAuthored' } },        // TODO: This value is on the client-side and not the server!!
             { c: qd.DossierString,  p: { name: 'userDisp' } },          // TODO: This value is on the client-side and not the server!!
@@ -826,7 +810,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         { c: qd.DossierRef,   p: { name: 'user',      baseAddress: '~root.userSet' } },
                         { c: qd.DossierInt,   p: { name: 'value' } }
                       ]},
-                      nameFunc: function(par, child) { return child.getChild('@user').name; },
+                      nameFunc: function(par, child) { return child.getChild('user').value; },
                       verifyAndSanitizeData: function(voteSet, params) {
                         
                         var username = U.param(params, 'username');
@@ -845,8 +829,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   ]},
                   nameFunc: function(par, child) {
                     return child.getValue('user').split('.').pop();
-                    //console.log('WRITE:', child.getRawDataView());
-                    //return child.getChild('@user').name;
                   },
                   verifyAndSanitizeData: function(writeSet, params) {
                     var username = U.param(params, 'username');
@@ -886,12 +868,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
       var updateOnUsername = {};
       
       // Add content instructions onto outlines
-      outline.getChild('username').p.changeHandler = updateSet.bind(null, updateOnUsername);
+      outline.getChild('token').p.changeHandler = updateSet.bind(null, updateOnUsername);
       
       outline.getChild('user').p.contentFunc = function(doss) {
         return new qd.ContentSyncRef({ doss: doss, cache: updateOnUsername,
           calcRef: function() {
-            return doss.getChild('~root.username').value;
+            // Set reference to null unless a token is obtained
+            return doss.getChild('~root.token').value ? doss.getChild('~root.username').value : null;
           },
           selection: {
             fname: {},
@@ -976,6 +959,23 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }});
       };
       
+      outline.getChild('storySet.*.writeSet').p.contentFunc = function(doss) {
+        return new qd.ContentSyncDict({ doss: doss, selection: qd.selectAll });
+      };
+      
+      outline.getChild('storySet.*.writeSet.*').p.contentFunc = function(doss) {
+        return new qd.ContentSyncRef({ doss: doss, selection: qd.selectAll });
+      };
+      
+      outline.getChild('storySet.*.contestInd').p.contentFunc = function(doss) {
+        return new qd.ContentSync({ doss: doss, waitMs: 1000 });
+      };
+      outline.getChild('storySet.*.contestInd').p.changeHandler = function(doss) {
+        var story = doss.par;
+        story.getChild('currentContest').content.update();
+        story.getChild('writeSet').content.update();
+      };
+      
       outline.getChild('storySet.*.currentContest').p.contentFunc = function(doss) {
         return new qd.ContentSyncRef({ doss: doss, calcRef: function() {
           return doss.par.getValue('contestInd'); // The current contest's index is stored in `contestInd`
@@ -990,7 +990,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
           // Return `null` if no current write, otherwise return the write
           var username = doss.getChild('~root.username').value;
-          return doss.getChild([ '~par', 'writeSet', username ]);
+          return username ? doss.getChild([ '~par', 'writeSet', username ]) : null;
         }});
       };
       
@@ -1059,7 +1059,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       }).then(function(doss) {
         
         doss.fullyLoaded();
-
+        
         var rootView = new uf.RootView({ name: 'root',
           children: [
             
@@ -1090,7 +1090,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                 new uf.ChoiceView({ name: 'chooseStory', choiceInfo: function() { return doss.getChild('@currentStory') ? 'story' : 'lobby'; }, children: [
                   
                   // The user is selecting which story to enter
-                  new uf.SetView({ name: 'lobby', children: [
+                  new uf.SetView({ name: 'lobby', cssId: 'lobby', children: [
                     
                     new uf.TextView({ name: 'title', info: 'Lobby' }),
                     new uf.DynamicSetView({ name: 'storySet',
@@ -1138,7 +1138,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   ]}),
                   
                   // The user has selected a particular story
-                  new uf.SetView({ name: 'story', children: [
+                  new uf.SetView({ name: 'story', cssId: 'story', children: [
                     
                     new uf.SetView({ name: 'header', children: [
                       
@@ -1162,28 +1162,42 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     
                     new uf.DynamicSetView({ name: 'writeSet',
                       childInfo: function() {
-                        var writeSet = doss.getValue('@currentStory.writeSet');
+                        var writeSet = doss.getChild('@currentStory.writeSet').children;
                         
                         var currentWrite = doss.getValue('currentWrite');
                         if (!currentWrite) return writeSet;
                         
-                        var ret = writeSet.clone();
-                        ret['preview' + Math.abs(currentWrite.hash())] = {
+                        writeSet = writeSet.clone();
+                        
+                        // Simulate a `doss`. `genChildView` will need the `value` properties.
+                        writeSet['preview' + Math.abs(currentWrite.hash())] = {
                           content: currentWrite,
-                          user: '~root.userSet.' + doss.getValue('username')
+                          user: doss.getValue('username')
                         };
                         
-                        return ret;
+                        return writeSet;
                       },
                       decorators: [],
                       genChildView: function(name, info) {
                         
-                        var userPcs = info.user.split('.');
-                        var username = userPcs[userPcs.length - 1];
+                        if (U.isInstance(info, qd.DossierRef)) {
+                          // TODO: Review efficiency here (could be terrible with a big writeSet)
+                          var username = function() {
+                            var deref = info.dereference();
+                            return deref ? deref.getChild('user').value.split('.').pop() : 'loading...';
+                          };
+                          var content = function() {
+                            var deref = info.dereference();
+                            return deref ? deref.getValue('content') : 'loading...';
+                          };
+                        } else {
+                          var username = info.user;
+                          var content = info.content;
+                        }
                         
                         return new uf.SetView({ name: name, cssClasses: [ 'write' ], children: [
-                          new uf.TextView({ name: 'content', info: info.content }),
-                          new uf.TextView({ name: 'user', info: username })
+                          new uf.TextView({ name: 'content', info: content }),
+                          new uf.TextView({ name: 'username', info: username })
                         ]});
                         
                       }
@@ -1213,12 +1227,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           new uf.TextEditView({ name: 'editor', textInfo: doss.getChild('currentWrite'), multiline: true, placeholderData: 'Next line of the story...' }),
                           new uf.ActionView({ name: 'submit', textInfo: 'Submit', $action: function() {
                             
-                            /*
-                            console.log(doss.getChild('@currentStory.@currentContest.writeSet').outline.p);
-                            console.log(doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild);
-                            return p.$null;
-                            */
-                            
                             return doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild({
                               data: {
                                 username: doss.getValue('username'),
@@ -1237,42 +1245,56 @@ var package = new PACK.pack.Package({ name: 'creativity',
                         new uf.SetView({ name: 'vote', children: [
                           
                           new uf.TextView({ name: 'title', info: 'Vote:' }),
-                          new uf.DynamicSetView({ name: 'contenders',
+                          new uf.DynamicSetView({ name: 'contenderSet', cssId: 'contenderSet',
                             childInfo: function() { return doss.getChild('@currentStory.@currentContest.writeSet').children; },
-                            genChildView: function(name, writeInfo) {
+                            genChildView: function(name, write) {
                               
-                              var writeUsername = writeInfo.name;
+                              var writeUsername = write.name;
+                              var contest = doss.getChild('@currentStory.@currentContest');
                               var writeVoteSet = doss.getChild([ '@currentStory', '@currentContest', 'writeSet', writeUsername, 'voteSet' ]);
                               
-                              return new uf.SetView({ name: name, children: [
-                                
-                                new uf.TextView({ name: 'content', info: writeInfo.getValue('content') }),
-                                new uf.TextView({ name: 'user', info: writeUsername }),
-                                new uf.DynamicSetView({ name: 'votes',
-                                  childInfo: writeVoteSet,
-                                  genChildView: function(name, voteInfo) {
-                                    
-                                    return new uf.TextView({ name: name, info: voteInfo.getValue('user').split('.').pop() });
-                                    
-                                  }
-                                }),
-                                new uf.ChoiceView({ name: 'votable',
-                                  choiceInfo: function() { return doss.getValue('@currentStory.@currentContest.@currentVote') ? null : 'vote'; },
-                                  children: [
-                                    new uf.ActionView({ name: 'vote', textInfo: 'Select', $action: function() {
+                              return new uf.SetView({ name: name, cssClasses: [ 'contender' ],
+                                decorators: [
+                                  new uf.ClassDecorator({
+                                    list: [ 'selected' ],
+                                    info: function() { return contest.getChild('@currentVotedWrite') === write ? 'selected' : null; }
+                                  })
+                                ],
+                                children: [
+                                  // The content the user wrote for this submission
+                                  new uf.TextView({ name: 'content', info: write.getValue('content') }),
+                                  
+                                  // The username
+                                  new uf.TextView({ name: 'user', info: writeUsername }),
+                                  
+                                  // The set of votes on this write
+                                  new uf.DynamicSetView({ name: 'voteSet',
+                                    childInfo: writeVoteSet,
+                                    genChildView: function(name, voteInfo) {
                                       
-                                      return writeVoteSet.content.$addChild({
-                                        data: {
-                                          username: doss.getValue('username'),
-                                          value: 1 // This is ignored for now
-                                        }
-                                      });
+                                      return new uf.TextView({ name: name, cssClasses: [ 'vote' ], info: voteInfo.getValue('user').split('.').pop() });
                                       
-                                    }})
-                                  ]
-                                })
-                                
-                              ]});
+                                    }
+                                  }),
+                                  
+                                  // Controls to allow voting
+                                  new uf.ChoiceView({ name: 'votable',
+                                    choiceInfo: function() { return doss.getValue('@currentStory.@currentContest.@currentVote') ? null : 'vote'; },
+                                    children: [
+                                      new uf.ActionView({ name: 'vote', textInfo: 'Select', $action: function() {
+                                        
+                                        return writeVoteSet.content.$addChild({
+                                          data: {
+                                            username: doss.getValue('username'),
+                                            value: 1 // This is ignored for now
+                                          }
+                                        });
+                                        
+                                      }})
+                                    ]
+                                  })
+                                ]
+                              });
                               
                             }
                           })
@@ -1302,6 +1324,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         window.doss = doss;
         
         // Testing:
+        return;
         doss.setValue('username', 'admin');
         doss.setValue('password', 'admin123');
         doss.$doRequest({ command: 'getToken', params: {

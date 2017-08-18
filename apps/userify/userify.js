@@ -775,11 +775,12 @@ var package = new PACK.pack.Package({ name: 'userify',
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
         methods: function(sc, c) { return {
-          init: function(params /* name, id, framesPerTick, cssClasses, decorators */) {
+          init: function(params /* name, cssId, framesPerTick, cssClasses, decorators */) {
             this.name = U.param(params, 'name');
             if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
             
-            this.id = U.param(params, 'id', null); // `this.id` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
+            // `this.htmlId` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
+            this.cssId = U.param(params, 'cssId', null);
             
             this.cssClasses = U.param(params, 'cssClasses', []);
             this.decorators = U.param(params, 'decorators', []);
@@ -805,6 +806,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           getAddress: function() {
             return this.getNameChain().join('.');
+          },
+          getHtmlId: function() {
+            if (this.cssId) return this.cssId;
+            return (this.par ? this.par.getHtmlId() + '-' : '') + this.name;
           },
           getRoot: function() {
             var ptr = this;
@@ -852,7 +857,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.domRoot['~view'] = this;
             
             // Set the id property
-            var htmlId = this.getNameChain().join('-');
+            var htmlId = this.getHtmlId();
             if (htmlId.length < 40) this.domRoot.id = htmlId;
             
             // Set desired css classes
@@ -1214,12 +1219,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             if (nextChild !== this.currentChild) {
               if (this.currentChild) {
-                this.domRoot.classList.remove('_choose-' + this.currentChild.name);
+                this.domRoot.classList.remove('_choose-' + (this.currentChild ? this.currentChild.name : 'null'));
                 this.currentChild.stop();
               }
               this.currentChild = nextChild;
               if (this.currentChild) {
-                this.domRoot.classList.add('_choose-' + this.currentChild.name);
+                this.domRoot.classList.add('_choose-' + (this.currentChild ? this.currentChild.name : 'null'));
               }
             }
           }

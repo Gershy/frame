@@ -23,13 +23,13 @@
   left: 0; top: 0;
 }
 
-#root-login-in-chooseStory > ._lobby {
+#lobby {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
   background-color: #dfeff9;
 }
-#root-login-in-chooseStory > ._lobby > ._title {
+#lobby > ._title {
   position: relative;
   display: block;
   width: 100%; height: 60px; line-height: 60px;
@@ -41,52 +41,52 @@
   text-indent: 18px;
   text-transform: uppercase;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet {
+#lobby > ._storySet {
   position: relative;
   width: 100%;
   overflow-y: auto;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story {
+#lobby > ._storySet > .story {
   background-color: #ffffff;
   padding: 20px 4px;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._quickName {
+#lobby > ._storySet > .story > ._quickName {
   position: absolute;
   display: block;
   left: 4px; top: 0; height: 20px; line-height: 20px;
   font-size: 12px;
   color: #808080;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._user {
+#lobby > ._storySet > .story > ._user {
   position: absolute;
   display: block;
   left: 104px; top: 0; height: 20px; line-height: 20px;
   font-size: 12px;
   color: #808080;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._description {
+#lobby > ._storySet > .story > ._description {
   display: block;
   font-family: serif;
   font-size: 18px;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age {
+#lobby > ._storySet > .story > ._age {
   position: absolute;
   left: 4px; bottom: 0;
   font-size: 12px;
   color: #a0a0a0;
   height: 20px; line-height: 20px;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._0,
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._1,
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._age > ._2 {
+#lobby > ._storySet > .story > ._age > ._0,
+#lobby > ._storySet > .story > ._age > ._1,
+#lobby > ._storySet > .story > ._age > ._2 {
   margin-right: 2px;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._authored {
+#lobby > ._storySet > .story > ._authored {
   position: absolute;
   width: 40px; height: 40px;
   top: 50%; margin-top: -20px; right: 10px;
 }
-#root-login-in-chooseStory > ._lobby > ._storySet > .story > ._authored > ._button {
+#lobby > ._storySet > .story > ._authored > ._button {
   position: absolute;
   left: 0; top: 0;
   width: 100%; height: 100%;
@@ -96,18 +96,18 @@
   background-color: #1286c4;
 }
 
-#root-login-in-chooseStory > ._story {
+#story {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
   background-color: #dfeff9;
 }
-#root-login-in-chooseStory > ._story > ._header {
+#story > ._header {
   position: absolute;
   width: 100%; height: 40px; line-height: 40px;
   z-index: 2;
 }
-#root-login-in-chooseStory > ._story > ._header > ._back {
+#story > ._header > ._back {
   position: absolute;
   width: 40px; height: 40px;
   left: 0; top: 0;
@@ -115,23 +115,21 @@
   z-index: 10;
   text-align: center;
 }
-#root-login-in-chooseStory > ._story > ._header > ._title {
+#story > ._header > ._title {
   position: absolute;
   width: 100%; height: 24px; line-height: 24px;
   left: 0; top: 0;
   font-size: 20px;
   text-align: center;
 }
-
-
-#root-login-in-chooseStory > ._story > ._header > ._roundInfo {
+#story > ._header > ._roundInfo {
   position: absolute;
   width: 100%; height: 16px;
   left: 0; top: 24px;
   white-space: nowrap;
   text-align: center;
 }
-#root-login-in-chooseStory > ._story > ._header > ._roundInfo > ._phase {
+#story > ._header > ._roundInfo > ._phase {
   display: inline-block;
   height: 16px; line-height: 16px;
   margin-right: 10px;
@@ -139,7 +137,7 @@
   vertical-align: top;
   display: none;
 }
-#root-login-in-chooseStory > ._story > ._header > ._roundInfo > ._phaseTimeRemaining {
+#story > ._header > ._roundInfo > ._phaseTimeRemaining {
   display: inline-block;
   height: 16px; line-height: 16px;
   font-size: 12px;
@@ -147,7 +145,7 @@
   white-space: nowrap;
 }
 
-#root-login-in-chooseStory > ._story > ._writeSet {
+#story > ._writeSet {
   position: absolute;
   box-sizing: border-box;
   width: 100%; height: 50%; padding-top: 40px;
@@ -156,24 +154,24 @@
   
   font-family: serif;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write {
+#story > ._writeSet > .write {
   display: inline;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write > ._content {
+#story > ._writeSet > .write > ._content {
   font-size: 14px;
   color: #040404;
   vertical-align: middle;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write:hover > ._content {
+#story > ._writeSet > .write:hover > ._content {
   background-color: #c0c0c0;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write[class^="_preview"] > ._content {
+#story > ._writeSet > .write[class^="_preview"] > ._content {
   background-color: #b0b0ff;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write > ._user {
+#story > ._writeSet > .write > ._username {
   box-sizing: border-box;
   border: solid 0 #8080f0;
   margin-left: 0;
@@ -185,22 +183,121 @@
   
   transition: font-size 300ms linear, border 300ms linear, margin 300ms linear, padding 300ms linear;
 }
-#root-login-in-chooseStory > ._story > ._writeSet > .write:hover > ._user {
+#story > ._writeSet > .write:hover > ._username {
   border: solid 1px #8080f0;
   margin-left: 3px;
   padding: 0 3px;
   font-size: 12px;
 }
 
-#root-login-in-chooseStory > ._story > ._writeOrVote {
+#story > ._writeOrVote {
   position: absolute;
   width: 100%; height: 50%;
   left: 0; top: 50%;
 }
-
-#root-login-in-chooseStory > ._story > ._writeOrVote > ._write > ._editor {
+#story > ._writeOrVote > ._write {
+}
+#story > ._writeOrVote > ._write > ._editor {
   height: 200px;
 }
+#story > ._writeOrVote > ._vote {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+}
+#story > ._writeOrVote > ._vote > ._title {
+  position: absolute;
+  width: 100%; height: 20px; line-height: 20px;
+  left: 0; top: 0;
+  z-index: 2;
+}
+
+#contenderSet {
+  position: absolute;
+  box-sizing: border-box;
+  padding-top: 20px;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  z-index: 1;
+}
+#contenderSet > .contender {
+  position: relative;
+  display: block;
+  margin: 10px;
+  padding: 20px 40px 10px 10px;
+  border-radius: 10px;
+  background-color: #0a00a9;
+  color: #ffffff;
+  overflow: hidden;
+}
+#contenderSet > .contender > ._user {
+  position: absolute;
+  left: 10px; top: 5px;
+  z-index: 1;
+  font-family: monospace;
+  font-size: 10px;
+  pointer-events: none;
+}
+#contenderSet > .contender > ._content {
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+#contenderSet > .contender > ._voteSet {
+  position: relative;
+  margin-top: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: monospace;
+  pointer-events: none;
+}
+#contenderSet > .contender > ._voteSet > .vote {
+  display: inline-block;
+  padding: 0 2px;
+  vertical-align: top;
+  background-color: #ffffff;
+  color: #000000;
+  margin-right: 5px;
+}
+#contenderSet > .contender > ._votable {
+  position: absolute;
+  width: 40px; height: 100%;
+  right: 0; top: 0;
+  z-index: 0;
+  cursor: pointer;
+  transition: background-color 500ms linear, width 500ms ease-out;
+}
+#contenderSet > .contender > ._votable._choose-vote:hover {
+  background-color: #9090ff;
+  width: 100%;
+}
+#contenderSet > .contender > ._votable > ._button {
+  position: absolute;
+  width: 100%; height: 100%;
+  padding: 0;
+  right: 0; top: 0;
+  font-size: 0;
+  background-color: transparent;
+}
+#contenderSet > .contender > ._votable > ._button:after {
+  content: "";
+  position: absolute;
+  display: block;
+  width: 20px; height: 20px;
+  right: 10px; top: 50%;
+  margin-top: -10px;
+  background-color: #ffffff;
+  border-radius: 100%;
+  transition: width 200ms ease-in-out, height 200ms ease-in-out, margin-top 200ms ease-in-out, right 200ms ease-in-out;
+}
+#contenderSet > .contender > ._votable._choose-vote:hover > ._button:after {
+  width: 30px; height: 30px;
+  margin-top: -15px;
+  right: 5px;
+}
+
 
 ._clock { position: relative; display: inline-block; white-space: nowrap; }
 ._clock > ._component { position: relative; display: inline-block; }
