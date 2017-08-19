@@ -23,13 +23,17 @@
   left: 0; top: 0;
 }
 
+#root-login {
+  background-color: #e8e8e8;
+}
+
 #lobby {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
   background-color: #dfeff9;
 }
-#lobby > ._title {
+#lobby > .title {
   position: relative;
   display: block;
   width: 100%; height: 60px; line-height: 60px;
@@ -41,52 +45,52 @@
   text-indent: 18px;
   text-transform: uppercase;
 }
-#lobby > ._storySet {
+#lobby > .storySet {
   position: relative;
   width: 100%;
   overflow-y: auto;
 }
-#lobby > ._storySet > .story {
+#lobby > .storySet > .story {
   background-color: #ffffff;
   padding: 20px 4px;
 }
-#lobby > ._storySet > .story > ._quickName {
+#lobby > .storySet > .story > .quickName {
   position: absolute;
   display: block;
   left: 4px; top: 0; height: 20px; line-height: 20px;
   font-size: 12px;
   color: #808080;
 }
-#lobby > ._storySet > .story > ._user {
+#lobby > .storySet > .story > .user {
   position: absolute;
   display: block;
   left: 104px; top: 0; height: 20px; line-height: 20px;
   font-size: 12px;
   color: #808080;
 }
-#lobby > ._storySet > .story > ._description {
+#lobby > .storySet > .story > .description {
   display: block;
   font-family: serif;
   font-size: 18px;
 }
-#lobby > ._storySet > .story > ._age {
+#lobby > .storySet > .story > .age {
   position: absolute;
   left: 4px; bottom: 0;
   font-size: 12px;
   color: #a0a0a0;
   height: 20px; line-height: 20px;
 }
-#lobby > ._storySet > .story > ._age > ._0,
-#lobby > ._storySet > .story > ._age > ._1,
-#lobby > ._storySet > .story > ._age > ._2 {
+#lobby > .storySet > .story > .age > .0,
+#lobby > .storySet > .story > .age > .1,
+#lobby > .storySet > .story > .age > .2 {
   margin-right: 2px;
 }
-#lobby > ._storySet > .story > ._authored {
+#lobby > .storySet > .story > .authored {
   position: absolute;
   width: 40px; height: 40px;
   top: 50%; margin-top: -20px; right: 10px;
 }
-#lobby > ._storySet > .story > ._authored > ._button {
+#lobby > .storySet > .story > .authored > .button {
   position: absolute;
   left: 0; top: 0;
   width: 100%; height: 100%;
@@ -102,12 +106,12 @@
   left: 0; top: 0;
   background-color: #dfeff9;
 }
-#story > ._header {
+#story > .header {
   position: absolute;
   width: 100%; height: 40px; line-height: 40px;
   z-index: 2;
 }
-#story > ._header > ._back {
+#story > .header > .back {
   position: absolute;
   width: 40px; height: 40px;
   left: 0; top: 0;
@@ -115,21 +119,21 @@
   z-index: 10;
   text-align: center;
 }
-#story > ._header > ._title {
+#story > .header > .title {
   position: absolute;
   width: 100%; height: 24px; line-height: 24px;
   left: 0; top: 0;
   font-size: 20px;
   text-align: center;
 }
-#story > ._header > ._roundInfo {
+#story > .header > .roundInfo {
   position: absolute;
   width: 100%; height: 16px;
   left: 0; top: 24px;
   white-space: nowrap;
   text-align: center;
 }
-#story > ._header > ._roundInfo > ._phase {
+#story > .header > .roundInfo > .phase {
   display: inline-block;
   height: 16px; line-height: 16px;
   margin-right: 10px;
@@ -137,7 +141,7 @@
   vertical-align: top;
   display: none;
 }
-#story > ._header > ._roundInfo > ._phaseTimeRemaining {
+#story > .header > .roundInfo > .phaseTimeRemaining {
   display: inline-block;
   height: 16px; line-height: 16px;
   font-size: 12px;
@@ -145,7 +149,7 @@
   white-space: nowrap;
 }
 
-#story > ._writeSet {
+#story > .writeSet {
   position: absolute;
   box-sizing: border-box;
   width: 100%; height: 50%; padding-top: 40px;
@@ -154,24 +158,24 @@
   
   font-family: serif;
 }
-#story > ._writeSet > .write {
+#story > .writeSet > .write {
   display: inline;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;
 }
-#story > ._writeSet > .write > ._content {
+#story > .writeSet > .write > .content {
   font-size: 14px;
   color: #040404;
   vertical-align: middle;
 }
-#story > ._writeSet > .write:hover > ._content {
+#story > .writeSet > .write:hover > .content {
   background-color: #c0c0c0;
 }
-#story > ._writeSet > .write[class^="_preview"] > ._content {
+#story > .writeSet > .write[class^="preview"] > .content {
   background-color: #b0b0ff;
 }
-#story > ._writeSet > .write > ._username {
+#story > .writeSet > .write > .username {
   box-sizing: border-box;
   border: solid 0 #8080f0;
   margin-left: 0;
@@ -183,29 +187,29 @@
   
   transition: font-size 300ms linear, border 300ms linear, margin 300ms linear, padding 300ms linear;
 }
-#story > ._writeSet > .write:hover > ._username {
+#story > .writeSet > .write:hover > .username {
   border: solid 1px #8080f0;
   margin-left: 3px;
   padding: 0 3px;
   font-size: 12px;
 }
 
-#story > ._writeOrVote {
+#story > .writeOrVote {
   position: absolute;
   width: 100%; height: 50%;
   left: 0; top: 50%;
 }
-#story > ._writeOrVote > ._write {
+#story > .writeOrVote > .write {
 }
-#story > ._writeOrVote > ._write > ._editor {
+#story > .writeOrVote > .write > .editor {
   height: 200px;
 }
-#story > ._writeOrVote > ._vote {
+#story > .writeOrVote > .vote {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
 }
-#story > ._writeOrVote > ._vote > ._title {
+#story > .writeOrVote > .vote > .title {
   position: absolute;
   width: 100%; height: 20px; line-height: 20px;
   left: 0; top: 0;
@@ -230,7 +234,7 @@
   color: #ffffff;
   overflow: hidden;
 }
-#contenderSet > .contender > ._user {
+#contenderSet > .contender > .user {
   position: absolute;
   left: 10px; top: 5px;
   z-index: 1;
@@ -238,12 +242,12 @@
   font-size: 10px;
   pointer-events: none;
 }
-#contenderSet > .contender > ._content {
+#contenderSet > .contender > .content {
   position: relative;
   z-index: 1;
   pointer-events: none;
 }
-#contenderSet > .contender > ._voteSet {
+#contenderSet > .contender > .voteSet {
   position: relative;
   margin-top: 4px;
   font-size: 12px;
@@ -254,7 +258,7 @@
   z-index: 1;
   pointer-events: none;
 }
-#contenderSet > .contender > ._voteSet > .vote {
+#contenderSet > .contender > .voteSet > .vote {
   display: inline-block;
   padding: 0 2px;
   vertical-align: top;
@@ -262,7 +266,7 @@
   color: #000000;
   margin-right: 5px;
 }
-#contenderSet > .contender > ._votable {
+#contenderSet > .contender > .votable {
   position: absolute;
   width: 40px; height: 100%;
   right: 0; top: 0;
@@ -270,11 +274,11 @@
   cursor: pointer;
   transition: background-color 500ms linear, width 500ms ease-out;
 }
-#contenderSet > .contender > ._votable._choose-vote:hover {
+#contenderSet > .contender > .votable.choose-vote:hover {
   background-color: #9090ff;
   width: 100%;
 }
-#contenderSet > .contender > ._votable > ._button {
+#contenderSet > .contender > .votable > .button {
   position: absolute;
   width: 100%; height: 100%;
   padding: 0;
@@ -282,7 +286,7 @@
   font-size: 0;
   background-color: transparent;
 }
-#contenderSet > .contender > ._votable > ._button:after {
+#contenderSet > .contender > .votable > .button:after {
   content: "";
   position: absolute;
   display: block;
@@ -293,29 +297,32 @@
   border-radius: 100%;
   transition: width 200ms ease-in-out, height 200ms ease-in-out, margin-top 200ms ease-in-out, right 200ms ease-in-out;
 }
-#contenderSet > .contender > ._votable._choose-vote:hover > ._button:after {
+#contenderSet > .contender > .votable.choose-vote:hover > .button:after {
   width: 30px; height: 30px;
   margin-top: -15px;
   right: 5px;
 }
 
 
-._clock { position: relative; display: inline-block; white-space: nowrap; }
-._clock > ._component { position: relative; display: inline-block; }
-._clock > ._component > ._name { display: inline-block; }
-._clock > ._component > ._value { display: inline-block; }
-._clock > ._separator { position: relative; display: inline-block; }
+.clock { position: relative; display: inline-block; white-space: nowrap; }
+.clock > .component { position: relative; display: inline-block; }
+.clock > .component > .name { display: inline-block; }
+.clock > .component > .value { display: inline-block; }
+.clock > .separator { position: relative; display: inline-block; }
 
-._clock._format-string { }
-._clock._format-string > ._component {}
-._clock._format-string > ._component._empty { display: none; }
-._clock._format-string > ._component > ._name { }
-._clock._format-string > ._component > ._value { margin-right: 4px; }
-._clock._format-string > ._separator { margin-right: 4px; }
-._clock._format-string > ._separator:before { content: ","; }
-._clock._format-string > ._separator._empty { display: none; }
+.clock.format-string { }
+.clock.format-string > .component {}
+.clock.format-string > .component.empty { display: none; }
+.clock.format-string > .component > .name { }
+.clock.format-string > .component > .value { margin-right: 4px; }
+.clock.format-string > .separator { margin-right: 4px; }
+.clock.format-string > .separator:before { content: ","; }
+.clock.format-string > .separator.empty { display: none; }
 
-._clock._format-digital { }
-._clock._format-digital > ._separator:before { content: ":"; }
-._clock._format-digital > ._component { }
-._clock._format-digital > ._component > ._name { display: none; }
+.clock.format-digital { }
+.clock.format-digital > .separator:before { content: ":"; }
+.clock.format-digital > .component { }
+.clock.format-digital > .component > .name { display: none; }
+
+.interactive { background-color: #0a00a9; }
+.input.focus > .anim > .a { background-color: #ffffff; }

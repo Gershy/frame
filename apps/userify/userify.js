@@ -72,7 +72,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       toInfo: function(obj) {
         if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
         if (U.isObj(obj, Function)) return { getValue: obj };
-        return { getValue: function() { return this.value; }, value: obj };
+        return { getValue: function() { return this.value; }, setValue: function(val) { this.value = val; }, value: obj };
       },
       pafam: function(params, name, def) {
         return uf.toInfo(U.param(params, name, def));
@@ -390,7 +390,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      FuncDecorator: U.makeClass({ name: 'FunkDecorator',
+      FuncDecorator: U.makeClass({ name: 'FuncDecorator',
         superclassName: 'Decorator',
         description: 'Perform arbitrary actions as a decorator',
         methods: function(sc, c) { return {
@@ -493,7 +493,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (htmlId.length < 40) this.domRoot.id = htmlId;
             
             // Set desired css classes
-            this.domRoot.classList.add('_' + this.name);
+            this.domRoot.classList.add(this.name);
             for (var i = 0, len = this.cssClasses.length; i < len; i++)
               this.domRoot.classList.add(this.cssClasses[i]);
             
@@ -521,7 +521,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           createDomRoot: function() {
             var ret = document.createElement('span');
-            ret.classList.add('_text');
+            ret.classList.add('text');
             return ret;
           },
           tick: function(millis) {
@@ -550,9 +550,9 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           tick: function(millis) {
             if (this.enabledData.getValue())
-              this.domRoot.classList.remove('_disabled');
+              this.domRoot.classList.remove('disabled');
             else
-              this.domRoot.classList.add('_disabled');
+              this.domRoot.classList.add('disabled');
           },
         };}
       }),
@@ -568,26 +568,26 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           createDomRoot: function() {
             var ret = document.createElement('div');
-            ret.classList.add('_input');
-            ret.classList.add(this.multiline ? '_multiline' : '_inline');
+            ret.classList.add('input');
+            ret.classList.add(this.multiline ? 'multiline' : 'inline');
             
             var input = document.createElement(this.multiline ? 'textarea' : 'input');
-            input.classList.add('_interactive');
+            input.classList.add('interactive');
             input.oninput = function(e) {
               this.textInfo.setValue(input.value);
             }.bind(this);
             ret.appendChild(input);
             
             var placeholder = document.createElement('div');
-            placeholder.classList.add('_placeholder');
+            placeholder.classList.add('placeholder');
             ret.appendChild(placeholder);
             
             var anim = document.createElement('div');
-            anim.classList.add('_anim');
+            anim.classList.add('anim');
             for (var i = 0; i < 4; i++) {
               var a = document.createElement('div');
-              a.classList.add('_a');
-              a.classList.add('_a' + (i + 1));
+              a.classList.add('a');
+              a.classList.add('a' + (i + 1));
               anim.appendChild(a);
             }
             ret.appendChild(anim);
@@ -605,16 +605,16 @@ var package = new PACK.pack.Package({ name: 'userify',
             uf.domSetValue(input, inputText);
             
             // Update the "_empty" class
-            if (inputText)  this.domRoot.classList.remove('_empty');
-            else             this.domRoot.classList.add('_empty');
+            if (inputText)  this.domRoot.classList.remove('empty');
+            else             this.domRoot.classList.add('empty');
             
             // Update the "_focus" class
-            if (document.activeElement === input && !this.domRoot.classList.contains('_focus')) {
-              this.domRoot.classList.add('_focus');
+            if (document.activeElement === input && !this.domRoot.classList.contains('focus')) {
+              this.domRoot.classList.add('focus');
               var animSet = this.domRoot.childNodes[2].childNodes;
               for (var i = 0, len = animSet.length; i < len; i++) uf.domRestartAnimation(animSet[i]);
             } else if (document.activeElement !== input) {
-              this.domRoot.classList.remove('_focus');
+              this.domRoot.classList.remove('focus');
             }
           },
         };}
@@ -631,8 +631,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           createDomRoot: function() {
             var button = document.createElement('div');
-            button.classList.add('_button');
-            button.classList.add('_interactive');
+            button.classList.add('button');
+            button.classList.add('interactive');
             button.onkeypress = function(e) {
               if (e.keyCode === 13 || e.keyCode === 32) {
                 button.onclick();
@@ -654,8 +654,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             uf.domSetText(this.domRoot, this.textInfo.getValue());
             
-            if (this.waiting)  this.domRoot.classList.add('_waiting');
-            else               this.domRoot.classList.remove('_waiting');
+            if (this.waiting)  this.domRoot.classList.add('waiting');
+            else               this.domRoot.classList.remove('waiting');
           },
           
         };}
@@ -764,7 +764,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             for (var i = 0, len = this.numWrappers; i < len; i++) {
               ptr.appendChild(document.createElement('div'));
               ptr = ptr.childNodes[0];
-              ptr.classList.add('_wrap');
+              ptr.classList.add('wrap');
             }
             return ret;
           },
@@ -851,12 +851,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             if (nextChild !== this.currentChild) {
               if (this.currentChild) {
-                this.domRoot.classList.remove('_choose-' + (this.currentChild ? this.currentChild.name : 'null'));
+                this.domRoot.classList.remove('choose-' + (this.currentChild ? this.currentChild.name : 'null'));
                 this.currentChild.stop();
               }
               this.currentChild = nextChild;
               if (this.currentChild) {
-                this.domRoot.classList.add('_choose-' + (this.currentChild ? this.currentChild.name : 'null'));
+                this.domRoot.classList.add('choose-' + (this.currentChild ? this.currentChild.name : 'null'));
               }
             }
           }
@@ -981,8 +981,8 @@ var package = new PACK.pack.Package({ name: 'userify',
               view.domRoot.id = nameChain.join('-');
               
               // Replace the naming class
-              view.domRoot.classList.remove('_' + view.name);
-              view.domRoot.classList.add('_' + newName);
+              view.domRoot.classList.remove(view.name);
+              view.domRoot.classList.add(newName);
             }
             
             view.name = newName;

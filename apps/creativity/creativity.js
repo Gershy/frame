@@ -1,11 +1,11 @@
-// {REMOVE=
+/// {REMOVE=
 /*
 - Many of the sets in this app only ever increase in size, and never re-index anything.
   - These sets shouldn't be constantly getting requested; instead the size should be
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")    
 */
-// =REMOVE}
+/// =REMOVE}
 var package = new PACK.pack.Package({ name: 'creativity',
   dependencies: [ 'quickDev', 'userify', 'p', 'queries' ],
   buildFunc: function(packageName, qd, uf, p, qr) {
@@ -26,13 +26,18 @@ var package = new PACK.pack.Package({ name: 'creativity',
 
     cr.update({
       
-      // {SERVER=
-      resources: { css: [ 'apps/creativity/style.css', 'apps/userify/style.css' ] },
-      // =SERVER}
+      /// {SERVER=
+      resources: {
+        css: [
+          'apps/userify/style.css',
+          'apps/creativity/style.css'
+        ]
+      },
+      /// =SERVER}
       Creativity: U.makeClass({ name: 'Creativity',
         superclass: qd.DossierDict,
         methods: function(sc, c) { return {
-          // {SERVER=
+          /// {SERVER=
           $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
@@ -59,13 +64,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
             return new P({ val: { token: user.getToken() } });
             
           }
-          // =SERVER}
+          /// =SERVER}
         };}
       }),
       CreativityUser: U.makeClass({ name: 'CreativityUser',
         superclass: qd.DossierDict,
         methods: function(sc, c) { return {
-          // {SERVER=
+          /// {SERVER=
           getToken: function(user) {
             var u = this.getChild('username').getValue();
             var p = this.getChild('password').getValue();
@@ -83,11 +88,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
             return str;
           }
-          // =SERVER}
+          /// =SERVER}
         };}
       }),
       
-      // {SERVER=
+      /// {SERVER=
       $updateCreativity: function(app) {
         
         var time = U.timeMs();
@@ -302,9 +307,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
       informVoteSubmitted: function(story) {
         
       },
-      // =SERVER}
+      /// =SERVER}
       
-      // {CLIENT=
+      /// {CLIENT=
       timeComponentData: [
         { text: [ 'second', 'seconds' ], digits: 2, mult: cr.mapMillis.second, div: 1 / cr.mapMillis.second },
         { text: [ 'minute', 'minutes' ], digits: 2, mult: cr.mapMillis.minute, div: 1 / cr.mapMillis.minute },
@@ -326,22 +331,22 @@ var package = new PACK.pack.Package({ name: 'creativity',
           
           createDomRoot: function() {
             var ret = document.createElement('div');
-            ret.classList.add('_clock');
-            ret.classList.add('_format-' + this.format);
+            ret.classList.add('clock');
+            ret.classList.add('format-' + this.format);
           
             for (var i = 0, len = this.components.length; i < len; i++) {
               var c = this.components[len - i - 1];
               
               var comp = document.createElement('div');
-              comp.classList.add('_component');
+              comp.classList.add('component');
               comp.classList.add(c.text[0]);
               
               var compName = document.createElement('div');
               if (this.format === 'digital') uf.domSetText(compName, c.text[1]);
-              compName.classList.add('_name');
+              compName.classList.add('name');
               
               var compVal = document.createElement('div');
-              compVal.classList.add('_value');
+              compVal.classList.add('value');
               
               comp.appendChild(compVal);
               comp.appendChild(compName);
@@ -350,7 +355,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
               
               if (i < len - 1) {
                 var sep = document.createElement('div');
-                sep.classList.add('_separator');
+                sep.classList.add('separator');
                 ret.appendChild(sep);
               }
               
@@ -394,12 +399,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
                 time -= val * c.mult;
                 
                 if (gotOne || val || i === len - 1) {
-                  comp.classList.remove('_empty');
-                  if (sep) sep.classList.remove('_empty');
+                  comp.classList.remove('empty');
+                  if (sep) sep.classList.remove('empty');
                   gotOne = true;
                 } else {
-                  comp.classList.add('_empty');
-                  if (sep) sep.classList.add('_empty');
+                  comp.classList.add('empty');
+                  if (sep) sep.classList.add('empty');
                 }
                 
                 uf.domSetText(comp.childNodes[1], c.text[val === 1 ? 0 : 1]);
@@ -428,7 +433,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       updateSet: function(sett) { for (var k in sett) sett[k].update(); },
       updateOnFrame: {},
       updateOnUsername: {},
-      // =CLIENT}
+      /// =CLIENT}
       
       versioner: new qd.Versioner({ versions: [
         { name: 'initial',
@@ -438,7 +443,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             var outline = new qd.Outline({ c: cr.Creativity, p: { name: 'app' }, i: [
               
               { c: qd.DossierString,  p: { name: 'version' } },
-              // {CLIENT=
+              /// {CLIENT=
               { c: qd.DossierString,  p: { name: 'username' } },
               { c: qd.DossierString,  p: { name: 'password' } },
               { c: qd.DossierString,  p: { name: 'token' } },
@@ -446,14 +451,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
               { c: qd.DossierString,  p: { name: 'loginError' } },
               { c: qd.DossierString,  p: { name: 'currentWrite' } },
               { c: qd.DossierRef,     p: { name: 'currentStory',    template: '~root.storySet.$quickName' } },
-              // =CLIENT}
+              /// =CLIENT}
               { c: qd.DossierList,    p: { name: 'userSet',
                 innerOutline: { c: cr.CreativityUser, i: [
                   { c: qd.DossierString,  p: { name: 'fname' } },
                   { c: qd.DossierString,  p: { name: 'lname' } },
-                  // {SERVER=
+                  /// {SERVER=
                   { c: qd.DossierString,  p: { name: 'password' } },
-                  // =SERVER}
+                  /// =SERVER}
                   { c: qd.DossierString,  p: { name: 'username' } }
                 ]},
                 nameFunc: function(par, child) { return child.getValue('username'); }
@@ -461,13 +466,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
               { c: qd.DossierList,    p: { name: 'storySet',
                 innerOutline: { c: qd.DossierDict, i: [
                   { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
-                  // {CLIENT=
+                  /// {CLIENT=
                   { c: qd.DossierBoolean, p: { name: 'isAuthored' } },
                   { c: qd.DossierString,  p: { name: 'userDisp' } },
                   { c: qd.DossierInt,     p: { name: 'age' } },
                   { c: qd.DossierInt,     p: { name: 'phaseTimeRemaining' } },
                   { c: qd.DossierRef,     p: { name: 'currentContest',  template: '~par.contestSet.$contestInd' } },
-                  // =CLIENT}
+                  /// =CLIENT}
                   { c: qd.DossierInt,     p: { name: 'createdTime' } },
                   { c: qd.DossierString,  p: { name: 'quickName' } },
                   { c: qd.DossierString,  p: { name: 'description' } },
@@ -494,7 +499,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     ]},
                     nameFunc: function(par, child) { return child.getChild('@user').name; },
                     // TODO: Users are being handled differently server/client-side; client is trying to get away with using usernames without ever loading user `Dossier`
-                    // {SERVER=
+                    /// {SERVER=
                     verifyAndSanitizeData: function(child, params) {
                       
                       var username = U.param(params, 'username');
@@ -516,7 +521,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                       };
                       
                     }
-                    // =SERVER}
+                    /// =SERVER}
                   }},
                   
                   { c: qd.DossierList,    p: { name: 'contestSet',
@@ -531,21 +536,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
                               { c: qd.DossierRef,   p: { name: 'user',      template: '~root.userSet.$username' } },
                               { c: qd.DossierInt,   p: { name: 'value' } }
                             ]},
-                            nameFunc: function(par, child) {
-                              // TODO: unify??
-                              // {SERVER=
-                              return child.getChild('@user').name;
-                              // =SERVER}
-                              // {CLIENT=
-                              return child.getChild('user').value[0];
-                              // =CLIENT}
+                            nameFunc: function(par, vote) {
+                              return vote.getChild('@user').name;
                             },
                             verifyAndSanitizeData: function(voteSet, params) {
                               var username = U.param(params, 'username');
                               var value = 1; // U.param(params, 'value');
                               
-                              // TODO: Unify! The problem is always with users
-                              // {SERVER=
+                              /// {SERVER=
                               // Oh boy that's a lot of parents... moving from:
                               //  src - storySet, story, contestSet, contest, writeSet, write, voteSet
                               //  trg - storySet, story
@@ -553,12 +551,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
                               if (!author) throw new Error('Story doesn\'t have author "' + username + '"');
                               var user = author.getChild('@user');
                               cr.informVoteSubmitted(author.par.par);
-                              // =SERVER}
+                              /// =SERVER}
                               
-                              // {CLIENT=
+                              /// {CLIENT=
                               var user = voteSet.getChild([ '~root', 'userSet', username ]);
                               if (!user) throw new Error('Can\'t find user "' + username + '"');
-                              // =CLIENT}
+                              /// =CLIENT}
                               
                               return {
                                 user: user,
@@ -568,14 +566,9 @@ var package = new PACK.pack.Package({ name: 'creativity',
                             }
                           }}
                         ]},
-                        nameFunc: function(par, child) {
+                        nameFunc: function(par, write) {
                           // TODO: Can this be unified?
-                          // {SERVER=
-                          return child.getChild('@user').name;
-                          // =SERVER}
-                          // {CLIENT=
-                          return child.getValue('user').split('.').pop();
-                          // =CLIENT}
+                          return write.getChild('user').value[0];
                         },
                         verifyAndSanitizeData: function(writeSet, params) {
                           
@@ -583,7 +576,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           var content = U.param(params, 'content');
                           
                           // TODO: Again, can server+client be unified?
-                          // {SERVER=
+                          /// {SERVER=
                           // Move from:
                           //  src - storySet, story, contestSet, contest, writeSet
                           //  trg - storySet, story
@@ -591,12 +584,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           if (!author) throw new Error('Story doesn\'t have author "' + username + '"');
                           var user = author.getChild('@user');
                           cr.informWriteSubmitted(author.par.par);
-                          // =SERVER}
+                          /// =SERVER}
                           
-                          // {CLIENT=
+                          /// {CLIENT=
                           var user = writeSet.getChild([ '~root', 'userSet', username ]);
                           if (!user) throw new Error('Can\'t find user "' + username + '"');
-                          // =CLIENT}
+                          /// =CLIENT}
                           
                           return {
                             user: user,
@@ -606,11 +599,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           
                         }
                       }},
-                      // {CLIENT=
+                      /// {CLIENT=
                       { c: qd.DossierRef,     p: { name: 'currentWrite',      template: '~par.writeSet.$username' } },
                       { c: qd.DossierRef,     p: { name: 'currentVote',       template: '~par.writeSet.$username.voteSet.$username' } },
                       { c: qd.DossierRef,     p: { name: 'currentVotedWrite', template: '~par.writeSet.$username' } }
-                      // =CLIENT}
+                      /// =CLIENT}
                     ]},
                     nameFunc: function(par, child) { return child.getValue('num'); }
                   }},
@@ -671,7 +664,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
               
             ]});
             
-            // {CLIENT=
+            /// {CLIENT=
             outline.getChild('token').p.changeHandler = cr.updateSet.bind(null, cr.updateOnUsername);
             
             outline.getChild('user').p.contentFunc = function(doss) {
@@ -864,16 +857,16 @@ var package = new PACK.pack.Package({ name: 'creativity',
               currentVotedWrite.setValue(vote ? vote.par.par : null);
             };
     
-            // =CLIENT}
+            /// =CLIENT}
             
             return outline.$getDoss({
               
-              // {SERVER=
+              /// {SERVER=
               version: '0.0.1 (initial)',
-              // =SERVER}
-              // {CLIENT=
+              /// =SERVER}
+              /// {CLIENT=
               version: 'Loading...',
-              // =CLIENT}
+              /// =CLIENT}
               userSet: {},
               storySet: {}
               
@@ -881,7 +874,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           }
         },
-        // {SERVER=
+        /// {SERVER=
         { name: 'addDefaultData',
           detect: function(doss) { return doss.getChild('userSet').length === 0; },
           $apply: function(doss) {
@@ -970,7 +963,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           }
         }
-        // =SERVER}
+        /// =SERVER}
       ]})
       
     });
@@ -986,15 +979,15 @@ var package = new PACK.pack.Package({ name: 'creativity',
       
       doss.fullyLoaded();
       
-      // {SERVER=
+      /// {SERVER=
       // console.log(JSON.stringify(doss.getValue(), null, 2));
       cr.queryHandler = doss;
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
       setInterval(function() { cr.$updateCreativity(doss).done(); }, 5000);
       console.log('App update loop initialized...');
-      // =SERVER}
+      /// =SERVER}
       
-      // {CLIENT=
+      /// {CLIENT=
       var rootView = new uf.RootView({ name: 'root',
         children: [
           
@@ -1247,7 +1240,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           ]}),
           new uf.TextView({ name: 'version', info: doss.getChild('version') }),
-          new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo + 'ms' } })
+          new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo.value + 'ms' } })
           
         ],
         updateFunc: function() {
@@ -1268,7 +1261,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       }}).then(function(data) {
         doss.setValue('token', data.token);
       });
-      // =CLIENT}
+      /// =CLIENT}
       
     }).done();
     
