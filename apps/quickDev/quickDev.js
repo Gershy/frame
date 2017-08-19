@@ -1116,7 +1116,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         }; }
       }),
       DossierRef: U.makeClass({ name: 'DossierRef',
-        superclassName: 'DossierString',
+        superclassName: 'DossierValue',
         methods: function(sc) { return {
           init: function(params /* outline */) {
             sc.init.call(this, params);
@@ -1124,19 +1124,33 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
           setValue: function(value) {
             if (value === null) { sc.setValue.call(this, null); return; }
+            if (U.isObj(value, Array)) { sc.setValue.call(this, value); return; }
             
-            // Dossiers are valid values for `DossierRef.prototype.setValue`; resolve them to their addresses
-            if (U.isInstance(value, PACK.quickDev.Dossier)) value = value.getAddress();
-            else if (U.isObj(value, Array)) value = value.join('.');
-            else if (!U.isObj(value, String)) value = value.toString();
+            if (!U.isInstance(value, PACK.quickDev.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
             
-            var base = this.getBaseDoss().getAddress() + '.';
+            var addr = value.getNameChain();
             
-            // If the full address was specified, chop off the base
-            // TODO: This could cause problems if `baseAddress` coincidentally appears in `this.value` e.g. "app.appSet.app.appSet" although that's just generally a nightmare anyways
-            if (value.substr(0, base.length) === base) value = value.substr(base.length);
+            var vals = [];
+            var template = this.outline.p.template;
+            if (!U.isObj(template, Array)) template = template.split('.');
             
-            sc.setValue.call(this, value);
+            for (var endOff = 1, len = Math.min(template.length, addr.length); endOff <= len; endOff++) {
+              var tmp = template[template.length - endOff];
+              var val = addr[addr.length - endOff];
+              
+              if (tmp[0] === '$')
+                vals.push(val);
+              else if (tmp[0] === '~')
+                break;
+              else if (tmp !== val)
+                throw new Error('Doss at addr "' + addr.join('.') + '" doesn\'t match template "' + template.join('.') + '"');
+            }
+            
+            vals.reverse();
+            sc.setValue.call(this, vals);
+          },
+          getValue: function() {
+            return this.value ? this.getRefAddress() : null;
           },
           getNamedChild: function(name) {
             return sc.getNamedChild.call(this, name);
@@ -1148,19 +1162,36 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           getRefAddress: function() {
-            return this.outline.getProperty('baseAddress', '~root') + '.' + this.value;
+            var valInd = 0;
+            var template = this.outline.p.template;
+            if (!U.isObj(template, Array)) template = template.split('.');
+            
+            // If `this.value` is null resolve it to an empty array
+            var vals = this.value || [];
+            var ret = [];
+            for (var i = 0; i < template.length; i++)
+              ret.push(template[i][0] === '$' ? vals[valInd++] : template[i]);
+            
+            return ret.join('.');
           },
-          getBaseDoss: function() {
-            return this.getChild(this.outline.getProperty('baseAddress', '~root'));
+          getHolderAddress: function() {
+            // Returns the address of the `Dossier` which holds this `DossierRef`'s reference
+            var addr = this.getRefAddress().split('.');
+            return addr.slice(0, addr.length - 1).join('.');
+          },
+          getHolderDoss: function() {
+            // Returns the `Dossier` which holds this `DossierRef`'s reference
+            var addr = this.getRefAddress().split('.');
+            return this.getChild(addr.slice(0, addr.length - 1));
           },
           dereference: function() {
-            return this.value !== null ? this.getChild(this.getRefAddress()) : null;
+            return this.value ? this.getChild(this.getRefAddress()) : null;
           },
           getRawDataView: function() {
-            return this.value !== null ? this.getRefAddress() : null;
+            return this.value ? this.getRefAddress() : null;
           },
           getDataView0: function(existing) {
-            return this.value !== null ? this.dereference().getDataView(existing) : null;
+            return this.value ? this.dereference().getDataView(existing) : null;
           }
         }; }
       }),
@@ -1351,7 +1382,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             }).fail(function(err) {
               
               console.log('Sync error on: ' + pass.doss.getAddress());
-              console.error(err.stack);
+              throw err;
               
             }).done();
             
@@ -1443,13 +1474,76 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // console.log('Syncing REF: ' + this.doss.getAddress());
             
             var doss = this.doss;
-            var editor = new qd.Editor();
-            return editor.$addFast({
-              par: doss.getBaseDoss(),
-              data: refData
-            }).then(function() {
-              doss.dereference().fullyLoaded();
+            var holder = doss.getHolderDoss();
+            if (holder) {
+              
+              var $holder = new P({ val: holder });
+              
+            } else {
+              
+              console.log('Retrieving holder...');
+              var holderAddr = doss.getHolderAddress().split('.');
+              
+              var missingChain = [];
+              while (holderAddr.length && !doss.getChild(holderAddr)) {
+                missingChain.push(holderAddr[holderAddr.length - 1]);
+                holderAddr = holderAddr.slice(0, holderAddr.length - 1);
+              }
+              
+              missingChain.reverse();
+              
+              // Note that at this point, `holderAddr` points to the deepest existing parent
+              var $holder = new P({ val: doss.getChild(holderAddr) });
+              
+              var editor = new qd.Editor();
+              for (var i = 0; i < missingChain.length; i++) {
+                $holder = $holder.then(function(ind, holder) {
+                  var reqName = missingChain[ind];
+                  return reqName in holder.children
+                    ? holder.children[reqName]
+                    : editor.$addFast({ par: holder, name: missingChain[ind], data: {} });
+                }.bind(null, i));
+              }
+              
+              /*
+              var selection = {};
+              var ptr = selection;
+              
+              for (var i = 0; i < missingChain.length; i++) {
+                var name = missingChain[i];
+                ptr[name] = {};
+                ptr = ptr[name];
+              }
+              
+              var bestExisting = ;
+              
+              var editor = new qd.Editor();
+              var $holder = editor.$addFast({ par: 
+              
+              var $holder = queries.$doQuery({
+                address: bestExisting.getAddress(),
+                command: 'getSelection',
+                params: {
+                  selection: selection
+                }
+              }).then(function(result) {
+                console.log('SELECTED:', result);
+              });*/
+              
+            }
+            
+            return $holder.then(function(holder) {
+              
+              var editor = new qd.Editor();
+              return editor.$addFast({
+                par: holder,
+                data: refData
+              }).then(function() {
+                doss.dereference().fullyLoaded();
+              });
+              
             });
+            
             
           }
         };}
@@ -1509,6 +1603,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             for (var k in uncovered) rem.push({ par: doss, name: k });
             
             //console.log('Syncing DCT: ' + doss.getAddress());
+            
             var editor = new qd.Editor();
             return editor.$editFast({ add: add, rem: rem, mod: mod }).then(function() {
               doss.fullyLoaded();

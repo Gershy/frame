@@ -216,8 +216,8 @@ Error.stackTraceLimit = Infinity;
 });
 
 // Build utility library
-global.C = {};    // All classes are stored here
-global.PACK = {};  // All packages are stored here
+global.C = {};      // All classes are stored here
+global.PACK = {};   // All packages are stored here
 global.NEXT_ID = 0;
 global.U = {
   SKIP: { SKIP: true }, // directive to exclude an item during iteration
@@ -635,15 +635,6 @@ global.U = {
   }
   
 };
-
-/*
-Only one package is built in an ad-hoc manner:
-
--PACK
-This package is the package which facilitates the proper method of building
-packages. If it were to be built in the standard way, it would have to build
-itself.
-*/
 
 // PACKAGE: Packaging
 global.PACK.pack = {

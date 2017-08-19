@@ -331,7 +331,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
               }},
               { c: qd.DossierList,    p: { name: 'storySet',
                 innerOutline: { c: qd.DossierDict, i: [
-                  { c: qd.DossierRef,     p: { name: 'user',        baseAddress: '~root.userSet' } },
+                  { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
                   { c: qd.DossierInt,     p: { name: 'createdTime' } },
                   { c: qd.DossierString,  p: { name: 'quickName' } },
                   { c: qd.DossierString,  p: { name: 'description' } },
@@ -350,7 +350,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   
                   { c: qd.DossierList,    p: { name: 'authorSet',
                     innerOutline: { c: qd.DossierDict, i: [
-                      { c: qd.DossierRef,     p: { name: 'user',        baseAddress: '~root.userSet' } },
+                      { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
                       { c: qd.DossierInt,     p: { name: 'numSlaps' } },
                       { c: qd.DossierInt,     p: { name: 'lastSlapTime' } },
                       { c: qd.DossierInt,     p: { name: 'numSlams' } },
@@ -385,11 +385,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
                       { c: qd.DossierInt,     p: { name: 'num' } },
                       { c: qd.DossierList,    p: { name: 'writeSet',
                         innerOutline: { c: qd.DossierDict, i: [
-                          { c: qd.DossierRef,     p: { name: 'user',      baseAddress: '~root.userSet' } },
+                          { c: qd.DossierRef,     p: { name: 'user',      template: '~root.userSet.$username' } },
                           { c: qd.DossierString,  p: { name: 'content' } },
                           { c: qd.DossierList,    p: { name: 'voteSet',
                             innerOutline: { c: qd.DossierDict, i: [
-                              { c: qd.DossierRef,   p: { name: 'user',      baseAddress: '~root.userSet' } },
+                              { c: qd.DossierRef,   p: { name: 'user',      template: '~root.userSet.$username' } },
                               { c: qd.DossierInt,   p: { name: 'value' } }
                             ]},
                             nameFunc: function(par, child) { return child.getChild('@user').name; },
@@ -438,7 +438,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                   }},
                   
                   { c: qd.DossierList,    p: { name: 'writeSet',
-                    innerOutline: { c: qd.DossierRef, p: { baseAddress: '~par.~par.contestSet' } }
+                    innerOutline: { c: qd.DossierRef, p: { template: '~par.~par.contestSet.$contestInd.writeSet.$username' } }
                   }}
                   
                 ]},
@@ -745,11 +745,10 @@ var package = new PACK.pack.Package({ name: 'creativity',
         { c: qd.DossierString,  p: { name: 'username' } },
         { c: qd.DossierString,  p: { name: 'password' } },
         { c: qd.DossierString,  p: { name: 'token' } },
-        { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
+        { c: qd.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
         { c: qd.DossierString,  p: { name: 'loginError' } },
         { c: qd.DossierString,  p: { name: 'currentWrite' } },
-        { c: qd.DossierRef,     p: { name: 'currentStory',    baseAddress: '~root.storySet' } },
-        { c: qd.DossierRef,     p: { name: 'currentWriteSet', baseAddress: '~root', value: '@currentStory.@currentContest.writeSet' } },
+        { c: qd.DossierRef,     p: { name: 'currentStory',    template: '~root.storySet.$quickName' } },
         
         { c: qd.DossierList,    p: { name: 'userSet',
           innerOutline: { c: qd.DossierDict, i: [
@@ -763,8 +762,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         { c: qd.DossierList,    p: { name: 'storySet',
           innerOutline: { c: qd.DossierDict, i: [
             // TODO: Here's an example:
-            // { c: qd.DossierRef,     p: { name: 'user', addr: '~root.userSet.$username' } },
-            { c: qd.DossierRef,     p: { name: 'user',            baseAddress: '~root.userSet' } },
+            { c: qd.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
             
             { c: qd.DossierString,  p: { name: 'username' } },          // TODO: This value is on the client-side and not the server!!
             { c: qd.DossierBoolean, p: { name: 'isAuthored' } },        // TODO: This value is on the client-side and not the server!!
@@ -789,7 +787,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
             { c: qd.DossierList,    p: { name: 'authorSet',
               innerOutline: { c: qd.DossierDict, i: [
-                { c: qd.DossierRef,     p: { name: 'user',        baseAddress: '~root.userSet' } },
+                { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
                 { c: qd.DossierInt,     p: { name: 'numSlaps' } },
                 { c: qd.DossierInt,     p: { name: 'lastSlapTime' } },
                 { c: qd.DossierInt,     p: { name: 'numSlams' } },
@@ -803,11 +801,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
                 { c: qd.DossierInt,     p: { name: 'num' } },
                 { c: qd.DossierList,    p: { name: 'writeSet',
                   innerOutline: { c: qd.DossierDict, i: [
-                    { c: qd.DossierRef,     p: { name: 'user',      baseAddress: '~root.userSet' } },
+                    { c: qd.DossierRef,     p: { name: 'user',      template: '~root.userSet.$username' } },
                     { c: qd.DossierString,  p: { name: 'content' } },
                     { c: qd.DossierList,    p: { name: 'voteSet',
                       innerOutline: { c: qd.DossierDict, i: [
-                        { c: qd.DossierRef,   p: { name: 'user',      baseAddress: '~root.userSet' } },
+                        { c: qd.DossierRef,   p: { name: 'user',      template: '~root.userSet.$username' } },
                         { c: qd.DossierInt,   p: { name: 'value' } }
                       ]},
                       nameFunc: function(par, child) { return child.getChild('user').value; },
@@ -844,16 +842,16 @@ var package = new PACK.pack.Package({ name: 'creativity',
                     };
                   }
                 }},
-                { c: qd.DossierRef, p: { name: 'currentWrite',      baseAddress: '~par.writeSet' } },
-                { c: qd.DossierRef, p: { name: 'currentVote',       baseAddress: '~par.writeSet' } },
-                { c: qd.DossierRef, p: { name: 'currentVotedWrite', baseAddress: '~par.writeSet' } }
+                { c: qd.DossierRef, p: { name: 'currentWrite',      template: '~par.writeSet.$username' } },
+                { c: qd.DossierRef, p: { name: 'currentVote',       template: '~par.writeSet.$username.voteSet.$username' } },
+                { c: qd.DossierRef, p: { name: 'currentVotedWrite', template: '~par.writeSet.$username' } }
               ]},
               nameFunc: function(par, child) { return child.getValue('num'); }
             }},
-            { c: qd.DossierRef,     p: { name: 'currentContest',  baseAddress: '~par.contestSet' } },
+            { c: qd.DossierRef,     p: { name: 'currentContest',  template: '~par.contestSet.$contestInd' } },
             
             { c: qd.DossierList,    p: { name: 'writeSet',
-              innerOutline: { c: qd.DossierRef, p: {                baseAddress: '~par.~par.contestSet' } }
+              innerOutline: { c: qd.DossierRef, p: { template: '~par.~par.contestSet.$contestInd.writeSet.$username' } }
             }}
             
           ]},
@@ -874,7 +872,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         return new qd.ContentSyncRef({ doss: doss, cache: updateOnUsername,
           calcRef: function() {
             // Set reference to null unless a token is obtained
-            return doss.getChild('~root.token').value ? doss.getChild('~root.username').value : null;
+            return doss.getChild('~root.token').value ? [ doss.getChild('~root.username').value ] : null;
           },
           selection: {
             fname: {},
@@ -928,6 +926,14 @@ var package = new PACK.pack.Package({ name: 'creativity',
         }});
       };
       
+      outline.getChild('storySet.*.phase').p.contentFunc = function(doss) {
+        return new qd.ContentSync({ doss: doss, waitMs: 2000 });
+      };
+      
+      outline.getChild('storySet.*.timePhaseStarted').p.contentFunc = function(doss) {
+        return new qd.ContentSync({ doss: doss, waitMs: 2000 });
+      };
+      
       outline.getChild('storySet.*.phaseTimeRemaining').p.contentFunc = function(doss) {
         return new qd.ContentCalc({ doss: doss, cache: updateOnFrame, func: function() {
           
@@ -960,7 +966,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       };
       
       outline.getChild('storySet.*.writeSet').p.contentFunc = function(doss) {
-        return new qd.ContentSyncDict({ doss: doss, selection: qd.selectAll });
+        return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
       };
       
       outline.getChild('storySet.*.writeSet.*').p.contentFunc = function(doss) {
@@ -974,11 +980,13 @@ var package = new PACK.pack.Package({ name: 'creativity',
         var story = doss.par;
         story.getChild('currentContest').content.update();
         story.getChild('writeSet').content.update();
+        story.getChild('phase').content.update();
+        story.getChild('timePhaseStarted').content.update();
       };
       
       outline.getChild('storySet.*.currentContest').p.contentFunc = function(doss) {
         return new qd.ContentSyncRef({ doss: doss, calcRef: function() {
-          return doss.par.getValue('contestInd'); // The current contest's index is stored in `contestInd`
+          return [ doss.par.getValue('contestInd') ]; // The current contest's index is stored in `contestInd`
         }});
       };
       
@@ -1184,7 +1192,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
                           // TODO: Review efficiency here (could be terrible with a big writeSet)
                           var username = function() {
                             var deref = info.dereference();
-                            return deref ? deref.getChild('user').value.split('.').pop() : 'loading...';
+                            return deref ? deref.getChild('user').value[0]: 'loading...';
                           };
                           var content = function() {
                             var deref = info.dereference();
