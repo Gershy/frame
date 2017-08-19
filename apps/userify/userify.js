@@ -2,13 +2,17 @@
 // to implement.
 
 var package = new PACK.pack.Package({ name: 'userify',
-  dependencies: [ 'quickDev', 'p', 'geom' ],
+  dependencies: [ 'quickDev', 'p', /*'geom'*/ ],
   buildFunc: function(packageName, qd) {
     var namespace = {};
     
     var P = PACK.p.P;
+    
+    /*
+    // TODO: Removing "geom" dependency will break `PointerDecorator`
     var Point = PACK.geom.Point;
     var origin = PACK.geom.ORIGIN;
+    */
     
     var uf = {
       
@@ -65,386 +69,14 @@ var package = new PACK.pack.Package({ name: 'userify',
           delete elem[setName]; // But this is a custom property, so it can be removed
         }
       },
-      pafam: function(params, name, def) {
-        // Info-param; ensures the return value is an instance of PACK.userify.Info (defaulting to SimpleInfo)
-        var ret = U.param(params, name, def);
-        
-        if (U.isInstance(ret, uf.Info) || U.isInstance(ret, qd.Dossier)) return ret; // TODO: Intermediate necessity while unifying
-        
-        if (U.isObj(ret, Function)) return { getValue: ret };
-        
-        if (U.isObj(ret, Object)) return ret;
-        
-        return { getValue: function() { return ret; } };
+      toInfo: function(obj) {
+        if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
+        if (U.isObj(obj, Function)) return { getValue: obj };
+        return { getValue: function() { return this.value; }, value: obj };
       },
-      
-      /* INFO */
-      Info: U.makeClass({ name: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* */) {
-            this.value = null;
-            this.listeners = null;
-          },
-          
-          getValue: function() {
-            throw new Error('Not implemented');
-          },
-          setValue: function(value) {
-            throw new Error('Not implemented');
-          },
-          modValue: function(modFunc) {
-            var val = modFunc(this.getValue());
-            
-            if (!U.exists(val)) { console.log(modFunc); throw new Error('modFunc shouldn\'t return `undefined`'); }
-            
-            this.setValue(val);
-            return val;
-          },
-          
-          addListener: function(listener) {
-            if (!this.listeners) this.listeners = {};
-            this.listeners[listener.guid] = listener;
-          },
-          remListener: function(listener) {
-            if (this.listeners) delete this.listeners[listener.guid];
-            if (U.isEmptyObj(this.listeners)) this.listeners = null;
-          },
-          notifyListeners: function() {
-            if (!this.listeners) return;
-            for (var k in this.listeners) this.listeners[k].updateOccurred(this);
-          },
-          updateOccurred: function() {
-            // Nothing happens to the base `Info` class on update
-          },
-          
-          start: function() { this.notifyListeners(); },
-          stop: function() {},
-          
-          valueOf: function() { return this.getValue(); }
-        };}
-      }),
-      SimpleInfo: U.makeClass({ name: 'SimpleInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* value */) {
-            sc.init.call(this, params);
-            this.value = U.param(params, 'value');
-          },
-          
-          getValue: function() {
-            return this.value;
-          },
-          setValue: function(value) {
-            this.value = value;
-            this.notifyListeners();
-          }
-        };}
-      }),
-      TemporaryInfo: U.makeClass({ name: 'TemporaryInfo',
-        superclassName: 'SimpleInfo',
-        methods: function(sc, c) { return {
-          init: function(params /* value, memoryMs */) {
-            sc.init.call(this, params);
-            this.memoryMs = U.param(params, 'memoryMs', 1000);
-            this.timeout = null;
-          },
-          setValue: function(value) {
-            var setFunc = sc.setValue;
-            setFunc.call(this, value);
-            
-            clearTimeout(this.timeout);
-            this.timeout = setTimeout(function() {
-              setFunc.call(this, null);
-            }.bind(this), this.memoryMs);
-          }
-        };}
-      }),
-      CalculatedInfo: U.makeClass({ name: 'CalculatedInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* getFunc */) {
-            sc.init.call(this, params);
-            this.getFunc = U.param(params, 'getFunc');
-            this.setFunc = U.param(params, 'setFunc', null);
-          },
-          
-          getValue: function() {
-            return this.getFunc();
-          },
-          setValue: function(value) {
-            if (!this.setFunc) throw new Error('No `setFunc`');
-            this.setFunc(value);
-            this.notifyListeners();
-          }
-        };}
-      }),
-      CachedInfo: U.makeClass({ name: 'CachedInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* rootView, info */) {
-            sc.init.call(this, params);
-            this.rootView = U.param(params, 'rootView');
-            this.info = uf.pafam(params, 'info');
-            this.cached = c.NO_VALUE;
-            this.id = c.NEXT_ID++;
-            
-            this.info.addListener(this);
-          },
-          updateOccurred: function() { this.notifyListeners(); },
-          getValue: function() {
-            if (this.cached === c.NO_VALUE) this.cached = this.info.getValue();
-            return this.cached;
-          },
-          setValue: function(val) {
-            this.cached = val;
-            this.notifyListeners();
-          },
-          reset: function() {
-            if (this.cached === c.NO_VALUE) return;
-            
-            this.info.setValue(this.cached);
-            this.cached = c.NO_VALUE;
-            this.notifyListeners();
-          },
-          
-          start: function() {
-            this.info.addListener(this);
-            this.rootView.addCache(this);
-            sc.start.call(this);
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.reset();
-            this.info.remListener(this);
-            this.rootView.remCache(this);
-          }
-        };},
-        statik: {
-          NEXT_ID: 0,
-          NO_VALUE: { NO_VALUE: true }
-        }
-      }),
-      ProxyInfo: U.makeClass({ name: 'ProxyInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* info, path */) {
-            sc.init.call(this, params);
-            this.info = U.param(params, 'info');
-            this.path = U.param(params, 'path');
-            
-            if (U.isObj(this.path, String)) this.path = this.path ? this.path.split('.') : [];
-          },
-          
-          // Shouldn't always notify; should only do so if the update is coming from `this.info.getChild(this.path)`
-          updateOccurred: function() { this.notifyListeners(); },
-          
-          getValue: function() {
-            return this.info.getValue(this.path);
-          },
-          setValue: function(val) {
-            return this.info.setValue(this.path, val);
-          },
-          
-          start: function() {
-            this.info.addListener(this);
-            sc.start.call(this);
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.info.remListener(this);
-          }
-        };}
-      }),
-      DictInfo: U.makeClass({ name: 'DictInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* children */) {
-            sc.init.call(this, params);
-            this.children = {};
-            var children = U.param(params, 'children', {});
-            for (var k in children) this.addChild(k, children[k]);
-          },
-          updateOccurred: function() { this.notifyListeners(); },
-          addChild: function(name, child) {
-            if (name in this.children) throw new Error('Tried to overwrite child "' + name + '"');
-            this.children[name] = child;
-            
-            this.notifyListeners();
-          },
-          remChild: function(name) {
-            var child = this.children[name];
-            if (!child) return;
-            delete this.children[name];
-            child.stop();
-            
-            this.notifyListeners();
-          },
-          hasChild: function(name) { return name in this.children; },
-          modChild: function(name, newChild) {
-            this.remChild(name);
-            this.addChild(name, newChild);
-          },
-          getChild: function(chain) {
-            if (U.isObj(chain, String)) chain = chain.split('.');
-            if (chain.length === 1) return this.children[chain[0]];
-            
-            var ptr = this;
-            for (var i = 0, len = chain.length; (i < len) && ptr; i++) ptr = ptr.children[chain[i]];
-            return ptr;
-          },
-          getValue: function(chain) {
-            if (chain) return this.getChild(chain).getValue();
-            return this.children;
-          },
-          setValue: function(arg1, arg2 /*chain, value*/) {
-            if (!U.exists(arg2)) {
-              var values = arg1;
-              for (var k in values) this.getChild(k).setValue(values[k]);
-            } else {
-              var addr = arg1;
-              var value = arg2;
-              this.getChild(addr).setValue(value);
-            }
-            
-          },
-          /*setValues: function(values) {
-            for (var k in values) this.getChild(k).setValue(values[k]);
-          },*/
-          modValue: function(chain, func) {
-            this.getChild(chain).modValue(func);
-          },
-          getImmediateChild: function(name) {
-            return this.children[name];
-          },
-          start: function() {
-            for (var k in this.children) {
-              //this.children[k].addListener(this);
-              this.children[k].start();
-            }
-            sc.start.call(this);
-          },
-          stop: function() {
-            sc.stop.call(this);
-            for (var k in this.children) {
-              this.children[k].stop();
-              //this.children[k].remListener(this);
-            }
-          }
-        };}
-      }),
-      
-      /* SYNCED INFO */
-      SyncedInfo: U.makeClass({ name: 'SyncedInfo',
-        superclassName: 'Info',
-        methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, updateMs */) {
-            sc.init.call(this, params);
-            this.$getFunc = U.param(params, '$getFunc');
-            this.$setFunc = U.param(params, '$setFunc', null);
-            this.value = U.param(params, 'initialValue', null);
-            
-            this.num = 0;
-            this.freshestNum = -1; // The numbering of the most recent value that's been set
-            this.setPending = false;
-          },
-          
-          getValue: function() {
-            return this.value;
-          },
-          setValue: function(value) {
-            if (!this.$setFunc) throw new Error('No `$setFunc`');
-            
-            this.freshestNum = this.num;  // Invalidates any pending requests
-            this.setPending = true;       // Invalidates any fresher pending requests
-            this.value = value;
-            this.notifyListeners();
-            
-            this.$setFunc(value).then(function() { this.setPending = false; }.bind(this)).done();
-          },
-          updateValue: function(num, value) {
-            if (!this.setPending && num > this.freshestNum) {
-              this.freshestNum = num;
-              this.value = value;
-              this.notifyListeners();
-            }
-          }
-        };}
-      }),
-      RepeatingSyncedInfo: U.makeClass({ name: 'RepeatingSyncedInfo',
-        superclassName: 'SyncedInfo',
-        methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, updateMs, jitterMs */) {
-            sc.init.call(this, params);
-            this.updateMs = U.param(params, 'updateMs', 0); // 0 indicates to request once and never refresh
-            this.jitterMs = U.param(params, 'jitterMs', this.updateMs * 0.19);
-            
-            this.timeout = null;
-          },
-          
-          refresh: function() {
-            
-            clearTimeout(this.timeout); // If this method was manually called, clear the automatic timeout
-            
-            this.$getFunc().then(function(num, value) {
-              
-              this.updateValue(num, value);
-              
-              if (this.updateMs) {
-                var randJitter = ((Math.random() - 0.5) * 2 * this.jitterMs);
-                this.timeout = setTimeout(this.refresh.bind(this), this.updateMs + randJitter); // TODO: timeout delay should compensate for latency?
-              }
-              
-            }.bind(this, this.num++)).done();
-            
-          },
-          updateOccurred: function() { this.refresh(); },
-          
-          start: function() {
-            this.refresh();
-            sc.start.call(this);
-          },
-          stop: function() {
-            sc.stop.call(this);
-            if (this.timeout !== null) clearTimeout(this.timeout);
-          }
-        };}
-      }),
-      
-      /*
-      // TODO: The "listen"/"updateOccurred" methods make a reacting info type obsolete
-      ReactingSyncedInfo: U.makeClass({ name: 'ReactingSyncedInfo',
-        superclassName: 'SyncedInfo',
-        methods: function(sc, c) { return {
-          init: function(params /* $getFunc, $setFunc, initialValue, info * /) {
-            sc.init.call(this, params);
-            
-            this.info = U.param(params, 'info');
-            this.value = this.info.getValue();
-          },
-          updateOccurred: function() {
-            
-            // Begin an update in reaction to the new value. Will modify `this.value`.
-            this.$getFunc().then(function(val) {
-              this.updateValue(this.num++, val);
-              //this.updateValue.bind(this, this.num++)
-            }.bind(this)).done();
-            
-          },
-          getValue: function() {
-            return this.value;
-          },
-          
-          start: function() {
-            this.info.addListener(this);
-            sc.start.call(this);
-          },
-          stop: function() {
-            sc.stop.call(this);
-            this.info.remListener(this);
-          }
-        };}
-      }),
-      */
+      pafam: function(params, name, def) {
+        return uf.toInfo(U.param(params, name, def));
+      },
       
       /* DECORATOR */
       Decorator: U.makeClass({ name: 'Decorator',
@@ -493,7 +125,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.action = U.param(params, 'action', null);
-            this.info = new uf.SimpleInfo({ value: false });
+            this.info = uf.toInfo(false);
           },
           start: function(view) {
             view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
@@ -536,7 +168,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* tolerance, validTargets, captureOnStart */) {
             sc.init.call(this, params);
-            this.info = new uf.SimpleInfo({ value: { drag: false, mouseDown: false, view: null } });
+            this.info = uf.toInfo({ drag: false, mouseDown: false, view: null });
             this.tolerance = U.param(params, 'tolerance', 0);
             
             // TODO: Function to capture arbitrary info when info begins (will allow physics values to be captured)
@@ -641,7 +273,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             this.dragDecorator = U.param(params, 'dragDecorator');
             this.action = U.param(params, 'action');
-            this.info = new uf.SimpleInfo({ value: null });
+            this.info = uf.toInfo(null);
           },
           createClassDecorator: function(view) {
             return new uf.ClassDecorator({
@@ -1159,7 +791,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* updateFunc */) {
             sc.init.call(this, params);
             this.updateFunc = U.param(params, 'updateFunc', null);
-            this.updateTimingInfo = new uf.SimpleInfo({ value: 0 });
+            this.updateTimingInfo = uf.toInfo(0);
             this.running = false;
             this.updateMs = 1000 / 60; // 60fps
           },
@@ -1237,7 +869,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* name, info */) {
             var info = uf.pafam(params, 'info');
             sc.init.call(this, params.update({
-              choiceInfo: new uf.CalculatedInfo({ getFunc: function() { return info.getValue() ? 'text' : null; } }),
+              choiceInfo: uf.toInfo(function() { return info.getValue() ? 'text' : null; }),
               children: [  new uf.TextView({ name: 'text', info: info })  ]
             }));
           }
@@ -1252,7 +884,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.textInfo = uf.pafam(params, 'textInfo');
             var inputViewParams = U.param(params, 'inputViewParams', {});
             sc.init.call(this, params.update({
-              choiceInfo: new uf.CalculatedInfo({ getFunc: function() { return editableData.getValue() ? 'edit' : 'display'; } }),
+              choiceInfo: uf.toInfo(function() { return editableData.getValue() ? 'edit' : 'display'; }),
               children: [
                 new uf.TextEditView(inputViewParams.update({ name: 'edit', textInfo: this.textInfo })),
                 new uf.TextView({ name: 'display', info: this.textInfo })

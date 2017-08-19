@@ -1,7 +1,106 @@
 var fs = require('fs');
 var path = require('path');
 
+process.on('uncaughtException', function(err) {
+  console.error('UNCAUGHT: ' + err.stack);
+});
+
 exports.compile = function(appName, appDir, tabs) {
+  if (!tabs) tabs = 2;
+  
+  var fileName = path.join(appDir, appName + '.js');
+  var contents = fs.readFileSync(fileName).toString();
+  
+  var process = function(content, directives, tabs) {
+    content = content.split('\n');
+    
+    var blocks = [];
+    
+    var currentBlock = null;
+    for (var i = 0; i < content.length; i++) {
+      
+      var line = content[i].trim();
+      /*
+      if (line.substr(0, 2) !== '//') {
+        if (!currentBlock) {
+          for (var k in directives) {
+            if (line.contains('// =' + k + '=')) { blocks.push({ type: k, start: i, end: i }); break; }
+          }
+        }
+        
+        continue;
+      }
+      */
+      
+      if (!currentBlock) {
+        
+        for (var k in directives) {
+          if (line.contains('{' + k + '=')) {
+            var currentBlock = {
+              type: k,
+              start: i,
+              end: -1
+            };
+          }
+        }
+        
+      } else {
+        
+        if (line.contains('=' + currentBlock.type + '}')) {
+          currentBlock.end = i;
+          blocks.push(currentBlock);
+          currentBlock = null;
+        }
+        
+      }
+      
+    }
+    
+    if (currentBlock) throw new Error('Last ' + currentBlock.type + ' block has no delimiter');
+    
+    var currentBlock = null;
+    var nextBlockInd = 0;
+    var filteredLines = [];
+    for (var i = 0; i < content.length; i++) {
+      
+      if (!currentBlock && blocks[nextBlockInd] && blocks[nextBlockInd].start === i) {
+        currentBlock = blocks[nextBlockInd];
+        nextBlockInd++;
+      }
+      
+      // Blank lines are removed. Block delimiters, as well as the contents of 'remove' blocks are omitted.
+      if (content[i].trim() && (!currentBlock || (i !== currentBlock.start && i !== currentBlock.end && directives[currentBlock.type] === 'keep'))) {
+        
+        filteredLines.push(content[i]);
+        
+      }
+      
+      if (currentBlock && i === currentBlock.end) currentBlock = null;
+      
+    }
+    
+    return filteredLines.join('\n');
+  };
+  
+  var serverContents = process(contents, {
+    CLIENT: 'remove',
+    SERVER: 'keep',
+    REMOVE: 'remove'
+  });
+  
+  var clientContents = process(contents, {
+    CLIENT: 'keep',
+    SERVER: 'remove',
+    REMOVE: 'remove'
+  });
+  
+  fs.writeFileSync(path.join(appDir, 'cmp-server-' + appName + '.js'), serverContents, { flag: 'w' });
+  fs.writeFileSync(path.join(appDir, 'cmp-client-' + appName + '.js'), clientContents,  { flag: 'w' });
+  
+  
+};
+
+exports.compile2 = function(appName, appDir, tabs) {
   // If `tabs` === 'tabs', the tabbing is done with \t
   // If `tabs` is some integer n, the tabbing is done with n spaces
   if (!tabs) tabs = 2;
