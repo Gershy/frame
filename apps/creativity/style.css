@@ -1,3 +1,16 @@
+@keyframes popup {
+  0% { margin-bottom: -60px; opacity: 0; }
+  10% { margin-bottom: -60px; opacity: 0; }
+  70% { opacity: 0.45; }
+  100% { margin-bottom: 0px; opacity: 1; }
+}
+@keyframes scaleIn {
+  0% { transform: scale(5, 0); opacity: 0; }
+  10% { transform: scale(5, 0); opacity: 0; }
+  45% { transform: scale(4, 0.05); opacity: 1; }
+  100% { transform: scale(1, 1); opacity: 1; }
+}
+
 #root {
   position: absolute;
   box-sizing: border-box;
@@ -24,7 +37,69 @@
 }
 
 #root-login {
-  background-color: #e8e8e8;
+  background-color: #ffffff;
+}
+#root-login.choose-out {
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+#root-login.choose-out:before {
+  content: "";
+  position: relative;
+  display: inline-block;
+  width: 0; height: 100%;
+  vertical-align: middle;
+}
+#root-login > .out {
+  position: relative;
+  display: inline-block;
+  width: 300px;
+  vertical-align: middle;
+  z-index: 1;
+}
+#root-login > .out:before,
+#root-login > .out:after {
+  content: "";
+  position: absolute;
+  display: block;
+  width: 160%; height: 90%;
+  left: -30%; top: 5%;
+  background-color: rgba(0, 0, 100, 0.04);
+  border-radius: 100%;
+  z-index: -1;
+}
+#root-login > .out:before { transform: rotate(12deg); }
+#root-login > .out:after { transform: rotate(25deg); }
+#root-login > .out > .title {
+  display: block;
+  color: #0a00a9;
+  font-size: 60px;
+  animation-name: popup;
+  animation-duration: 1000ms;
+  animation-iteration-count: 1;
+  animation-timing-function: ease-out;
+}
+#root-login > .out > .username,
+#root-login > .out > .password {
+  height: 40px; line-height: 40px;
+  margin: 10px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  font-size: 30px;
+}
+#root-login > .out > .submit {
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 30px;
+}
+#root-login > .out > .username,
+#root-login > .out > .password,
+#root-login > .out > .submit {
+  animation-name: scaleIn;
+  animation-duration: 1000ms;
+  animation-iteration-count: 1;
+  animation-timing-function: ease-in;
 }
 
 #lobby {

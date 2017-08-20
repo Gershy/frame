@@ -130,14 +130,18 @@ var doCompile = function(content, directives, tabs) {
     }
     
     // Filter out blank lines. Filter out all block delimiters, and the contents of any 'remove' blocks.
-    if (content[i].trim() && (!currentBlock || (i !== currentBlock.start && i !== currentBlock.end && directives[currentBlock.type] === 'keep'))) {
+    var keepLine =
+      content[i].trim() && (
+        !currentBlock ||
+        (i !== currentBlock.start && i !== currentBlock.end && directives[currentBlock.type] === 'keep')
+      );
+    
+    if (keepLine) {
       
-      if (currentOffset) currentOffset = null;
+      currentOffset = null;
       filteredLines.push(content[i]);
       
     } else {
-      
-      //offsets.push({ at: i, offset: 1 });
       
       if (!currentOffset) {
         currentOffset = { at: i, offset: 0 };

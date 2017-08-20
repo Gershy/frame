@@ -289,12 +289,14 @@ var package = new PACK.pack.Package({ name: 'server',
             return session.$respondToQuery(query);
           })
           .then(function(response) {        // Insert error message in case of 404
-            return response || new PACK.server.ResponseData({
-              code: 404,
-              binary: false,
-              encoding: 'text/plain',
-              data: 'not found'
-            });
+            //return new PACK.p.P({ timeout: 1000 }).then(function() {
+              return response || new PACK.server.ResponseData({
+                code: 404,
+                binary: false,
+                encoding: 'text/plain',
+                data: 'not found'
+              });
+            //});
           })
           .fail(function(err) {             // Insert error message in case of 400
             console.error(err.stack);

@@ -12,10 +12,8 @@ var package = new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    var cr = {};
-    
     var r = 1;
-    cr.mapMillis = {
+    var mapMillis = {
       second: r *= 1000,
       minute: r *= 60,
       hour: r *= 60,
@@ -24,7 +22,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       year: r *= 52.1429
     };
 
-    cr.update({
+    var cr = {
       
       /// {SERVER=
       resources: {
@@ -106,7 +104,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
           
         }
         
-        return new p.P({ all: promises }).then(function() { console.log('Update complete'); });
+        return new p.P({ all: promises });
         
       },
       $updateStory: function(story, currentTime) {
@@ -165,16 +163,11 @@ var package = new PACK.pack.Package({ name: 'creativity',
           if (currentTime > phaseEndTime) {
             
             console.log('RESOLVING ROUND on "' + story.name + '" because time is up');
-            return cr.$resolveStoryWritePhase(story);
+            return cr.$resolveStoryVotePhase(story);
             
           } else if ((nextBest + votesRemaining) < best) { // Even if some people haven't voted pick a winner; further voting will make no difference
             
             console.log('RESOLVING ROUND on "' + story.name + '" because voters decided early');
-            return cr.$resolveStoryVotePhase(story, currentTime);
-            
-          } else if (currentTime >= phaseEndTime) {
-            
-            console.log('RESOLVING ROUND on "' + story.name + '" because time is up');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else if (votesRemaining === 0) {
@@ -184,7 +177,6 @@ var package = new PACK.pack.Package({ name: 'creativity',
             
           } else { 
             
-            console.log('Story "' + story.name + '" round continues...');
             return p.$null;
             
           }
@@ -311,12 +303,12 @@ var package = new PACK.pack.Package({ name: 'creativity',
       
       /// {CLIENT=
       timeComponentData: [
-        { text: [ 'second', 'seconds' ], digits: 2, mult: cr.mapMillis.second, div: 1 / cr.mapMillis.second },
-        { text: [ 'minute', 'minutes' ], digits: 2, mult: cr.mapMillis.minute, div: 1 / cr.mapMillis.minute },
-        { text: [ 'hour',   'hours'   ], digits: 2, mult: cr.mapMillis.hour,   div: 1 / cr.mapMillis.hour },
-        { text: [ 'day',    'days'    ], digits: 2, mult: cr.mapMillis.day,    div: 1 / cr.mapMillis.day },
-        { text: [ 'week',   'weeks'   ], digits: 2, mult: cr.mapMillis.week,   div: 1 / cr.mapMillis.week },
-        { text: [ 'year',   'years'   ], digits: 4, mult: cr.mapMillis.year,   div: 1 / cr.mapMillis.year }
+        { text: [ 'second', 'seconds' ], digits: 2, mult: mapMillis.second, div: 1 / mapMillis.second },
+        { text: [ 'minute', 'minutes' ], digits: 2, mult: mapMillis.minute, div: 1 / mapMillis.minute },
+        { text: [ 'hour',   'hours'   ], digits: 2, mult: mapMillis.hour,   div: 1 / mapMillis.hour },
+        { text: [ 'day',    'days'    ], digits: 2, mult: mapMillis.day,    div: 1 / mapMillis.day },
+        { text: [ 'week',   'weeks'   ], digits: 2, mult: mapMillis.week,   div: 1 / mapMillis.week },
+        { text: [ 'year',   'years'   ], digits: 4, mult: mapMillis.year,   div: 1 / mapMillis.year }
       ],
       ClockView: U.makeClass({ name: 'ClockView',
         superclass: uf.View,
@@ -966,7 +958,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
         /// =SERVER}
       ]})
       
-    });
+    };
     
     return cr;
     
@@ -983,7 +975,7 @@ var package = new PACK.pack.Package({ name: 'creativity',
       // console.log(JSON.stringify(doss.getValue(), null, 2));
       cr.queryHandler = doss;
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
-      setInterval(function() { cr.$updateCreativity(doss).done(); }, 5000);
+      setInterval(function() { cr.$updateCreativity(doss).done(); }, 2000);
       console.log('App update loop initialized...');
       /// =SERVER}
       
@@ -997,9 +989,17 @@ var package = new PACK.pack.Package({ name: 'creativity',
             new uf.SetView({ name: 'out', children: [
               
               new uf.TextHideView({ name: 'loginError', info: doss.getChild('loginError') }),
-              new uf.TextEditView({ name: 'username', textInfo: doss.getChild('username'), placeholderData: 'Username' }),
-              new uf.TextEditView({ name: 'password', textInfo: doss.getChild('password'), placeholderData: 'Password' }),
-              new uf.ActionView({ name: 'submit', textInfo: 'Submit!', $action: function() {
+              /*
+              Piece Together
+              Dark and Stormy Write
+              Collabowrite
+              Once Upon a Mind
+              WordMixer
+              */
+              new uf.TextView({ name: 'title', info: 'Creativity' }),
+              new uf.TextEditView({ name: 'username', cssClasses: [ 'centered' ], textInfo: doss.getChild('username'), placeholderData: 'Username' }),
+              new uf.TextEditView({ name: 'password', cssClasses: [ 'centered' ], textInfo: doss.getChild('password'), placeholderData: 'Password' }),
+              new uf.ActionView({ name: 'submit', textInfo: 'Login', $action: function() {
                 return doss.$doRequest({ command: 'getToken', params: {
                   username: doss.getValue('username'),
                   password: doss.getValue('password')

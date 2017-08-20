@@ -42,7 +42,11 @@
 .input.inline > .interactive {
 }
 .input.inline.centered > .interactive {
-  padding: 2px 28px;
+  padding: 0 28px;
+  text-align: center;
+}
+.input.inline.centered > .placeholder {
+  padding: 0;
   text-align: center;
 }
 .input.multiline > .interactive {
