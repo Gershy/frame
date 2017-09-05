@@ -1,13 +1,13 @@
-@keyframes popup {
+@keyframes rise {
   0% { margin-bottom: -60px; opacity: 0; }
   10% { margin-bottom: -60px; opacity: 0; }
-  70% { opacity: 0.45; }
+  60% { opacity: 0.2; }
   100% { margin-bottom: 0px; opacity: 1; }
 }
 @keyframes scaleIn {
   0% { transform: scale(5, 0); opacity: 0; }
   10% { transform: scale(5, 0); opacity: 0; }
-  45% { transform: scale(4, 0.05); opacity: 1; }
+  60% { transform: scale(4, 0.05); opacity: 1; }
   100% { transform: scale(1, 1); opacity: 1; }
 }
 
@@ -75,7 +75,7 @@
   display: block;
   color: #0a00a9;
   font-size: 60px;
-  animation-name: popup;
+  animation-name: rise;
   animation-duration: 1000ms;
   animation-iteration-count: 1;
   animation-timing-function: ease-out;

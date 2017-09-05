@@ -3,7 +3,7 @@
 - Many of the sets in this app only ever increase in size, and never re-index anything.
   - These sets shouldn't be constantly getting requested; instead the size should be
     constantly requested, and when the size changes the entire set can be requested
-- Writing devices as ability names (e.g. "hyperbolize" instead of "slam")    
+- Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 */
 /// =REMOVE}
 var package = new PACK.pack.Package({ name: 'creativity',
