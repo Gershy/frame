@@ -118,8 +118,10 @@ Error.stackTraceLimit = Infinity;
       flatten0: function(depth, delim, prefix) {
         var ret = {};
         for (var k in this) {
+          
           var kk = U.exists(prefix) ? (prefix + delim + k) : k;
           var o = this[k];
+          
           if (U.isObj(o, Object) && depth > 0) {
             
             var flattened = o.flatten0(depth - 1, delim, kk);
@@ -130,6 +132,7 @@ Error.stackTraceLimit = Infinity;
             ret[kk] = this[k];
             
           }
+          
         }
         return ret;          
       },

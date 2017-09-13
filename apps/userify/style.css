@@ -13,7 +13,7 @@
   background-color: #383850;
   color: #ffffff;
   outline: none !important;
-  border: none !important;
+  border: none;
 }
 .interactive.button {
   padding: 2px;
@@ -64,6 +64,9 @@
   user-select: none;
   font-size: inherit;
   
+  overflow: hidden;
+  text-overflow: ellipsis;
+  
   transition: background-color 200ms linear, color 200ms linear;
 }
 .input.empty > .placeholder {
@@ -97,3 +100,4 @@
 .input > .anim > .a.a2 { left: 25%; animation-delay: 150ms; }
 .input > .anim > .a.a3 { left: 50%; animation-delay: 300ms; }
 .input > .anim > .a.a4 { left: 75%; animation-delay: 450ms; }
+

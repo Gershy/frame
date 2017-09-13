@@ -177,6 +177,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           $create: function(outline, data) {
+            // Essentially calls `$add` without a "par" parameter
             return this.$add({ par: null, outline: outline, name: null, data: data });
           },
           $createFast: function(outline, data) {
@@ -654,9 +655,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return sc.getNamedChild.call(this, name);
           },
           getValue: function(address) {
-            //if (!address) return this.getRawDataView();
             if (!address) return this.children;
-            
             var child = this.getChild(address);
             return child ? child.getValue() : null;
           },
@@ -667,10 +666,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             } else {
               
-              for (var k in arg1) {
-                if (!(k in this.children)) throw new Error('Invalid `setValue` key: "' + k + '"');
-                this.children[k].setValue(arg1[k]);
-              }
+              for (var k in arg1) this.children[k].setValue(arg1[k]);
               
             }
           },
@@ -890,8 +886,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             sc.init.call(this, params);
             
             this.innerOutline = U.param(params, 'innerOutline');
-            //this.prop = U.param(params, 'prop', '~par/nextInd');
-            //this.nameFunc = U.param(params, 'nameFunc', function(par, child) { return par.nextInd; });
             
             // `this.nextInd` keeps track of the lowest unused index
             // that a child is named in `this.children`. It is only
@@ -1123,17 +1117,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           setValue: function(value) {
-            if (value === null) { sc.setValue.call(this, null); return; }
-            if (U.isObj(value, Array)) { sc.setValue.call(this, value); return; }
+            if (value === null) { return sc.setValue.call(this, null); }
             
-            if (!U.isInstance(value, PACK.quickDev.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
+            var template = this.outline.p.template;
+            if (!U.isObj(template, Array)) template = template.split('.');
+            
+            if (U.isObj(value, Array)) { return sc.setValue.call(this, value); }
+            if (U.isObj(value, String)) {
+              var pcs = value.split('.');
+              if (pcs.length !== template.length) throw new Error('String value "' + value + '" does not match template "' + template.join('.') + '"');
+              //var vals = [];
+              //for (var i = 0; i < pcs.length; i++) if (template[i][0] === '$') vals.push(pcs[i]);
+              //return sc.setValue.call(this, vals);
+              return sc.setValue.call(this, pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; }));
+            }
+            
+            if (!U.isInstance(value, PACK.quickDev.Dossier)) {
+              console.log('HERE', this.outline.p.template, value);
+              throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
+            }
             
             var addr = value.getNameChain();
             
             var vals = [];
-            var template = this.outline.p.template;
-            if (!U.isObj(template, Array)) template = template.split('.');
-            
             for (var endOff = 1, len = Math.min(template.length, addr.length); endOff <= len; endOff++) {
               var tmp = template[template.length - endOff];
               var val = addr[addr.length - endOff];
@@ -1147,7 +1153,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             }
             
             vals.reverse();
-            sc.setValue.call(this, vals);
+            return sc.setValue.call(this, vals);
           },
           getValue: function() {
             return this.value ? this.getRefAddress() : null;
@@ -1322,6 +1328,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return $dossData.then(function(dossData) {
               console.log('Migrations successful!');
+              dossData.doss.fullyLoaded(); // Signal to the Dossier that it's ready
               return dossData.doss;
             });
             
@@ -1330,6 +1337,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       }),
       
       // TODO: Need to call `.stop` (`.fullyUnloaded`?) on Content objects! It's not being done at the moment!
+      // TODO: Generally need to put some thought into "fullyLoaded"/"fullyUnloaded" paradigm
       /* Content - control how Dossiers determine their content */
       Content: U.makeClass({ name: 'Content',
         includeGuid: true,
@@ -1634,8 +1642,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 }
               }),
               
-              remote: queries.$doQuery({
-                address: address,
+              remote: queries.$doQuery({ address: address,
                 command: 'addData',
                 params: {
                   data: data

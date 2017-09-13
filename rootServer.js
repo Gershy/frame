@@ -17,6 +17,7 @@ var http = require('http');
 var path = require('path');
 var fileSys = require('fs');
 var config = require('./config.js');
+var compiler = require('./compilers/default.js');
 
 var package = new PACK.pack.Package({ name: 'server',
   dependencies: [ 'p', 'queries', 'quickDev' ],
@@ -320,7 +321,10 @@ var package = new PACK.pack.Package({ name: 'server',
     
     // Compile and load the app
     var dirPath = path.join(__dirname, 'apps', appName);
-    require('./compilers/default.js').compile(appName, dirPath);
+    compiler.compile(appName, dirPath);
+    var serverFileName = compiler.getFileName(dirPath, 'server');
+    console.log('SERVERFILENAME:', serverFileName);
+    //require(serverFileName);
     require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
     var server = http.createServer(PACK.server.serverFunc.bind(null, appName));

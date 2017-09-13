@@ -4,6 +4,7 @@ module.exports.legalExtensions = {
   // "!" preceeding the extension name indicates a binary filetype
   '.html' : 'text/html',
   '.js':    'application/javascript', 
+  '.json':  'application/json',
   '.css':   'text/css',
   '.txt':   'text/plain',
   '.jpg':   '!image/jpeg',

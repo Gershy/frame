@@ -1,7 +1,8 @@
 var fs = require('fs');
 var path = require('path');
 
-var fileOffsets = {};
+var fileOffsets = {};   // Stores compilation offsets for files
+var fileMappings = {};  // Stores replacement file mappings (e.g. stores server/client versions for an uncompiled filename)
 process.on('uncaughtException', function(err) {
   var lines = err.stack.split('\n');
   var errorText = lines[0];
@@ -21,27 +22,28 @@ process.on('uncaughtException', function(err) {
       var funcAddr = null;
     }
     
-    // Some paths start with "C:" which makes it hard to just do `.split(':')`
+    // Some paths start with "C:" which makes it awkward to do `.split(':')`
     var lastColon = fileLineStr.lastIndexOf(':');
     var charInd = fileLineStr.substr(lastColon + 1);
     fileLineStr = fileLineStr.substr(0, lastColon);
     
     var lastColon = fileLineStr.lastIndexOf(':');
     var lineInd = fileLineStr.substr(lastColon + 1);
-    filepath = fileLineStr.substr(0, lastColon);
+    fileName = fileLineStr.substr(0, lastColon);
     
-    if (filepath === 'module.js' || filepath === 'node.js') continue;
+    // These lines just bloat the trace without providing anything useful
+    if (fileName === 'module.js' || fileName === 'node.js') continue;
     
     var lineDataItem = {
       funcAddr: funcAddr,
-      filepath: filepath,
+      fileName: fileName,
       lineInd: parseInt(lineInd),
       charInd: parseInt(charInd),
       corrected: false
     };
     
-    if (lineDataItem.filepath in fileOffsets) {
-      var offsetData = fileOffsets[lineDataItem.filepath];
+    if (lineDataItem.fileName in fileOffsets) {
+      var offsetData = fileOffsets[lineDataItem.fileName];
       var offsets = offsetData.offsets;
       var originalLineInd = lineDataItem.lineInd;
       
@@ -64,7 +66,7 @@ process.on('uncaughtException', function(err) {
       
       lineDataItem.lineInd = srcLineInd;
       lineDataItem.corrected = true;
-      lineDataItem.filepath = offsetData.realName;
+      lineDataItem.fileName = offsetData.realName;
     }
     
     lineData.push(lineDataItem);
@@ -73,8 +75,8 @@ process.on('uncaughtException', function(err) {
   console.error(errorText + '\n' + lineData.map(function(lineDataItem) {
     
     return '|-- ' +
-      lineDataItem.filepath + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd +
-      (lineDataItem.corrected ? ' [!]' : '') + ' ' +
+      lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd +
+      (lineDataItem.corrected ? ' [!]' : '') + ' ' + // Provide an indicator for lines that have been source-calculated
       '(' + (lineDataItem.funcAddr ? lineDataItem.funcAddr : '<native>') + ') ';
     
   }).join('\n'));
@@ -170,23 +172,32 @@ exports.compile = function(appName, appDir, tabs) {
   var fileName = path.join(appDir, appName + '.js');
   var contents = fs.readFileSync(fileName).toString();
   
-  var serverFilepath = path.join(appDir, 'cmp-server-' + appName + '.js');
+  var serverFileName = path.join(appDir, 'cmp-server-' + appName + '.js');
   var serverFileData = doCompile(contents, {
     CLIENT: 'remove',
     SERVER: 'keep',
     REMOVE: 'remove'
   });
   
-  var clientFilepath = path.join(appDir, 'cmp-client-' + appName + '.js');
+  var clientFileName = path.join(appDir, 'cmp-client-' + appName + '.js');
   var clientFileData = doCompile(contents, {
     CLIENT: 'keep',
     SERVER: 'remove',
     REMOVE: 'remove'
   });
   
-  fs.writeFileSync(serverFilepath, serverFileData.content, { flag: 'w' });
-  fs.writeFileSync(clientFilepath, clientFileData.content, { flag: 'w' });
+  fs.writeFileSync(serverFileName, serverFileData.content, { flag: 'w' });
+  fs.writeFileSync(clientFileName, clientFileData.content, { flag: 'w' });
   
-  fileOffsets[serverFilepath] = serverFileData.lineOffsetData.update({ realName: fileName });
-  //fileOffsets[clientFilepath] = clientFileData.lineOffsetData.update({ realName: fileName });
+  fileMappings[fileName] = { server: serverFileName, client: clientFileName };
+  
+  fileOffsets[serverFileName] = serverFileData.lineOffsetData.update({ realName: fileName });
+  
+  // TODO: Calculate client offsets as well, ship them client-side??
+  //fileOffsets[clientFileName] = clientFileData.lineOffsetData.update({ realName: fileName });
+};
+
+exports.getFileName = function(sourceFileName, type) {
+  if (sourceFileName in fileMappings) return fileMappings[sourceFileName][type];
+  return sourceFileName;
 };

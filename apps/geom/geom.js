@@ -151,7 +151,6 @@ var package = new PACK.pack.Package({ name: 'geom',
           }
         };}
       })
-      
     };
     
     geom.ORIGIN = new geom.Point();

@@ -2,17 +2,14 @@
 // to implement.
 
 var package = new PACK.pack.Package({ name: 'userify',
-  dependencies: [ 'quickDev', 'p', /*'geom'*/ ],
+  dependencies: [ 'quickDev', 'p', 'geom' ],
   buildFunc: function(packageName, qd) {
     var namespace = {};
     
     var P = PACK.p.P;
     
-    /*
-    // TODO: Removing "geom" dependency will break `PointerDecorator`
     var Point = PACK.geom.Point;
     var origin = PACK.geom.ORIGIN;
-    */
     
     var uf = {
       
@@ -94,6 +91,8 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
       PointerDecorator: U.makeClass({ name: 'PointerDecorator',
         superclassName: 'Decorator',
+        description: 'Generic class for decorators which deal with pointer actions; ' +
+          'e.g. click, mouseover, drag, etc.',
         methods: function(sc, c) { return {
           init: function(params /* validTargets */) {
             sc.init.call(this, params);
@@ -404,6 +403,8 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
             
       /* VIEW */
+      // TODO: `update` should not need to check for `start`. `start` should be called by an outside source.
+      // `update` ruins `start`/`stop` symmetry
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
         methods: function(sc, c) { return {
@@ -464,19 +465,19 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           update: function(millis) {
             // Calling `update` ensures that `domRoot` is initialized
-            if (this.domRoot === null) {
-              this.domRoot = this.createDomRoot();
-              this.start();
-            }
+            if (this.domRoot === null) this.start();
             
-            if (++this.frameCount >= this.framesPerTick) {
-              for (var i = 0, len = this.decorators.length; i < len; i++)
-                this.decorators[i].update(this, millis);
+            if (this.framesPerTick) {
               
-              this.tick(millis * this.framesPerTick);
-              this.frameCount = 0;
+              if (++this.frameCount >= this.framesPerTick) {
+                for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].update(this, millis);
+                
+                this.tick(millis * this.framesPerTick);
+                this.frameCount = 0;
+              }
+              this.millisAlive += millis;
+            
             }
-            this.millisAlive += millis;
             
             return PACK.p.$null;
           },
@@ -485,8 +486,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           
           start: function() {
-            // Reverse-reference the View from the html element (useful for debugging)
-            this.domRoot['~view'] = this;
+            this.domRoot = this.createDomRoot();
             
             // Set the id property
             var htmlId = this.getHtmlId();
@@ -494,21 +494,33 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             // Set desired css classes
             this.domRoot.classList.add(this.name);
-            for (var i = 0, len = this.cssClasses.length; i < len; i++)
-              this.domRoot.classList.add(this.cssClasses[i]);
+            for (var i = 0, len = this.cssClasses.length; i < len; i++) this.domRoot.classList.add(this.cssClasses[i]);
             
             (this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
             
-            for (var i = 0, len = this.decorators.length; i < len; i++)
-              this.decorators[i].start(this);
+            for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].start(this);
           },
           stop: function() {
-            for (var i = 0, len = this.decorators.length; i < len; i++)
-              this.decorators[i].stop(this);
+            for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].stop(this);
             
             if (this.domRoot && this.domRoot.parentNode) this.domRoot.parentNode.removeChild(this.domRoot);
             this.domRoot = null;
           }
+        };}
+      }),
+      HtmlView: U.makeClass({ name: 'HtmlView',
+        superclassName: 'View',
+        methods: function(sc, c) { return {
+          init: function(params /* name, cssId, framesPerTick, cssClasses, decorators, html */) {
+            sc.init.call(this, params.update({ framesPerTick: 0 }));
+            this.html = U.param(params, 'html');
+          },
+          createDomRoot: function() {
+            var ret = sc.createDomRoot.call(this);
+            ret.innerHTML = this.html;
+            return ret;
+          },
+          tick: function() {}
         };}
       }),
       TextView: U.makeClass({ name: 'TextView',
@@ -559,11 +571,11 @@ var package = new PACK.pack.Package({ name: 'userify',
       TextEditView: U.makeClass({ name: 'TextEditView',
         superclassName: 'InteractiveView',
         methods: function(sc, c) { return {
-          init: function(params /* name, multiline, initialValue, textInfo, placeholderData, enabledData */) {
+          init: function(params /* name, multiline, initialValue, textInfo, placeholderInfo, enabledData */) {
             sc.init.call(this, params);
             this.multiline = U.param(params, 'multiline', false);
             this.textInfo = uf.pafam(params, 'textInfo', '');
-            this.placeholderData = uf.pafam(params, 'placeholderData', '');
+            this.placeholderInfo = uf.pafam(params, 'placeholderInfo', '');
           },
           
           createDomRoot: function() {
@@ -601,12 +613,14 @@ var package = new PACK.pack.Package({ name: 'userify',
             var inputText = this.textInfo.getValue();
             
             // Update text items
-            uf.domSetText(this.domRoot.childNodes[1], this.placeholderData.getValue());
+            uf.domSetText(this.domRoot.childNodes[1], this.placeholderInfo.getValue());
             uf.domSetValue(input, inputText);
             
             // Update the "_empty" class
-            if (inputText)  this.domRoot.classList.remove('empty');
-            else             this.domRoot.classList.add('empty');
+            if (inputText.toString().length)
+              this.domRoot.classList.remove('empty');
+            else
+              this.domRoot.classList.add('empty');
             
             // Update the "_focus" class
             if (document.activeElement === input && !this.domRoot.classList.contains('focus')) {
@@ -631,6 +645,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           createDomRoot: function() {
             var button = document.createElement('div');
+            button.setAttribute('tabIndex', 0);
             button.classList.add('button');
             button.classList.add('interactive');
             button.onkeypress = function(e) {
@@ -822,11 +837,14 @@ var package = new PACK.pack.Package({ name: 'userify',
       ChoiceView: U.makeClass({ name: 'ChoiceView',
         superclassName: 'AbstractSetView',
         methods: function(sc, c) { return {
-          init: function(params /* name, choiceInfo, children */) {
+          init: function(params /* name, choiceInfo, transitionTime, children */) {
             sc.init.call(this, params);
             
             // Info returning the name of one of the children
             this.choiceInfo = uf.pafam(params, 'choiceInfo');
+            
+            // Allow for transitions by maintaining removed elements for this amount of time
+            this.transitionTime = U.param(params, 'transitionTime', 0);
             
             // Property to keep track of the currently active child
             this.currentChild = null;
@@ -851,13 +869,23 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             if (nextChild !== this.currentChild) {
               if (this.currentChild) {
+                
                 this.domRoot.classList.remove('choose-' + (this.currentChild ? this.currentChild.name : 'null'));
-                this.currentChild.stop();
+                if (this.transitionTime) {
+                  
+                  this.currentChild.domRoot.classList.add('choiceRemoved');
+                  setTimeout(this.currentChild.stop.bind(this.currentChild), this.transitionTime);
+                  
+                } else {
+                
+                  this.currentChild.stop();
+                  
+                }
               }
+              
               this.currentChild = nextChild;
-              if (this.currentChild) {
-                this.domRoot.classList.add('choose-' + (this.currentChild ? this.currentChild.name : 'null'));
-              }
+              if (this.currentChild) this.domRoot.classList.add('choose-' + this.currentChild.name);
+              
             }
           }
         };}
