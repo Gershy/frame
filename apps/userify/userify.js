@@ -937,19 +937,14 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
             this.comparator = U.param(params, 'comparator', null); // TODO: implement!
             
-            // TODO: `this.childFullData` is hardly ever mentioned on ctrl+f, so remove it?
-            //this.childFullData = {}; // A properly-keyed list of raw info items. The child's name corresponds to the info's key.
-            
             this.count = 0;
           },
           
           tick: function(millis) {
-            
             this.updateChildren();
-            
           },
           
-          updateChildren: function() {
+          updateChildren: function(cd) {
             /*
             Fully compares `this.children` to `this.childInfo.getValue()`
             Adds/removes any elements in `this.children` based on their
@@ -960,7 +955,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             var rem = this.children.clone(); // Initially mark all children for removal
             var add = {};  // Initially mark no children for addition
             
-            var cd = this.childInfo.getValue();
+            if (!U.exists(cd)) cd = this.childInfo.getValue();
             
             for (var k in cd) {
               
@@ -975,8 +970,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             // Remove all children as necessary
             for (var k in rem) {
               this.remChild(k);
-              //var child = this.remChild(k);
-              // delete this.childFullData[child.name]; // TODO: This is the only other place `this.childFullData` is mentioned
             }
             
             // Add all children as necessary
@@ -1018,11 +1011,31 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           start: function() {
             sc.start.call(this);
-            //this.childInfo.start();
           },
           stop: function() {
+            /*
+            Here we update as if `this.childInfo` returned an empty set.
+            
+            This fixes a very particular error: A `DynamicSetView` was linked to a text submission.
+            This text submission gets keyed under a username (a value which probably doesn't change
+            between submissions). Submitting immediately hid the `DynamicSetView` (calling `stop`),
+            so that it was no longer checking for child updates. By the time the `DynamicSetView`
+            reappeared, the submission under the username had gone from non-existant to the new
+            submission, but because the `DynamicSetView` had been stopped it never had an
+            opportunity to purge the old submission. Because of this, and because the key of the new
+            submission was the same as the key of the old submission, the `DynamicSetView` used the
+            cached, old value at the key instead of calling `genChildView` to generate a new element
+            based on the new submission.
+            
+            This problem is now solved by always removing all cached elements by calling
+            `updateChildren` with an empty set.
+            
+            TODO: A further consideration: a `hasInfoChanged` parameter, allowing the
+            `DynamicSetView` to detect changes on its children and call `genChildView` as required.
+            */
+            this.updateChildren({});
+            
             sc.stop.call(this);
-            //this.childInfo.stop();
           }
         };}
       })

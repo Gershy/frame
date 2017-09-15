@@ -59,7 +59,9 @@
   overflow: hidden; /* Prevent items from overlapping the bottom status bar */
 }
 
-/* Login/logout transition */
+/*
+Login/logout transition
+*/
 .choiceTransition {
   z-index: 1;
   opacity: 1;
@@ -123,11 +125,15 @@
   font-size: 20px;
   width: 140px;
   background-color: #4040ff;
+  color: #ffffff;
+  box-shadow: none;
 }
 #loginForm > .signup {
   font-size: 12px;
   width: 100px;
   background-color: #6060ff;
+  color: #ffffff;
+  box-shadow: none;
 }
 #loginForm > .username,
 #loginForm > .password,
@@ -140,30 +146,43 @@
   animation-timing-function: ease-out;
 }
 
-.titledContent > .mainButton {
-  position: absolute;
-  top: 10px;
-  width: 40px; height: 40px;
-  padding: 0; border: none;
+/*
+Give all .interactive elements a consistent feel
+*/
+.interactive { background-color: #0a00a9; }
+.input.focus > .anim > .a { background-color: #ffffff; }
+
+/*
+Give all .button elements a consistent feel
+*/
+.button {
   color: #1286c4;
   background-color: transparent;
   box-shadow: inset 0 0 0 2px #1286c4;
-  border-radius: 100%;
   text-align: center;
-  font-size: 0;
-  z-index: 3;
   
   transition: box-shadow 300ms ease-in-out, color 300ms linear;
 }
-.titledContent > .mainButton:hover {
-  box-shadow: inset 0 0 0 20px #1286c4;
+.button:hover {
+  box-shadow: inset 0 0 0 24px #1286c4;
   color: #ffffff;
 }
-.titledContent > .mainButton.left { left: 10px; }
-.titledContent > .mainButton.right { right: 10px; }
-.titledContent > .mainButton.type-larrow:after { content: '\0021e6'; font-size: 30px; line-height: 39px; }
-.titledContent > .mainButton.type-plus:after { content: '\00002b'; font-size: 40px; line-height: 42px; }
+.button.textButton {
+  border-radius: 5px;
+  font-size: 20px; padding: 10px;
+}
+.button.iconButton {
+  padding: 0;
+  width: 40px; height: 40px;
+  border-radius: 100%;
+  font-size: 0;
+}
+.button.iconButton.type-larrow:before { content: '\0021e6'; font-size: 30px; line-height: 39px; }
+.button.iconButton.type-plus:before { content: '\00002b'; font-size: 40px; line-height: 42px; }
 
+/*
+the #decor element consists of the funky spinner
+*/
 #decor {
   position: absolute;
   width: 100%; height: 100%;
@@ -192,7 +211,7 @@
 	
 	transform-origin: 0% 50%;
 }
-#decor > .spin > .arm:after {
+#decor > .spin > .arm:before {
   content: "";
   position: absolute;
   display: block;
@@ -207,11 +226,22 @@
 	animation-duration: 21s;
 }
 
+/*
+.titledContent elements have a .title element, an arbitrary .content
+pane, and .mainButton buttons (to the left and right of the title)
+*/
 .titledContent {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
 }
+.titledContent > .mainButton {
+  position: absolute;
+  top: 10px;
+  z-index: 3;
+}
+.titledContent > .mainButton.left { left: 10px; }
+.titledContent > .mainButton.right { right: 10px; }
 .titledContent > .title {
   position: relative;
   display: block;
@@ -243,6 +273,7 @@
   position: relative;
   background-color: #ffffff;
   padding: 20px 4px;
+  margin-bottom: 4px;
 }
 #storySet > .story > .quickName {
   position: absolute;
@@ -347,40 +378,18 @@
 #storyForm > .summary > .summaryItem > .calc > .waiting { font-style: italic; }
 #storyForm > .summary > .summaryItem > .calc > .finished { font-weight: bold; }
 
-#story {
-  position: absolute;
-  width: 100%; height: 100%;
-  left: 0; top: 0;
-  background-color: #dfeff9;
-}
-#story > .header {
-  position: absolute;
-  width: 100%; height: 40px; line-height: 40px;
-  z-index: 2;
-}
-#story > .header > .back {
-  position: absolute;
-  width: 40px; height: 40px;
-  left: 0; top: 0;
-  margin: 0; padding: 0;
-  z-index: 10;
-  text-align: center;
-}
-#story > .header > .title {
-  position: absolute;
-  width: 100%; height: 24px; line-height: 24px;
-  left: 0; top: 0;
-  font-size: 20px;
-  text-align: center;
-}
-#story > .header > .roundInfo {
-  position: absolute;
+#story {}
+#story > .content { overflow: hidden; }
+
+#story > .content > .metadata {
+  display: block;
   width: 100%; height: 16px;
-  left: 0; top: 24px;
+  left: 0; top: 0;
   white-space: nowrap;
   text-align: center;
+  z-index: 2;
 }
-#story > .header > .roundInfo > .phase {
+#story > .content > .metadata > .phase {
   display: inline-block;
   height: 16px; line-height: 16px;
   margin-right: 10px;
@@ -388,7 +397,7 @@
   vertical-align: top;
   display: none;
 }
-#story > .header > .roundInfo > .phaseTimeRemaining {
+#story > .content > .metadata > .phaseTimeRemaining {
   display: inline-block;
   height: 16px; line-height: 16px;
   font-size: 12px;
@@ -396,33 +405,36 @@
   white-space: nowrap;
 }
 
-#story > .writeSet {
+#story > .content > .writeSet {
   position: absolute;
   box-sizing: border-box;
-  width: 100%; height: 50%; padding-top: 40px;
+  width: 100%; height: 100%;
+  border-top: 16px solid transparent; /* Make space for `#story > .content > .metadata` */
+  border-bottom: 200px solid transparent; /* Make space for `#story > .content > .actions` */
+  padding-top: 10px;
   left: 0; top: 0;
-  z-index: 1;
-  
   font-family: serif;
+  
+  z-index: 1;
 }
-#story > .writeSet > .write {
+#story > .content > .writeSet > .write {
   display: inline;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;
 }
-#story > .writeSet > .write > .content {
+#story > .content > .writeSet > .write > .content {
   font-size: 14px;
   color: #040404;
   vertical-align: middle;
 }
-#story > .writeSet > .write:hover > .content {
+#story > .content > .writeSet > .write:hover > .content {
   background-color: #c0c0c0;
 }
-#story > .writeSet > .write[class^="preview"] > .content {
+#story > .content > .writeSet > .write[class^="preview"] > .content {
   background-color: #b0b0ff;
 }
-#story > .writeSet > .write > .username {
+#story > .content > .writeSet > .write > .username {
   box-sizing: border-box;
   border: solid 0 #8080f0;
   margin-left: 0;
@@ -434,29 +446,66 @@
   
   transition: font-size 300ms linear, border 300ms linear, margin 300ms linear, padding 300ms linear;
 }
-#story > .writeSet > .write:hover > .username {
+#story > .content > .writeSet > .write:hover > .username {
   border: solid 1px #8080f0;
   margin-left: 3px;
   padding: 0 3px;
   font-size: 12px;
 }
 
-#story > .writeOrVote {
+#story > .content > .actions {
   position: absolute;
-  width: 100%; height: 50%;
-  left: 0; top: 50%;
+  width: 100%; height: 200px;
+  left: 0; bottom: 0;
+  z-index: 3;
 }
-#story > .writeOrVote > .write {
+#story > .content > .actions > .write {
 }
-#story > .writeOrVote > .write > .editor {
-  height: 200px;
+#story > .content > .actions > .write > .editor {
+  position: absolute;
+  box-sizing: border-box;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  border-right: 50px solid transparent;
+  
+  z-index: 1;
 }
-#story > .writeOrVote > .vote {
+#story > .content > .actions > .write > .submit {
+  position: absolute;
+  width: 50px; height: 100%; padding: 0;
+  right: 0; top: 0;
+  background-color: #ffffff;
+  color: #000000;
+  box-shadow: none;
+  font-size: 0;
+  overflow: hidden;
+  z-index: 2;
+  
+  transition: color 300ms linear, background-color 300ms linear;
+}
+#story > .content > .actions > .write > .submit:hover {
+  background-color: #000000;
+  color: #ffffff;
+}
+#story > .content > .actions > .write > .submit:before {
+  content: '\3004';
+  position: absolute;
+  width: 100px; height: 150px; line-height: 150px;
+  left: 50%; top: 50%; margin-left: -50px; margin-top: -75px;
+  font-size: 80px;
+  z-index: 2;
+  transform: scale(0.6);
+  transition: transform 1000ms linear;
+}
+#story > .content > .actions > .write > .submit:hover:before {
+  transform: scale(1);
+}
+#story > .content > .actions > .vote {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
 }
-#story > .writeOrVote > .vote > .title {
+#story > .content > .actions > .vote > .title {
   position: absolute;
   width: 100%; height: 20px; line-height: 20px;
   left: 0; top: 0;
@@ -532,8 +581,9 @@
   right: 0; top: 0;
   font-size: 0;
   background-color: transparent;
+  box-shadow: none;
 }
-#contenderSet > .contender > .votable > .button:after {
+#contenderSet > .contender > .votable > .button:before {
   content: "";
   position: absolute;
   display: block;
@@ -544,7 +594,7 @@
   border-radius: 100%;
   transition: width 200ms ease-in-out, height 200ms ease-in-out, margin-top 200ms ease-in-out, right 200ms ease-in-out;
 }
-#contenderSet > .contender > .votable.choose-vote:hover > .button:after {
+#contenderSet > .contender > .votable.choose-vote:hover > .button:before {
   width: 30px; height: 30px;
   margin-top: -15px;
   right: 5px;
@@ -602,6 +652,3 @@
 .clock.interactive > .component > .control.sub { bottom: 1px; }
 .clock.interactive > .component > .control.add:before { content: '\00002b'; }
 .clock.interactive > .component > .control.sub:before { content: '\002212'; }
-
-.interactive { background-color: #0a00a9; }
-.input.focus > .anim > .a { background-color: #ffffff; }

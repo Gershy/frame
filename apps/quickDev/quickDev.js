@@ -750,18 +750,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
           },
           
-          /*
-          $loadFromRawData: function(data, editor) {
-            // Loaded once all children have been loaded via the editor
-            var promiseSet = [];
-            for (var k in data)
-              // Dossier is tightly coupled with Editor, so it's fair to use a "0" method here
-              promiseSet.push(editor.$add0(this, this.getChildOutline(k), this.getNameForEditor(data, k), data[k])); // TODO: 2nd last param was `k` until recently
-            
-            return new P({ all: promiseSet });
-          },
-          */
-          
           $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
             
@@ -1072,7 +1060,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             sc.init.call(this, params);
           },
           setValue: function(val) {
-            sc.setValue.call(this, val === null ? null : val.toString());
+            sc.setValue.call(this, val === null ? '' : val.toString());
           }
         }; }
       }),
@@ -1489,7 +1477,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             } else {
               
-              console.log('Retrieving holder...');
               var holderAddr = doss.getHolderAddress().split('.');
               
               var missingChain = [];
@@ -1632,8 +1619,29 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             var doss = this.doss;
             var address = this.address;
             
-            var editor = new qd.Editor;
-            return new P({ all: {
+            return doss.$handleRequest({
+              command: 'addData', 
+              params: { data: localData }
+            }).then(function(localVal) {
+              
+              return queries.$doQuery({
+                address: address,
+                command: 'addData',
+                params: { data: data }
+              }).then(function(remoteVal) {
+                
+                return localVal;
+                
+              }).fail(function(err) {
+                
+                // TODO: Need to remove local child
+                throw err;
+                
+              });
+              
+            });
+            
+            /*return new P({ all: {
               
               local: doss.$handleRequest({
                 command: 'addData',
@@ -1653,7 +1661,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               return vals.local;
               
-            });
+            });*/
           }
         };}
       })
