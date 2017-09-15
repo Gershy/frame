@@ -317,9 +317,12 @@ var package = new PACK.pack.Package({ name: 'server',
   },
   runAfter: function() {
     
-    var appName = process.argv[2] || config.defaultApp;
+    // Parse process-level arguments
+    var args = eval('(' + process.argv.slice(2).join(' ') + ')');
+    console.log('ARGS', args);
     
     // Compile and load the app
+    var appName = U.param(args, 'app', config.defaultApp);
     var dirPath = path.join(__dirname, 'apps', appName);
     compiler.compile(appName, dirPath);
     var serverFileName = compiler.getFileName(dirPath, 'server');
@@ -327,10 +330,29 @@ var package = new PACK.pack.Package({ name: 'server',
     //require(serverFileName);
     require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
-    var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
+    // Bind ip and port based on deployment
+    var deployment = U.param(args, 'deployment', 'default');
+    if (deployment === 'openshift') {
+      
+      var port = U.param(process.env, 'OPENSHIFT_NODEJS_PORT', 8000);
+      var ip = U.param(process.env, 'OPENSHIFT_NODEJS_IP', '127.0.0.1');
+      
+    } else if (deployment === 'heroku') {
+      
+      // TODO
+      
+    } else if (deployment === 'default') {
+      
+      var port = 8000;
+      var ip = '127.0.0.1';
+      
+    }
     
-    var port = process.env.PORT || 8000;
-    server.listen(port);
+    if ('port' in args) port = args.port;
+    if ('ip' in args) ip = args.ip;
+    
+    var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
+    server.listen(port, ip);
     console.log('Listening on port ' + port + '...');
     
     /*
