@@ -318,9 +318,25 @@ var package = new PACK.pack.Package({ name: 'server',
   runAfter: function() {
     
     // Parse process-level arguments
-    var argStr = process.argv.slice(2).join(' '); // Replace angle-brackets with quotes for *nix systems
-    console.log('ARGS', argStr);
-    var args = eval('(' + process.argv.slice(2).join(' ') + ')');
+    if (process.argv[2] === '{') {
+      
+      var argStr = process.argv.slice(2).join(' '); // Replace angle-brackets with quotes for *nix systems
+      var args = eval('(' + process.argv.slice(2).join(' ') + ')');
+      
+    } else {
+      
+      var args = {};
+      for (var i = 2; i < process.argv.length; i += 2) {
+        var key = process.argv[i];
+        var val = process.argv[i + 1];
+        
+        if (key.substr(0, 2) !== '--') throw new Error('Invalid key: "' + key + '"');
+        args[key.substr(2)] = val;
+      }
+      
+    }
+    
+    console.log('Args:', args);
     
     // Compile and load the app
     var appName = U.param(args, 'app', config.defaultApp);
