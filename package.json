@@ -7,7 +7,7 @@
   },
   "main": "rootServer.js",
   "scripts": {
-    "start": "node rootServer.js { app: 'creativity', deployment: 'openshift' }"
+    "start": "node rootServer.js `{ app: 'creativity', deployment: 'openshift' }`"
   },
   "dependencies": {
   },
