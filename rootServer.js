@@ -351,7 +351,7 @@ var package = new PACK.pack.Package({ name: 'server',
     var deployment = U.param(args, 'deployment', 'default');
     if (deployment === 'openshift') {
       
-      var port = U.param(process.env, 'OPENSHIFT_NODEJS_PORT', 8000);
+      var port = U.param(process.env, 'OPENSHIFT_NODEJS_PORT', 8080);
       var ip = U.param(process.env, 'OPENSHIFT_NODEJS_IP', '127.0.0.1');
       
     } else if (deployment === 'heroku') {
