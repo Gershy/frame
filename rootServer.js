@@ -318,8 +318,8 @@ var package = new PACK.pack.Package({ name: 'server',
   runAfter: function() {
     
     // Parse process-level arguments
+    console.log('ARGS', '(' + process.argv.slice(2).join(' ') + ')');
     var args = eval('(' + process.argv.slice(2).join(' ') + ')');
-    console.log('ARGS', args);
     
     // Compile and load the app
     var appName = U.param(args, 'app', config.defaultApp);
