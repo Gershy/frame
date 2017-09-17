@@ -351,6 +351,7 @@ var package = new PACK.pack.Package({ name: 'server',
     var deployment = U.param(args, 'deployment', 'default');
     if (deployment === 'openshift') {
       
+      console.log('ENV:', process.env);
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
