@@ -47,7 +47,7 @@ Temporary Items
 .apdisk
 
 # Frame-specific
-state/
+/state/
 node_modules/
 cmp-*.js
 apps/*/state/persisted.json

@@ -1,0 +1,47 @@
+{
+  "version": "0.0.1 (initial)",
+  "userSet": {
+    "admin": {
+      "fname": "Admin",
+      "lname": "Istrator",
+      "password": "admin123",
+      "username": "admin"
+    }
+  },
+  "storySet": {
+    "firstStory": {
+      "user": "~root.userSet.admin",
+      "createdTime": 1504715064978,
+      "quickName": "firstStory",
+      "description": "First story!!",
+      "contestInd": 0,
+      "authorLimit": 10,
+      "contestTime": 43200000,
+      "maxWrites": 10,
+      "maxVotes": 10,
+      "maxWriteLength": 500,
+      "contestLimit": 1000,
+      "slapLoadTime": 360000000,
+      "slamLoadTime": 360000000,
+      "phase": "awaitingWrite",
+      "timePhaseStarted": 1504795311079,
+      "authorSet": {
+        "admin": {
+          "user": "~root.userSet.admin",
+          "numSlaps": 0,
+          "lastSlapTime": 1504715064978,
+          "numSlams": 0,
+          "lastSlamTime": 1504715064978
+        }
+      },
+      "contestSet": {
+        "0": {
+          "num": 0,
+          "writeSet": {}
+        }
+      },
+      "writeSet": {
+      }
+    }
+  }
+}
