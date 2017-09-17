@@ -318,7 +318,7 @@ var package = new PACK.pack.Package({ name: 'server',
   runAfter: function() {
     
     // Parse process-level arguments
-    var argStr = process.argv.slice(2).join(' ').replace(/`/g, '');
+    var argStr = process.argv.slice(2).join(' ').replace(/[<>]/g, '\''); // Replace angle-brackets with quotes for *nix systems
     console.log('ARGS', argStr);
     var args = eval('(' + process.argv.slice(2).join(' ') + ')');
     
