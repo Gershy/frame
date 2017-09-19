@@ -357,8 +357,8 @@ var package = new PACK.pack.Package({ name: 'server',
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
       var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
-      
       //if (!dataPathName) throw new Error('Can\'t access data directory');
+      
       if (dataPathName) {
       
         ENVIRONMENT.update({
