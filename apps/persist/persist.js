@@ -66,7 +66,13 @@ new PACK.pack.Package({ name: 'persist',
             for (var i = 1, len = pcs.length - 1; i < len; i++) // Subtract one to exclude the .json component
               $ret = $ret.then($ensureDir.bind(null, pathName = path.join(pathName, pcs[i])));
             
-            return $ret;
+            return $ret.then(function(){
+              
+              return $writeFile(pathName, '{}');
+              
+            }).then(function() {
+              console.log('WROTE {}!!!!!!!!!!!');
+            });
             
           },
           $getData: function() {
