@@ -10,7 +10,7 @@ new PACK.pack.Package({ name: 'persist',
     
     var $readDir = function(pathName) {
       return new P({ custom: function(resolve, reject) {
-        fs.readdir(pathName, function(err, val) { if (err) reject(err); else resolve(val); });
+        fs.readdir(pathName, function(err, val) { if (err) reject(err); else resolve(val.toString()); });
       }});
     };
     var $createDir = function(pathName) {
