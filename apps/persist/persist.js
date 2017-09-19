@@ -43,7 +43,7 @@ new PACK.pack.Package({ name: 'persist',
             
             if (ENVIRONMENT.type === 'default') {
               
-              this.pathName = path.join(ENVIRONMENT.fileRootName, 'apps', this.packageName, 'state', 'data.json');
+              this.pathName = path.join(ENVIRONMENT.fileRootName, 'apps', this.packageName, 'state', 'state.json');
               
             } else if (ENVIRONMENT.type === 'openshift') {
               
