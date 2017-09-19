@@ -351,7 +351,7 @@ var package = new PACK.pack.Package({ name: 'server',
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
       if (!('OPENSHIFT_DATA_DIR' in process.env)) {
-        console.log(process.env);
+        console.log('ENV: ' + process.env);
         throw new Error('No data directory found');
       }
       
