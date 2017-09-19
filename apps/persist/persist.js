@@ -47,7 +47,7 @@ new PACK.pack.Package({ name: 'persist',
               
             } else if (ENVIRONMENT.type === 'openshift') {
               
-              this.pathName = path.join(ENVIRONMENT.fileRootName, this.packageName, 'state.json');
+              this.pathName = path.join(ENVIRONMENT.fileRootName, this.packageName, 'state', 'state.json');
               console.log('OPENSHIFT PERSIST PATH: ' + this.pathName);
               
             }

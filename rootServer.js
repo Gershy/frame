@@ -346,19 +346,36 @@ var package = new PACK.pack.Package({ name: 'server',
     
     if (deployment === 'openshift') {
       
-      console.log('ENV:', process.env);
+      var vals = [];
+      for (var k in process.env) vals.push([ k, process.env[k] ]);
+      vals.sort(function(a, b) { a = a[0]; b = b[0]; return (a > b) - (a < b); });
+      for (var i = 0; i < vals.length; i++) {
+        console.log(vals[i][0] + ': ' + vals[i][1]);
+      }
+      
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
-      if (!('OPENSHIFT_DATA_DIR' in process.env)) {
-        console.log('ENV: ' + process.env);
-        throw new Error('No data directory found');
-      }
+      var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
       
-      ENVIRONMENT.update({
-        type: 'openshift',
-        fileRootName: process.env.OPENSHIFT_DATA_DIR
-      });
+      //if (!dataPathName) throw new Error('Can\'t access data directory');
+      
+      if (dataPathName) {
+      
+        ENVIRONMENT.update({
+          type: 'openshift',
+          fileRootName: dataPathName
+        });
+      
+      } else {
+        
+        console.log('Can\'t access data directory :(');
+        ENVIRONMENT.update({
+          type: 'openshift',
+          fileRootName: path.join(__dirname, 'apps');
+        });
+        
+      }
       
     } else if (deployment === 'heroku') {
       
