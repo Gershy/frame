@@ -371,7 +371,7 @@ var package = new PACK.pack.Package({ name: 'server',
         console.log('Can\'t access data directory :(');
         ENVIRONMENT.update({
           type: 'openshift',
-          fileRootName: path.join(__dirname, 'apps');
+          fileRootName: path.join(__dirname, 'apps')
         });
         
       }
