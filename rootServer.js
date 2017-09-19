@@ -359,7 +359,6 @@ var package = new PACK.pack.Package({ name: 'server',
       var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
       
       //if (!dataPathName) throw new Error('Can\'t access data directory');
-      
       if (dataPathName) {
       
         ENVIRONMENT.update({
