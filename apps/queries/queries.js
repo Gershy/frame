@@ -5,94 +5,80 @@ var package = new PACK.pack.Package({ name: 'queries',
     var P = p.P;
     
 		var qr = {
-			$doRawQuery: function(data /* */) {
-				
+      
+			$doQuery: function(params /* address, command, params, ref */) {
+        
+        var ref = U.param(params, 'ref', null);
+        
+        var data = U.thingToString({
+					address: U.param(params, 'address'),
+					command: U.param(params, 'command'),
+					params: U.param(params, 'params', {})
+				});
+        
 				return new P({ custom: function(resolve, reject) {
 					var query = new XMLHttpRequest();
 					
-					query.onreadystatechange = function() {
-						if (query.readyState !== 4) return; // Query isn't done yet
-						
-						if (query.status === 200) {
-							
-							resolve(U.stringToThing(query.responseText));
-							
-						} else {
-							
-							reject(new Error('REMOTE: ' + query.responseText));
-							
-						}
-					};
-					
+          query.onreadystatechange = ref === null
+            ? qr.stdStateChangeFunc.bind(null, query, resolve, reject)
+            : qr.refStateChangeFunc.bind(null, query, resolve, reject, ref);
+          
 					query.open('GET', '?_data=' + encodeURIComponent(data), true);
 					query.send();
 				}});
         
 			},
+      
+      stdStateChangeFunc: function(query, resolve, reject) {
+        if (query.readyState !== 4) return; // Query isn't done yet
+        
+        if (query.status === 200) resolve(U.stringToThing(query.responseText));
+        else                      reject(new Error(query.responseText));
+      },
+      refStateChangeFunc: function(query, resolve, reject, ref) {
+        if (query.readyState !== 4) return; // Query isn't done yet
+        
+        if (query.status === 200) resolve({ ref: ref, result: U.stringToThing(query.responseText) });
+        else                      reject(new Error(query.responseText));
+      },
 			
-			$doQuery: function(params /* address, command, params */) {
-				return qr.$doRawQuery(U.thingToString({
-					address: U.param(params, 'address'),
-					command: U.param(params, 'command'),
-					params: U.param(params, 'params', {})
-				}));
-			},
-			
+      /*
 			Query: U.makeClass({ name: 'Query',
 				methods: function(sc) { return {
-					init: function(params /* address, command, params */) {
+					init: function(params /* address, command, params * /) {
 						this.address = U.param(params, 'address');
 						this.command = U.param(params, 'command');
 						this.params = U.param(params, 'params', {});
+            this.ref = U.param(params, 'ref', null);
 					},
 					$fire: function() {
 						return qr.$doQuery({
 							address: this.address,
 							command: this.command,
 							params: this.params,
+              ref: this.ref
 						});
 					}
 				};}
 			}),
+      */
 			QueryHandler: U.makeClass({ name: 'QueryHandler',
 				methods: function(sc) { return {
 					init: function(params /* */) {
 					},
 					$respondToQuery: function(params /* address */) {
-            // TODO: This is messy! `getChild` should never be `null`.
-            
-						/*
-						QueryHandlers respond to queries by forwarding them to children
-						if the address has not been exhausted yet, otherwise they
-						process them using their `$handleRequest` method.
-						*/
+						// Continue to exhaust the address. If it's already exhausted, immediately handle the query
 						var address = U.param(params, 'address');
-            
-            /*
-            // QueryHandlers that implement `getChild` end here:
-            if (this.getChild) {
-              
-              //console.log('QUERY ' + JSON.stringify(address) + ':\n\t' + params.command, params.params);
-              var child = this.getChild(address);
-              if (!child) throw new Error('Invalid address!!: "' + address.map(function(pc) { return U.isObj(pc, Object) ? '{{filter:' + pc.type + '}}' : pc; }).join('.') + '"');
-              return child.$handleRequest(params);
-              
-            }
-            */
-						
 						if (!address.length) return this.$handleRequest(params);
 						
 						// Need to have one of the handler's children respond to the query
 						var child = this.getNamedChild(address[0]);
-						
 						if (!child) return new P({ err: new Error('Invalid address :( : "' + address.join('.') + '" (' + this.constructor.title + ')') });
 						
-						// Consume the address
-						params.address = params.address.slice(1);
-						
-						return child.$respondToQuery(params);
+						// Consume the address and forward to the child handler
+						return child.$respondToQuery(params.update({ address: params.address.slice(1) }));
 					},
-          getChild: null,
+          getChild: null, // TODO: This is a mess!!
 					getNamedChild: function(name) { throw new Error('not implemented'); },
 					$handleRequest: function(params /* */) { throw new Error('not implemented'); },
 				}; }

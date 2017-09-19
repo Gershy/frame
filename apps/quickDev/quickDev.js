@@ -1120,10 +1120,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               return sc.setValue.call(this, pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; }));
             }
             
-            if (!U.isInstance(value, PACK.quickDev.Dossier)) {
-              console.log('HERE', this.outline.p.template, value);
-              throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
-            }
+            if (!U.isInstance(value, PACK.quickDev.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
             
             var addr = value.getNameChain();
             
@@ -1299,7 +1296,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 
                 if (ver.detect(doss)) {
                   
-                  console.log('Transitioning from version "' + versionName + '" to "' + ver.name + '"...');
                   return ver.$apply(doss).then(function(doss) {
                     return { versionName: ver.name, doss: doss };
                   });
@@ -1315,7 +1311,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             });
             
             return $dossData.then(function(dossData) {
-              console.log('Migrations successful!');
               dossData.doss.fullyLoaded(); // Signal to the Dossier that it's ready
               return dossData.doss;
             });
@@ -1361,18 +1356,50 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.waitMs = U.param(params, 'waitMs', 0);
             this.jitterMs = U.param(params, 'jitterMs', this.waitMs * 0.17);
             this.timeout = null;
+            
+            this.freshest = 0;
+            this.freshestReq = 0;
           },
-          $query: function() { throw new Error('not implemented'); },
+          $query: function(ref) { throw new Error('not implemented'); },
           $applyQueryResult: function(queryResult) { throw new Error('not implemented'); },
+          cancelUpdates: function() {
+            /*
+            Clears the current timeout, and also sets `this.timeout` to `null`, which will
+            prevent any pending updates from being ignored when they return responses.
+            */
+            clearTimeout(this.timeout);
+            this.timeout = null;
+            
+            // Declare that our current value is fresher than any pending value
+            this.freshest = this.freshestReq + 1;
+            
+            // Ensure that if updates are started again, they are sufficiently fresh
+            this.freshestReq = this.freshest;
+          },
+          scheduleUpdates: function() {
+            this.timeout = setTimeout(this.update.bind(this), this.waitMs + (Math.random() * this.jitterMs));
+          },
           update: function() {
             
             var pass = this;
             
-            this.$query().then(function(result) {
+            this.freshestReq++;
+            this.$query(this.freshestReq).then(function(refResult) {
               
-              if (pass.waitMs || pass.jitterMs)
-                this.timeout = setTimeout(pass.update.bind(pass), pass.waitMs + (Math.random() * pass.jitterMs));
+              var freshness = refResult.ref;
+              var result = refResult.result;
               
+              // Make sure a stale response never overwrites a fresher one
+              if (freshness < pass.freshest) { console.log('IGNORED STALE RESULT!'); return p.$null; }
+              
+              // If `pass.timeout` is `null`, is signals that updates are currently cancelled.
+              // Having `pass.$query` complete when updates are cancelled indicates that the
+              // result of the query is stale, so it is ignored
+              if (pass.timeout === null) return p.$null;
+              
+              pass.freshest = freshness;
+              
+              if (pass.waitMs || pass.jitterMs) pass.scheduleUpdates();
               return pass.$applyQueryResult(result);
                 
             }).fail(function(err) {
@@ -1385,11 +1412,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           start: function() {
             sc.start.call(this);
+            this.timeout = true; // Needed to avoid the `this.timeout === null` check in `this.update`
             this.update();
           },
           stop: function() {
             sc.stop.call(this);
-            clearTimeout(this.timeout);
+            this.cancelUpdates();
           }
         };}
       }),
@@ -1399,17 +1427,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           init: function(params /* doss, address, waitMs, jitterMs */) {
             sc.init.call(this, params);
           },
-          $query: function() {
+          $query: function(ref) {
             return queries.$doQuery({
               address: this.address,
-              command: 'getRawData'
+              command: 'getRawData',
+              ref: ref
             });
           },
           $applyQueryResult: function(rawData) {
             //console.log('Syncing SMP: ' + this.doss.getAddress());
             this.doss.setValue(rawData);
             return p.$null;
-          },
+          }
         };}
       }),
       ContentSyncRef: U.makeClass({ name: 'ContentSyncRef',
@@ -1424,11 +1453,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.calcRef = U.param(params, 'calcRef', null);
             this.selection = U.param(params, 'selection', qd.selectAll);
           },
-          $query: function() {
+          $query: function(ref) {
             
             if (this.calcRef) this.doss.setValue(this.calcRef());
             
-            if (!this.doss.value) return p.$null;
+            if (!this.doss.value) return new P({ ref: ref, result: null });
             
             var addr = this.doss.getRefAddress().split('.');
             
@@ -1449,7 +1478,8 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               command: 'getSelection',
               params: {
                 selection: this.selection
-              }
+              },
+              ref: ref
             });
             
           },
@@ -1554,13 +1584,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             //this.fields = U.param(params, 'fields');
             this.selection = U.param(params, 'selection');
           },
-          $query: function() {
+          $query: function(ref) {
             return queries.$doQuery({
               address: this.address,
               command: 'getSelection',
               params: {
                 selection: this.selection
-              }
+              },
+              ref: ref
             });
           },
           $applyQueryResult: function(childData) {
@@ -1608,28 +1639,21 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
           // Modifier methods:
           $addChild: function(params /* data, localData */) {
+            var pass = this;
             var data = U.param(params, 'data');
             var localData = U.param(params, 'localData', data);
             
             // Prevent any updates while adding the child
             // (TODO: This really needs to be a stacked operation in case of multiple calls occurring before the 1st completes)
+            this.cancelUpdates();
             
-            // clearTimeout(this.timeout);
-            
-            var doss = this.doss;
-            var address = this.address;
-            
-            return doss.$handleRequest({
-              command: 'addData', 
-              params: { data: localData }
-            }).then(function(localVal) {
+            // Serially add the value locally, and then remotely
+            return this.doss.$handleRequest({ command: 'addData',  params: { data: localData } }).then(function(localVal) {
               
-              return queries.$doQuery({
-                address: address,
-                command: 'addData',
-                params: { data: data }
-              }).then(function(remoteVal) {
+              return queries.$doQuery({ address: pass.address, command: 'addData', params: { data: data } }).then(function(remoteVal) {
                 
+                // Turn updates back on once the remote value has added successfully
+                pass.scheduleUpdates();
                 return localVal;
                 
               }).fail(function(err) {
@@ -1641,27 +1665,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
             });
             
-            /*return new P({ all: {
-              
-              local: doss.$handleRequest({
-                command: 'addData',
-                params: {
-                  data: localData
-                }
-              }),
-              
-              remote: queries.$doQuery({ address: address,
-                command: 'addData',
-                params: {
-                  data: data
-                }
-              })
-              
-            }}).then(function(vals) {
-              
-              return vals.local;
-              
-            });*/
           }
         };}
       })

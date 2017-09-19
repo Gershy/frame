@@ -13,14 +13,25 @@ process.on('uncaughtException', function(err) {
   for (var i = 0; i < lines.length; i++) {
     line = lines[i].trim().substr(3); // Trim off "at "
     
+    var isEval = false;
     var fileLineInd = line.indexOf('(');
     if (~fileLineInd) {
-      var fileLineStr = line.substr(fileLineInd + 1, line.indexOf(')') - fileLineInd - 1);
+      var fileLineStr = line.substr(fileLineInd + 1, line.lastIndexOf(')') - fileLineInd - 1);
       var funcAddr = line.substr(0, fileLineInd - 1);
+      
+      if (fileLineStr.substr(0, 8) === 'eval at ') {
+        var isEval = true;
+        var lb = fileLineStr.indexOf('(');
+        var rb = fileLineStr.indexOf(')');
+        fileLineStr = fileLineStr.substr(lb + 1, rb - lb - 1);
+      }
     } else {
       var fileLineStr = line;
       var funcAddr = null;
     }
+    
+    // Native items aren't useful in the stack trace
+    if (fileLineStr === 'native') continue;
     
     // Some paths start with "C:" which makes it awkward to do `.split(':')`
     var lastColon = fileLineStr.lastIndexOf(':');
@@ -39,7 +50,8 @@ process.on('uncaughtException', function(err) {
       fileName: fileName,
       lineInd: parseInt(lineInd),
       charInd: parseInt(charInd),
-      corrected: false
+      corrected: false,
+      isEval: isEval
     };
     
     if (lineDataItem.fileName in fileOffsets) {
@@ -72,12 +84,12 @@ process.on('uncaughtException', function(err) {
     lineData.push(lineDataItem);
   }
   
-  console.error(errorText + '\n' + lineData.map(function(lineDataItem) {
+  console.error(errorText + '\n' + lineData.map(function(d) {
     
     return '|-- ' +
-      lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd +
-      (lineDataItem.corrected ? ' [!]' : '') + ' ' + // Provide an indicator for lines that have been source-calculated
-      '(' + (lineDataItem.funcAddr ? lineDataItem.funcAddr : '<native>') + ') ';
+      d.fileName + ':' + d.lineInd + ':' + d.charInd +
+      (d.corrected ? ' [!]' : '') + ' ' + // Provide an indicator for lines that have been source-calculated
+      '(' + (d.isEval ? 'EVAL: ' : '') + (d.funcAddr ? d.funcAddr : '<native>') + ') ';
     
   }).join('\n'));
   

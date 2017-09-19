@@ -23,7 +23,7 @@ var package = new PACK.pack.Package({ name: 'server',
   dependencies: [ 'p', 'queries', 'quickDev' ],
   buildFunc: function() {
     return {
-      ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
+      ASSET_VERSION: 'ver-' + U.charId(parseInt(Math.random() * 1000), 3),
       $readFile: function(filepath, isBinary) {
         return new PACK.p.P({ custom: function(resolve, reject) {
           fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
@@ -165,7 +165,7 @@ var package = new PACK.pack.Package({ name: 'server',
               .then(function(html) {
                 // TOOD: The fact that "cmp-client-" appears client-side means the client can request server-side sources
                 html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
-                html.data = html.data.replace(/{{assetVersion}}/g, 'v' + PACK.server.ASSET_VERSION);
+                html.data = html.data.replace(/{{assetVersion}}/g, PACK.server.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
                 
                 if ('resources' in PACK[appName]) {
@@ -174,7 +174,7 @@ var package = new PACK.pack.Package({ name: 'server',
                   
                   var r = PACK[appName].resources;
                   
-                  var ver = '?v' + PACK.server.ASSET_VERSION;
+                  var ver = '?' + PACK.server.ASSET_VERSION;
                   
                   if ('css' in r) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
                   if ('js' in r) r.js.forEach(function(js) { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
@@ -290,7 +290,7 @@ var package = new PACK.pack.Package({ name: 'server',
             return session.$respondToQuery(query);
           })
           .then(function(response) {        // Insert error message in case of 404
-            //return new PACK.p.P({ timeout: 1000 }).then(function() {
+            //return new PACK.p.P({ timeout: 1000 + Math.random(0, 3000) }).then(function() {
               return response || new PACK.server.ResponseData({
                 code: 404,
                 binary: false,
@@ -336,35 +336,55 @@ var package = new PACK.pack.Package({ name: 'server',
       
     }
     
-    console.log('Args:', args);
-    
     // Compile and load the app
     var appName = U.param(args, 'app', config.defaultApp);
     var dirPath = path.join(__dirname, 'apps', appName);
     compiler.compile(appName, dirPath);
-    var serverFileName = compiler.getFileName(dirPath, 'server');
-    console.log('SERVERFILENAME:', serverFileName);
-    //require(serverFileName);
-    require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
     // Bind ip and port based on deployment
     var deployment = U.param(args, 'deployment', 'default');
+    
     if (deployment === 'openshift') {
       
       console.log('ENV:', process.env);
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
+      if (!('OPENSHIFT_DATA_DIR' in process.env)) {
+        console.log(process.env);
+        throw new Error('No data directory found');
+      }
+      
+      ENVIRONMENT.update({
+        type: 'openshift',
+        fileRootName: process.env.OPENSHIFT_DATA_DIR
+      });
+      
     } else if (deployment === 'heroku') {
       
       // TODO
+      ENVIRONMENT.update({
+        type: 'heroku',
+        fileRootName: '<???>' // TODO: Figure this out
+      });
       
     } else if (deployment === 'default') {
+      
       
       var port = 8000;
       var ip = '127.0.0.1';
       
+      ENVIRONMENT.update({
+        type: 'default',
+        fileRootName: __dirname
+      });
+      
     }
+    
+    // var serverFileName = compiler.getFileName(dirPath, 'server');
+    // console.log('SERVERFILENAME:', serverFileName);
+    // require(serverFileName);
+    require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
     if ('port' in args) port = args.port;
     if ('ip' in args) ip = args.ip;
@@ -373,51 +393,6 @@ var package = new PACK.pack.Package({ name: 'server',
     server.listen(port, ip);
     console.log('Listening on port ' + port + '...');
     
-    /*
-    setInterval(function() {
-      var mem = process.memoryUsage();
-      var mb = mem.heapUsed / (1024 * 1024);
-      var perc = (mem.heapUsed / mem.heapTotal) * 100;
-      console.log('MEM', mb.toFixed(2).toString() + 'mb (' + perc.toFixed(1).toString() + '%)');
-    }, 90 * 1000);
-    */
   }
 });
 package.build();
-
-/*
-// TODO: Old, naive db setup
-
-var dbUri = U.param(process.env, 'FRAME_DB_URI', 'mongodb://localhost:27017/frame');
-
-var gimmeDb = true;
-var db = null;
-
-try { db = require('mongodb'); } catch(err) {}
-
-if (db && gimmeDb) {
-  
-  var client = db.MongoClient;
-  var url = process.env.FRAME_DB_URI;
-
-  console.log('Starting DB connection: ' + dbUri);
-  client.connect(dbUri, function(err, db) {
-    
-    if (err) {
-      console.log('Couldn\'t connect to DB:', err);
-      global.DB = null;
-    } else {
-      console.log('Connected to DB');
-      global.DB = db;
-    }
-    package.build();
-    
-  });
-  
-} else {
-  
-  global.DB = null;
-  package.build();
-  
-}
-*/

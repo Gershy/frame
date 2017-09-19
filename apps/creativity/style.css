@@ -234,6 +234,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
+  background-color: #ffffff;
 }
 .titledContent > .mainButton {
   position: absolute;
@@ -265,6 +266,16 @@ pane, and .mainButton buttons (to the left and right of the title)
   overflow-x: hidden;
   overflow-y: auto;
   z-index: 1;
+}
+
+.titledContent.min1 > .title {
+  height: 40px; line-height: 40px;
+  font-size: 20px;
+  letter-spacing: 12px;
+  text-indent: 12px;
+}
+.titledContent.min1 > .content {
+  border-top: 40px solid transparent;
 }
 
 #lobby { background-color: #dfeff9; }
@@ -405,36 +416,38 @@ pane, and .mainButton buttons (to the left and right of the title)
   white-space: nowrap;
 }
 
-#story > .content > .writeSet {
+#ws {
   position: absolute;
   box-sizing: border-box;
   width: 100%; height: 100%;
-  border-top: 16px solid transparent; /* Make space for `#story > .content > .metadata` */
-  border-bottom: 200px solid transparent; /* Make space for `#story > .content > .actions` */
-  padding-top: 10px;
   left: 0; top: 0;
+  border-top: 26px solid transparent; /* Make space for `#story > .content > .metadata`, with some nice spacing as well */
+  border-bottom: 283px solid transparent; /* Make space for `#story > .content > .actions` with 3px of room as well */
+  padding: 0 2px;
   font-family: serif;
+  overflow-x: hidden;
+  overflow-y: auto;
   
   z-index: 1;
 }
-#story > .content > .writeSet > .write {
+#ws > .write {
   display: inline;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;
 }
-#story > .content > .writeSet > .write > .content {
+#ws > .write > .content {
   font-size: 14px;
   color: #040404;
   vertical-align: middle;
 }
-#story > .content > .writeSet > .write:hover > .content {
+#ws > .write:hover > .content {
   background-color: #c0c0c0;
 }
-#story > .content > .writeSet > .write[class^="preview"] > .content {
+#ws > .write[class^="preview"] > .content {
   background-color: #b0b0ff;
 }
-#story > .content > .writeSet > .write > .username {
+#ws > .write > .username {
   box-sizing: border-box;
   border: solid 0 #8080f0;
   margin-left: 0;
@@ -446,16 +459,24 @@ pane, and .mainButton buttons (to the left and right of the title)
   
   transition: font-size 300ms linear, border 300ms linear, margin 300ms linear, padding 300ms linear;
 }
-#story > .content > .writeSet > .write:hover > .username {
+#ws > .write:hover > .username {
   border: solid 1px #8080f0;
   margin-left: 3px;
   padding: 0 3px;
   font-size: 12px;
 }
+#ws:after {
+  content: "";
+  display: block;
+  width: 150px;
+  margin: 25px auto 0 auto;
+  padding-bottom: 25px;
+  border-top: 5px dotted #b8b8b8;
+}
 
 #story > .content > .actions {
   position: absolute;
-  width: 100%; height: 200px;
+  width: 100%; height: 280px;
   left: 0; bottom: 0;
   z-index: 3;
 }
@@ -500,6 +521,7 @@ pane, and .mainButton buttons (to the left and right of the title)
 #story > .content > .actions > .write > .submit:hover:before {
   transform: scale(1);
 }
+/*
 #story > .content > .actions > .vote {
   position: absolute;
   width: 100%; height: 100%;
@@ -510,12 +532,15 @@ pane, and .mainButton buttons (to the left and right of the title)
   width: 100%; height: 20px; line-height: 20px;
   left: 0; top: 0;
   z-index: 2;
+}*/
+#story > .content > .actions > .vote > .title {
+  background-color: #1286c4;
+  color: #ffffff;
 }
 
 #contenderSet {
   position: absolute;
   box-sizing: border-box;
-  padding-top: 20px;
   width: 100%; height: 100%;
   left: 0; top: 0;
   z-index: 1;
@@ -523,12 +548,16 @@ pane, and .mainButton buttons (to the left and right of the title)
 #contenderSet > .contender {
   position: relative;
   display: block;
-  margin: 10px;
+  margin: 3px;
   padding: 20px 40px 10px 10px;
   border-radius: 10px;
-  background-color: #0a00a9;
-  color: #ffffff;
+  box-shadow: inset 0 0 0 1px #606060;
+  color: #606060;
   overflow: hidden;
+}
+#contenderSet > .contender.selected {
+  background-color: #feaeb2;
+  box-shadow: none;
 }
 #contenderSet > .contender > .user {
   position: absolute;
@@ -542,6 +571,8 @@ pane, and .mainButton buttons (to the left and right of the title)
   position: relative;
   z-index: 1;
   pointer-events: none;
+  font-size: 14px;
+  font-family: serif;
 }
 #contenderSet > .contender > .voteSet {
   position: relative;
@@ -558,8 +589,8 @@ pane, and .mainButton buttons (to the left and right of the title)
   display: inline-block;
   padding: 0 2px;
   vertical-align: top;
-  background-color: #ffffff;
-  color: #000000;
+  background-color: #ff6060;
+  color: #ffffff;
   margin-right: 5px;
 }
 #contenderSet > .contender > .votable {
@@ -571,7 +602,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   transition: background-color 500ms linear, width 500ms ease-out;
 }
 #contenderSet > .contender > .votable.choose-vote:hover {
-  background-color: #9090ff;
+  background-color: #feaeb2;
   width: 100%;
 }
 #contenderSet > .contender > .votable > .button {
@@ -590,8 +621,8 @@ pane, and .mainButton buttons (to the left and right of the title)
   width: 20px; height: 20px;
   right: 10px; top: 50%;
   margin-top: -10px;
-  background-color: #ffffff;
   border-radius: 100%;
+  box-shadow: inset 0 0 0 1px #606060;
   transition: width 200ms ease-in-out, height 200ms ease-in-out, margin-top 200ms ease-in-out, right 200ms ease-in-out;
 }
 #contenderSet > .contender > .votable.choose-vote:hover > .button:before {

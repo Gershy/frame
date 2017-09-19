@@ -219,6 +219,9 @@ Error.stackTraceLimit = Infinity;
 });
 
 // Build utility library
+global.ENVIRONMENT = {
+  type: 'default'
+};
 global.C = {};      // All classes are stored here
 global.PACK = {};   // All packages are stored here
 global.NEXT_ID = 0;

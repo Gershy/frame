@@ -5,19 +5,51 @@
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
-BLOCKING RELEASE:
-- Immediately after creation story appears in lobby, but `Content` instances have failed to fully load it
-- Story creation form validation
+TASKS:
+[?] Need to allow persisted data to survive openshift restarts
+[ ] Interactive elements can perform actions using `Content` instances which don't yet exist...
+      (Note: this could be an indication of a bigger, underlying design flaw??)
+[ ] Need to add lots of `changeHandler` methods for better responsiveness
+      (E.g. upon contest completion, the timer resets to "--:--:--" much more quickly than the voting pane is replaced with a writing pane)
+[ ] LOTS OF ACTION VALIDATION
+  [ ] Voting on an expired contest
+  [ ] Submitting writes on an expired story (or is this the same as above?)
+  [ ] User account creation
+[ ] Story creation form validation
+[X] Zero-latency client side values get overwritten by stale server-side values; remote syncing should pause until remote push is acknowledged
+[ ] Is the per-frame loop necessary? Can all changes be processed via `changeHandler`s?
+[ ] Hitting enter on forms should submit (Need `FormDecorator` and `FormInputDecorator` classes for this, which can probably handle validation too)
+[ ] Clumsy huge urls with json data; switch to POST requests
+[ ] Compiling for all files (files without substitution should be served raw)
+[ ] Mapping raw file names to compiled files
+[ ] Better loading indication
+[ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
+[ ] Profile editing
+[ ] Story editing (Change description? Change round time limit?)
+[ ] "quickDev" should be renamed "dossier"
+[ ] Make sure there are no hard-coded strings in userify or quickdev
 */
 /// =REMOVE}
 new PACK.pack.Package({ name: 'creativity',
   /// {SERVER=
-  dependencies: [ 'quickDev', 'p' ],
+  dependencies: [ 'quickDev', 'p', 'persist' ],
   /// =SERVER}
   /// {CLIENT=
   dependencies: [ 'quickDev', 'p', 'userify' ],
   /// =CLIENT}
-  buildFunc: function(packageName, qd, p, uf) {
+  buildFunc: function(/* ... */) {
+    
+    var packageName = arguments[0];
+    /// {SERVER=
+    var qd = arguments[1];
+    var p = arguments[2];
+    var pr = arguments[3];
+    /// =SERVER}
+    /// {CLIENT=
+    var qd = arguments[1];
+    var p = arguments[2];
+    var uf = arguments[3];
+    /// =CLIENT}
     
     var P = p.P;
     
@@ -116,6 +148,7 @@ new PACK.pack.Package({ name: 'creativity',
       }),
       
       /// {SERVER=
+      persister: new pr.Persister({ packageName: packageName, genDefaultData: function() { return require('./state/default.json'); } }),
       $updateCreativity: function(app) {
         
         var time = U.timeMs();
@@ -580,7 +613,9 @@ new PACK.pack.Package({ name: 'creativity',
                               { c: qd.DossierInt,   p: { name: 'value' } }
                             ]},
                             nameFunc: function(par, vote) {
-                              return vote.getChild('@user').name;
+                              return vote.getChild('user').value[0]; // The 1st address item is the username
+                              //console.log('USER FROM', vote);
+                              //return vote.getChild('@user').name;
                             },
                             verifyAndSanitizeData: function(voteSet, params) {
                               var username = U.param(params, 'username');
@@ -881,11 +916,11 @@ new PACK.pack.Package({ name: 'creativity',
             /** =CLIENT} */ }
             
             /// {SERVER=
-            try {
-              return outline.$getDoss(require('./state/persisted.json'));
-            } catch (err) {
-              return outline.$getDoss(require('./state/default.json'));
-            }
+            return cr.persister.$init().then(function() {
+              return cr.persister.$getData();
+            }).then(function(data) {
+              return outline.$getDoss(data);
+            });
             /// =SERVER}
             
             /// {CLIENT=
@@ -910,21 +945,20 @@ new PACK.pack.Package({ name: 'creativity',
     cr.versioner.$getDoss().then(function(doss) {
       
       /// {SERVER=
-      var fs = require('fs');
+      /*var fs = require('fs');
       var path = require('path');
-      var stateFileName = path.join(__dirname, 'state', 'persisted.json');
+      var stateFileName = path.join(__dirname, 'state', 'persisted.json');*/
       
       cr.queryHandler = doss;
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
       setInterval(function() { cr.$updateCreativity(doss).done(); }, 2000);
-      setInterval(function() {
+      setInterval(function() { cr.persister.$putData(doss.getRawDataView()).done();
         
-        new P({ custom: function(resolve, reject) {
+        /*new P({ custom: function(resolve, reject) {
           fs.writeFile(stateFileName, JSON.stringify(doss.getRawDataView(), null, 2), function(err, val) { return err ? reject(err) : resolve(val); });
-        }}).done()
+        }}).done()*/
         
       }, 10000);
-      console.log('App update loop initialized...');
       /// =SERVER}
       
       /// {CLIENT=
@@ -1237,7 +1271,7 @@ new PACK.pack.Package({ name: 'creativity',
                           components: cr.timeComponentData.slice(0, 3)
                         })
                       ]}),
-                      new uf.DynamicSetView({ name: 'writeSet',
+                      new uf.DynamicSetView({ name: 'writeSet', cssId: 'ws',
                         childInfo: function() {
                           var writeSet = doss.getChild('@currentStory.writeSet').children;
                           
@@ -1303,25 +1337,25 @@ new PACK.pack.Package({ name: 'creativity',
                             new uf.TextEditView({ name: 'editor', textInfo: doss.getChild('currentWrite'), multiline: true, placeholderInfo: 'Next line of the story...' }),
                             new uf.ActionView({ name: 'submit', textInfo: 'Submit', $action: function() {
                               
+                              // Immediately clear the "currentWrite" value
+                              var write = doss.getValue('currentWrite');
+                              doss.setValue('currentWrite', '');
+                              
                               return doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild({
                                 data: {
                                   username: doss.getValue('username'),
                                   token: doss.getValue('token'),
-                                  content: doss.getValue('currentWrite')
+                                  content: write
                                 }
-                              }).then(function() {
-                                
-                                doss.setValue('currentWrite', '');
-                                
                               });
                             
                             }})
                             
                           ]}),
-                          new uf.SetView({ name: 'vote', children: [
+                          new uf.SetView({ name: 'vote', cssClasses: [ 'titledContent', 'min1' ], children: [
                             
                             new uf.TextView({ name: 'title', info: 'Vote:' }),
-                            new uf.DynamicSetView({ name: 'contenderSet', cssId: 'contenderSet',
+                            new uf.DynamicSetView({ name: 'content', cssId: 'contenderSet',
                               childInfo: function() { return doss.getChild('@currentStory.@currentContest.writeSet').children; },
                               genChildView: function(name, write) {
                                 

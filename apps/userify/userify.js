@@ -13,6 +13,18 @@ var package = new PACK.pack.Package({ name: 'userify',
     
     var uf = {
       
+      SimpleValue: U.makeClass({ name: 'SimpleValue',
+        description: 'Simple class for applying `getValue` and `setValue` ' +
+          'methods to a simple value',
+        methods: function(sc, c) { return {
+          init: function(params) {
+            this.value = U.param(params, 'value');
+          },
+          getValue: function() { return this.value; },
+          setValue: function(val) { this.value = val; }
+        };}
+      }),
+      
       /* DOM UTIL */
       domSetText: function(elem, text) {
         // TODO: Escaping can occur here
@@ -69,7 +81,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       toInfo: function(obj) {
         if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
         if (U.isObj(obj, Function)) return { getValue: obj };
-        return { getValue: function() { return this.value; }, setValue: function(val) { this.value = val; }, value: obj };
+        return new uf.SimpleValue({ value: obj });
       },
       pafam: function(params, name, def) {
         return uf.toInfo(U.param(params, name, def));
@@ -220,7 +232,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               }.bind(this),
               mouseDown: true,
               view: view,
-              capturedData: this.captureOnStart ? this.captureOnStart(view) : null,
+              capturedInfo: this.captureOnStart ? this.captureOnStart(view) : null,
               pt1: new Point({ x: event.clientX, y: event.clientY }),
               pt2: new Point({ x: event.clientX, y: event.clientY })
             });
@@ -252,7 +264,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               info.pt2 = new Point({ x: event.clientX, y: event.clientY });
               
               if (!info.drag && info.pt2.dist(info.pt1) > this.tolerance) {
-                // TODO: This is when the drag really starts; should consider updating `pt1` and `capturedData`
+                // TODO: This is when the drag really starts; should consider updating `pt1` and `capturedInfo`
                 info.drag = true;
               }
               
@@ -493,7 +505,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (htmlId.length < 40) this.domRoot.id = htmlId;
             
             // Set desired css classes
-            this.domRoot.classList.add(this.name);
+            this.domRoot.classList.add(isNaN(this.name[0]) ? this.name : ('_' + this.name));
             for (var i = 0, len = this.cssClasses.length; i < len; i++) this.domRoot.classList.add(this.cssClasses[i]);
             
             (this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
