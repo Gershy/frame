@@ -10,7 +10,7 @@ new PACK.pack.Package({ name: 'persist',
     
     var $readDir = function(pathName) {
       return new P({ custom: function(resolve, reject) {
-        fs.readdir(pathName, function(err, val) { if (err) reject(err); else resolve(val.toString()); });
+        fs.readdir(pathName, function(err, val) { if (err) reject(err); else resolve(val); });
       }});
     };
     var $createDir = function(pathName) {
@@ -23,7 +23,7 @@ new PACK.pack.Package({ name: 'persist',
     };
     var $readFile = function(pathName) {
       return new P({ custom: function(resolve, reject) {
-        fs.readFile(pathName, function(err, val) { if (err) reject(err); else resolve(val); });
+        fs.readFile(pathName, function(err, val) { if (err) reject(err); else resolve(val.toString()); });
       }});
     };
     var $writeFile = function(pathName, content) {
@@ -62,7 +62,7 @@ new PACK.pack.Package({ name: 'persist',
               console.log('WROTE thing.txt');
               
               return $readFile(path.join(pcs[0], 'thing.txt')).then(function(hello) {
-                console.log('READ thing.txt:', hello);
+                console.log('READ thing.txt: ', hello);
               });
               
             });
