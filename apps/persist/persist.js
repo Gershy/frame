@@ -57,7 +57,15 @@ new PACK.pack.Package({ name: 'persist',
             
             var pcs = this.pathName.split(path.sep);
             
-            var $ret = p.$null;
+            var $ret = $writeFile(path.join(pcs[0], 'thing.txt'), 'hello??').then(function() {
+              
+              console.log('WROTE thing.txt');
+              
+              return $readFile(path.join(pcs[0], 'thing.txt')).then(function(hello) {
+                console.log('READ thing.txt:', hello);
+              });
+              
+            });
             
             var pathName = pcs[0];
             
