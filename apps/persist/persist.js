@@ -86,7 +86,9 @@ new PACK.pack.Package({ name: 'persist',
           },
           $init: function() {
             
-            return $ensureFile(this.pathName, '{}');
+            return ENVIRONMENT.rawArgs.resetPersistedData
+              ? $ensureFile(this.pathName).then($writeFile.bind(null, this.pathName, ''))
+              : $ensureFile(this.pathName, '{}');
             
             /*
             var pcs = this.pathName.split(path.sep);

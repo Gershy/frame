@@ -385,6 +385,8 @@ var package = new PACK.pack.Package({ name: 'server',
       
     }
     
+    ENVIRONMENT.rawArgs = args;
+    
     // var serverFileName = compiler.getFileName(dirPath, 'server');
     // console.log('SERVERFILENAME:', serverFileName);
     // require(serverFileName);
