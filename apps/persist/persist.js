@@ -27,14 +27,14 @@ new PACK.pack.Package({ name: 'persist',
       
       for (var i = 1, len = pcs.length; i < len; i++) {
         
-        curPathName = path.join(curPathName, pcs[i]);
-        
-        $ret = $ret.then($readDir.bind(null, curPathName)).then(function() {
-          console.log('Dir ' + pathName + ' already exists');
-        }).fail(function() {
-          console.log('Dir ' + pathName + ' is MISSING; creating...');
-          return $createDir(pathName).then(function() { console.log('Created!'); });
-        });
+        (function(pn) {
+          $ret = $ret.then($readDir.bind(null, pn)).then(function() {
+            console.log('Dir ' + pn + ' already exists');
+          }).fail(function() {
+            console.log('Dir ' + pn + ' is MISSING; creating...');
+            return $createDir(pn).then(function() { console.log('Created!'); });
+          });
+        }).call(null, curPathName = path.join(curPathName, pcs[i]));
         
       }
       
