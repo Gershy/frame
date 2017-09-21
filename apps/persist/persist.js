@@ -111,16 +111,16 @@ new PACK.pack.Package({ name: 'persist',
           $getData: function() {
             var pass = this;
             return $readFile(this.pathName).then(function(data) {
+              console.log('READ STORED DATA: ' + data.length);
               if (!data.length) throw new Error(); // An empty file also results in default data
-              if (ENVIRONMENT.type === 'openshift') console.log('Persist: getData length: ' + data.length);
               return JSON.parse(data);
             }).fail(function() {
               var data = pass.genDefaultData();
+              console.log('WRITING DEFAULT DATA: ', JSON.stringify(data, null, 2).length);
               return pass.$putData(data).then(function() { return data; });
             });
           },
           $putData: function(data) {
-            if (ENVIRONMENT.type === 'openshift') console.log('Persist: putData length: ' + JSON.stringify(data, null, 2).length);
             return $writeFile(this.pathName, JSON.stringify(data, null, 2));
           }
         };}

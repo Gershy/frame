@@ -23,7 +23,7 @@ var package = new PACK.pack.Package({ name: 'server',
   dependencies: [ 'p', 'queries', 'quickDev' ],
   buildFunc: function() {
     return {
-      ASSET_VERSION: 'ver-' + U.charId(parseInt(Math.random() * 1000), 3),
+      ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
       $readFile: function(filepath, isBinary) {
         return new PACK.p.P({ custom: function(resolve, reject) {
           fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
@@ -163,7 +163,7 @@ var package = new PACK.pack.Package({ name: 'server',
             
             return this.getFileContents('mainPage.html')
               .then(function(html) {
-                // TOOD: The fact that "cmp-client-" appears client-side means the client can request server-side sources
+                // TODO: The fact that "cmp-client-" appears client-side means the client can request server-side sources
                 html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
                 html.data = html.data.replace(/{{assetVersion}}/g, PACK.server.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
@@ -345,13 +345,6 @@ var package = new PACK.pack.Package({ name: 'server',
     var deployment = U.param(args, 'deployment', 'default');
     
     if (deployment === 'openshift') {
-      
-      var vals = [];
-      for (var k in process.env) vals.push([ k, process.env[k] ]);
-      vals.sort(function(a, b) { a = a[0]; b = b[0]; return (a > b) - (a < b); });
-      for (var i = 0; i < vals.length; i++) {
-        console.log(vals[i][0] + ': ' + vals[i][1]);
-      }
       
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
       var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';

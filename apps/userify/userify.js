@@ -101,6 +101,92 @@ var package = new PACK.pack.Package({ name: 'userify',
           NEXT_ID: 0
         }
       }),
+      ClassDecorator: U.makeClass({ name: 'ClassDecorator',
+        superclassName: 'Decorator',
+        description: 'Dynamically changes html classes on an element',
+        methods: function(sc, c) { return {
+          init: function(params /* info, list */) {
+            sc.init.call(this, params);
+            this.list = U.param(params, 'list');
+            this.info = uf.pafam(params, 'info');
+          },
+          start: function(view) {
+          },
+          update: function(view) {
+            var nextClass = this.info.getValue();
+            var classList = view.domRoot.classList;
+            if (!nextClass || !classList.contains(nextClass)) {
+              
+              // Remove all possible classes
+              classList.remove.apply(classList, this.list); 
+              
+              // Add the current class
+              if (nextClass) classList.add(nextClass);
+              
+            }
+          },
+          stop: function(view) {
+            if (view.domRoot) {
+              var classList = view.domRoot.classList;
+              classList.remove.apply(classList, this.list);
+            }
+          }
+        };}
+      }),
+      CssDecorator: U.makeClass({ name: 'CssDecorator',
+        superclassName: 'Decorator',
+        description: 'Dynamically changes css properties on an element',
+        methods: function(sc, c) { return {
+          init: function(params /* info, properties */) {
+            sc.init.call(this, params);
+            this.properties = U.param(params, 'properties');
+            this.info = uf.pafam(params, 'info');
+          },
+          start: function(view) {
+          },
+          update: function(view) {
+            var nextProps = this.info.getValue();
+            var style = view.domRoot.style;
+            
+            // Calculate the difference...
+            for (var i = 0; i < this.properties.length; i++) {
+              var prop = this.properties[i];
+              var val = (prop in nextProps) ? nextProps[prop] : ''; // Unspecified properties are removed
+              if (val !== style[prop]) style[prop] = val; // Only update the style props that have changed
+            }
+          },
+          stop: function(view) {
+            if (view.domRoot) {
+              var style = view.domRoot.style;
+              for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
+            }
+          }
+        };}
+      }),
+      FuncDecorator: U.makeClass({ name: 'FuncDecorator',
+        superclassName: 'Decorator',
+        description: 'Perform arbitrary actions as a decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* func */) {
+            this.func = U.param(params, 'func');
+          },
+          update: function(view) {
+            this.func(view);
+          }
+        };}
+      }),
+      
+      /* FORM DECORATORS (TODO: move these to a new package?) */
+      FormDecorator: U.makeClass({ name: 'FormDecorator',
+        superclassName: 'Decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* */) {
+            sc.init.call(this, params);
+          }
+        };}
+      }),
+      
+      /* INPUT DECORATORS (TODO: move these to a new package?) */
       PointerDecorator: U.makeClass({ name: 'PointerDecorator',
         superclassName: 'Decorator',
         description: 'Generic class for decorators which deal with pointer actions; ' +
@@ -339,81 +425,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         }
       }),
-      ClassDecorator: U.makeClass({ name: 'ClassDecorator',
-        superclassName: 'Decorator',
-        description: 'Dynamically changes html classes on an element',
-        methods: function(sc, c) { return {
-          init: function(params /* info, list */) {
-            sc.init.call(this, params);
-            this.list = U.param(params, 'list');
-            this.info = uf.pafam(params, 'info');
-          },
-          start: function(view) {
-          },
-          update: function(view) {
-            var nextClass = this.info.getValue();
-            var classList = view.domRoot.classList;
-            if (!nextClass || !classList.contains(nextClass)) {
-              
-              // Remove all possible classes
-              classList.remove.apply(classList, this.list); 
-              
-              // Add the current class
-              if (nextClass) classList.add(nextClass);
-              
-            }
-          },
-          stop: function(view) {
-            if (view.domRoot) {
-              var classList = view.domRoot.classList;
-              classList.remove.apply(classList, this.list);
-            }
-          }
-        };}
-      }),
-      CssDecorator: U.makeClass({ name: 'CssDecorator',
-        superclassName: 'Decorator',
-        description: 'Dynamically changes css properties on an element',
-        methods: function(sc, c) { return {
-          init: function(params /* info, properties */) {
-            sc.init.call(this, params);
-            this.properties = U.param(params, 'properties');
-            this.info = uf.pafam(params, 'info');
-          },
-          start: function(view) {
-          },
-          update: function(view) {
-            var nextProps = this.info.getValue();
-            var style = view.domRoot.style;
-            
-            // Calculate the difference...
-            for (var i = 0; i < this.properties.length; i++) {
-              var prop = this.properties[i];
-              var val = (prop in nextProps) ? nextProps[prop] : ''; // Unspecified properties are removed
-              if (val !== style[prop]) style[prop] = val; // Only update the style props that have changed
-            }
-          },
-          stop: function(view) {
-            if (view.domRoot) {
-              var style = view.domRoot.style;
-              for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
-            }
-          }
-        };}
-      }),
-      FuncDecorator: U.makeClass({ name: 'FuncDecorator',
-        superclassName: 'Decorator',
-        description: 'Perform arbitrary actions as a decorator',
-        methods: function(sc, c) { return {
-          init: function(params /* func */) {
-            this.func = U.param(params, 'func');
-          },
-          update: function(view) {
-            this.func(view);
-          }
-        };}
-      }),
-            
+          
       /* VIEW */
       // TODO: `update` should not need to check for `start`. `start` should be called by an outside source.
       // `update` ruins `start`/`stop` symmetry
