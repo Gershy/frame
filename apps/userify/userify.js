@@ -117,10 +117,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             var classList = view.domRoot.classList;
             if (!nextClass || !classList.contains(nextClass)) {
               
-              // Remove all possible classes
+              // Remove all classes, then apply current one
               classList.remove.apply(classList, this.list); 
-              
-              // Add the current class
               if (nextClass) classList.add(nextClass);
               
             }
@@ -177,11 +175,32 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
       
       /* FORM DECORATORS (TODO: move these to a new package?) */
+      // TODO: HEEERE!!
       FormDecorator: U.makeClass({ name: 'FormDecorator',
         superclassName: 'Decorator',
         methods: function(sc, c) { return {
           init: function(params /* */) {
             sc.init.call(this, params);
+          },
+          start: function(view) {
+          },
+          update: function(view) {
+          },
+          stop: function(view) {
+          }
+        };}
+      }),
+      FormInputDecorator: U.makeClass({ name: 'FormInputDecorator',
+        superclassName: 'Decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* formDecorator, validateFunc */) {
+            sc.init.call(this, params);
+            
+            this.formDecorator = U.param(params, 'formDecorator');
+            this.validateFunc = U.param(params, 'validateFunc');
+          },
+          start: function(view) {
+            
           }
         };}
       }),
