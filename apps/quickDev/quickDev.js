@@ -1073,9 +1073,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (U.isObj(value, String)) {
               var pcs = value.split('.');
               if (pcs.length !== template.length) throw new Error('String value "' + value + '" does not match template "' + template.join('.') + '"');
-              //var vals = [];
-              //for (var i = 0; i < pcs.length; i++) if (template[i][0] === '$') vals.push(pcs[i]);
-              //return sc.setValue.call(this, vals);
               return sc.setValue.call(this, pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; }));
             }
             

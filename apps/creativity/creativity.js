@@ -101,7 +101,7 @@ new PACK.pack.Package({ name: 'creativity',
             var password = U.param(params, 'password');
             
             if (username.length < 3 || username.length > 16) throw new Error('Usernames must be 3-16 characters');
-            if (!/^[a-zA-Z][a-zA-Z0-9]+$/.test(username)) throw new Error('Illegal username');
+            if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(username)) throw new Error('Illegal username');
             
             if (password.length < 5 || password.length > 30) throw new Error('Passwords must be 5-30 characters');
             
@@ -467,6 +467,11 @@ new PACK.pack.Package({ name: 'creativity',
       ClockEditView: U.makeClass({ name: 'ClockEditView',
         superclassName: 'ClockView',
         methods: function(sc, c) { return {
+          init: function(params /* name, info, format, components, min, max */) {
+            sc.init.call(this, params);
+            this.min = U.param(params, 'min', null);
+            this.max = U.param(params, 'max', null);
+          },
           createDomRoot: function() {
             var ret = sc.createDomRoot.call(this);
             ret.classList.add('interactive');
@@ -477,11 +482,11 @@ new PACK.pack.Package({ name: 'creativity',
               
               var add = document.createElement('div');
               add.classList.add('control', 'add', compData.text[0]);
-              add.onclick = c.addClick.bind(null, this.info, compData.mult);
+              add.onclick = c.addClick.bind(null, this.info, compData.mult, this.min, this.max);
               
               var sub = document.createElement('div');
               sub.classList.add('control', 'sub', compData.text[0]);
-              sub.onclick = c.addClick.bind(null, this.info, -compData.mult);
+              sub.onclick = c.addClick.bind(null, this.info, -compData.mult, this.min, this.max);
               
               comp.appendChild(add);
               comp.appendChild(sub);
@@ -492,7 +497,14 @@ new PACK.pack.Package({ name: 'creativity',
         };},
         statik: {
           // Click handler for adding/reducing time
-          addClick: function(info, amount) { info.modValue(function(v) { return v + amount; }); }
+          addClick: function(info, amount, min, max) {
+            info.modValue(function(v) {
+              v += amount;
+              if (min !== null && v < min) return min;
+              if (max !== null && v > max) return max;
+              return v;
+            });
+          }
         }
       }),
       updateOnFrame: {}, // Keep track of all `Content` instances which need to update once per frame
@@ -882,6 +894,10 @@ new PACK.pack.Package({ name: 'creativity',
               return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 // Return `null` if no current write, otherwise return the write
                 var username = doss.getChild('~root.username').value;
+                
+                if (!username) return null;
+                return doss.par.children.writeSet.children[username] || null;
+                
                 return username ? doss.getChild([ '~par', 'writeSet', username ]) : null;
               }});
             };
@@ -956,8 +972,6 @@ new PACK.pack.Package({ name: 'creativity',
       /// =SERVER}
       
       /// {CLIENT=
-      var loginForm = new uf.FormDecorator();
-      
       var view = new uf.RootView({ name: 'root',
         children: [
           
@@ -974,13 +988,16 @@ new PACK.pack.Package({ name: 'creativity',
               WordMixer
               Storyteller
               */
-              new uf.SetView({ name: 'loginForm', decorators: [ loginForm ], cssId: 'loginForm', children: [
+              new uf.SetView({ name: 'loginForm', cssId: 'loginForm', children: [
                 new uf.TextHideView({ name: 'loginError', info: doss.getChild('loginError') }),
                 new uf.TextView({ name: 'title', info: 'Creativity' }),
-                new uf.TextEditView({ name: 'username', decorators: [ loginForm.genInputDecorator() ], cssClasses: [ 'centered' ], info: doss.getChild('username'), placeholderInfo: 'Username' }),
-                new uf.TextEditView({ name: 'password', decorators: [ loginForm.genInputDecorator() ], cssClasses: [ 'centered' ], info: doss.getChild('password'), placeholderInfo: 'Password' }),
+                new uf.SetView({ name: 'username', cssClasses: [ 'formItem' ], children: [
+                  new uf.TextEditView({ name: 'input', cssClasses: [ 'centered' ], info: doss.getChild('username'), placeholderInfo: 'Username' })
+                ]}),
+                new uf.SetView({ name: 'password', cssClasses: [ 'formItem' ], children: [
+                  new uf.TextEditView({ name: 'input', cssClasses: [ 'centered' ], info: doss.getChild('password'), placeholderInfo: 'Password' })
+                ]}),
                 new uf.ActionView({ name: 'signin', textInfo: 'Login',
-                  decorators: [ loginForm.genSubmitDecorator() ],
                   $action: function() {
                     return doss.$doRequest({ command: 'getToken', params: {
                       username: doss.getValue('username'),
@@ -1131,7 +1148,7 @@ new PACK.pack.Package({ name: 'creativity',
                       ]}),
                       new uf.SetView({ name: 'contestTime', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Round time limit' }),
-                        new cr.ClockEditView({ name: 'input', info: doss.getChild('editStory.contestTime'), format: 'string', components: cr.timeComponentData.slice(0, 3) })
+                        new cr.ClockEditView({ name: 'input', info: doss.getChild('editStory.contestTime'), format: 'string', components: cr.timeComponentData.slice(0, 3), min: 3 * 60 * 1000 })
                       ]}),
                       new uf.SetView({ name: 'contestLimit', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Total number of rounds' }),
@@ -1287,7 +1304,6 @@ new PACK.pack.Package({ name: 'creativity',
                           
                           return writeSet;
                         },
-                        decorators: [],
                         genChildView: function(name, info) {
                           
                           if (U.isInstance(info, qd.DossierRef)) {
@@ -1433,6 +1449,73 @@ new PACK.pack.Package({ name: 'creativity',
         }
       });
       view.start();
+      
+      // Decorate the login form
+      var loginFormDec = new uf.FormDecorator();
+      var loginFormView = view.getChild('login.out.loginForm');
+      loginFormView.decorators.push(loginFormDec);
+      
+      var usernameDec = loginFormDec.genInputDecorator(function(val) {
+        return !val.length || /^[a-zA-Z][a-zA-Z0-9]*$/.test(val) ? null : 'Invalid characters';
+      });
+      loginFormView.getChild('username').addChildHead(usernameDec.genErrorView());
+      loginFormView.getChild('username.input').decorators.push(usernameDec);
+      
+      var passwordDec = loginFormDec.genInputDecorator();
+      loginFormView.getChild('password.input').decorators.push(passwordDec);
+      
+      var submitDec = loginFormDec.genSubmitDecorator();
+      loginFormView.getChild('signin').decorators.push(submitDec);
+      
+      // Decorate the story form
+      var storyFormDec = new uf.FormDecorator();
+      var storyFormView = view.getChild('login.in.chooseStory.createStory.content');
+      storyFormView.decorators.push(storyFormDec);
+      
+      var quickNameDec = storyFormDec.genInputDecorator(function(val) {
+        return !val.length || /^[a-z][a-zA-Z]*$/.test(val) ? null : 'Begins with a lowercase letter and contains only letters';
+      });
+      storyFormView.getChild('quickName').addChildHead(quickNameDec.genErrorView());
+      storyFormView.getChild('quickName.input').decorators.push(quickNameDec);
+      
+      var descriptionDec = storyFormDec.genInputDecorator(function(val) {
+        return val.length <= 200 ? null : 'Description is too long';
+      });
+      storyFormView.getChild('description').addChildHead(descriptionDec.genErrorView());
+      storyFormView.getChild('description.input').decorators.push(descriptionDec);
+      
+      var maxWriteLengthDec = storyFormDec.genInputDecorator(function(val) {
+        return /^[0-9]*$/.test(val) ? null : 'Must be a numeric value';
+      });
+      storyFormView.getChild('maxWriteLength').addChildHead(maxWriteLengthDec.genErrorView());
+      storyFormView.getChild('maxWriteLength.input').decorators.push(maxWriteLengthDec);
+      
+      var contestLimitDec = storyFormDec.genInputDecorator(function(val) {
+        return /^[0-9]*$/.test(val) ? null : 'Must be a numeric value';
+      });
+      storyFormView.getChild('contestLimit').addChildHead(contestLimitDec.genErrorView());
+      storyFormView.getChild('contestLimit.input').decorators.push(contestLimitDec);
+      
+      var authorLimitDec = storyFormDec.genInputDecorator(function(val) {
+        return /^[0-9]*$/.test(val) ? null : 'Must be a numeric value';
+      });
+      storyFormView.getChild('authorLimit').addChildHead(authorLimitDec.genErrorView());
+      storyFormView.getChild('authorLimit.input').decorators.push(authorLimitDec);
+      
+      var maxWritesDec = storyFormDec.genInputDecorator(function(val) {
+        return /^[0-9]*$/.test(val) ? null : 'Must be a numeric value';
+      });
+      storyFormView.getChild('maxWrites').addChildHead(maxWritesDec.genErrorView());
+      storyFormView.getChild('maxWrites.input').decorators.push(maxWritesDec);
+      
+      var maxVotesDec = storyFormDec.genInputDecorator(function(val) {
+        return /^[0-9]*$/.test(val) ? null : 'Must be a numeric value';
+      });
+      storyFormView.getChild('maxVotes').addChildHead(maxVotesDec.genErrorView());
+      storyFormView.getChild('maxVotes.input').decorators.push(maxVotesDec);
+      
+      var submitDec = storyFormDec.genSubmitDecorator();
+      storyFormView.getChild('submit').decorators.push(submitDec);
       
       // Add these to command line
       window.doss = doss;

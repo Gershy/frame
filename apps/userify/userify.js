@@ -4,12 +4,9 @@
 var package = new PACK.pack.Package({ name: 'userify',
   dependencies: [ 'tree', 'quickDev', 'p', 'geom' ],
   buildFunc: function(packageName, tree, qd) {
-    var namespace = {};
-    
     var P = PACK.p.P;
     
     var Point = PACK.geom.Point;
-    var origin = PACK.geom.ORIGIN;
     
     var uf = {
       
@@ -22,20 +19,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           getValue: function() { return this.value; },
           setValue: function(val) { this.value = val; }
-        };}
-      }),
-      ProxyInfo: U.makeClass({ name: 'ProxyInfo',
-        methods: function(sc, c) { return {
-          init: function(params) {
-            this.info = U.param(params, 'info');
-          },
-          getValue: function() {
-            return this.info ? this.info.getValue() : null;
-          },
-          setValue: function(val) {
-            if (!this.info) throw new Error('No proxied value to set.');
-            this.info.setValue(val);
-          }
         };}
       }),
       
@@ -216,12 +199,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           start: function(view) {
           },
-          update: function(view) {
-            // Note: This methodology requires the `FormDecorator` to run before
-            // all child inputs. This should be expected for any reasonable
-            // View heirarchy.
-            for (var i = 0; i < this.inputs.length; i++) this.inputs[i].err = null;
-          },
           stop: function(view) {
           }
         };}
@@ -236,15 +213,22 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.validateFunc = U.param(params, 'validateFunc', null);
             this.err = null;
           },
-          update: function(view) {
-            if (!this.validateFunc) return;
-            this.err = this.validateFunc(view.info.getValue());
+          genErrorView: function(name) {
+            var pass = this;
+            return new uf.TextHideView({ name: name || 'error', info: function() { return pass.err; } });
           },
           start: function(view) {
             view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
             uf.domAddListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+            if (this.validateFunc) {
+              var pass = this;
+              view.info.addChangeListener(this.id, function(val) {
+                pass.err = pass.validateFunc(val);
+              });
+            }
           },
           stop: function(view) {
+            if (this.validateFunc) view.info.remChangeListener(this.id);
             uf.domRemListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
             delete view['~' + this.id + '.keyPress'];
           }
@@ -733,7 +717,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             this.$action = U.param(params, '$action');
             this.textInfo = uf.pafam(params, 'textInfo');
-            this.waiting = false;
+            this.waitingInfo = new uf.SimpleInfo({ value: false });
           },
           
           createDomRoot: function() {
@@ -747,24 +731,21 @@ var package = new PACK.pack.Package({ name: 'userify',
                 e.preventDefault();
               }
             };
-            button.onclick = this.doAction.bind(this);
+            uf.domAddListener(button, 'onclick', this.doAction.bind(this));
             
             return button;
           },
           doAction: function() {
-            if (this.waiting) return;
-            this.waiting = true;
+            if (this.waitingInfo.getValue()) return;
+            this.waitingInfo.setValue(true);
             var pass = this;
-            this.$action().then(function() { pass.waiting = false; }).done();
+            this.$action().then(function() { pass.waitingInfo.setValue(false); }).done();
           },
           tick: function(millis) {
             sc.tick.call(this, millis);
-            
             uf.domSetText(this.domRoot, this.textInfo.getValue());
-            
-            if (this.waiting)  this.domRoot.classList.add('waiting');
-            else               this.domRoot.classList.remove('waiting');
-          },
+            this.domRoot.classList.toggle('waitingInfo', this.waitingInfo.getValue());
+          }
           
         };}
       }),
@@ -834,6 +815,15 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.children[child.name] = child;
             
             return child;
+          },
+          addChildHead: function(child) {
+            this.addChild(child);
+            delete this.children[child.name];
+            
+            var head = {};
+            head[child.name] = child;
+            
+            this.children = head.update(this.children);
           },
           remChild: function(child) {
             // Resolve string to child
@@ -962,9 +952,9 @@ var package = new PACK.pack.Package({ name: 'userify',
             }
             
             if (nextChild !== this.currentChild) {
+              
               if (this.currentChild) {
                 
-                this.domRoot.classList.remove('choose-' + (this.currentChild ? this.currentChild.name : 'null'));
                 if (this.transitionTime) {
                   
                   this.currentChild.domRoot.classList.add('choiceRemoved');
@@ -975,6 +965,7 @@ var package = new PACK.pack.Package({ name: 'userify',
                   this.currentChild.stop();
                   
                 }
+                
               }
               
               this.currentChild = nextChild;
