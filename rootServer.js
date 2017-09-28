@@ -399,7 +399,7 @@ var package = new PACK.pack.Package({ name: 'server',
     
     var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
     server.listen(port, ip);
-    console.log('Listening on port ' + port + '...');
+    console.log('Listening at ' + ip + ':' + port + '...');
     
   }
 });
