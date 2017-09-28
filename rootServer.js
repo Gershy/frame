@@ -209,7 +209,7 @@ var package = new PACK.pack.Package({ name: 'server',
       
       $getSession: function(appName, req) {
         // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
-        var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/^[0-9.]/g, '');
+        var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/[^0-9.]/g, '');
         return PACK.p.$(PACK.server.Session.GET_SESSION(appName, ip));
       },
       $getQuery: function(req) {

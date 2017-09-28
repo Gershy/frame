@@ -1309,7 +1309,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var result = refResult.result;
               
               // Make sure a stale response never overwrites a fresher one
-              if (freshness < pass.freshest) { console.log('IGNORED STALE RESULT!'); return p.$null; }
+              if (freshness < pass.freshest) return p.$null;
               
               // If `pass.timeout` is `null`, is signals that updates are currently cancelled.
               // Having `pass.$query` complete when updates are cancelled indicates that the
