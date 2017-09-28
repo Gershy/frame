@@ -28,7 +28,6 @@ var package = new PACK.pack.Package({ name: 'p',
         return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
       },
       P: U.makeClass({ name: 'P',
-        includeGuid: false,
         methods: function(sc) { return {
           init: function(params /* val, func | cb, cbParams, cbName, all */) {
             this.children = [];
@@ -67,7 +66,7 @@ var package = new PACK.pack.Package({ name: 'p',
               // - all-style allows for arrays and objects, args-style is array only
               var all = U.param(params, 'all');
               var results = new all.constructor(); // This allows the same code to process both arrays and objects
-              var num = U.length(all);
+              var num = U.isObj(all, Array) ? all.length : Object.keys(all).length;
               
               if (!num) return this.resolve(results);
               

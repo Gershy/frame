@@ -90,33 +90,14 @@ new PACK.pack.Package({ name: 'persist',
               ? $ensureFile(this.pathName).then($writeFile.bind(null, this.pathName, ''))
               : $ensureFile(this.pathName, '{}');
             
-            /*
-            var pcs = this.pathName.split(path.sep);
-            return $ensureDir(pcs.slice(0, pcs.length - 1).join(path.sep)).then(function() { return $writeFile(pathName, '{}'); });
-            
-            for (var i = 1, len = pcs.length - 1; i < len; i++) // Subtract one to exclude the .json component
-              $ret = $ret.then($ensureDir.bind(null, pathName = path.join(pathName, pcs[i])));
-            
-            return $ret.then(function(){
-              
-              return $writeFile(pathName, '{}');
-              
-            }).then(function() {
-              
-              console.log('WROTE {}!!!!!!!!!!!');
-              
-            });*/
-            
           },
           $getData: function() {
             var pass = this;
             return $readFile(this.pathName).then(function(data) {
-              console.log('READ STORED DATA: ' + data.length);
-              if (!data.length) throw new Error(); // An empty file also results in default data
+              if (!data.length) throw new Error(); // An empty file results in default data
               return JSON.parse(data);
             }).fail(function() {
               var data = pass.genDefaultData();
-              console.log('WRITING DEFAULT DATA: ', JSON.stringify(data, null, 2).length);
               return pass.$putData(data).then(function() { return data; });
             });
           },

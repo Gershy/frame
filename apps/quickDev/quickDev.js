@@ -1,12 +1,11 @@
 /*
 TODO: Long polling
-TODO: Abstract tree class in separate package!!!
 TODO: Is IndexedDict efficient? Probably with lots of data present
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
-  dependencies: [ 'queries', 'p' ],
-  buildFunc: function(packName, queries, p) {
+  dependencies: [ 'tree', 'queries', 'p' ],
+  buildFunc: function(packName, tree, queries, p) {
     
     var P = p.P;
     
@@ -21,14 +20,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(qd.NEXT_TEMP++);
-        
         if (id === 'ffffffff') throw new Error('EXHAUSTED IDS');
-        
         return 'TEMP((' + id + '))';
       },
       
       /* IndexedDict - define a multi-key dict with high space usage but efficient search time */
-      IndexedDict: U.makeClass({ name: 'IndexedDict', includeGuid: false,
+      IndexedDict: U.makeClass({ name: 'IndexedDict',
         methods: function(sc) { return {
           init: function(params /* keySize, keyDelimiter */) {
             this.keySize = U.param(params, 'keySize');
@@ -118,46 +115,38 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       
       /* Outline - define what a Dossier structure looks like */
       Outline: U.makeClass({ name: 'Outline',
+        superclass: tree.TreeNode,
         propertyNames: [ 'c', 'p', 'i' ],
         methods: function(sc) { return {
           
           init: function(params /* c, p, i */) {
-            // NOTE: The only Outlines that don't have names are the
-            // Outlines for DossierLists
+            
+            // NOTE: An `Outline` is only anonymous if it corresponds to a `DossierList`
             var c = U.param(params, 'c');
             var p = U.param(params, 'p', {});
             var i = U.param(params, 'i', []);
             
             if (!('name' in p)) p.name = null;
+            sc.init.call(this, { name: p.name });
             
             this.c = U.isObj(c, String) ? c : c.title; // If not a string, it's a class
             this.p = p;
             this.i = {};
             
-            if ('innerOutline' in this.p && !U.isInstance(this.p.innerOutline, qd.Outline))
+            if ('innerOutline' in this.p && !U.isInstance(this.p.innerOutline, qd.Outline)) {
               this.p.innerOutline = new qd.Outline(this.p.innerOutline);
+              this.p.innerOutline.par = this;
+            }
             
             for (var j = 0, len = i.length; j < len; j++) {
               var outline = U.isInstance(i[j], qd.Outline) ? i[j] : new qd.Outline(i[j]);
-              this.i[outline.getProperty('name')] = outline;
+              this.i[U.param(outline.p, 'name')] = outline;
+              outline.par = this;
             }
           },
           getNamedChild: function(childName) {
             if (this.p.innerOutline) return this.p.innerOutline;
             return this.i[childName];
-          },
-          getChild: function(addr) {
-            if (U.isObj(addr, String)) addr = addr.split('.');
-            
-            var ptr = this;
-            for (var i = 0; (i < addr.length) && ptr; i++) ptr = ptr.getNamedChild(addr[i]);
-            
-            return ptr;
-          },
-          getProperty: function(name, def) {
-            if (name in this.p) return this.p[name];
-            if (!U.exists(def)) throw new Error('Couldn\'t get property "' + name + '"');
-            return def;
           },
           $getDoss: function(data) {
             var editor = new qd.Editor();
@@ -458,9 +447,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         }
       }),
       
-      /* Dossier */
+      /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
-        superclassName: 'QueryHandler',
+        superclass: tree.TreeNode,
         methods: function(sc) { return {
           
           init: function(params /* outline */) {
@@ -502,55 +491,18 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           
           // Heirarchy
-          getAncestry: function() {
-            var ret = [];
-            var ptr = this;
-            while(ptr !== null) {
-              ret.push(ptr);
-              ptr = ptr.par;
-            }
-            return ret;
-          },
-          getNameChain: function() {
-            return this.getAncestry().reverse().map(function(doss) { return doss.name.toString(); });
-          },
-          getAddress: function() {
-            return this.getNameChain().join('.');
-          },
-          getRoot: function() {
-            var ptr = this;
-            while (ptr.par) ptr = ptr.par;
-            return ptr;
-          },
-          getChild: function(address) {
-            if (address.length === 0) return this; // Works for both strings and arrays
-            
-            if (U.isObj(address, String)) address = address.split('.');
-            else if (!U.isObj(address, Array)) address = [ address.toString() ]; // `address` is probably numeric (or `null`?)
-            
-            var ptr = this;
-            for (var i = 0, len = address.length; (i < len) && ptr; i++)  {
-              
-              var a = address[i];
-              
-              if (U.isObj(a, Array)) a = '<' + a.join('/') + '>';
-              
-              // Shave off all dereference symbols while counting them
-              var numDerefs = 0;
-              while (a[numDerefs] === '@') numDerefs++;
-              if (numDerefs) a = a.substr(numDerefs);
-              
-              // Get the child
-              ptr = ptr.getNamedChild(a);
-              
-              // Do the dereferencing as required
-              for (var j = 0; (j < numDerefs) && ptr; j++) ptr = ptr.dereference();
-                
-            }
-            
-            return ptr;
-          },
           getNamedChild: function(name) {
+            if (U.isObj(name, Array)) name = '<' + name.join('/') + '>';
+            
+            var numDerefs = 0;
+            while (name[numDerefs] === '@') numDerefs++;
+            if (numDerefs) name = name.substr(numDerefs);
+            
+            var child = this.getNamedChild0(name);
+            for (var i = 0; (i < numDerefs) && child; i++) child = child.dereference();
+            return child;
+          },
+          getNamedChild0: function(name) {
             if (name === '') return this;
             if (name === '~par') return this.par;
             if (name === '~root') return this.getRoot();
@@ -600,7 +552,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getDataView: function(existing) {
             if (!existing) throw new Error('Called `getDataView` without `existing` set');
             
-            // But `existing` should be filled out before the call to `getDataView0`...
             var addr = this.getAddress();
             if (!(addr in existing)) {
               existing[addr] = 'DUMMY_VAL'; // Mark the element as existing (with a dummy value) before the recursion
@@ -647,12 +598,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return child;
           },
-          getNamedChild: function(name) {
+          getNamedChild0: function(name) {
             if (U.isObj(name, Object))
               return new PACK.quickDev.FilterResults({ origChildren: this.children, filter: name });
             
             if (name in this.children) return this.children[name];
-            return sc.getNamedChild.call(this, name);
+            return sc.getNamedChild0.call(this, name);
           },
           getValue: function(address) {
             if (!address) return this.children;
@@ -821,9 +772,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           getDataView0: function(existing) {
             var ret = {};
-            for (var k in this.children) {
-              ret[k] = this.children[k].getDataView(existing);
-            }
+            for (var k in this.children) ret[k] = this.children[k].getDataView0(existing);
             return ret;
           }
         };}
@@ -1011,7 +960,17 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (value !== this.value) {
               this.value = value;
               if (this.changeHandler) this.changeHandler(this);
+              
+              if (this.changeListeners) for (var k in this.changeListeners) this.changeListeners[k](value);
             }
+          },
+          addChangeListener: function(id, func) {
+            if (!this.changeListeners) this.changeListeners = {};
+            this.changeListeners[id] = func;
+          },
+          remChangeListener: function(id) {
+            delete this.changeListeners[id];
+            if (U.isEmptyObj(this.changeListeners)) delete this.changeListeners;
           },
           modValue: function(modFunc) {
             var moddedVal = modFunc(this.getValue());
@@ -1143,9 +1102,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getValue: function() {
             return this.value ? this.getRefAddress() : null;
           },
-          getNamedChild: function(name) {
-            return sc.getNamedChild.call(this, name);
-          },
           
           matches: function(value) {
             // TODO: Does this make sense? Is it efficient?
@@ -1189,6 +1145,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       
       /* Psuedo-Dossier */
       FilterResults: U.makeClass({ name: 'FilterResults',
+        superclass: tree.TreeNode,
         methods: function(sc, c) { return {
           init: function(params /* origChildren, filter, par */) {
             var origChildren = U.param(params, 'origChildren');
@@ -1199,75 +1156,40 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             console.log('FILTER', filter);
             
-            var filters = {
-              // TODO: can implement more filters :D
-              match: function() {
-                var ret = {};
-                for (var k in origChildren) {
-                  var child = origChildren[k];
-                  if (child.matches(filter.params)) this.children[k] = child;
-                }
-              }.bind(this)
-            };
-            
-            if (!(filter.type in filters)) throw new Error('Invalid filter type: "' + filter.type + '"');
-            
-            return filters[filter.type]();
+            if (!(filter.type in c.filters)) throw new Error('Unsupported filter type: "' + filter.type + '"');
+            c.filters[filter.type].call(this, filter.params);
             
           },
           getNamedChild: function(name) {
             return this.children[name] || null;
           },
-          getChild: function(addr) {
-            if (U.isObj(addr, String)) addr = addr.split('.');
-            var ptr = this;
-            for (var i = 0, len = addr.length; i < len; i++)
-              ptr = ptr.getNamedChild(addr[i]);
-            
-            return ptr;
-          },
           
-          // TODO: Next 4 methods are copy-pasted from DossierSet and Dossier
+          // TODO: Next 4 methods are purely referenced from DossierSet and Dossier
           $handleRequest: function(params /* command */) {
-            var command = U.param(params, 'command');
-            
-            if (command === 'getRawData') {
-              
-              return PACK.p.$(this.getRawDataView());
-              
-            } else if (command === 'getData') {
-              
-              return PACK.p.$(this.getDataView({}));
-              
-            }
-            
-            throw new Error('Couldn\'t handle invalid command: "' + command + '"');
+            return qd.Dossier.prototype.$handleRequest.call(this, params);
           },
           getRawDataView: function() {
-            var ret = {};
-            for (var k in this.children) ret[k] = this.children[k].getRawDataView();
-            return ret;
+            return qd.DossierSet.prototype.getRawDataView.call(this, params);
           },
           getDataView0: function(existing) {
-            var ret = {};
-            for (var k in this.children) {
-              ret[k] = this.children[k].getDataView(existing);
-            }
-            return ret;
+            return qd.DossierSet.prototype.getDataView0.call(this, existing);
           },
           getDataView: function(existing) {
-            if (!existing) throw new Error('Called `getDataView` without `existing` set');
-            
-            // But `existing` should be filled out before the call to `getDataView0`...
-            var addr = this.getAddress();
-            if (!(addr in existing)) {
-              existing[addr] = 'DUMMY_VAL'; // Mark the element as existing (with a dummy value) before the recursion
-              existing[addr] = this.getDataView0(existing); // Fill in the actual value
-            }
-            
-            return existing[addr];
+            return qd.Dossier.prototype.getDataView.call(this, existing);
           },
-        };}
+        };},
+        statik: {
+          filters: {
+            // TODO: can implement more filters :D
+            match: function(filterData) {
+              var ret = {};
+              for (var k in origChildren) {
+                var child = origChildren[k];
+                if (child.matches(filterData)) this.children[k] = child;
+              }
+            }
+          }
+        }
       }),
       
       /* Versioner - maintain evolving Dossier structures */

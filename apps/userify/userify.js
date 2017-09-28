@@ -1,9 +1,9 @@
 // TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
-// to implement.
+// to implement independently
 
 var package = new PACK.pack.Package({ name: 'userify',
-  dependencies: [ 'quickDev', 'p', 'geom' ],
-  buildFunc: function(packageName, qd) {
+  dependencies: [ 'tree', 'quickDev', 'p', 'geom' ],
+  buildFunc: function(packageName, tree, qd) {
     var namespace = {};
     
     var P = PACK.p.P;
@@ -13,7 +13,7 @@ var package = new PACK.pack.Package({ name: 'userify',
     
     var uf = {
       
-      SimpleValue: U.makeClass({ name: 'SimpleValue',
+      SimpleInfo: U.makeClass({ name: 'SimpleInfo',
         description: 'Simple class for applying `getValue` and `setValue` ' +
           'methods to a simple value',
         methods: function(sc, c) { return {
@@ -22,6 +22,20 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           getValue: function() { return this.value; },
           setValue: function(val) { this.value = val; }
+        };}
+      }),
+      ProxyInfo: U.makeClass({ name: 'ProxyInfo',
+        methods: function(sc, c) { return {
+          init: function(params) {
+            this.info = U.param(params, 'info');
+          },
+          getValue: function() {
+            return this.info ? this.info.getValue() : null;
+          },
+          setValue: function(val) {
+            if (!this.info) throw new Error('No proxied value to set.');
+            this.info.setValue(val);
+          }
         };}
       }),
       
@@ -81,7 +95,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       toInfo: function(obj) {
         if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
         if (U.isObj(obj, Function)) return { getValue: obj };
-        return new uf.SimpleValue({ value: obj });
+        return new uf.SimpleInfo({ value: obj });
       },
       pafam: function(params, name, def) {
         return uf.toInfo(U.param(params, name, def));
@@ -163,7 +177,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
       FuncDecorator: U.makeClass({ name: 'FuncDecorator',
         superclassName: 'Decorator',
-        description: 'Perform arbitrary actions as a decorator',
+        description: 'Perform arbitrary actions in `Decorator` context',
         methods: function(sc, c) { return {
           init: function(params /* func */) {
             this.func = U.param(params, 'func');
@@ -175,16 +189,38 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
       
       /* FORM DECORATORS (TODO: move these to a new package?) */
-      // TODO: HEEERE!!
       FormDecorator: U.makeClass({ name: 'FormDecorator',
         superclassName: 'Decorator',
         methods: function(sc, c) { return {
           init: function(params /* */) {
             sc.init.call(this, params);
+            
+            this.inputs = [];
+            this.submit = null;
+          },
+          genInputDecorator: function(validateFunc) {
+            var ret = new uf.FormInputDecorator({ form: this, validateFunc: validateFunc || null });
+            this.inputs.push(ret);
+            return ret;
+          },
+          genSubmitDecorator: function() {
+            if (this.submit) throw new Error('Form is already aware of a submit button');
+            
+            var ret = new uf.FormSubmitDecorator({ form: this });
+            this.submit = ret;
+            return ret;
+          },
+          isValid: function() {
+            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return false;
+            return true;
           },
           start: function(view) {
           },
           update: function(view) {
+            // Note: This methodology requires the `FormDecorator` to run before
+            // all child inputs. This should be expected for any reasonable
+            // View heirarchy.
+            for (var i = 0; i < this.inputs.length; i++) this.inputs[i].err = null;
           },
           stop: function(view) {
           }
@@ -193,19 +229,61 @@ var package = new PACK.pack.Package({ name: 'userify',
       FormInputDecorator: U.makeClass({ name: 'FormInputDecorator',
         superclassName: 'Decorator',
         methods: function(sc, c) { return {
-          init: function(params /* formDecorator, validateFunc */) {
+          init: function(params /* form, validateFunc */) {
             sc.init.call(this, params);
             
-            this.formDecorator = U.param(params, 'formDecorator');
-            this.validateFunc = U.param(params, 'validateFunc');
+            this.form = U.param(params, 'form');
+            this.validateFunc = U.param(params, 'validateFunc', null);
+            this.err = null;
+          },
+          update: function(view) {
+            if (!this.validateFunc) return;
+            this.err = this.validateFunc(view.info.getValue());
           },
           start: function(view) {
-            
+            view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
+            uf.domAddListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+          },
+          stop: function(view) {
+            uf.domRemListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+            delete view['~' + this.id + '.keyPress'];
           }
-        };}
+        };},
+        statik: {
+          keyPress: function(view, event) {
+            if (this.form.submit && event.keyCode === 13) this.form.submit.actionView.doAction();
+          }
+        }
+      }),
+      FormSubmitDecorator: U.makeClass({ name: 'FormSubmitDecorator',
+        superclassName: 'Decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* */) {
+            sc.init.call(this, params);
+            this.form = U.param(params, 'form');
+            this.actionView = null;
+          },
+          start: function(view) {
+            this.actionView = view;
+            view['~' + this.id + '.clickFunc'] = c.clickFunc.bind(this, view);
+            uf.domAddListener(view.domRoot, 'onclick', view['~' + this.id + '.clickFunc']);
+          },
+          stop: function(view) {
+            uf.domRemListener(view.domRoot, 'onclick', view['~' + this.id + '.clickFunc']);
+            delete view['~' + this.id + '.clickFunc'];
+          }
+        };},
+        statik: {
+          clickFunc: function(view, event) {
+            if (this.form.isValid()) return true;
+            event.stopPropagation();
+            event.preventDefault();
+            return false;
+          }
+        }
       }),
       
-      /* INPUT DECORATORS (TODO: move these to a new package?) */
+      /* INPUT DECORATORS (TODO: move these to a new package???) */
       PointerDecorator: U.makeClass({ name: 'PointerDecorator',
         superclassName: 'Decorator',
         description: 'Generic class for decorators which deal with pointer actions; ' +
@@ -450,6 +528,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       // `update` ruins `start`/`stop` symmetry
       NAME_REGEX: /^[a-z0-9]+[a-zA-Z0-9]*$/,
       View: U.makeClass({ name: 'View',
+        superclass: tree.TreeNode,
         methods: function(sc, c) { return {
           init: function(params /* name, cssId, framesPerTick, cssClasses, decorators */) {
             this.name = U.param(params, 'name');
@@ -467,42 +546,13 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.domRoot = null;
             this.millisAlive = 0;
           },
+          getNamedChild: function(addr) { return null; },
           
-          // Heirarchy
-          getAncestry: function() {
-            var ret = [];
-            var ptr = this;
-            while(ptr !== null) { ret.push(ptr); ptr = ptr.par; }
-            return ret;
-          },
-          getNameChain: function() {
-            return this.getAncestry().reverse().map(function(ptr) {
-              return ptr.name.toString();
-            });
-          },
-          getAddress: function() {
-            return this.getNameChain().join('.');
-          },
+          // DOM
           getHtmlId: function() {
             if (this.cssId) return this.cssId;
             return (this.par ? this.par.getHtmlId() + '-' : '') + this.name;
           },
-          getRoot: function() {
-            var ptr = this;
-            while (ptr.par) ptr = ptr.par;
-            return ptr;
-          },
-          getChild: function(address) {
-            if (address.length === 0) return this; // Works for both strings and arrays
-            
-            if (!U.isObj(address, Array)) address = address.toString().split('.');
-            
-            var ptr = this;
-            for (var i = 0, len = address.length; (i < len) && ptr; i++) ptr = ptr.children[address[i]];
-            return ptr;
-          },
-          
-          // DOM
           createDomRoot: function() {
             return document.createElement('div');
           },
@@ -614,10 +664,10 @@ var package = new PACK.pack.Package({ name: 'userify',
       TextEditView: U.makeClass({ name: 'TextEditView',
         superclassName: 'InteractiveView',
         methods: function(sc, c) { return {
-          init: function(params /* name, multiline, initialValue, textInfo, placeholderInfo, enabledData */) {
+          init: function(params /* name, multiline, info, placeholderInfo, enabledData */) {
             sc.init.call(this, params);
             this.multiline = U.param(params, 'multiline', false);
-            this.textInfo = uf.pafam(params, 'textInfo', '');
+            this.info = uf.pafam(params, 'info', '');
             this.placeholderInfo = uf.pafam(params, 'placeholderInfo', '');
           },
           
@@ -629,7 +679,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             var input = document.createElement(this.multiline ? 'textarea' : 'input');
             input.classList.add('interactive');
             input.oninput = function(e) {
-              this.textInfo.setValue(input.value);
+              this.info.setValue(input.value);
             }.bind(this);
             ret.appendChild(input);
             
@@ -653,7 +703,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.tick.call(this, millis);
             
             var input = this.domRoot.childNodes[0];
-            var inputText = this.textInfo.getValue();
+            var inputText = this.info.getValue();
             
             // Update text items
             uf.domSetText(this.domRoot.childNodes[1], this.placeholderInfo.getValue());
@@ -682,8 +732,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           init: function(params /* name, $action, textInfo, enabledData */) {
             sc.init.call(this, params);
             this.$action = U.param(params, '$action');
-            this.waiting = false;
             this.textInfo = uf.pafam(params, 'textInfo');
+            this.waiting = false;
           },
           
           createDomRoot: function() {
@@ -697,15 +747,15 @@ var package = new PACK.pack.Package({ name: 'userify',
                 e.preventDefault();
               }
             };
-            button.onclick = function() {
-              if (this.waiting) return;
-              this.waiting = true;
-              this.$action().then(function() {
-                this.waiting = false;
-              }.bind(this)).done();
-            }.bind(this);
+            button.onclick = this.doAction.bind(this);
             
             return button;
+          },
+          doAction: function() {
+            if (this.waiting) return;
+            this.waiting = true;
+            var pass = this;
+            this.$action().then(function() { pass.waiting = false; }).done();
           },
           tick: function(millis) {
             sc.tick.call(this, millis);
@@ -770,6 +820,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.addChildren(U.param(params, 'children', []));
           },
           
+          getNamedChild: function(addr) { return this.children[addr]; },
           addChildren: function(children) {
             for (var i = 0, len = children.length; i < len; i++)
               this.addChild(children[i]);
@@ -950,15 +1001,15 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'ChoiceView',
         description: 'A text field which is conditionally editable',
         methods: function(sc, c) { return {
-          init: function(params /* name, editableData, textInfo, inputViewParams */) {
+          init: function(params /* name, editableData, info, inputViewParams */) {
             var editableData = uf.pafam(params, 'editableData');
-            this.textInfo = uf.pafam(params, 'textInfo');
+            this.info = uf.pafam(params, 'info');
             var inputViewParams = U.param(params, 'inputViewParams', {});
             sc.init.call(this, params.update({
               choiceInfo: uf.toInfo(function() { return editableData.getValue() ? 'edit' : 'display'; }),
               children: [
-                new uf.TextEditView(inputViewParams.update({ name: 'edit', textInfo: this.textInfo })),
-                new uf.TextView({ name: 'display', info: this.textInfo })
+                new uf.TextEditView(inputViewParams.update({ name: 'edit', info: this.info })),
+                new uf.TextView({ name: 'display', info: this.info })
               ]
             }));
           }
@@ -1071,7 +1122,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             based on the new submission.
             
             This problem is now solved by always removing all cached elements by calling
-            `updateChildren` with an empty set.
+            `updateChildren` with an empty set. This makes it impossible for a `DynamicSetView` to
+            maintain an invalid value by missing a more recent one.
             
             TODO: A further consideration: a `hasInfoChanged` parameter, allowing the
             `DynamicSetView` to detect changes on its children and call `genChildView` as required.

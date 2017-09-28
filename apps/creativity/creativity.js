@@ -951,17 +951,13 @@ new PACK.pack.Package({ name: 'creativity',
       
       cr.queryHandler = doss;
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
-      setInterval(function() { cr.$updateCreativity(doss).done(); }, 2000);
-      setInterval(function() { cr.persister.$putData(doss.getRawDataView()).done();
-        
-        /*new P({ custom: function(resolve, reject) {
-          fs.writeFile(stateFileName, JSON.stringify(doss.getRawDataView(), null, 2), function(err, val) { return err ? reject(err) : resolve(val); });
-        }}).done()*/
-        
-      }, 10000);
+      setInterval(function() { cr.$updateCreativity(doss).done(); }, 2 * 1000);
+      setInterval(function() { cr.persister.$putData(doss.getRawDataView()).done(); }, 10 * 1000);
       /// =SERVER}
       
       /// {CLIENT=
+      var loginForm = new uf.FormDecorator();
+      
       var view = new uf.RootView({ name: 'root',
         children: [
           
@@ -978,21 +974,24 @@ new PACK.pack.Package({ name: 'creativity',
               WordMixer
               Storyteller
               */
-              new uf.SetView({ name: 'loginForm', cssId: 'loginForm', children: [
+              new uf.SetView({ name: 'loginForm', decorators: [ loginForm ], cssId: 'loginForm', children: [
                 new uf.TextHideView({ name: 'loginError', info: doss.getChild('loginError') }),
                 new uf.TextView({ name: 'title', info: 'Creativity' }),
-                new uf.TextEditView({ name: 'username', cssClasses: [ 'centered' ], textInfo: doss.getChild('username'), placeholderInfo: 'Username' }),
-                new uf.TextEditView({ name: 'password', cssClasses: [ 'centered' ], textInfo: doss.getChild('password'), placeholderInfo: 'Password' }),
-                new uf.ActionView({ name: 'signin', textInfo: 'Login', $action: function() {
-                  return doss.$doRequest({ command: 'getToken', params: {
-                    username: doss.getValue('username'),
-                    password: doss.getValue('password')
-                  }}).then(function(data) {
-                    doss.setValue('token', data.token);
-                  }).fail(function(err) {
-                    doss.setValue('loginError', err.message);
-                  });
-                }}),
+                new uf.TextEditView({ name: 'username', decorators: [ loginForm.genInputDecorator() ], cssClasses: [ 'centered' ], info: doss.getChild('username'), placeholderInfo: 'Username' }),
+                new uf.TextEditView({ name: 'password', decorators: [ loginForm.genInputDecorator() ], cssClasses: [ 'centered' ], info: doss.getChild('password'), placeholderInfo: 'Password' }),
+                new uf.ActionView({ name: 'signin', textInfo: 'Login',
+                  decorators: [ loginForm.genSubmitDecorator() ],
+                  $action: function() {
+                    return doss.$doRequest({ command: 'getToken', params: {
+                      username: doss.getValue('username'),
+                      password: doss.getValue('password')
+                    }}).then(function(data) {
+                      doss.setValue('token', data.token);
+                    }).fail(function(err) {
+                      doss.setValue('loginError', err.message);
+                    });
+                  }
+                }),
                 new uf.ActionView({ name: 'signup', textInfo: 'Signup', $action: function() {
                   
                   var username = doss.getValue('username');
@@ -1120,15 +1119,15 @@ new PACK.pack.Package({ name: 'creativity',
                     new uf.SetView({ name: 'content', cssId: 'storyForm', cssClasses: [ 'form' ], children: [
                       new uf.SetView({ name: 'quickName', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Quick Name' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.quickName'), placeholderInfo: 'A simple, unique, permanent label' }),
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.quickName'), placeholderInfo: 'A simple, unique, permanent label' }),
                       ]}),
                       new uf.SetView({ name: 'description', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Description' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.description'), placeholderInfo: 'What sort of feel should this story have?', multiline: true }),
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.description'), placeholderInfo: 'What sort of feel should this story have?', multiline: true }),
                       ]}),
                       new uf.SetView({ name: 'maxWriteLength', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Submission character limit' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.maxWriteLength'), placeholderInfo: 'Limit how long a submission can be' }),
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.maxWriteLength'), placeholderInfo: 'Limit how long a submission can be' }),
                       ]}),
                       new uf.SetView({ name: 'contestTime', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Round time limit' }),
@@ -1136,19 +1135,19 @@ new PACK.pack.Package({ name: 'creativity',
                       ]}),
                       new uf.SetView({ name: 'contestLimit', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Total number of rounds' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.contestLimit'), placeholderInfo: 'The story is complete after this limit is met' }),
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.contestLimit'), placeholderInfo: 'The story is complete after this limit is met' }),
                       ]}),
                       new uf.SetView({ name: 'authorLimit', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Max authors' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.authorLimit'), placeholderInfo: 'Limit the number of users who can participate' })
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.authorLimit'), placeholderInfo: 'Limit the number of users who can participate' })
                       ]}),
                       new uf.SetView({ name: 'maxWrites', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Max round submissions' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.maxWrites'), placeholderInfo: 'Limit the number of submissions each round' })
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.maxWrites'), placeholderInfo: 'Limit the number of submissions each round' })
                       ]}),
                       new uf.SetView({ name: 'maxVotes', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Max round votes' }),
-                        new uf.TextEditView({ name: 'input', textInfo: doss.getChild('editStory.maxVotes'), placeholderInfo: 'Limit the number of votes per round' }),
+                        new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.maxVotes'), placeholderInfo: 'Limit the number of votes per round' }),
                       ]}),
                       /*new uf.SetView({ name: 'slapLoadTime', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'tip', info: '' }),
@@ -1334,7 +1333,7 @@ new PACK.pack.Package({ name: 'creativity',
                           
                           new uf.SetView({ name: 'write', children: [
                             
-                            new uf.TextEditView({ name: 'editor', textInfo: doss.getChild('currentWrite'), multiline: true, placeholderInfo: 'Next line of the story...' }),
+                            new uf.TextEditView({ name: 'editor', info: doss.getChild('currentWrite'), multiline: true, placeholderInfo: 'Next line of the story...' }),
                             new uf.ActionView({ name: 'submit', textInfo: 'Submit', $action: function() {
                               
                               // Immediately clear the "currentWrite" value
@@ -1439,9 +1438,9 @@ new PACK.pack.Package({ name: 'creativity',
       window.doss = doss;
       window.view = view;
       
-      doss.setValue('username', 'admin');
+      /*doss.setValue('username', 'admin');
       doss.setValue('password', 'admin123');
-      /*doss.$doRequest({ command: 'getToken', params: {
+      doss.$doRequest({ command: 'getToken', params: {
         username: doss.getValue('username'),
         password: doss.getValue('password')
       }}).then(function(data) {

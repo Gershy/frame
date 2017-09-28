@@ -1,14 +1,7 @@
 /*
-TODO: Switch to POST queries? Eventually queries will exceed the recommended
-size for GET (make the "post" parameter of U.request default to true)
-
 The following top-level variables exist regardless of whether code is being
 run on server or client side:
   
-  -S: Index of non-serializable content that needs serialization at some
-    point. For example, a function that needs to be referenced
-    dynamically on client and server-side is referenced instead by its
-    string index in S (allowing for serialization).
   -U: Contains utility methods
   -C: Default class directory
   -PACK: Contains all the packages
@@ -19,7 +12,7 @@ Error.stackTraceLimit = Infinity;
 
 // Add convenience methods to pre-existing classes
 [
-  {  target: String.prototype,
+  { target: String.prototype,
     props: {
       contains: function(str) {
         return this.indexOf(str) !== -1;
@@ -63,7 +56,7 @@ Error.stackTraceLimit = Infinity;
       }
     },
   },
-  {  target: Object.prototype,
+  { target: Object.prototype,
     props: {
       update: function(obj) {
         for (var k in obj) this[k] = obj[k];
@@ -149,7 +142,7 @@ Error.stackTraceLimit = Infinity;
       }
     },
   },
-  {  target: Array.prototype,
+  { target: Array.prototype,
     props: {
       contains: function(val) {
         return this.indexOf(val) !== -1;
@@ -241,33 +234,6 @@ global.U = {
     
     throw new Error('missing param: "' + name + '"');
   },
-  palam: function(params, name, paramFunc) {
-    /*
-    Lambda-param. Exactly like U.param, but uses a lambda to retrieve
-    the default value (if none was found) instead of a pre-computed
-    value.
-    */
-    var ret = U.param(params, name, paramFunc);
-    return U.isObj(ret, Function) ? ret() : ret;
-  },
-  pasam: function(params, name, def) {
-    /*
-    Serializable-param. If the result of U.param is a string
-    for the given parameters, return the serializable under the
-    string's name.
-    */
-    var p = U.param(params, name, def);
-    
-    if (p === null || p.constructor !== String) return { name: '', v: p };
-    
-    return U.getSerializable(p)
-  },
-  $param: function(params, name, def) {
-    /*
-    Promise-param. Returns a promise. Requires `PACK.p`.
-    */
-    return PACK.p.p(U.param(params, name, def));
-  },
   exists: function(p) {
     return typeof p !== 'undefined';
   },
@@ -281,6 +247,7 @@ global.U = {
     if (!U.exists(obj)) return '<UNDEFINED>';
     if (U.isClassedObj(obj)) return '<{' + obj.constructor.title + '}>';
     if (U.isObj(obj)) return '<(' + obj.constructor.name + ')>';
+    return '<UNKNOWN>';
   },
   isObj: function(obj, cls) {
     try { return cls ? obj.constructor === cls : ('constructor' in obj); } catch(e) {};
@@ -305,20 +272,9 @@ global.U = {
     if (v.constructor === Array) return v.length === 0;
     return U.isEmptyObj(v);
   },
-  length: function(v) {
-    if (v.constructor === Array) return v.length;
-    return Object.keys(v).length;
-  },
-  isError: function(object) {
-    try { return object.constructor === Error; } catch(e) {};
-    return false;
-  },
   firstKey: function(obj) {
     for (var k in obj) return k;
     throw new Error('Cannot get first property of empty object');
-  },
-  firstVal: function(obj) {
-    return obj[U.firstKey(obj)];
   },
   matches: function(o, o2) {
     for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
@@ -395,9 +351,10 @@ global.U = {
     // Generate `heirName`
     var heirName = (superclass === Object) ? (Object.name + '.' + name) : (superclass.heirName + '.' + name);
     
-    // Check for `description`
+    // Check for "description" property
     var description = U.param(params, 'description', heirName);
     
+    // Check for "includeGuid" property; if not found, copy value from superclass
     var includeGuid = U.param(params, 'includeGuid', (superclass === Object) ? false : (superclass.includeGuid));
     
     // Use eval to get a named constructor
@@ -542,26 +499,6 @@ global.U = {
   stringToThing: function(string) {
     return U.unstraighten(JSON.parse(string));
   },
-  addSerializable: function(params /* name, value */) {
-    var name = U.param(params, 'name');
-    var value = U.param(params, 'value');
-    
-    U.deepSet({
-      root: global.S,
-      name: name,
-      value: value
-    });
-    return name;
-  },
-  addSerializables: function(paramsList /* [ { name, value }, ... ] */) {
-    paramsList.forEach(U.addSerializable.bind(U));
-  },
-  getSerializable: function(name) {
-    return {
-      name: name,
-      v: U.deepGet({ name: name, root: S })
-    };
-  },
   
   // Misc
   timeMs: function() {
@@ -569,7 +506,7 @@ global.U = {
   },
   toArray: function(arrayLike, v) {
     /*
-    Useful method for constructing arrays from a variety of inputs:
+    Useful method for constructing `Array`s from a variety of inputs:
     
     - If `arrayLike` is an int n, return an array of n `null`s
     - If `arrayLike` is an object, return an array of all the object's
@@ -594,7 +531,8 @@ global.U = {
   range: function(rng) {
     // Sneaky way of allowing x:y notation is using an object param
     if (rng.constructor === Object) {
-      var k = U.firstKey(rng);
+      var k = null;
+      for (k in rng) break;
       var v = rng[k];
     } else {
       var k = 0;
@@ -603,7 +541,6 @@ global.U = {
     
     var ret = [];
     for (var i = k; i < v; i++) ret.push(i);
-    
     return ret;
   },
   id: function(n, len) {

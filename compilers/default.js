@@ -5,13 +5,35 @@ var fileOffsets = {};   // Stores compilation offsets for files
 var fileMappings = {};  // Stores replacement file mappings (e.g. stores server/client versions for an uncompiled filename)
 process.on('uncaughtException', function(err) {
   var lines = err.stack.split('\n');
-  var errorText = lines[0];
   
-  lines = lines.slice(1);
+  // `SyntaxError`s begin with a code snippet followed by whitespace
+  if (U.isObj(err, SyntaxError)) {
+    
+    var foundGap = false;
+    var numSkip = 0;
+    
+    var lineDataStr = lines[0];
+    
+    for (var i = 0; i < lines.length; i++) {
+      var len = lines[i].trim().length;
+      if (!len) foundGap = true;
+      if (foundGap && len) break;
+      numSkip++;
+    }
+    
+    lines = lines.slice(numSkip);
+    
+    var errorText = lines[0];
+    lines[0] = '    at ' + lineDataStr + ':0';
+    
+  } else {
+    var errorText = lines[0];
+    lines = lines.slice(1);
+  }
+  
   var lineData = [];
-  
   for (var i = 0; i < lines.length; i++) {
-    line = lines[i].trim().substr(3); // Trim off "at "
+    var line = lines[i].trim().substr(3); // Trim off "at "
     
     var isEval = false;
     var fileLineInd = line.indexOf('(');
@@ -83,6 +105,9 @@ process.on('uncaughtException', function(err) {
     
     lineData.push(lineDataItem);
   }
+  
+  console.error(err.stack);
+  console.error('\n==============\n');
   
   console.error(errorText + '\n' + lineData.map(function(d) {
     

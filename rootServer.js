@@ -35,7 +35,7 @@ var package = new PACK.pack.Package({ name: 'server',
         methods: function(sc) { return {
           init: function(params /* code, encoding, binary, data */) {
             this.code = U.param(params, 'code', 200);
-            this.encoding = U.param(params, 'encoding', 'text/json');
+            this.encoding = U.param(params, 'encoding', 'text/json'); // TODO: Should be called `this.contentType`
             this.binary = U.param(params, 'binary', false);
             this.data = U.param(params, 'data');
           },
@@ -54,7 +54,6 @@ var package = new PACK.pack.Package({ name: 'server',
         };}
       }),
       Session: U.makeClass({ name: 'Session',
-        superclassName: 'QueryHandler',
         methods: function(sc) { return {
           init: function(params /* appName, ip */) {
             this.ip = U.param(params, 'ip');
@@ -63,12 +62,6 @@ var package = new PACK.pack.Package({ name: 'server',
             
             console.log('Initiated session: ' + this.ip + '; ' + this.appName);
           },
-          /*
-          getNamedChild: function(name) {
-            if (name === 'app') return U.deepGet({ root: PACK, name: [ this.appName, 'queryHandler' ] });
-            return null;
-          },
-          */
           getFileContents: function(filepath) {
             // Find the static file, serve it
             
@@ -125,20 +118,6 @@ var package = new PACK.pack.Package({ name: 'server',
               
             });
             
-            /*
-            return sc.$respondToQuery.call(this, params).then(function(response) {
-              
-              /*
-              The session's children all reply with objects. The session is
-              responsible for stringifying those objects, and clarifying that
-              they are in json format.
-              * /
-              return U.isInstance(response, PACK.server.ResponseData)
-                ? response
-                : new PACK.server.ResponseData({ data: response });
-              
-            });
-            */
           },
           $handleRequest: function(params /* session, url */) {
             /*
@@ -149,7 +128,7 @@ var package = new PACK.pack.Package({ name: 'server',
             
             // A request that specifies a file should just serve that file
             if (url.length && url[url.length - 1].contains('.'))
-              return this.getFileContents(url.join('/'))
+              return this.getFileContents(url.join('/')) // TODO: Use `path.join` instead?
                 .fail(function(err) {
                   return new PACK.server.ResponseData({
                     code: 404,
@@ -159,8 +138,9 @@ var package = new PACK.pack.Package({ name: 'server',
                   });
                 });
             
+            // If the `Session` is generating the response, and a specific
+            // file has not been requested, serve "mainPage.html".
             var appName = this.appName;
-            
             return this.getFileContents('mainPage.html')
               .then(function(html) {
                 // TODO: The fact that "cmp-client-" appears client-side means the client can request server-side sources
@@ -267,21 +247,50 @@ var package = new PACK.pack.Package({ name: 'server',
           }
         }
         
-        // Ensure that the "url" property is represented as an array
+        // Ensure that "queryUrl" is represented as an array
         queryUrl = queryUrl ? queryUrl.split('/') : [];
         
-        // Ensure that the "url" property is only provided automatically
-        if ('url' in queryParams) throw new Error('Provided reserved property: "url"');
-        queryParams.url = queryUrl;
+        var method = req.method.toLowerCase();
+        if (method === 'get') {
+          
+          var $ret = new PACK.p.P({ val: queryParams });
+          
+        } else if (method === 'post') {
+          
+          var $ret = new PACK.p.P({ custom: function(resolve, reject) {
+            
+            req.setEncoding('utf8');
+            var chunks = [];
+            req.on('data', function(chunk) { chunks.push(chunk); });
+            req.on('end', function() {
+              
+              var data = chunks.join('');
+              data = data.length ? U.stringToThing(data) : {};
+              resolve(queryParams.update(data));
+              
+            });
+            
+          }});
+          
+        }
         
-        // Ensure there is an "address" property
-        if (!('address' in queryParams)) queryParams.address = [];
+        return $ret.then(function(queryData) {
+          
+          // Ensure that the "url" property is not supplied by the client
+          if ('url' in queryData) throw new Error('Provided reserved property: "url"');
+          queryData.url = queryUrl;
+          
+          // Ensure there is an "address" property
+          if (!('address' in queryData)) queryData.address = [];
+          
+          // Ensure the "address" property is an `Array`
+          if (U.isObj(queryData.address, String))
+            queryData.address = queryParams.address ? queryParams.address.split('.') : [];
+          
+          return queryData;
+          
+        });
         
-        // Ensure the "address" property is an array
-        if (U.isObj(queryParams.address, String))
-          queryParams.address = queryParams.address ? queryParams.address.split('.') : [];
-        
-        return PACK.p.$(queryParams);
       },
       
       serverFunc: function(appName, req, res) {
