@@ -19,12 +19,14 @@ TASKS:
 [X] Replace `ActionView` with `ActionDecorator`
 [X] Zero-latency client side values get overwritten by stale server-side values; remote syncing should pause until remote push is acknowledged
 [ ] Is the per-frame loop necessary? Can all changes be processed via `changeHandler`s?
-[ ] Hitting enter on forms should submit (Need `FormDecorator` and `FormInputDecorator` classes for this, which can probably handle validation too)
+[X] Hitting enter on forms should submit (Need `FormDecorator` and `FormInputDecorator` classes for this, which can probably handle validation too)
 [X] Clumsy huge urls with json data; switch to POST requests
+[ ] Better loading indication
+  [X] For login, create form, etc
+  [ ] For joining rooms
 [ ] Compiling for all files (files without substitution should be served raw)
 [ ] Mapping by line AND character index will allow better compilation (compact files into a single line)
 [ ] Mapping raw file names to compiled files
-[ ] Better loading indication
 [ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
 [ ] Profile editing
 [ ] Story editing (Change description? Change round time limit?)
@@ -976,8 +978,8 @@ new PACK.pack.Package({ name: 'creativity',
         '<div class="spin">' +
           U.range({0:20}).map(function(n) {
             var deg = Math.round((n / 20) * 360);
-            var del = Math.round((n / 20) * 12000);
-            return '<div class="arm" style="transform: rotate(' + deg + 'deg); animation-delay: ' + del + 'ms;"></div>';
+            var del = Math.round((n / 20) * 15000); // 12000
+            return '<div class="arm" style="transform: rotate(' + deg + 'deg); animation-delay: -' + del + 'ms;"></div>';
           }).join('') +
         '</div>';
       
@@ -1470,7 +1472,7 @@ new PACK.pack.Package({ name: 'creativity',
           return (loginFormSubmitDec.isLoading() || loginFormSignupDec.isLoading()) ? 'indicator' : null;
         },
         children: [
-          new uf.HtmlView({ name: 'indicator', cssClasses: [ 'spinner2' ], html: spinnerHtml })
+          new uf.HtmlView({ name: 'indicator', cssClasses: [ 'spinner2', 'inset' ], html: spinnerHtml })
         ]
       }));
       
