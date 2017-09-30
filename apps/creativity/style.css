@@ -27,6 +27,16 @@
 	80% { transform: rotate(-400deg); }
 	100% { transform: rotate(90deg); }
 }
+@keyframes spin3 {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes bounce {
+  0% { width: 50px; }
+  40% { width: 50px; }
+  70% { width: 15px; }
+  100% { width: 50px; }
+}
 
 #root {
   position: absolute;
@@ -73,6 +83,21 @@ Login/logout transition
   transform: scale(10);
   pointer-events: none;
 }
+
+/*
+TODO: Standardized forms
+*/
+.form {}
+.form > .error {}
+.form > .formItem {}
+.form > .formItem .interactive {} /* Applies to buttons and entry fields */
+.form > .formItem > .input {}
+.form > .formItem > .input.focus > .anim > .a
+.form > .formItem > .error {}
+.form > .formItem > .error > .text {}
+.form > .formSubmit {}
+.form > .loading {}
+.form > .loading > .indicator {}
 
 #root-login-out {
   text-align: center;
@@ -145,6 +170,17 @@ Login/logout transition
   animation-iteration-count: 1;
   animation-timing-function: ease-out;
 }
+#loginForm > .loading {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  pointer-events: none;
+}
+#loginForm > .loading > .indicator {
+  background-color: rgba(255, 230, 200, 0.85);
+  box-shadow: 0 0 30px 10px rgba(255, 230, 200, 0.85);
+  border-radius: 20%;
+}
 
 /*
 Give all .interactive elements a consistent feel
@@ -178,26 +214,25 @@ Give all .button elements a consistent feel
   padding: 0;
   width: 40px; height: 40px;
   border-radius: 100%;
-  font-size: 0;
 }
 .button.iconButton.type-larrow:before { content: '\0021e6'; font-size: 30px; line-height: 39px; }
 .button.iconButton.type-plus:before { content: '\00002b'; font-size: 40px; line-height: 42px; }
 
 /*
-the #decor element consists of the funky spinner
+the .spinner element consists of the funky spinner
 */
-#decor {
+.spinner {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
-  z-index: -1;
+  pointer-events: none;
   
   animation-name: fadeScaleIn;
   animation-duration: 1000ms;
   animation-iteration-count: 1;
   animation-timing-function: ease-out;
 }
-#decor > .spin {
+.spinner > .spin {
   position: absolute;
   left: 50%; top: 50%;
   width: 0; height: 0;
@@ -207,14 +242,14 @@ the #decor element consists of the funky spinner
 	animation-timing-function: ease-in-out;
 	animation-duration: 50s;
 }
-#decor > .spin > .arm {
+.spinner > .spin > .arm {
   position: absolute;
 	width: 280px; height: 0;
 	left: 0; top: 0;
 	
 	transform-origin: 0% 50%;
 }
-#decor > .spin > .arm:before {
+.spinner > .spin > .arm:before {
   content: "";
   position: absolute;
   display: block;
@@ -227,6 +262,52 @@ the #decor element consists of the funky spinner
 	animation-iteration-count: infinite;
 	animation-timing-function: ease-in-out;
 	animation-duration: 21s;
+}
+
+/*
+The .spinner2 element is the loading indicator; the arms move at slightly different speeds
+*/
+.spinner2 {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  pointer-events: none;
+  
+  animation-name: fadeScaleIn;
+  animation-duration: 1000ms;
+  animation-iteration-count: 1;
+  animation-timing-function: ease-out;
+}
+.spinner2 > .spin {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 0; height: 0;
+  
+  animation-name: spin3;
+  animation-duration: 23s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.spinner2 > .spin > .arm {
+  position: absolute;
+	width: 50px; height: 0;
+	left: 0; top: 0;
+	
+	transform-origin: 0% 50%;
+  
+  animation-name: bounce;
+  animation-duration: 3000ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+.spinner2 > .spin > .arm:before {
+  content: "";
+  position: absolute;
+  display: block;
+	width: 7px; height: 7px;
+	right: 0; top: 0;
+	background-color: rgba(255, 127, 0, 0.6);
+	border-radius: 100%;
 }
 
 /*
@@ -353,10 +434,6 @@ pane, and .mainButton buttons (to the left and right of the title)
   border-bottom: 1px solid #cacaca;
 }
 #storyForm > .formItem .interactive {
-  /*
-  background-color: #cacaca;
-  color: #ffffff;
-  */
   background-color: rgba(0, 0, 0, 0.05);
   color: #606060;
 }
@@ -391,6 +468,16 @@ pane, and .mainButton buttons (to the left and right of the title)
 }
 #storyForm > .summary > .summaryItem > .calc > .waiting { font-style: italic; }
 #storyForm > .summary > .summaryItem > .calc > .finished { font-weight: bold; }
+
+#storyForm > .loading {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  pointer-events: none;
+}
+#storyForm > .loading > .indicator {
+  background-color: rgba(255, 230, 200, 0.85);
+}
 
 #story {}
 #story > .content { overflow: hidden; }

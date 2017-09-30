@@ -8,7 +8,7 @@ run on server or client side:
   -DB: Reference to the mongodb database object
 */
 
-Error.stackTraceLimit = Infinity;
+Error.stackTraceLimit = 100;
 
 // Add convenience methods to pre-existing classes
 [
@@ -678,7 +678,7 @@ global.PACK.pack = {
             // (common.js is guaranteed to exist)
             var ver = document.querySelector('script[src^="common.js"]').src;
             if (ver.contains('?'))  ver = '?' + ver.split('?')[1];
-            else                     ver = '';
+            else                    ver = '';
             
             // The src ends with the version
             var src = 'apps/' + depName + '/' + depName + '.js' + ver;

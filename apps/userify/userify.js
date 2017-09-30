@@ -10,6 +10,7 @@ var package = new PACK.pack.Package({ name: 'userify',
     
     var uf = {
       
+      /* INFO */
       SimpleInfo: U.makeClass({ name: 'SimpleInfo',
         description: 'Simple class for applying `getValue` and `setValue` ' +
           'methods to a simple value',
@@ -21,6 +22,14 @@ var package = new PACK.pack.Package({ name: 'userify',
           setValue: function(val) { this.value = val; }
         };}
       }),
+      toInfo: function(obj) {
+        if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
+        if (U.isObj(obj, Function)) return { getValue: obj };
+        return new uf.SimpleInfo({ value: obj });
+      },
+      pafam: function(params, name, def) {
+        return uf.toInfo(U.param(params, name, def));
+      },
       
       /* DOM UTIL */
       domSetText: function(elem, text) {
@@ -74,14 +83,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           elem[type] = null; // The `type` property isn't removable (e.g. "onmousemove", "onmouseup", etc.)
           delete elem[setName]; // But this is a custom property, so it can be removed
         }
-      },
-      toInfo: function(obj) {
-        if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
-        if (U.isObj(obj, Function)) return { getValue: obj };
-        return new uf.SimpleInfo({ value: obj });
-      },
-      pafam: function(params, name, def) {
-        return uf.toInfo(U.param(params, name, def));
       },
       
       /* DECORATOR */
@@ -170,6 +171,41 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      ActionDecorator: U.makeClass({ name: 'ActionDecorator',
+        superclassName: 'Decorator',
+        description: 'Perform an asynchronous action on interaction',
+        methods: function(sc, c) { return {
+          init: function(params /* $action */) {
+            sc.init.call(this, params);
+            this.$action = U.param(params, '$action');
+            this.loadingInfo = new uf.SimpleInfo({ value: false });
+          },
+          doAction: function(view, event) {
+            if (this.loadingInfo.getValue()) return; // The action is already in progress
+            
+            var pass = this;
+            this.loadingInfo.setValue(true);
+            this.$action(event).then(function() {
+              pass.loadingInfo.setValue(false);
+            }).done();
+          },
+          isLoading: function() {
+            return this.loadingInfo.getValue();
+          },
+          start: function(view) {
+            view.domRoot.setAttribute('tabindex', 0);
+            view['~' + this.id + '.click'] = this.doAction.bind(this, view);
+            uf.domAddListener(view.domRoot, 'onclick', view['~' + this.id + '.click']);
+          },
+          stop: function(view) {
+            if (view.domRoot) {
+              view.domRoot.removeAttribute('tabindex');
+              uf.domRemListener(view.domRoot, 'onclick', view['~' + this.id + '.click']);
+            }
+            delete view['~' + this.id + '.click'];
+          }
+        };}
+      }),
       
       /* FORM DECORATORS (TODO: move these to a new package?) */
       FormDecorator: U.makeClass({ name: 'FormDecorator',
@@ -179,18 +215,18 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.inputs = [];
-            this.submit = null;
+            this.submits = [];
           },
           genInputDecorator: function(validateFunc) {
             var ret = new uf.FormInputDecorator({ form: this, validateFunc: validateFunc || null });
             this.inputs.push(ret);
             return ret;
           },
-          genSubmitDecorator: function() {
-            if (this.submit) throw new Error('Form is already aware of a submit button');
+          genSubmitDecorator: function($action) {
+            if (!$action) throw new Error('Must provide an $action promise-func');
             
-            var ret = new uf.FormSubmitDecorator({ form: this });
-            this.submit = ret;
+            var ret = new uf.FormSubmitDecorator({ $action: $action, form: this });
+            this.submits.push(ret);
             return ret;
           },
           isValid: function() {
@@ -235,36 +271,24 @@ var package = new PACK.pack.Package({ name: 'userify',
         };},
         statik: {
           keyPress: function(view, event) {
-            if (this.form.submit && event.keyCode === 13) this.form.submit.actionView.doAction();
+            if (this.form.submits.length && event.keyCode === 13) this.form.submits[0].doAction(view, event);
           }
         }
       }),
       FormSubmitDecorator: U.makeClass({ name: 'FormSubmitDecorator',
-        superclassName: 'Decorator',
+        superclassName: 'ActionDecorator',
         methods: function(sc, c) { return {
-          init: function(params /* */) {
-            sc.init.call(this, params);
+          init: function(params /* $action */) {
             this.form = U.param(params, 'form');
-            this.actionView = null;
-          },
-          start: function(view) {
-            this.actionView = view;
-            view['~' + this.id + '.clickFunc'] = c.clickFunc.bind(this, view);
-            uf.domAddListener(view.domRoot, 'onclick', view['~' + this.id + '.clickFunc']);
-          },
-          stop: function(view) {
-            uf.domRemListener(view.domRoot, 'onclick', view['~' + this.id + '.clickFunc']);
-            delete view['~' + this.id + '.clickFunc'];
+            
+            var pass = this;
+            var $action = U.param(params, '$action');
+            sc.init.call(this, params.update({ $action: function(event) {
+              if (!pass.form.isValid()) return;
+              return $action(event);
+            }}));
           }
-        };},
-        statik: {
-          clickFunc: function(view, event) {
-            if (this.form.isValid()) return true;
-            event.stopPropagation();
-            event.preventDefault();
-            return false;
-          }
-        }
+        };}
       }),
       
       /* INPUT DECORATORS (TODO: move these to a new package???) */
@@ -303,7 +327,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             sc.init.call(this, params);
             
             this.action = U.param(params, 'action', null);
-            this.info = uf.toInfo(false);
+            this.info = new uf.SimpleInfo({ value: false });
           },
           start: function(view) {
             view['~' + this.id + '.clickFuncDn'] = c.clickFuncDn.bind(this, view);
@@ -559,11 +583,12 @@ var package = new PACK.pack.Package({ name: 'userify',
             return PACK.p.$null;
           },
           tick: function(millis) {
-            throw new Error('not implemented for ' + this.constructor.title);
           },
           
           start: function() {
             this.domRoot = this.createDomRoot();
+            
+            this.domRoot['~view'] = this;
             
             // Set the id property
             var htmlId = this.getHtmlId();
@@ -708,45 +733,6 @@ var package = new PACK.pack.Package({ name: 'userify',
               this.domRoot.classList.remove('focus');
             }
           },
-        };}
-      }),
-      ActionView: U.makeClass({ name: 'ActionView',
-        superclassName: 'InteractiveView',
-        methods: function(sc, c) { return {
-          init: function(params /* name, $action, textInfo, enabledData */) {
-            sc.init.call(this, params);
-            this.$action = U.param(params, '$action');
-            this.textInfo = uf.pafam(params, 'textInfo');
-            this.waitingInfo = new uf.SimpleInfo({ value: false });
-          },
-          
-          createDomRoot: function() {
-            var button = document.createElement('div');
-            button.setAttribute('tabIndex', 0);
-            button.classList.add('button');
-            button.classList.add('interactive');
-            button.onkeypress = function(e) {
-              if (e.keyCode === 13 || e.keyCode === 32) {
-                button.onclick();
-                e.preventDefault();
-              }
-            };
-            uf.domAddListener(button, 'onclick', this.doAction.bind(this));
-            
-            return button;
-          },
-          doAction: function() {
-            if (this.waitingInfo.getValue()) return;
-            this.waitingInfo.setValue(true);
-            var pass = this;
-            this.$action().then(function() { pass.waitingInfo.setValue(false); }).done();
-          },
-          tick: function(millis) {
-            sc.tick.call(this, millis);
-            uf.domSetText(this.domRoot, this.textInfo.getValue());
-            this.domRoot.classList.toggle('waitingInfo', this.waitingInfo.getValue());
-          }
-          
         };}
       }),
       CanvasView: U.makeClass({ name: 'CanvasView',
@@ -954,6 +940,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (nextChild !== this.currentChild) {
               
               if (this.currentChild) {
+                
+                this.domRoot.classList.remove('choose-' + this.currentChild.name);
                 
                 if (this.transitionTime) {
                   

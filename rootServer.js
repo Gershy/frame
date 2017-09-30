@@ -4,7 +4,6 @@ DB Reference:
 - mongodb://localhost:27017/frame
 
 TODO: This is one UGLY goddang file
-TODO: The DB connection at this end of this file needs its own paradigm
 TODO: Responses for non-existing files are no good, e.g. try removing favicon and loading
 TODO: Dependency loading should be done via promises
 TODO: Websockets eventually?

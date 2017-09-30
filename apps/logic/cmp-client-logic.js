@@ -1,5 +1,4 @@
 /*
-
 NEAR-TERM:
 - Relations should be normalized 
   - on client-side in `infoSet`
@@ -27,7 +26,6 @@ NEAR-TERM:
   - Theory "privileges"?
     - Should users have (and be able to grant) per-theory privileges to other users?
 - dossier.getDataView() is not implemented correctly (some properties will wind up being 'DUMMY_VAL')
-
 INDEFINITE:
 - Need to introduce artificial latency for testing and indicate all loading activities
 - Info objects should have an "altered" broadcast ability
@@ -68,18 +66,13 @@ INDEFINITE:
   - Session creation is a hazard
 - Refresh page if version changes? (Will require repeated polling for `infoSet.appVersion`
 - Password field contents should not be allowed to reach client-side
-
 theory deletion, better preloaded test data, infoSet.activeTheories entries simplified, CachedInfo, (Repeating|Reacting)?SyncedInfo, RootView
-
 */
-
 var package = new PACK.pack.Package({ name: 'logic',
   dependencies: [ 'quickDev', 'userify', 'p', 'geom', 'queries' ],
   buildFunc: function(packageName, qd, userify, p, geom) {
-    
     var Point = geom.Point;
     var P = p.P;
-    
     var lg = {
       resources: { css: [ 'apps/logic/style.css', 'apps/userify/style.css' ] },
       versionString: '0.0.1',
@@ -88,98 +81,68 @@ var package = new PACK.pack.Package({ name: 'logic',
         superclass: qd.DossierDict,
         methods: function(sc, c) { return {
           validateTheoryName: function(name) {
-            
             if (name.length > 24)
               return { valid: false, msg: 'theoryName.tooLong' };
-            
             if (name.length < 3)
               return { valid: false, msg: 'theoryName.tooShort' };
-            
             if (!lg.theoryNameRegex.test(name))
               return { valid: false, msg: 'theoryName.invalid' };
-            
             if (name in this.children.theorySet.children)
               return { valid: false, msg: 'theoryName.unavailable' };
-              
             // Another possible value is 'theoryName.overwrite' - when the user tries
             // to create a new theory that has the same name as an old theory.
-            
             return { valid: true };
-            
           },
-          $handleQuery: function(params /* command */) {
+          $handleRequest: function(params /* command */) {
             var command = U.param(params, 'command');
-            
             if (command === 'getToken') {
-              
               var reqParams = U.param(params, 'params');
               var username = U.param(reqParams, 'username');
               var password = U.param(reqParams, 'password');
-              
               var user = this.requireUser(username);
               if (user.getChild('password').getValue() !== password) throw new Error('Incorrect password');
-              
               return PACK.p.$({
                 username: user.getChild('username').getValue(),
                 token: user.getToken()
               });
-              
             } else if (command === 'validateTheoryName') {
-              
               var reqParams = U.param(params, 'params');
               var name = U.param(reqParams, 'name');
               return PACK.p.$(this.validateTheoryName(name));
-              
             } else if (command === 'saveTheory') { // TODO: Consider writing a TheorySet DossierDict subclass, and implementing this there?
-              
               var reqParams = U.param(params, 'params');
-              
               var token = U.param(reqParams, 'token');
               var quickName = U.param(reqParams, 'quickName');
               var theoryUsername = U.param(reqParams, 'username');
               var theoryTitle = U.param(reqParams, 'title');
               var theoryText = U.param(reqParams, 'theory');
-              
               var type = U.param(reqParams, 'type');
               if (!~[ 'update', 'create' ].indexOf(type)) throw new Error('Invalid save type: "' + type + '"');
-              
               // The theory's user needs to correspond to the user's token (users can only edit their own theories)
               var user = this.requireUser(theoryUsername, token);
               var theorySet = this.children.theorySet;
               var essaySet = this.children.essaySet;
-              
               var timestamp = +new Date();
               var editor = new qd.Editor();
-              
               if (quickName in theorySet.children) {
-                
                 if (type === 'create') throw new Error('theoryName.overwrite');
-                
                 var origTheory = theorySet.children[quickName];
-                
                 // The theory already exists, but doesn't belong to `user`
                 if (origTheory.getChild('user') !== user) throw new Error('theoryName.unavailable');
-                
                 console.log('Updating theory ' + origTheory.getAddress());
                 var $theory = PACK.p.$(origTheory);
-                
               } else {
-                
                 var valid = this.validateTheoryName(quickName);
                 if (!valid.valid) throw new Error(valid.msg);
-                
                 console.log('Saving theory to ' + theorySet.getAddress());
                 var essaySet = this.children.essaySet;
-                
                 var $theory = editor.$addFast({
                   par: essaySet,
                   data: {
                     markup: '- placeholder -'
                   }
                 }).then(function(essay) {
-                  
                   console.log('GOT ESSAY:', essay.getAddress());
-                  
                   // Create the theory
                   return editor.$addFast({
                     par: theorySet,
@@ -193,47 +156,30 @@ var package = new PACK.pack.Package({ name: 'logic',
                       essay: essay
                     }
                   });
-                  
                 })
-                
               }
-              
               return $theory.then(function(theory) {
-                
                 var $modTheory = editor.$modFast({ doss: theory, data: {
                   title: theoryTitle,
                   editedTime: timestamp
                 }});
-                
                 var $modEssay = editor.$modFast({ doss: theory.getChild('@essay'), data: {
                   markup: theoryText
                 }});
-                
                 return new P({ all: [ theory, $modTheory, $modEssay ] })
-                
               }).them(function(theory) {
-                
                 console.log('GOT THEORY:', theory.getAddress());
-                
                 return theory.getDataView({});
-                
               });
-            
             } else if (command === 'deleteTheory') {
-              
               var reqParams = U.param(params, 'params');
-              
               var token = U.param(reqParams, 'token');
               var quickName = U.param(reqParams, 'quickName');
-              
               var theorySet = this.children.theorySet;
-              
               var theory = theorySet.children[quickName];
               if (!theory) throw new Error('Couldn\'t find theory named "' + quickName + '"');
-              
               var user = theory.getChild('@user');
               this.requireUser(user, token);
-              
               var editor = new qd.Editor();
               return editor.$remFast({ par: theorySet, name: theory.name }).then(function() {
                 return {
@@ -241,33 +187,22 @@ var package = new PACK.pack.Package({ name: 'logic',
                   quickName: theory.name
                 };
               });
-              
             } else if (command === 'relateTheories') {
-              
               var reqParams = U.param(params, 'params');
-              
               var token = U.param(reqParams, 'token');
               var username = U.param(reqParams, 'username');
               var user = this.requireUser(username, token);
-              
               var theorySet = this.children.theorySet;
-              
               var standingQuickName = U.param(reqParams, 'standingQuickName');
               var standing = theorySet.children[standingQuickName];
               if (!standing) throw new Error ('Invalid standing quickName: "' + standingQuickName + '"');
-              
               var incomingQuickName = U.param(reqParams, 'incomingQuickName');
               var incoming = theorySet.children[incomingQuickName];
               if (!incoming) throw new Error ('Invalid incoming quickName: "' + incomingQuickName + '"');
-              
               if (incoming === standing) throw new Error('A theory cannot relate to itself');
-              
               var relationType = U.param(reqParams, 'relationType');
-              
               if (![ 'supporter', 'contender' ].contains(relationType)) throw new Error('Invalid relation type: "' + relationType + '"');
-              
               var theoryRelationSet = this.children.theoryRelationSet;
-              
               var editor = new qd.Editor();
               var $relation = editor.$addFast({
                 par: theoryRelationSet,
@@ -278,13 +213,10 @@ var package = new PACK.pack.Package({ name: 'logic',
                   user: user
                 }
               });
-              
               /*
               if (relationType === 'supporter') {
-                
                 if (standing.getChild([ 'contenderSet', incoming.name ]))
                   throw new Error(incoming.name + ' already contends ' + standing.name + '. It cannot also support it.');
-                
                 console.log('Adding supporter');
                 var editor = new qd.Editor();
                 var $relation = editor.$addFast({
@@ -294,12 +226,9 @@ var package = new PACK.pack.Package({ name: 'logic',
                     theory: incoming
                   }
                 });
-                
               } else if (relationType === 'contender') {
-                
                 if (standing.getChild([ 'supporterSet', incoming.name ]))
                   throw new Error(incoming.name + ' already supports ' + standing.name + '. It cannot also contend it.');
-                
                 console.log('Adding contender');
                 var editor = new qd.Editor();
                 var $relation = editor.$addFast({
@@ -309,75 +238,54 @@ var package = new PACK.pack.Package({ name: 'logic',
                     theory: incoming
                   }
                 });
-                
               } else {
-                
                 throw new Error('Invalid relationType: "' + relationType + '"');
-                
               }
               */
-              
               return $relation.then(function(data) {
                 return {
                   msg: relationType + ' added',
                   standing: standing.getDataView({})
                 }
               });
-              
             } else if (command === 'unrelateTheories') {
-              
               var reqParams = U.param(params, 'params');
-              
               var token = U.param(reqParams, 'token');
               var username = U.param(reqParams, 'username');
               var user = this.requireUser(username, token);
-              
               var theorySet = this.children.theorySet;
-              
               var standingQuickName = U.param(reqParams, 'standingQuickName');
               var standing = theorySet.children[standingQuickName];
               if (!standing) throw new Error ('Invalid standing quickName: "' + standingQuickName + '"');
-              
               var incomingQuickName = U.param(reqParams, 'incomingQuickName');
               var incoming = theorySet.children[incomingQuickName];
               if (!incoming) throw new Error ('Invalid incoming quickName: "' + incomingQuickName + '"');
-              
               if (incoming === standing) throw new Error('Cannot unrelate a theory from itself');
-              
               var relationType = U.param(reqParams, 'relationType');
-              
               var editor = new qd.Editor();
               var $unrelate = editor.$remFast({
                 par: this.children.theoryRelationSet,
                 name: '<' + standingQuickName + ',' + incomingQuickName + ',' + relationType + '>'
               });
-              
               /*
               if (relationType === 'supporter') {
-                
                 console.log('Removing supporter');
                 var editor = new qd.Editor();
                 var $unrelate = editor.$remFast({
                   par: standing.getChild('supporterSet'),
                   name: incomingQuickName
                 });
-                
               } else if (relationType === 'contender') {
-                
                 console.log('Removing contender');
                 var editor = new qd.Editor();
                 var $unrelate = editor.$remFast({
                   par: standing.getChild('contenderSet'),
                   name: incomingQuickName
                 });
-                
               } else {
-                
                 throw new Error('Invalid relationType: "' + relationType + '"');
-                
               }
               */
-              
               return $unrelate.then(function(data) {
                 return {
                   msg: relationType + ' removed',
@@ -385,35 +293,23 @@ var package = new PACK.pack.Package({ name: 'logic',
                   incoming: incoming.getDataView({})
                 }
               });
-              
             } else if (command === 'searchTheories') {
-              
               var reqParams = U.param(params, 'params');
-              
               var searchTerm = U.param(reqParams, 'searchTerm');
-              
               var theories = this.children.theorySet.children;
               var matched = {};
-              
               for (var k in theories) {
                 if (theories[k].matchesSearchTerm(searchTerm))
                   matched[k] = theories[k].overviewData()
               }
-              
               return new P({ val: matched });
-              
             } else if (command === 'fullData') {
-              
               return new P({ val: this.getDataView({}) });
-              
             } else if (command === 'getIncomingRelations') {
-              
               var reqParams = U.param(params, 'params');
               var quickName = U.param(reqParams, 'quickName');
-              
               var theory = this.children.theorySet.children[quickName];
               if (!theory) throw new Error('Invalid quickName: "' + quickName + '"');
-              
               var relToData = function(rel) {
                 var theory = rel.getChild('@theory');
                 return {
@@ -421,38 +317,28 @@ var package = new PACK.pack.Package({ name: 'logic',
                   address: theory.getAddress()
                 }
               };
-              
               return new P({ val: {
                 supporters: theory.children.supporterSet.children.map(relToData),
                 contenders: theory.children.contenderSet.children.map(relToData)
               }});
-              
             } else if (command === 'getAllTheoryRelations') {
-              
               var reqParams = U.param(params, 'params');
               var theoryNames = U.param(reqParams, 'theoryNames');
               var theoryRels = this.children.theoryRelationSet;
               var ret = [];
-              
               // TODO: O(n^2) IS BADDDDD
               var len = theoryNames.length;
               for (var i = 0; i < len; i++) {
                 for (var j = 0; j < len; j++) {
-                  
                   var supporter = theoryRels.getChild('<' + theoryNames[i] + ',' + theoryNames[j] + ',supporter>');
                   if (supporter) ret.push({ standingQuickName: theoryNames[i], incomingQuickName: theoryNames[j], relationType: 'supporter', data: {} });
-                  
                   var contender = theoryRels.getChild('<' + theoryNames[i] + ',' + theoryNames[j] + ',contender>');
                   if (contender) ret.push({ standingQuickName: theoryNames[i], incomingQuickName: theoryNames[j], relationType: 'contender', data: {} });
-                    
                 }
               }
-              
               return new P({ val: ret });
-              
             }
-            
-            return sc.$handleQuery.call(this, params);
+            return sc.$handleRequest.call(this, params);
           },
           requireUser: function(user, token) {
             if (U.isObj(user, String)) {
@@ -462,7 +348,6 @@ var package = new PACK.pack.Package({ name: 'logic',
             } else if (!U.isInstance(user, lg.LogicUser)) {
               throw new Error('Invalid user type: ' + user);
             }
-            
             if (token && user.getToken() !== token) throw new Error('Incorrect token for user "' + user.name + '"');
             return user;
           }
@@ -474,18 +359,15 @@ var package = new PACK.pack.Package({ name: 'logic',
           getToken: function(user) {
             var u = this.getChild('username').getValue();
             var p = this.getChild('password').getValue();
-            
             var str = '';
             var val = 9;
             var chars = '0ab45cd21ef58gh02ij0klm0no23p9qr62stu92vwxyz5AB8C0D37EF5GH7I4JKL2M4NO4PQR6ST8U39VW9998XYZ';
-            
             for (var i = 0; i < 12; i++) {
               var v1 = u[(val + 19) % u.length].charCodeAt(0);
               var v2 = p[((val * val) + 874987) % p.length].charCodeAt(0);
               val = ((v1 + 3) * (v2 + 11) * 11239) + 3 + i + v1;
               str += chars[val % chars.length];
             }
-            
             return str;
           }
         };}
@@ -495,7 +377,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         methods: function(sc, c) { return {
           matchesSearchTerm: function(term) {
             var termLwr = term.toLowerCase();
-            
             return ~this.name.toLowerCase().indexOf(termLwr)
               || ~this.children.title.getLowerValue().indexOf(termLwr);
               // || ~this.getChild('@essay.markup).getLowerValue().indexOf(termLwr);
@@ -503,7 +384,6 @@ var package = new PACK.pack.Package({ name: 'logic',
           overviewData: function() {
             var theory = this.getChild('@essay.markup').getValue();
             if (theory.length > 50) theory = theory.substr(0, 50) + '...';
-            
             return {
               username: this.getChild('@user').name,
               quickName: this.name,
@@ -513,7 +393,6 @@ var package = new PACK.pack.Package({ name: 'logic',
           }
         };}
       }),
-      
       nodeRelationOffsets: {
         supporter: new Point({ x: -128, y: -98 }),
         contender: new Point({ x: 128, y: -98 })
@@ -524,10 +403,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         methods: function(sc, c) { return {
           init: function(params /* info, enabledInfo, maxUpdatesPerFrame */) {
             sc.init.call(this, params);
-            
             this.info = U.param(params, 'info');
             this.enabledInfo = userify.pafam(params, 'enabledInfo', true);
-            
             var physicsSettings = U.param(params, 'physicsSettings', {});
             this.physicsSettings = {
               scaleTime: 1,
@@ -542,7 +419,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 contender: 10
               }
             }.update(physicsSettings);
-            
             this.maxUpdatesPerFrame = U.param(params, 'maxUpdatesPerFrame', 1000);
             this.updateIndex = 0;
           },
@@ -556,27 +432,20 @@ var package = new PACK.pack.Package({ name: 'logic',
             */
             if (x < 0) return 0;
             if (x > 1) return 1;
-            
             return x < 0.5
               ? (2 * x * x)
               : (-0.5 * (4 * x * x - (8 * x)) - 1);
           },
           updateOld: function(view, millis) {
-            
             if (!this.enabledInfo.getValue()) return;
-            
             var ps = this.physicsSettings;
             var secs = millis * 0.001 * ps.scaleTime;
-            
             var cs = this.info.getValue().toArray();
             var ncs = cs.length;
             var mncs = Math.min(ncs, this.maxUpdatesPerFrame);
-            
             for (var n = 0; n < mncs; n++) {
-              
               var i = this.updateIndex;
               this.updateIndex = (++this.updateIndex >= cs.length) ? 0 : this.updateIndex;
-              
               var qn1 = cs[i].getValue('quickName');
               var phys1 = cs[i].getChild('physics');
               var loc1 = phys1.getValue('loc');
@@ -584,49 +453,36 @@ var package = new PACK.pack.Package({ name: 'logic',
               var acl1 = phys1.getValue('acl');
               var r1 = phys1.getValue('r');
               var w1 = phys1.getValue('weight');
-              
               // Increment location based on velocity
               loc1 = loc1.add(vel1.scale(secs));
-              
               // Increment velocity based on acceleration; then dampen
               vel1 = vel1.add(acl1.scale(secs)).scale(ps.dampenGlobal);
-              
               // Reset acceleration to 0. Acceleration will go towards the center for
               // any theories that are NOT incoming theories (incoming theories already
               // attract towards a standing theory; they don't need central gravitation)
               var isIncoming = false;
               acl1 = geom.ORIGIN;
-              
               for (var j = 0; j < ncs; j++) {
                 if (i === j) continue;
-                
                 // Note that phys1 is the incoming theory, and phys2 is the standing theory
-                
                 var phys2 = cs[j].getChild('physics');
                 var loc2 = phys2.getValue('loc');
                 var vel2 = phys2.getValue('vel');
                 var acl2 = phys2.getValue('acl');
                 var r2 = phys2.getValue('r');
                 var w2 = phys2.getValue('weight');
-                
                 var centerDist = null; // Won't be calculated until necessary
-                
                 var incRelations = {}; // TODO: previously `cs[j].getValue('incomingRelations');`
                 var incRelations = {};
-                
                 if (qn1 in incRelations) {
-                  
                   isIncoming = true;
                   var attractors = incRelations[qn1].relations.map(function(rel, k) { return lg.nodeRelationOffsets[k]; });
                   var attractor = PACK.geom.midPoint(attractors.toArray()).scale(r2 * lg.graphNodeInvRadius).add(loc2);
-                  
                   acl1 = acl1.add(new Point({
                     ang: loc1.angleTo(attractor),
                     mag: (this.sigmoid(loc1.dist(attractor) * 0.01)) * ps.gravityMult
                   }));
-                  
                 } else {
-                
                   /*
                   // TODO: Removed attraction between unrelated nodes; is this ok??
                   centerDist = loc1.dist(loc2);
@@ -637,34 +493,22 @@ var package = new PACK.pack.Package({ name: 'logic',
                       mag: (ps.gravityMult * ps.gravityMult * r2 * w2) / denom
                     }));
                   */
-                  
                 }
-                
                 if (w1 <= w2) { // If node1 is lighter, it may be displaced by node2
-                  
                   if (!centerDist) centerDist = loc1.dist(loc2); // `centerDist` may already be calculated
-                  
                   var sepDist = r1 + r2 + ps.separation;
                   var gap = centerDist - sepDist;
                   if (gap < 0) { 
-                    
                     loc1 = loc2.angleMove(loc2.angleTo(loc1), sepDist);
-                    
                   }
-                  
                 }
-                
               }
-              
               //if (!isIncoming) acl1 = acl1.angleMove(loc1.angleTo(geom.ORIGIN), ps.centerAclMag);
               if (!isIncoming) vel1 = vel1.angleMove(loc1.angleTo(geom.ORIGIN), 5);
-              
               phys1.setValue('loc', loc1);
               phys1.setValue('vel', vel1);
               phys1.setValue('acl', acl1);
-              
             }
-            
           },
           update: function(view, millis) {
             var roots = [];
@@ -673,11 +517,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         };}
       })
     };
-    
     if (U.isServer()) {
-      
       // Only the server needs the schema
-      
       var verifyUser = function(user, params) {
         if (user.name !== U.param(params, 'username')) throw new Error('Wrong user');
         if (user.getToken() !== U.param(params, 'token')) throw new Error('Bad token');
@@ -686,9 +527,7 @@ var package = new PACK.pack.Package({ name: 'logic',
         { name: 'initial',
           detect: function(doss) { return doss === null; },
           $apply: function(root) {
-            
             var editor = new qd.Editor();
-            
             var outline = new qd.Outline({ c: lg.LogicApp, p: { name: 'app' }, i: [
               { c: qd.DossierString, p: { name: 'version' } },
               { c: qd.DossierList, p: { name: 'userSet',
@@ -778,7 +617,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
               }}
             ]});
-            
             var $app = editor.$create(outline, {
               version: '0.0.1 (initial)',
               userSet: {},
@@ -788,17 +626,13 @@ var package = new PACK.pack.Package({ name: 'logic',
               relationRelationSet: {}
             });
             editor.resolveReqs();
-            
             return $app;
-
           }
         },
         { name: 'add default data',
           detect: function(doss) { return !doss.getChild('userSet.admin'); },
           $apply: function(root) {
-            
             var editor = new qd.Editor();
-            
             var $addUsers = editor.$editFast({
               add: [
                 {
@@ -821,7 +655,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
               ]
             });
-            
             var $addEssays = $addUsers.then(function(users) {
               return editor.$editFast({
                 add: [
@@ -876,7 +709,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 ]
               });
             });
-            
             var $addTheories = new P({ all: [ $addUsers, $addEssays ] }).them(function(users, essays) {
               return editor.$editFast({
                 add: [
@@ -979,7 +811,6 @@ var package = new PACK.pack.Package({ name: 'logic',
                 ]
               });
             });
-            
             /*
             var $relateTheories = new P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
               return editor.$editFast({
@@ -995,9 +826,7 @@ var package = new PACK.pack.Package({ name: 'logic',
               });
             });
             */
-            
             var $relateTheories = new P({ all: [ $addUsers, $addEssays, $addTheories ] }).then(function() {
-              
               return editor.$editFast({
                 add: [
                   {
@@ -1011,17 +840,13 @@ var package = new PACK.pack.Package({ name: 'logic',
                   }
                 ]
               });
-              
             });
-            
             return new P({ all: [ $addUsers, $addEssays, $addTheories, $relateTheories ] }).then(function() {
               return root;
             });
-            
           }
         }
       ]});
-      
       lg.$init = versioner.$getDoss().then(function(doss) {
         lg.queryHandler = doss;
         return doss;
@@ -1029,23 +854,17 @@ var package = new PACK.pack.Package({ name: 'logic',
         console.log('HEEEEEEEEEEERE');
         console.error(err.stack);
       });
-      
     }
-    
     return lg;
   },
   runAfter: function() {
-    
     if (U.isServer()) return;
-    
     var lg = PACK.logic;
     var qd = PACK.quickDev;
     var uf = PACK.userify;
     var P = PACK.p.P;
-    
     // `doss` provides the $doRequest method that will be used throughout this app
     var doss = new lg.LogicApp({ outline: null }).updateName('app');
-    
     // Here's the `infoSet`. It's equivalent to the state of the app
     var infoSet = new uf.DictInfo({ children: {
       icons: new uf.DictInfo({ children: {
@@ -1068,31 +887,23 @@ var package = new PACK.pack.Package({ name: 'logic',
     infoSet.addChild('activeRelations', new uf.RepeatingSyncedInfo({ // Holds ordered relations: standingQuickName -> incomingQuickName -> relationType
       initialValue: new qd.IndexedDict({ keySize: 3 }),
       $getFunc: function() {
-        
         var relations = new qd.IndexedDict({ keySize: 3 });
         var keys = infoSet.getValue('activeTheories').keysToArray();
         if (!keys.length) return new P({ val: relations });
-        
         console.log('RELATIONS FOR', keys);
-        
         return doss.$doRequest({
           command: 'getAllTheoryRelations',
           params: {
             theoryNames: keys
           }
         }).then(function(response) {
-          
           console.log('REL', response);
-          
           for (var i = 0; i < response.length; i++) {
             var r = response[i];
             relations.add([ r.standingQuickName, r.incomingQuickName, r.relationType ], r.data);
           }
-          
           return relations;
-          
         });
-        
       },
       $setFunc: null, // TODO: Implement??
       updateMs: 30000 // 60000
@@ -1105,7 +916,6 @@ var package = new PACK.pack.Package({ name: 'logic',
       $getFunc: function() {
         var searchTerm = infoSet.getValue('searchTerm');
         if (searchTerm === '') return new P({ val: {} });
-        
         // TODO: Should return an `Info` object, not a plain `Object`.
         return doss.$doRequest({
           command: 'searchTheories',
@@ -1115,10 +925,8 @@ var package = new PACK.pack.Package({ name: 'logic',
         });
       }
     }));
-    
     /*
     // TODO: Something like this, DirectedRelationalInfo
-    
     infoSet.addChild('relationTypes', new uf.DictInfo({ children: {
       supporter: new uf.SimpleInfo({ value: 'supporter' }),
       contender: new uf.SimpleInfo({ value: 'contender' })
@@ -1133,23 +941,18 @@ var package = new PACK.pack.Package({ name: 'logic',
         infoSet.getChild('relationTypes')
       ]
     });
-    
     infoSet.getChild([ 'activeRelations', [ 'newTheoryOne', 'newTheoryTwo', 'supporter' ] ]);
     infoSet.getChild([ 'activeRelations', 'newTheoryOne.newTheoryTwo.supporter' ]);
     */
-    
     // Update relations when list of theories is updated
     infoSet.getChild('activeTheories').addListener(infoSet.getChild('activeRelations'));
     infoSet.start();
-    
     // Values for controlling extra data attached to graph nodes
     var makeNodeData = function(params /* quickName, username, editing */) {
       var quickNameInfo = uf.pafam(params, 'quickName');
       var usernameInfo = uf.pafam(params, 'username');
       var editingInfo = uf.pafam(params, 'editing');
-      
       var owned = usernameInfo.getValue() === infoSet.getValue('username');
-      
       var ret = new uf.DictInfo({ children: {
         physics: new uf.DictInfo({ children: {
           r: new uf.SimpleInfo({ value: 65 }),
@@ -1167,15 +970,12 @@ var package = new PACK.pack.Package({ name: 'logic',
         editing: editingInfo,
         triWidth: new uf.SimpleInfo({ value: 0 })
       }});
-      
       ret.start();
-      
       return ret;
     };
     var saveNodeData = function(nodeInfo) {
       // "saved" is now fixed to the value `true`
       nodeInfo.setValue('saved', true);
-      
       // "title" syncs with the `theorySet.<theoryId>.title` value server-side
       nodeInfo.modChild('title', new uf.RepeatingSyncedInfo({
         initialValue: nodeInfo.getValue('title'),
@@ -1193,7 +993,6 @@ var package = new PACK.pack.Package({ name: 'logic',
         },
         updateMs: 60000
       }));
-      
       // "theory" syncs with the `theorySet.<theoryId>.@essay.markup` value server-side
       nodeInfo.modChild('theory', new uf.RepeatingSyncedInfo({
         initialValue: nodeInfo.getValue('theory'),
@@ -1211,64 +1010,45 @@ var package = new PACK.pack.Package({ name: 'logic',
         },
         updateMs: 60000
       }));
-      
       nodeInfo.start();
-      
       return nodeInfo;
     };
     var renameNodeData = function(params /* oldName, newName */) {
       var oldName = U.param(params, 'oldName');
       var newName = U.param(params, 'newName');
-      
       var activeTheories = infoSet.getChild('activeTheories');
-      
       // Get the value which is changing keys...
       var nodeInfo = activeTheories.getChild(oldName);
-      
       // ... update its quickName...
       nodeInfo.setValue('quickName', newName);
-      
       // ... and re-key it.
       activeTheories.remChild(oldName);
       activeTheories.addChild(newName, nodeInfo);
-      
       /*
       infoSet.modValue('activeTheories', function(activeTheories) {
-        
-        
         // Re-key...
         //activeTheories[newName] = activeTheories[oldName];
         //delete activeTheories[oldName];
         // ... and update the quickName
         //activeTheories[newName].quickName.setValue(newName);
-        
         return activeTheories;
       });
       */
     };
     var removeNodeData = function(name) {
-      
       infoSet.getChild('activeTheories').remChild(name);
-      
     };
-    
     // Function called when a theory is dragged to the dropzone of another theory
     var $relateTheories = function(relationType, params /* target, dropZone */) {
-      
       // `incoming` supports or contends `standing`
       var standing = U.param(params, 'dropZone').par.par; // Walk to theory view
       var incoming = U.param(params, 'target');
-      
       var activeTheories = infoSet.getValue('activeTheories');
-      
       var standingData = activeTheories[standing.name];
       var incomingData = activeTheories[incoming.name];
-      
       if (!standingData.getValue('saved') || !incomingData.getValue('saved'))
         throw new Error('Relations cannot involve unsaved theories');
-      
       var alreadyRelated = infoSet.getValue('activeRelations').find([ standing.name, incoming.name, relationType ]);
-      
       return doss.$doRequest({ command: alreadyRelated ? 'unrelateTheories' : 'relateTheories', params: {
         token: infoSet.getValue('token'),
         username: infoSet.getValue('username'),
@@ -1281,23 +1061,17 @@ var package = new PACK.pack.Package({ name: 'logic',
       }).fail(function(err) {
         console.error('Error editing relation: ', err.message);
       });
-      
     };
     var $loadRelatedTheories = function(theoryQuickName, relationName) {
-      
       return doss.$doRequest({
-        
         address: [ 'theoryRelationSet', { type: 'match', params: {
           '@standing': theoryQuickName,
           'relationType': relationName
         }}],
         command: 'getRawData'
-        
       }).then(function(relationSet) {
-        
         // HERE; relationSet in unexpected format
         console.log('LOADED RELATED THEORIES: ', relationSet);
-        
         return new P({ all: relationSet.map(function(relation) {
           return doss.$doRequest({
             address: relation.incoming,
@@ -1307,33 +1081,25 @@ var package = new PACK.pack.Package({ name: 'logic',
             }
           })
         })});
-      
       }).then(function(pickedFieldSet) {
-        
         console.log('PICKED FIELDS', pickedFieldSet);
-        
         var activeTheoriesInfo = infoSet.getChild('activeTheories');
         for (var k in pickedFieldSet) {
           var quickName = pickedFieldSet[k].quickName;
           var username = pickedFieldSet[k]['@user'].username;
-          
           if (activeTheoriesInfo.hasChild(quickName)) continue; // TODO: Should the data be updated, considering it's already available?
-          
           activeTheoriesInfo.addChild(quickName, saveNodeData(makeNodeData({
             quickName: quickName,
             username: username,
             editing: false
           })));
         }
-        
         // Position added nodes (if the node whose relations were queried is page-active)
         if (activeTheoriesInfo.hasChild(theoryQuickName)) {
           var phys = activeTheoriesInfo.getChild([ theoryQuickName, 'physics' ]);
           var loc = phys.getValue('loc');
           var r = phys.getValue('r');
-          
           var addOrigin = loc.add(lg.nodeRelationOffsets[relationName].scale(r * lg.graphNodeInvRadius));
-          
           // Determine the children added to the relation based on those included in `childUpdate` (Bad method!! Should collect them in the earlier loop!!)
           var added = graphView.updateChildren().add;
           for (var k in added) {
@@ -1341,11 +1107,8 @@ var package = new PACK.pack.Package({ name: 'logic',
             activeTheoriesInfo.setValue([ k, 'physics', 'loc' ], addOrigin.angleMove(Math.random() * Math.PI * 2, 0.01));
           }
         }
-        
       });
-      
     };
-    
     // Makes graph nodes interactive (dragging + clicking)
     var dragNode = new uf.DragDecorator({
       tolerance: 0,
@@ -1370,7 +1133,6 @@ var package = new PACK.pack.Package({ name: 'logic',
       action: function(view) {
         // No click action should apply during a drag. Prevents drag mouseup from focusing node.
         if (dragNode.isDragging(view)) return;
-        
         infoSet.modValue('focusedNode', function(view0) {
           // Clicking a focused node unfocuses it. Clicking an unfocused node focuses it.
           // Unfocusing a node sets its "editing" property to `false`
@@ -1382,51 +1144,34 @@ var package = new PACK.pack.Package({ name: 'logic',
         });
       }
     });
-    
     // Drag nodes to this view to remove them
     var removeNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
-      
       var target = U.param(params, 'target');
       removeNodeData(target.name);
-      
     }});
     var removeNodeView = new uf.SetView({ name: 'remove', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.getChild('icons.remove') }) ] });
     removeNodeView.decorators = [ removeNode, removeNode.createClassDecorator(removeNodeView) ];
-    
     // Drag nodes to this view to delete them
     var deleteNode = new uf.DragActionDecorator({ dragDecorator: dragNode, action: function(params /* target, dropZone */) {
-      
       var target = U.param(params, 'target');
       var targetData = infoSet.getValue('activeTheories')[target.name];
-      
       // If the theory is saved ask the server to delete it, otherwise simply remove it
       if (targetData.saved.getValue()) {
-        
         var $delete = doss.$doRequest({
           command: 'deleteTheory',
           params: { token: infoSet.getValue('token'), quickName: targetData.quickName.getValue() }
         });
-        
       } else {
-        
         var $delete = PACK.p.$null;
-        
       }
-      
       $delete.then(function(response) {
-        
         removeNodeData(target.name);
-        
       }).fail(function(err) {
-        
         console.error(err);
-        
       });
-      
     }});
     var deleteNodeView = new uf.SetView({ name: 'delete', cssClasses: [ 'dropZone' ], children: [ new uf.TextView({ name: 'text', info: infoSet.getChild('icons.del') }) ] });
     deleteNodeView.decorators = [ deleteNode, deleteNode.createClassDecorator(deleteNodeView) ];
-    
     var graphView = new uf.DynamicSetView({ name: 'graph',
       childInfo: infoSet.getChild('activeTheories'),
       decorators: [
@@ -1455,26 +1200,18 @@ var package = new PACK.pack.Package({ name: 'logic',
         }),
         */
         new uf.FuncDecorator({ func: function(view) {
-          
           var roots = [];
-          
           for (var k in graphView.children) {
-            
             var info = infoSet.getChild([ 'activeTheories', k, 'physics' ]);
-            
           }
-          
         }})
       ],
       genChildView: function(name, nodeInfo) {
-        
         // This is the view that will be returned
         var view = new uf.SetView({ name: name });
-        
         // Add data to the `Info` object: owned, saved, and editing, and physics
         var loc = nodeInfo.getValue('physics.loc');
         var owned = nodeInfo.getValue('username') === infoSet.getValue('username');
-        
         var physInfo = nodeInfo.getChild('physics');
         physInfo.modChild('r', new uf.CalculatedInfo({
           getFunc: function() {
@@ -1485,71 +1222,55 @@ var package = new PACK.pack.Package({ name: 'logic',
           getFunc: function() {
             // Nodes being dragged have 0 weight
             var drg = dragNode.info.getValue();
-            
             // 1) Nodes that aren't being dragging have a weight of `1`
             if (!dragNode.isDragging(view)) return 1;
-            
             var waitTimeMs = dragNode.info.getValue().getWaitTimeMs();
-            
             // 2) Dragged nodes that are held in place for a moment can gain weight...
             if (waitTimeMs > 500)
-              
               // 3) Unless the node is being held over another node's dropZone (can't push away nodes the user is trying to interact with)
               if (!dragAddSupporter.info.getValue() && !dragAddContender.info.getValue()) return 3;
-            
             // 4) All dragged nodes have a weight of `0`
             return 0;
           }
         }));
         physInfo.modChild('loc', new uf.CalculatedInfo({
           getFunc: function() {
-            
             // 1) Nodes being dragged position to cursor
             if (dragNode.isDragging(view)) {
               var drg = dragNode.info.getValue();
               // return loc = drg.pt2.add(drg.capturedData); // Note that `loc` is also updated here
               return loc = drg.capturedData.sub(drg.pt1).add(drg.pt2); // Note that `loc` is also updated here
             }
-            
             // 2) Focused node positions to center (only when physics are running)
             if (infoSet.getValue('focusedNode') === view && infoSet.getValue('physicsEnabled')) return loc = PACK.geom.ORIGIN;
-            
             // 3) Position to the calculated physics `loc`
             return loc;
-            
           },
           setFunc: function(newLoc) {
             loc = newLoc;
           }
         }));
-        
         // Create the dropzones for supporting and contending
         var loadSupportersButton = new uf.ActionView({ name: 'loadSupporters', textInfo: 'Supporters...', $action: function() {
-          
           return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'supporter').fail(function(err) {
             console.log('SUPPORTERS FAILED');
             console.error(err.stack);
           });
-          
         }});
         loadSupportersButton.decorators = [
           dragAddSupporter,
           dragAddSupporter.createClassDecorator(loadSupportersButton)
         ];
-        
         var loadContendersButton = new uf.ActionView({ name: 'loadContenders', textInfo: 'Contenders...', $action: function() {
-          
           return $loadRelatedTheories(nodeInfo.getValue('quickName'), 'contender').fail(function(err) {
             console.log('CONTENDERS FAILED');
             console.error(err.stack);
           });
-          
         }});
         loadContendersButton.decorators = [
           dragAddContender,
           dragAddContender.createClassDecorator(loadContendersButton)
         ];
-        
         // Install all necessary attributes on `view` before returning it
         view.cssClasses = [ 'theory', nodeInfo.getValue('owned') ? 'owned' : 'foreign' ]; // Set static classes
         view.decorators = [
@@ -1561,7 +1282,6 @@ var package = new PACK.pack.Package({ name: 'logic',
               var phys = nodeInfo.getChild('physics');
               var loc = phys.getValue('loc');
               var r = phys.getValue('r');
-              
               return {
                 left: Math.round(loc.x - r) + 'px',
                 top: Math.round(loc.y - r) + 'px',
@@ -1598,7 +1318,6 @@ var package = new PACK.pack.Package({ name: 'logic',
             new uf.SetView({ name: 'unsaved', children: [
               new uf.TextEditView({ name: 'quickName', cssClasses: [ 'centered' ], textInfo: nodeInfo.getChild('quickName'), placeholderData: 'quickName' }),
               new uf.ActionView({ name: 'save', textInfo: 'Save', $action: function() {
-                
                 var $saveTheory = doss.$doRequest({
                   command: 'saveTheory',
                   params: {
@@ -1610,37 +1329,26 @@ var package = new PACK.pack.Package({ name: 'logic',
                     type: 'create' // 'create' | 'update'
                   }
                 });
-                
                 return $saveTheory.then(function(response) {
-                  
                   var originalName = view.name;
                   var savedQuickName = response.quickName;
-                  
                   // If the quickName has changed re-key the view...
                   if (savedQuickName !== originalName) {
-                    
                     // ... both in `activeTheories`...
                     renameNodeData({ oldName: originalName, newName: savedQuickName }); // This will update `quickName` Info
-                    
                     // ... and in `graphView`
                     graphView.renameChild(view, nodeInfo.getValue('quickName')); // Should only happen on save success
-                    
                   }
-                  
                   // Insert all server-syncing properties now that this theory is saved
                   saveNodeData(nodeInfo);
-                  
                 }).fail(function(err) {
                   console.log('Couldn\'t create theory: ' + err.message);
                   console.error(err.stack);
                 });
-                
               }})
             ]}),
-            
             // Shows up for saved theories (allows editing title and essay)
             new uf.SetView({ name: 'saved', children: [
-              
               new uf.TextView({ name: 'user', info: nodeInfo.getChild('username') }),
               new uf.DynamicTextEditView({ name: 'title',
                 editableData: function() {
@@ -1663,9 +1371,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 }
               }),
               new uf.TextView({ name: 'quickName', info: nodeInfo.getChild('quickName') }),
-              
             ]})
-            
           ]}),
           new uf.ChoiceView({ name: 'toggleEdit', choiceInfo: function() { return nodeInfo.getValue('owned') && nodeInfo.getValue('saved') ? 'view' : null }, children: [
             new uf.ActionView({ name: 'view', textInfo: '',
@@ -1684,69 +1390,49 @@ var package = new PACK.pack.Package({ name: 'logic',
             })
           ]})
         ]);
-        
         return view;
-        
       }
     });
-    
     var strokes = {
       supporter: 'rgba(100, 255, 100, 0.65)',
       contender: 'rgba(255, 100, 100, 0.65)'
     };
     var canvasView = new uf.CanvasView({ name: 'canvas', options: { centered: true }, drawFunc: function(ctx, millis) {
       ctx.lineWidth = 12;
-      
       var canvas = canvasView.domRoot;
       var hw = canvas.width >> 1;
       var hh = canvas.height >> 1;
-      
       var activeTheories = infoSet.getValue('activeTheories');
       for (var k in activeTheories) {
-        
         // TODO: this should be made unnecessary. Shouldn't be possible to have non-dom-initialized elements listed in `activeTheories`
         if (!(k in graphView.children) || !graphView.children[k].domRoot) continue;
-        
         var standingInfo = activeTheories[k];
         var incomingRelations = infoSet.getValue('activeRelations').find([ standingInfo.getValue('quickName') ]);
-        
         var b1 = graphView.children[k].domRoot.getBoundingClientRect()
         var r1 = b1.width * 0.5; // width and height are equal so either works
         var loc1 = new PACK.geom.Point({ x: b1.left + r1 - hw, y: b1.top + r1 - hh });
         var ratio = r1 * lg.graphNodeInvRadius;
-        
         for (var qn in incomingRelations) {
-          
           // TODO: this shouldn't be necessary
           if (!(qn in activeTheories) || !(qn in graphView.children) || !graphView.children[qn].domRoot) continue; // The incoming theory isn't fully loaded client-side
-          
           var incomingInfo = activeTheories[qn];
           var b2 = graphView.children[qn].domRoot.getBoundingClientRect();
           var r2 = incomingInfo.getValue('physics.r');
           var loc2 = new PACK.geom.Point({ x: b2.left + r2 - hw, y: b2.top + r2 - hh });
-          
           var relations = incomingRelations[qn];
           for (var relationType in relations) {
-            
             var relLoc = loc1.add(lg.nodeRelationOffsets[relationType].scale(ratio));
-            
             var ang = loc2.angleTo(relLoc);
             var edgeLoc = loc2.angleMove(ang, r2);
-            
             ctx.strokeStyle = strokes[relationType];
             ctx.beginPath();
             ctx.moveTo(edgeLoc.x, edgeLoc.y);
             ctx.lineTo(relLoc.x, relLoc.y);
             ctx.stroke();
-            
           }
-        
         }
-        
       }
-      
     }});
-    
     var rootView = new uf.RootView({ name: 'root' });
     rootView.decorators = [
       new uf.ClassDecorator({
@@ -1757,13 +1443,9 @@ var package = new PACK.pack.Package({ name: 'logic',
       })
     ];
     rootView.addChildren([
-      
       new uf.ChoiceView({ name: 'login', choiceInfo: function() { return infoSet.getValue('token') ? 'in' : 'out' }, children: [
-        
         new uf.SetView({ name: 'out', children: [
-          
           new uf.TextHideView({ name: 'loginError', info: infoSet.getChild('loginError') }),
-          
           new uf.TextEditView({ name: 'username', textInfo: infoSet.getChild('username'), placeholderData: 'Username' }),
           new uf.TextEditView({ name: 'password', textInfo: infoSet.getChild('password'), placeholderData: 'Password' }),
           new uf.ActionView({ name: 'submit', textInfo: 'Submit!', $action: function() {
@@ -1777,10 +1459,8 @@ var package = new PACK.pack.Package({ name: 'logic',
               new P({ timeout: 3000 }).then(function() { infoSet.setValue('loginError', ''); });
             });
           }})
-          
         ]}),
         new uf.SetView({ name: 'in', children: [
-          
           canvasView,
           graphView,
           new uf.SetView({ name: 'dropZones', children: [ removeNodeView, deleteNodeView ]}),
@@ -1794,9 +1474,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                 decorators: [
                 ],
                 genChildView: function(name, nodeInfo) {
-                  
                   var view = new uf.SetView({ name: name });
-                  
                   view.cssClasses = [ 'result' ];
                   view.decorators = [
                     new uf.ClassDecorator({
@@ -1812,9 +1490,7 @@ var package = new PACK.pack.Package({ name: 'logic',
                     new uf.TextView({ name: 'title', cssClasses: [ 'item' ], info: nodeInfo.title }),
                     new uf.TextView({ name: 'theory', cssClasses: [ 'item' ], info: nodeInfo.theory }),
                     new uf.ActionView({ name: 'choose', textInfo: infoSet.getChild('icons.insert'), $action: function() {
-                      
                       if (!(nodeInfo.quickName in graphView.children)) {
-                      
                         // A new theory has been added
                         var activeTheories = infoSet.getChild('activeTheories');
                         activeTheories.addChild(nodeInfo.quickName, saveNodeData(makeNodeData({
@@ -1822,85 +1498,62 @@ var package = new PACK.pack.Package({ name: 'logic',
                           username: nodeInfo.username,
                           editing: false
                         })));
-                        
                         // Ensure that `graphView` is immediately synced
                         graphView.updateChildren();
-                        
                       }
-                      
                       // Focus the theory that was searched for
                       var pickedChild = graphView.children[nodeInfo.quickName];
                       infoSet.setValue('focusedNode', pickedChild);
-                      
                       // Clear the search term
                       infoSet.setValue('searchTerm', '');
-                      
                       return PACK.p.$null;
-                      
                     }})
                   ]);
-                  
                   return view;
-                  
                 }
               })
             ]}),
             new uf.ActionView({ name: 'new', cssClasses: [ 'control' ], textInfo: 'New Theory', $action: function() {
-              
               var activeTheories = infoSet.getChild('activeTheories');
               var activeNodeObj = activeTheories.getValue();
               var num = 2;
               var prefix = 'newTheory';
               var name = prefix;
               while (name in activeNodeObj) name = prefix + (num++);
-              
               activeTheories.addChild(name, makeNodeData({
                 username: infoSet.getValue('username'),
                 quickName: name,
                 editing: true
               }));
-              
               var child = graphView.updateChildren().add[name];
               infoSet.setValue('focusedNode', child);
-              
               return PACK.p.$null;
-              
             }}),
             new uf.ActionView({ name: 'exit', cssClasses: [ 'control' ], textInfo: 'Log Out', $action: function() {
-              
               infoSet.setValue('token', '');
               return PACK.p.$null;
-              
             }})
           ]})
-          
         ]}),
-        
       ]}),
       new uf.TextView({ name: 'version', info: infoSet.getChild('appVersion') }),
       new uf.TextView({ name: 'rps', info: function() { return 'update: ' + rootView.updateTimingInfo + 'ms' } })
-      
     ]);
     rootView.start();
-    
     /* ======= TESTING STUFF ======== */
-    
     // Make some stuff accessible on the command line
     window.root = doss;
     window.view = rootView;
     window.info = infoSet;
-    
     doss.$doRequest({ command: 'getToken', params: {
       username: 'admin',
       password: 'adminadmin123'
     }}).then(function(data) {
       infoSet.setValue('token', data.token);
     });
-    
     infoSet.setValue('username', 'admin');
     infoSet.setValue('password', 'adminadmin123');
     infoSet.setValue('searchTerm', 'zero');
-    
   }
 });
-package.build();
+package.build();

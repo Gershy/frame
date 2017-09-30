@@ -15,12 +15,14 @@ TASKS:
   [ ] Voting on an expired contest
   [ ] Submitting writes on an expired story (or is this the same as above?)
   [ ] User account creation
-[ ] Story creation form validation
+[X] Story creation form validation
+[X] Replace `ActionView` with `ActionDecorator`
 [X] Zero-latency client side values get overwritten by stale server-side values; remote syncing should pause until remote push is acknowledged
 [ ] Is the per-frame loop necessary? Can all changes be processed via `changeHandler`s?
 [ ] Hitting enter on forms should submit (Need `FormDecorator` and `FormInputDecorator` classes for this, which can probably handle validation too)
-[ ] Clumsy huge urls with json data; switch to POST requests
+[X] Clumsy huge urls with json data; switch to POST requests
 [ ] Compiling for all files (files without substitution should be served raw)
+[ ] Mapping by line AND character index will allow better compilation (compact files into a single line)
 [ ] Mapping raw file names to compiled files
 [ ] Better loading indication
 [ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
@@ -528,6 +530,7 @@ new PACK.pack.Package({ name: 'creativity',
               { c: qd.DossierRef,     p: { name: 'currentStory',    template: '~root.storySet.$quickName' } },
               { c: qd.DossierBoolean, p: { name: 'isEditingStory',  value: false } },
               { c: qd.DossierDict,    p: { name: 'editStory' }, i: [
+                { c: qd.DossierString,  p: { name: 'error' } },
                 { c: qd.DossierRef,     p: { name: 'story',           template: '~root.storySet.$quickName' } },
                 { c: qd.DossierString,  p: { name: 'quickName' } },
                 { c: qd.DossierString,  p: { name: 'description' } },
@@ -961,17 +964,23 @@ new PACK.pack.Package({ name: 'creativity',
     cr.versioner.$getDoss().then(function(doss) {
       
       /// {SERVER=
-      /*var fs = require('fs');
-      var path = require('path');
-      var stateFileName = path.join(__dirname, 'state', 'persisted.json');*/
-      
       cr.queryHandler = doss;
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
-      setInterval(function() { cr.$updateCreativity(doss).done(); }, 2 * 1000);
+      setInterval(function() { cr.$updateCreativity(doss).done(); }, 1 * 1000);
       setInterval(function() { cr.persister.$putData(doss.getRawDataView()).done(); }, 10 * 1000);
       /// =SERVER}
       
       /// {CLIENT=
+      
+      var spinnerHtml =
+        '<div class="spin">' +
+          U.range({0:20}).map(function(n) {
+            var deg = Math.round((n / 20) * 360);
+            var del = Math.round((n / 20) * 12000);
+            return '<div class="arm" style="transform: rotate(' + deg + 'deg); animation-delay: ' + del + 'ms;"></div>';
+          }).join('') +
+        '</div>';
+      
       var view = new uf.RootView({ name: 'root',
         children: [
           
@@ -988,8 +997,8 @@ new PACK.pack.Package({ name: 'creativity',
               WordMixer
               Storyteller
               */
-              new uf.SetView({ name: 'loginForm', cssId: 'loginForm', children: [
-                new uf.TextHideView({ name: 'loginError', info: doss.getChild('loginError') }),
+              new uf.SetView({ name: 'loginForm', cssId: 'loginForm', cssClasses: [ 'form' ], children: [
+                new uf.TextHideView({ name: 'error', info: doss.getChild('loginError') }),
                 new uf.TextView({ name: 'title', info: 'Creativity' }),
                 new uf.SetView({ name: 'username', cssClasses: [ 'formItem' ], children: [
                   new uf.TextEditView({ name: 'input', cssClasses: [ 'centered' ], info: doss.getChild('username'), placeholderInfo: 'Username' })
@@ -997,41 +1006,9 @@ new PACK.pack.Package({ name: 'creativity',
                 new uf.SetView({ name: 'password', cssClasses: [ 'formItem' ], children: [
                   new uf.TextEditView({ name: 'input', cssClasses: [ 'centered' ], info: doss.getChild('password'), placeholderInfo: 'Password' })
                 ]}),
-                new uf.ActionView({ name: 'signin', textInfo: 'Login',
-                  $action: function() {
-                    return doss.$doRequest({ command: 'getToken', params: {
-                      username: doss.getValue('username'),
-                      password: doss.getValue('password')
-                    }}).then(function(data) {
-                      doss.setValue('token', data.token);
-                    }).fail(function(err) {
-                      doss.setValue('loginError', err.message);
-                    });
-                  }
-                }),
-                new uf.ActionView({ name: 'signup', textInfo: 'Signup', $action: function() {
-                  
-                  var username = doss.getValue('username');
-                  var password = doss.getValue('password');
-                  if (!username || !password) {
-                    doss.setValue('loginError', 'Please fill out fields');
-                    return p.$null;
-                  }
-                  
-                  return doss.$doRequest({ command: 'createUser', params: {
-                    username: doss.getValue('username'),
-                    password: doss.getValue('password')
-                  }}).then(function(data) {
-                    doss.setValue('token', data.token);
-                  }).fail(function(err) {
-                    doss.setValue('loginError', err.message);
-                  });
-                }}),
-                new uf.HtmlView({ name: 'decoration', cssId: 'decor', html:
-                  '<div class="spin">' +
-                    U.range({0:20}).map(function(n) { return '<div class="arm" style="transform: rotate(' + Math.round(n * (360 / 20)) + 'deg)"></div>'; }).join('') +
-                  '</div>'
-                })
+                new uf.TextView({ name: 'signin', info: 'Login', cssClasses: [ 'interactive', 'button' ] }),
+                new uf.TextView({ name: 'signup', info: 'Signup', cssClasses: [ 'interactive', 'button' ] }),           
+                new uf.HtmlView({ name: 'decoration', cssClasses: [ 'spinner' ], html: spinnerHtml })
               ]})
               
             ]}),
@@ -1052,32 +1029,33 @@ new PACK.pack.Package({ name: 'creativity',
                   new uf.SetView({ name: 'lobby', cssId: 'lobby', cssClasses: [ 'choiceTransition', 'titledContent' ], children: [
                     
                     new uf.TextView({ name: 'title', info: 'Lobby' }),
-                    new uf.ActionView({ name: 'back', textInfo: 'Log Out', cssClasses: [ 'iconButton', 'mainButton', 'left', 'type-larrow' ], $action: function() {
-                      // TODO: Many more values need to be cleared!!
-                      doss.setValue('username', '');
-                      doss.setValue('password', '');
-                      doss.setValue('token', '');
-                      return p.$null;
-                    }}),
-                    new uf.ActionView({ name: 'createStory', textInfo: 'Create', cssClasses: [ 'iconButton', 'mainButton', 'right', 'type-plus' ], $action: function() {
-                      
-                      doss.getChild('editStory').setValue({
-                        story: null,
-                        quickName: '',
-                        description: '',
-                        authorLimit: '',
-                        maxWrites: '',
-                        maxVotes: '',
-                        maxWriteLength: '',
-                        contestTime: 1000 * 60 * 60 * 24,
-                        contestLimit: '',
-                        slapLoadTime: 1000 * 60 * 60 * 100,
-                        slamLoadTime: 1000 * 60 * 60 * 100
-                      });
-                      doss.setValue('isEditingStory', true);
-                      return p.$null;
-                      
-                    }}),
+                    new uf.View({ name: 'back', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'left', 'type-larrow' ], decorators: [
+                      new uf.ActionDecorator({ $action: function() {
+                        doss.setValue('username', '');
+                        doss.setValue('password', '');
+                        doss.setValue('token', '');
+                        return p.$null;
+                      }})
+                    ]}),
+                    new uf.View({ name: 'createStory', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'right', 'type-plus' ], decorators: [
+                      new uf.ActionDecorator({ $action: function() {
+                        doss.getChild('editStory').setValue({
+                          story: null,
+                          quickName: '',
+                          description: '',
+                          authorLimit: '',
+                          maxWrites: '',
+                          maxVotes: '',
+                          maxWriteLength: '',
+                          contestTime: 1000 * 60 * 60 * 24,
+                          contestLimit: '',
+                          slapLoadTime: 1000 * 60 * 60 * 100,
+                          slamLoadTime: 1000 * 60 * 60 * 100
+                        });
+                        doss.setValue('isEditingStory', true);
+                        return p.$null;
+                      }})
+                    ]}),
                     new uf.DynamicSetView({ name: 'content', cssId: 'storySet',
                       childInfo: doss.getChild('storySet'),
                       genChildView: function(name, info) {
@@ -1098,23 +1076,26 @@ new PACK.pack.Package({ name: 'creativity',
                           ]}),
                           new uf.ChoiceView({ name: 'authored', choiceInfo: info.getChild('isAuthored'), children: [
                             
-                            new uf.ActionView({ name: 'false', textInfo: 'Become an Author', $action: function() {
-                              
-                              return info.getChild('authorSet').content.$addChild({
-                                data: {
-                                  username: doss.getValue('username')
-                                }
-                              }).then(function(result) {
+                            new uf.View({ name: 'false', cssClasses: [ 'interactive', 'button' ], decorators: [
+                              new uf.ActionDecorator({ $action: function() {
+                                
+                                return info.getChild('authorSet').content.$addChild({
+                                  data: { username: doss.getValue('username') }
+                                }).then(function(result) {
+                                  doss.setValue('currentStory', info);
+                                });
+                                
+                              }})
+                            ]}),
+                            
+                            new uf.View({ name: 'true', cssClasses: [ 'interactive', 'button' ], decorators: [
+                              new uf.ActionDecorator({ $action: function() {
+                                
                                 doss.setValue('currentStory', info);
-                              });
-                              
-                            }}),
-                            new uf.ActionView({ name: 'true', textInfo: 'Select', $action: function() {
-                              
-                              doss.setValue('currentStory', info);
-                              return p.$null;
-                              
-                            }})
+                                return p.$null;
+                                
+                              }})
+                            ]})
                             
                           ]})
                           
@@ -1129,11 +1110,14 @@ new PACK.pack.Package({ name: 'creativity',
                   new uf.SetView({ name: 'createStory', cssClasses: [ 'choiceTransition', 'titledContent' ], children: [
                     
                     new uf.TextView({ name: 'title', info: 'Create' }),
-                    new uf.ActionView({ name: 'back', textInfo: 'Log Out', cssClasses: [ 'iconButton', 'mainButton', 'left', 'type-larrow' ], $action: function() {
-                      doss.setValue('isEditingStory', false);
-                      return p.$null;
-                    }}),
+                    new uf.View({ name: 'back', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'left', 'type-larrow' ], decorators: [
+                      new uf.ActionDecorator({ $action: function() {
+                        doss.setValue('isEditingStory', false);
+                        return p.$null;
+                      }})
+                    ]}),
                     new uf.SetView({ name: 'content', cssId: 'storyForm', cssClasses: [ 'form' ], children: [
+                      new uf.TextHideView({ name: 'error', info: doss.getChild('editStory.error') }),
                       new uf.SetView({ name: 'quickName', cssClasses: [ 'formItem' ], children: [
                         new uf.TextView({ name: 'name', info: 'Quick Name' }),
                         new uf.TextEditView({ name: 'input', info: doss.getChild('editStory.quickName'), placeholderInfo: 'A simple, unique, permanent label' }),
@@ -1245,27 +1229,7 @@ new PACK.pack.Package({ name: 'creativity',
                         
                       ]}),
                       
-                      new uf.ActionView({ name: 'submit', textInfo: 'Submit', cssClasses: [ 'textButton' ], $action: function() {
-                        
-                        return doss.getChild('storySet').content.$addChild({
-                          data: {
-                            username: doss.getValue('username'),
-                            quickName: doss.getValue('editStory.quickName'),
-                            description: doss.getValue('editStory.description'),
-                            authorLimit: doss.getValue('editStory.authorLimit'),
-                            contestTime: doss.getValue('editStory.contestTime'),
-                            maxWrites: doss.getValue('editStory.maxWrites'),
-                            maxVotes: doss.getValue('editStory.maxVotes'),
-                            maxWriteLength: doss.getValue('editStory.maxWriteLength'),
-                            contestLimit: doss.getValue('editStory.contestLimit'),
-                            /*slapLoadTime: doss.getValue('editStory.slapLoadTime'),
-                            slamLoadTime: doss.getValue('editStory.slamLoadTime'),*/
-                          }
-                        }).then(function(result) {
-                          doss.setValue('isEditingStory', false);
-                        });
-                        
-                      }})
+                      new uf.TextView({ name: 'submit', info: 'Submit', cssClasses: [ 'interactive', 'button', 'textButton' ] })
                       
                     ]})
                     
@@ -1275,7 +1239,7 @@ new PACK.pack.Package({ name: 'creativity',
                   new uf.SetView({ name: 'story', cssId: 'story', cssClasses: [ 'choiceTransition', 'titledContent' ], children: [
                     
                     new uf.TextView({ name: 'title', info: doss.getRefValue('@currentStory.quickName') }),
-                    new uf.ActionView({ name: 'back', textInfo: 'To Lobby', cssClasses: [ 'iconButton', 'mainButton', 'left', 'type-larrow' ], $action: function() {
+                    new uf.View({ name: 'back', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'left', 'type-larrow' ], $action: function() {
                       doss.setValue('currentStory', null);
                       return p.$null;
                     }}),
@@ -1350,21 +1314,23 @@ new PACK.pack.Package({ name: 'creativity',
                           new uf.SetView({ name: 'write', children: [
                             
                             new uf.TextEditView({ name: 'editor', info: doss.getChild('currentWrite'), multiline: true, placeholderInfo: 'Next line of the story...' }),
-                            new uf.ActionView({ name: 'submit', textInfo: 'Submit', $action: function() {
+                            new uf.View({ name: 'submit', cssClasses: [ 'interactive', 'button' ], decorators: [
+                              new uf.ActionDecorator({ $action: function() {
+                                
+                                // Immediately clear the "currentWrite" value
+                                var write = doss.getValue('currentWrite');
+                                doss.setValue('currentWrite', '');
+                                
+                                return doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild({
+                                  data: {
+                                    username: doss.getValue('username'),
+                                    token: doss.getValue('token'),
+                                    content: write
+                                  }
+                                });
                               
-                              // Immediately clear the "currentWrite" value
-                              var write = doss.getValue('currentWrite');
-                              doss.setValue('currentWrite', '');
-                              
-                              return doss.getChild('@currentStory.@currentContest.writeSet').content.$addChild({
-                                data: {
-                                  username: doss.getValue('username'),
-                                  token: doss.getValue('token'),
-                                  content: write
-                                }
-                              });
-                            
-                            }})
+                              }})
+                            ]})
                             
                           ]}),
                           new uf.SetView({ name: 'vote', cssClasses: [ 'titledContent', 'min1' ], children: [
@@ -1406,16 +1372,18 @@ new PACK.pack.Package({ name: 'creativity',
                                     new uf.ChoiceView({ name: 'votable',
                                       choiceInfo: function() { return doss.getValue('@currentStory.@currentContest.@currentVote') ? null : 'vote'; },
                                       children: [
-                                        new uf.ActionView({ name: 'vote', textInfo: 'Select', $action: function() {
-                                          
-                                          return writeVoteSet.content.$addChild({
-                                            data: {
-                                              username: doss.getValue('username'),
-                                              value: 1 // This is ignored for now
-                                            }
-                                          });
-                                          
-                                        }})
+                                        new uf.View({ name: 'vote', cssClasses: [ 'interactive', 'button' ], decorators: [
+                                          new uf.ActionDecorator({ $action: function() {
+                                            
+                                            return writeVoteSet.content.$addChild({
+                                              data: {
+                                                username: doss.getValue('username'),
+                                                value: 1 // This is ignored for now
+                                              }
+                                            });
+
+                                          }})
+                                        ]})
                                       ]
                                     })
                                   ]
@@ -1464,8 +1432,47 @@ new PACK.pack.Package({ name: 'creativity',
       var passwordDec = loginFormDec.genInputDecorator();
       loginFormView.getChild('password.input').decorators.push(passwordDec);
       
-      var submitDec = loginFormDec.genSubmitDecorator();
-      loginFormView.getChild('signin').decorators.push(submitDec);
+      var loginFormSubmitDec = loginFormDec.genSubmitDecorator(function(event) {
+        return doss.$doRequest({ command: 'getToken', params: {
+          username: doss.getValue('username'),
+          password: doss.getValue('password')
+        }}).then(function(data) {
+          doss.setValue('token', data.token);
+        }).fail(function(err) {
+          doss.setValue('loginError', err.message);
+        });
+      });
+      loginFormView.getChild('signin').decorators.push(loginFormSubmitDec);
+      
+      var loginFormSignupDec = loginFormDec.genSubmitDecorator(function(event) {
+        
+        var username = doss.getValue('username');
+        var password = doss.getValue('password');
+        if (!username || !password) {
+          doss.setValue('loginError', 'Please fill out fields');
+          return p.$null;
+        }
+        
+        return doss.$doRequest({ command: 'createUser', params: {
+          username: doss.getValue('username'),
+          password: doss.getValue('password')
+        }}).then(function(data) {
+          doss.setValue('token', data.token);
+        }).fail(function(err) {
+          doss.setValue('loginError', err.message);
+        });
+        
+      });
+      loginFormView.getChild('signup').decorators.push(loginFormSignupDec);
+      
+      loginFormView.addChild(new uf.ChoiceView({ name: 'loading',
+        choiceInfo: function() {
+          return (loginFormSubmitDec.isLoading() || loginFormSignupDec.isLoading()) ? 'indicator' : null;
+        },
+        children: [
+          new uf.HtmlView({ name: 'indicator', cssClasses: [ 'spinner2' ], html: spinnerHtml })
+        ]
+      }));
       
       // Decorate the story form
       var storyFormDec = new uf.FormDecorator();
@@ -1514,8 +1521,40 @@ new PACK.pack.Package({ name: 'creativity',
       storyFormView.getChild('maxVotes').addChildHead(maxVotesDec.genErrorView());
       storyFormView.getChild('maxVotes.input').decorators.push(maxVotesDec);
       
-      var submitDec = storyFormDec.genSubmitDecorator();
-      storyFormView.getChild('submit').decorators.push(submitDec);
+      var storyFormSubmitDec = storyFormDec.genSubmitDecorator(function(event) {
+        
+        return doss.getChild('storySet').content.$addChild({
+          data: {
+            username: doss.getValue('username'),
+            quickName: doss.getValue('editStory.quickName'),
+            description: doss.getValue('editStory.description'),
+            authorLimit: doss.getValue('editStory.authorLimit'),
+            contestTime: doss.getValue('editStory.contestTime'),
+            maxWrites: doss.getValue('editStory.maxWrites'),
+            maxVotes: doss.getValue('editStory.maxVotes'),
+            maxWriteLength: doss.getValue('editStory.maxWriteLength'),
+            contestLimit: doss.getValue('editStory.contestLimit'),
+            /*slapLoadTime: doss.getValue('editStory.slapLoadTime'),
+            slamLoadTime: doss.getValue('editStory.slamLoadTime'),*/
+          }
+        }).then(function(result) {
+          doss.setValue('isEditingStory', false);
+        }).fail(function(err) {
+          doss.getChild('editStory.error').setValue(err.message);
+          return p.$null;
+        });
+        
+      });
+      storyFormView.getChild('submit').decorators.push(storyFormSubmitDec);
+      
+      storyFormView.addChild(new uf.ChoiceView({ name: 'loading',
+        choiceInfo: function() {
+          return storyFormSubmitDec.isLoading() ? 'indicator' : null;
+        },
+        children: [
+          new uf.HtmlView({ name: 'indicator', cssClasses: [ 'spinner2' ], html: spinnerHtml })
+        ]
+      }));
       
       // Add these to command line
       window.doss = doss;
