@@ -1241,10 +1241,12 @@ new PACK.pack.Package({ name: 'creativity',
                   new uf.SetView({ name: 'story', cssId: 'story', cssClasses: [ 'choiceTransition', 'titledContent' ], children: [
                     
                     new uf.TextView({ name: 'title', info: doss.getRefValue('@currentStory.quickName') }),
-                    new uf.View({ name: 'back', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'left', 'type-larrow' ], $action: function() {
-                      doss.setValue('currentStory', null);
-                      return p.$null;
-                    }}),
+                    new uf.View({ name: 'back', cssClasses: [ 'interactive', 'button', 'iconButton', 'mainButton', 'left', 'type-larrow' ], decorators: [
+                      new uf.ActionDecorator({ $action: function() {
+                        doss.setValue('currentStory', null);
+                        return p.$null;
+                      }})
+                    ]}),
                     new uf.SetView({ name: 'content', children: [
                       new uf.SetView({ name: 'metadata', children: [
                         new uf.TextView({ name: 'phase', info: doss.getRefValue('@currentStory.phase') }),
