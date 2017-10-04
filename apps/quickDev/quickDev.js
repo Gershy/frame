@@ -4,8 +4,8 @@ TODO: Is IndexedDict efficient? Probably with lots of data present
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
-  dependencies: [ 'tree', 'queries', 'p' ],
-  buildFunc: function(packName, tree, queries, p) {
+  dependencies: [ 'tree', 'queries', 'care', 'p' ],
+  buildFunc: function(packName, tree, queries, care, p) {
     
     var P = p.P;
     
@@ -518,6 +518,14 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
         superclass: tree.TreeNode,
+        mixins: [ care.CareMixin ],
+        mixinResolvers: function(sc, c) { return {
+          init: function(conflicts) {
+            var initHappenMixin = conflicts[0];
+            var initTreeNode = conflicts[1];
+            return function(params) { initHappenMixin.call(this, params); initTreeNode.call(this, params); };
+          }
+        };},
         methods: function(sc) { return {
           
           init: function(params /* outline */) {

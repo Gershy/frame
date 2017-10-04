@@ -8,6 +8,7 @@ TODO: Responses for non-existing files are no good, e.g. try removing favicon an
 TODO: Dependency loading should be done via promises
 TODO: Websockets eventually?
 */
+
 require('./common.js');
 
 if (!U.isServer()) throw new Error('only for server-side use');

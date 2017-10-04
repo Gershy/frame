@@ -337,10 +337,8 @@ global.U = {
     var superclassName = U.param(params, 'superclassName', null);
     if (superclassName) {
       
-      if (superclassName in namespace)
-        var superclass = namespace[superclassName];
-      else
-        throw new Error('bad superclass name: "' + superclassName + '"');
+      if (!(superclassName in namespace)) throw new Error('bad superclass name: "' + superclassName + '"');
+      var superclass = namespace[superclassName];
       
     } else {
       
@@ -364,39 +362,85 @@ global.U = {
     
     // `methods` can be either an object or a function returning an object
     var methods = U.param(params, 'methods');
-    if (methods.constructor === Function) methods = methods(superclass ? superclass.prototype : null, cls);
-    if (superclass === Object && !methods.hasOwnProperty('init'))
-      throw new Error('Missing `init` initializer for base-class "' + name + '"');
-    
-    [  // Validate required methods
-    ].forEach(function(required) { if (!methods.hasOwnProperty(required)) throw new Error('Missing required property: "' + required + '"'); });
-    [  // Validate illegal methods
-      'constructor'
-    ].forEach(function(reserved) { if (methods.hasOwnProperty(reserved)) throw new Error('Illegal property: "' + reserved + '"'); });
     
     // `statik` is an object naming class properties
+    var whiteClassProps = [];
+    var blackClassProps = [ 'title', 'heirName', 'par' ];
     var statik = U.param(params, 'statik', {});
-    [  // Validate required statik properties
-    ].forEach(function(required) { if (!statik.hasOwnProperty(required)) throw new Error('Missing required statik property: "' + required + '"'); });
-    [  // Validate illegal statik properties
-      'title',
-      'heirName',
-      'par'
-    ].forEach(function(reserved) { if (statik.hasOwnProperty(reserved)) throw new Error('Illegal statik property: "' + reserved + '"'); });
+    
+    for (var i = 0; i < whiteClassProps.length; i++)
+      if (!statik.hasOwnProperty(whiteClassProps[i])) throw new Error('Missing required statik property: "' + whiteClassProps[i] + '"');
+    
+    for (var i = 0; i < blackClassProps.length; i++)
+      if (statik.hasOwnProperty(blackClassProps[i])) throw new Error('Provided reserved statik property: "' + blackClassProps[i] + '"');
+    
+    // Build a list of all objects which will be inherited
+    var inheritList = [];
+    
+    // Include all mixins in inherit list
+    var mixins = U.param(params, 'mixins', []);
+    inheritList = inheritList.concat(mixins);
+    
+    var mixinResolvers = U.param(params, 'mixinResolvers', {});
+    if (U.isObj(mixinResolvers, Function)) mixinResolvers = mixinResolvers(superclass ? superclass.prototype : null, cls);
+    
+    // Ensure that `methods` is the last item (with the highest priority) in the inherit list
+    inheritList.push(methods);
     
     // Inherit superclass methods
-    if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); } 
+    if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); }
     
-    /*
-    // Handle mixins
-    var mixins = U.param(params, 'mixins', []);
-    var mixinResolvers = U.param(params, 'mixinResolvers', {});
-    var methodSet = methods.map(function
-    */
+    // Now process every object to be inherited
+    // 1) Group them by function name
+    var conflictLists = {};
+    var whitePrototypeProps = [];
+    var blackPrototypeProps = [ 'constructor' ];
+    for (var i = 0; i < inheritList.length; i++) {
+      
+      var inheritObj = inheritList[i];
+      if (U.isObj(inheritObj, Function)) inheritObj = inheritObj(superclass ? superclass.prototype : null, cls);
+      
+      var has = false;
+      for (var k in inheritObj) if (k === 'map') { has = true; break; }
+      
+      for (var k = 0; k < whitePrototypeProps.length; k++)
+        if (!inheritObj.hasOwnProperty(whitePrototypeProps[k])) throw new Error('Missing required prototype property: "' + whitePrototypeProps[k] + '"');
+      
+      for (var k = 0; k < blackPrototypeProps.length; k++)
+        if (inheritObj.hasOwnProperty(blackPrototypeProps[k])) throw new Error('Provided reserved prototype property: "' + blackPrototypeProps[k] + '"');
+      
+      for (var k in inheritObj) {
+        if (!conflictLists[k] || !conflictLists[k].propertyIsEnumerable(k))
+          conflictLists[k] = [ inheritObj[k] ];
+        else
+          conflictLists[k] = conflictLists[k].concat([ inheritObj[k] ]);
+      }
+      
+    }
     
-    // Update prototype properties
+    // 2) Check for conflicts, and use resolvers appropriately
+    for (var k in conflictLists) {
+      
+      var propList = conflictLists[k];
+      if (propList.length > 1) {
+        
+        if (!mixinResolvers[k]) throw new Error('Conflicting properties at ' + name + '.prototype.' + k + ', but no resolver');
+        cls.prototype[k] = mixinResolvers[k].call(null, propList);
+        
+      } else {
+        
+        cls.prototype[k] = propList[0];
+        
+      }
+      
+    }
+    
+    // Ensure that only subclasses can leave out the "init" property
+    if (superclass === Object && !cls.prototype.hasOwnProperty('init'))
+      throw new Error('Missing `init` initializer for base-class "' + name + '"');
+    
+    // Ensure that `constructor` points to the class
     cls.prototype.constructor = cls;
-    for (var k in methods) cls.prototype[k] = methods[k];
     
     // Update statik properties
     cls.toString = function() { return heirName; };

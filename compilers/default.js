@@ -106,8 +106,8 @@ process.on('uncaughtException', function(err) {
     lineData.push(lineDataItem);
   }
   
-  console.error(err.stack);
-  console.error('\n==============\n');
+  //console.error(err.stack);
+  //console.error('\n==============\n');
   
   console.error(errorText + '\n' + lineData.map(function(d) {
     

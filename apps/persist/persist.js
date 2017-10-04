@@ -6,7 +6,6 @@ new PACK.pack.Package({ name: 'persist',
   buildFunc: function(packageName, p) {
     
     var P = p.P;
-    var pr = {};
     
     var $readDir = function(pathName) {
       return new P({ custom: function(resolve, reject) {
@@ -63,6 +62,7 @@ new PACK.pack.Package({ name: 'persist',
       }});
     };
     
+    var pr = {};
     pr.update({
       Persister: U.makeClass({ name: 'Persister', 
         methods: function(sc, c) { return {

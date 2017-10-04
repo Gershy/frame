@@ -940,6 +940,17 @@ new PACK.pack.Package({ name: 'creativity',
             return cr.persister.$init().then(function() {
               return cr.persister.$getData();
             }).then(function(data) {
+              /*return outline.$getDoss({
+                version: 'funny',
+                userSet: {
+                  g: {
+                    username: 'g',
+                    password: 'lol',
+                    fname: 'lol',
+                    lname: 'lol'
+                  }
+                }
+              });*/
               return outline.$getDoss(data);
             });
             /// =SERVER}
