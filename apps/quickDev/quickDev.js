@@ -1,11 +1,10 @@
 /*
 TODO: Long polling
-TODO: Is IndexedDict efficient? Probably with lots of data present
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 */
 var package = new PACK.pack.Package({ name: 'quickDev',
-  dependencies: [ 'tree', 'queries', 'care', 'p' ],
-  buildFunc: function(packName, tree, queries, care, p) {
+  dependencies: [ 'tree', 'queries', 'worry', 'p' ],
+  buildFunc: function(packName, tree, queries, worry, p) {
     
     var P = p.P;
     
@@ -23,95 +22,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
         if (id === 'ffffffff') throw new Error('EXHAUSTED IDS');
         return 'TEMP((' + id + '))';
       },
-      
-      /* IndexedDict - define a multi-key dict with high space usage but efficient search time */
-      IndexedDict: U.makeClass({ name: 'IndexedDict',
-        methods: function(sc) { return {
-          init: function(params /* keySize, keyDelimiter */) {
-            this.keySize = U.param(params, 'keySize');
-            this.keyDelimiter = U.param(params, 'keyDelimiter', '.');
-            this.data = {};
-            this.index = {};
-          },
-          add: function(keys, value) {
-            // Runtime is O(keySize)
-            
-            var compoundKey = keys.join(this.keyDelimiter);
-            
-            var ptr = this.data;
-            var lastInd = keys.length - 1;
-            
-            for (var i = 0; i <= lastInd; i++) {
-              var k = keys[i];
-              if (i !== lastInd)  ptr = k in ptr ? ptr[k] : (ptr[k] = {});
-              else                ptr[k] = value;
-              
-              if (!(k in this.index)) this.index[k] = {};
-              this.index[k][compoundKey] = true;
-            }
-          },
-          find: function(keys) {
-            // Runtime is O(keySize)
-            
-            var ptr = this.data;
-            for (var i = 0, len = keys.length; i < len; i++) {
-              var k = keys[i];
-              if (!(k in ptr)) return null;
-              ptr = ptr[k];
-            }
-            return ptr;
-          },
-          rem: function(key) {
-            // Runtime is O(keySize^2)
-            
-            if (!(key in this.index)) return;
-            var compoundKeyDict = this.index[key];
-            
-            for (var k in compoundKeyDict) {
-              var keys = k.split(this.keyDelimiter);
-              
-              // Use `ptrStack` instead of just `ptr` to facilitate easy empty-cleanup later
-              var ptrStack = [ this.data ];
-              for (var i1 = 0, len1 = keys.length; i1 < len1; i1++) {
-                var k = keys[i1];
-                var ptr = ptrStack[i1];
-                if (k !== key) {
-                  ptrStack.push(ptr[k]);
-                } else {
-                  delete ptr[k];
-                  break;
-                }
-              }
-              
-              // Clean up empty objects in the trail
-              var ind = ptrStack.length - 1;
-              while (ind > 0 && U.isEmptyObj(ptrStack[ind])) {
-                ind--;
-                delete ptrStack[ind][keys[ind]];
-              }
-            }
-            
-            // Delete every index which includes `key`
-            var index = this.index[key];
-            for (var compoundKey in index) {
-              
-              // Every `compoundKey` in `this.index` contains `key`, so each one has to be removed
-              var keys = compoundKey.split(this.keyDelimiter);
-              
-              for (var i = 0, len = keys.length; i < len; i++) {
-                var relatedIndexRemName = keys[i];
-                if (relatedIndexRemName in this.index) delete this.index[relatedIndexRemName][compoundKey];
-                if (U.isEmptyObj(this.index[relatedIndexRemName])) delete this.index[relatedIndexRemName];
-              }
-              
-            }
-            
-          },
-          keyedData: function() {
-            return this.data.flatten(this.keySize, this.keyDelimiter);
-          }
-        };}
-      }),
       
       /* Outline - define what a Dossier structure looks like */
       Outline: U.makeClass({ name: 'Outline',
@@ -518,15 +428,22 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
         superclass: tree.TreeNode,
-        mixins: [ care.CareMixin ],
-        mixinResolvers: function(sc, c) { return {
-          init: function(conflicts) {
-            var initHappenMixin = conflicts[0];
-            var initTreeNode = conflicts[1];
-            return function(params) { initHappenMixin.call(this, params); initTreeNode.call(this, params); };
+        mixins: [ worry.Worry ],
+        resolvers: {
+          init: function(initConflicts, params) {
+            initConflicts.Worry.call(this, params);
+            initConflicts.Dossier.call(this, params);
+          },
+          start: function(startConflicts) {
+            startConflicts.Worry.call(this);
+            startConflicts.Dossier.call(this);
+          },
+          stop: function(stopConflicts) {
+            stopConflicts.Worry.call(this);
+            stopConflicts.Dossier.call(this);
           }
-        };},
-        methods: function(sc) { return {
+        },
+        methods: function(sc, c) { return {
           
           init: function(params /* outline */) {
             sc.init.call(this, params);
@@ -553,17 +470,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           $loadFromRawData: function(data, editor) {
             throw new Error('not implemented');
-          },
-          fullyLoaded: function() {
-            if (this.outline.p.contentFunc && !this.content) {
-              this.content = this.outline.p.contentFunc(this);
-              if (!U.isInstance(this.content, qd.Content)) throw new Error('Bad contentFunc');
-              this.content.start();
-            }
-            
-            if (this.outline.p.changeHandler && !this.changeHandler) {
-              this.changeHandler = this.outline.p.changeHandler;
-            }
           },
           
           // Heirarchy
@@ -638,6 +544,35 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           getDataView0: function(existing) {
             throw new Error('not implemented');
+          },
+          
+          start: function() {
+            
+            // Add any contentFunc
+            var contentFunc = this.outline.p.contentFunc;
+            if (contentFunc && !this.content) {
+              this.content = contentFunc(this);
+              if (!U.isInstance(this.content, qd.Content)) throw new Error('Bad contentFunc');
+              this.content.start();
+            }
+            
+            // Add any changeHandler
+            var changeHandler = this.outline.p.changeHandler;
+            if (changeHandler && !this.hasConcern('value', changeHandler)) {
+              this.addConcern('value', changeHandler);
+            }
+            
+          },
+          stop: function() {
+            
+            // Stop any content
+            if (this.content) this.content.stop();
+            
+            // Stop any change handler
+            var changeHandler = this.outline.p.changeHandler;
+            if (changeHandler)
+              this.remConcern('value', changeHandler);
+            
           }
           
         };}
@@ -752,9 +687,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           getRefValue: function(addr) {
             return { getValue: function() { return this.getValue(addr); }.bind(this) };
           },
-          fullyLoaded: function() {
-            sc.fullyLoaded.call(this);
-            for (var k in this.children) this.children[k].fullyLoaded();
+          start: function() {
+            sc.start.call(this);
+            for (var k in this.children) this.children[k].start();
           },
           
           map: function(mapFunc) {
@@ -856,10 +791,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierDict: U.makeClass({ name: 'DossierDict',
         superclassName: 'DossierSet',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-          },
-          
           $loadFromRawData: function(data, editor) {
             if (!data) data = {};
             
@@ -1035,9 +966,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           setValue: function(value) {
             if (value !== this.value) {
               this.value = value;
-              if (this.changeHandler) this.changeHandler(this);
-              
-              if (this.changeListeners) for (var k in this.changeListeners) this.changeListeners[k](value);
+              this.concern('value', this.value);
             }
           },
           addChangeListener: function(id, func) {
@@ -1091,9 +1020,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierString: U.makeClass({ name: 'DossierString',
         superclassName: 'DossierValue',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-          },
           setValue: function(val) {
             sc.setValue.call(this, val === null ? '' : val.toString());
           }
@@ -1102,10 +1028,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierInt: U.makeClass({ name: 'DossierInt',
         superclassName: 'DossierValue',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-          },
-          
           setValue: function(value) {
             // Accept the value "null"
             if (value === null) value = 0;
@@ -1121,10 +1043,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierBoolean: U.makeClass({ name: 'DossierBoolean',
         superclassName: 'DossierValue',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-          },
-          
           setValue: function(value) {
             if (value === null) value = false;
             if (value !== true && value !== false) throw new Error('Received non-boolean value: "' + value + '"');
@@ -1135,10 +1053,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       DossierRef: U.makeClass({ name: 'DossierRef',
         superclassName: 'DossierValue',
         methods: function(sc) { return {
-          init: function(params /* outline */) {
-            sc.init.call(this, params);
-          },
-          
           setValue: function(value) {
             if (value === null) { return sc.setValue.call(this, null); }
             
@@ -1306,7 +1220,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             });
             
             return $dossData.then(function(dossData) {
-              dossData.doss.fullyLoaded(); // Signal to the Dossier that it's ready
+              dossData.doss.start(); // Signal to the Dossier that it's ready
               return dossData.doss;
             });
             
@@ -1315,7 +1229,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       }),
       
       // TODO: Need to call `.stop` (`.fullyUnloaded`?) on Content objects! It's not being done at the moment!
-      // TODO: Generally need to put some thought into "fullyLoaded"/"fullyUnloaded" paradigm
+      // TODO: Generally need to put some thought into "start"/"fullyUnloaded" paradigm
       /* Content - control how Dossiers determine their content */
       Content: U.makeClass({ name: 'Content',
         includeGuid: true,
@@ -1419,9 +1333,6 @@ var package = new PACK.pack.Package({ name: 'quickDev',
       ContentSync: U.makeClass({ name: 'ContentSync',
         superclassName: 'ContentAbstractSync',
         methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs */) {
-            sc.init.call(this, params);
-          },
           $query: function(ref) {
             return queries.$doQuery({
               address: this.address,
@@ -1559,7 +1470,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
                 par: holder,
                 data: refData
               }).then(function() {
-                doss.dereference().fullyLoaded();
+                doss.dereference().start();
               });
               
             });
@@ -1627,7 +1538,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             var editor = new qd.Editor();
             return editor.$editFast({ add: add, rem: rem, mod: mod }).then(function() {
-              doss.fullyLoaded();
+              doss.start();
             });
             
           },

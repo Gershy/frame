@@ -211,7 +211,7 @@ Error.stackTraceLimit = 100;
   }
 });
 
-// Build utility library
+// Build utility library (note: the "global" variable is installed client-side by an inline script in mainPage.html)
 global.ENVIRONMENT = {
   type: 'default'
 };
@@ -272,6 +272,11 @@ global.U = {
     if (v.constructor === Array) return v.length === 0;
     return U.isEmptyObj(v);
   },
+  objSizeGt: function(obj, min) {
+    var count = 0;
+    for (var k in obj) if (++count > min) return true;
+    return false;
+  },
   firstKey: function(obj) {
     for (var k in obj) return k;
     throw new Error('Cannot get first property of empty object');
@@ -319,11 +324,33 @@ global.U = {
   },
   
   // Class utility
-  makeClass: function(params /* namespace, name, description, includeGuid, superclass, superclassName, mixins, mixinResolvers, methods, statik */) {
+  makeMixin: function(params /* namespace, name, description, methods */) {
+    
+    var namespace = U.param(params, 'namespace', global.C);
+    if (U.isObj(namespace, String)) {
+      var comps = namespace.split('.');
+      var dir = global.C;
+      namespace = U.deepGet({ name: namespace, root: dir, createIfNone: false });
+    }
+    
+    var name = U.param(params, 'name');
+    if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
+    
+    var description = U.param(params, 'description', null);
+    
+    var methods = U.param(params, 'methods');
+    
+    return {
+      name: name,
+      methods: methods
+    };
+    
+  },
+  makeClass: function(params /* namespace, name, description, includeGuid, superclass, superclassName, mixins, resolvers, methods, statik */) {
     
     // `namespace` may either be an object or a string naming the namespace
     var namespace = U.param(params, 'namespace', global.C);
-    if (namespace.constructor === String) {
+    if (U.isObj(namespace, String)) {
       var comps = namespace.split('.');
       var dir = global.C;
       namespace = U.deepGet({ name: namespace, root: dir, createIfNone: false });
@@ -360,8 +387,8 @@ global.U = {
       ? eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.guid=global.NEXT_ID++;this.init(params?params:{});})')
       : eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params?params:{});})');
     
-    // `methods` can be either an object or a function returning an object
-    var methods = U.param(params, 'methods');
+    // Inherit superclass methods
+    if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); }
     
     // `statik` is an object naming class properties
     var whiteClassProps = [];
@@ -374,62 +401,113 @@ global.U = {
     for (var i = 0; i < blackClassProps.length; i++)
       if (statik.hasOwnProperty(blackClassProps[i])) throw new Error('Provided reserved statik property: "' + blackClassProps[i] + '"');
     
-    // Build a list of all objects which will be inherited
-    var inheritList = [];
-    
-    // Include all mixins in inherit list
+    // Process all mixins
     var mixins = U.param(params, 'mixins', []);
-    inheritList = inheritList.concat(mixins);
+    var resolvers = U.param(params, 'resolvers', {});
+    if (U.isObj(resolvers, Function)) resolvers = resolvers(superclass ? superclass.prototype : null, cls);
     
-    var mixinResolvers = U.param(params, 'mixinResolvers', {});
-    if (U.isObj(mixinResolvers, Function)) mixinResolvers = mixinResolvers(superclass ? superclass.prototype : null, cls);
-    
-    // Ensure that `methods` is the last item (with the highest priority) in the inherit list
-    inheritList.push(methods);
-    
-    // Inherit superclass methods
-    if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); }
-    
-    // Now process every object to be inherited
-    // 1) Group them by function name
     var conflictLists = {};
     var whitePrototypeProps = [];
     var blackPrototypeProps = [ 'constructor' ];
-    for (var i = 0; i < inheritList.length; i++) {
+    for (var i = 0; i < mixins.length; i++) {
       
-      var inheritObj = inheritList[i];
-      if (U.isObj(inheritObj, Function)) inheritObj = inheritObj(superclass ? superclass.prototype : null, cls);
-      
-      var has = false;
-      for (var k in inheritObj) if (k === 'map') { has = true; break; }
+      var mixin = mixins[i];
+      var props = mixin.methods;
+      if (U.isObj(props, Function)) props = props(superclass ? superclass.prototype : null, cls);
       
       for (var k = 0; k < whitePrototypeProps.length; k++)
-        if (!inheritObj.hasOwnProperty(whitePrototypeProps[k])) throw new Error('Missing required prototype property: "' + whitePrototypeProps[k] + '"');
+        if (!props.hasOwnProperty(whitePrototypeProps[k])) throw new Error('Missing required prototype property: "' + whitePrototypeProps[k] + '"');
       
       for (var k = 0; k < blackPrototypeProps.length; k++)
-        if (inheritObj.hasOwnProperty(blackPrototypeProps[k])) throw new Error('Provided reserved prototype property: "' + blackPrototypeProps[k] + '"');
+        if (props.hasOwnProperty(blackPrototypeProps[k])) throw new Error('Provided reserved prototype property: "' + blackPrototypeProps[k] + '"');
       
-      for (var k in inheritObj) {
-        if (!conflictLists[k] || !conflictLists[k].propertyIsEnumerable(k))
-          conflictLists[k] = [ inheritObj[k] ];
-        else
-          conflictLists[k] = conflictLists[k].concat([ inheritObj[k] ]);
+      for (var k in props) {
+        if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
+          conflictLists[k] = [];
+        
+        conflictLists[k].push({
+          name: mixin.name,
+          prop: props[k],
+          isSuperProp: false
+        });
+        
       }
       
     }
     
-    // 2) Check for conflicts, and use resolvers appropriately
+    // `methods` can be either an object or a function returning an object
+    var methods = U.param(params, 'methods');
+    var subMethods = methods(superclass ? superclass.prototype : null, cls);
+    var supMethods = superclass ? superclass.prototype : {};
+    
+    // Consider all super methods, which aren't overriden in the subclass, for conflicts
+    for (var k in supMethods) {
+      
+      if (k in subMethods) continue;
+      
+      if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
+        conflictLists[k] = [];
+      
+      conflictLists[k].push({
+        name: superclass.title,
+        prop: supMethods[k],
+        isSuperProp: true
+      });
+      
+    }
+    
+    // Consider all subclass methods for conflicts
+    for (var k in subMethods) {
+      
+      if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
+        conflictLists[k] = [];
+      
+      conflictLists[k].push({
+        name: name,
+        prop: subMethods[k],
+        isSuperProp: false
+      });
+      
+    }
+    
+    // Check for conflicts between mixins, parent class, and current class; use resolvers appropriately
     for (var k in conflictLists) {
       
       var propList = conflictLists[k];
       if (propList.length > 1) {
         
-        if (!mixinResolvers[k]) throw new Error('Conflicting properties at ' + name + '.prototype.' + k + ', but no resolver');
-        cls.prototype[k] = mixinResolvers[k].call(null, propList);
+        if (!resolvers[k]) throw new Error('Conflicting properties at ' + name + '.prototype.' + k + ' without resolver');
+        cls.prototype[k] = (function(resolver, conflicts, n) {
+          
+          /*
+          TODO: it's possible to have conflicts between Classlike objects with the same name...
+          e.g. `PACK.niftyCss.Gear` and `PACK.intenseBackendMachinery.Gear` will overwrite each
+          other at `conflicts.Gear`
+          
+          In such cases a list of same-named Classlike objects could be generated e.g.
+          
+          conflicts === {
+            UniqueClass: function() { ... },
+            AnotherUniqueClass: function() { ... },
+            SeveralClassesWithTheSameName: [ function() { ... }, function() { ... } ]
+          }
+          
+          In case of such lists the order will be
+          1) mixin methods in the order they're specified (with parent mixins taking precedence)
+          2) super- or sub-class method
+          */
+          
+          return function(/* ... */) {
+            var args = [ conflicts ];
+            args.push.apply(args, arguments);
+            return resolver.apply(this, args);
+          };
+          
+        })(resolvers[k], propList.toObj(function(v) { return v.name; }, function(v) { return v.prop; }));
         
-      } else {
+      } else if (!propList[0].isSuperProp) { // Don't add super properties to the subclass; they'll naturally be inherited
         
-        cls.prototype[k] = propList[0];
+        cls.prototype[k] = propList[0].prop;
         
       }
       
@@ -452,6 +530,7 @@ global.U = {
     
     return cls;
   },
+  
   
   // Randomness utility
   randFloat: function() {
