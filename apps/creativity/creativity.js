@@ -30,27 +30,28 @@ TASKS:
 [ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
 [ ] Profile editing
 [ ] Story editing (Change description? Change round time limit?)
-[ ] "quickDev" should be renamed "dossier"
+[X] "quickDev" should be renamed "dossier"
+[X] Mixins
 [ ] Make sure there are no hard-coded strings in userify or quickdev
 */
 /// =REMOVE}
 new PACK.pack.Package({ name: 'creativity',
   /// {SERVER=
-  dependencies: [ 'quickDev', 'p', 'persist' ],
+  dependencies: [ 'dossier', 'p', 'persist' ],
   /// =SERVER}
   /// {CLIENT=
-  dependencies: [ 'quickDev', 'p', 'userify' ],
+  dependencies: [ 'dossier', 'p', 'userify' ],
   /// =CLIENT}
   buildFunc: function(/* ... */) {
     
     var packageName = arguments[0];
     /// {SERVER=
-    var qd = arguments[1];
+    var ds = arguments[1];
     var p = arguments[2];
     var pr = arguments[3];
     /// =SERVER}
     /// {CLIENT=
-    var qd = arguments[1];
+    var ds = arguments[1];
     var p = arguments[2];
     var uf = arguments[3];
     /// =CLIENT}
@@ -70,7 +71,7 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =SERVER}
       Creativity: U.makeClass({ name: 'Creativity',
-        superclass: qd.DossierDict,
+        superclass: ds.DossierDict,
         methods: function(sc, c) { return {
           /// {SERVER=
           $handleRequest: function(params /* command */) {
@@ -109,7 +110,7 @@ new PACK.pack.Package({ name: 'creativity',
             
             if (password.length < 5 || password.length > 30) throw new Error('Passwords must be 5-30 characters');
             
-            var editor = new qd.Editor();
+            var editor = new ds.Editor();
             return editor.$addFast({ par: this.children.userSet, data: {
               fname: 'Anonymous',
               lname: 'Individual',
@@ -127,7 +128,7 @@ new PACK.pack.Package({ name: 'creativity',
         };}
       }),
       CreativityUser: U.makeClass({ name: 'CreativityUser',
-        superclass: qd.DossierDict,
+        superclass: ds.DossierDict,
         methods: function(sc, c) { return {
           /// {SERVER=
           getToken: function(user) {
@@ -252,7 +253,7 @@ new PACK.pack.Package({ name: 'creativity',
         
         if (!currentTime) currentTime = U.timeMs();
         
-        var editor = new qd.Editor();
+        var editor = new ds.Editor();
         var currentContest = story.getChild([ 'contestSet', story.getValue('contestInd') ]);
         
         if (currentContest.getChild('writeSet').length) {
@@ -514,82 +515,82 @@ new PACK.pack.Package({ name: 'creativity',
       updateOnFrame: {}, // Keep track of all `Content` instances which need to update once per frame
       /// =CLIENT}
       
-      versioner: new qd.Versioner({ versions: [
+      versioner: new ds.Versioner({ versions: [
         { name: 'initial',
           detect: function(prevVal) { return !prevVal; },
           $apply: function(root) {
             
-            var outline = new qd.Outline({ c: cr.Creativity, p: { name: 'app' }, i: [
+            var outline = new ds.Outline({ c: cr.Creativity, p: { name: 'app' }, i: [
               
-              { c: qd.DossierString,  p: { name: 'version' } },
+              { c: ds.DossierString,  p: { name: 'version' } },
               /// {CLIENT=
-              { c: qd.DossierString,  p: { name: 'username' } },
-              { c: qd.DossierString,  p: { name: 'password' } },
-              { c: qd.DossierString,  p: { name: 'token' } },
-              { c: qd.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
-              { c: qd.DossierString,  p: { name: 'loginError' } },
-              { c: qd.DossierString,  p: { name: 'currentWrite' } },
-              { c: qd.DossierRef,     p: { name: 'currentStory',    template: '~root.storySet.$quickName' } },
-              { c: qd.DossierBoolean, p: { name: 'isEditingStory',  value: false } },
-              { c: qd.DossierDict,    p: { name: 'editStory' }, i: [
-                { c: qd.DossierString,  p: { name: 'error' } },
-                { c: qd.DossierRef,     p: { name: 'story',           template: '~root.storySet.$quickName' } },
-                { c: qd.DossierString,  p: { name: 'quickName' } },
-                { c: qd.DossierString,  p: { name: 'description' } },
+              { c: ds.DossierString,  p: { name: 'username' } },
+              { c: ds.DossierString,  p: { name: 'password' } },
+              { c: ds.DossierString,  p: { name: 'token' } },
+              { c: ds.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
+              { c: ds.DossierString,  p: { name: 'loginError' } },
+              { c: ds.DossierString,  p: { name: 'currentWrite' } },
+              { c: ds.DossierRef,     p: { name: 'currentStory',    template: '~root.storySet.$quickName' } },
+              { c: ds.DossierBoolean, p: { name: 'isEditingStory',  value: false } },
+              { c: ds.DossierDict,    p: { name: 'editStory' }, i: [
+                { c: ds.DossierString,  p: { name: 'error' } },
+                { c: ds.DossierRef,     p: { name: 'story',           template: '~root.storySet.$quickName' } },
+                { c: ds.DossierString,  p: { name: 'quickName' } },
+                { c: ds.DossierString,  p: { name: 'description' } },
                 // Note that `String` is used over integers to store form inputs!
-                { c: qd.DossierString,  p: { name: 'authorLimit' } },
-                { c: qd.DossierString,  p: { name: 'maxWrites' } },
-                { c: qd.DossierString,  p: { name: 'maxVotes' } },
-                { c: qd.DossierString,  p: { name: 'maxWriteLength' } },
-                { c: qd.DossierString,  p: { name: 'contestLimit' } },
-                { c: qd.DossierInt,     p: { name: 'contestTime' } },
-                { c: qd.DossierInt,     p: { name: 'slapLoadTime' } },
-                { c: qd.DossierInt,     p: { name: 'slamLoadTime' } }
+                { c: ds.DossierString,  p: { name: 'authorLimit' } },
+                { c: ds.DossierString,  p: { name: 'maxWrites' } },
+                { c: ds.DossierString,  p: { name: 'maxVotes' } },
+                { c: ds.DossierString,  p: { name: 'maxWriteLength' } },
+                { c: ds.DossierString,  p: { name: 'contestLimit' } },
+                { c: ds.DossierInt,     p: { name: 'contestTime' } },
+                { c: ds.DossierInt,     p: { name: 'slapLoadTime' } },
+                { c: ds.DossierInt,     p: { name: 'slamLoadTime' } }
               ]},
               /// =CLIENT}
-              { c: qd.DossierList,    p: { name: 'userSet',
+              { c: ds.DossierList,    p: { name: 'userSet',
                 innerOutline: { c: cr.CreativityUser, i: [
-                  { c: qd.DossierString,  p: { name: 'username' } },
+                  { c: ds.DossierString,  p: { name: 'username' } },
                   /// {SERVER=
-                  { c: qd.DossierString,  p: { name: 'password' } },
+                  { c: ds.DossierString,  p: { name: 'password' } },
                   /// =SERVER}
-                  { c: qd.DossierString,  p: { name: 'fname' } },
-                  { c: qd.DossierString,  p: { name: 'lname' } }
+                  { c: ds.DossierString,  p: { name: 'fname' } },
+                  { c: ds.DossierString,  p: { name: 'lname' } }
                 ]},
                 nameFunc: function(par, child) { return child.getValue('username'); }
               }},
-              { c: qd.DossierList,    p: { name: 'storySet',
-                innerOutline: { c: qd.DossierDict, i: [
-                  { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
+              { c: ds.DossierList,    p: { name: 'storySet',
+                innerOutline: { c: ds.DossierDict, i: [
+                  { c: ds.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
                   /// {CLIENT=
-                  { c: qd.DossierBoolean, p: { name: 'isAuthored' } },
-                  { c: qd.DossierString,  p: { name: 'userDisp' } },
-                  { c: qd.DossierInt,     p: { name: 'age' } },
-                  { c: qd.DossierInt,     p: { name: 'phaseTimeRemaining' } },
-                  { c: qd.DossierRef,     p: { name: 'currentContest',  template: '~par.contestSet.$contestInd' } },
+                  { c: ds.DossierBoolean, p: { name: 'isAuthored' } },
+                  { c: ds.DossierString,  p: { name: 'userDisp' } },
+                  { c: ds.DossierInt,     p: { name: 'age' } },
+                  { c: ds.DossierInt,     p: { name: 'phaseTimeRemaining' } },
+                  { c: ds.DossierRef,     p: { name: 'currentContest',  template: '~par.contestSet.$contestInd' } },
                   /// =CLIENT}
-                  { c: qd.DossierInt,     p: { name: 'createdTime' } },
-                  { c: qd.DossierString,  p: { name: 'quickName' } },
-                  { c: qd.DossierString,  p: { name: 'description' } },
-                  { c: qd.DossierInt,     p: { name: 'contestInd' } },        // Index of current contest
-                  { c: qd.DossierInt,     p: { name: 'authorLimit' } },       // Max number of users writing this story
-                  { c: qd.DossierInt,     p: { name: 'contestTime' } },       // Contest time limit
-                  { c: qd.DossierInt,     p: { name: 'maxWrites' } },         // Number of writes allowed per contest
-                  { c: qd.DossierInt,     p: { name: 'maxVotes' } },          // Number of votes allowed per contest
-                  { c: qd.DossierInt,     p: { name: 'maxWriteLength' } },    // Number of characters allowed in an entry
-                  { c: qd.DossierInt,     p: { name: 'contestLimit' } },      // Total number of contests before the story concludes
-                  { c: qd.DossierInt,     p: { name: 'slapLoadTime' } },      // Total millis to load a new slap ability
-                  { c: qd.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new slam ability'
-                  { c: qd.DossierString,  p: { name: 'phase' } },             // The phase: awaitingWrite | writing | awaitingVote | voting
-                  { c: qd.DossierInt,     p: { name: 'timePhaseStarted' } },  // The time the phase started at
+                  { c: ds.DossierInt,     p: { name: 'createdTime' } },
+                  { c: ds.DossierString,  p: { name: 'quickName' } },
+                  { c: ds.DossierString,  p: { name: 'description' } },
+                  { c: ds.DossierInt,     p: { name: 'contestInd' } },        // Index of current contest
+                  { c: ds.DossierInt,     p: { name: 'authorLimit' } },       // Max number of users writing this story
+                  { c: ds.DossierInt,     p: { name: 'contestTime' } },       // Contest time limit
+                  { c: ds.DossierInt,     p: { name: 'maxWrites' } },         // Number of writes allowed per contest
+                  { c: ds.DossierInt,     p: { name: 'maxVotes' } },          // Number of votes allowed per contest
+                  { c: ds.DossierInt,     p: { name: 'maxWriteLength' } },    // Number of characters allowed in an entry
+                  { c: ds.DossierInt,     p: { name: 'contestLimit' } },      // Total number of contests before the story concludes
+                  { c: ds.DossierInt,     p: { name: 'slapLoadTime' } },      // Total millis to load a new slap ability
+                  { c: ds.DossierInt,     p: { name: 'slamLoadTime' } },      // Total millis to load a new slam ability'
+                  { c: ds.DossierString,  p: { name: 'phase' } },             // The phase: awaitingWrite | writing | awaitingVote | voting
+                  { c: ds.DossierInt,     p: { name: 'timePhaseStarted' } },  // The time the phase started at
                   
-                  { c: qd.DossierList,    p: { name: 'authorSet',
-                    innerOutline: { c: qd.DossierDict, i: [
-                      { c: qd.DossierRef,     p: { name: 'user',        template: '~root.userSet.$username' } },
-                      { c: qd.DossierInt,     p: { name: 'numSlaps' } },
-                      { c: qd.DossierInt,     p: { name: 'lastSlapTime' } },
-                      { c: qd.DossierInt,     p: { name: 'numSlams' } },
-                      { c: qd.DossierInt,     p: { name: 'lastSlamTime' } }
+                  { c: ds.DossierList,    p: { name: 'authorSet',
+                    innerOutline: { c: ds.DossierDict, i: [
+                      { c: ds.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
+                      { c: ds.DossierInt,     p: { name: 'numSlaps' } },
+                      { c: ds.DossierInt,     p: { name: 'lastSlapTime' } },
+                      { c: ds.DossierInt,     p: { name: 'numSlams' } },
+                      { c: ds.DossierInt,     p: { name: 'lastSlamTime' } }
                     ]},
                     nameFunc: function(par, child) { return child.getChild('@user').name; },
                     // TODO: Users are being handled differently server/client-side; client is trying to get away with using usernames without ever loading user `Dossier`
@@ -617,17 +618,17 @@ new PACK.pack.Package({ name: 'creativity',
                     }
                   }},
                   
-                  { c: qd.DossierList,    p: { name: 'contestSet',
-                    innerOutline: { c: qd.DossierDict, i: [
-                      { c: qd.DossierInt,     p: { name: 'num' } },
-                      { c: qd.DossierList,    p: { name: 'writeSet',
-                        innerOutline: { c: qd.DossierDict, i: [
-                          { c: qd.DossierRef,     p: { name: 'user',      template: '~root.userSet.$username' } },
-                          { c: qd.DossierString,  p: { name: 'content' } },
-                          { c: qd.DossierList,    p: { name: 'voteSet',
-                            innerOutline: { c: qd.DossierDict, i: [
-                              { c: qd.DossierRef,   p: { name: 'user',      template: '~root.userSet.$username' } },
-                              { c: qd.DossierInt,   p: { name: 'value' } }
+                  { c: ds.DossierList,    p: { name: 'contestSet',
+                    innerOutline: { c: ds.DossierDict, i: [
+                      { c: ds.DossierInt,     p: { name: 'num' } },
+                      { c: ds.DossierList,    p: { name: 'writeSet',
+                        innerOutline: { c: ds.DossierDict, i: [
+                          { c: ds.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
+                          { c: ds.DossierString,  p: { name: 'content' } },
+                          { c: ds.DossierList,    p: { name: 'voteSet',
+                            innerOutline: { c: ds.DossierDict, i: [
+                              { c: ds.DossierRef,     p: { name: 'user',            template: '~root.userSet.$username' } },
+                              { c: ds.DossierInt,     p: { name: 'value' } }
                             ]},
                             nameFunc: function(par, vote) {
                               return vote.getChild('user').value[0]; // The 1st address item is the username
@@ -695,16 +696,16 @@ new PACK.pack.Package({ name: 'creativity',
                         }
                       }},
                       /// {CLIENT=
-                      { c: qd.DossierRef,     p: { name: 'currentWrite',      template: '~par.writeSet.$username' } },
-                      { c: qd.DossierRef,     p: { name: 'currentVote',       template: '~par.writeSet.$username.voteSet.$username' } },
-                      { c: qd.DossierRef,     p: { name: 'currentVotedWrite', template: '~par.writeSet.$username' } }
+                      { c: ds.DossierRef,     p: { name: 'currentWrite',      template: '~par.writeSet.$username' } },
+                      { c: ds.DossierRef,     p: { name: 'currentVote',       template: '~par.writeSet.$username.voteSet.$username' } },
+                      { c: ds.DossierRef,     p: { name: 'currentVotedWrite', template: '~par.writeSet.$username' } }
                       /// =CLIENT}
                     ]},
                     nameFunc: function(par, child) { return child.getValue('num'); }
                   }},
                   
-                  { c: qd.DossierList,    p: { name: 'writeSet',
-                    innerOutline: { c: qd.DossierRef, p: { template: '~par.~par.contestSet.$contestInd.writeSet.$username' } }
+                  { c: ds.DossierList,    p: { name: 'writeSet',
+                    innerOutline: { c: ds.DossierRef, p: { template: '~par.~par.contestSet.$contestInd.writeSet.$username' } }
                   }}
                   
                 ]},
@@ -760,12 +761,11 @@ new PACK.pack.Package({ name: 'creativity',
             
             { /** {CLIENT= */
             outline.getChild('token').p.changeHandler = function(doss) {
-              doss = doss.getRoot();
-              doss.getChild('user').content.update();
+              doss.getRoot().getChild('user').content.update();
             };
             
-            outline.getChild('user').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss,
+             outline.getChild('user').p.contentFunc = function(doss) {
+              return new ds.ContentSyncRef({ doss: doss,
                 calcRef: function() {
                   // Set reference to null unless a token is obtained
                   return doss.getChild('~root.token').value ? [ doss.getChild('~root.username').value ] : null;
@@ -781,15 +781,15 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('version').p.contentFunc = function(doss) {
-              return new qd.ContentSync({ doss: doss });
+              return new ds.ContentSync({ doss: doss });
             };
             
             outline.getChild('currentStory').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss });
+              return new ds.ContentSyncRef({ doss: doss });
             };
             
             outline.getChild('storySet').p.contentFunc = function(doss) {
-              return new qd.ContentSyncDict({ doss: doss, waitMs: 10000, selection: {
+              return new ds.ContentSyncDict({ doss: doss, waitMs: 10000, selection: {
                 '*': {
                   user: {},
                   createdTime: {},
@@ -805,11 +805,11 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.user').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss });
+              return new ds.ContentSyncRef({ doss: doss });
             };
             
             outline.getChild('storySet.*.userDisp').p.contentFunc = function(doss) {
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 var user = doss.par.getChild('@user');
                 return user
                   ? user.getValue('fname') + ' ' + user.getValue('lname') + ' (' + user.getValue('username') + ')'
@@ -818,7 +818,7 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.isAuthored').p.contentFunc = function(doss) {
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 var username = doss.getRoot().getValue('username');
                 var story = doss.par;
                 return username in story.children.authorSet.children;
@@ -826,23 +826,23 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.authorSet').p.contentFunc = function(doss) {
-              return new qd.ContentSyncDict({ doss: doss, waitMs: 10000, selection: qd.selectAll });
+              return new ds.ContentSyncDict({ doss: doss, waitMs: 10000, selection: ds.selectAll });
             };
             
             outline.getChild('storySet.*.authorSet.*.user').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss });
+              return new ds.ContentSyncRef({ doss: doss });
             };
             
             outline.getChild('storySet.*.phase').p.contentFunc = function(doss) {
-              return new qd.ContentSync({ doss: doss, waitMs: 2000 });
+              return new ds.ContentSync({ doss: doss, waitMs: 2000 });
             };
             
             outline.getChild('storySet.*.timePhaseStarted').p.contentFunc = function(doss) {
-              return new qd.ContentSync({ doss: doss, waitMs: 2000 });
+              return new ds.ContentSync({ doss: doss, waitMs: 2000 });
             };
             
             outline.getChild('storySet.*.phaseTimeRemaining').p.contentFunc = function(doss) {
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 
                 var story = doss.par;
                 var phase = story.getValue('phase');
@@ -861,21 +861,21 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.age').p.contentFunc = function(doss) {
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 return U.timeMs() - doss.par.getValue('createdTime');
               }});
             };
             
             outline.getChild('storySet.*.writeSet').p.contentFunc = function(doss) {
-              return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
+              return new ds.ContentSyncDict({ doss: doss, waitMs: 2000, selection: ds.selectAll });
             };
             
             outline.getChild('storySet.*.writeSet.*').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss, selection: qd.selectAll });
+              return new ds.ContentSyncRef({ doss: doss, selection: ds.selectAll });
             };
             
             outline.getChild('storySet.*.contestInd').p.contentFunc = function(doss) {
-              return new qd.ContentSync({ doss: doss, waitMs: 1000 });
+              return new ds.ContentSync({ doss: doss, waitMs: 1000 });
             };
             outline.getChild('storySet.*.contestInd').p.changeHandler = function(doss) {
               var story = doss.par;
@@ -886,17 +886,17 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.currentContest').p.contentFunc = function(doss) {
-              return new qd.ContentSyncRef({ doss: doss, calcRef: function() {
+              return new ds.ContentSyncRef({ doss: doss, calcRef: function() {
                 return [ doss.par.getValue('contestInd') ]; // The current contest's index is stored in `contestInd`
               }});
             };
             
             outline.getChild('storySet.*.contestSet.*.writeSet').p.contentFunc = function(doss) {
-              return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
+              return new ds.ContentSyncDict({ doss: doss, waitMs: 2000, selection: ds.selectAll });
             };
             
             outline.getChild('storySet.*.contestSet.*.currentWrite').p.contentFunc = function(doss) {
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 // Return `null` if no current write, otherwise return the write
                 var username = doss.getChild('~root.username').value;
                 
@@ -908,12 +908,12 @@ new PACK.pack.Package({ name: 'creativity',
             };
             
             outline.getChild('storySet.*.contestSet.*.writeSet.*.voteSet').p.contentFunc = function(doss) {
-              return new qd.ContentSyncDict({ doss: doss, waitMs: 2000, selection: qd.selectAll });
+              return new ds.ContentSyncDict({ doss: doss, waitMs: 2000, selection: ds.selectAll });
             };
             
             outline.getChild('storySet.*.contestSet.*.currentVote').p.contentFunc = function(doss) {
               
-              return new qd.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
                 var username = doss.getChild('~root.username').value;
                 var contest = doss.par;
                 var writeSet = contest.children.writeSet.children;
@@ -970,7 +970,7 @@ new PACK.pack.Package({ name: 'creativity',
     return cr;
     
   },
-  runAfter: function(cr, qd, p, uf) {
+  runAfter: function(cr, ds, p, uf) {
     
     var P = p.P;
 
@@ -1285,7 +1285,7 @@ new PACK.pack.Package({ name: 'creativity',
                         },
                         genChildView: function(name, info) {
                           
-                          if (U.isInstance(info, qd.DossierRef)) {
+                          if (U.isInstance(info, ds.DossierRef)) {
                             // TODO: Review efficiency here (could be terrible with a big writeSet)
                             var username = function() {
                               var deref = info.dereference();

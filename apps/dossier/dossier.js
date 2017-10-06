@@ -2,23 +2,23 @@
 TODO: Long polling
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 */
-var package = new PACK.pack.Package({ name: 'quickDev',
+var package = new PACK.pack.Package({ name: 'dossier',
   dependencies: [ 'tree', 'queries', 'worry', 'p' ],
   buildFunc: function(packName, tree, queries, worry, p) {
     
     var P = p.P;
     
-    var qd = {};
+    var ds = {};
     
-    qd.selectAll = {};
-    qd.selectAll['*'] = qd.selectAll;
+    ds.selectAll = {};
+    ds.selectAll['*'] = ds.selectAll;
     
-    qd.update({
+    ds.update({
       
       NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/,
       NEXT_TEMP: 0,
       getTempName: function() {
-        var id = U.id(qd.NEXT_TEMP++);
+        var id = U.id(ds.NEXT_TEMP++);
         if (id === 'ffffffff') throw new Error('EXHAUSTED IDS');
         return 'TEMP((' + id + '))';
       },
@@ -43,13 +43,13 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.p = p;
             this.i = {};
             
-            if ('innerOutline' in this.p && !U.isInstance(this.p.innerOutline, qd.Outline)) {
-              this.p.innerOutline = new qd.Outline(this.p.innerOutline);
+            if ('innerOutline' in this.p && !U.isInstance(this.p.innerOutline, ds.Outline)) {
+              this.p.innerOutline = new ds.Outline(this.p.innerOutline);
               this.p.innerOutline.par = this;
             }
             
             for (var j = 0, len = i.length; j < len; j++) {
-              var outline = U.isInstance(i[j], qd.Outline) ? i[j] : new qd.Outline(i[j]);
+              var outline = U.isInstance(i[j], ds.Outline) ? i[j] : new ds.Outline(i[j]);
               this.i[U.param(outline.p, 'name')] = outline;
               outline.par = this;
             }
@@ -59,7 +59,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.i[childName];
           },
           $getDoss: function(data) {
-            var editor = new qd.Editor();
+            var editor = new ds.Editor();
             return editor.$createFast(this, data);
           }
           
@@ -448,7 +448,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           init: function(params /* outline */) {
             sc.init.call(this, params);
             
-            this.name = qd.getTempName();
+            this.name = ds.getTempName();
             this.outline = U.param(params, 'outline');
             
             this.par = null;
@@ -459,7 +459,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             return this.name.substr(0, 5) !== 'TEMP(';
           },
           updateName: function(name, force) {
-            if (!force && !qd.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
+            if (!force && !ds.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
             
             var par = this.par;
             if (par) par.remChild(this);
@@ -546,21 +546,30 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             throw new Error('not implemented');
           },
           
+          $isStarted: function() {
+            if (!this.$started) this.$started = new P({});
+            return this.$started;
+          },
+          
           start: function() {
             
             // Add any contentFunc
             var contentFunc = this.outline.p.contentFunc;
             if (contentFunc && !this.content) {
               this.content = contentFunc(this);
-              if (!U.isInstance(this.content, qd.Content)) throw new Error('Bad contentFunc');
+              if (!U.isInstance(this.content, ds.Content)) throw new Error('Bad contentFunc');
               this.content.start();
             }
             
             // Add any changeHandler
             var changeHandler = this.outline.p.changeHandler;
             if (changeHandler && !this.hasConcern('value', changeHandler)) {
-              this.addConcern('value', changeHandler);
+              this.changeHandler = changeHandler.bind(null, this);
+              this.addConcern('value', this.changeHandler);
             }
+            
+            if (!this.$started) this.$started = new P({});
+            this.$started.resolve(null);
             
           },
           stop: function() {
@@ -569,9 +578,9 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             if (this.content) this.content.stop();
             
             // Stop any change handler
-            var changeHandler = this.outline.p.changeHandler;
-            if (changeHandler)
-              this.remConcern('value', changeHandler);
+            if (this.changeHandler) {
+              this.remConcern('value', this.changeHandler);
+            }
             
           }
           
@@ -599,7 +608,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           remChild: function(child) {
             // If `child` was supplied as a number or a string, resolve it
-            if (!U.isInstance(child, qd.Dossier)) child = this.children[child];
+            if (!U.isInstance(child, ds.Dossier)) child = this.children[child];
             
             if (!child || child.par !== this) throw new Error('Couldn\'t remove child "' + child.getAddress() + '"');
             
@@ -611,7 +620,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           },
           getNamedChild0: function(name) {
             if (U.isObj(name, Object))
-              return new PACK.quickDev.FilterResults({ origChildren: this.children, filter: name });
+              return new ds.FilterResults({ origChildren: this.children, filter: name });
             
             if (name in this.children) return this.children[name];
             return sc.getNamedChild0.call(this, name);
@@ -839,7 +848,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             this.nextInd = 0;
             
             // Convert outline params to Outline
-            if (U.isObj(this.innerOutline, Object)) this.innerOutline = new qd.Outline(this.innerOutline);
+            if (U.isObj(this.innerOutline, Object)) this.innerOutline = new ds.Outline(this.innerOutline);
           },
           
           $loadFromRawData: function(data, editor) {
@@ -911,7 +920,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               var verifyAndSanitize = this.outline.p.verifyAndSanitizeData;
               if (!verifyAndSanitize) throw new Error('Cannot "addData" on "' + this.getAddress() + '"');
               
-              var editor = new qd.Editor();
+              var editor = new ds.Editor();
               return editor.$addFast({ par: this, data: verifyAndSanitize(this, data) }).then(function(child) {
                 
                 if (returnType === 'address')
@@ -966,16 +975,12 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           setValue: function(value) {
             if (value !== this.value) {
               this.value = value;
-              this.concern('value', this.value);
+              try {
+                this.concern('value', this.value);
+              } catch (err) {
+                console.log(err.stack);
+              }
             }
-          },
-          addChangeListener: function(id, func) {
-            if (!this.changeListeners) this.changeListeners = {};
-            this.changeListeners[id] = func;
-          },
-          remChangeListener: function(id) {
-            delete this.changeListeners[id];
-            if (U.isEmptyObj(this.changeListeners)) delete this.changeListeners;
           },
           modValue: function(modFunc) {
             var moddedVal = modFunc(this.getValue());
@@ -1066,7 +1071,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               return sc.setValue.call(this, pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; }));
             }
             
-            if (!U.isInstance(value, PACK.quickDev.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
+            if (!U.isInstance(value, ds.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
             
             var addr = value.getNameChain();
             
@@ -1153,16 +1158,16 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           
           // TODO: Next 4 methods are purely referenced from DossierSet and Dossier
           $handleRequest: function(params /* command */) {
-            return qd.Dossier.prototype.$handleRequest.call(this, params);
+            return ds.Dossier.prototype.$handleRequest.call(this, params);
           },
           getRawDataView: function() {
-            return qd.DossierSet.prototype.getRawDataView.call(this, params);
+            return ds.DossierSet.prototype.getRawDataView.call(this, params);
           },
           getDataView0: function(existing) {
-            return qd.DossierSet.prototype.getDataView0.call(this, existing);
+            return ds.DossierSet.prototype.getDataView0.call(this, existing);
           },
           getDataView: function(existing) {
-            return qd.Dossier.prototype.getDataView.call(this, existing);
+            return ds.Dossier.prototype.getDataView.call(this, existing);
           },
         };},
         statik: {
@@ -1353,11 +1358,11 @@ var package = new PACK.pack.Package({ name: 'quickDev',
           init: function(params /* doss, address, refParAddress, waitMs, jitterMs, selection */) {
             sc.init.call(this, params);
             
-            if (!U.isInstance(this.doss, qd.DossierRef)) throw new Error('`ContentSyncRef` needs its doss to be a `DossierRef`');
+            if (!U.isInstance(this.doss, ds.DossierRef)) throw new Error('`ContentSyncRef` needs its doss to be a `DossierRef`');
             
             // Supplying `calcRef` allows
             this.calcRef = U.param(params, 'calcRef', null);
-            this.selection = U.param(params, 'selection', qd.selectAll);
+            this.selection = U.param(params, 'selection', ds.selectAll);
           },
           $query: function(ref) {
             
@@ -1394,7 +1399,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             // TODO: DossierRef needs to parameratize an address, so its value should only hold
             // the values for the variable components of a static address!!
             // E.g. instead of `dossRef.outline.p.baseAddress` it should be `dossRef.outline.p.addressVar`
-            // { c: qd.DossierRef, p: { vars: [ 'contestInd', 'writeUsername' ], addressVar: '~par.contestSet.$contestInd.writeSet.$writeUsername' } }
+            // { c: ds.DossierRef, p: { vars: [ 'contestInd', 'writeUsername' ], addressVar: '~par.contestSet.$contestInd.writeSet.$writeUsername' } }
             // dossRef.value === { contestInd: 12, writeUsername: 'admin' }
             
             // Because this isn't the case currently, need to struggle with "determining the parent who will hold the referenced object" etc.
@@ -1426,7 +1431,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               // Note that at this point, `holderAddr` points to the deepest existing parent
               var $holder = new P({ val: doss.getChild(holderAddr) });
               
-              var editor = new qd.Editor();
+              var editor = new ds.Editor();
               for (var i = 0; i < missingChain.length; i++) {
                 $holder = $holder.then(function(ind, holder) {
                   var reqName = missingChain[ind];
@@ -1448,7 +1453,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
               
               var bestExisting = ;
               
-              var editor = new qd.Editor();
+              var editor = new ds.Editor();
               var $holder = editor.$addFast({ par: 
               
               var $holder = queries.$doQuery({
@@ -1465,7 +1470,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             return $holder.then(function(holder) {
               
-              var editor = new qd.Editor();
+              var editor = new ds.Editor();
               return editor.$addFast({
                 par: holder,
                 data: refData
@@ -1536,7 +1541,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
             
             //console.log('Syncing DCT: ' + doss.getAddress());
             
-            var editor = new qd.Editor();
+            var editor = new ds.Editor();
             return editor.$editFast({ add: add, rem: rem, mod: mod }).then(function() {
               doss.start();
             });
@@ -1577,7 +1582,7 @@ var package = new PACK.pack.Package({ name: 'quickDev',
     
     });
     
-    return qd;
+    return ds;
   }
 });
 package.build();

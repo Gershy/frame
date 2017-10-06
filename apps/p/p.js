@@ -178,6 +178,7 @@ var package = new PACK.pack.Package({ name: 'p',
             
           },
           resolve: function(/* ... */) {
+            
             if (this.status !== 'pending') throw new Error('Cannot resolve; status is already "' + this.status + '"');
             
             var multi = arguments.length !== 1;

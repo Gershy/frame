@@ -20,7 +20,7 @@ var config = require('./config.js');
 var compiler = require('./compilers/default.js');
 
 var package = new PACK.pack.Package({ name: 'server',
-  dependencies: [ 'p', 'queries', 'quickDev' ],
+  dependencies: [ 'p', 'queries', 'dossier' ],
   buildFunc: function() {
     return {
       ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),

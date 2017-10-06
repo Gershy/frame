@@ -2,11 +2,10 @@
 // to implement independently
 
 var package = new PACK.pack.Package({ name: 'userify',
-  dependencies: [ 'tree', 'quickDev', 'p', 'geom' ],
-  buildFunc: function(packageName, tree, qd) {
-    var P = PACK.p.P;
-    
-    var Point = PACK.geom.Point;
+  dependencies: [ 'tree', 'dossier', 'p', 'geom' ],
+  buildFunc: function(packageName, tree, ds, p, geom) {
+    var P = p.P;
+    //var Point = geom.Point;
     
     var uf = {
       
@@ -171,6 +170,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      
+      /* INPUT DECORATORS */
       ActionDecorator: U.makeClass({ name: 'ActionDecorator',
         superclassName: 'Decorator',
         description: 'Perform an asynchronous action on interaction',
@@ -206,98 +207,13 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
-      
-      /* FORM DECORATORS (TODO: move these to a new package?) */
-      FormDecorator: U.makeClass({ name: 'FormDecorator',
-        superclassName: 'Decorator',
-        methods: function(sc, c) { return {
-          init: function(params /* */) {
-            sc.init.call(this, params);
-            
-            this.inputs = [];
-            this.submits = [];
-          },
-          genInputDecorator: function(validateFunc) {
-            var ret = new uf.FormInputDecorator({ form: this, validateFunc: validateFunc || null });
-            this.inputs.push(ret);
-            return ret;
-          },
-          genSubmitDecorator: function($action) {
-            if (!$action) throw new Error('Must provide an $action promise-func');
-            
-            var ret = new uf.FormSubmitDecorator({ $action: $action, form: this });
-            this.submits.push(ret);
-            return ret;
-          },
-          isValid: function() {
-            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return false;
-            return true;
-          },
-          start: function(view) {
-          },
-          stop: function(view) {
-          }
-        };}
-      }),
-      FormInputDecorator: U.makeClass({ name: 'FormInputDecorator',
-        superclassName: 'Decorator',
-        methods: function(sc, c) { return {
-          init: function(params /* form, validateFunc */) {
-            sc.init.call(this, params);
-            
-            this.form = U.param(params, 'form');
-            this.validateFunc = U.param(params, 'validateFunc', null);
-            this.err = null;
-          },
-          genErrorView: function(name) {
-            var pass = this;
-            return new uf.TextHideView({ name: name || 'error', info: function() { return pass.err; } });
-          },
-          start: function(view) {
-            view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
-            uf.domAddListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
-            if (this.validateFunc) {
-              var pass = this;
-              view.info.addChangeListener(this.id, function(val) {
-                pass.err = pass.validateFunc(val);
-              });
-            }
-          },
-          stop: function(view) {
-            if (this.validateFunc) view.info.remChangeListener(this.id);
-            uf.domRemListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
-            delete view['~' + this.id + '.keyPress'];
-          }
-        };},
-        statik: {
-          keyPress: function(view, event) {
-            if (this.form.submits.length && event.keyCode === 13) this.form.submits[0].doAction(view, event);
-          }
-        }
-      }),
-      FormSubmitDecorator: U.makeClass({ name: 'FormSubmitDecorator',
-        superclassName: 'ActionDecorator',
-        methods: function(sc, c) { return {
-          init: function(params /* $action */) {
-            this.form = U.param(params, 'form');
-            
-            var pass = this;
-            var $action = U.param(params, '$action');
-            sc.init.call(this, params.update({ $action: function(event) {
-              if (!pass.form.isValid()) return;
-              return $action(event);
-            }}));
-          }
-        };}
-      }),
-      
-      /* INPUT DECORATORS (TODO: move these to a new package???) */
+      /* // TODO: move these to a new package???
       PointerDecorator: U.makeClass({ name: 'PointerDecorator',
         superclassName: 'Decorator',
         description: 'Generic class for decorators which deal with pointer actions; ' +
           'e.g. click, mouseover, drag, etc.',
         methods: function(sc, c) { return {
-          init: function(params /* validTargets */) {
+          init: function(params /* validTargets * /) {
             sc.init.call(this, params);
             
             /*
@@ -309,7 +225,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             `validTargets` is an array of css-selectors and only child elements
             which match one of those selectors will be able to initiate drag
             events.
-            */
+            * /
             this.validTargets = U.param(params, 'validTargets', []);
           },
           validTarget: function(view, target) {
@@ -323,7 +239,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       ClickDecorator: U.makeClass({ name: 'ClickDecorator',
         superclassName: 'PointerDecorator',
         methods: function(sc, c) { return {
-          init: function(params /* action, validTargets */) {
+          init: function(params /* action, validTargets * /) {
             sc.init.call(this, params);
             
             this.action = U.param(params, 'action', null);
@@ -368,7 +284,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       DragDecorator: U.makeClass({ name: 'DragDecorator',
         superclassName: 'PointerDecorator',
         methods: function(sc, c) { return {
-          init: function(params /* tolerance, validTargets, captureOnStart */) {
+          init: function(params /* tolerance, validTargets, captureOnStart * /) {
             sc.init.call(this, params);
             this.info = uf.toInfo({ drag: false, mouseDown: false, view: null });
             this.tolerance = U.param(params, 'tolerance', 0);
@@ -471,7 +387,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       DragActionDecorator: U.makeClass({ name: 'DragActionDecorator',
         superclassName: 'Decorator',
         methods: function(sc, c) { return {
-          init: function(params /* dragDecorator, action({ target, dropZone }) */) {
+          init: function(params /* dragDecorator, action({ target, dropZone }) * /) {
             sc.init.call(this, params);
             this.dragDecorator = U.param(params, 'dragDecorator');
             this.action = U.param(params, 'action');
@@ -530,7 +446,93 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         }
       }),
-          
+      */
+      
+      /* FORM DECORATORS (TODO: move these to a new package?) */
+      FormDecorator: U.makeClass({ name: 'FormDecorator',
+        superclassName: 'Decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* */) {
+            sc.init.call(this, params);
+            
+            this.inputs = [];
+            this.submits = [];
+          },
+          genInputDecorator: function(validateFunc) {
+            var ret = new uf.FormInputDecorator({ form: this, validateFunc: validateFunc || null });
+            this.inputs.push(ret);
+            return ret;
+          },
+          genSubmitDecorator: function($action) {
+            if (!$action) throw new Error('Must provide an $action promise-func');
+            
+            var ret = new uf.FormSubmitDecorator({ $action: $action, form: this });
+            this.submits.push(ret);
+            return ret;
+          },
+          isValid: function() {
+            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return false;
+            return true;
+          },
+          start: function(view) {
+          },
+          stop: function(view) {
+          }
+        };}
+      }),
+      FormInputDecorator: U.makeClass({ name: 'FormInputDecorator',
+        superclassName: 'Decorator',
+        methods: function(sc, c) { return {
+          init: function(params /* form, validateFunc */) {
+            sc.init.call(this, params);
+            
+            this.form = U.param(params, 'form');
+            this.validateFunc = U.param(params, 'validateFunc', null);
+            this.valConcern = c.valConcern.bind(this);
+            this.err = null;
+          },
+          genErrorView: function(name) {
+            var pass = this;
+            return new uf.TextHideView({ name: name || 'error', info: function() { return pass.err; } });
+          },
+          start: function(view) {
+            view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
+            uf.domAddListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+            
+            if (this.validateFunc) view.info.addConcern('value', this.valConcern);
+          },
+          stop: function(view) {
+            if (this.validateFunc) view.info.remConcern('value', this.valConcern);
+            
+            uf.domRemListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+            delete view['~' + this.id + '.keyPress'];
+          }
+        };},
+        statik: {
+          keyPress: function(view, event) {
+            if (this.form.submits.length && event.keyCode === 13) this.form.submits[0].doAction(view, event);
+          },
+          valConcern: function(val) {
+            this.err = this.validateFunc(val);
+          }
+        }
+      }),
+      FormSubmitDecorator: U.makeClass({ name: 'FormSubmitDecorator',
+        superclassName: 'ActionDecorator',
+        methods: function(sc, c) { return {
+          init: function(params /* $action */) {
+            this.form = U.param(params, 'form');
+            
+            var pass = this;
+            var $action = U.param(params, '$action');
+            sc.init.call(this, params.update({ $action: function(event) {
+              if (!pass.form.isValid()) return;
+              return $action(event);
+            }}));
+          }
+        };}
+      }),
+      
       /* VIEW */
       // TODO: `update` should not need to check for `start`. `start` should be called by an outside source.
       // `update` ruins `start`/`stop` symmetry

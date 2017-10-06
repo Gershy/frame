@@ -11,16 +11,16 @@ new PACK.pack.Package({ name: 'worry',
           init: function(params) {
             this.concernTypes = U.param(params, 'types', null);
           },
-          getId: function() {
-            if (!('id' in this)) {
+          getKey: function() {
+            if (!('worryId' in this)) {
               this.concerns = {};
               this.nextId = 0;
               this.worryId = wr.WORRY_ID++;
             }
-            return this.worryId;
+            return '~wr.' + this.worryId;
           },
           addConcern: function(type, func) {
-            var key = '~care.' + this.getId();
+            var key = this.getKey();
             if (key in func) throw new Error('Tried to add the same interest twice');
             
             func[key] = this.nextId++;
@@ -28,7 +28,7 @@ new PACK.pack.Package({ name: 'worry',
             this.concerns[type][func[key]] = func;
           },
           remConcern: function(type, func) {
-            var key = '~care.' + this.getId();
+            var key = this.getKey();
             if (!(key in func)) throw new Error('Tried to remove a non-existent interest');
             if (this.concerns[type][func[key]] !== func) throw new Error('Something has gone horribly wrong');
             
@@ -37,11 +37,11 @@ new PACK.pack.Package({ name: 'worry',
             if (U.isEmptyObj(this.concerns[type])) delete this.concerns[type];
           },
           hasConcern: function(type, func) {
-            var key = '~care.' + this.getId();
+            var key = this.getKey();
             return (type in this.concerns) && (key in func) && (func[key] in this.concerns[type]);
           },
           concern: function(type, params) {
-            if (!('worryId' in this)) return;
+            if (!('concerns' in this)) return;
             
             var typeCares = this.concerns[type];
             for (var k in typeCares) typeCares[k](params);
@@ -51,7 +51,7 @@ new PACK.pack.Package({ name: 'worry',
           stop: function() {
             
             // Remove keys from all concerns
-            var key = '~care.' + this.getId();
+            var key = this.getKey();
             for (var type in this.concerns) {
               var typeConcerns = this.concerns[type];
               for (var k in typeConcerns) delete typeConcerns[k][key];
