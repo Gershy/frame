@@ -56,7 +56,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           getNamedChild: function(childName) {
             if (this.p.innerOutline) return this.p.innerOutline;
-            return this.i[childName];
+            return this.i[childName] || null;
           },
           $getDoss: function(data) {
             var editor = new ds.Editor();
@@ -120,6 +120,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var promises = [];
             
             // Step 2: Add the name; either directly or with requirements
+            name = name || outline.p.name;
             if (name) {
               
               promises.push(new P({ custom: function(resolve, reject) {
@@ -135,41 +136,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
               }}));
               
-              //doss.updateName(name);
-              
             } else {
               
-              if (outline.p.name) {
+              promises.push(new P({ custom: function(resolve, reject) {
                 
-                promises.push(new P({ custom: function(resolve, reject) {
-                  
-                  reqs.push({
-                    reqFunc: c.reqNameSimple,
-                    params: [ doss, outline.p.name ],
-                    undoFunc: c.reqNameSimple,
-                    undoParams: null,
-                    resolve: resolve,
-                    reject: reject,
-                  });
-                  
-                }}));
-                
-              } else {
-                
-                promises.push(new P({ custom: function(resolve, reject) {
-                  
-                  reqs.push({
-                    reqFunc: c.reqNameCalculated,
-                    params: [ doss ],
-                    undoFunc: c.reqNameSimple,
-                    undoParams: null,
-                    resolve: resolve,
-                    reject: reject,
-                  });
-                
-                }}));
-                
-              }
+                reqs.push({
+                  reqFunc: c.reqNameCalculated,
+                  params: [ doss ],
+                  undoFunc: c.reqNameSimple,
+                  undoParams: null,
+                  resolve: resolve,
+                  reject: reject,
+                });
+              
+              }}));
               
             }
             
@@ -186,9 +166,26 @@ var package = new PACK.pack.Package({ name: 'dossier',
               });
               
             }}));
-            //if (par) par.addChild(doss); // Better to do it after `updateName` (avoids detaching and re-attaching)
             
             // Step 4: Add the data; either directly or with requirements
+            /*var pass = this;
+            promises.push(new P({ custom: function(resolve, reject) {
+              
+              reqs.push({
+                reqFunc: c.reqLoadRaw,
+                params: [ doss, data, pass ],
+                undoFunc: null, // TODO: A `null` undoFunc can lead to errors
+                undoParams: null,
+                resolve: resolve,
+                reject: reject
+              });
+              
+            }}));*/
+            
+            // THIS IS A REQUIRMENT, BUT REQUIREMENTS DO NOT SUPPORT PROMISES D:
+            // Easy solution: Make requirements promises
+            // Hard solution: Make editor non-promised (this probably doesn't work though - what about Editors working with a latency-ish backend??)
+            // After it works: Make DossierInt default to "null" again
             promises.push(doss.$loadFromRawData(data, this));
             
             return new P({ all: promises }).then(function() { return doss; });
@@ -199,6 +196,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return $ret;
           },
           $rem: function(params /* par, name */) {
+            var name = U.param(params, 'name');
+            if (U.isInstance(name, ds.Dossier)) name = name.name;
             return this.$rem0(params);
           },
           $rem0: function(params /* par, name */) {
@@ -297,7 +296,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               var reqs = this.curReqs;
               this.curReqs = []; // Resolving reqs resets all requirements no matter what
               
-              var tryResolve = this.tryResolveReqs(reqs);
+              var tryResolve = this.tryResolveReqs(reqs); // TODO: `tryResolveReqs` can be inline here (I think)
               allResolved = allResolved.concat(tryResolve.resolved);
               
               if (tryResolve.rejected.length === 0) {
@@ -307,6 +306,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               } else {
                 
                 if (allResolved.length) {
+                  for (var i = 0; i < tryResolve.errors.length; i++) console.log('ERR:', tryResolve.errors[i].stack, '\n');
                   console.log('Need to roll back: ', allResolved);
                   this.rollBackChanges(allResolved);
                 }
@@ -320,11 +320,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           },
           tryResolveReqs: function(unresolved) {
-            // TODO: Need to consider reqs being added DURING resolveReqs
             // NOTE: `this.curReqs` is EMPTY when this method is called from `resolveReqs`
+            
+            var numAttempts = 0;
             var resolved = [];
             
             while (unresolved.length) {
+              numAttempts++;
+              
               var solvedOne = false;
               
               var errors = [];
@@ -339,7 +342,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   resolved.push(reqDat); // No error; resolved!
                   solvedOne = true;
                 } catch(err) {
-                  errors.push(err.message);
+                  errors.push(err);
                   rejected.push(reqDat);
                 }
                 
@@ -350,6 +353,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               unresolved = rejected;
               
             }
+            
+            console.log('Resolved in ' + numAttempts + ' attempts');
             
             return {
               resolved: resolved,
@@ -384,7 +389,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           reqNameCalculated: function(doss) {
             var origName = doss.name;
             doss.updateName(doss.par.getChildName(doss));
-            
             return [ doss, origName, true ]; // undoParams to reqNameSimple
           },
           reqModData: function(doss, data) {
@@ -397,6 +401,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           reqRemChild: function(doss, childName) {
             var removed = doss.remChild(childName);
             return [ doss, removed ]; // undoParams for reqAddChild
+          },
+          reqLoadRaw: function(doss, data, editor) {
+            doss.$loadFromRawData(data, editor);
+            return [ doss ]; // undoParams for ???? (no undo func for this one yet)
           },
           
           rollBackAdd: function(doss) {
@@ -425,6 +433,65 @@ var package = new PACK.pack.Package({ name: 'dossier',
         }
       }),
       
+      /* Abilities - functions enabled on a Dossier */
+      abilities: (function() {
+        
+        // Ability: getData
+        var $getDataVal = function(doss, params) {
+          return new P({ val: doss.value });
+        };
+        var $getDataSet = function(doss, params) {
+          return new P({
+            all: doss.children.map(function(c, k) { return c.hasAbility('getData') ? c.$useAbility('getData') : U.SKIP; })
+          });
+        };
+        var $getDataRef = function(doss, params) {
+          return new P({ val: doss.value ? doss.getRefAddress() : null });
+        };
+        
+        // Ability: modData
+        var $modDataVal = function(doss, params) {
+          doss.setValue(U.param(params, 'value'));
+          return p.$null;
+        };
+        var $modDataSet = function(doss, params) {
+          var values = U.param(params, 'values');
+          return new P({
+            all: values.map(function(v, k) { return doss.children[k].$useAbility('modData', v); })
+          }).then(function() { return null; });
+        };
+        var $modDataRef = $modDataVal;
+        
+        // Ability: addData
+        var $addData = function(doss, params) {
+          
+          var data = U.param(params, 'data');
+          var editor = U.pafam(params, 'editor', function() { return new ds.Editor(); });
+          return editor.$addFast({ par: doss, data: data }).then(function(child) {
+            return child.getAddress();
+          });
+          
+        };
+        
+        // Ability: remData
+        var $remData = function(doss, params) {
+          
+          var name = U.param(params, 'name');
+          var editor = U.pafam(params, 'editor', function() { return new ds.Editor(); });
+          return editor.$remFast({ par: doss, name: name }).then(function() {
+            return null;
+          });
+          
+        };
+        
+        return {
+          val: { $getData: $getDataVal, $modData: $modDataVal },
+          set: { $getData: $getDataSet, $modData: $modDataSet, $addData: $addData, $remData: $remData },
+          ref: { $getData: $getDataRef, $modData: $modDataRef }
+        };
+        
+      })(),
+      
       /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
         superclass: tree.TreeNode,
@@ -450,6 +517,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             this.name = ds.getTempName();
             this.outline = U.param(params, 'outline');
+            this.abilities = U.param(params, 'abilities', {});
             
             this.par = null;
           },
@@ -569,7 +637,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             
             if (!this.$started) this.$started = new P({});
-            this.$started.resolve(null);
+            if (this.$started.status === 'pending') this.$started.resolve(null);
             
           },
           stop: function() {
@@ -586,11 +654,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         };}
       }),
+      
+      /* DossierSet */
       DossierSet: U.makeClass({ name: 'DossierSet',
         superclassName: 'Dossier',
         methods: function(sc) { return {
           init: function(params /* outline */) {
-            sc.init.call(this, params);
+            // Use `ds.abilities.set` as default abilities
+            sc.init.call(this, { abilities: ds.abilities.set }.update(params));
             this.children = {};
             this.length = 0;
           },
@@ -606,17 +677,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return child;
           },
-          remChild: function(child) {
-            // If `child` was supplied as a number or a string, resolve it
-            if (!U.isInstance(child, ds.Dossier)) child = this.children[child];
+          remChild: function(name) {
             
-            if (!child || child.par !== this) throw new Error('Couldn\'t remove child "' + child.getAddress() + '"');
+            if (U.isInstance(name, ds.Dossier)) {
+              var child = name;
+              name = name.name;
+            } else {
+              var child = this.children[name];
+            }
             
-            delete this.children[child.name];
+            if (!child || child.par !== this)
+              throw new Error('Dossier "' + this.getAddress() + '" can\'t remove nonexistant child "' + (child ? child.getAddress() : name) + '"');
+            
+            delete this.children[name];
             this.length--;
             child.par = null;
             
             return child;
+            
           },
           getNamedChild0: function(name) {
             if (U.isObj(name, Object))
@@ -689,18 +767,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return ret;
           },
           
-          // TODO: These are `Content`-related methods...
-          getRefChild: function(addr) {
-            return { getValue: function() { return this.getChild(addr); }.bind(this) };
-          },
-          getRefValue: function(addr) {
-            return { getValue: function() { return this.getValue(addr); }.bind(this) };
-          },
-          start: function() {
-            sc.start.call(this);
-            for (var k in this.children) this.children[k].start();
-          },
-          
           map: function(mapFunc) {
             return this.children.map(mapFunc);
           },
@@ -732,7 +798,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               var ret = [];
               for (var k in this.children) ret.push(k);
-              
               return new P({ val: ret });
               
             } else if (command === 'getRawPickedFields') {
@@ -794,6 +859,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var ret = {};
             for (var k in this.children) ret[k] = this.children[k].getDataView0(existing);
             return ret;
+          },
+          
+          start: function() {
+            sc.start.call(this);
+            for (var k in this.children) this.children[k].start();
           }
         };}
       }),
@@ -808,12 +878,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             for (var k in this.outline.i)
               promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k] || null));
-            
-            /*
-            for (var k in data)
-              // Dossier is tightly coupled with Editor, so it's fair to use a "0" method here
-              promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k])); // TODO: 2nd last param was `k` until recently
-            */
             
             return new P({ all: promiseSet });
           },
@@ -881,20 +945,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return child;
           },
           getChildName: function(doss) {
-            /*var pcs = this.prop.split('/');
-            var addr = pcs[0];
-            var prop = pcs[1];
-            
-            var child = doss.getChild(addr);
-            if (!child) throw new Error('Couldn\'t get prop child: (' + doss.getAddress() + ').getChild("' + addr + '")');
-            if (!(prop in child)) throw new Error('Child "' + child.getAddress() + '" missing prop "' + prop + '"');
-            
-            return child[prop];*/
-            
             var nameFunc = this.outline.p.nameFunc;
             var name = nameFunc ? nameFunc(this, doss) : this.nextInd;
             
-            if (!U.valid(name)) throw new Error('`nameFunc` returned an invalid name');
+            if (!U.valid(name)) throw new Error('`nameFunc` (in "' + doss.getAddress() + '") returned an invalid name: ' + name);
             return name;
             
           },
@@ -950,7 +1004,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
         superclassName: 'Dossier',
         methods: function(sc) { return {
           init: function(params /* outline, value */) {
-            sc.init.call(this, params);
+            // Use `ds.abilities.val` as default abilities
+            sc.init.call(this, { abilities: ds.abilities.val }.update(params));
             this.value = U.param(params, 'value', null);
           },
           
@@ -973,14 +1028,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.value;
           },
           setValue: function(value) {
-            if (value !== this.value) {
-              this.value = value;
-              try {
-                this.concern('value', this.value);
-              } catch (err) {
-                console.log(err.stack);
-              }
-            }
+            if (value === this.value) return;
+            this.value = value;
+            this.concern('value', this.value);
           },
           modValue: function(modFunc) {
             var moddedVal = modFunc(this.getValue());
@@ -1042,7 +1092,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (isNaN(value)) throw new Error(this.getAddress() + ' received non-numeric value: "' + value + '"');
             
             sc.setValue.call(this, value);
-          }
+          },
+          getValue: function() { return this.value === null ? 0 : this.value; }
         }; }
       }),
       DossierBoolean: U.makeClass({ name: 'DossierBoolean',
@@ -1058,6 +1109,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
       DossierRef: U.makeClass({ name: 'DossierRef',
         superclassName: 'DossierValue',
         methods: function(sc) { return {
+          init: function(params) {
+            // Use `ds.abilities.ref` as default abilities
+            sc.init.call(this, { abilities: ds.abilities.ref }.update(params));
+          },
           setValue: function(value) {
             if (value === null) { return sc.setValue.call(this, null); }
             
@@ -1199,11 +1254,19 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           $getDoss: function() {
             
-            var $dossData = new P({ val: { versionName: 'emptyState', doss: null } });
+            var $dossData = new P({ val: { versionName: 'empty state', doss: null } });
             
             this.versions.forEach(function(ver) {
               
-              $dossData = $dossData.then((function(ver, dossData) {
+              $dossData = $dossData.then(function(version, prevData) {
+                
+                return version.detect(prevData)
+                  ? version.$apply(prevData)
+                  : prevData;
+                
+              }.bind(null, ver));
+              
+              /*$dossData = $dossData.then((function(ver, dossData) {
                 
                 var versionName = dossData.versionName;
                 var doss = dossData.doss;
@@ -1220,13 +1283,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                 }
                 
-              }).bind(null, ver));
+              }).bind(null, ver));*/
               
             });
             
-            return $dossData.then(function(dossData) {
-              dossData.doss.start(); // Signal to the Dossier that it's ready
-              return dossData.doss;
+            return $dossData.then(function(doss) {
+              if (!U.isInstance(doss, ds.Dossier)) throw new Error('Versioner\'s final output was not a `Dossier`');
+              doss.start(); // Signal to the Dossier that it's ready
+              return doss;
             });
             
           }
@@ -1556,25 +1620,45 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             // Prevent any updates while adding the child
             // (TODO: This really needs to be a stacked operation in case of multiple calls occurring before the 1st completes)
+            // TODO: What about update cancellations which are never resumed, because the operation fails??
             this.cancelUpdates();
             
             // Serially add the value locally, and then remotely
-            return this.doss.$handleRequest({ command: 'addData',  params: { data: localData } }).then(function(localVal) {
+            try {
               
-              return queries.$doQuery({ address: pass.address, command: 'addData', params: { data: data } }).then(function(remoteVal) {
+              //  return this.doss.$useAbility('addChild', { data: localData }).then(function(val) {
+              //    .
+              //    .
+              //    .
+              //  });
+              
+              return this.doss.$handleRequest({ command: 'addData',  params: { data: localData } }).then(function(localVal) {
                 
-                // Turn updates back on once the remote value has added successfully
-                pass.scheduleUpdates();
-                return localVal;
-                
-              }).fail(function(err) {
-                
-                // TODO: Need to remove local child
-                throw err;
+                return queries.$doQuery({ address: pass.address, command: 'addData', params: { data: data } }).then(function(remoteVal) {
+                  
+                  // Turn updates back on once the remote value has added successfully
+                  pass.scheduleUpdates();
+                  return localVal; // Work with the local value instead of remote
+                  
+                }).fail(function(err) {
+                  
+                  // TODO: Need to remove local child
+                  throw err;
+                  
+                });
                 
               });
               
-            });
+            } catch (err) {
+              
+              // TODO: This is lazyiness! doss.$handleRequest can throw an unpromised error. Really, shouldn't
+              // be using an api-related method ($handleRequest) in this context; should simply be able to
+              // call an "addData" method directly.
+              var $p = new P({});
+              $p.reject(err);
+              return $p;
+              
+            }
             
           }
         };}

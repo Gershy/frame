@@ -211,7 +211,7 @@ Error.stackTraceLimit = 100;
   }
 });
 
-// Build utility library (note: the "global" variable is installed client-side by an inline script in mainPage.html)
+// Build utility library (note: client-side, the "global" variable is installed by an inline <script> element)
 global.ENVIRONMENT = {
   type: 'default'
 };
@@ -231,8 +231,11 @@ global.U = {
     */
     if (U.isObj(params) && (name in params)) return params[name];
     if (U.exists(def)) return def;
-    
     throw new Error('missing param: "' + name + '"');
+  },
+  pafam: function(params, name, def) { // `def` is a mandatory param
+    if (U.isObj(params) && (name in params)) return params[name];
+    return def();
   },
   exists: function(p) {
     return typeof p !== 'undefined';

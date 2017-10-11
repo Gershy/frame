@@ -1,0 +1,112 @@
+{
+  "version": "0.0.1 (initial)",
+  "userSet": {
+    "admin": {
+      "username": "admin",
+      "password": "suchsmartadmin",
+      "fname": "Admin",
+      "lname": "Istrator"
+    }
+  },
+  "storySet": {
+    "hahahaha": {
+      "user": "~root.userSet.admin",
+      "createdTime": 1507304628533,
+      "quickName": "hahahaha",
+      "description": "HEWWW",
+      "contestInd": 0,
+      "authorLimit": 100,
+      "contestTime": 86400000,
+      "maxWrites": 100,
+      "maxVotes": 0,
+      "maxWriteLength": 100,
+      "contestLimit": 100,
+      "slapLoadTime": 360000000,
+      "slamLoadTime": 360000000,
+      "phase": "awaitingWrite",
+      "timePhaseStarted": 1507304628533,
+      "authorSet": {
+        "admin": {
+          "user": "~root.userSet.admin",
+          "numSlaps": 0,
+          "lastSlapTime": 1507304628533,
+          "numSlams": 0,
+          "lastSlamTime": 1507304628533
+        }
+      },
+      "contestSet": {
+        "0": {
+          "num": 0,
+          "writeSet": {}
+        }
+      },
+      "writeSet": {}
+    },
+    "rjlkjdl": {
+      "user": "~root.userSet.admin",
+      "createdTime": 1507313793988,
+      "quickName": "rjlkjdl",
+      "description": "REEYYYOOOO",
+      "contestInd": 0,
+      "authorLimit": 100,
+      "contestTime": 43200000,
+      "maxWrites": 100,
+      "maxVotes": 100,
+      "maxWriteLength": 100,
+      "contestLimit": 100,
+      "slapLoadTime": 360000000,
+      "slamLoadTime": 360000000,
+      "phase": "awaitingWrite",
+      "timePhaseStarted": 1507313793988,
+      "authorSet": {
+        "admin": {
+          "user": "~root.userSet.admin",
+          "numSlaps": 0,
+          "lastSlapTime": 1507313793988,
+          "numSlams": 0,
+          "lastSlamTime": 1507313793988
+        }
+      },
+      "contestSet": {
+        "0": {
+          "num": 0,
+          "writeSet": {}
+        }
+      },
+      "writeSet": {}
+    },
+    "fdafadsf": {
+      "user": "~root.userSet.admin",
+      "createdTime": 1507586644623,
+      "quickName": "fdafadsf",
+      "description": "adsfasdfasdfasdf",
+      "contestInd": 0,
+      "authorLimit": 100,
+      "contestTime": 75600000,
+      "maxWrites": 100,
+      "maxVotes": 100,
+      "maxWriteLength": 100,
+      "contestLimit": 100,
+      "slapLoadTime": 360000000,
+      "slamLoadTime": 360000000,
+      "phase": "awaitingWrite",
+      "timePhaseStarted": 1507586644623,
+      "authorSet": {
+        "admin": {
+          "user": "~root.userSet.admin",
+          "numSlaps": 0,
+          "lastSlapTime": 1507586644623,
+          "numSlams": 0,
+          "lastSlamTime": 1507586644623
+        }
+      },
+      "contestSet": {
+        "0": {
+          "num": 0,
+          "writeSet": {}
+        }
+      },
+      "writeSet": {}
+    }
+  }
+}

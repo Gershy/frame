@@ -9,12 +9,6 @@
   10% { transform: scale(0); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
 }
-@keyframes scaleIn {
-  0% { transform: scale(5, 0); opacity: 0; }
-  10% { transform: scale(5, 0); opacity: 0; }
-  60% { transform: scale(4, 0.01); opacity: 0.4; }
-  100% { transform: scale(1, 1); opacity: 1; }
-}
 @keyframes spin {
 	0% { transform: rotate(0deg); }
 	30% { transform: rotate(450deg); }
@@ -36,6 +30,16 @@
   40% { width: 50px; }
   70% { width: 15px; }
   100% { width: 50px; }
+}
+@keyFrames hueActive {
+  0% { background-color: #0abd0a; }
+  50% { background-color: #0b8547; }
+  100% { background-color: #0abd0a; }
+}
+@keyFrames hueActiveBorder {
+  0% { border-color: #0abd0a; }
+  50% { border-color: #0b8547; }
+  100% { border-color: #0abd0a; }
 }
 
 #root {
@@ -84,17 +88,44 @@ Login/logout transition
   pointer-events: none;
 }
 
-/*
-TODO: Standardized forms
-*/
-.form {}
+/* Standardized forms */
+.form {
+  padding: 6px 4px 14px;
+}
 .form > .error {}
-.form > .formItem {}
-.form > .formItem .interactive {} /* Applies to buttons and entry fields */
-.form > .formItem > .input {}
-.form > .formItem > .input.focus > .anim > .a
-.form > .formItem > .error {}
+.form > .formItem {
+  position: relative;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.form > .formItem > .name {
+  display: block;
+  font-size: 12px;
+}
+.form > .formItem .interactive {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #606060;
+}
+.form > .formItem > .input {
+  border-bottom: 1px solid #cacaca;
+}
+.form > .formItem > .input.focus > .anim > .a {
+  background-color: #606060;
+}
+.form > .formItem > .error {
+  color: #a80000;
+}
 .form > .formItem > .error > .text {}
+.form > .formItem > .input.clock {
+  padding: 4px 0;
+}
+.form > .formItem > .input.button {
+  border-bottom: none;
+}
+.form > .formItem > .input.button.toggleButton {
+  display: inline-block;
+  margin-top: 3px;
+}
 .form > .formSubmit {}
 .form > .loading {
   position: absolute;
@@ -111,14 +142,31 @@ TODO: Standardized forms
   border-radius: 20%;
 }
 
+.form > .summary {
+  margin: 20px 0 15px;
+  color: #484848;
+  font-family: serif;
+}
+.form > .summary > .summaryItem {
+  margin-bottom: 10px;
+}
+.form > .summary > .summaryItem > .text {
+  margin-right: 4px;
+}
+.form > .summary > .summaryItem > .calc {
+  display: inline-block;
+}
+.form > .summary > .summaryItem > .calc > .waiting { font-style: italic; }
+.form > .summary > .summaryItem > .calc > .finished { font-weight: bold; }
+
 #root-login-out {
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
   background-color: #ffffff;
 }
-#root-login-out:before {
-  content: "";
+#root-login-out::before {
+  content: '';
   position: relative;
   display: inline-block;
   width: 0; height: 100%;
@@ -146,7 +194,6 @@ TODO: Standardized forms
   display: block;
   height: 40px; line-height: 40px;
   margin: 3px 0;
-  border-radius: 14px;
   overflow: hidden;
   font-size: 30px;
 }
@@ -172,24 +219,32 @@ TODO: Standardized forms
   color: #ffffff;
   box-shadow: none;
 }
+
+#loginForm > .formItem { margin-bottom: 0; }
+#loginForm > .formItem > .input { border: none; }
+#loginForm > .formItem > .input > .interactive {
+  background-color: #0a00a9;
+  color: #ffffff;
+  border-radius: 14px;
+}
+#loginForm > .formItem > .input.focus > .anim > .a {
+  background-color: #ffffff;
+}
+
 #loginForm > .username,
 #loginForm > .password,
 #loginForm > .signin,
-#loginForm > .signup {
-  /*animation-name: scaleIn;*/
+#loginForm > .signup,
+#loginForm > .decoration {
   animation-name: fadeScaleIn;
   animation-duration: 1000ms;
   animation-iteration-count: 1;
   animation-timing-function: ease-out;
 }
 
-/*
-Give all .interactive elements a consistent feel
-*/
+/* Give all .interactive elements a consistent feel */
 .interactive { background-color: #0a00a9; }
-.interactive.button:focus {
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.4) !important;
-}
+.interactive.button:focus { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.4); }
 .input.focus > .anim > .a { background-color: #ffffff; }
 
 /*
@@ -207,33 +262,73 @@ Give all .button elements a consistent feel
   box-shadow: inset 0 0 0 24px #1286c4;
   color: #ffffff;
 }
+
 .button.textButton {
   border-radius: 5px;
   font-size: 20px; padding: 10px;
 }
+
 .button.iconButton {
   padding: 0;
   width: 40px; height: 40px;
   border-radius: 100%;
 }
-.button.iconButton.type-larrow:before { content: '\0021e6'; font-size: 30px; line-height: 39px; }
-.button.iconButton.type-plus:before { content: '\00002b'; font-size: 40px; line-height: 42px; }
+.button.iconButton.type-larrow::before { content: '\0021e6'; font-size: 30px; line-height: 39px; }
+.button.iconButton.type-plus::before { content: '\00002b'; font-size: 40px; line-height: 42px; }
 
-/*
-the .spinner element consists of the funky spinner
-*/
+.button.toggleButton {
+  position: relative;
+  width: 90px; height: 30px;
+  padding: 0;
+  box-shadow: inset 0 0 11px 6px #ffffff;
+  background-color: #ffffff;
+}
+.button.toggleButton:focus {
+  box-shadow: inset 0 0 11px 6px #ffffff;
+}
+.button.toggleButton::before,
+.button.toggleButton::after {
+  content: '';
+  position: absolute;
+  animation-duration: 2000ms;
+  animation-delay: 500ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.button.toggleButton::before {
+  left: 0; top: 10px;
+  width: 30px; height: 10px;
+  border-left: 30px solid;
+  border-right: 30px solid;
+  border-color: #858589;
+  z-index: -1;
+  animation-name: hueActiveBorder;
+  transition: border-color 200ms 300ms ease-out;
+}
+.button.toggleButton::after {
+  left: 50%; top: 50%;
+  width: 30px; height: 14px;
+  border-radius: 25%;
+  background-color: #858589;
+  margin-left: -15px; margin-top: -7px;
+  animation-name: hueActive;
+  transform: rotate(0deg);
+  transition: transform 300ms ease-in-out, background-color 200ms 300ms ease-out;
+}
+
+.button.toggleButton.true::before { border-color: #0bca0b; }
+.button.toggleButton.true::after { background-color: #0bca0b; }
+.button.toggleButton.false::before { animation: none; }
+.button.toggleButton.false::after { animation: none; transform: rotate(90deg); }
+
+/* Cool main-page decoration */
 .spinner {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
   pointer-events: none;
-  
-  animation-name: fadeScaleIn;
-  animation-duration: 1000ms;
-  animation-iteration-count: 1;
-  animation-timing-function: ease-out;
 }
-.spinner > .spin {
+.spinner.spinner1 > .spin {
   position: absolute;
   left: 50%; top: 50%;
   width: 0; height: 0;
@@ -243,15 +338,15 @@ the .spinner element consists of the funky spinner
 	animation-timing-function: ease-in-out;
 	animation-duration: 50s;
 }
-.spinner > .spin > .arm {
+.spinner.spinner1 > .spin > .arm {
   position: absolute;
 	width: 280px; height: 0;
 	left: 0; top: 0;
 	
 	transform-origin: 0% 50%;
 }
-.spinner > .spin > .arm:before {
-  content: "";
+.spinner.spinner1 > .spin > .arm::before {
+  content: '';
   position: absolute;
   display: block;
 	width: 8px; height: 130px;
@@ -265,21 +360,8 @@ the .spinner element consists of the funky spinner
 	animation-duration: 21s;
 }
 
-/*
-The .spinner2 element is the loading indicator; the arms move at slightly different speeds
-*/
-.spinner2 {
-  position: absolute;
-  width: 100%; height: 100%;
-  left: 0; top: 0;
-  pointer-events: none;
-  
-  animation-name: fadeScaleIn;
-  animation-duration: 1000ms;
-  animation-iteration-count: 1;
-  animation-timing-function: ease-out;
-}
-.spinner2 > .spin {
+/* Frame-wide loading indicator */
+.spinner.spinner2 > .spin {
   position: absolute;
   left: 50%; top: 50%;
   width: 0; height: 0;
@@ -289,7 +371,7 @@ The .spinner2 element is the loading indicator; the arms move at slightly differ
   animation-iteration-count: infinite;
   animation-timing-function: linear;
 }
-.spinner2 > .spin > .arm {
+.spinner.spinner2 > .spin > .arm {
   position: absolute;
 	width: 50px; height: 0;
 	left: 0; top: 0;
@@ -301,8 +383,8 @@ The .spinner2 element is the loading indicator; the arms move at slightly differ
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
 }
-.spinner2 > .spin > .arm:before {
-  content: "";
+.spinner.spinner2 > .spin > .arm::before {
+  content: '';
   position: absolute;
   display: block;
 	width: 7px; height: 7px;
@@ -311,10 +393,44 @@ The .spinner2 element is the loading indicator; the arms move at slightly differ
 	border-radius: 100%;
 }
 
-/*
-.titledContent elements have a .title element, an arbitrary .content
-pane, and .mainButton buttons (to the left and right of the title)
-*/
+/* Button loading indicator */
+.spinner.spinner3 > .spin {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 0; height: 0;
+  
+  animation-name: spin3;
+  animation-duration: 2000ms;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+}
+.spinner.spinner3 > .spin > .arm {
+  position: absolute;
+	width: 26px; height: 0;
+	left: 0; top: 0;
+	
+	transform-origin: 0% 50%;
+  
+  animation-name: spin3;
+  animation-duration: 2400ms;
+  animation-direction: reverse;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-out;
+}
+.spinner.spinner3 > .spin > .arm::before {
+  content: '';
+  position: absolute;
+  display: block;
+	width: 30px; height: 4px;
+	right: 0; top: 0;
+	background-color: #ffffff;
+	border-radius: 50%;
+  box-shadow: 0 0 10px 0 #ffffff;
+  
+  transform: rotate(25deg) scale(0.3);
+}
+
+/* Layout element with a title, left/right control buttons, and content */
 .titledContent {
   position: absolute;
   width: 100%; height: 100%;
@@ -418,57 +534,19 @@ pane, and .mainButton buttons (to the left and right of the title)
   border-radius: 100%;
   background-color: #1286c4;
 }
+#storySet > .story > .authored > .false > .spin {
+  display: none;
+}
+#storySet > .story > .authored > .false.loading > .spin {
+  display: block;
+}
 
 #storyForm {
   background-color: #ffffff;
-  padding: 0 4px;
 }
-#storyForm > .formItem {
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-#storyForm > .formItem > .name {
-  display: block;
-  font-size: 12px;
-}
-#storyForm > .formItem > .input {
-  border-bottom: 1px solid #cacaca;
-}
-#storyForm > .formItem .interactive {
-  background-color: rgba(0, 0, 0, 0.05);
-  color: #606060;
-}
-#storyForm > .formItem > .input.focus > .anim > .a {
-  background-color: #606060;
-}
-
 #storyForm > .formItem.description > .input {
   height: 100px;
 }
-#storyForm > .formItem.contestTime > .input {
-  margin-right: 5px;
-}
-#storyForm > .formItem.contestTime > .value {
-  height: 30px;
-  line-height: 30px;
-}
-
-#storyForm > .summary {
-  margin: 20px 0 15px;
-  color: #484848;
-  font-family: serif;
-}
-#storyForm > .summary > .summaryItem {
-  margin-bottom: 10px;
-}
-#storyForm > .summary > .summaryItem > .text {
-  margin-right: 4px;
-}
-#storyForm > .summary > .summaryItem > .calc {
-  display: inline-block;
-}
-#storyForm > .summary > .summaryItem > .calc > .waiting { font-style: italic; }
-#storyForm > .summary > .summaryItem > .calc > .finished { font-weight: bold; }
 
 #story {}
 #story > .content { overflow: hidden; }
@@ -546,8 +624,8 @@ pane, and .mainButton buttons (to the left and right of the title)
   padding: 0 3px;
   font-size: 12px;
 }
-#ws:after {
-  content: "";
+#ws::after {
+  content: '';
   display: block;
   width: 150px;
   margin: 25px auto 0 auto;
@@ -589,7 +667,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   background-color: #000000;
   color: #ffffff;
 }
-#story > .content > .actions > .write > .submit:before {
+#story > .content > .actions > .write > .submit::before {
   content: '\3004';
   position: absolute;
   width: 100px; height: 150px; line-height: 150px;
@@ -599,7 +677,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   transform: scale(0.6);
   transition: transform 1000ms linear;
 }
-#story > .content > .actions > .write > .submit:hover:before {
+#story > .content > .actions > .write > .submit:hover::before {
   transform: scale(1);
 }
 #story > .content > .actions > .vote > .title {
@@ -683,8 +761,8 @@ pane, and .mainButton buttons (to the left and right of the title)
   background-color: transparent;
   box-shadow: none;
 }
-#contenderSet > .contender > .votable > .button:before {
-  content: "";
+#contenderSet > .contender > .votable > .button::before {
+  content: '';
   position: absolute;
   display: block;
   width: 20px; height: 20px;
@@ -694,7 +772,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   box-shadow: inset 0 0 0 1px #606060;
   transition: width 200ms ease-in-out, height 200ms ease-in-out, margin-top 200ms ease-in-out, right 200ms ease-in-out;
 }
-#contenderSet > .contender > .votable.choose-vote:hover > .button:before {
+#contenderSet > .contender > .votable.choose-vote:hover > .button::before {
   width: 30px; height: 30px;
   margin-top: -15px;
   right: 5px;
@@ -712,11 +790,11 @@ pane, and .mainButton buttons (to the left and right of the title)
 .clock.format-string > .component > .name { }
 .clock.format-string > .component > .value { margin-right: 4px; }
 .clock.format-string > .separator { margin-right: 4px; }
-.clock.format-string > .separator:before { content: ","; }
+.clock.format-string > .separator::before { content: ","; }
 .clock.format-string > .separator.empty { display: none; }
 
 .clock.format-digital { }
-.clock.format-digital > .separator:before { content: ":"; }
+.clock.format-digital > .separator::before { content: ":"; }
 .clock.format-digital > .component { }
 .clock.format-digital > .component > .name { display: none; }
 
@@ -733,7 +811,7 @@ pane, and .mainButton buttons (to the left and right of the title)
   text-align: center;
 }
 .clock.interactive.format-string > .component.empty { display: inline-block; }
-.clock.interactive.format-string > .separator:before { content: none; }
+.clock.interactive.format-string > .separator::before { content: none; }
 
 .clock.interactive > .component > .control {
   position: absolute;
@@ -750,5 +828,5 @@ pane, and .mainButton buttons (to the left and right of the title)
 }
 .clock.interactive > .component > .control.add { top: 1px; }
 .clock.interactive > .component > .control.sub { bottom: 1px; }
-.clock.interactive > .component > .control.add:before { content: '\00002b'; }
-.clock.interactive > .component > .control.sub:before { content: '\002212'; }
+.clock.interactive > .component > .control.add::before { content: '\00002b'; }
+.clock.interactive > .component > .control.sub::before { content: '\002212'; }

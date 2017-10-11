@@ -19,8 +19,8 @@ var fileSys = require('fs');
 var config = require('./config.js');
 var compiler = require('./compilers/default.js');
 
-var package = new PACK.pack.Package({ name: 'server',
-  dependencies: [ 'p', 'queries', 'dossier' ],
+new PACK.pack.Package({ name: 'server',
+  dependencies: [ 'p', 'queries' ],
   buildFunc: function() {
     return {
       ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
@@ -402,5 +402,4 @@ var package = new PACK.pack.Package({ name: 'server',
     console.log('Listening at ' + ip + ':' + port + '...');
     
   }
-});
-package.build();
+}).build();

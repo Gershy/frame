@@ -112,11 +112,11 @@ var package = new PACK.pack.Package({ name: 'userify',
           update: function(view) {
             var nextClass = this.info.getValue();
             var classList = view.domRoot.classList;
-            if (!nextClass || !classList.contains(nextClass)) {
+            if (nextClass === null || !classList.contains(nextClass)) {
               
               // Remove all classes, then apply current one
               classList.remove.apply(classList, this.list); 
-              if (nextClass) classList.add(nextClass);
+              if (nextClass !== null) classList.add(nextClass);
               
             }
           },
@@ -541,10 +541,10 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclass: tree.TreeNode,
         methods: function(sc, c) { return {
           init: function(params /* name, cssId, framesPerTick, cssClasses, decorators */) {
-            this.name = U.param(params, 'name');
+            sc.init.call(this, params);
             if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
             
-            // `this.htmlId` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
+            // `this.cssId` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
             this.cssId = U.param(params, 'cssId', null);
             
             this.cssClasses = U.param(params, 'cssClasses', []);
@@ -552,9 +552,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.framesPerTick = U.param(params, 'framesPerTick', 1);
             this.frameCount = this.framesPerTick; // `frameCount` starting full ensures 1st tick not skipped
             
-            this.par = null;
             this.domRoot = null;
-            this.millisAlive = 0;
           },
           getNamedChild: function(addr) { return null; },
           
@@ -578,7 +576,6 @@ var package = new PACK.pack.Package({ name: 'userify',
                 this.tick(millis * this.framesPerTick);
                 this.frameCount = 0;
               }
-              this.millisAlive += millis;
             
             }
             
@@ -616,7 +613,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'View',
         methods: function(sc, c) { return {
           init: function(params /* name, cssId, framesPerTick, cssClasses, decorators, html */) {
-            sc.init.call(this, params.update({ framesPerTick: 0 }));
+            sc.init.call(this, params);
             this.html = U.param(params, 'html');
           },
           createDomRoot: function() {
@@ -715,6 +712,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             
             var input = this.domRoot.childNodes[0];
             var inputText = this.info.getValue();
+            if (inputText === null) inputText = ''; // Work with `null` value as if it were the empty string
             
             // Update text items
             uf.domSetText(this.domRoot.childNodes[1], this.placeholderInfo.getValue());

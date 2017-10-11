@@ -5,7 +5,7 @@ new PACK.pack.Package({ name: 'tree',
       methods: function(sc, c) { return {
         init: function(params /* */) {
           this.name = U.param(params, 'name');
-          this.par = null;
+          this.par = U.param(params, 'par', null);
         },
         getAncestry: function() {
           var ret = [];
