@@ -231,6 +231,10 @@ Login/logout transition
   background-color: #ffffff;
 }
 
+#loginForm > .signin:focus,
+#loginForm > .signup:focus {
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.4);
+}
 #loginForm > .username,
 #loginForm > .password,
 #loginForm > .signin,
@@ -244,7 +248,6 @@ Login/logout transition
 
 /* Give all .interactive elements a consistent feel */
 .interactive { background-color: #0a00a9; }
-.interactive.button:focus { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.4); }
 .input.focus > .anim > .a { background-color: #ffffff; }
 
 /*
@@ -282,9 +285,6 @@ Give all .button elements a consistent feel
   padding: 0;
   box-shadow: inset 0 0 11px 6px #ffffff;
   background-color: #ffffff;
-}
-.button.toggleButton:focus {
-  box-shadow: inset 0 0 11px 6px #ffffff;
 }
 .button.toggleButton::before,
 .button.toggleButton::after {

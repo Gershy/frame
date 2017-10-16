@@ -5,8 +5,6 @@
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
-HEEERE:::::: Mess around on the story creation form; fill in quickName and submit, then correct error and submit, etc.
-
 TASKS:
 [X] Need to allow persisted data to survive openshift restarts
 [X] Form validation
@@ -70,17 +68,17 @@ new PACK.pack.Package({ name: 'creativity',
       
       validate: {
         integer: function(name, n, min, max) {
-          if (!U.isObj(n, Number) || parseInt(n) !== n) throw new Error(name + '(' + n + ') is non-integer');
-          if (U.exists(min) && n < min) throw new Error(name + '(' + n + ') is too small');
-          if (U.exists(max) && n > max) throw new Error(name + '(' + n + ') is too large');
+          if (!U.isObj(n, Number) || parseInt(n) !== n) throw new Error(name + ' (' + n + ') is non-integer');
+          if (U.exists(min) && n < min) throw new Error(name + ' (' + n + ') is too small');
+          if (U.exists(max) && n > max) throw new Error(name + ' (' + n + ') is too large');
           return n;
         },
         intBool: function(name, n, min, max) {
           if (n === null) return null;
           
-          if (!U.isObj(n, Number) || parseInt(n) !== n) throw new Error(name + '(' + n + ', ' + n.constructor.name + ') is non-intBool');
-          if (U.exists(min) && n < min && n !== 0) throw new Error(name + '(' + n + ') is too small');
-          if (U.exists(max) && n > max && n !== 0) throw new Error(name + '(' + n + ') is too large');
+          if (!U.isObj(n, Number) || parseInt(n) !== n) throw new Error(name + ' (' + n + ') is non-intBool');
+          if (U.exists(min) && n < min && n !== 0) throw new Error(name + ' (' + n + ') is too small');
+          if (U.exists(max) && n > max && n !== 0) throw new Error(name + ' (' + n + ') is too large');
           
           return n || null;
         },
@@ -756,7 +754,7 @@ new PACK.pack.Package({ name: 'creativity',
           return {
             user: user,
             createdTime: currentTime,
-            quickName: U.param(params, 'quickName'),
+            quickName: cr.validate.string('quickName', U.param(params, 'quickName'), 3, 16),
             description: cr.validate.string('description', U.param(params, 'description'), 10, 250),
             contestInd: 0,
             authorLimit: cr.validate.intBool('authorLimit', U.param(params, 'authorLimit'), 3),
@@ -999,7 +997,7 @@ new PACK.pack.Package({ name: 'creativity',
       { name: 'data 0.0.1 -> 0.0.2',
         detect: function(prevVal) { return prevVal.data.version.split(' ')[0] === '0.0.1'; },
         $apply: function(prevVal) {
-          prevVal.data.version = '0.0.2 (anonymized)';
+          prevVal.data.version = '0.0.2 (anonymity)';
           
           // On this version, all pre-existing stories are initially anonymized
           var storySet = prevVal.data.storySet;
@@ -1019,7 +1017,7 @@ new PACK.pack.Package({ name: 'creativity',
         }
       },*/
       /// =SERVER}
-      { name: 'outline 0.0.1 -> 0.0.2 (anonymized)',
+      { name: 'outline 0.0.1 -> 0.0.2 (anonymity)',
         detect: function(prevVal) { return true; },
         $apply: function(prevVal) {
           var storyOutline = prevVal.outline.getChild('storySet.*');

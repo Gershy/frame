@@ -470,9 +470,9 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.submits.push(ret);
             return ret;
           },
-          isValid: function() {
-            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return false;
-            return true;
+          getError: function() {
+            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return this.inputs[i].err;
+            return null;
           },
           start: function(view) {
           },
@@ -526,8 +526,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             var pass = this;
             var $action = U.param(params, '$action');
             sc.init.call(this, params.update({ $action: function(event) {
-              if (!pass.form.isValid()) return;
-              return $action(event);
+              var err = pass.form.getError();
+              return err ? new P({ err: err }) : $action(event);
             }}));
           }
         };}
