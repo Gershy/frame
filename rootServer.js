@@ -66,7 +66,7 @@ new PACK.pack.Package({ name: 'server',
             // Find the static file, serve it
             
             var ext = path.extname(filepath);
-            if (!(ext in config.legalExtensions)) throw new Error('Illegal extension: "' + ext + '"');
+            if (!config.legalExtensions.contains(ext)) throw new Error('Illegal extension: "' + ext + '"');
             ext = config.legalExtensions[ext];
             
             var binary = ext[0] === '!';
@@ -87,7 +87,7 @@ new PACK.pack.Package({ name: 'server',
             parameter. The "session" parameter is also a reserved
             keyword, so if it has been provided an error is thrown.
             */
-            if ('session' in params) throw new Error('illegal "session" param');
+            if (params.contains('session')) throw new Error('illegal "session" param');
             
             var address = U.param(params, 'address');
             
@@ -148,7 +148,7 @@ new PACK.pack.Package({ name: 'server',
                 html.data = html.data.replace(/{{assetVersion}}/g, PACK.server.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
                 
-                if ('resources' in PACK[appName]) {
+                if (PACK[appName].contains('resources')) {
                   
                   var htmlElems = [];
                   
@@ -156,8 +156,8 @@ new PACK.pack.Package({ name: 'server',
                   
                   var ver = '?' + PACK.server.ASSET_VERSION;
                   
-                  if ('css' in r) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
-                  if ('js' in r) r.js.forEach(function(js) { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
+                  if (r.contains('css')) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
+                  if (r.contains('js')) r.js.forEach(function(js) { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
                   
                   html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '\t\t' + html; }).join('\n'));
                   
@@ -199,7 +199,7 @@ new PACK.pack.Package({ name: 'server',
             var Session = PACK.server.Session;
             var sessionList = Session.SESSIONS;
             
-            if (!(ip in sessionList)) sessionList[ip] = new Session({ appName: appName, ip: ip });
+            if (!sessionList.contains(ip)) sessionList[ip] = new Session({ appName: appName, ip: ip });
             
             return sessionList[ip];
             
@@ -235,7 +235,7 @@ new PACK.pack.Package({ name: 'server',
           }
           
           // Handle the special "_data" parameter
-          if ('_data' in queryParams) {
+          if (queryParams.contains('_data')) {
             // The "_data" property overwrites any properties in the query of the same name
             var obj = U.stringToThing(queryParams._data);
             
@@ -277,11 +277,11 @@ new PACK.pack.Package({ name: 'server',
         return $ret.then(function(queryData) {
           
           // Ensure that the "url" property is not supplied by the client
-          if ('url' in queryData) throw new Error('Provided reserved property: "url"');
+          if (queryData.contains('url')) throw new Error('Provided reserved property: "url"');
           queryData.url = queryUrl;
           
           // Ensure there is an "address" property
-          if (!('address' in queryData)) queryData.address = [];
+          if (!queryData.contains('address')) queryData.address = [];
           
           // Ensure the "address" property is an `Array`
           if (U.isObj(queryData.address, String))
@@ -394,8 +394,8 @@ new PACK.pack.Package({ name: 'server',
     // require(serverFileName);
     require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
-    if ('port' in args) port = args.port;
-    if ('ip' in args) ip = args.ip;
+    if (args.contains('port')) port = args.port;
+    if (args.contains('ip')) ip = args.ip;
     
     var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
     server.listen(port, ip);

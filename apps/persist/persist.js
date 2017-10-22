@@ -94,7 +94,7 @@ new PACK.pack.Package({ name: 'persist',
           $getData: function() {
             var pass = this;
             return $readFile(this.pathName).then(function(data) {
-              if (!data.length) throw new Error(); // An empty file results in default data
+              if (!data.length) throw new Error(); // An empty file responds with default data
               return JSON.parse(data);
             }).fail(function() {
               var data = pass.genDefaultData();

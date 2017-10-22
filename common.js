@@ -8,10 +8,48 @@ run on server or client side:
   -DB: Reference to the mongodb database object
 */
 
-Error.stackTraceLimit = 100;
+Error.stackTraceLimit = Infinity;
 
 // Add convenience methods to pre-existing classes
 [
+  { target: Object.prototype,
+    props: {
+      update: function(obj) {
+        for (var k in obj) this[k] = obj[k];
+        return this;
+      },
+      clone: function(props) {
+        return {}.update(this).update(props ? props : {});
+      },
+      forEach: function(it) {
+        for (var k in this) it(this[k], k, this);
+      },
+      map: function(it) {
+        var ret = {};
+        for (var k in this) {
+          var v = it(this[k], k, this);
+          if (v !== U.SKIP) ret[k] = v;
+        }
+        return ret;
+      },
+      toArray: function(func) {
+        var ret = [];
+        
+        if (func)
+          for (var k in this) ret.push(func(this[k], k));
+        else
+          for (var k in this) ret.push(this[k]);
+        
+        return ret;
+      },
+      pick: function(names) {
+        var ret = {};
+        for (i = 0, len = names.length; i < len; i++) ret[names[i]] = this[names[i]];
+        return ret;
+      },
+      contains: Object.prototype.hasOwnProperty
+    },
+  },
   { target: String.prototype,
     props: {
       contains: function(str) {
@@ -53,92 +91,6 @@ Error.stackTraceLimit = 100;
           ret = ret & ret; // Convert to 32bit integer
         }
         return ret;
-      }
-    },
-  },
-  { target: Object.prototype,
-    props: {
-      update: function(obj) {
-        for (var k in obj) this[k] = obj[k];
-        return this;
-      },
-      safeUpdate: function(obj) {
-        for (var k in obj)
-          if (k in this) return false;
-        
-        this.update(obj);
-        return true;
-      },
-      clone: function(props) {
-        return {}.update(this).update(props ? props : {});
-      },
-      forEach: function(it) {
-        for (var k in this) it(this[k], k, this);
-      },
-      map: function(it) {
-        var ret = {};
-        for (var k in this) {
-          var v = it(this[k], k, this);
-          if (v !== U.SKIP) ret[k] = v;
-        }
-        return ret;
-      },
-      every: function(it) {
-        for (var k in this) if (!it(this[k], k, this)) return false;
-        return true;
-      },
-      toArray: function(func) {
-        var ret = [];
-        
-        if (func)
-          for (var k in this) ret.push(func(this[k], k));
-        else
-          for (var k in this) ret.push(this[k]);
-        
-        return ret;
-      },
-      keysToArray: function() {
-        var ret = [];
-        for (var k in this) ret.push(k);
-        return ret;
-      },
-      flatten: function(depth, delim) {
-        return this.flatten0(
-          U.exists(depth) ? (depth - 1) : Number.MAX_SAFE_INTEGER,
-          U.exists(delim) ? delim : '.'
-        );
-      },
-      flatten0: function(depth, delim, prefix) {
-        var ret = {};
-        for (var k in this) {
-          
-          var kk = U.exists(prefix) ? (prefix + delim + k) : k;
-          var o = this[k];
-          
-          if (U.isObj(o, Object) && depth > 0) {
-            
-            var flattened = o.flatten0(depth - 1, delim, kk);
-            for (var j in flattened) ret[j] = flattened[j];
-            
-          } else {
-            
-            ret[kk] = this[k];
-            
-          }
-          
-        }
-        return ret;          
-      },
-      hasProps: function(propNames) {
-        for (var i = 0, len = propNames.length; i < len; i++)
-          if (!(propNames[i] in this)) return false;
-        
-        return true;
-      },
-      shallowCompare: function(obj) {
-        if (!U.isObj(obj, Object)) return false;
-        for (var k in this) if (!(k in obj) || obj[k] !== this[k]) return false;
-        return true;
       }
     },
   },
@@ -229,12 +181,12 @@ global.U = {
     Used to retrieve an item from an object. If def is provided and no
     item under the "name" key is found, def is returned.
     */
-    if (U.isObj(params) && (name in params)) return params[name];
+    if (U.isObj(params) && (params.contains(name))) return params[name];
     if (U.exists(def)) return def;
     throw new Error('missing param: "' + name + '"');
   },
   pafam: function(params, name, def) { // `def` is a mandatory param
-    if (U.isObj(params) && (name in params)) return params[name];
+    if (U.isObj(params) && params.contains(name)) return params[name];
     return def();
   },
   exists: function(p) {
@@ -285,7 +237,7 @@ global.U = {
     throw new Error('Cannot get first property of empty object');
   },
   matches: function(o, o2) {
-    for (var k in o2) if (!(k in o) || o[k] !== o2[k]) return false;
+    for (var k in o2) if (!o.contains(k) || o[k] !== o2[k]) return false;
     return true;
   },
   deepSet: function(params /* name, root, value, overwrite */) {
@@ -299,11 +251,11 @@ global.U = {
     var ptr = root;
     for (var i = 0, len = comps.length - 1; i < len; i++) {
       var c = comps[i];
-      if (!(c in ptr)) ptr[c] = {};
+      if (!ptr.contains(c)) ptr[c] = {};
       ptr = ptr[c];
     }
     var lastComp = comps[comps.length - 1];
-    if (!overwrite && (lastComp in ptr)) throw new Error('tried to overwrite value: "' + name + '"');
+    if (!overwrite && ptr.contains(lastComp)) throw new Error('tried to overwrite value: "' + name + '"');
     
     ptr[lastComp] = value;
   },
@@ -317,7 +269,7 @@ global.U = {
     var ptr = root;
     for (var i = 0, len = name.length; i < len; i++) {
       var c = name[i];
-      if (!(c in ptr)) {
+      if (!ptr.contains(c)) {
         if (createIfNone)  ptr[c] = {};
         else               return null;
       }
@@ -337,7 +289,7 @@ global.U = {
     }
     
     var name = U.param(params, 'name');
-    if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
+    if (namespace.contains(name)) throw new Error('tried to overwrite class "' + name + '"');
     
     var description = U.param(params, 'description', null);
     
@@ -361,13 +313,13 @@ global.U = {
     
     // Class `name` properties cannot clash within the namespace
     var name = U.param(params, 'name'); // TODO: this should be "title", not "name"
-    if (name in namespace) throw new Error('tried to overwrite class "' + name + '"');
+    if (namespace.contains(name)) throw new Error('tried to overwrite class "' + name + '"');
     
     // `superclass` is calculated either via `superclassName`, or provided directly with `superclass`
     var superclassName = U.param(params, 'superclassName', null);
     if (superclassName) {
       
-      if (!(superclassName in namespace)) throw new Error('bad superclass name: "' + superclassName + '"');
+      if (!namespace.contains(superclassName)) throw new Error('bad superclass name: "' + superclassName + '"');
       var superclass = namespace[superclassName];
       
     } else {
@@ -397,6 +349,7 @@ global.U = {
     var whiteClassProps = [];
     var blackClassProps = [ 'title', 'heirName', 'par' ];
     var statik = U.param(params, 'statik', {});
+    if (U.isObj(statik, Function)) statik = statik(cls);
     
     for (var i = 0; i < whiteClassProps.length; i++)
       if (!statik.hasOwnProperty(whiteClassProps[i])) throw new Error('Missing required statik property: "' + whiteClassProps[i] + '"');
@@ -446,10 +399,8 @@ global.U = {
     // Consider all super methods, which aren't overriden in the subclass, for conflicts
     for (var k in supMethods) {
       
-      if (k in subMethods) continue;
-      
-      if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
-        conflictLists[k] = [];
+      if (subMethods.contains(k)) continue;
+      if (!conflictLists.contains(k)) conflictLists[k] = [];
       
       conflictLists[k].push({
         name: superclass.title,
@@ -462,8 +413,7 @@ global.U = {
     // Consider all subclass methods for conflicts
     for (var k in subMethods) {
       
-      if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
-        conflictLists[k] = [];
+      if (!conflictLists.contains(k)) conflictLists[k] = [];
       
       conflictLists[k].push({
         name: name,
@@ -727,14 +677,14 @@ global.PACK.pack = {
         is loaded. The number of times this method gets called is counted,
         and once it's called for each dependency it calls this.endBuild().
         */
-        if (script.src in this.dependencySet) throw new Error('double-loaded dependency "' + script.src + '"');
+        if (this.dependencySet.contains(script.src)) throw new Error('double-loaded dependency "' + script.src + '"');
         this.dependencySet[script.src] = 'loaded';
         
         this.receivedDeps++;
         if (this.receivedDeps === this.neededDeps) {
           // Clean up the ugly properties that were attached to the dom
-          delete script.__waiting[this.name];
-          if (U.isEmptyObj(script.__waiting)) delete script.__waiting;
+          delete script['~waiting'][this.name];
+          if (U.isEmptyObj(script['~waiting'])) delete script['~waiting'];
           
           this.endBuild();
         }
@@ -745,13 +695,13 @@ global.PACK.pack = {
         this is the function that should run once all dependencies
         are loaded.
         */
-        if (this.name in PACK) throw new Error('double-loaded dependency "' + this.name + '"');
+        if (PACK.contains(this.name)) throw new Error('double-loaded dependency "' + this.name + '"');
         
         var args = this.dependencies.map(function(n) { return U.deepGet({ name: n, root: PACK }); });
         PACK[this.name] = this.buildFunc.apply(null, [ this.name ].concat(args));
         
         if (!U.isServer()) {
-          var waiting = this.script.__waiting;
+          var waiting = this.script['~waiting'];
           for (var k in waiting) waiting[k].stepBuild(this.script);
         }
         
@@ -780,13 +730,13 @@ global.PACK.pack = {
             // Possible that one of this package's dependencies
             // is also a dependency of a subpackage. In this case
             // the subpackage has already loaded the dependency.
-            if (dependencyName in PACK) return;
+            if (PACK.contains(dependencyName)) return;
             
             // This require statement needs to add the dependencyName key to PACK
             require('./apps/' + dependencyName + '/' + dependencyName + '.js');
             
             // Ensure the key was added
-            if (!(dependencyName in PACK)) throw 'failed to load dependency "' + dependencyName + '"';
+            if (!PACK.contains(dependencyName)) throw 'failed to load dependency "' + dependencyName + '"';
           });
           
           this.endBuild();
@@ -818,8 +768,8 @@ global.PACK.pack = {
               
               document.getElementsByTagName('head')[0].appendChild(script);
             }
-            if (!('__waiting' in script)) script.__waiting = {};
-            script.__waiting[this.name] = this;
+            if (!('~waiting' in script)) script['~waiting'] = {};
+            script['~waiting'][this.name] = this;
           }
           
         }

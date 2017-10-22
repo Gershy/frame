@@ -182,7 +182,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.loadingInfo = new uf.SimpleInfo({ value: false });
           },
           doAction: function(view, event) {
-            if (this.loadingInfo.getValue()) return; // The action is already in progress
+            if (this.loadingInfo.getValue()) return; // The action is already pending
             
             var pass = this;
             this.loadingInfo.setValue(true);
@@ -795,7 +795,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           addChild: function(child) {
             if (child.par === this) return child;
             if (child.par !== null) throw new Error('Tried to add View with parent: ' + child.getAddress());
-            if (child.name in this.children) throw new Error('Already have a child named "' + child.name + '"');
+            if (this.children.contains(child.name)) throw new Error('Already have a child named "' + child.name + '"');
             
             child.par = this;
             this.children[child.name] = child;
@@ -815,7 +815,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             // Resolve string to child
             if (U.isObj(child, String)) child = this.children[child];
             
-            if (!child || !(child.name in this.children)) return null;
+            if (!child || !this.children.contains(child.name)) return null;
             
             child.stop(); // Detach dom
             child.par = null; // Detach info step 1
@@ -933,7 +933,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (choice === null) {
               var nextChild = null;
             } else {
-              if (!(choice in this.children)) throw new Error('Bad view choice: "' + choice + '"');
+              if (!this.children.contains(choice)) throw new Error('Bad view choice: "' + choice + '"');
               var nextChild = this.children[choice];
             }
             
@@ -1002,7 +1002,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           'raw info that the child was built from.',
         methods: function(sc, c) { return {
           init: function(params /* name, childInfo, getDataId, genChildView, comparator */) {
-            if ('children' in params) throw new Error('Cannot initialize DynamicSetView with `children` param');
+            if (params.contains('children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
             
             sc.init.call(this, params);
             this.childInfo = uf.pafam(params, 'childInfo');
@@ -1036,14 +1036,12 @@ var package = new PACK.pack.Package({ name: 'userify',
               delete rem[k];
               
               // Mark for addition
-              if (!(k in this.children)) add[k] = cd[k];
+              if (!this.children.contains(k)) add[k] = cd[k];
               
             }
             
             // Remove all children as necessary
-            for (var k in rem) {
-              this.remChild(k);
-            }
+            for (var k in rem) this.remChild(k);
             
             // Add all children as necessary
             for (var k in add) {
@@ -1062,8 +1060,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           renameChild: function(view, newName) {
             if (newName === view.name) return;
             
-            if (newName in this.children) throw new Error('A child is already named "' + newName + '"; can\'t rename');
-            if (!(newName in this.childInfo.getValue())) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childInfo` before calling `renameChild`.');
+            if (this.children.contains(newName)) throw new Error('A child is already named "' + newName + '"; can\'t rename');
+            if (!this.childInfo.getValue().contains(newName)) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childInfo` before calling `renameChild`.');
             
             this.children[newName] = this.children[view.name];
             delete this.children[view.name];

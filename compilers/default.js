@@ -27,8 +27,10 @@ process.on('uncaughtException', function(err) {
     lines[0] = '    at ' + lineDataStr + ':0';
     
   } else {
+    
     var errorText = lines[0];
     lines = lines.slice(1);
+    
   }
   
   var lineData = [];

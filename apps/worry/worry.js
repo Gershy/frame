@@ -9,7 +9,6 @@ new PACK.pack.Package({ name: 'worry',
         methods: function(sc, c) { return {
           
           init: function(params) {
-            this.concernTypes = U.param(params, 'types', null);
           },
           getKey: function() {
             if (!('worryId' in this)) {

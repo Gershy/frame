@@ -10,16 +10,16 @@
   100% { transform: scale(1); opacity: 1; }
 }
 @keyframes spin {
-	0% { transform: rotate(0deg); }
-	30% { transform: rotate(450deg); }
-	72% { transform: rotate(-80deg); }
-	100% { transform: rotate(0deg); }
+  0% { transform: rotate(0deg); }
+  30% { transform: rotate(450deg); }
+  72% { transform: rotate(-80deg); }
+  100% { transform: rotate(0deg); }
 }
 @keyframes spin2 {
-	0% { transform: rotate(90deg); }
-	40% { transform: rotate(200deg); }
-	80% { transform: rotate(-400deg); }
-	100% { transform: rotate(90deg); }
+  0% { transform: rotate(90deg); }
+  40% { transform: rotate(200deg); }
+  80% { transform: rotate(-400deg); }
+  100% { transform: rotate(90deg); }
 }
 @keyframes spin3 {
   0% { transform: rotate(0deg); }
@@ -334,30 +334,30 @@ Give all .button elements a consistent feel
   width: 0; height: 0;
   
   animation-name: spin;
-	animation-iteration-count: infinite;
-	animation-timing-function: ease-in-out;
-	animation-duration: 50s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  animation-duration: 50s;
 }
 .spinner.spinner1 > .spin > .arm {
   position: absolute;
-	width: 280px; height: 0;
-	left: 0; top: 0;
-	
-	transform-origin: 0% 50%;
+  width: 280px; height: 0;
+  left: 0; top: 0;
+  
+  transform-origin: 0% 50%;
 }
 .spinner.spinner1 > .spin > .arm::before {
   content: '';
   position: absolute;
   display: block;
-	width: 8px; height: 130px;
-	right: 0; top: -90px;
-	background-color: #fafaff;
-	border-radius: 20%;
-	
-	animation-name: spin2;
-	animation-iteration-count: infinite;
-	animation-timing-function: ease-in-out;
-	animation-duration: 21s;
+  width: 8px; height: 130px;
+  right: 0; top: -90px;
+  background-color: #fafaff;
+  border-radius: 20%;
+  
+  animation-name: spin2;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+  animation-duration: 21s;
 }
 
 /* Frame-wide loading indicator */
@@ -373,10 +373,10 @@ Give all .button elements a consistent feel
 }
 .spinner.spinner2 > .spin > .arm {
   position: absolute;
-	width: 50px; height: 0;
-	left: 0; top: 0;
-	
-	transform-origin: 0% 50%;
+  width: 50px; height: 0;
+  left: 0; top: 0;
+  
+  transform-origin: 0% 50%;
   
   animation-name: bounce;
   animation-duration: 3000ms; /* 3000 */
@@ -387,10 +387,10 @@ Give all .button elements a consistent feel
   content: '';
   position: absolute;
   display: block;
-	width: 7px; height: 7px;
-	right: 0; top: 0;
-	background-color: rgba(255, 127, 0, 0.4);
-	border-radius: 100%;
+  width: 7px; height: 7px;
+  right: 0; top: 0;
+  background-color: rgba(255, 127, 0, 0.4);
+  border-radius: 100%;
 }
 
 /* Button loading indicator */
@@ -406,10 +406,10 @@ Give all .button elements a consistent feel
 }
 .spinner.spinner3 > .spin > .arm {
   position: absolute;
-	width: 26px; height: 0;
-	left: 0; top: 0;
-	
-	transform-origin: 0% 50%;
+  width: 26px; height: 0;
+  left: 0; top: 0;
+  
+  transform-origin: 0% 50%;
   
   animation-name: spin3;
   animation-duration: 2400ms;
@@ -421,10 +421,10 @@ Give all .button elements a consistent feel
   content: '';
   position: absolute;
   display: block;
-	width: 30px; height: 4px;
-	right: 0; top: 0;
-	background-color: #ffffff;
-	border-radius: 50%;
+  width: 30px; height: 4px;
+  right: 0; top: 0;
+  background-color: #ffffff;
+  border-radius: 50%;
   box-shadow: 0 0 10px 0 #ffffff;
   
   transform: rotate(25deg) scale(0.3);
@@ -490,7 +490,10 @@ Give all .button elements a consistent feel
 #storySet > .story > .quickName {
   position: absolute;
   display: block;
-  left: 4px; top: 0; height: 20px; line-height: 20px;
+  left: 4px; top: 0;
+  width: 95px; height: 20px; line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   color: #808080;
 }

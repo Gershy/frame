@@ -1,6 +1,6 @@
 new PACK.pack.Package({ name: 'queries',
-	dependencies: [ 'p' ],
-	buildFunc: function(packageName, p) {
+  dependencies: [ 'p' ],
+  buildFunc: function(packageName, p) {
     
     var P = p.P;
     var stdStateChangeFunc = function(query, resolve, reject) {
@@ -16,25 +16,32 @@ new PACK.pack.Package({ name: 'queries',
       else                      reject(new Error(query.responseText));
     };
     
-		return {
+    return {
       
-			$doQuery: function(params /* address, command, params, ref */) {
+      $doQuery: function(params /* address, command, params, ref */) {
         
         var ref = U.param(params, 'ref', null);
-				return new P({ custom: function(resolve, reject) {
-					var query = new XMLHttpRequest();
-					
+        return new P({ custom: function(resolve, reject) {
+          var query = new XMLHttpRequest();
+          
           query.onreadystatechange = ref === null
             ? stdStateChangeFunc.bind(null, query, resolve, reject)
             : refStateChangeFunc.bind(null, query, resolve, reject, ref);
           
           query.open('POST', '', true);
           query.setRequestHeader('Content-Type', 'application/json');
+          
+          try {
           query.send(U.thingToString({
             address: U.param(params, 'address'),
             command: U.param(params, 'command'),
             params: U.param(params, 'params', {})
           }));
+        } catch(err) { console.log('BAD', {
+            address: U.param(params, 'address'),
+            command: U.param(params, 'command'),
+            params: U.param(params, 'params', {})
+          }); throw err; }
           
           /*
           var dataStr = encodeURIComponent(U.thingToString({
@@ -42,13 +49,13 @@ new PACK.pack.Package({ name: 'queries',
             command: U.param(params, 'command'),
             params: U.param(params, 'params', {})
           }));
-					query.open('GET', '?_data=' + dataStr, true);
-					query.send();
+          query.open('GET', '?_data=' + dataStr, true);
+          query.send();
           */
-				}});
+        }});
         
-			}
+      }
       
-		};
+    };
   },
 }).build();

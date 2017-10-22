@@ -25,7 +25,7 @@ var package = new PACK.pack.Package({ name: 'p',
         Convert a value into a promise.
         If `val` is a promise return it, otherwise return a promise wrapping `val`.
         */
-        return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val, func: null });
+        return U.isInstance(val, PACK.p.P) ? val : new PACK.p.P({ val: val });
       },
       P: U.makeClass({ name: 'P',
         methods: function(sc) { return {
@@ -37,7 +37,7 @@ var package = new PACK.pack.Package({ name: 'p',
             this.func = U.param(params, 'func', null);
             this.recoveryFunc = U.param(params, 'recoveryFunc', null);
             
-            if ('val' in params) {
+            if (params.contains('val')) {
               
               if (U.isInstance(params.val, this.constructor)) { // `this.constructor` instead of `PACK.p.P` simply just to all the addition of $null before `PACK.p.P` exists
                 this.tryResolve(params.val);
@@ -46,7 +46,7 @@ var package = new PACK.pack.Package({ name: 'p',
                 this.val = params.val;
               }
               
-            } else if ('custom' in params) {  // Allow the user to arbitrarily call resolve or reject
+            } else if (params.contains('custom')) {  // Allow the user to arbitrarily call resolve or reject
               
               /*
               e.g.
@@ -58,7 +58,7 @@ var package = new PACK.pack.Package({ name: 'p',
                 params.custom(this.resolve.bind(this), this.reject.bind(this));
               } catch(err) { this.reject(err); }
               
-            } else if ('all' in params) {     // Allow a list of promises to be treated as a single promise
+            } else if (params.contains('all')) {     // Allow a list of promises to be treated as a single promise
               
               // TODO: all-style and args-style code is basically copy-pasted
               // Differences are:
@@ -87,7 +87,7 @@ var package = new PACK.pack.Package({ name: 'p',
                   });
               });
               
-            } else if ('args' in params) {
+            } else if (params.contains('args')) {
               
               this.multi = true;
               var args = U.param(params, 'args');
@@ -111,12 +111,12 @@ var package = new PACK.pack.Package({ name: 'p',
                   });
               });
               
-            } else if ('timeout' in params) {
+            } else if (params.contains('timeout')) {
               
               var timeout = U.param(params, 'timeout');
               setTimeout(this.resolve.bind(this, null), timeout);
             
-            } else if ('err' in params) {
+            } else if (params.contains('err')) {
               
               this.status = 'rejected';
               this.val = params.err;
