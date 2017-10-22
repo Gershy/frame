@@ -102,9 +102,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
       Editor: U.makeClass({ name: 'Editor',
         methods: function(sc, c) { return {
         
-          init: function(params /* add, rem */) {
-            this.curReqs = [];
-            this.rollBacks = [];
+          init: function(params) {
+            this.atomics = [];
+            this.$latestTransaction = new P({});
           },
           
           // Note: The methods in the following block aren't promised due to latency,
@@ -147,17 +147,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
             */
             
             // Step 1: Initialize the doss
-            var reqs = this.curReqs;
             var cls = U.deepGet({ root: C, name: outline.c });
             var doss = new cls({ outline: outline }.update(outline.p).update({ name: outline.name }));
-            
-            var promises = [];
             
             // Step 2: Add the name; either directly or with requirements
             if (!name && !outline.dynamic) name = outline.name; // The outline provides the name if it isn't an `innerOutline`
             if (name) {
               
-              promises.push(new P({ custom: function(resolve, reject) {
+              this.atomics.push(c.atomicSetNameSimple.bind(null, doss, name));
+              
+              /*promises.push(new P({ custom: function(resolve, reject) {
                 
                 reqs.push({
                   reqFunc: c.reqNameSimple,
@@ -168,11 +167,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   reject: reject
                 });
                 
-              }}));
+              }}));*/
               
             } else {
               
-              promises.push(new P({ custom: function(resolve, reject) {
+              this.atomics.push(c.atomicSetNameCalculated.bind(null, doss));
+              
+              /*promises.push(new P({ custom: function(resolve, reject) {
                 
                 reqs.push({
                   reqFunc: c.reqNameCalculated,
@@ -183,45 +184,37 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   reject: reject,
                 });
               
-              }}));
+              }}));*/
               
             }
             
             // Step 3: Attach to parent
-            if (par) promises.push(new P({ custom: function(resolve, reject) {
+            if (par) {
               
-              reqs.push({
-                reqFunc: c.reqAddChild,
-                params: [ par, doss ],
-                undoFunc: c.reqRemChild,
-                undoParams: null,
-                resolve: resolve,
-                reject: reject
-              });
+              this.atomics.push(c.atomicAddChild.bind(null, par, doss));
               
-            }}));
+              /*promises.push(new P({ custom: function(resolve, reject) {
+              
+                reqs.push({
+                  reqFunc: c.reqAddChild,
+                  params: [ par, doss ],
+                  undoFunc: c.reqRemChild,
+                  undoParams: null,
+                  resolve: resolve,
+                  reject: reject
+                });
+                
+              }}));*/
+            
+            }
             
             // Step 4: Add the data; either directly or with requirements
-            /*var pass = this;
-            promises.push(new P({ custom: function(resolve, reject) {
-              
-              reqs.push({
-                reqFunc: c.reqLoadRaw,
-                params: [ doss, data, pass ],
-                undoFunc: null, // TODO: A `null` undoFunc can lead to errors
-                undoParams: null,
-                resolve: resolve,
-                reject: reject
-              });
-              
-            }}));*/
+            /*promises.push(doss.$loadFromJson(data, this));*/
+            this.atomics.push(c.atomicLoadJson(doss, data, this));
             
-            // THIS IS A REQUIREMENT, BUT REQUIREMENTS DO NOT SUPPORT PROMISES D:
-            // Easy solution: Make requirements promises
-            // Hard solution: Make editor non-promised (this probably doesn't work though - what about Editors working with a latency-ish backend??)
-            promises.push(doss.$loadFromJson(data, this));
+            return this.$latestTransaction.then(function() { return doss; });
             
-            return new P({ all: promises }).then(function() { return doss; });
+            // return new P({ all: promises }).then(function() { return doss; });
           },
           $remFast: function(params /* par, name */) {
             var $ret = this.$rem(params);
@@ -237,9 +230,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var par = U.param(params, 'par');
             var name = U.param(params, 'name');
             
-            var reqs = this.curReqs;
+            this.atomics.push(c.atomicRemChild.bind(null, par, name));
             
-            return new P({ custom: function(resolve, reject) {
+            return this.$latestTransaction;
+            
+            /*return new P({ custom: function(resolve, reject) {
               
               reqs.push({
                 reqFunc: c.reqRemChild,
@@ -251,21 +246,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 rollback: null
               });
               
-            }});
-          },
-          $clear: function(params /* doss */) {
-            var doss = U.param(params, 'doss');
-            var pass = this;
-            return new P({ all: doss.children.map(function(child) {
-              
-              return pass.$rem({ par: doss, name: child.name });
-              
-            })});
-          },
-          $clearFast: function(params /* doss */) {
-            var $ret = this.$clear(params);
-            this.resolveReqs();
-            return $ret;
+            }});*/
           },
           $modFast: function(params /* doss, data */) {
             var $ret = this.$mod(params);
@@ -276,9 +257,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var doss = U.param(params, 'doss');
             var data = U.param(params, 'data');
             
-            var reqs = this.curReqs;
+            this.atomics.push(c.atomicModData.bind(null, doss, data));
             
-            return new P({ custom: function(resolve, reject) {
+            return this.$latestTransaction;
+            
+            /*return new P({ custom: function(resolve, reject) {
               
               reqs.push({
                 reqFunc: c.reqModData,
@@ -289,7 +272,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 reject: reject
               });
               
-            }});
+            }});*/
           },
           $editFast: function(params /* add, mod, rem */) {
             var $ret = this.$edit(params);
@@ -306,6 +289,142 @@ var package = new PACK.pack.Package({ name: 'dossier',
             for (var i = 0, len = mod.length; i < len; i++) promises.push(this.$mod(mod[i]));
             for (var i = 0, len = rem.length; i < len; i++) promises.push(this.$rem(rem[i]));
             return new P({ all: promises });
+          },
+          
+          $transact: function() {
+            
+            var pass = this;
+            
+            return this.$recurseStage('transaction', 0, this.atomics).then(function() {
+              
+              // This call may be very heavy - there could be a LOT of promises waiting
+              pass.$latestTransaction.resolve(null);
+              return true;
+              
+            }).fail(function(err) {
+              
+              console.log('Couldn\'t complete transactions', err.stack);
+              
+              // This call may be very heavy - there could be a LOT of promises waiting
+              pass.$latestTransaction.reject(new Error('Couldn\'t complete transactions'));
+              
+              return err;
+              
+            }).then(function(result) {
+              
+              // Reset this editor! `$latestTransaction` will point to a new resolution
+              // This happens whether or not the transaction succeeded
+              pass.init({});
+              
+              if (result !== true) throw result;
+              
+            });
+            
+          },
+          $recurseStage: function(type, stageNum, stageAtomics) {
+            
+            /*
+            Recursively completes transaction stages until a transaction has completed
+            without generating any atomics for the next stage. When this happens the
+            stage is "complete".
+            */
+            
+            var pass = this;
+            this.atomics = []; // Actions in `stageAtomics` can repopulate `this.atomics`
+            var undoAtomicsAllStages = [];
+            
+            this.$recurseAtomics(type, stageAtomics).them(function(errorArr, undoAtomics) {
+              
+              undoAtomicsAllStages = undoAtomicsAllStages.concat(undoAtomics);
+              
+              if (!errorArr.length) {
+                
+                // TODO: ARE THERE PROMISES HERE THAT NEED TO BE RESOLVED??
+                // Or is everything just linked to `$latestTransaction`, in which case only
+                // it needs to be resolved at the very end?
+                
+                // No errors!
+                // Here's where the recursive call potentially happens. Did completing this
+                // stage generate new atomics for a subsequent stage?
+                return pass.atomics.length
+                  ? pass.$recurseStage(type, stageNum + 1, pass.atomics)
+                  : null;
+                
+              } else {
+                
+                console.log('Stage failed due to ' + errorArr.length + ' error(s):\n');
+                for (var i = 0, len = errorArr.length; i < len; i++)
+                  console.log('#' + (i + 1) + ':', errorArr[i].stack, '\n');
+                
+                return this.$recurseStage('undo', 0, undoAtomicsAllStages).them(function(sArr, eArr, uArr) {
+                  
+                  if (eArr.length) {
+                    
+                    console.log('FATAL MFRF (mod fail, revert fail) in transaction undo:\n');
+                    for (var i = 0, len = eArr.length; i < len; i++)
+                      console.log('#' + (i + 1) + ':', eArr[i].stack, '\n');
+                    
+                    throw new Error('FATAL MFRF');
+                    
+                  }
+                  
+                  throw new Error('Stage failed');
+                  
+                });
+                
+              }
+              
+              
+            });
+            
+          },
+          $recurseAtomics: function(type, attemptNum, atomics, undoAtomics) {
+            
+            // Returns `[ errorArr, undoAtomics ]`
+            
+            if (!undoAtomics) undoAtomics = [];
+            
+            var errorArr = [];
+            var remainingAtomics = [];
+            var gotOne = false;
+            var promises = [];
+            
+            var promises = [];
+            for (var i = 0, len = atomics.length; i < len; i++) {
+              
+              try {
+                
+                var atomicResult = atomics[i]();
+                var $promise = atomicResult.$result;
+                var undoFunc = atomicResult.undoFunc;
+                
+              } catch(err) {
+                
+                var $promise = new P({ err: err });
+                var undoFunc = function() { throw new Error('This should never be called!'); };
+                
+              }
+              
+              promises.push(
+                $promise.then(
+                  function(undoFunc0) { gotOne = true; undoAtomics.push(undoFunc0); }.bind(null, undoFunc)
+                ).fail(
+                  function(remainingAtomic, err) { errorArr.push(err); remainingAtomics.push(remainingAtomic); }.bind(null, atomics[i])
+                )
+              );
+              
+            }
+            
+            return new P({ all: promises }).then(function() {
+              
+              if (!gotOne) return [ errorArr, undoAtomics ];
+              
+              return errorArr.length
+                ? this.$recurseAtomics(type, attemptNum + 1, remainingAtomics, undoAtomics)
+                : [ [], undoAtomics ];
+              
+            });
+            
           },
           
           // TODO: Better name for this method: "doTransaction" or "transact"
@@ -478,224 +597,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             };
             
           },
-          
-          reqNameSimple: function(doss, name, force) {
-            var origName = doss.name;
-            doss.updateName(name, force || null);
-            
-            return [ doss, origName, true ]; // undoParams to reqNameSimple
-          },
-          reqNameCalculated: function(doss) {
-            var origName = doss.name;
-            doss.updateName(doss.par.getChildName(doss));
-            return [ doss, origName, true ]; // undoParams to reqNameSimple
-          },
-          reqModData: function(doss, data) {
-            // Awkward that `doss.getData()` is used with `doss.setValue`
-            // Should be `getData` and `setData` (there is no `setData` as of now),
-            // or `getValue` and `setValue`
-            
-            try {
-              
-              var origVal = doss.getData(); // `getData` could be named `getJson`
-              doss.setValue(data);
-              return [ doss, origVal ];
-              
-            } catch(err) {
-              
-            }
-          },
-          reqAddChild: function(doss, child) {
-            doss.addChild(child);
-            return [ doss, child ]; // undoParams for reqRemChild
-          },
-          reqRemChild: function(doss, childName) {
-            var removed = doss.remChild(childName);
-            return [ doss, removed ]; // undoParams for reqAddChild
-          },
-          reqLoadRaw: function(doss, data, editor) {
-            doss.$loadFromJson(data, editor);
-            return [ doss ]; // undoParams for ???? (no undo func for this one yet)
-          },
-          
-          rollBackAdd: function(doss, child) {
-            try {
-              
-              if (!doss.remChild(child)) throw new Error('Couldn\'t remove child');
-              return true;
-              
-            } catch (err) { console.log('ROLLBACK ERR:', err.message); return false; }
-          },
-          rollBackRem: function(par, doss, originalName) {
-            try {
-              
-              par.addChild(doss);
-              var fatal = par.children[originalName] !== doss
-                ? new Error('FATAL ROLLBACK REM: added child back, but name changed :(')
-                : null;
-              
-              if (!fatal) return true;
-              
-            } catch (err) { console.log('ROLLBACK REM:', err.message); return false; }
-            
-            throw fatal;
-          }
         };}
       }),
       
       /* Abilities - enable functionality on Dossiers */
-      /*
-      Ability: U.makeClass({ name: 'Ability',
-        methods: function(sc, c) { return {
-          init: function(params /* errorFunc * /) {
-            this.errorFunc = U.param(params, 'errorFunc');
-          },
-          abilityNames: [],
-          $run: function(doss, abilityName, params) { return new P({ err: new Error('not implemented') }); },
-          $use: function(doss, abilityName, params) {
-            var errMsg = this.errorFunc(params);
-            if (errMsg) return new P({ err: new Error(errMsg) });
-            if (!this.abilityNames.contains(abilityName)) return new P({ err: new Error('Invalid ability: "' + abilityName + '"') });
-            
-            try {
-              return p.$(this.$run(doss, abilityName, params));
-            } catch (err) {
-              return new P({ err: err });
-            }
-          },
-        };}
-      }),
-      AbilityGetDataVal: U.makeClass({ name: 'AbilityGetDataVal',
-        superclassName: 'Ability',
-        description: 'Enables any `Dossier` instance with a "value" property ' +
-          'to return that value',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'getData' ],
-          $run: function(doss, abilityName, params) { return doss.value; }
-        };}
-      }),
-      AbilityGetDataSet: U.makeClass({ name: 'AbilityGetDataSet',
-        superclassName: 'Ability',
-        description: 'Enables a `DossierSet` to return any part of its contents ' +
-          'which validate, optionally filtered by a "selection"',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'getData' ],
-          $run: function(doss, abilityName, params /* selection * /) {
-            var selection = U.param(params, 'selection', ds.selectAll);
-            
-            if (selection.contains('*')) {
-              
-              // This is easy; loop through all children (which support "getData")
-              var innerParams = { selection: selection['*'] }; // TODO: What about other parameters?
-              var getInner = doss.children.map(function(c, k) { return c.hasAbility('getData') ? c.$useAbility('getData', innerParams) : U.SKIP; });
-              
-            } else {
-              
-              // This is harder; loop through all selected children, support renaming, and forward selection parameters
-              var getInner = {};
-              for (var k in selection) {
-                
-                // Support the "rename" operator
-                if (k[0] === '(') {
-                  var rb = k.indexOf(')');
-                  if (rb === -1) return new P({ err: 'Couldn\'t parse rename operator for selector "' + k + '"' });
-                  var rename = k.substr(1, rb - 1);
-                  var addr = k.substr(rb + 1).trim();
-                } else {
-                  var rename = k;
-                  var addr = k;
-                }
-                
-                var child = doss.getChild(addr);
-                if (!child) return new P({ err: new Error('Couldn\'t get child ' + doss.getAddress() + ' -> ' + addr) });
-                if (child.hasAbility('getData')) getInner[rename] = child.$useAbility('getData', { selection: selection[k] });
-                
-              }
-              
-            }
-            
-            return new P({ all: getInner });
-          }
-        };}
-      }),
-      AbilityGetDataSetDirect: U.makeClass({ name: 'AbilityGetDataSetDirect',
-        superclassName: 'Ability',
-        description: 'Enables a `DossierSet` to return any part of its contents ' +
-          'without validation, optionally filtered by a "selection"',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'getData' ],
-          $run: function(doss, abilityName, params) {
-            var selection = U.param(params, 'selection', null);
-            
-            // No selection makes this easy
-            if (!selection) return doss.getData();
-            
-            // With a selection, need to recursively apply sub-selections
-            var recurse = function(doss, sel) {
-              var ret = {};
-              
-              if (!U.isObj(sel, Object) || U.isEmptyObj(sel)) {
-                
-                return doss.getValue();
-                
-              } else if (sel.contains('*')) {
-                
-                var innerSel = sel['*'];
-                for (var k in doss.children) ret[k] = recurse(doss, innerSel);
-                
-              } else {
-                
-                for (var k in sel) ret[k] = recurse(doss, sel[k]);
-                
-              }
-              
-              return ret;
-            };
-            return recurse(doss, selection);
-          }
-        };}
-      }),
-      AbilityGetDataRef: U.makeClass({ name: 'AbilityGetDataRef',
-        superclassName: 'Ability',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'getData' ],
-          $run: function(doss, abilityName, params) { return new P({ val: doss.value ? doss.getRefAddress() : null }); }
-        };}
-      }),
-      
-      AbilityModDataVal: U.makeClass({ name: 'AbilityModDataVal',
-        superclassName: 'Ability',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'modData' ],
-          $run: function(doss, abilityName, params) {
-            doss.setValue(U.param(params, 'data'));
-            return p.$null;
-          }
-        };}
-      }),
-      AbilityModDataSet: U.makeClass({ name: 'AbilityModDataSet',
-        superclassName: 'Ability',
-        methods: function(sc, c) { return {
-          abilityNames: [ 'modData', 'addData', 'remData' ],
-          $run: function(doss, abilityName, params) {
-            if (abilityName === 'modData') {
-              
-              
-              
-            } else if (abilityName === 'addData') {
-              
-              
-              
-            } else if (abilityName === 'remData') {
-              
-              
-              
-            }
-          }
-        };}
-      }),
-      */
-      
       abilities: (function() {
         
         // Ability: getData
@@ -874,9 +779,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
         methods: function(sc, c) { return {
           
           init: function(params /* outline */) {
+            
+            // Note: "name" is a required, but ignored, parameter. It is required
+            // by `TreeNode.prototype.init`, but will be overwritten immediately
+            // afterwards.
+            
             sc.init.call(this, params);
             
-            this.name = ds.getTempName();
+            this.name = ds.getTempName(); // Here's where `this.name` is overwritten
             this.outline = U.param(params, 'outline');
             
             this.par = null;
