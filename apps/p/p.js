@@ -5,6 +5,12 @@ var package = new PACK.pack.Package({ name: 'p',
     
     ret.update({
       getValueData: function(v) {
+        
+        // Resolves an inline value OR `P` instance to a convenient,
+        // manageable inline value. If this resulting inline value is
+        // converted from a `P` instance, and the promise was rejected,
+        // the value will represent this.
+        
         if (!U.isInstance(v, PACK.p.P))
           return { type: 'resolved', multi: false, value: v };
         
@@ -36,6 +42,7 @@ var package = new PACK.pack.Package({ name: 'p',
             this.multi = U.param(params, 'multi', false);
             this.func = U.param(params, 'func', null);
             this.recoveryFunc = U.param(params, 'recoveryFunc', null);
+            // this.initStack = new Error('');
             
             if (params.contains('val')) {
               
@@ -113,13 +120,13 @@ var package = new PACK.pack.Package({ name: 'p',
               
             } else if (params.contains('timeout')) {
               
-              var timeout = U.param(params, 'timeout');
-              setTimeout(this.resolve.bind(this, null), timeout);
-            
+              setTimeout(this.resolve.bind(this, null), U.param(params, 'timeout'));
+              
             } else if (params.contains('err')) {
               
               this.status = 'rejected';
               this.val = params.err;
+              if (!U.isInstance(this.val, Error)) throw new Error('Non-error val: "' + this.val + '"');
               
             }
             
@@ -208,6 +215,9 @@ var package = new PACK.pack.Package({ name: 'p',
           },
           reject: function(err) {
             
+            if (!U.isInstance(err, Error))
+              throw new Error('Rejected value must be an `Error`');
+            
             if (this.status === 'resolved')
               throw new Error('Cannot reject; status is already "resolved"')
             else if (this.status === 'rejected')
@@ -265,7 +275,7 @@ var package = new PACK.pack.Package({ name: 'p',
             } else {
               
               new PACK.p.P({ recoveryFunc: function(err) {
-                console.error(err.stack);
+                setTimeout(function() { throw err; });
               }}).tryResolve(this);
               
             }

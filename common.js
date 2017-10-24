@@ -649,7 +649,11 @@ global.U = {
     var stuff = [];
     console.log('----------------------');
     if (arguments.length > 1) console.log('::::' + arguments[0] + '::::');
-    console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) { if (~stuff.indexOf(v)) return '--LOOP--'; stuff.push(v); return v; }, 2));
+    console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) {
+      if (~stuff.indexOf(v)) return '--CIRC--';
+      if (!U.isObj(v, String) && !U.isObj(v, Number) && !U.isObj(v, Boolean) && v !== null) stuff.push(v);
+      return v;
+    }, 2));
     console.log('');
   }
   
@@ -736,7 +740,7 @@ global.PACK.pack = {
             require('./apps/' + dependencyName + '/' + dependencyName + '.js');
             
             // Ensure the key was added
-            if (!PACK.contains(dependencyName)) throw 'failed to load dependency "' + dependencyName + '"';
+            if (!PACK.contains(dependencyName)) throw new Error('failed to load dependency "' + dependencyName + '"');
           });
           
           this.endBuild();

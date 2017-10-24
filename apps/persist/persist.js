@@ -66,7 +66,7 @@ new PACK.pack.Package({ name: 'persist',
     pr.update({
       Persister: U.makeClass({ name: 'Persister', 
         methods: function(sc, c) { return {
-          init: function(params /* packageName */) {
+          init: function(params /* packageName, genDefaultData */) {
             this.packageName = U.param(params, 'packageName');
             this.genDefaultData = U.param(params, 'genDefaultData');
             
@@ -94,7 +94,7 @@ new PACK.pack.Package({ name: 'persist',
           $getData: function() {
             var pass = this;
             return $readFile(this.pathName).then(function(data) {
-              if (!data.length) throw new Error(); // An empty file responds with default data
+              if (!data.trim().length) throw new Error(); // An empty file responds with default data
               return JSON.parse(data);
             }).fail(function() {
               var data = pass.genDefaultData();

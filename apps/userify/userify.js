@@ -470,8 +470,8 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.submits.push(ret);
             return ret;
           },
-          getError: function() {
-            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].err) return this.inputs[i].err;
+          getErrorText: function() {
+            for (var i = 0; i < this.inputs.length; i++) if (this.inputs[i].errorText) return this.inputs[i].errorText;
             return null;
           },
           start: function(view) {
@@ -489,11 +489,11 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.form = U.param(params, 'form');
             this.validateFunc = U.param(params, 'validateFunc', null);
             this.valConcern = c.valConcern.bind(this);
-            this.err = null;
+            this.errorText = null;
           },
           genErrorView: function(name) {
             var pass = this;
-            return new uf.TextHideView({ name: name || 'error', info: function() { return pass.err; } });
+            return new uf.TextHideView({ name: name || 'error', info: function() { return pass.errorText; } });
           },
           start: function(view) {
             view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
@@ -513,7 +513,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (this.form.submits.length && event.keyCode === 13) this.form.submits[0].doAction(view, event);
           },
           valConcern: function(val) {
-            this.err = this.validateFunc(val);
+            this.errorText = this.validateFunc(val);
           }
         }
       }),
@@ -526,8 +526,10 @@ var package = new PACK.pack.Package({ name: 'userify',
             var pass = this;
             var $action = U.param(params, '$action');
             sc.init.call(this, params.update({ $action: function(event) {
-              var err = pass.form.getError();
-              return err ? new P({ err: err }) : $action(event);
+              var errorText = pass.form.getErrorText();
+              return errorText
+                ? new P({ val: null }) // new P({ err: new Error(errorText) }) // What happens if there's an error on submission? Probably nothing?
+                : $action(event);
             }}));
           }
         };}
