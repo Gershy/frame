@@ -248,7 +248,7 @@ var package = new PACK.pack.Package({ name: 'p',
             
           },
           then: function(func) {
-            var p = new PACK.p.P({ func: func });
+            var p = new PACK.p.P({ func: U.isObj(func, Function) ? func : function() { return func; } });
             p.tryResolve(this);
             return p;
           },

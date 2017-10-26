@@ -149,31 +149,7 @@ new PACK.pack.Package({ name: 'creativity',
             
             return new P({ val: { token: user.getToken() } });
             
-          },
-          /*$handleCreateUserQuery: function(params /* username, password * /) {
-            
-            var username = U.param(params, 'username');
-            var password = U.param(params, 'password');
-            
-            if (username.length < 3 || username.length > 16) throw new Error('Usernames must be 3-16 characters');
-            if (!/^[a-zA-Z][a-zA-Z0-9]*$/.test(username)) throw new Error('Illegal username');
-            
-            if (password.length < 5 || password.length > 30) throw new Error('Passwords must be 5-30 characters');
-            
-            var editor = new ds.Editor();
-            return editor.$addFast({ par: this.children.userSet, data: {
-              fname: 'Anonymous',
-              lname: 'Individual',
-              username: username,
-              password: password
-            }}).then(function(user) {
-              return {
-                username: user.getValue('username'),
-                token: user.getToken()
-              };
-            });
-            
-          }*/
+          }
           /// =SERVER}
         };}
       }),
@@ -335,33 +311,21 @@ new PACK.pack.Package({ name: 'creativity',
           
           var winningLine = U.randElem(bestWrites); // Decide on a winner amongst the highest-voted
           var nextContestInd = story.getValue('contestInd') + 1;
-          editor.$edit({
+          
+          ////
+          editor.edit({
             
             mod: [
               // Increment the contest index counter
-              {
-                doss: story,
-                data: {
-                  contestInd: nextContestInd
-                }
-              }
+              { doss: story, data: { contestInd: nextContestInd } }
             ],
             
             add: [
               // Add on a new empty contest
-              {
-                par: story.getChild('contestSet'),
-                data: {
-                  num: nextContestInd,
-                  writeSet: {}
-                }
-              },
+              { par: story.getChild('contestSet'), data: { num: nextContestInd, writeSet: {} } },
               
               // Compile the winning write into the story
-              {
-                par: story.getChild('writeSet'),
-                data: winningLine
-              }
+              { par: story.getChild('writeSet'), data: winningLine }
             ]
             
           });
@@ -376,7 +340,8 @@ new PACK.pack.Package({ name: 'creativity',
         
         return $resolveVotes.then(function() {
           
-          editor.$mod({ doss: story,
+          ////
+          editor.mod({ doss: story,
             data: {
               phase: 'awaitingWrite',
               timePhaseStarted: currentTime
@@ -656,20 +621,24 @@ new PACK.pack.Package({ name: 'creativity',
         },
         /// =CLIENT}
         abilities: ds.abilities.set.clone({
-          /// {SERVER=
           $addData: function(userSet, params) {
             // TODO: It takes a lot of knowledge of `Dossier`'s internals to do this :(
+            params.data.fname = 'Anonymous';
+            params.data.lname = 'Individual';
+            /// {SERVER=
             var token = null;
-            return ds.abilities.set.$addData(userSet, params.update({
-              prepareForMod: function(user, params) {
-                token = user.getToken();
-                return params.update({ token: token });
-              }
-            })).then(function(result) {
-              return result.update({ token: token });
-            });
+            params.prepareForMod = function(user, params) {
+              token = user.getToken(); // Keep a reference
+              return params.update({ token: token });
+            };
+            /// =SERVER}
+            return ds.abilities.set.$addData(userSet, params)
+              /// {SERVER=
+              .then(function(result) {
+                return result.update({ token: token });
+              });
+              /// =SERVER}
           }
-          /// =SERVER}
         }),
         innerOutline:   { name: 'user', c: cr.CreativityUser,
           p: {
@@ -1214,7 +1183,9 @@ new PACK.pack.Package({ name: 'creativity',
       { name: 'generate doss',
         detect: function(prevVal) { return true; },
         $apply: function(prevVal) {
-          return prevVal.outline.$getDoss(prevVal.data);
+          var editor = new ds.Editor();
+          var doss = editor.add({ outline: prevVal.outline, data: prevVal.data });
+          return editor.$transact().then(function() { return doss; });
         }
       }
     ]});
@@ -1231,7 +1202,7 @@ new PACK.pack.Package({ name: 'creativity',
     console.log('Initializing doss...');
     cr.$doss.then(function(doss) {
       
-      console.log('Success!');
+      U.debug('doss', doss.getData())
       
       /// {SERVER=
       cr.queryHandler = doss;

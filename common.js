@@ -653,8 +653,7 @@ global.U = {
       if (~stuff.indexOf(v)) return '--CIRC--';
       if (!U.isObj(v, String) && !U.isObj(v, Number) && !U.isObj(v, Boolean) && v !== null) stuff.push(v);
       return v;
-    }, 2));
-    console.log('');
+    } + '\n', 2));
   }
   
 };

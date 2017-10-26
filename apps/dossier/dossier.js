@@ -89,13 +89,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getNamedChild: function(name) {
             if (this.p.innerOutline) return this.p.innerOutline;
             return this.i[name] || null;
-          },
-          $getDoss: function(data) {
-            
-            var editor = new ds.Editor();
-            var $doss = editor.$add({ outline: this, data: data });
-            return editor.$transact().then(function() { return $doss; });
-
           }
           
         };}
@@ -103,79 +96,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
       
       /* Editor - make changes to Dossier structures */
       Editor: U.makeClass({ name: 'Editor',
-        /*
-        `Editor` can be decoupled entirely from `Dossier`! All its atomic-adding
-        methods can be replaced with calls to `Editor.prototype.$addAtomic`, and
-        all `Editor.atomic*` functions can be provided by the consumer! E.g. an
-        outside source could define:
-        
-          var atomicCreateDoss = function(editor, outline, par, name, data) {
-            var DossCls = U.deepGet({ root: C, name: outline.c });
-            var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
-            
-            return {
-              $result: P({ all: [
-                // 1) initialize the name
-                .
-                .
-                .
-                
-                // 2) add to parent (if one exists)
-                if (par) ...
-                .
-                .
-                .
-                
-                // 3) load from json
-                .
-                .
-                .
-                
-              ]}.then(function() { return doss; }),
-              desc: 'Initialize a Dossier instance, attach it to its parent, name it, load it from json',
-              undoAtomic: par
-                ? atomicRemDoss.bind(null, par, doss)
-                : function() {
-                    // Don't need to undo anything, because `doss` was never attached to a parent
-                  }
-            };
-            
-          };
-          
-          var atomicRemDoss = function(doss, child) { ... };
-          
-          var atomicModDoss = function(doss, data) { ... };
-          
-        And now, with these methods that are provided by the "dossier" package,
-        and are completely generic to `Editor`, one can do:
-          
-          |  var outline = new PACK.dossier.Outline({
-          |    .
-          |    .
-          |    .
-          |  });
-          |  var dossData = getDossState();
-          |  
-          |  var editor = new PACK.editor.Editor();
-          |  editor.$addAtomic(atomicCreateDoss, [ editor, outline, null, 'app', dossData ]).then(function(doss) {
-          |    
-          |  });
-        
-        With this methodology, `Editor` can be completely decoupled from `Dossier`. The most
-        annoying thing to refactor will be the `DossierSet.prototype.$loadFromJson` methods.
-        
-        */
         methods: function(sc, c) { return {
           
           init: function(params) {
             this.atomics = [];
             this.$transaction = new P({});
+            this.count = 0;
+            this.id = global.NEXT_ID++;
           },
           
+          /*
           // Note: The methods in the following block aren't promised due to latency,
           // but in order to reference values ahead of their initialization.
           // NOTE: They return ATOMIC promises, not TRANSACTION promises!!
-          $add:         function(params /* par, name, data, outline */) {
+          $add:         function(params /* par, name, data, outline * /) {
             var par = U.param(params, 'par', null);
             var name = U.param(params, 'name', null);
             var data = U.param(params, 'data', null);
@@ -217,18 +151,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
             ]}).then(function() { return doss; });
             
           },
-          $rem:         function(params /* par, name */) {
+          $rem:         function(params /* par, name * /) {
             var name = U.param(params, 'name');
             if (U.isInstance(name, ds.Dossier)) name = name.name;
             return this.$rem0(params);
           },
-          $rem0:        function(params /* par, name */) {
+          $rem0:        function(params /* par, name * /) {
             return this.$addAtomic(c.atomicRemChild, [ U.param(params, 'par'), U.param(params, 'name') ]);
           },
-          $mod:         function(params /* doss, data */) {
+          $mod:         function(params /* doss, data * /) {
             return this.$addAtomic(c.atomicModData, [ U.param(params, 'doss'), U.param(params, 'data') ]);
           },
-          $edit:        function(params /* add, mod, rem */) {
+          $edit:        function(params /* add, mod, rem * /) {
             var add = U.param(params, 'add', []);
             var mod = U.param(params, 'mod', []);
             var rem = U.param(params, 'rem', []);
@@ -239,12 +173,62 @@ var package = new PACK.pack.Package({ name: 'dossier',
             for (var i = 0, len = rem.length; i < len; i++) promises.push(this.$rem(rem[i]));
             return new P({ all: promises });
           },
+          */
+          
+          add: function(params /* par, name, data, outline */) {
+            
+            var guid = global.NEXT_ID++;
+            
+            var par = U.param(params, 'par', null);
+            var name = U.param(params, 'name', null);
+            var data = U.param(params, 'data', null);
+            var outline = U.param(params, 'outline', null);
+            
+            if (!outline) {
+              if (!par) throw new Error('`Editor.prototype.add` requires either "outline" or "par" param');
+              outline = par.getChildOutline(name);
+            }
+            
+            // If the name is missing and a non-dynamic outline is provided, get the name from the outline
+            if (!name && !outline.dynamic) name = outline.name;
+            
+            // Step 1: Initialize the doss
+            var DossCls = U.deepGet({ root: C, name: outline.c });
+            var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
+            
+            // Step 2: Initialize the name
+            if (name) this.$addAtomic(c.atomicSetNameSimple, [ doss, name ]);
+            else      this.$addAtomic(c.atomicSetNameCalculated, [ doss ]);
+            
+            // Step 3: Add to parent
+            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ])
+            
+            // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
+            doss.loadFromJson(data, this);
+            //this.$addAtomic(c.atomicLoadJson, [ doss, data, this ]);
+            
+            return doss;
+            
+          },
+          rem: function(params /* par, child */) {
+            this.$addAtomic(c.atomicRemChild, [ U.param(params, 'par'), U.param(params, 'child') ]);
+          },
+          mod: function(params /* doss, data */) {
+            this.$addAtomic(c.atomicModData, [ U.param(params, 'doss'), U.param(params, 'data') ]);
+          },
+          edit: function(params /* add, mod, rem */) {
+            return {
+              add: U.param(params, 'add', []).map(this.add.bind(this)),
+              mod: U.param(params, 'mod', []).map(this.mod.bind(this)),
+              rem: U.param(params, 'rem', []).map(this.rem.bind(this))
+            };
+          },
           
           $addAtomic:   function(atomic, args) {
             
             /*
             An "atomic" is a function which returns a result of the following
-            format:
+            format (or throws an error):
             
             anAtomic(...) === {
               $result: <promise with atomic result>,
@@ -255,22 +239,42 @@ var package = new PACK.pack.Package({ name: 'dossier',
             An "atomic" must also fulfill the following criteria:
             1)  If the atomic function throws an error, or if the "$result"
                 property becomes rejected, the atomic must have not made any
-                changes to the `Dossier` state
+                changes to the state.
             2)  Calling the "undoAtomic" property after the "$result"
-                property has resolved must leave the `Dossier` state as if
-                no action were performed in the first place
+                property has resolved must leave the state as if no action
+                were performed in the first place
             */
             
             var $ret = new P({});
             
             var func = function() {
+              
               // `$ret` resolves if `result.$result` resolves, but doesn't necessarily
-              // reject if `result.$result` reject
-              var result = atomic.apply(null, args);
-              result.$result = result.$result.then(function(val) { $ret.resolve(val); return val; });
+              // reject if `result.$result` rejects
+              // TODO: When does `$ret` reject??
+              
+              try {
+                
+                var result = atomic.apply(null, args);
+                result.$result = result.$result.then(function(val) { $ret.resolve(val); return val; });
+                
+              } catch(err) {
+                
+                var result = {
+                  $result: new P({ err: err }),
+                  desc: 'Immediate error in atomic: ' + err.message,
+                  undoAtomic: function() { /* no action required */ }
+                };
+                
+              }
+              
               result.$rejectable = $ret; // TODO: Need to tell `$ret` it rejected if it didn't resolve
+              
               return result;
+              
             };
+            //func.$rejectable = $ret;
+            func.inner = atomic;
             this.atomics.push(func);
             
             return $ret;
@@ -279,30 +283,60 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           $transact: function() {
             
+            // Simply calls $recurseStage, resolves/rejects `this.$transaction`
+            // appropriately, and upon completion resets itself for the next
+            // transaction.
+            
             var pass = this;
-            return this.$recurseStage('entry', 0, this.atomics).then(function(result) {
+            var transactionName = 'trn<' + this.id + '/' + this.count + '>';
+            
+            return this.$recurseStage(transactionName, 0).then(function(recResults) {
               
-              // This call may be very heavy - there could be a LOT of promises waiting
+              if (!recResults.errors.length) return recResults;
+                
+              // Atomic batch could not be completed!
+              console.log('Stage failed due to ' + recResults.errors.length + ' error(s):\n');
+              //for (var i = 0, len = recResults.errors.length; i < len; i++) console.log('#' + (i + 1) + ':', recResults.errors[i].stack, '\n');
+              
+              console.log('Undoing ' + recResults.undoAtomics.length + ' atomics...');
+              
+              // TODO: Is $recurseAtomics or $recurseStage better for undoing?
+              // Using $recurseAtomics means that undo operations shouldn't generate
+              // more undo operations.
+              return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
+                
+                if (undoResults.errors.length) {
+                  // Undo batch could not be completed!
+                  console.log('Undo failed (this is REAL BAD) due to ' + undoResults.errors.length + ' error(s):\n');
+                  for (var i = 0, len = undoResults.errors.length; i < len; i++) console.log('FATAL #' + (i + 1) + ':', undoResults.errors[i].stack, '\n');
+                  throw new Error('FATAL MFRF (transaction undo failed; data may be corrupted)');
+                }
+                
+                throw new Error('Stage failed (transaction undo successful)');
+                
+              });
+                
+            }).then(function() {
+              
               pass.$transaction.resolve(null);
               return null;
               
             }).fail(function(err) {
               
-              // This call may be very heavy - there could be a LOT of promises waiting
               pass.$transaction.reject(err);
               return err;
               
-            }).then(function(result) {
+            }).then(function(err) {
               
-              // Reset this editor whether or not the transaction succeeded!
               pass.actions = [];
               pass.$transaction = new P({});
-              if (result) throw result; // An existing result means `result` is an `Error`
+              pass.count++;
+              if (err) throw err;
               
             });
             
           },
-          $recurseStage: function(type, stageNum, stageAtomics) {
+          $recurseStage: function(type, stageNum) {
             
             /*
             Recursively completes transaction stages until a transaction has completed
@@ -310,13 +344,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
             stage is "complete".
             */
             
-            // var desc = type + '(' + stageNum + ')';
+            var desc = type + '(' + stageNum + ')';
             
             var pass = this;
-            this.atomics = []; // Actions in `stageAtomics` can repopulate `this.atomics`
-            var undoAtomicsAllStages = [];
             
-            return this.$recurseAtomics(type, stageNum, 0, stageAtomics).them(function(errorArr, undoAtomics, numAttempts) {
+            var atomics = this.atomics;
+            this.atomics = [];
+            
+            var allUndoAtomics = [];
+            
+            return this.$recurseAtomics(type, stageNum, 0, atomics).then(function(recResults) {
               
               // Three possibilities at this point:
               // 1) The stage successfully completed without errors, so the entire process of stage recursion is complete!
@@ -324,184 +361,106 @@ var package = new PACK.pack.Package({ name: 'dossier',
               // 3) The stage failed. It cannot be completed, and an undo transaction will be performed
               //    (NOTE: The undo transaction will either be successful, or if not, result in a FATAL error).
               
-              undoAtomicsAllStages = undoAtomicsAllStages.concat(undoAtomics);
-              
-              if (!errorArr.length) {
-                
-                // TODO: ARE THERE PROMISES HERE THAT NEED TO BE RESOLVED/REJECTED??
-                
-                // No errors!
-                // Here's where the recursive call potentially happens. Did completing this
-                // stage generate new atomics for a subsequent stage?
-                
-                return pass.atomics.length
-                  ? pass.$recurseStage(type, stageNum + 1, pass.atomics)
-                  : [ errorArr, undoAtomics, numAttempts ];
-                
-              } else {
-                
-                console.log('Stage failed due to ' + errorArr.length + ' error(s):\n');
-                for (var i = 0, len = errorArr.length; i < len; i++)
-                  console.log('#' + (i + 1) + ':', errorArr[i].stack, '\n');
-                
-                console.log('UNDOING! (this is untested so hope for the best)');
-                return pass.$recurseStage('undo', 0, undoAtomicsAllStages).them(function(eArr, uArr, na) {
-                  
-                  if (eArr.length) {
-                    
-                    console.log('FATAL MFRF (mod fail, revert fail) in transaction undo:\n');
-                    for (var i = 0, len = eArr.length; i < len; i++)
-                      console.log('#' + (i + 1) + ':', eArr[i].stack, '\n');
-                    
-                    throw new Error('FATAL MFRF (data is corrupted)');
-                    
-                  }
-                  
-                  throw new Error('Stage failed (transaction undone successfully)');
-                  
-                });
-                
+              if (recResults.errors.length || !pass.atomics.length) {
+                // console.log(desc + '::: ' + recResults.undoAtomics.length); 
+                return recResults;
               }
               
+              var undoAtomics = recResults.undoAtomics;
+              return pass.$recurseStage(type, stageNum + 1).then(function(recNextResults) {
+                recNextResults.undoAtomics = recNextResults.undoAtomics.concat(undoAtomics);
+                //console.log(desc + '::: ' + recResults.undoAtomics.length); 
+                return recNextResults;
+              });
               
             });
             
           },
-          $recurseAtomics: function(type, stageNum, attemptNum, atomics, allUndoAtomics) {
+          $recurseAtomics: function(type, stageNum, attemptNum, atomics) {
             
-            // Returns `[ errorArr, allUndoAtomics, numAttempts ]`
+            // Returns { errors: <errors>, undoAtomics: <undoAtomics>, remainingAtomics: <remainingAtomics>, attemptNum: <attemptNum> }
+            // This method has error conditions, but it signals such errors by returning
+            // an "errors" property with at least 1 error (instead of by throwing an error).
             
             var desc = type + '(' + stageNum + ', ' + attemptNum + ')';
-            
-            if (!allUndoAtomics) allUndoAtomics = [];
+            // console.log(desc + ' beginning...');
             
             var pass = this;
-            var promiseArr = [];
-            var errorArr = [];          // All errors that occurred this attempt
-            var remainingAtomics = [];  // Atomics that couldn't be completed this attempt
-            var gotOne = false;         // Becomes `true` if at least one atomic was successful
             
-            var promises = [];
-            for (var i = 0, len = atomics.length; i < len; i++) {
+            var maxTime = 0;            // Setting this value > 0 is useful for debugging
+            
+            return new P({ all: atomics.map(function(atomic) {  // Try to get the result of all atomics
               
-              // Atomics can throw immediate errors. Use a try/catch to convert
-              // immediate errors into promised errors.
-              try {
+              var result = atomic();
+              //console.log('    NAME: ', atomic);
+              
+              var timeout = maxTime ? setTimeout(function() { console.log('BAD:\n' + result.desc); }, maxTime) : null;
+              
+              return result.$result.then(function(val) {
                 
-                var atomicResult = atomics[i]();
-                var $promise = atomicResult.$result;
-                var undoAtomic = atomicResult.undoAtomic;
-                var atomicDesc = atomicResult.desc;
+                //gotOne = true;                            // Flag that at least one atomic has succeeded
+                //undoAtomics.push(result.undoAtomic);      // An action was performed so keep track of the undo action
+                if (maxTime) clearTimeout(timeout);
                 
-              } catch(err) {
+                return {
+                  status: 'success',
+                  undoAtomic: result.undoAtomic
+                };
                 
-                var $promise = new P({ err: err });
-                var undoAtomic = function() { throw new Error('Don\'t undo failed atomics!'); };
-                var atomicDesc = 'Immediate error: ' + err.message;
+              }).fail(function(err) {
                 
+                //errorArr.push(err);                       // Keep track of the error (for debugging)
+                //remainingAtomics.push(atomic);            // Keep track of the failed atomic; it may be retried later!
+                if (maxTime) clearTimeout(timeout);
+                
+                return {
+                  status: 'failure',
+                  error: err,
+                  atomic: atomic
+                };
+                
+              });
+              
+            })}).then(function(atomicResultArr) {               // Return results or reattempt as necessary
+              
+              var errors = [];
+              var remainingAtomics = [];
+              var undoAtomics = [];
+              
+              // Represent all results according to errors, remainingAtomics, and undoAtomics
+              for (var i = 0, len = atomicResultArr.length; i < len; i++) {
+                var ar = atomicResultArr[i];
+                if (ar.status === 'success') { undoAtomics.push(ar.undoAtomic); }
+                else if (ar.status === 'failure') { remainingAtomics.push(ar.atomic); errors.push(ar.error); }
               }
               
-              // // TODO: These timeouts are incredibly useful for debugging (ctrl+f for "timeout" to see everything to uncomment)
-              // var timeout = setTimeout(function(d) { console.log('OPERATION TIMED OUT:\n', d); }.bind(null, atomicDesc), 2000);
+              // if (!errorArr.length)          console.log(desc + ' complete! (no errors!!! ' + undoAtomics.length + ' atomic(s) completed)');
+              // else if (!undoAtomics.length)  console.log(desc + ' complete! (no progress, ' + errorArr.length + ' error(s))');
+              // else                           console.log(desc + ' complete! (some errors; ' + remainingAtomics.length + ' atomic(s) delayed)');
               
-              // Actions to take if the promise resolves
-              $promise = $promise.then(function(undoAtomic0,/* timeout0*/, val) {
-                
-                // ON SUCCESS:
-                // 1) flag that there's been at least one success
-                // 2) register the undo action (in case of later failures)
-                gotOne = true;
-                allUndoAtomics.push(undoAtomic0);
-                
-                //clearTimeout(timeout0);
-                
-                return val;
-                
-              }.bind(null, undoAtomic/*, timeout*/));
-              
-              // Actions to take if the promise rejects
-              $promise = $promise.fail(function(unsettledAtomic,/* timeout0*/, err) {
-                
-                // ON FAILURE:
-                // 1) register the error which occurred (for reporting)
-                // 2) register the atomic which failed (it may be reattempted later)
-                // 3) DON'T register any undo action (there is no action to undo!)
-                errorArr.push(err);
-                remainingAtomics.push(unsettledAtomic);
-                
-                //clearTimeout(timeout0);
-                
-              }.bind(null, atomics[i]/*, timeout*/));
-              
-              promises.push($promise);
-              
-            }
-            
-            /*
-            Recursion can be required for two separate reasons:
-            
-            1) Immediate sub-promises
-               - The atomicAction immediately calls editor methods
-              
-            2) Delayed sub-promises
-               - The promise resulting from the atomicAction calls editor
-                 methods
-               - The code that manages this (the interplay between
-                 recurseStage and recurseAtomics) seems like it's never
-                 used, but that's because there is no functionality which
-                 relies on delayed sub-promises yet! If a `Dossier`
-                 structure is ever linked to a backend, it will be used!
-                 (and will almost certainly fail and need tweaking)
-            */
-            
-            // Have any immediate dependencies been added? They will have
-            // been added to `this.atomics`, which is otherwise empty:
-            var $handleImmediateSubPromises = this.atomics.length
-              ? this.$recurseStage(type + '-imm', 0, this.atomics) // "imm" for "immediate"
-              : p.$null;
-            
-            // This is just a sanity check
-            if (this.atomics.length) throw new Error('Cannot still have unaddressed promises at this stage');
-            
-            return $handleImmediateSubPromises.then(function() {
-              
-              // Handling the immediate promises will allow the promises
-              // in the `promises` array to become resolved (note: they
-              // cannot reject; fail-handlers ensure this)
-              
-              return new P({ all: promises });
-              
-            }).then(function() {
-              
-              // If no atomic succeeded, no further progress can be made
-              if (!gotOne) {
-                
-                // console.log(desc + ' complete! (no progress, ' + errorArr.length + ' error' + (errorArr.length === 1 ? '' : 's') + ')');
-                return [ errorArr, allUndoAtomics, attemptNum ];
-                
+              // If all promises homogenously failed or succeeded, simply return!
+              if (!undoAtomics.length || !errors.length) {
+                console.log(desc + '::: ' + undoAtomics.length);
+                return {
+                  undoAtomics: undoAtomics,
+                  errors: errors,
+                  remainingAtomics: remainingAtomics,
+                  attemptNum: attemptNum
+                };
               }
               
-              // At least one atomic succeeded!
-              
-              if (errorArr.length) {
+              // Some atomics passed, and some failed: make another attempt
+              return pass.$recurseAtomics(type, stageNum, attemptNum + 1, remainingAtomics).then(function(recResult) {
                 
-                // Some atomics failed, in which case another attempt can
-                // be made. This next attempt may allow previously failed
-                // atomics to succeed - the success of such atomics could
-                // rely on other same-stage atomics which only succeeded
-                // this stage. OR:
-                return pass.$recurseAtomics(type + '-lat', stageNum, attemptNum + 1, remainingAtomics, allUndoAtomics) // "lat" for "later"
+                recResult.undoAtomics = recResult.undoAtomics.concat(undoAtomics);
+                console.log(desc + '::: ' + recResult.undoAtomics.length);
+                return recResult;
                 
-              }
-              
-              // All atomics succeeded, in which case the stage is
-              // complete!
-              // console.log(desc + ' complete! (full success)');
-              return [ [], allUndoAtomics, attemptNum ];
+              });
               
             });
             
-          },
+          }
           
         };},
         statik: function(c) { return {
@@ -520,6 +479,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var origName = doss.name;
             doss.updateName(doss.par.getChildName(doss));
+            
             return {
               $result: p.$null,
               desc: 'Calculate name on ' + doss.getAddress(),
@@ -543,39 +503,47 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           atomicAddChild: function(doss, child) {
             
-            var child = doss.addChild(child);
+            doss.addChild(child);
+            
             return {
-              $result: new P({ val: child }),
-              desc: 'Add child: ' + doss.getAddress() + ' -> <<<<\n' + JSON.stringify(child.getData(), null, 2) + '\n>>>>',
-              undoAtomic: c.atomicRemChild.bind(null, doss, child.name)
+              $result: p.$null,
+              desc: 'Add child: ' + doss.getAddress() + ' -> ' + child.name + ': <<<<\n' + JSON.stringify(child.getData(), null, 2) + '\n>>>>',
+              undoAtomic: function() {
+                console.log('REMOVING!!!' + doss.getAddress() + ' -> ' + child.name);
+                return c.atomicRemChild(doss, child);
+              }//c.atomicRemChild.bind(null, doss, child)
             };
             
           },
-          atomicRemChild: function(doss, name) {
+          atomicRemChild: function(doss, child) {
             
-            var child = doss.remChild(name);
+            doss.remChild(child);
+            
             return {
-              $result: new P({ val: child}),
-              desc: 'Remove child: ' + doss.getAddress() + ' -> ' + name,
+              $result: p.$null,
+              desc: 'Remove child: ' + doss.getAddress() + ' -> ' + (U.isInstance(child, ds.Dossier) ? child.name : child),
               undoAtomic: c.atomicAddChild.bind(null, doss, child)
             };
             
           },
-          atomicLoadJson: function(doss, json, editor) {
+          
+          /*atomicLoadJson: function(doss, json, editor) {
+            
+            doss.loadFromJson(json, editor); // TODO: This can throw an error with changes made!!
             
             return {
-              $result: doss.$loadFromJson(json, editor),
+              $result: p.$null, // doss.$loadFromJson(json, editor),
               desc: 'Load json: ' + doss.getAddress() + ' -> <<<<\n' + JSON.stringify(json, null, 2) + '\n>>>>',
               undoAtomic: function() {
-                console.log('NOTE: Currently no way to undo `$loadFromJson`!');
+                console.log('NOTE: Currently no way to undo `loadFromJson`!');
                 return {
                   $result: p.$null,
-                  desc: 'undid json load'
+                  desc: 'undid json load?'
                 }
               }
             };
             
-          }
+          }*/
         };}
       }),
       
@@ -628,16 +596,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var data = U.param(params, 'data');
           var editor = U.param(params, 'editor', null);
           
-          if (editor) {
-            editor.$mod({ doss: doss, data: data });
-            var $trn = editor.$transaction;
-          } else {
-            editor = new ds.Editor({});
-            editor.$mod({ doss: doss, data: data });
-            var $trn = editor.$transact();
-          }
+          var immediate = !editor;
+          if (immediate) editor = new ds.Editor({});
           
-          return $trn;
+          editor.mod({ doss: doss, data: data });
+          
+          return immediate ? editor.$transact() : editor.$transaction;
           
         };
         var $modDataSet = function(doss, params /* [ editor, ] data */) {
@@ -664,25 +628,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var editor = U.param(params, 'editor', null);
           var prepareForMod = U.param(params, 'prepareForMod', null);
           
-          if (editor) {
-            var $child = editor.$add({ par: doss, data: data });
-            var $trn = editor.$transaction;
-          } else {
-            editor = new ds.Editor({});
-            var $child = editor.$add({ par: doss, data: data });
-            var $trn = editor.$transact();
-          }
+          var immediate = !editor;
+          if (immediate) editor = new ds.Editor({});
           
-          // 1) Wait to complete an initial "add" transaction to add a new child. This
-          //    will ignore any ability supervision
-          // 2) Explicitly use the "modData" ability (which will respect supervision)
-          // 3) If there are any errors, remove the child (and reject with the error)
-          // 4) Return the address of the created, modded child
+          var child = editor.add({ par: doss, data: data });
           
-          return $trn.then(function() { return $child; }).then(function(child) {
+          return (immediate ? editor.$transact() : editor.$transaction).then(function() {
             
-            var modParams = { data: data };
-            if (prepareForMod) modParams = prepareForMod(child, modParams);
+            var modParams = prepareForMod ? prepareForMod(child, { data: data }) : { data: data };
             
             // On add success, try to mod
             return child.$useAbility('modData', modParams)
@@ -691,7 +644,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               .fail(function(err) {
                 
                 var editor = new ds.Editor({});
-                editor.$rem({ par: doss, name: child.name });
+                editor.rem({ par: doss, name: child.name });
                 return editor.$transact()
                   .fail(function(err0) {
                     // On removal failure, this is a fatal situation (corrupt data)
@@ -701,35 +654,25 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   .then(function() {
                     // On removal success everything is fine, but signal that the initial $addData ability use failed
                     console.log('ADDED, bad mod, good rem! :D');
-                    console.error(err.stack);
                     throw err;
                   })
                   
               })
               
-              // On mod success, everything is dandy! Return the child address
-              .then(function() { return { address: child.getAddress() }; });
-            
-          });
+          }).then(function() { return { address: child.getAddress() }; }); // If everything succeeds, return the address!
           
         };
         var $addDataDirect = function(doss, params /* [ editor, ] data */) {
           var data = U.param(params, 'data');
           var editor = U.param(params, 'editor', null);
           
-          if (editor) {
-            var $child = editor.$add({ par: doss, data: data });
-            var $trn = editor.$transaction;
-          } else {
-            editor = new ds.Editor();
-            var $child = editor.$add({ par: doss, data: data });
-            var $trn = editor.$transact();
-          }
+          var immediate = !editor;
+          if (immediate) editor = new ds.Editor({});
           
-          return $trn.then(function() {
-            return $child;
-          }).then(function(child) {
-            return { address: child.getAddress() };
+          var child = editor.add({ par: doss, data: data });
+          
+          return (immediate ? editor.$transact() : editor.$transaction).then(function() {
+            return { address: child.address };
           });
           
         };
@@ -739,16 +682,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var name = U.param(params, 'name');
           var editor = U.param(params, 'editor', null);
           
-          if (editor) {
-            editor.$rem({ par: doss, name: name });
-            var $trn = editor.$transaction;
-          } else {
-            editor = new ds.Editor({});
-            editor.$rem({ par: doss, name: name });
-            var $trn = editor.$transact();
-          }
+          var immediate = !editor;
+          if (immediate) editor = new ds.Editor({});
           
-          return $trn;
+          editor.rem({ par: doss, name: name });
+          
+          return immediate ? editor.$transact() : editor.$transaction;
+          
         };
         
         return {
@@ -843,7 +783,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return this;
           },
-          $loadFromJson: function(data, editor) {
+          loadFromJson: function(data, editor) {
             throw new Error('not implemented');
           },
           
@@ -1046,7 +986,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             } else {
               
-              for (var k in arg1) this.children[k].setValue(arg1[k]);
+              for (var k in arg1) {
+                if (!this.children.contains(k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+                this.children[k].setValue(arg1[k]);
+              }
               
             }
           },
@@ -1094,20 +1037,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
       DossierObj: U.makeClass({ name: 'DossierObj',
         superclassName: 'DossierSet',
         methods: function(sc) { return {
-          $loadFromJson: function(data, editor) {
-            
-            // TODO: `DossierSet` json loading doesn't clear the `DossierSet` first
-            
-            if (!data) data = {};
-            
-            // Loaded once all children have been loaded via the editor
-            var promiseSet = [];
-            
-            for (var k in this.outline.i)
-              promiseSet.push(editor.$add0(this, this.getChildOutline(k), k, data[k] || null));
-            
-            return new P({ all: promiseSet });
-            
+          loadFromJson: function(data, editor) {
+            // Unlike `DossierArr`, `DossierObj` can't skip just because `data` isn't provided.
+            // The iteration is based on the outline, not on the data
+            data = data || {};
+            for (var k in this.outline.i) editor.add({ par: this, outline: this.getChildOutline(k), name: k, data: data[k] || null });
           },
           
           // Child methods
@@ -1139,16 +1073,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (U.isObj(this.innerOutline, Object)) this.innerOutline = new ds.Outline(this.innerOutline);
           },
           
-          $loadFromJson: function(data, editor) {
-            if (!data) data = {};
-            
-            // Loaded once all children have been loaded via the editor
-            // Note that none of these promises are waiting on a transaction; they're waiting on atomics!
-            var promiseSet = [];
-            for (var k in data)
-              promiseSet.push(editor.$add0(this, this.getChildOutline(k), null, data[k])); // TODO: 2nd last param was `k` until recently
-            
-            return new P({ all: promiseSet });
+          loadFromJson: function(data, editor) {
+            if (!data) return;
+            for (var k in data) editor.add({ par: this, outline: this.getChildOutline(k), data: data[k] });
           },
           
           // Child methods
@@ -1194,9 +1121,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.value = U.param(params, 'value', null);
           },
           
-          $loadFromJson: function(data, editor) {
+          loadFromJson: function(data, editor) {
             this.setValue(data);
-            return PACK.p.$null;
           },
           
           matches: function(value) {
@@ -1617,7 +1543,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               for (var i = 0; i < missingChain.length; i++) {
                 // TODO: It may be possible to build the chain entirely and
                 // then do a single Editor operation
-                // (or need something like `editor.$initIfMissing`?)
                 $holder = $holder.then(function(ind, holder) {
                   
                   var reqName = missingChain[ind];
@@ -1627,10 +1552,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                   // Otherwise, need to create the `Dossier`
                   var editor = new ds.Editor();
-                  var $ret = editor.$add({ par: holder, name: missingChain[ind], data: {} }).then(function(h) {
-                    console.log('NEWHOLDER:', h);
-                  });
-                  return editor.$transact().then(function() { return $ret; });
+                  var nextHolder = editor.add({ par: holder, name: missingChain[ind], data: {} });
+                  return editor.$transact().then(function() { return nextHolder });
                   
                 }.bind(null, i));
                 
@@ -1641,8 +1564,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return $holder.then(function(holder) {
               
               var editor = new ds.Editor();
-              editor.$add({ par: holder, data: refData })
-              
+              editor.add({ par: holder, data: refData });
               return editor.$transact().then(function() {
                 doss.dereference().start();
               });
@@ -1706,13 +1628,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             }
             
-            // Uncovered now contains keys which exists in `doss` but not `childData` - such keys are outdated
+            // `uncovered` now contains keys which exists in `doss` but not `childData` - such keys are outdated
             for (var k in uncovered) rem.push({ par: doss, name: k });
             
             //console.log('Syncing DCT: ' + doss.getAddress());
             
             var editor = new ds.Editor();
-            editor.$edit({ add: add, rem: rem, mod: mod });
+            editor.edit({ add: add, rem: rem, mod: mod });
             return editor.$transact().then(function() {
               doss.start();
             });
