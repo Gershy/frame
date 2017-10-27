@@ -16,7 +16,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
     
     ds.update({
       
-      NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/,
+      NAME_REGEX: /^[~a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/, // The goddam tilde is now allowed in the name, to allow the root to be named "~root"
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(ds.NEXT_TEMP++);
@@ -105,76 +105,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.id = global.NEXT_ID++;
           },
           
-          /*
-          // Note: The methods in the following block aren't promised due to latency,
-          // but in order to reference values ahead of their initialization.
-          // NOTE: They return ATOMIC promises, not TRANSACTION promises!!
-          $add:         function(params /* par, name, data, outline * /) {
-            var par = U.param(params, 'par', null);
-            var name = U.param(params, 'name', null);
-            var data = U.param(params, 'data', null);
-            var outline = U.param(params, 'outline', null);
-            
-            if (!outline) {
-              
-              if (!par) throw new Error('Need to supply either "par", or "outline" to `$add`');
-              outline = par.getChildOutline(name);
-              
-            }
-            
-            return this.$add0(par, outline, name, data);
-          },
-          $add0:        function(par, outline, name, data) {
-            
-            // Step 1: Initialize the doss
-            var DossCls = U.deepGet({ root: C, name: outline.c });
-            var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
-            
-            // The outline can provide the name if it isn't an `innerOutline`
-            if (!name && !outline.dynamic) name = outline.name;
-            
-            return new P({ all: [
-              
-              // Step 2: Add the name; either directly or with requirements
-              name
-                ? this.$addAtomic(c.atomicSetNameSimple, [ doss, name ])
-                : this.$addAtomic(c.atomicSetNameCalculated, [ doss ]),
-              
-              // Step 3: Attach to parent
-              par
-                ? this.$addAtomic(c.atomicAddChild, [ par, doss ])
-                : null,
-              
-              // Step 4: Add the data; either directly or with requirements
-              this.$addAtomic(c.atomicLoadJson, [ doss, data, this ])
-              
-            ]}).then(function() { return doss; });
-            
-          },
-          $rem:         function(params /* par, name * /) {
-            var name = U.param(params, 'name');
-            if (U.isInstance(name, ds.Dossier)) name = name.name;
-            return this.$rem0(params);
-          },
-          $rem0:        function(params /* par, name * /) {
-            return this.$addAtomic(c.atomicRemChild, [ U.param(params, 'par'), U.param(params, 'name') ]);
-          },
-          $mod:         function(params /* doss, data * /) {
-            return this.$addAtomic(c.atomicModData, [ U.param(params, 'doss'), U.param(params, 'data') ]);
-          },
-          $edit:        function(params /* add, mod, rem * /) {
-            var add = U.param(params, 'add', []);
-            var mod = U.param(params, 'mod', []);
-            var rem = U.param(params, 'rem', []);
-            
-            var promises = [];
-            for (var i = 0, len = add.length; i < len; i++) promises.push(this.$add(add[i]));
-            for (var i = 0, len = mod.length; i < len; i++) promises.push(this.$mod(mod[i]));
-            for (var i = 0, len = rem.length; i < len; i++) promises.push(this.$rem(rem[i]));
-            return new P({ all: promises });
-          },
-          */
-          
+          // The next 4 methods are NOT atomics; they add sets of atomics
+          // Atomics themselves cannot add more atomics!!
           add: function(params /* par, name, data, outline */) {
             
             var guid = global.NEXT_ID++;
@@ -185,7 +117,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var outline = U.param(params, 'outline', null);
             
             if (!outline) {
-              if (!par) throw new Error('`Editor.prototype.add` requires either "outline" or "par" param');
+              if (!par) throw new Error('`add` requires either "outline" or "par" param');
               outline = par.getChildOutline(name);
             }
             
@@ -201,7 +133,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             else      this.$addAtomic(c.atomicSetNameCalculated, [ doss ]);
             
             // Step 3: Add to parent
-            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ])
+            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ]);
+            
+            this.$addAtomic(c.atomicStartDoss, [ doss ]);
             
             // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
             doss.loadFromJson(data, this);
@@ -211,7 +145,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           },
           rem: function(params /* par, child */) {
-            this.$addAtomic(c.atomicRemChild, [ U.param(params, 'par'), U.param(params, 'child') ]);
+            var par = U.param(params, 'par');
+            var child = U.param(params, 'child');
+            this.$addAtomic(c.atomicRemChild, [ par, child ]);
+            this.$addAtomic(c.atomicStopDoss, [ child ]);
           },
           mod: function(params /* doss, data */) {
             this.$addAtomic(c.atomicModData, [ U.param(params, 'doss'), U.param(params, 'data') ]);
@@ -296,9 +233,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
               // Atomic batch could not be completed!
               console.log('Stage failed due to ' + recResults.errors.length + ' error(s):\n');
-              //for (var i = 0, len = recResults.errors.length; i < len; i++) console.log('#' + (i + 1) + ':', recResults.errors[i].stack, '\n');
-              
-              console.log('Undoing ' + recResults.undoAtomics.length + ' atomics...');
+              for (var i = 0, len = recResults.errors.length; i < len; i++) console.log('#' + (i + 1) + ':', recResults.errors[i].stack, '\n');
               
               // TODO: Is $recurseAtomics or $recurseStage better for undoing?
               // Using $recurseAtomics means that undo operations shouldn't generate
@@ -316,8 +251,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
               });
                 
-            }).then(function() {
+            }).then(function(recResults) {
               
+              console.log('Resolved: ', recResults.attemptArr);
               pass.$transaction.resolve(null);
               return null;
               
@@ -362,13 +298,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
               //    (NOTE: The undo transaction will either be successful, or if not, result in a FATAL error).
               
               if (recResults.errors.length || !pass.atomics.length) {
-                // console.log(desc + '::: ' + recResults.undoAtomics.length); 
+                // console.log(desc + '::: ' + recResults.undoAtomics.length);
+                recResults.attemptArr = [ recResults.attemptNum ];
                 return recResults;
               }
               
               var undoAtomics = recResults.undoAtomics;
               return pass.$recurseStage(type, stageNum + 1).then(function(recNextResults) {
                 recNextResults.undoAtomics = recNextResults.undoAtomics.concat(undoAtomics);
+                recNextResults.attemptArr = [ recNextResults.attemptNum ].concat(recNextResults.attemptArr);
                 //console.log(desc + '::: ' + recResults.undoAtomics.length); 
                 return recNextResults;
               });
@@ -387,7 +325,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var pass = this;
             
-            var maxTime = 0;            // Setting this value > 0 is useful for debugging
+            var maxTime = 0; // Setting this value > 0 is useful for debugging
             
             return new P({ all: atomics.map(function(atomic) {  // Try to get the result of all atomics
               
@@ -398,10 +336,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               return result.$result.then(function(val) {
                 
-                //gotOne = true;                            // Flag that at least one atomic has succeeded
-                //undoAtomics.push(result.undoAtomic);      // An action was performed so keep track of the undo action
                 if (maxTime) clearTimeout(timeout);
-                
                 return {
                   status: 'success',
                   undoAtomic: result.undoAtomic
@@ -409,10 +344,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
               }).fail(function(err) {
                 
-                //errorArr.push(err);                       // Keep track of the error (for debugging)
-                //remainingAtomics.push(atomic);            // Keep track of the failed atomic; it may be retried later!
                 if (maxTime) clearTimeout(timeout);
-                
                 return {
                   status: 'failure',
                   error: err,
@@ -440,7 +372,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               // If all promises homogenously failed or succeeded, simply return!
               if (!undoAtomics.length || !errors.length) {
-                console.log(desc + '::: ' + undoAtomics.length);
                 return {
                   undoAtomics: undoAtomics,
                   errors: errors,
@@ -451,11 +382,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               // Some atomics passed, and some failed: make another attempt
               return pass.$recurseAtomics(type, stageNum, attemptNum + 1, remainingAtomics).then(function(recResult) {
-                
                 recResult.undoAtomics = recResult.undoAtomics.concat(undoAtomics);
-                console.log(desc + '::: ' + recResult.undoAtomics.length);
                 return recResult;
-                
               });
               
             });
@@ -464,6 +392,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         };},
         statik: function(c) { return {
+          atomicStartDoss: function(doss) {
+            doss.start();
+            console.log('Started doss!', doss.getAddress());
+            return {
+              $result: p.$null,
+              desc: 'Start doss ' + doss.getAddress(),
+              undoAtomic: c.atomicStopDoss.bind(null, doss)
+            };
+          },
+          atomicStopDoss: function(doss) {
+            doss.stop();
+            console.log('STOP:', doss.getAddress());
+            return {
+              $result: p.$null,
+              desc: 'Stop doss ' + doss.getAddress(),
+              undoAtomic: c.atomicStartDoss.bind(null, doss)
+            };
+          },
           atomicSetNameSimple: function(doss, name, force) {
             
             var origName = doss.name;
@@ -508,10 +454,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return {
               $result: p.$null,
               desc: 'Add child: ' + doss.getAddress() + ' -> ' + child.name + ': <<<<\n' + JSON.stringify(child.getData(), null, 2) + '\n>>>>',
-              undoAtomic: function() {
-                console.log('REMOVING!!!' + doss.getAddress() + ' -> ' + child.name);
-                return c.atomicRemChild(doss, child);
-              }//c.atomicRemChild.bind(null, doss, child)
+              undoAtomic: c.atomicRemChild.bind(null, doss, child)
             };
             
           },
@@ -525,25 +468,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               undoAtomic: c.atomicAddChild.bind(null, doss, child)
             };
             
-          },
-          
-          /*atomicLoadJson: function(doss, json, editor) {
-            
-            doss.loadFromJson(json, editor); // TODO: This can throw an error with changes made!!
-            
-            return {
-              $result: p.$null, // doss.$loadFromJson(json, editor),
-              desc: 'Load json: ' + doss.getAddress() + ' -> <<<<\n' + JSON.stringify(json, null, 2) + '\n>>>>',
-              undoAtomic: function() {
-                console.log('NOTE: Currently no way to undo `loadFromJson`!');
-                return {
-                  $result: p.$null,
-                  desc: 'undid json load?'
-                }
-              }
-            };
-            
-          }*/
+          }
         };}
       }),
       
@@ -592,103 +517,76 @@ var package = new PACK.pack.Package({ name: 'dossier',
         };
         
         // Ability: modData
-        var $modDataVal = function(doss, params /* [ editor, ] data */) {
+        var $modDataVal = function(doss, params /* editor, data */) {
           var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor', null);
-          
-          var immediate = !editor;
-          if (immediate) editor = new ds.Editor({});
+          var editor = U.param(params, 'editor');
           
           editor.mod({ doss: doss, data: data });
-          
-          return immediate ? editor.$transact() : editor.$transaction;
+          return editor.$transaction;
           
         };
-        var $modDataSet = function(doss, params /* [ editor, ] data */) {
+        var $modDataSet = function(doss, params /* editor, data */) {
           var data = U.param(params, 'data');
           if (!U.isObj(data, Object)) return new P({ err: new Error('modData expects the "data" param to be an `Object`') });
           
-          var editor = U.param(params, 'editor', null);
-          var immediate = !editor;
-          if (immediate) editor = new ds.Editor({});
+          var editor = U.param(params, 'editor');
           
-          var $ret = new P({
+          return new P({
             all: data.map(function(v, k) { return doss.children[k].$useAbility('modData', { editor: editor, data: v }); })
           }).then(function() { return null; });
-          
-          return immediate ? editor.$transact() : editor.$transaction;
         };
         var $modDataSetDirect = $modDataVal; // Both of these just call `doss.setValue(...)` with the value
         var $modDataRef = $modDataVal;
         
         // Ability: addData
-        var $addData = function(doss, params /* [ editor, ] [ prepareForMod, ] data */) {
+        var $addData = function(doss, params /* [ prepareForMod, ] editor, data */) {
           
           var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor', null);
+          var editor = U.param(params, 'editor');
           var prepareForMod = U.param(params, 'prepareForMod', null);
-          
-          var immediate = !editor;
-          if (immediate) editor = new ds.Editor({});
           
           var child = editor.add({ par: doss, data: data });
           
-          return (immediate ? editor.$transact() : editor.$transaction).then(function() {
+          return editor.$transaction.then(function() {
             
             var modParams = prepareForMod ? prepareForMod(child, { data: data }) : { data: data };
             
             // On add success, try to mod
             return child.$useAbility('modData', modParams)
-              
-              // On mod failure, some deep-child's "modData" ability call failed
-              .fail(function(err) {
-                
+              .fail(function(err) {   // On mod failure, some deep-child's "modData" ability call failed
                 var editor = new ds.Editor({});
-                editor.rem({ par: doss, name: child.name });
-                return editor.$transact()
-                  .fail(function(err0) {
-                    // On removal failure, this is a fatal situation (corrupt data)
-                    console.log('FATAL MFRF: ADDED, BAD MOD, BAD REM D:', err.stack);
-                    throw err0;
-                  })
-                  .then(function() {
-                    // On removal success everything is fine, but signal that the initial $addData ability use failed
-                    console.log('ADDED, bad mod, good rem! :D');
-                    throw err;
-                  })
-                  
+                editor.rem({ par: doss, child: child });
+                return editor.$transact().then(function() { return err; }); // Pass `err` along; it will be thrown later
               })
+              .fail(function(err) {   // On removal failure, this is a fatal situation (corrupt data)
+                console.log('FATAL MFRF: ADDED, BAD MOD, BAD REM D:', err.stack);
+                throw err;
+              })
+              .then(function(err) {   // `err` is provided if the failed add+mod could be undone with a rem.
+                if (err) {
+                  console.log('ADDED, bad mod, good rem! :D');
+                  throw err;
+                }
+              });
               
           }).then(function() { return { address: child.getAddress() }; }); // If everything succeeds, return the address!
           
         };
-        var $addDataDirect = function(doss, params /* [ editor, ] data */) {
+        var $addDataDirect = function(doss, params /* editor, data */) {
           var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor', null);
-          
-          var immediate = !editor;
-          if (immediate) editor = new ds.Editor({});
+          var editor = U.param(params, 'editor');
           
           var child = editor.add({ par: doss, data: data });
-          
-          return (immediate ? editor.$transact() : editor.$transaction).then(function() {
-            return { address: child.address };
-          });
-          
+          return editor.$transaction.then(function() { return { address: child.address }; });
         };
         
         // Ability: remData
-        var $remData = function(doss, params /* [ editor, ] name */) {
-          var name = U.param(params, 'name');
-          var editor = U.param(params, 'editor', null);
+        var $remData = function(doss, params /* editor, child */) {
+          var child = U.param(params, 'child');
+          var editor = U.param(params, 'editor');
           
-          var immediate = !editor;
-          if (immediate) editor = new ds.Editor({});
-          
-          editor.rem({ par: doss, name: name });
-          
-          return immediate ? editor.$transact() : editor.$transaction;
-          
+          editor.rem({ par: doss, child: child });
+          return editor.$transaction;
         };
         
         return {
@@ -731,6 +629,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.outline = U.param(params, 'outline');
             
             this.par = null;
+            this.started = false;
           },
           
           // Construction
@@ -740,7 +639,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           updateName: function(name, force) {
             if (!force && !ds.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
             
-            
             var par = this.par;
             if (par) par.remChild(this);
             
@@ -748,7 +646,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.name = name.toString();
             
             if (par) {
-              
               
               try {
                 
@@ -769,8 +666,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                 } catch(fatalErr) {
                   
-                  console.log('FATAL MFRF (mod fail, revert fail)', fatalErr.stack);
-                  throw fatalErr;
+                  console.log('FATAL MFRF due to:', fatalErr.stack);
+                  throw new Error('FATAL MFRF');
                   
                 }
                 
@@ -835,18 +732,25 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var abilities = this.outline.p.abilities || {};
             if (!abilities.contains(trueName)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + name + '"') });
             
+            if (!params) params = {};
+            var immediate = !params.contains('editor');
+            if (immediate) params.editor = new ds.Editor();
+            
             try {
               
-              var pass = this;
+              // TODO: There's a difference between the ability being done adding
+              // atomics, and the ability having run
+              // - Obviously the ability can't run until editor.$transact is called
+              // - editor.$transact should be called when abilities are done adding
+              //   atomics (calling immediately MIGHT? not always work)
               
-              // Action logging:
-              // console.log(this.getAddress() + ' -> ' + name + '(' + JSON.stringify(params) + ')');
-              
-              // Ensure the result is a promise
-              return p.$(abilities[trueName](this, params || {}));
+              var $result = p.$(abilities[trueName](this, params));
+              if (immediate) params.editor.$transact().done();
+              return $result;
               
             } catch(err) {
               
+              console.log('HERE', err.message);
               return new P({ err: err });
               
             }
@@ -860,16 +764,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
             throw new Error('Not implemented');
           },
           
-          $isStarted: function() {
-            if (!this.$started) this.$started = new P({});
-            return this.$started;
-          },
-          
           start: function() {
+            
+            if (this.started) return;
+            
+            if (!this.hasResolvedName() || (this.par && !this.par.started))
+              throw new Error('Not ready to start "' + this.getAddress() + '"');
             
             // Add any contentFunc
             var contentFunc = this.outline.p.contentFunc;
-            if (contentFunc && !this.content) {
+            if (contentFunc) {
               this.content = contentFunc(this);
               if (!U.isInstance(this.content, ds.Content)) throw new Error('Bad contentFunc');
               this.content.start();
@@ -877,24 +781,29 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             // Add any changeHandler
             var changeHandler = this.outline.p.changeHandler;
-            if (changeHandler && !this.hasConcern('value', changeHandler)) {
+            if (changeHandler) {
               this.changeHandler = changeHandler.bind(null, this);
               this.addConcern('value', this.changeHandler);
             }
             
-            if (!this.$started) this.$started = new P({});
-            if (this.$started.status === 'pending') this.$started.resolve(null);
+            this.started = true;
             
           },
           stop: function() {
             
             // Stop any content
-            if (this.content) this.content.stop();
+            if (this.content) {
+              this.content.stop();
+              delete this.content;
+            }
             
             // Stop any change handler
             if (this.changeHandler) {
               this.remConcern('value', this.changeHandler);
+              delete this.changeHandler;
             }
+            
+            this.started = false;
             
           }
           
@@ -963,14 +872,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           },
           getNamedChild0: function(name) {
-            if (U.isObj(name, Object))
-              return new ds.FilterResults({ origChildren: this.children, filter: name });
+            /* if (U.isObj(name, Object))
+              return new ds.FilterResults({ origChildren: this.children, filter: name }); */
             
             if (this.children.contains(name)) return this.children[name];
             return sc.getNamedChild0.call(this, name);
           },
           
-          // TODO: `getValue` and setValue here aren't compatible
+          // TODO: `getValue` and `setValue` here aren't compatible
           // e.g. `doss.setValue(doss.getValue())` will fail - `doss`, being a `DossierSet`,
           // will pass each of its children an instance of itself as the parameter to the child's
           // `getValue` method
@@ -987,7 +896,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             } else {
               
               for (var k in arg1) {
-                if (!this.children.contains(k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+                if (!this.children.contains(k)) {
+                  console.log('SAD DOSS:', this);
+                  console.log(arg1);
+                  throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+                }
                 this.children[k].setValue(arg1[k]);
               }
               
@@ -1236,6 +1149,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.dereference().getAddress() === value;
           },
           
+          // TODO: Addresses should be represented as `Array` where possible
           getRefAddress: function() {
             var valInd = 0;
             var template = this.outline.p.template;
@@ -1269,10 +1183,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
       }),
       
       /* Psuedo-Dossier */
+      /*
       FilterResults: U.makeClass({ name: 'FilterResults',
         superclass: tree.TreeNode,
         methods: function(sc, c) { return {
-          init: function(params /* origChildren, filter, par */) {
+          init: function(params /* origChildren, filter, par * /) {
             var origChildren = U.param(params, 'origChildren');
             var filter = U.param(params, 'filter');
             
@@ -1293,7 +1208,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           /*$handleRequest: function(params /* command * /) {
             return ds.Dossier.prototype.$handleRequest.call(this, params);
           },
-          */
+          * /
           getData: function() {
             return ds.DossierSet.prototype.getData.call(this, params);
           }
@@ -1311,6 +1226,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           }
         }
       }),
+      */
       
       /* Versioner - maintain evolving Dossier structures */
       Versioner: U.makeClass({ name: 'Versioner',
@@ -1344,7 +1260,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return $dossData.then(function(doss) {
               
               if (!U.isInstance(doss, ds.Dossier)) throw new Error('Versioner\'s final output was not a `Dossier`');
-              doss.start(); // Signal to the Dossier that it's ready
               return doss;
               
             });
@@ -1445,7 +1360,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           start: function() {
             sc.start.call(this);
             if (this.syncOnStart) this.update();
-            else                      this.scheduleUpdates();
+            else                  this.scheduleUpdates();
           },
           stop: function() {
             this.cancelUpdates();
@@ -1493,7 +1408,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // Handle relative addresses
             // TODO: This isn't a smart method. Does it handle ALL relative addresses?
             // TODO: Also, `'app'` shouldn't be a keyword!! It shouldn't appear in framework code.
-            if (addr[0] !== '~root' && addr[0] !== 'app') {
+            if (addr[0] !== '~root') {
               var prefix = this.doss.getAddress().split('.');
               while (addr[0] === '~par') {
                 addr = addr.slice(1);
@@ -1519,59 +1434,42 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             // console.log('Syncing REF: ' + this.doss.getAddress());
             
+            console.log('Fulfilling ref: ' + this.doss.getAddress() + ' -> ' + this.doss.getValue());
+
+            var editor = new ds.Editor({});
             var doss = this.doss;
+            if (doss.name !== 'app' && !doss.par) return new P({ err: new Error('Doss missing parent') });
             var holder = doss.getHolderDoss();
-            if (holder) {
+            
+            if (!holder) {
               
-              var $holder = new P({ val: holder });
-              
-            } else {
-              
+              var editor = new ds.Editor({});
               var holderAddr = doss.getHolderAddress().split('.');
-              
-              var missingChain = [];
-              while (holderAddr.length && !doss.getChild(holderAddr)) {
-                missingChain.push(holderAddr[holderAddr.length - 1]);
-                holderAddr = holderAddr.slice(0, holderAddr.length - 1);
-              }
-              
-              missingChain.reverse();
-              
-              // Note that at this point, `holderAddr` points to the deepest existing parent
-              var $holder = new P({ val: doss.getChild(holderAddr) });
-              
-              for (var i = 0; i < missingChain.length; i++) {
-                // TODO: It may be possible to build the chain entirely and
-                // then do a single Editor operation
-                $holder = $holder.then(function(ind, holder) {
-                  
-                  var reqName = missingChain[ind];
-                  
-                  // Here's the easy way out: the `Dossier` already exists!
-                  if (holder.children.contains(reqName)) return holder.children[reqName];
-                  
-                  // Otherwise, need to create the `Dossier`
-                  var editor = new ds.Editor();
-                  var nextHolder = editor.add({ par: holder, name: missingChain[ind], data: {} });
-                  return editor.$transact().then(function() { return nextHolder });
-                  
-                }.bind(null, i));
+              console.log('BUILDING HOLDER AT:', holderAddr);
+              holder = doss;
+              for (var i = 0, len = holderAddr.length; i < len; i++) {
+                var childName = holderAddr[i];
+                var child = holder.getNamedChild(childName);
                 
+                if (!holder.getNamedChild(childName)) {
+                  console.log('Parent will be:', holder);
+                  console.log('');
+                }
+                
+                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, data: {} });
               }
+              
+              // Now `holder === doss.getHolderDoss()`
               
             }
             
-            return $holder.then(function(holder) {
-              
-              var editor = new ds.Editor();
-              editor.add({ par: holder, data: refData });
-              return editor.$transact().then(function() {
-                doss.dereference().start();
-              });
-              
+            var refDoss = editor.add({ par: holder, data: refData });
+            return editor.$transact().then(function() {
+              if (refDoss !== doss.dereference()) throw new Error('Something went wrong');
+              console.log('Created ref:', refDoss.getAddress(), 'referenced by:', doss.getAddress());
+              //refDoss.start();
             });
-            
-            
+              
           }
         };}
       }),
@@ -1581,13 +1479,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           'this `Content` does not update the values of a child even if those values have changed. ' +
           'In order to update such values, children should be assigned inner `Content`s.',
         methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs, syncOnStart, fields */) {
+          init: function(params /* doss, address, waitMs, jitterMs, syncOnStart, selection, preserveKeys */) {
             sc.init.call(this, params);
-            //this.fields = U.param(params, 'fields');
             this.selection = U.param(params, 'selection');
+            this.preserveKeys = U.param(params, 'preserveKeys', []);
           },
           $query: function(ref) {
-            
             return queries.$doQuery({
               address: this.address,
               command: 'getData',
@@ -1607,7 +1504,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var add = [];
             var rem = [];
-            var mod = [];
             
             var uncovered = doss.children.clone();
             
@@ -1628,16 +1524,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             }
             
+            // Cover all local keys
+            for (var i = 0, len = this.preserveKeys.length; i < len; i++) delete uncovered[this.preserveKeys[i]];
+            
             // `uncovered` now contains keys which exists in `doss` but not `childData` - such keys are outdated
-            for (var k in uncovered) rem.push({ par: doss, name: k });
+            for (var k in uncovered) { rem.push({ par: doss, child: k }); }
             
             //console.log('Syncing DCT: ' + doss.getAddress());
             
             var editor = new ds.Editor();
-            editor.edit({ add: add, rem: rem, mod: mod });
-            return editor.$transact().then(function() {
-              doss.start();
-            });
+            editor.edit({ add: add, rem: rem });
+            return editor.$transact();
             
           },
           
@@ -1661,6 +1558,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                   // Turn updates back on once the remote value has added successfully
                   pass.scheduleUpdates();
+                  
                   // return localVal; // Work with the local value instead of remote
                   return remoteVal;
                   

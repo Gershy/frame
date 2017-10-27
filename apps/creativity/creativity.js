@@ -5,15 +5,6 @@
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
- |  HEEERE: When is a doss considered "started"? Even when storySet appears to have loaded
- |  a newly created story, and when storySet.* dosses have contentFuncs, those contentFuncs
- |  still don't run until storySet's contentFunc's 10-second delay has elapsed.
- |  
- |  TODO: Get rid of the latency for stories created client-side!!
- |        (getting rid of latency for all stories is much harder; requires long-polling)
- |  
- |  TODO: Why does simply adding contentFuncs to storySet.* sometimes cause crashes?
-
 TASKS:
 [ ] Improved content control
   [ ] `PACK.dossier.ContentSync*` classes should accept any "selection" parameter as either a function or an Info object
@@ -312,7 +303,6 @@ new PACK.pack.Package({ name: 'creativity',
           var winningLine = U.randElem(bestWrites); // Decide on a winner amongst the highest-voted
           var nextContestInd = story.getValue('contestInd') + 1;
           
-          ////
           editor.edit({
             
             mod: [
@@ -340,7 +330,6 @@ new PACK.pack.Package({ name: 'creativity',
         
         return $resolveVotes.then(function() {
           
-          ////
           editor.mod({ doss: story,
             data: {
               phase: 'awaitingWrite',
@@ -537,7 +526,7 @@ new PACK.pack.Package({ name: 'creativity',
       
     };
     
-    var outline = new ds.Outline({ name: 'app', c: cr.Creativity, i: {
+    var outline = new ds.Outline({ name: '~root', c: cr.Creativity, i: {
       
       version:        { c: ds.DossierStr, p: {
         abilities: ds.abilities.val.pick([ '$getData' ]),
@@ -672,6 +661,72 @@ new PACK.pack.Package({ name: 'creativity',
       storySet:       { c: ds.DossierArr, p: {
         /// {CLIENT=
         contentFunc: function(doss) {
+          /*
+          
+          Advanced selection: 
+          
+          {
+            type: 'selectAll',
+            innerSelector: {
+            
+              type: 'selectVal',
+              maxBytes: 100
+              
+            }
+          }
+          
+          
+          {
+            type: 'selectWhite',
+            innerSelectors: {
+              
+              user: {
+                type: 'selectVal',
+                maxBytes: 100
+              },
+              
+              createdTime: {
+                type: 'selectVal',
+                maxBytes: 100
+              },
+              
+              contestSet: {
+                type: 'selectSingle',
+                
+                name: { type: 'refVal', address: '~queryRoot.contest.currentContest' }, // This is fancy!!
+                innerSelector: {
+                  type: 'selectSingle',
+                  
+                  name: 'num',
+                  innerSelector: {
+                    type: 'selectVal',
+                    maxBytes: 100
+                  }
+                  
+                }
+                
+              },
+              
+              writeSet: {
+                type: 'selectRange',
+                offset: 10,
+                limit: 10,
+                
+                innerSelector: {
+                  type: 'selectSingle',
+                  
+                  name: '@content' // TODO: Reference the content, etc. (should references be follow-able??)
+                  ....
+                  
+                }
+              }
+            
+            
+            }
+          }
+          
+          */
+          
           // TODO: "selection" should become either a function or an Info object; the selection here should be paged
           return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: {
             '*': {
@@ -690,14 +745,51 @@ new PACK.pack.Package({ name: 'creativity',
         /// =CLIENT}
         abilities: ds.abilities.set.clone({
           $addData: function(storySet, params) {
+            var currentTime = U.timeMs();
+            var user = storySet.getRoot().getChild(params.data.user);
+            if (!user) throw new Error('Invalid user address: "' + params.data.user + '"');
+            
             params.data.update({
+              
+              createdTime: currentTime,
+              quickName: cr.validate.string('quickName', U.param(params.data, 'quickName'), 3, 16),
+              description: cr.validate.string('description', U.param(params.data, 'description'), 10, 250),
+              contestInd: 0,
+              authorLimit: cr.validate.intBool('authorLimit', U.param(params.data, 'authorLimit'), 3),
+              contestTime: cr.validate.integer('contestTime', U.param(params.data, 'contestTime'), 1000 * 60 * 3),
+              maxWrites: cr.validate.intBool('maxWrites', U.param(params.data, 'maxWrites'), 3),
+              maxVotes: cr.validate.intBool('maxVotes', U.param(params.data, 'maxVotes'), 3),
+              maxWriteLength: cr.validate.integer('maxWriteLength', U.param(params.data, 'maxWriteLength'), 3, 1000),
+              contestLimit: cr.validate.integer('contestLimit', U.param(params.data, 'contestLimit'), 3),
+              slapLoadTime: U.param(params.data, 'slapLoadTime', 1000 * 60 * 60 * 100),
+              slamLoadTime: U.param(params.data, 'slamLoadTime', 1000 * 60 * 60 * 100),
+              phase: 'awaitingWrite',
+              timePhaseStarted: currentTime,
+              
+              anonymizeWriter: cr.validate.boolean('anonymizeWriter', U.param(params.data, 'anonymizeWriter')), 
+              anonymizeVoter: cr.validate.boolean('anonymizeVoter', U.param(params.data, 'anonymizeVoter')),
+              
+              authorSet: {},
               contestSet: {
                 0: {
                   num: 0,
-                  writeSet: {}
+                  writeSet: {
+                  }
                 }
+              },
+              writeSet: {
               }
             });
+            
+            // Add an initial user
+            params.data.authorSet[user.name] = {
+              user: params.data.user,
+              numSlaps: 0,
+              lastSlapTime: currentTime,
+              numSlams: 0,
+              lastSlamTime: currentTime
+            };
+            
             /// {CLIENT=
             return ds.abilities.set.$addData(storySet, params);
             /// =CLIENT}
@@ -714,7 +806,9 @@ new PACK.pack.Package({ name: 'creativity',
           p: {
             /// {CLIENT=
             contentFunc: function(doss) {
-              return new ds.ContentSyncSet({ doss: doss, syncOnStart: true, selection: ds.selectAll });
+              return new ds.ContentSyncSet({ doss: doss, syncOnStart: true, selection: ds.selectAll, preserveKeys: [
+                'isAuthored', 'userDisp', 'age', 'phaseTimeRemaining', 'currentContest'
+              ]});
             },
             /// =CLIENT}
             abilities: {
@@ -748,9 +842,12 @@ new PACK.pack.Package({ name: 'creativity',
               }
             }},
             userDisp:       { c: ds.DossierStr, p: {
-              contentFunc: function(doss) {
-                return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
-                  var user = doss.par.getChild('@user');
+              contentFunc: function(userDisp) {
+                
+                var story = userDisp.par;
+                
+                return new ds.ContentCalc({ doss: userDisp, cache: cr.updateOnFrame, func: function() {
+                  var user = story.getChild('@user');
                   return user
                     ? user.getValue('fname') + ' ' + user.getValue('lname') + ' (' + user.getValue('username') + ')'
                     : '- loading -';
@@ -758,22 +855,22 @@ new PACK.pack.Package({ name: 'creativity',
               }
             }},
             age:            { c: ds.DossierInt, p: {
-              contentFunc: function(doss) {
-                return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
-                  return U.timeMs() - doss.par.getValue('createdTime');
+              contentFunc: function(age) {
+                var story = age.par;
+                return new ds.ContentCalc({ doss: age, cache: cr.updateOnFrame, func: function() {
+                  return U.timeMs() - story.getValue('createdTime');
                 }});
               }
             }},
             phaseTimeRemaining: { c: ds.DossierInt, p: {
-              contentFunc: function(doss) {
-                return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+              contentFunc: function(phaseTimeRemaining) {
+                return new ds.ContentCalc({ doss: phaseTimeRemaining, cache: cr.updateOnFrame, func: function() {
                   
-                  var story = doss.par;
-                  var phase = story.getValue('phase');
+                  var phase = phaseTimeRemaining.par.getValue('phase');
                   
                   if (phase === 'writing') {
                     
-                    return story.getValue('timePhaseStarted') + story.getValue('contestTime') - U.timeMs();
+                    return phaseTimeRemaining.par.getValue('timePhaseStarted') + phaseTimeRemaining.par.getValue('contestTime') - U.timeMs();
                     
                   } else {
                     
@@ -1199,10 +1296,10 @@ new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    console.log('Initializing doss...');
     cr.$doss.then(function(doss) {
+      console.log('Initialized!');
       
-      U.debug('doss', doss.getData())
+      U.debug(doss.getData());
       
       /// {SERVER=
       cr.queryHandler = doss;
@@ -1807,7 +1904,6 @@ new PACK.pack.Package({ name: 'creativity',
       
       var storyFormSubmitDec = storyFormDec.genSubmitDecorator(function(event) {
         
-        console.log('Adding story...');
         return doss.getChild('storySet').content.$addChild({
           data: {
             user: doss.getChild('@user').getAddress(),
