@@ -504,7 +504,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           stop: function(view) {
             if (this.validateFunc) view.info.remConcern('value', this.valConcern);
             
-            uf.domRemListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
+            if (view.domRoot) {
+              var interactive = view.domRoot.getElementsByClassName('interactive')[0];
+              if (interactive) uf.domRemListener(interactive, 'onkeydown', view['~' + this.id + '.keyPress']);
+            }
             delete view['~' + this.id + '.keyPress'];
           }
         };},

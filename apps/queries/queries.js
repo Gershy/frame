@@ -4,14 +4,12 @@ new PACK.pack.Package({ name: 'queries',
     
     var P = p.P;
     var stdStateChangeFunc = function(query, resolve, reject) {
-      if (query.readyState !== 4) return; // Query isn't done yet
-      
+      if (query.readyState !== 4) return;
       if (query.status === 200) resolve(U.stringToThing(query.responseText));
       else                      reject(new Error(query.responseText));
     };
     var refStateChangeFunc = function(query, resolve, reject, ref) {
-      if (query.readyState !== 4) return; // Query isn't done yet
-      
+      if (query.readyState !== 4) return;
       if (query.status === 200) resolve({ ref: ref, result: U.stringToThing(query.responseText) });
       else                      reject(new Error(query.responseText));
     };
@@ -30,28 +28,11 @@ new PACK.pack.Package({ name: 'queries',
           
           query.open('POST', '', true);
           query.setRequestHeader('Content-Type', 'application/json');
-          
-          try {
           query.send(U.thingToString({
             address: U.param(params, 'address'),
             command: U.param(params, 'command'),
             params: U.param(params, 'params', {})
           }));
-        } catch(err) { console.log('BAD', {
-            address: U.param(params, 'address'),
-            command: U.param(params, 'command'),
-            params: U.param(params, 'params', {})
-          }); throw err; }
-          
-          /*
-          var dataStr = encodeURIComponent(U.thingToString({
-            address: U.param(params, 'address'),
-            command: U.param(params, 'command'),
-            params: U.param(params, 'params', {})
-          }));
-          query.open('GET', '?_data=' + dataStr, true);
-          query.send();
-          */
         }});
         
       }

@@ -95,7 +95,6 @@ new PACK.pack.Package({ name: 'server',
             
             if (address.length) {
               
-              if (address[0] === 'app') address[0] = '~root';
               var handler = PACK[this.appName].queryHandler.getChild(address);
               if (!handler) throw new Error('Invalid address: "' + address + '"');
               

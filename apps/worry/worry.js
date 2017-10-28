@@ -28,7 +28,7 @@ new PACK.pack.Package({ name: 'worry',
           },
           remConcern: function(type, func) {
             var key = this.getKey();
-            if (!(key in func)) throw new Error('Tried to remove a non-existent interest');
+            if (!(key in func)) return;
             if (this.concerns[type][func[key]] !== func) throw new Error('Something has gone horribly wrong');
             
             delete func[key];

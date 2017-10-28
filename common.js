@@ -19,7 +19,10 @@ Error.stackTraceLimit = Infinity;
         return this;
       },
       clone: function(props) {
-        return {}.update(this).update(props ? props : {});
+        var ret = {};
+        for (var k in this) ret[k] = this[k];
+        if (props) for (var k in props) ret[k] = props[k];
+        return ret;
       },
       forEach: function(it) {
         for (var k in this) it(this[k], k, this);
