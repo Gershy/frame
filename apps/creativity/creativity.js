@@ -570,7 +570,7 @@ new PACK.pack.Package({ name: 'creativity',
     
     var editStory = goodOutline.getChild('editStory');
     editStory.addChild('error', ds.DossierStr);
-    editStory.addChild('story', ds.DossierRef, p: { template: '~root.storySet.$quickName' });
+    editStory.addChild('story', ds.DossierRef, { template: '~root.storySet.$quickName' });
     editStory.addChild('quickName', ds.DossierStr);
     editStory.addChild('description', ds.DossierStr);
     editStory.addChild('authorLimit', ds.DossierStr);
