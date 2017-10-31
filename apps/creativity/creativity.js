@@ -110,7 +110,7 @@ TASKS:
         
 /// =REMOVE}
 var FILLSTORY = false;
-var LOADSTATE = false;
+var LOADSTATE = true;
 new PACK.pack.Package({ name: 'creativity',
   /// {SERVER=
   dependencies: [ 'dossier', 'p', 'persist' ],
