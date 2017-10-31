@@ -16,7 +16,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
     
     ds.update({
       
-      NAME_REGEX: /^[~a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/, // The goddam tilde is now allowed in the name, to allow the root to be named "~root"
+      NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/, // The goddam tilde is now allowed in the name, to allow the root to be named "~root"
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(ds.NEXT_TEMP++);
@@ -98,11 +98,33 @@ var package = new PACK.pack.Package({ name: 'dossier',
             data.p = p || {};
             
             if (!data.name) throw new Error('Invalid "name" property');
+            if (this.p.innerOutline) throw new Error('Cannot add children to an outline with "innerOutline" property');
             if (this.i.contains(data.name)) throw new Error('Tried to overwrite "' + data.name + '"');
             
             var outline = new ds.Outline(data);
             this.i[outline.name] = outline;
             outline.par = this;
+            
+            return outline;
+            
+          },
+          addDynamicChild: function(name, cls, p) {
+            
+            var nameFunc = U.param(p, 'nameFunc');
+            delete p.nameFunc;
+            
+            var data = { name: name, c: cls, dynamic: true, p: p };
+            
+            if (!data.name) throw new Error('Invalid "name" property');
+            if (!U.isEmptyObj(this.i)) throw new Error('Cannot add a dynamic child to an outline with children');
+            
+            var outline = new ds.Outline(data);
+            this.p.innerOutline = outline;
+            this.p.nameFunc = nameFunc;
+            
+            outline.par = this;
+            
+            return outline;
             
           }
           
@@ -337,7 +359,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // This method has error conditions, but it signals such errors by returning
             // an "errors" property with at least 1 error (instead of by throwing an error).
             
-            var desc = type + '(' + stageNum + ', ' + attemptNum + ')';
+            // var desc = type + '(' + stageNum + ', ' + attemptNum + ')';
             
             var pass = this;
             
@@ -386,11 +408,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
         };},
         statik: function(c) { return {
           atomicStartDoss: function(doss) {
-            doss.start();
-            return {
-              $result: p.$null,
-              undoAtomic: c.atomicStopDoss.bind(null, doss)
-            };
+            try {
+              
+              doss.start();
+              return {
+                $result: p.$null,
+                undoAtomic: c.atomicStopDoss.bind(null, doss)
+              };
+              
+            } catch(err) {
+              
+              doss.stop();
+              throw err;
+              
+            }
           },
           atomicStopDoss: function(doss) {
             doss.stop();
@@ -615,8 +646,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.name = ds.getTempName(); // Here's where `this.name` is overwritten
             this.outline = U.param(params, 'outline');
             
-            this.par = null;
+            this.par = null; // The `Dossier` initializes with no parent
             this.started = false;
+            
           },
           
           // Construction
@@ -624,21 +656,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.name.substr(0, 5) !== 'TEMP(';
           },
           updateName: function(name, force) {
+            name = name.toString();
+            
             if (!force && !ds.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '"');
+            if (name === this.name) return;
             
             var par = this.par;
             if (par) par.remChild(this);
             
             var origName = this.name;
-            this.name = name.toString();
+            this.name = name;
             
             if (par) {
               
-              try {
-                
-                par.addChild(this);
-                
-              } catch(err) {
+              try { par.addChild(this); } catch(err) {
                 
                 // It's crucial that re-adding `this` to `par` (and failing) doesn't leave
                 // the `Dossier` structure changed! Upon failure, revert back to the
@@ -647,15 +678,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
                 // Re-adding with the original name NEEDS to succeed - otherwise there's no
                 // way to return to the original state
-                try {
-                  
-                  par.addChild(this);
-                  
-                } catch(fatalErr) {
-                  
+                try { par.addChild(this); } catch(fatalErr) {
                   console.log('FATAL MFRF due to:', fatalErr.stack);
                   throw new Error('FATAL MFRF');
-                  
                 }
                 
                 // Reverting to the original state has succeeded, throw a non-fatal error
@@ -701,6 +726,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           isRoot: function() {
             return !this.outline.par;
+          },
+          isRooted: function() {
+            return this.getRoot().isRoot();
           },
           
           // Server/client
@@ -765,7 +793,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           start: function() {
             
-            if (this.started) return;
+            if (this.started) throw new Error('Tried to double-start "' + this.getAddress() + '"');
+            this.started = true;
+            
+            if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
             
             if (!this.hasResolvedName() || (this.par && !this.par.started))
               throw new Error('Not ready to start "' + this.getAddress() + '"');
@@ -785,10 +816,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
               this.addConcern('value', this.changeHandler);
             }
             
-            this.started = true;
+            var decorateFunc = this.outline.p.decorateFunc;
+            if (decorateFunc) {
+              decorateFunc(this);
+            }
             
           },
           stop: function() {
+            
+            if (!this.started) throw new Error('Tried to double-stop "' + this.getAddress() + '"');
+            this.started = false;
+            
+            // console.log('Stopped: "' + this.getAddress() + '"');
             
             // Stop any content
             if (this.content) {
@@ -801,8 +840,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               this.remConcern('value', this.changeHandler);
               delete this.changeHandler;
             }
-            
-            this.started = false;
             
           }
           
@@ -825,6 +862,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (this.children.contains(child.name)) throw new Error('Tried to overwrite: "' + this.children[child.name].getAddress() + '"');
             
             child.par = this;
+            
             this.length++;
             this.children[child.name] = child;
             
@@ -934,12 +972,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var ret = {};
             for (var k in this.children) ret[k] = this.children[k].getData();
             return ret;
-          },
-          
-          start: function() {
-            sc.start.call(this);
-            for (var k in this.children) this.children[k].start();
           }
+        
         };}
       }),
       DossierObj: U.makeClass({ name: 'DossierObj',
@@ -989,6 +1023,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // Child methods
           addChild: function(child) {
             child = sc.addChild.call(this, child);
+            // TODO: There's potentially an issue with the "add"/"attach" concerns here; the nextInd isn't incremented before they're fired
             while (this.nextInd in this.children) this.nextInd++; // A hole has just been filled. Ensure the next index is available
             return child;
           },
@@ -1115,7 +1150,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               return sc.setValue.call(this, pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; }));
             }
             
-            if (!U.isInstance(value, ds.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance');
+            if (!U.isInstance(value, ds.Dossier)) throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, or a `Dossier` instance (received ' + U.typeOf(value) + ')');
             
             var addr = value.getNameChain();
             
@@ -1129,7 +1164,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               else if (tmp[0] === '~')
                 break;
               else if (tmp !== val)
-                throw new Error('Doss at addr "' + addr.join('.') + '" doesn\'t match template "' + template.join('.') + '"');
+                throw new Error('`DossierRef` "' + this.getAddress() + '" was supplied value "' + addr.join('.') + '", ' +
+                  'but this doesn\'t match the template "' + template.join('.') + '"');
             }
             
             vals.reverse();
@@ -1268,9 +1304,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
           init: function(params /* doss, cache */) {
             this.doss = U.param(params, 'doss');
             this.cache = U.param(params, 'cache', null);
+            
+            if (!this.doss.isRooted()) throw new Error('Dossier isn\'t rooted; can\'t init `Content`');
           },
-          start: function() { if (this.cache) this.cache[this.guid] = this; },
-          stop: function() { if (this.cache) delete this.cache[this.guid]; }
+          start: function() {
+            if (this.cache) this.cache[this.guid] = this;
+          },
+          stop: function() {
+            if (this.cache) delete this.cache[this.guid];
+          }
         };}
       }),
       ContentCalc: U.makeClass({ name: 'ContentCalc',
@@ -1453,10 +1495,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               if (refDoss !== doss.dereference()) throw new Error('Something went wrong');
             });
               
-          },
-          start: function() {
-            if (this.doss.getRoot().name !== '~root') throw new Error('Dossier isn\'t rooted; can\'t start');
-            sc.start.call(this);
           }
         };}
       }),

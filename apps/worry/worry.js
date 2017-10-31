@@ -11,7 +11,7 @@ new PACK.pack.Package({ name: 'worry',
           init: function(params) {
           },
           getKey: function() {
-            if (!('worryId' in this)) {
+            if (!this.hasOwnProperty('worryId')) {
               this.concerns = {};
               this.nextId = 0;
               this.worryId = wr.WORRY_ID++;

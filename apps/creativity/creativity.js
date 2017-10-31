@@ -5,30 +5,31 @@
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
-HEEERE: Try submitting a write. It don't work. fix.
-
-THINGS THAT MAKE ME SAD:
-1) Seems lazy to name the root Dossier "~root". Did that because `theRootDosser.getChild('app.whateverSet.whatever')` obviously misses an "app" child
-2) Had to pick one advantage with `ContentSyncSet` (adding remote value first). I want the best of both worlds!!
-
 TASKS:
-[ ] Decide if naming root Dossier "~root" is appropriate
-  [ ] If it is, handle this naming properly (the regex shouldn't accept "~")
+[ ] Finish anonymization
+[ ] Use `Outline` to speed up userification
+[ ] `ContentSyncSet` should have the best of both worlds!!
+  [ ] 1 - doesn't emit requests until remote doss is initialized
+  [ ] 2 - modifies local data as soon as possible
+[X] Decide if naming root Dossier "~root" is appropriate
+  [X] If it is, handle this naming properly (the regex shouldn't accept "~")
 [ ] Improved content control
   [ ] `PACK.dossier.ContentSync*` classes should accept any "selection" parameter as either a function or an Info object
   [ ] Extend selection syntax. 
     [ ] skip and limit
-    [ ] filtering (`PACK.dossier.FilterResults` needs reimplementation)
+    [ ] filtering (`PACK.dossier.FilterResults` needs refactoring)
 [ ] Interactive elements try to perform actions using `Content` instances which don't yet exist...
       (Note: this could be an indication of a bigger, underlying design flaw??)
       INTERIM SOLUTION: Manually detect unloaded `Dossier` instances, and disable controls appropriately with `Decorator`s
 [X] Form validation
   [X] Login
-  [X] Story creation/editing
+  [X] Story creation
+  [ ] Story editing
   [ ] Profile editing
 [ ] Decouple `Editor` from `Dossier`
 [ ] The scheduling functionality of `PACK.dossier.ContentAbstractSync` should be implemented separately in a `Scheduler` class
       (and `PACK.dossier.ContentAbstractSync` given a "scheduler" property or something of the sort)
+      (Or maybe scheduling isn't needed at all, and all we need are sockets/long-polling??)
 [ ] Need to add lots of `changeHandler` methods for better responsiveness
       (E.g. upon contest completion, the timer resets to "--:--:--" much more quickly than the voting pane is replaced with a writing pane)
 [ ] LOTS OF ACTION VALIDATION
@@ -36,16 +37,80 @@ TASKS:
   [ ] Submitting writes on an expired story
   [ ] User account creation
 [ ] Is the per-frame loop necessary? Can all changes be processed via `changeHandler`s?
+[ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
+[ ] Make sure there are no hard-coded strings in userify or quickdev
 [ ] Compiling for all files
 [ ] Mapping by line AND character index will allow better compilation (compact files into a single line)
 [ ] Mapping raw file names to compiled files
-[ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
-[ ] Profile editing
-[ ] Story editing (Change description? Change round time limit?)
-[ ] Make sure there are no hard-coded strings in userify or quickdev
 */
+
+/* TODO: Advanced selection: 
+
+{
+  type: 'selectAll',
+  innerSelector: {
+  
+    type: 'selectVal',
+    maxBytes: 100
+    
+  }
+}
+
+
+{
+  type: 'selectWhite',
+  innerSelectors: {
+    
+    user: {
+      type: 'selectVal',
+      maxBytes: 100
+    },
+    
+    createdTime: {
+      type: 'selectVal',
+      maxBytes: 100
+    },
+    
+    contestSet: {
+      type: 'selectSingle',
+      
+      name: { type: 'refVal', address: '~queryRoot.contest.currentContest' }, // This is fancy!!
+      innerSelector: {
+        type: 'selectSingle',
+        
+        name: 'num',
+        innerSelector: {
+          type: 'selectVal',
+          maxBytes: 100
+        }
+        
+      }
+      
+    },
+    
+    writeSet: {
+      type: 'selectRange',
+      offset: 10,
+      limit: 10,
+      
+      innerSelector: {
+        type: 'selectSingle',
+        
+        name: '@content' // TODO: Reference the content, etc. (should references be follow-able??)
+        ....
+        
+      }
+    }
+  
+  
+  }
+}
+
+*/
+        
 /// =REMOVE}
 var FILLSTORY = false;
+var LOADSTATE = false;
 new PACK.pack.Package({ name: 'creativity',
   /// {SERVER=
   dependencies: [ 'dossier', 'p', 'persist' ],
@@ -214,10 +279,11 @@ new PACK.pack.Package({ name: 'creativity',
             var votesForLine = 0;
             var voteSet = write.getChild('voteSet');
             for (var k in voteSet.children) votesForLine += voteSet.getValue([ k, 'value' ]);
-            
             return votesForLine;
             
           });
+          
+          console.log('Votes:\n', JSON.stringify(votes, null, 2));
           
           // Build a sortable array while counting total votes...
           var orderedVotes = [];
@@ -228,15 +294,13 @@ new PACK.pack.Package({ name: 'creativity',
           }
           orderedVotes.sort(function(a, b) { return b - a; });
           
-          var best = orderedVotes.length > 0 ? orderedVotes[0].numVotes : 0;
-          var nextBest = 0; // Next best is the next value NOT EQUAL to `best`, or `best` if there are no other lesser values
+          var best = orderedVotes.length > 0 ? orderedVotes[0] : 0;
+          var nextBest = 0; // `nextBest` is the next value NOT EQUAL to `best`, or `best` if there are no other lesser values
           if (orderedVotes.length > 1) {
             nextBest = best;
             for (var i = 0; i < orderedVotes.length; i++) {
-              if (orderedVotes[i] < best) {
-                nextBest = orderedVotes[i];
-                break;
-              }
+              // This will find the first value smaller than `best`
+              if (orderedVotes[i] < best) { nextBest = orderedVotes[i]; break; }
             }
           }
           var votesRemaining = numAuthors - numVotes;
@@ -276,27 +340,30 @@ new PACK.pack.Package({ name: 'creativity',
         
         if (currentContest.getChild('writeSet').length) {
           
-          var writeStandard = 0;
-          var bestWrites = [];
           var writes = currentContest.getChild('writeSet').children;
+          
+          var trackWrites = [];
+          var bestVotes = 0;
           for (var k in writes) {
             
             var write = writes[k];
-            var numVotes = 0;
-            
             var votes = write.getChild('voteSet').children;
+            var numVotes = 0;
             for (var kk in votes) numVotes += votes[kk].getValue('value');
             
-            if (numVotes === writeStandard) {
-              bestWrites.push(write);
-            } else if (numVotes > writeStandard) {
-              writeStandard = numVotes;
-              bestWrites = [ write ]; // Add `write` as the ONLY currently contending option
-            }
+            trackWrites.push({
+              write: writes[k],
+              numVotes: numVotes
+            });
+            
+            if (numVotes > bestVotes) bestVotes = numVotes;
             
           }
           
-          var winningLine = U.randElem(bestWrites); // Decide on a winner amongst the highest-voted
+          var winningWrite = U.randElem(trackWrites.map(function(writeVotes) {
+            return writeVotes.numVotes >= bestVotes ? writeVotes.write : U.SKIP;
+          }));
+          
           var nextContestInd = story.getValue('contestInd') + 1;
           
           editor.edit({
@@ -311,30 +378,20 @@ new PACK.pack.Package({ name: 'creativity',
               { par: story.getChild('contestSet'), data: { num: nextContestInd, writeSet: {} } },
               
               // Compile the winning write into the story
-              { par: story.getChild('writeSet'), data: winningLine }
+              { par: story.getChild('writeSet'), data: winningWrite }
             ]
             
           });
           
-          var $resolveVotes = editor.$transact();
-            
-        } else {
-          
-          var $resolveVotes = p.$null;
-          
         }
         
-        return $resolveVotes.then(function() {
-          
-          editor.mod({ doss: story,
-            data: {
-              phase: 'awaitingWrite',
-              timePhaseStarted: currentTime
-            }
-          });
-          return editor.$transact();
-          
+        editor.mod({ doss: story,
+          data: {
+            phase: 'awaitingWrite',
+            timePhaseStarted: currentTime
+          }
         });
+        return editor.$transact();
         
       },
       
@@ -522,11 +579,9 @@ new PACK.pack.Package({ name: 'creativity',
       
     };
     
-    
-    // TODO: `Dossier` references inside `Outline` lambdas should always be named "*Doss" (e.g. "storySetDoss", not "storySet")
-    var goodOutline = new ds.Outline({ name: 'creativity', c: cr.Creativity, });
-    
-    goodOutline.addChild('version',         ds.DossierStr, {
+    // ~root
+    var outline = new ds.Outline({ name: 'creativity', c: cr.Creativity, });
+    outline.addChild('version', ds.DossierStr, {
       abilities: ds.abilities.val.pick([ '$getData' ]),
       /// {CLIENT=
       contentFunc: function(doss) {
@@ -534,16 +589,15 @@ new PACK.pack.Package({ name: 'creativity',
       }
       /// =CLIENT}
     });
-    
     /// {CLIENT=
-    goodOutline.addChild('username',        ds.DossierStr);
-    goodOutline.addChild('password',        ds.DossierStr);
-    goodOutline.addChild('token',           ds.DossierStr, {
+    outline.addChild('username', ds.DossierStr);
+    outline.addChild('password', ds.DossierStr);
+    outline.addChild('token', ds.DossierStr, {
       changeHandler: function(doss) {
         doss.getChild('~root.user').content.update();
       }
     });
-    goodOutline.addChild('user',            ds.DossierRef, {
+    outline.addChild('user', ds.DossierRef, {
       template: '~root.userSet.$username',
       contentFunc: function(doss) {
         return new ds.ContentSyncRef({ doss: doss, syncOnStart: true,
@@ -556,19 +610,19 @@ new PACK.pack.Package({ name: 'creativity',
         });
       }
     });
-    goodOutline.addChild('loginError',      ds.DossierStr);
-    goodOutline.addChild('currentWrite',    ds.DossierStr);
-    goodOutline.addChild('currentStory',    ds.DossierRef, { template: '~root.storySet.$quickName',
+    outline.addChild('loginError', ds.DossierStr);
+    outline.addChild('currentWrite', ds.DossierStr);
+    outline.addChild('currentStory', ds.DossierRef, { template: '~root.storySet.$quickName',
       contentFunc: function(doss) {
         return new ds.ContentSyncRef({ doss: doss, syncOnStart: true });
       }
     });
-    goodOutline.addChild('isEditingStory',  ds.DossierBln, {
+    outline.addChild('isEditingStory', ds.DossierBln, {
       value: false
     });
-    goodOutline.addChild('editStory',       ds.DossierObj);
     
-    var editStory = goodOutline.getChild('editStory');
+    // ~root.editStory
+    var editStory = outline.addChild('editStory', ds.DossierObj);
     editStory.addChild('error', ds.DossierStr);
     editStory.addChild('story', ds.DossierRef, { template: '~root.storySet.$quickName' });
     editStory.addChild('quickName', ds.DossierStr);
@@ -581,11 +635,12 @@ new PACK.pack.Package({ name: 'creativity',
     editStory.addChild('contestTime', ds.DossierInt); // TODO: For form consistency, should be a string?
     editStory.addChild('slapLoadTime', ds.DossierStr);
     editStory.addChild('slamLoadTime', ds.DossierStr);
-    editStory.addChild('anonymizeWriter', ds.DossierStr);
-    editStory.addChild('anonymizeVoter', ds.DossierStr);
+    editStory.addChild('anonymizeWriter', ds.DossierBln);
+    editStory.addChild('anonymizeVoter', ds.DossierBln);
     /// =CLIENT}
     
-    goodOutline.addChild('userSet', ds.DossierArr, {
+    // ~root.userSet
+    var userSet = outline.addChild('userSet', ds.DossierArr, {
       /// {CLIENT=
       contentFunc: function(doss) {
         return new ds.ContentSyncSet({ doss: doss, syncOnStart: false, selection: ds.selectAll })
@@ -612,10 +667,12 @@ new PACK.pack.Package({ name: 'creativity',
         }
       })
     });
-    
-    var user = new ds.Outline({ name: 'user', c: ds.DossierObj, p: {
+    var user = userSet.addDynamicChild('user', cr.CreativityUser, {
+      nameFunc: function(userSet, user) {
+        return user.getValue('username');
+      },
       abilities: {
-        $getData: ds.abilities.$getData,
+        $getData: ds.abilities.set.$getData,
         $modData: function(user, params) {
           /// {SERVER=
           if (!user.validate(params)) throw new Error('Couldn\'t authenticate');
@@ -623,92 +680,24 @@ new PACK.pack.Package({ name: 'creativity',
           return ds.abilities.setDirect.$modData(user, params);
         }
       }
-    }});
+    });
     user.addChild('username', ds.DossierStr, {
       abilities: ds.abilities.val.pick([ '$getData' ])
     });
-    user.addChild('password', ds.DossierStr);
+    user.addChild('password', ds.DossierStr, {
+      abilities: {}
+    });
     user.addChild('fname', ds.DossierStr, {
       abilities: ds.abilities.val.pick([ '$getData' ])
     });
     user.addChild('lname', ds.DossierStr, {
       abilities: ds.abilities.val.pick([ '$getData' ])
     });
-    goodOutline.getChild('userSet').p.dynamicChild = {    // TODO: Outlines aren't ready to accept a "dynamicChild" property yet!
-      outline: user,
-      nameFunc: function(userSet, user) {
-        return user.getValue('username');
-      }
-    };
     
-    goodOutline.addChild('storySet', ds.DossierArr, {
+    // ~root.storySet
+    var storySet = outline.addChild('storySet', ds.DossierArr, {
       /// {CLIENT=
       contentFunc: function(doss) {
-        /*
-          
-          TODO: Advanced selection: 
-          
-          {
-            type: 'selectAll',
-            innerSelector: {
-            
-              type: 'selectVal',
-              maxBytes: 100
-              
-            }
-          }
-          
-          
-          {
-            type: 'selectWhite',
-            innerSelectors: {
-              
-              user: {
-                type: 'selectVal',
-                maxBytes: 100
-              },
-              
-              createdTime: {
-                type: 'selectVal',
-                maxBytes: 100
-              },
-              
-              contestSet: {
-                type: 'selectSingle',
-                
-                name: { type: 'refVal', address: '~queryRoot.contest.currentContest' }, // This is fancy!!
-                innerSelector: {
-                  type: 'selectSingle',
-                  
-                  name: 'num',
-                  innerSelector: {
-                    type: 'selectVal',
-                    maxBytes: 100
-                  }
-                  
-                }
-                
-              },
-              
-              writeSet: {
-                type: 'selectRange',
-                offset: 10,
-                limit: 10,
-                
-                innerSelector: {
-                  type: 'selectSingle',
-                  
-                  name: '@content' // TODO: Reference the content, etc. (should references be follow-able??)
-                  ....
-                  
-                }
-              }
-            
-            
-            }
-          }
-          
-          */
         return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: {
           '*': {
             user: {},
@@ -784,8 +773,10 @@ new PACK.pack.Package({ name: 'creativity',
         }
       })
     });
-    
-    var story = new ds.Outline({ name: 'story', c: ds.DossierObj, p: {
+    var story = storySet.addDynamicChild('story', ds.DossierObj, {
+      nameFunc: function(storySetDoss, storyDoss) {
+        return storyDoss.getValue('quickName');
+      },
       /// {CLIENT=
       contentFunc: function(doss) {
         return new ds.ContentSyncSet({ doss: doss, syncOnStart: true, selection: ds.selectAll, preserveKeys: [
@@ -802,652 +793,330 @@ new PACK.pack.Package({ name: 'creativity',
           return ds.abilities.setDirect.$modData(storyDoss, params);
         }
       }
-    }});
-    // TODO: Add story-outline children!!
-    goodOutline.getChild('storySet').p.dynamicChild = {
-      outline: story,
-      nameFunc: function(storySetDoss, storyDoss) {
-        return storyDoss.getValue('quickName');
-      }
-    };
-    
-    var outline = new ds.Outline({ name: 'creativity', c: cr.Creativity, i: {
-      
-      version:        { c: ds.DossierStr, p: {
-        abilities: ds.abilities.val.pick([ '$getData' ]),
-        /// {CLIENT=
-        contentFunc: function(doss) {
-          return new ds.ContentSync({ doss: doss, syncOnStart: true });
-        }
-        /// =CLIENT}
-      }},
+    });
+    story.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
+      abilities: ds.abilities.ref,
       /// {CLIENT=
-      username:       { c: ds.DossierStr, p: {
-      }},
-      password:       { c: ds.DossierStr, p: {
-      }},
-      token:          { c: ds.DossierStr, p: {
-        changeHandler: function(doss) {
-          doss.getRoot().getChild('user').content.update();
-        }
-      }},
-      user:           { c: ds.DossierRef, p: { template: '~root.userSet.$username',
-        contentFunc: function(doss) {
-          return new ds.ContentSyncRef({ doss: doss, syncOnStart: true,
-            calcRef: function() {
-              // Set reference to null unless a token is obtained
-              return doss.getChild('~root.token').value ? [ doss.getChild('~root.username').value ] : null;
-            },
-            
-            // TODO: This could be generated by a client-side `Dossier.prototype.getFullSelection` method?
-            // Which could also be the default for the "selection" parameter
-            selection: ds.selectAll
+      contentFunc: function(doss) {
+        return new ds.ContentSyncRef({ doss: doss, syncOnStart: true });
+      }
+      /// =CLIENT}
+    });
+    /// {CLIENT=
+    story.addChild('isAuthored', ds.DossierBln, {
+      contentFunc: function(doss) {
+        var story = doss.par;
+        return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+          var username = doss.getRoot().getValue('username');
+          return story.children.authorSet.children.contains(username);
+        }});
+      }
+    });
+    story.addChild('userDisp', ds.DossierStr, {
+      contentFunc: function(doss) {
+        return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+          var userDoss = doss.par.getChild('@user');
+          return userDoss
+            ? userDoss.getValue('fname') + ' ' + userDoss.getValue('lname') + ' (' + userDoss.getValue('username') + ')'
+            : '- loading -';
+        }});
+      }
+    });
+    story.addChild('age', ds.DossierInt, {
+      contentFunc: function(ageDoss) {
+        return new ds.ContentCalc({ doss: ageDoss, cache: cr.updateOnFrame, func: function() {
+          return U.timeMs() - ageDoss.par.getValue('createdTime');
+        }});
+      }
+    });
+    story.addChild('phaseTimeRemaining', ds.DossierInt, {
+      contentFunc: function(ptrDoss) {
+        return new ds.ContentCalc({ doss: ptrDoss, cache: cr.updateOnFrame, func: function() {
+          var storyDoss = ptrDoss.par;
+          var phase = storyDoss.getValue('phase');
+          
+          if (phase !== 'writing') return Number.MAX_SAFE_INTEGER; // TODO: This is a weird null-signifier
+          
+          return storyDoss.getValue('timePhaseStarted') + storyDoss.getValue('contestTime') - U.timeMs();
+        }});
+      }
+    });
+    story.addChild('currentContest', ds.DossierRef, { template: '~par.contestSet.$contestInd',
+      contentFunc: function(ccDoss) {
+        return new ds.ContentSyncRef({ doss: ccDoss, syncOnStart: true, calcRef: function() {
+          return [ ccDoss.par.getValue('contestInd') ];
+        }});
+      }
+    });
+    /// =CLIENT}
+    story.addChild('anonymizeWriter', ds.DossierBln, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('anonymizeVoter', ds.DossierBln, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('createdTime', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('quickName', ds.DossierStr, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('description', ds.DossierStr, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('contestInd', ds.DossierInt, {
+      abilities: ds.abilities.val,
+      /// {CLIENT=
+      contentFunc: function(ciDoss) {
+        return new ds.ContentSync({ doss: ciDoss, waitMs: 1000 });
+      },
+      changeHandler: function(ciDoss) {
+        var storyDoss = ciDoss.par;
+        storyDoss.getChild('currentContest').content.update();
+        storyDoss.getChild('writeSet').content.update();
+        storyDoss.getChild('phase').content.update();
+        storyDoss.getChild('timePhaseStarted').content.update();
+      }
+      /// =CLIENT}
+    });
+    story.addChild('authorLimit', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('contestTime', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('maxWrites', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('maxVotes', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('maxWriteLength', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('contestLimit', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    story.addChild('slapLoadTime', ds.DossierInt, {
+    });
+    story.addChild('slamLoadTime', ds.DossierInt, {
+    });
+    story.addChild('phase', ds.DossierStr, {
+      abilities: ds.abilities.val,
+      /// {CLIENT=
+      contentFunc: function(phaseDoss) {
+        return new ds.ContentSync({ doss: phaseDoss, waitMs: 2000 });
+      }
+      /// =CLIENT}
+    });
+    story.addChild('timePhaseStarted', ds.DossierInt, {
+      /// {CLIENT=
+      contentFunc: function(tpsDoss) {
+        return new ds.ContentSync({ doss: tpsDoss, waitMs: 2000 });
+      },
+      /// =CLIENT}
+      abilities: ds.abilities.val
+    });
+    
+    // ~root.storySet.story.authorSet
+    var authorSet = story.addChild('authorSet', ds.DossierArr, {
+      /// {CLIENT=
+      contentFunc: function(doss) {
+        return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: ds.selectAll });
+      },
+      /// =CLIENT}
+      abilities: {
+        $addData: function(doss, params /* editor, data */) {
+          
+          var user = doss.getRoot().getChild(U.param(params.data, 'user'));
+          if (!user) throw new Error('Invalid "user" param');
+          
+          var currentTime = U.timeMs();
+          params.data.update({
+            user: user,
+            numSlaps: 0,
+            lastSlapTime: currentTime,
+            numSlams: 0,
+            lastSlamTime: currentTime
+          });
+          
+          /// {SERVER=
+          params.prepareForMod = function(author, params) {
+            console.log('MODDING', author.getChild('@user'));
+            return params.update({ token: author.getChild('@user').getToken() });
+          };
+          /// =SERVER}
+          
+          return ds.abilities.setDirect.$addData(doss, params);
+          
+        },
+        $getData: ds.abilities.set.$getData
+      }
+    });
+    var author = authorSet.addDynamicChild('author', ds.DossierObj, {
+      nameFunc: function(authorSetDoss, authorDoss) {
+        return authorDoss.getChild('@user').name;
+      },
+      abilities: {
+        $modData: function(authorDoss, params /* editor, data */) {
+          /// {SERVER=
+          if (!authorDoss.getChild('@user').validate(params)) throw new Error('Couldn\'t authenticate');
+          /// =SERVER}
+          return ds.abilities.setDirect.$modData(authorDoss, params);
+        },
+        $getData: ds.abilities.set.$getData
+      }
+    });
+    author.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
+      /// {CLIENT=
+      contentFunc: function(authorDoss) {
+        return new ds.ContentSyncRef({ doss: authorDoss, syncOnStart: true, selection: ds.selectAll });
+      },
+      /// =CLIENT}
+      abilities: ds.abilities.ref.pick([ '$getData' ])
+    });
+    author.addChild('numSlaps', ds.DossierInt, {
+      abilities: ds.abilities.val.pick([ '$getData' ])
+    });
+    author.addChild('lastSlapTime', ds.DossierInt, {
+      abilities: ds.abilities.val.pick([ '$getData' ])
+    });
+    author.addChild('numSlams', ds.DossierInt, {
+      abilities: ds.abilities.val.pick([ '$getData' ])
+    });
+    author.addChild('lastSlamTime', ds.DossierInt, {
+      abilities: ds.abilities.val.pick([ '$getData' ])
+    });
+    
+    // ~root.storySet.story.contestSet
+    var contestSet = story.addChild('contestSet', ds.DossierArr, {
+      abilities: ds.abilities.set,
+    });
+    var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
+      nameFunc: function(contestSetDoss, contestDoss) {
+        return contestDoss.getValue('num');
+      },
+      abilities: ds.abilities.set
+    });
+    /// {CLIENT=
+    contest.addChild('currentWrite', ds.DossierRef, { template: '~par.writeSet.$username',
+      contentFunc: function(cwDoss) {
+        var org = cwDoss;
+        return new ds.ContentCalc({ doss: cwDoss, cache: cr.updateOnFrame, func: function() {
+          // Return `null` if no current write, otherwise return the write
+          var contest = cwDoss.par;
+          var username = cwDoss.getRoot().getValue('username');
+          return username ? contest.getChild([ 'writeSet', username ]) : null;
+        }});
+      }
+    });
+    contest.addChild('currentVote', ds.DossierRef, { template: '~par.writeSet.$username.voteSet.$username',
+      
+      contentFunc: function(cvDoss) {
+        return new ds.ContentCalc({ doss: cvDoss, cache: cr.updateOnFrame, func: function() {
+          var username = cvDoss.getRoot().getValue('username');
+          var contest = cvDoss.par;
+          var writeSet = contest.children.writeSet.children;
+          
+          for (var k in writeSet) {
+            var voteSet = writeSet[k].children.voteSet.children;
+            for (var voteUsername in voteSet) if (voteUsername === username) return voteSet[voteUsername];
+          }
+          
+          return null;
+        }});
+      },
+      changeHandler: function(cvDoss) {
+        // Changing the current vote also changes the current voted write
+        var vote = cvDoss.dereference();
+        var currentVotedWrite = cvDoss.getChild('~par.currentVotedWrite');
+        currentVotedWrite.setValue(vote ? vote.par.par : null);
+      }
+    });
+    contest.addChild('currentVotedWrite', ds.DossierRef, { template: '~par.writeSet.$username'
+      // TODO: doss.getChild('@currentVotedWrite') === doss.getChild('@currentVote.~par(write)')
+    });
+    /// =CLIENT}
+    contest.addChild('num', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    
+    // ~root.storySet.story.contestSet.contest.writeSet
+    var contestWriteSet = contest.addChild('writeSet', ds.DossierArr, {
+      /// {SERVER=
+      abilities: ds.abilities.set.clone({
+        // Server-side, submitting a write must inform the app that such a thing has happened
+        // TODO: This can likely be made cleaner with concerns!!
+        // TODO: Don't let users submit invalid writes! Validate properties (ensure content is within limits) and ensure token is legit
+        $addData: function(wsDoss, params) {
+          return ds.abilities.set.$addData(wsDoss, params).then(function() {
+            cr.informWriteSubmitted(wsDoss.getChild('~par(story)'));
           });
         }
-      }},
-      loginError:     { c: ds.DossierStr, p: {
-      }},
-      currentWrite:   { c: ds.DossierStr, p: {
-      }},
-      currentStory:   { c: ds.DossierRef, p: { template: '~root.storySet.$quickName',
-        contentFunc: function(doss) {
-          return new ds.ContentSyncRef({ doss: doss, syncOnStart: true });
-        }
-      }},
-      isEditingStory: { c: ds.DossierBln, p: {
-        value: false
-      }},
-      editStory:      { c: ds.DossierObj, i: {
-        error:          { c: ds.DossierStr, p: {
-        }},
-        story:          { c: ds.DossierRef, p: { template: '~root.storySet.$quickName'
-        }},
-        quickName:      { c: ds.DossierStr, p: {
-        }},
-        description:    { c: ds.DossierStr, p: {
-        }},
-        authorLimit:    { c: ds.DossierStr, p: {
-        }},
-        maxWrites:      { c: ds.DossierStr, p: {
-        }},
-        maxVotes:       { c: ds.DossierStr, p: {
-        }},
-        maxWriteLength: { c: ds.DossierStr, p: {
-        }},
-        contestLimit:   { c: ds.DossierStr, p: {
-        }},
-        contestTime:    { c: ds.DossierInt, p: {
-        }},
-        slapLoadTime:   { c: ds.DossierStr, p: {
-        }},
-        slamLoadTime:   { c: ds.DossierStr, p: {
-        }},
-        anonymizeWriter:{ c: ds.DossierBln, p: {
-        }},
-        anonymizeVoter: { c: ds.DossierBln, p: {
-        }}
-      }},
+      }),
+      /// =SERVER}
+      /// {CLIENT=
+      contentFunc: function(wsDoss) {
+        return new ds.ContentSyncSet({ doss: wsDoss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
+      },
+      abilities: ds.abilities.set
       /// =CLIENT}
-      userSet:        { c: ds.DossierArr, p: {
-        /// {CLIENT=
-        contentFunc: function(doss) {
-          return new ds.ContentSyncSet({ doss: doss, syncOnStart: false, selection: ds.selectAll })
-        },
-        /// =CLIENT}
-        abilities: ds.abilities.set.clone({
-          $addData: function(userSet, params) {
-            // TODO: It takes a lot of knowledge of `Dossier`'s internals to do this :(
-            params.data.fname = 'Anonymous';
-            params.data.lname = 'Individual';
-            /// {SERVER=
-            var token = null;
-            params.prepareForMod = function(user, params) {
-              token = user.getToken(); // Keep a reference
-              return params.update({ token: token });
-            };
-            /// =SERVER}
-            return ds.abilities.set.$addData(userSet, params)
-              /// {SERVER=
-              .then(function(result) {
-                return result.update({ token: token });
-              });
-              /// =SERVER}
-          }
-        }),
-        innerOutline:   { name: 'user', c: cr.CreativityUser,
-          p: {
-            abilities: {
-              $getData: ds.abilities.set.$getData,
-              $modData: function(user, params) {
-                /// {SERVER=
-                if (!user.validate(params)) throw new Error('Couldn\'t authenticate');
-                /// =SERVER}
-                return ds.abilities.setDirect.$modData(user, params);
-              }
-            }
-          },
-          i: {
-            username:       { c: ds.DossierStr, p: {
-              abilities: ds.abilities.val.pick([ '$getData' ])
-            }},
-            password:       { c: ds.DossierStr, p: {
-              abilities: {} // No abilities allowed on password
-            }},
-            fname:          { c: ds.DossierStr, p: {
-              abilities: ds.abilities.val.pick([ '$getData' ])
-            }},
-            lname:          { c: ds.DossierStr, p: {
-              abilities: ds.abilities.val.pick([ '$getData' ])
-            }}
-          }
-        },
-        nameFunc: function(par, child) { return child.getValue('username'); }
-      }},
-      storySet:       { c: ds.DossierArr, p: {
-        /// {CLIENT=
-        contentFunc: function(doss) {
-          /*
-          
-          Advanced selection: 
-          
-          {
-            type: 'selectAll',
-            innerSelector: {
-            
-              type: 'selectVal',
-              maxBytes: 100
-              
-            }
-          }
-          
-          
-          {
-            type: 'selectWhite',
-            innerSelectors: {
-              
-              user: {
-                type: 'selectVal',
-                maxBytes: 100
-              },
-              
-              createdTime: {
-                type: 'selectVal',
-                maxBytes: 100
-              },
-              
-              contestSet: {
-                type: 'selectSingle',
-                
-                name: { type: 'refVal', address: '~queryRoot.contest.currentContest' }, // This is fancy!!
-                innerSelector: {
-                  type: 'selectSingle',
-                  
-                  name: 'num',
-                  innerSelector: {
-                    type: 'selectVal',
-                    maxBytes: 100
-                  }
-                  
-                }
-                
-              },
-              
-              writeSet: {
-                type: 'selectRange',
-                offset: 10,
-                limit: 10,
-                
-                innerSelector: {
-                  type: 'selectSingle',
-                  
-                  name: '@content' // TODO: Reference the content, etc. (should references be follow-able??)
-                  ....
-                  
-                }
-              }
-            
-            
-            }
-          }
-          
-          */
-          
-          // TODO: "selection" should become either a function or an Info object; the selection here should be paged
-          return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: {
-            '*': {
-              user: {},
-              createdTime: {},
-              quickName: {},
-              description: {},
-              contestInd: {},
-              contestLimit: {},
-              phase: {},
-              timePhaseStarted: {},
-              contestTime: {}
-            }
-          }});
-        },
-        /// =CLIENT}
-        abilities: ds.abilities.set.clone({
-          $addData: function(storySet, params) {
-            var currentTime = U.timeMs();
-            var user = storySet.getRoot().getChild(U.param(params.data, 'user'));
-            if (!user) throw new Error('Invalid user address: "' + params.data.user + '"');
-            
-            params.data.update({
-              
-              createdTime: currentTime,
-              quickName: cr.validate.string('quickName', U.param(params.data, 'quickName'), 3, 16),
-              description: cr.validate.string('description', U.param(params.data, 'description'), 10, 250),
-              contestInd: 0,
-              authorLimit: cr.validate.intBool('authorLimit', U.param(params.data, 'authorLimit'), 3),
-              contestTime: cr.validate.integer('contestTime', U.param(params.data, 'contestTime'), 1000 * 60 * 3),
-              maxWrites: cr.validate.intBool('maxWrites', U.param(params.data, 'maxWrites'), 3),
-              maxVotes: cr.validate.intBool('maxVotes', U.param(params.data, 'maxVotes'), 3),
-              maxWriteLength: cr.validate.integer('maxWriteLength', U.param(params.data, 'maxWriteLength'), 3, 1000),
-              contestLimit: cr.validate.integer('contestLimit', U.param(params.data, 'contestLimit'), 3),
-              slapLoadTime: U.param(params.data, 'slapLoadTime', 1000 * 60 * 60 * 100),
-              slamLoadTime: U.param(params.data, 'slamLoadTime', 1000 * 60 * 60 * 100),
-              phase: 'awaitingWrite',
-              timePhaseStarted: currentTime,
-              
-              anonymizeWriter: cr.validate.boolean('anonymizeWriter', U.param(params.data, 'anonymizeWriter')), 
-              anonymizeVoter: cr.validate.boolean('anonymizeVoter', U.param(params.data, 'anonymizeVoter')),
-              
-              authorSet: {},
-              contestSet: {
-                0: {
-                  num: 0,
-                  writeSet: {
-                  }
-                }
-              },
-              writeSet: {
-              }
-            });
-            
-            // Add an initial user
-            params.data.authorSet[user.name] = {
-              user: params.data.user,
-              numSlaps: 0,
-              lastSlapTime: currentTime,
-              numSlams: 0,
-              lastSlamTime: currentTime
-            };
-            
-            /// {CLIENT=
-            return ds.abilities.set.$addData(storySet, params);
-            /// =CLIENT}
-            /// {SERVER=
-            return ds.abilities.set.$addData(storySet, params.update({
-              prepareForMod: function(story, params) {
-                return params.update({ token: story.getChild('@user').getToken() });
-              }
-            }));
-            /// =SERVER}
-          }
-        }),
-        innerOutline:   { name: 'story', c: ds.DossierObj,
-          p: {
-            /// {CLIENT=
-            contentFunc: function(doss) {
-              return new ds.ContentSyncSet({ doss: doss, syncOnStart: true, selection: ds.selectAll, preserveKeys: [
-                'isAuthored', 'userDisp', 'age', 'phaseTimeRemaining', 'currentContest'
-              ]});
-            },
-            /// =CLIENT}
-            abilities: {
-              $getData: ds.abilities.set.$getData,
-              $modData: function(story, params) {
-                /// {SERVER=
-                if (!story.getChild('@user').validate(params)) throw new Error('Couldn\'t authenticate');
-                /// =SERVER}
-                return ds.abilities.setDirect.$modData(story, params);
-              }
-            }
-          },
-          i: {
-            user:           { c: ds.DossierRef, p: { template: '~root.userSet.$username',
-              abilities: ds.abilities.ref,
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSyncRef({ doss: doss, syncOnStart: true });
-              }
-              /// =CLIENT}
-            }},
-            /// {CLIENT=
-            isAuthored:     { c: ds.DossierBln, p: {
-              contentFunc: function(doss) {
-                var story = doss.par;
-                return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
-                  var username = doss.getRoot().getValue('username');
-                 // var story = doss.par;
-                  return story.children.authorSet.children.contains(username);
-                }});
-              }
-            }},
-            userDisp:       { c: ds.DossierStr, p: {
-              contentFunc: function(userDisp) {
-                
-                var story = userDisp.par;
-                
-                return new ds.ContentCalc({ doss: userDisp, cache: cr.updateOnFrame, func: function() {
-                  var user = story.getChild('@user');
-                  return user
-                    ? user.getValue('fname') + ' ' + user.getValue('lname') + ' (' + user.getValue('username') + ')'
-                    : '- loading -';
-                }});
-              }
-            }},
-            age:            { c: ds.DossierInt, p: {
-              contentFunc: function(age) {
-                var story = age.par;
-                return new ds.ContentCalc({ doss: age, cache: cr.updateOnFrame, func: function() {
-                  return U.timeMs() - story.getValue('createdTime');
-                }});
-              }
-            }},
-            phaseTimeRemaining: { c: ds.DossierInt, p: {
-              contentFunc: function(phaseTimeRemaining) {
-                return new ds.ContentCalc({ doss: phaseTimeRemaining, cache: cr.updateOnFrame, func: function() {
-                  
-                  var phase = phaseTimeRemaining.par.getValue('phase');
-                  
-                  if (phase === 'writing') {
-                    
-                    return phaseTimeRemaining.par.getValue('timePhaseStarted') + phaseTimeRemaining.par.getValue('contestTime') - U.timeMs();
-                    
-                  } else {
-                    
-                    return Number.MAX_SAFE_INTEGER;
-                    
-                  }
-                    
-                }});
-              }
-            }},
-            currentContest: { c: ds.DossierRef, p: { template: '~par.contestSet.$contestInd',
-              contentFunc: function(doss) {
-                return new ds.ContentSyncRef({ doss: doss, syncOnStart: true, calcRef: function() {
-                  return [ doss.par.getValue('contestInd') ]; // The current contest's index is stored in `contestInd`
-                }});
-              }
-            }},
-            /// =CLIENT}
-            anonymizeWriter: { c: ds.DossierBln, p: {
-              abilities: ds.abilities.val
-            }},
-            anonymizeVoter: { c: ds.DossierBln, p: {
-              abilities: ds.abilities.val
-            }},
-            createdTime:    { c: ds.DossierInt, p: {
-              abilities: ds.abilities.val
-            }},
-            quickName:      { c: ds.DossierStr, p: {
-              abilities: ds.abilities.val
-            }},
-            description:    { c: ds.DossierStr, p: {
-              abilities: ds.abilities.val
-            }},
-            contestInd:     { c: ds.DossierInt, p: {    // Index of current contest
-              abilities: ds.abilities.val,
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSync({ doss: doss, waitMs: 1000 });
-              },
-              changeHandler: function(doss) {
-                var story = doss.par;
-                story.getChild('currentContest').content.update();
-                story.getChild('writeSet').content.update();
-                story.getChild('phase').content.update();
-                story.getChild('timePhaseStarted').content.update();
-              }
-              /// =CLIENT}
-            }},
-            authorLimit:    { c: ds.DossierInt, p: {    // Max number of users writing this story
-              abilities: ds.abilities.val
-            }},
-            contestTime:    { c: ds.DossierInt, p: {    // Contest time limit
-              abilities: ds.abilities.val
-            }},
-            maxWrites:      { c: ds.DossierInt, p: {    // Number of writes allowed per contest
-              abilities: ds.abilities.val
-            }},
-            maxVotes:       { c: ds.DossierInt, p: {    // Number of votes allowed per contest
-              abilities: ds.abilities.val
-            }},
-            maxWriteLength: { c: ds.DossierInt, p: {    // Number of characters allowed in an entry
-              abilities: ds.abilities.val
-            }},
-            contestLimit:   { c: ds.DossierInt, p: {    // Total number of contests before the story concludes
-              abilities: ds.abilities.val
-            }},
-            slapLoadTime:   { c: ds.DossierInt, p: {    // Total millis to load a new slap ability
-            }},
-            slamLoadTime:   { c: ds.DossierInt, p: {    // Total millis to load a new slam ability'
-            }},
-            phase:          { c: ds.DossierStr, p: {    // The phase: awaitingWrite | writing
-              abilities: ds.abilities.val,
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSync({ doss: doss, waitMs: 2000 });
-              }
-              /// =CLIENT}
-            }},
-            timePhaseStarted: { c: ds.DossierInt, p: {  // The time the phase started at
-              abilities: ds.abilities.val,
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSync({ doss: doss, waitMs: 2000 });
-              }
-              /// =CLIENT}
-            }},
-
-            authorSet:      { c: ds.DossierArr, p: {
-              abilities: {
-                $addData: function(doss, params /* editor, data */) {
-                  
-                  var user = doss.getRoot().getChild(U.param(params.data, 'user'));
-                  if (!user) throw new Error('Invalid "user" param');
-                  
-                  var currentTime = U.timeMs();
-                  params.data.update({
-                    user: user,
-                    numSlaps: 0,
-                    lastSlapTime: currentTime,
-                    numSlams: 0,
-                    lastSlamTime: currentTime
-                  });
-                  
-                  /// {SERVER=
-                  params.prepareForMod = function(author, params) {
-                    console.log('MODDING', author.getChild('@user'));
-                    return params.update({ token: author.getChild('@user').getToken() });
-                  };
-                  /// =SERVER}
-                  
-                  return ds.abilities.setDirect.$addData(doss, params);
-                  
-                },
-                $getData: ds.abilities.set.$getData
-              },
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: ds.selectAll });
-              },
-              /// =CLIENT}
-              innerOutline:   { name: 'author', c: ds.DossierObj,
-                p: {
-                  abilities: {
-                    $modData: function(author, params /* editor, data */) {
-                      /// {SERVER=
-                      if (!author.getChild('@user').validate(params)) throw new Error('Couldn\'t authenticate');
-                      /// =SERVER}
-                      return ds.abilities.setDirect.$modData(author, params);
-                    },
-                    $getData: ds.abilities.set.$getData
-                  }
-                },
-                i: {
-                  user:         { c: ds.DossierRef, p: { template: '~root.userSet.$username',
-                    abilities: ds.abilities.ref.pick([ '$getData' ]),
-                    /// {CLIENT=
-                    contentFunc: function(doss) {
-                      return new ds.ContentSyncRef({ doss: doss, syncOnStart: true, selection: ds.selectAll });
-                    }
-                    /// =CLIENT}
-                  }},
-                  numSlaps:     { c: ds.DossierInt, p: {
-                    abilities: ds.abilities.val.pick([ '$getData' ])
-                  }},
-                  lastSlapTime: { c: ds.DossierInt, p: {
-                    abilities: ds.abilities.val.pick([ '$getData' ])
-                  }},
-                  numSlams:     { c: ds.DossierInt, p: {
-                    abilities: ds.abilities.val.pick([ '$getData' ])
-                  }},
-                  lastSlamTime: { c: ds.DossierInt, p: {
-                    abilities: ds.abilities.val.pick([ '$getData' ])
-                  }}
-                }
-              },
-              nameFunc: function(par, author) { return author.getChild('@user').name; }
-            }},
-            
-            contestSet:     { c: ds.DossierArr, p: {
-              abilities: ds.abilities.set,
-              innerOutline:   { name: 'contest', c: ds.DossierObj,
-                p: {
-                  abilities: ds.abilities.set
-                },
-                i: {
-                  num:            { c: ds.DossierInt, p: {
-                    abilities: ds.abilities.val
-                  }},
-                  writeSet:       { c: ds.DossierArr, p: {
-                    /// {SERVER=
-                    // Server-side, submitting a write must inform the app that such a thing has happened
-                    // TODO: This can likely be made cleaner with concerns!!
-                    abilities: ds.abilities.set.clone({
-                      // TODO: Don't let users submit invalid writes! Validate properties (ensure content is within limits) and ensure token is legit
-                      $addData: function(doss, params) {
-                        return ds.abilities.set.$addData(doss, params).then(function() {
-                          cr.informWriteSubmitted(doss.getChild('~par(story)'));
-                        });
-                      }
-                    }),
-                    /// =SERVER}
-                    /// {CLIENT=
-                    abilities: ds.abilities.set,
-                    contentFunc: function(doss) {
-                      return new ds.ContentSyncSet({ doss: doss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
-                    },
-                    /// =CLIENT}
-                    innerOutline: { name: 'write', c: ds.DossierObj,
-                      p: {
-                        abilities: ds.abilities.set
-                      },
-                      i: {
-                        user:         { c: ds.DossierRef, p: { template: '~root.userSet.$username',
-                          abilities: ds.abilities.ref
-                        }},
-                        content:      { c: ds.DossierStr, p: {
-                          abilities: ds.abilities.val
-                        }},
-                        voteSet:      { c: ds.DossierArr, p: {
-                          abilities: ds.abilities.set,
-                          /// {CLIENT=
-                          contentFunc: function(doss) {
-                            return new ds.ContentSyncSet({ doss: doss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
-                          },
-                          /// =CLIENT}
-                          innerOutline: { name: 'vote', c: ds.DossierObj,
-                            p: {
-                              abilities: ds.abilities.set
-                            },
-                            i: {
-                              user:         { c: ds.DossierRef, p: { template: '~root.userSet.$username',
-                                abilities: ds.abilities.ref
-                              }},
-                              value:        { c: ds.DossierInt, p: {
-                                abilities: ds.abilities.val
-                              }}
-                            }
-                          },
-                          nameFunc: function(par, vote) { return vote.getChild('@user').name; }
-                        }}
-                      }
-                    },
-                    nameFunc: function(par, write) { return write.getChild('@user').name; }
-                  }},
-                  /// {CLIENT=
-                  currentWrite:   { c: ds.DossierRef, p: { template: '~par.writeSet.$username',
-                    contentFunc: function(doss) {
-                      return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
-                        // Return `null` if no current write, otherwise return the write
-                        var username = doss.getChild('~root.username').value;
-                        
-                        if (!username) return null;
-                        return doss.par.children.writeSet.children[username] || null;
-                        
-                        return username ? doss.getChild([ '~par', 'writeSet', username ]) : null;
-                      }});
-                    }
-                  }},
-                  currentVote:    { c: ds.DossierRef, p: { template: '~par.writeSet.$username.voteSet.$username',
-                    contentFunc: function(doss) {
-                      return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
-                        var username = doss.getChild('~root.username').value;
-                        var contest = doss.par;
-                        var writeSet = contest.children.writeSet.children;
-                        
-                        for (var k in writeSet) {
-                          var voteSet = writeSet[k].children.voteSet.children;
-                          for (var kk in voteSet) {
-                            if (kk === username) return voteSet[kk];
-                          }
-                        }
-                        
-                        return null;
-                      }});
-                    },
-                    changeHandler: function(currentVote) {
-                      // Changing the current vote also changes the current voted write
-                      var vote = currentVote.dereference();
-                      var currentVotedWrite = currentVote.getChild('~par.currentVotedWrite');
-                      currentVotedWrite.setValue(vote ? vote.par.par : null);
-                    }
-                  }},
-                  currentVotedWrite: { c: ds.DossierRef, p: { template: '~par.writeSet.$username'
-                  }}
-                  /// =CLIENT}
-                }
-              },
-              nameFunc: function(par, child) { return child.getValue('num'); }
-            }},
-            
-            writeSet:       { c: ds.DossierArr, p: {
-              abilities: ds.abilities.set,
-              /// {CLIENT=
-              contentFunc: function(doss) {
-                return new ds.ContentSyncSet({ doss: doss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
-              },
-              /// =CLIENT}
-              innerOutline: { name: 'writeSet', c: ds.DossierRef, p: { template: '~par.~par.contestSet.$contestInd.writeSet.$username',
-                /// {CLIENT=
-                contentFunc: function(doss) {
-                  return new ds.ContentSyncRef({ doss: doss, syncOnStart: true, selection: ds.selectAll });
-                }
-                /// =CLIENT}
-              }}
-            }}
-            
-          }
-        },
-        nameFunc: function(par, child) { return child.getValue('quickName'); }
-      }}
-      
-    }});
+    });
+    var contestWrite = contestWriteSet.addDynamicChild('write', ds.DossierObj, {
+      nameFunc: function(writeSetDoss, writeDoss) {
+        return writeDoss.getChild('@user').name;
+      },
+      abilities: ds.abilities.set
+    });
+    contestWrite.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
+      abilities: ds.abilities.ref
+    });
+    contestWrite.addChild('content', ds.DossierStr, {
+      abilities: ds.abilities.val
+    });
+    
+    // ~root.storySet.story.contestSet.contest.writeSet.write.voteSet
+    var voteSet = contestWrite.addChild('voteSet', ds.DossierArr, {
+      /// {CLIENT=
+      contentFunc: function(vsDoss) {
+        // console.log('VOTESET:', vsDoss.isRooted(), vsDoss);
+        if (!vsDoss.isRooted()) console.log('NOT ROOTED :(');
+        return new ds.ContentSyncSet({ doss: vsDoss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
+      },
+      /// =CLIENT}
+      abilities: ds.abilities.set
+    });
+    var vote = voteSet.addDynamicChild('vote', ds.DossierObj, {
+      nameFunc: function(voteSetDoss, voteDoss) {
+        return voteDoss.getChild('@user').name;
+      },
+      abilities: ds.abilities.set
+    });
+    vote.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
+      abilities: ds.abilities.ref
+    });
+    vote.addChild('value', ds.DossierInt, {
+      abilities: ds.abilities.val
+    });
+    
+    // ~root.storySet.story.writeSet.write
+    var winWriteSet = story.addChild('writeSet', ds.DossierArr, {
+      /// {CLIENT=
+      contentFunc: function(wsDoss) {
+        return new ds.ContentSyncSet({ doss: wsDoss, waitMs: 2000, syncOnStart: true, selection: ds.selectAll });
+      },
+      /// =CLIENT}
+      abilities: ds.abilities.set
+    });
+    winWriteSet.addDynamicChild('write', ds.DossierRef, { template: '~par.~par.contestSet.$contestInd.writeSet.$username',
+      nameFunc: null,
+      /// {CLIENT=
+      contentFunc: function(writeDoss) {
+        return new ds.ContentSyncRef({ doss: writeDoss, syncOnStart: true, selection: ds.selectAll });
+      },
+      /// =CLIENT}
+      abilities: ds.abilities.ref.pick([ '$getData' ])
+    });
     
     var versioner = new ds.Versioner({ versions: [
       { name: 'initial',
@@ -1457,7 +1126,9 @@ new PACK.pack.Package({ name: 'creativity',
           return new P({ all: {
             outline: outline,
             /// {SERVER=
-            data: cr.persister.$init().then(function() { return cr.persister.$getData(); }),
+            data: LOADSTATE
+              ? cr.persister.$init().then(function() { return cr.persister.$getData(); })
+              : new P({ val: cr.persister.genDefaultData() }),
             /// =SERVER}
             /// {CLIENT=
             data: new P({ val: { version: 'Loading...' } }),
@@ -1513,6 +1184,8 @@ new PACK.pack.Package({ name: 'creativity',
     
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
+      
+      doss.MYROOT = true;
       
       /// {SERVER=
       cr.queryHandler = doss;
