@@ -213,13 +213,13 @@ Error.stackTraceLimit = Infinity;
           if (!func(this[i])) return false;
         return true;
       },
-      toObj: function(nameFunc, valFunc) {
+      toObj: function(keyFunc, valFunc) {
         var ret = {};
         
-        if (nameFunc && valFunc)
-          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = valFunc(this[i], i);
-        else if (nameFunc)
-          for (var i = 0, len = this.length; i < len; i++) ret[nameFunc(this[i], i)] = this[i];
+        if (keyFunc && valFunc)
+          for (var i = 0, len = this.length; i < len; i++) ret[keyFunc(this[i], i)] = valFunc(this[i], i);
+        else if (keyFunc)
+          for (var i = 0, len = this.length; i < len; i++) ret[keyFunc(this[i], i)] = this[i];
         else
           for (var i = 0, len = this.length; i < len; i++) ret[i] = this[i];
         

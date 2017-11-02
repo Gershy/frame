@@ -99,7 +99,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             if (!data.name) throw new Error('Invalid "name" property');
             if (this.p.innerOutline) throw new Error('Cannot add children to an outline with "innerOutline" property');
-            if (this.i.contains(data.name)) throw new Error('Tried to overwrite "' + data.name + '"');
+            if (this.i.contains(data.name)) throw new Error('Tried to overwrite outline "' + data.name + '"');
             
             var outline = new ds.Outline(data);
             this.i[outline.name] = outline;
@@ -144,7 +144,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           // The next 4 methods are NOT atomics; they add sets of atomics
           // Atomics themselves cannot add more atomics!!
-          add: function(params /* par, name, data, outline */) {
+          add: function(params /* par, name, data, outline, recurse */) {
             
             var guid = global.NEXT_ID++;
             
@@ -152,6 +152,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var name = U.param(params, 'name', null);
             var data = U.param(params, 'data', null);
             var outline = U.param(params, 'outline', null);
+            var recurse = U.param(params, 'recurse', true);
             
             if (!outline) {
               if (!par) throw new Error('`add` requires either "outline" or "par" param');
@@ -167,19 +168,19 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
             
             // Step 2: Initialize the name
-            if (!outline.par) this.$addAtomic(c.atomicSetNameSimple, [ doss, '~root', true ])
-            else if (name)    this.$addAtomic(c.atomicSetNameSimple, [ doss, name ]);
-            else              this.$addAtomic(c.atomicSetNameCalculated, [ doss ]);
+            if (!outline.par) this.$addAtomic(c.atomicSetNameSimple, [ doss, '~root', true ], 'frcname ::: ' + doss.name + ' -> ~root')
+            else if (name)    this.$addAtomic(c.atomicSetNameSimple, [ doss, name ], 'setname ::: ' + doss.name + ' -> ' + name);
+            else              this.$addAtomic(c.atomicSetNameCalculated, [ doss ], 'clcname ::: ' + doss.name);
             
             // Step 3: Add to parent
-            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ]);
+            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ], 'addchld ::: ' + par.name + ' -> ' + doss.name);
             
             // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
-            doss.loadFromJson(data, this);
+            if (recurse) doss.loadFromJson(data, this);
             //this.$addAtomic(c.atomicLoadJson, [ doss, data, this ]);
             
             // Step 5: Start the `Dossier`
-            this.$addAtomic(c.atomicStartDoss, [ doss ]);
+            this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.name);
             
             return doss;
             
@@ -202,7 +203,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             };
           },
           
-          $addAtomic:   function(atomic, args) {
+          $addAtomic:   function(atomic, args, desc) {
             
             /*
             An "atomic" is a function which returns a result of the following
@@ -210,7 +211,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             anAtomic(...) === {
               $result: <promise with atomic result>,
-              desc: <`String` describing this atomic action>,
               undoAtomic: <an atomic that is the inverse of the original>
             }
             
@@ -229,7 +229,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               // `$ret` resolves if `result.$result` resolves, but doesn't necessarily
               // reject if `result.$result` rejects
-              // TODO: When does `$ret` reject??
+              // TODO: When should `$ret` reject?? And implement this rejection
               
               try {
                 
@@ -240,7 +240,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
                 var result = {
                   $result: new P({ err: err }),
-                  desc: 'Immediate error in atomic: ' + err.message,
                   undoAtomic: function() { /* no action required */ }
                 };
                 
@@ -251,14 +250,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
               return result;
               
             };
-            //func.$rejectable = $ret;
-            func.inner = atomic;
+            
+            func.desc = desc || '- no description -';
+            
             this.atomics.push(func);
             
             return $ret;
             
           },
           
+          getTransactionDetails: function() {
+            return this.atomics.map(function(atm) { return atm.desc; });
+          },
           $transact: function() {
             
             // Simply calls $recurseStage, resolves/rejects `this.$transaction`
@@ -271,11 +274,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.$recurseStage(transactionName, 0).then(function(recResults) {
               
               if (!recResults.errors.length) return recResults;
-                
+              
+              /*
               // Atomic batch could not be completed!
-              recResults.errors.reverse();
-              console.log('Stage failed due to ' + recResults.errors.length + ' error(s):\n');
-              for (var i = 0, len = recResults.errors.length; i < len; i++) console.log('#' + (i + 1) + ':', recResults.errors[i].stack, '\n');
+              console.log('Stage failed due to ' + recResults.errors.length + ' error(s):');
+              //for (var i = 0; i < recResults.errors.length; i++) {
+              //  console.log((i + 1) + ': ' + recResults.errors[i].stack);
+              //}
+              console.log(recResults.errors.toObj(function(v, n) { return n; }, function(err) {
+                return err.stack.split('\n').map(function(ln) { return ln.trim(); });
+              }));
+              */
               
               // TODO: Is $recurseAtomics or $recurseStage better for undoing?
               // Using $recurseAtomics means that undo operations shouldn't generate
@@ -289,7 +298,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   throw new Error('FATAL MFRF (transaction undo failed; data may be corrupted)');
                 }
                 
-                throw new Error('Stage failed (transaction undo successful)');
+                var msg = 'Stage failed due to ' + recResults.errors.length + ' error(s):\n' +
+                  recResults.errors.slice(0, 3).map(function(err, n) { return '  ' + (n + 1) + ': ' + err.stack.split('\n')[0]; }).join('\n');
+                
+                throw new Error(msg);
+                
+                //throw new Error('Stage failed (transaction undo successful)');
                 
               });
                 
@@ -418,6 +432,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             } catch(err) {
               
+              // If `doss.start()` fails, need to ensure that `doss` is stopped before the error propagates
               doss.stop();
               throw err;
               
@@ -859,12 +874,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // Child methods
           addChild: function(child) {
             if (child.par && child.par !== this) throw new Error('Tried to add: "' + child.getAddress() + '"');
-            if (this.children.contains(child.name)) throw new Error('Tried to overwrite: "' + this.children[child.name].getAddress() + '"');
+            if (this.children.contains(child.name)) throw new Error('Tried to overwrite doss "' + this.children[child.name].getAddress() + '"');
             
             child.par = this;
-            
-            this.length++;
             this.children[child.name] = child;
+            this.length++;
             
             return child;
           },
@@ -1180,7 +1194,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.dereference().getAddress() === value;
           },
           
-          // TODO: Addresses should be represented as `Array` where possible
           getRefAddress: function() {
             var valInd = 0;
             var template = this.outline.p.template;
@@ -1192,10 +1205,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             for (var i = 0; i < template.length; i++)
               ret.push(template[i][0] === '$' ? vals[valInd++] : template[i]);
             
+            // TODO: This should return an `Array` instead of `String`
             return ret.join('.');
           },
           getHolderAddress: function() {
-            // Returns the address of the `Dossier` which holds this `DossierRef`'s reference
+            // TODO: Should this return an absolute address?
             var addr = this.getRefAddress().split('.');
             return addr.slice(0, addr.length - 1).join('.');
           },
@@ -1471,19 +1485,26 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var editor = new ds.Editor({});
             var doss = this.doss;
-            if (doss.name !== '~root' && !doss.par) return new P({ err: new Error('Doss missing parent') });
             
             var holderAddr = doss.getHolderAddress().split('.');
-            var holder = doss.getRoot().getChild(holderAddr);
+            var holder = doss.getChild(holderAddr);
             
             if (!holder) {
               
-              var editor = new ds.Editor({});
+              // NOTE: We could use a simple recursive `editor.add` call to immediately generate
+              // the entire `Dossier` structure up until and including `holder`, but this means
+              // that we would not have immediate access to the final `holder` element; it would
+              // be lost within the transaction. We would have to make 2 separate transactions,
+              // one to build `holder`, we would then do `holder = doss.getChild(holderAddr)`,
+              // and then we would need a second transaction to actually add the referenced
+              // `Dossier`. Using a loop of non-recursive `editor.add` calls can grant 
+              // immediate access to `holder` at the end of the loop.
+              
               holder = doss;
               for (var i = 0, len = holderAddr.length; i < len; i++) {
                 var childName = holderAddr[i];
                 var child = holder.getNamedChild(childName);
-                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, data: {} });
+                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, recurse: false });
               }
               
               // Now `holder` has the correct address to hold the referenced data
@@ -1491,10 +1512,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             
             var refDoss = editor.add({ par: holder, data: refData });
+            
+            var trnDsc = editor.getTransactionDetails();
+            
             return editor.$transact().then(function() {
               if (refDoss !== doss.dereference()) throw new Error('Something went wrong');
+            }).fail(function(err) {
+              console.log('TRN:\n' + trnDsc.join('\n'));
+              throw err;
             });
-              
+            
           }
         };}
       }),

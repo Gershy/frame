@@ -5,6 +5,8 @@
     constantly requested, and when the size changes the entire set can be requested
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
+HEEERE: "writeSet" error involves `PACK.dossier.Content`
+
 TASKS:
 [ ] Finish anonymization
 [ ] Use `Outline` to speed up userification
@@ -42,6 +44,7 @@ TASKS:
 [ ] Compiling for all files
 [ ] Mapping by line AND character index will allow better compilation (compact files into a single line)
 [ ] Mapping raw file names to compiled files
+[ ] Some day, need to keep track of reverse-references (to ensure data cannot be made unintegrous)
 */
 
 /* TODO: Advanced selection: 
@@ -282,8 +285,6 @@ new PACK.pack.Package({ name: 'creativity',
             return votesForLine;
             
           });
-          
-          console.log('Votes:\n', JSON.stringify(votes, null, 2));
           
           // Build a sortable array while counting total votes...
           var orderedVotes = [];
@@ -990,7 +991,7 @@ new PACK.pack.Package({ name: 'creativity',
     
     // ~root.storySet.story.contestSet
     var contestSet = story.addChild('contestSet', ds.DossierArr, {
-      abilities: ds.abilities.set,
+      abilities: ds.abilities.set
     });
     var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
       nameFunc: function(contestSetDoss, contestDoss) {
@@ -1011,7 +1012,6 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     contest.addChild('currentVote', ds.DossierRef, { template: '~par.writeSet.$username.voteSet.$username',
-      
       contentFunc: function(cvDoss) {
         return new ds.ContentCalc({ doss: cvDoss, cache: cr.updateOnFrame, func: function() {
           var username = cvDoss.getRoot().getValue('username');
@@ -1025,16 +1025,7 @@ new PACK.pack.Package({ name: 'creativity',
           
           return null;
         }});
-      },
-      changeHandler: function(cvDoss) {
-        // Changing the current vote also changes the current voted write
-        var vote = cvDoss.dereference();
-        var currentVotedWrite = cvDoss.getChild('~par.currentVotedWrite');
-        currentVotedWrite.setValue(vote ? vote.par.par : null);
       }
-    });
-    contest.addChild('currentVotedWrite', ds.DossierRef, { template: '~par.writeSet.$username'
-      // TODO: doss.getChild('@currentVotedWrite') === doss.getChild('@currentVote.~par(write)')
     });
     /// =CLIENT}
     contest.addChild('num', ds.DossierInt, {
@@ -1173,9 +1164,8 @@ new PACK.pack.Package({ name: 'creativity',
         }
       }
     ]});
-    cr.versioner = versioner;
     
-    return cr;
+    return cr.update({ versioner: versioner });
     
   },
   runAfter: function(cr, ds, p, uf) {
@@ -1185,7 +1175,7 @@ new PACK.pack.Package({ name: 'creativity',
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
       
-      doss.MYROOT = true;
+      U.debug(doss.getData());
       
       /// {SERVER=
       cr.queryHandler = doss;
@@ -1611,7 +1601,7 @@ new PACK.pack.Package({ name: 'creativity',
                                   decorators: [
                                     new uf.ClassDecorator({
                                       list: [ 'selected' ],
-                                      info: function() { return contest.getChild('@currentVotedWrite') === write ? 'selected' : null; }
+                                      info: function() { return contest.getChild('@currentVote.~par(write)') === write ? 'selected' : null; }
                                     })
                                   ],
                                   children: [
