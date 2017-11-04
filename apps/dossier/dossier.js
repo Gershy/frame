@@ -505,7 +505,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
       /* Abilities - enable functionality on Dossiers */
       abilities: (function() {
         
-        // Ability: getData
+        // Ability: valData (validate data)
+        var $valDataVal = function(doss, params /* */) {
+          return (doss.par && doss.par.hasAbility('valData'))
+            ? doss.par.$useAbility('valData', params)
+            : p.$null;
+        };
+        var $valDataSet = $valDataVal; // Also just checks the parent
+        var $valDataRef = $valDataVal; // Also just checks the parent
+        
+        // Ability: getData (get data)
         var $getDataVal = function(doss, params /* */) {
           return new P({ val: doss.value });
         };
@@ -546,14 +555,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return new P({ val: doss.value ? doss.getRefAddress() : null });
         };
         
-        // Ability: modData
+        // Ability: modData (modify data)
         var $modDataVal = function(doss, params /* editor, data */) {
+          
+          return (doss.hasAbility('valData') ? doss.$useAbility(valData, params) : p.$null).then(function(valErr) {
+            
+            if (valErr !== null) throw new Error('Validation error: ' + valErr);
+            
+          });
+          
           var data = U.param(params, 'data');
           var editor = U.param(params, 'editor');
           
           editor.mod({ doss: doss, data: data });
           return editor.$transaction;
-          
         };
         var $modDataSet = function(doss, params /* editor, data */) {
           var data = U.param(params, 'data');
@@ -571,7 +586,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         var $modDataSetDirect = $modDataVal; // Both of these just call `doss.setValue(...)` with the value
         var $modDataRef = $modDataVal;
         
-        // Ability: addData
+        // Ability: addData (add child)
         var $addData = function(doss, params /* [ prepareForMod, ] editor, data */) {
           
           var data = U.param(params, 'data');
@@ -613,7 +628,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return editor.$transaction.then(function() { return { address: child.address }; });
         };
         
-        // Ability: remData
+        // Ability: remData (remove child)
         var $remData = function(doss, params /* editor, child */) {
           var child = U.param(params, 'child');
           var editor = U.param(params, 'editor');

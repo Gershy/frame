@@ -114,6 +114,8 @@ TASKS:
 /// =REMOVE}
 var FILLSTORY = false;
 var LOADSTATE = true;
+
+
 new PACK.pack.Package({ name: 'creativity',
   /// {SERVER=
   dependencies: [ 'dossier', 'p', 'persist' ],
@@ -673,6 +675,7 @@ new PACK.pack.Package({ name: 'creativity',
         return user.getValue('username');
       },
       abilities: {
+        $validate: ds.abilities.set.$validate,
         $getData: ds.abilities.set.$getData,
         $modData: function(user, params) {
           /// {SERVER=
@@ -806,9 +809,9 @@ new PACK.pack.Package({ name: 'creativity',
     /// {CLIENT=
     story.addChild('isAuthored', ds.DossierBln, {
       contentFunc: function(doss) {
-        var story = doss.par;
         return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
           var username = doss.getRoot().getValue('username');
+          var story = doss.par;
           return story.children.authorSet.children.contains(username);
         }});
       }
@@ -1062,6 +1065,14 @@ new PACK.pack.Package({ name: 'creativity',
     contestWrite.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
       abilities: ds.abilities.ref
     });
+    contestWrite.addChild('username', ds.DossierStr, {
+      contentFunc: function(usernameDoss) {
+        return new ds.ContentCalc({ doss: usernameDoss, cache: cr.updateOnFrame, func: function() {
+          var story = usernameDoss.getChild('~par(story)');
+          return story.getValue('anonymizeWriter') ? 'anon' : usernameDoss.name;
+        }});
+      }
+    });
     contestWrite.addChild('content', ds.DossierStr, {
       abilities: ds.abilities.val
     });
@@ -1085,6 +1096,14 @@ new PACK.pack.Package({ name: 'creativity',
     });
     vote.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
       abilities: ds.abilities.ref
+    });
+    vote.addChild('username', ds.DossierStr, {
+      contentFunc: function(voteDoss) {
+        return new ds.ContentCalc({ doss: voteDoss, cache: cr.updateOnFrame, func: function() {
+          var story = voteDoss.getChild('~par(story)');
+          return story.getValue('anonymizeVoter') ? 'anon' : voteDoss.getChild('~par.@user').name;
+        }});
+      }
     });
     vote.addChild('value', ds.DossierInt, {
       abilities: ds.abilities.val
@@ -1175,8 +1194,6 @@ new PACK.pack.Package({ name: 'creativity',
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
       
-      U.debug(doss.getData());
-      
       /// {SERVER=
       cr.queryHandler = doss;
       
@@ -1186,16 +1203,16 @@ new PACK.pack.Package({ name: 'creativity',
       /// =SERVER}
       
       /// {CLIENT=
-      
       var spinnerHtml =
         '<div class="spin">' +
           U.range({0:20}).map(function(n) {
             var deg = Math.round((n / 20) * 360);
-            var del = Math.round((n / 20) * 15000); // 12000
+            var del = Math.round((n / 20) * 15000);
             return '<div class="arm" style="transform: rotate(' + deg + 'deg); animation-delay: -' + del + 'ms;"></div>';
           }).join('') +
         '</div>';
       
+      // Build the view
       var view = new uf.RootView({ name: 'root',
         children: [
           
@@ -1845,10 +1862,10 @@ new PACK.pack.Package({ name: 'creativity',
           anonymizeVoter: true
         });
       }
-      
       /// =CLIENT}
       
     }).done();
     
   }
+
 }).build();

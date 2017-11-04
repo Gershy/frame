@@ -13,6 +13,9 @@ require('./common.js');
 
 if (!U.isServer()) throw new Error('only for server-side use');
 
+// var TCP = process.binding('tcp_wrap').TCP;
+// var tcp = new TCP();
+
 var http = require('http');
 var path = require('path');
 var fileSys = require('fs');
@@ -60,6 +63,10 @@ new PACK.pack.Package({ name: 'server',
             this.appName = U.param(params, 'appName');
             this.id = U.id(PACK.server.Session.NEXT_ID++);
             
+            // Channeled queries RECEIVED are passed from `this.$respondToQuery` -> `this.clientChannel.$handleQuery`
+            // Channeled queries SENT are passed to `this.clientChannel.$doQuery`
+            this.clientChannel = null; // The session's means of contacting the client
+            
             console.log('Initiated session: ' + this.ip + '; ' + this.appName);
           },
           getFileContents: function(filepath) {
@@ -92,6 +99,13 @@ new PACK.pack.Package({ name: 'server',
             var address = U.param(params, 'address');
             
             params.session = this;
+            
+            /*
+            // TODO:
+            if (requestIsAddressedToChanneler(params)) {
+              return this.channeler.$handleRequest(params);
+            }
+            */
             
             if (address.length) {
               
@@ -132,33 +146,33 @@ new PACK.pack.Package({ name: 'server',
                   return new PACK.server.ResponseData({
                     code: 404,
                     data: 'File "' + url.join('/') + '" not found',
-                    encoding: 'text/plain',
-                    binary: false
+                    encoding: 'text/plain', // This is "contentType", not "encoding"
+                    binary: false           // This should be `encoding: 'binary'`
                   });
                 });
             
             // If the `Session` is generating the response, and a specific
             // file has not been requested, serve "mainPage.html".
+            // "mainPage.html" is somewhat compiled before being served.
             var appName = this.appName;
             return this.getFileContents('mainPage.html')
               .then(function(html) {
-                // TODO: The fact that "cmp-client-" appears client-side means the client can request server-side sources
+                // TODO: "cmp-client-" should not appear client-side
                 html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
                 html.data = html.data.replace(/{{assetVersion}}/g, PACK.server.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
                 
                 if (PACK[appName].contains('resources')) {
                   
-                  var htmlElems = [];
                   
                   var r = PACK[appName].resources;
                   
                   var ver = '?' + PACK.server.ASSET_VERSION;
                   
+                  var htmlElems = [];
                   if (r.contains('css')) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
                   if (r.contains('js')) r.js.forEach(function(js) { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
-                  
-                  html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '\t\t' + html; }).join('\n'));
+                  html.data = html.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '    ' + html; }).join('\n'));
                   
                 } else {
                   
@@ -185,7 +199,7 @@ new PACK.pack.Package({ name: 'server',
                 })
               });
             
-          },
+          }
         }},
         statik: {
           NEXT_ID: 0,
