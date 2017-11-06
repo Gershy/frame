@@ -702,6 +702,7 @@ new PACK.pack.Package({ name: 'creativity',
     var storySet = outline.addChild('storySet', ds.DossierArr, {
       /// {CLIENT=
       contentFunc: function(doss) {
+        console.log('CONTENTFUNC???');
         return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: {
           '*': {
             user: {},
@@ -1193,13 +1194,14 @@ new PACK.pack.Package({ name: 'creativity',
     
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
+      //U.debug(doss.getData());
       
       /// {SERVER=
       cr.queryHandler = doss;
       
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
-      setInterval(function() { cr.$updateCreativity(doss).done(); }, 1 * 1000);
-      setInterval(function() { cr.persister.$putData(doss.getData()).done(); }, 10 * 1000);
+      setInterval(function() { cr.$updateCreativity(doss).done(); }, 1000 * 1);
+      setInterval(function() { cr.persister.$putData(doss.getData()).done(); }, 1000 * 10);
       /// =SERVER}
       
       /// {CLIENT=

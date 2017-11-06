@@ -142,9 +142,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.id = global.NEXT_ID++;
           },
           
-          // The next 4 methods are NOT atomics; they add sets of atomics
-          // Atomics themselves cannot add more atomics!!
-          add: function(params /* par, name, data, outline, recurse */) {
+          // The next 4 methods are NOT atomics; they are molecules
+          // Atomics themselves cannot immediately add more atomics!!
+          add: function(params /* par, name, data, outline, recurse, onComplete */) {
             
             var guid = global.NEXT_ID++;
             
@@ -168,19 +168,45 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
             
             // Step 2: Initialize the name
-            if (!outline.par) this.$addAtomic(c.atomicSetNameSimple, [ doss, '~root', true ], 'frcname ::: ' + doss.name + ' -> ~root')
+            if (!outline.par) this.$addAtomic(c.atomicSetNameSimple, [ doss, '~root', true ], 'frcname ::: ' + doss.name + ' -> ~root');
             else if (name)    this.$addAtomic(c.atomicSetNameSimple, [ doss, name ], 'setname ::: ' + doss.name + ' -> ' + name);
             else              this.$addAtomic(c.atomicSetNameCalculated, [ doss ], 'clcname ::: ' + doss.name);
             
             // Step 3: Add to parent
-            if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ], 'addchld ::: ' + par.name + ' -> ' + doss.name);
+            if (par) this.$addAtomic(c.atomicAddChild, [ par, doss ], 'addchld ::: ' + par.name + ' -> ' + doss.name);
             
             // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
-            if (recurse) doss.loadFromJson(data, this);
-            //this.$addAtomic(c.atomicLoadJson, [ doss, data, this ]);
+            if (U.isInstance(doss, ds.DossierSet)) {
+              
+              if (U.isInstance(doss, ds.DossierArr)) {
+                
+                if (data && recurse) {
+                  
+                  if (!U.isObj(data, Object)) throw new Error('DossierArr must receive an `Object` as its value');
+                  for (var k in data) this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k] });
+                  
+                }
+                
+              } else if (U.isInstance(doss, ds.DossierObj)) {
+                
+                if (recurse) {
+                  
+                  data = data || {};
+                  if (!U.isObj(data, Object)) throw new Error('DossierObj must receive an `Object` as its value');
+                  for (var k in doss.outline.i) this.add({ par: doss, outline: doss.getChildOutline(k), name: k, data: data[k] || null });
+                  
+                }
+                
+              }
+              
+            } else if (U.isInstance(doss, ds.DossierVal)) {
+              
+              this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
+              
+            }
             
-            // Step 5: Start the `Dossier`
-            this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.name);
+            // Step 5: Start the doss
+            this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.outline.getAddress());
             
             return doss;
             
@@ -203,7 +229,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             };
           },
           
-          $addAtomic:   function(atomic, args, desc) {
+          $addAtomic: function(atomic, args, desc) {
+            
+            if (!U.isObj(atomic, Function)) throw new Error('"atomic" must be a `Function`');
             
             /*
             An "atomic" is a function which returns a result of the following
@@ -250,7 +278,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               return result;
               
             };
-            
             func.desc = desc || '- no description -';
             
             this.atomics.push(func);
@@ -270,6 +297,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var pass = this;
             var transactionName = 'trn<' + this.id + '/' + this.count + '>';
+            this.count++;
             
             return this.$recurseStage(transactionName, 0).then(function(recResults) {
               
@@ -286,9 +314,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               }));
               */
               
-              // TODO: Is $recurseAtomics or $recurseStage better for undoing?
-              // Using $recurseAtomics means that undo operations shouldn't generate
-              // more undo operations.
               return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
                 
                 if (undoResults.errors.length) {
@@ -303,26 +328,21 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
                 throw new Error(msg);
                 
-                //throw new Error('Stage failed (transaction undo successful)');
-                
               });
                 
             }).then(function(recResults) {
               
               pass.$transaction.resolve(null);
-              return null;
+              pass.atomics = [];
+              pass.$transaction = new P({});
+              return recResults;
               
             }).fail(function(err) {
               
               pass.$transaction.reject(err);
-              return err;
-              
-            }).then(function(err) {
-              
-              pass.actions = [];
+              pass.atomics = [];
               pass.$transaction = new P({});
-              pass.count++;
-              if (err) throw err;
+              throw err;
               
             });
             
@@ -338,11 +358,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var desc = type + '(' + stageNum + ')';
             
             var pass = this;
-            
             var atomics = this.atomics;
             this.atomics = [];
-            
-            var allUndoAtomics = [];
             
             return this.$recurseAtomics(type, stageNum, 0, atomics).then(function(recResults) {
               
@@ -359,9 +376,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               var undoAtomics = recResults.undoAtomics;
               return pass.$recurseStage(type, stageNum + 1).then(function(recNextResults) {
+                
+                // Add the recursive call's atomics to the previous call's atomics
                 recNextResults.undoAtomics = recNextResults.undoAtomics.concat(undoAtomics);
+                
+                // Keep a log of the number of attempts required at all stages
                 recNextResults.attemptArr = [ recNextResults.attemptNum ].concat(recNextResults.attemptArr);
+                
                 return recNextResults;
+                
               });
               
             });
@@ -370,13 +393,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           $recurseAtomics: function(type, stageNum, attemptNum, atomics) {
             
             // Returns { errors: <errors>, undoAtomics: <undoAtomics>, remainingAtomics: <remainingAtomics>, attemptNum: <attemptNum> }
-            // This method has error conditions, but it signals such errors by returning
-            // an "errors" property with at least 1 error (instead of by throwing an error).
-            
-            // var desc = type + '(' + stageNum + ', ' + attemptNum + ')';
+            // This method signals error conditions by setting a non-empty "errors" property
+            // within its return value. It doesn't throw errors or return rejected promises.
             
             var pass = this;
-            
             return new P({ all: atomics.map(function(atomic) {  // Try to get the result of all atomics
               
               var result = atomic();
@@ -505,11 +525,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
       /* Abilities - enable functionality on Dossiers */
       abilities: (function() {
         
+        // TODO: Maybe `$useAbility` should remain promised, but these methods
+        // should become immediate? They should only add atomics, and never
+        // require any async stuff
+        
         // Ability: valData (validate data)
-        var $valDataVal = function(doss, params /* */) {
-          return (doss.par && doss.par.hasAbility('valData'))
-            ? doss.par.$useAbility('valData', params)
-            : p.$null;
+        var $valDataVal = function(doss, params /* action, doss, params */) {
+          
+          /*
+          doss: The `Dossier` doing the validation (not necessarily the target of the ability)
+          params.action: A descriptor for the original action being performed
+          params.doss: The `Dossier` which is the target of the original action
+          params.params: The `params` for the original action
+          */
+          
+          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
+          if (doss.par && doss.par.hasAbility('valData')) return doss.par.$useAbility('valData', params);
+          return true;
+          
         };
         var $valDataSet = $valDataVal; // Also just checks the parent
         var $valDataRef = $valDataVal; // Also just checks the parent
@@ -558,30 +591,32 @@ var package = new PACK.pack.Package({ name: 'dossier',
         // Ability: modData (modify data)
         var $modDataVal = function(doss, params /* editor, data */) {
           
-          return (doss.hasAbility('valData') ? doss.$useAbility(valData, params) : p.$null).then(function(valErr) {
-            
-            if (valErr !== null) throw new Error('Validation error: ' + valErr);
-            
-          });
+          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
+          if (doss.hasAbility('valData')) doss.$useAbility('valData', { action: 'mod', doss: doss, params: params });
+          editor.mod({ doss: U.param(params, 'editor'), data: U.param(params, 'data') });
           
-          var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor');
-          
-          editor.mod({ doss: doss, data: data });
-          return editor.$transaction;
         };
         var $modDataSet = function(doss, params /* editor, data */) {
+          
+          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
+          if (doss.hasAbility('valData')) doss.$useAbility('valData', { action: 'mod', doss: doss, params: params });
+          
           var data = U.param(params, 'data');
           if (!U.isObj(data, Object)) return new P({ err: new Error('modData expects the "data" param to be an `Object`') });
           
           var editor = U.param(params, 'editor');
+          for (var k in data) {
+            if (!doss.children.contains(k)) throw new Error('Invalid modDataSet key: ' + doss.getAddress() + ' -> ' + k);
+            doss.children[k].$useAbility('modData', params.clone({ data: data[k] }));
+          }
           
+          /*
           return new P({
             all: data.map(function(v, k) {
               if (!doss.children.contains(k)) throw new Error('Invalid modDataSet key: ' + doss.getAddress() + ' -> ' + k);
               return doss.children[k].$useAbility('modData', { editor: editor, data: v });
             })
-          }).then(function() { return null; });
+          }).then(function() { return null; }); */
         };
         var $modDataSetDirect = $modDataVal; // Both of these just call `doss.setValue(...)` with the value
         var $modDataRef = $modDataVal;
@@ -594,7 +629,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var prepareForMod = U.param(params, 'prepareForMod', null);
           
           var child = editor.add({ par: doss, data: data });
+          // child.$useAbility('modData', params); // TODO: Uses $-prefix to IMMEDIATELY add atomics to editor
           
+          return child;
+          
+          /*
           return editor.$transaction.then(function() {
             
             var modParams = prepareForMod ? prepareForMod(child, { data: data }) : { data: data };
@@ -618,6 +657,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               });
               
           }).then(function() { return { address: child.getAddress() }; }); // If everything succeeds, return the address!
+          */
           
         };
         var $addDataDirect = function(doss, params /* editor, data */) {
@@ -722,9 +762,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return this;
           },
-          loadFromJson: function(data, editor) {
-            throw new Error('not implemented');
-          },
           
           // Heirarchy
           getNamedChild: function(name) {
@@ -783,6 +820,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           hasAbility: function(name) {
             return (this.outline.p.abilities || {}).contains('$' + name);
+          },
+          stageAbility: function(name, params) {
+            var abilities = this.outline.p.abilities || {};
+            if (!abilities.contains(trueName)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + name + '"') });
           },
           $useAbility: function(name, params) {
             var trueName = '$' + name;
@@ -1008,13 +1049,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
       DossierObj: U.makeClass({ name: 'DossierObj',
         superclassName: 'DossierSet',
         methods: function(sc) { return {
-          loadFromJson: function(data, editor) {
-            // Unlike `DossierArr`, `DossierObj` can't skip just because `data` isn't provided.
-            // The iteration is based on the outline, not on the data
-            data = data || {};
-            for (var k in this.outline.i) editor.add({ par: this, outline: this.getChildOutline(k), name: k, data: data[k] || null });
-          },
-          
           // Child methods
           getChildName: function(child) {
             throw new Error(this.constructor.title + ' doesn\'t support `getChildName`');
@@ -1031,29 +1065,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
           init: function(params /* outline, innerOutline, prop */) {
             sc.init.call(this, params);
             
-            this.innerOutline = U.param(params, 'innerOutline');
-            
             // `this.nextInd` keeps track of the lowest unused index
             // that a child is named in `this.children`. It is only
             // updated when children with numeric names are added.
             // Useful as the "propName" when using address-props
             // ("the.address.path/propName")
             this.nextInd = 0;
-            
-            // Convert outline params to Outline
-            if (U.isObj(this.innerOutline, Object)) this.innerOutline = new ds.Outline(this.innerOutline);
-          },
-          
-          loadFromJson: function(data, editor) {
-            if (!data) return;
-            for (var k in data) editor.add({ par: this, outline: this.getChildOutline(k), data: data[k] });
           },
           
           // Child methods
           addChild: function(child) {
             child = sc.addChild.call(this, child);
-            // TODO: There's potentially an issue with the "add"/"attach" concerns here; the nextInd isn't incremented before they're fired
-            while (this.nextInd in this.children) this.nextInd++; // A hole has just been filled. Ensure the next index is available
+            while (this.children.contains(this.nextInd)) this.nextInd++; // A hole has just been filled. Ensure the next index is available
             return child;
           },
           remChild: function(child) {
@@ -1071,14 +1094,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getChildName: function(doss) {
             var nameFunc = this.outline.p.nameFunc;
             var name = nameFunc ? nameFunc(this, doss) : this.nextInd;
-            
             if (!U.valid(name)) throw new Error('`nameFunc` (in "' + doss.getAddress() + '") returned an invalid name: ' + name);
             return name;
-            
           },
           getChildOutline: function(name) {
             // All DossierArr children have the same outline
-            return this.innerOutline;
+            return this.outline.p.innerOutline;
           },
           
         };}
@@ -1091,10 +1112,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           init: function(params /* outline, value */) {
             sc.init.call(this, params);
             this.value = U.param(params, 'value', null);
-          },
-          
-          loadFromJson: function(data, editor) {
-            this.setValue(data);
           },
           
           matches: function(value) {
