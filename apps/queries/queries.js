@@ -6,12 +6,12 @@ new PACK.pack.Package({ name: 'queries',
     var stdStateChangeFunc = function(query, resolve, reject, err) {
       if (query.readyState !== 4) return;
       if (query.status === 200) resolve(U.stringToThing(query.responseText));
-      else                      reject(err.update({ message: query.responseText }));
+      else                      reject(err.update({ message: 'Query failed: ' + query.responseText }));
     };
     var refStateChangeFunc = function(query, resolve, reject, err, ref) {
       if (query.readyState !== 4) return;
       if (query.status === 200) resolve({ ref: ref, result: U.stringToThing(query.responseText) });
-      else                      reject(err.update({ message: query.responseText }));
+      else                      reject(err.update({ message: 'Query failed: ' + query.responseText }));
     };
     
     return {

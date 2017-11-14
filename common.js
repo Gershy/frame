@@ -137,7 +137,12 @@ Error.stackTraceLimit = Infinity;
       },
       pick: function(names) {
         var ret = {};
-        for (i = 0, len = names.length; i < len; i++) ret[names[i]] = this[names[i]];
+        for (var i = 0, len = names.length; i < len; i++) ret[names[i]] = this[names[i]];
+        return ret;
+      },
+      toss: function(names) {
+        var ret = this.clone();
+        for (var i = 0, len = names.length; i < len; i++) delete ret[names[i]];
         return ret;
       },
       contains: Object.prototype.hasOwnProperty

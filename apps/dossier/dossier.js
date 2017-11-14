@@ -126,6 +126,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return outline;
             
+          },
+          getAbility: function(name) {
+            var abl = this.p.abilities;
+            if (!abl || !abl.contains(name)) throw new Error('Outline "' + this.getAddress() + '" has no ability "' + name + '"');
+            return abl[name];
           }
           
         };}
@@ -144,7 +149,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           // The next 4 methods are NOT atomics; they are molecules
           // Atomics themselves cannot immediately add more atomics!!
-          add: function(params /* par, name, data, outline, recurse, onComplete */) {
+          add: function(params /* par, name, data, outline, recurse, onRecurse */) {
             
             var guid = global.NEXT_ID++;
             
@@ -153,6 +158,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var data = U.param(params, 'data', null);
             var outline = U.param(params, 'outline', null);
             var recurse = U.param(params, 'recurse', true);
+            var onRecurse = U.param(params, 'onRecurse', null); // Does not apply to the 
             
             if (!outline) {
               if (!par) throw new Error('`add` requires either "outline" or "par" param');
@@ -166,6 +172,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // Step 1: Initialize the doss
             var DossCls = U.deepGet({ root: C, name: outline.c });
             var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
+            
+            // Allow the `onRecurse` handler to step in here and modify `data`.
+            if (onRecurse) data = onRecurse(doss, data);
             
             // Step 2: Initialize the name
             if (!outline.par) this.$addAtomic(c.atomicSetNameSimple, [ doss, '~root', true ], 'frcname ::: ' + doss.name + ' -> ~root');
@@ -183,7 +192,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 if (data && recurse) {
                   
                   if (!U.isObj(data, Object)) throw new Error('DossierArr must receive an `Object` as its value');
-                  for (var k in data) this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k] });
+                  for (var k in data) {
+                    var child = this.add({
+                      par: doss, outline: doss.getChildOutline(k), data: data[k], onRecurse: onRecurse
+                    });
+                  }
                   
                 }
                 
@@ -193,7 +206,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                   data = data || {};
                   if (!U.isObj(data, Object)) throw new Error('DossierObj must receive an `Object` as its value');
-                  for (var k in doss.outline.i) this.add({ par: doss, outline: doss.getChildOutline(k), name: k, data: data[k] || null });
+                  for (var k in doss.outline.i) {
+                    var child = this.add({
+                      par: doss, outline: doss.getChildOutline(k), data: data[k] || null, name: k, onRecurse: onRecurse
+                    });
+                  }
                   
                 }
                 
@@ -201,7 +218,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             } else if (U.isInstance(doss, ds.DossierVal)) {
               
-              this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
+              if (data !== null)
+                this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
               
             }
             
@@ -523,168 +541,176 @@ var package = new PACK.pack.Package({ name: 'dossier',
       }),
       
       /* Abilities - enable functionality on Dossiers */
-      abilities: (function() {
-        
-        // TODO: Maybe `$useAbility` should remain promised, but these methods
-        // should become immediate? They should only add atomics, and never
-        // require any async stuff
-        
-        // Ability: valData (validate data)
-        var $valDataVal = function(doss, params /* action, doss, params */) {
-          
-          /*
-          doss: The `Dossier` doing the validation (not necessarily the target of the ability)
-          params.action: A descriptor for the original action being performed
-          params.doss: The `Dossier` which is the target of the original action
-          params.params: The `params` for the original action
-          */
-          
-          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
-          if (doss.par && doss.par.hasAbility('valData')) return doss.par.$useAbility('valData', params);
-          return true;
-          
-        };
-        var $valDataSet = $valDataVal; // Also just checks the parent
-        var $valDataRef = $valDataVal; // Also just checks the parent
-        
-        // Ability: getData (get data)
-        var $getDataVal = function(doss, params /* */) {
-          return new P({ val: doss.value });
-        };
-        var $getDataSet = function(doss, params /* selection */) {
-          var selection = U.param(params, 'selection', ds.selectAll);
-          
-          if (selection.contains('*')) {
+      Ability: U.makeClass({ name: 'Ability',
+        // TODO: Should this be a TreeNode?
+        // TODO: There may be some trouble with errors thrown in "stage" - ideally, errors should only be thrown from "doValidate(Rec)?"
+        methods: function(sc, c) { return {
+          init: function(params /* outline, par, validate, validateBelow */) {
+            this.par = U.param(params, 'par', null);
+            this.validate = U.param(params, 'validate', null);
+            this.validateBelow = U.param(params, 'validateBelow', null);
+            this.decorate = U.param(params, 'decorate', null);
+          },
+          doValidateRec: function(editor, doss, below, params) {
             
-            var innerParams = params.clone({ selection: selection['*'] });
-            var getInner = doss.children.map(function(c, k) { return c.hasAbility('getData') ? c.$useAbility('getData', innerParams) : U.SKIP; });
+            /*
+            - `editor`:
+                The editor instance associated with this ability's transaction
+            - `doss`:
+                The doss associated with this ability's transaction
+            - `below`:
+                The result of all parent's `validateBelow` functions chained.
+                If `below` is `null`, it means that no parent validation has
+                occurred yet. In this case, parents must be validated
+                recursively (beginning with the deepest validating parent)
+            - `params`:
+                The client-passed parameters associated with this transaction
+            */
             
-          } else {
+            // Recursively runs all parent "validateBelow" checks starting with
+            // the deepest parent, and propagating return values from deepest to
+            // shallowest.
+            if (!below && this.par) below = this.par.doValidateRec(editor, doss, null, params);
+            return this.validateBelow ? this.validateBelow(editor, doss, below, params) : below;
             
-            var getInner = {};
-            for (var k in selection) {
+          },
+          doValidate: function(editor, doss, below, params) {
+            var below = this.doValidateRec(editor, doss, below, params);
+            return {
+              below: below,
+              params: this.validate ? this.validate(editor, doss, below, params) : params
+            };
+          },
+          use: function(editor, doss, below, params /* data */) {
+            
+            var validated = this.doValidate(editor, doss, below, params);
+            var below = validated.below;
+            var params = validated.params;
+            
+            // Completes the stem of Y-validation, and calls `this.stage`
+            var result = this.stage(editor, doss, below, params);
+            return this.decorate ? this.decorate(result, editor, doss, below, params) : result;
+            
+          },
+          stage: function(editor, doss, below, params) {
+            
+            // Note: If `stage` ever calls the `use` methods of child abilities, it should
+            // pass `below` so that parent validation is not repeated
+            throw new Error('Not implemented');
+            
+          }
+        };}
+      }),
+      AbilityGet: U.makeClass({ name: 'AbilityGet', superclassName: 'Ability',
+        methods: function(sc, c) { return {
+          stage: function(editor, doss, below, params) {
+            
+            if (U.isInstance(doss, ds.DossierRef)) {          // Returning a ref's value is easy
               
-              // Support the "rename" operator
-              if (k[0] === '(') {
-                var rb = k.indexOf(')');
-                if (rb === -1) return new P({ err: 'Couldn\'t parse rename operator for selector "' + k + '"' });
-                var rename = k.substr(1, rb - 1);
-                var addr = k.substr(rb + 1).trim();
-              } else {
-                var rename = k;
-                var addr = k;
+              return doss.value ? doss.getRefAddress() : null;
+              
+            } else if (U.isInstance(doss, ds.DossierVal)) {   // Returning a val's value is super easy
+              
+              return doss.value;
+              
+            } else if (U.isInstance(doss, ds.DossierSet)) {   // Returning a set's value is tricky. Need to recurse, support "*" and "rename", etc.
+              
+              var selection = U.param(params, 'selection', ds.selectAll);
+          
+              // Support the "*" selector (TODO: Consider removing the "*" selector?)
+              if (selection.contains('*')) {
+                
+                var innerParams = params.clone({ selection: selection['*'] });
+                return doss.children.map(function(child, k) {
+                  return child.hasAbility('get') ? child.stageAbility('get', editor, below, innerParams) : U.SKIP;
+                });
+                
               }
-              
-              var child = doss.getChild(addr);
-              if (child && child.hasAbility('getData')) getInner[rename] = child.$useAbility('getData', { selection: selection[k] });
+                
+              var ret = {};
+              for (var k in selection) {
+                
+                // Support the "rename" operator
+                if (k[0] === '(') {
+                  var rb = k.indexOf(')');
+                  if (rb === -1) return new P({ err: 'Couldn\'t parse rename operator for selector "' + k + '"' });
+                  var rename = k.substr(1, rb - 1);
+                  var addr = k.substr(rb + 1).trim();
+                } else {
+                  var rename = k;
+                  var addr = k;
+                }
+                
+                var child = doss.getChild(addr);
+                if (!child || !child.hasAbility('get')) { throw new Error('Invalid selection address: "' + addr + '"'); console.log('WARNING, HERE!!'); }
+                
+                // NOTE: if `child` isn't a direct child of `doss`, the current `below` value is not valid for `child`.
+                ret[rename] = child.stageAbility('get', editor, doss.hasChild(child) ? below : null, params.clone({ selection: selection[k] }));
+                
+              }
+              return ret;
               
             }
             
-          }
-          
-          return new P({ all: getInner });
-        };
-        var $getDataRef = function(doss, params /* */) {
-          return new P({ val: doss.value ? doss.getRefAddress() : null });
-        };
-        
-        // Ability: modData (modify data)
-        var $modDataVal = function(doss, params /* editor, data */) {
-          
-          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
-          if (doss.hasAbility('valData')) doss.$useAbility('valData', { action: 'mod', doss: doss, params: params });
-          editor.mod({ doss: U.param(params, 'editor'), data: U.param(params, 'data') });
-          
-        };
-        var $modDataSet = function(doss, params /* editor, data */) {
-          
-          // TODO: I don't like this because it uses a $-prefixed method to throw an IMMEDIATE error
-          if (doss.hasAbility('valData')) doss.$useAbility('valData', { action: 'mod', doss: doss, params: params });
-          
-          var data = U.param(params, 'data');
-          if (!U.isObj(data, Object)) return new P({ err: new Error('modData expects the "data" param to be an `Object`') });
-          
-          var editor = U.param(params, 'editor');
-          for (var k in data) {
-            if (!doss.children.contains(k)) throw new Error('Invalid modDataSet key: ' + doss.getAddress() + ' -> ' + k);
-            doss.children[k].$useAbility('modData', params.clone({ data: data[k] }));
-          }
-          
-          /*
-          return new P({
-            all: data.map(function(v, k) {
-              if (!doss.children.contains(k)) throw new Error('Invalid modDataSet key: ' + doss.getAddress() + ' -> ' + k);
-              return doss.children[k].$useAbility('modData', { editor: editor, data: v });
-            })
-          }).then(function() { return null; }); */
-        };
-        var $modDataSetDirect = $modDataVal; // Both of these just call `doss.setValue(...)` with the value
-        var $modDataRef = $modDataVal;
-        
-        // Ability: addData (add child)
-        var $addData = function(doss, params /* [ prepareForMod, ] editor, data */) {
-          
-          var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor');
-          var prepareForMod = U.param(params, 'prepareForMod', null);
-          
-          var child = editor.add({ par: doss, data: data });
-          // child.$useAbility('modData', params); // TODO: Uses $-prefix to IMMEDIATELY add atomics to editor
-          
-          return child;
-          
-          /*
-          return editor.$transaction.then(function() {
+            throw new Error('Unexpected `doss` value: ' + U.typeOf(doss));
             
-            var modParams = prepareForMod ? prepareForMod(child, { data: data }) : { data: data };
+          }
+        };}
+      }),
+      AbilityMod: U.makeClass({ name: 'AbilityMod', superclassName: 'Ability',
+        methods: function(sc, c) { return {
+          stage: function(editor, doss, below, params) {
             
-            // On add success, try to mod
-            return child.$useAbility('modData', modParams)
-              .fail(function(err) {   // On mod failure, some deep-child's "modData" ability call failed
-                var editor = new ds.Editor({});
-                editor.rem({ par: doss, child: child });
-                return editor.$transact().then(function() { return err; }); // Pass `err` along; it will be thrown later
-              })
-              .fail(function(err) {   // On removal failure, this is a fatal situation (corrupt data)
-                console.log('FATAL MFRF: ADDED, BAD MOD, BAD REM D:', err.stack);
-                throw err;
-              })
-              .then(function(err) {   // `err` is provided if the failed add+mod could be undone with a rem.
-                if (err) {
-                  console.log('ADDED, bad mod, good rem! :D');
-                  throw err;
-                }
-              });
+            if (U.isInstance(doss, ds.DossierVal)) {
               
-          }).then(function() { return { address: child.getAddress() }; }); // If everything succeeds, return the address!
-          */
+              editor.mod({ doss: doss, data: U.param(params, 'data') });
+              return null;
+              
+            } else if (U.isInstance(doss, ds.DossierSet)) {
+              
+              var data = U.param(params, 'data');
+              if (!U.isObj(data, Object)) throw new Error('mod ability expects "data" to be an `Object`');
+              
+              for (var k in data) {
+                if (!doss.children.contains(k)) throw new Error('Invalid child key in mod ability: ' + doss.getAddress() + ' -> ' + k);
+                doss.children[k].stageAbility('mod', editor, below, params.clone({ data: data[k] }));
+              }
+              return null;
+              
+            }
+            
+            throw new Error('Unexpected `doss` value: ' + U.typeOf(doss));
+            
+          }
+        };}
+      }),
+      AbilityAdd: U.makeClass({ name: 'AbilityAdd', superclassName: 'Ability',
+        methods: function(sc, c) { return {
+          stage: function(editor, doss, below, params) {
+            
+            var data = U.param(params, 'data');
+            if (!U.isObj(data, Object)) throw new Error('Add ability expects `params.data` to be an `Object`');
+            
+            return editor.add({ par: doss, data: data, onRecurse: function(child0, data0) {
+              
+              if (!child0.hasAbility('mod')) return null;
+              var modAbl = child0.getAbility('mod');
+              var validated = modAbl.doValidate(editor, child0, below, params.clone({ data: data0 })); // TODO: In cases like this, could make 1 clone outside the loop, and then `update` it on each iteration? Obviously only works for immediate functions
+              return validated.params.data; // Resulting data is always shaped by child's mod's validation method
+              
+            }});
+            
+          }
           
-        };
-        var $addDataDirect = function(doss, params /* editor, data */) {
-          var data = U.param(params, 'data');
-          var editor = U.param(params, 'editor');
-          
-          var child = editor.add({ par: doss, data: data });
-          return editor.$transaction.then(function() { return { address: child.address }; });
-        };
-        
-        // Ability: remData (remove child)
-        var $remData = function(doss, params /* editor, child */) {
-          var child = U.param(params, 'child');
-          var editor = U.param(params, 'editor');
-          
-          editor.rem({ par: doss, child: child });
-          return editor.$transaction;
-        };
-        
-        return {
-          val: { $getData: $getDataVal, $modData: $modDataVal },
-          set: { $getData: $getDataSet, $modData: $modDataSet, $addData: $addData, $remData: $remData },
-          setDirect: { $getData: $getDataSet, $modData: $modDataSetDirect, $addData: $addDataDirect, $remData: $remData },
-          ref: { $getData: $getDataRef, $modData: $modDataRef }
-        };
-        
-      })(),
+        };}
+      }),
+      AbilityRem: U.makeClass({ name: 'AbilityRem', superclassName: 'Ability',
+        methods: function(sc, c) { return {
+          stage: function(editor, doss, below, params) {
+            editor.rem({ par: doss, child: U.param(data, 'child') });
+          }
+        };}
+      }),
       
       /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
@@ -780,15 +806,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (name === '~par') return this.par;
             if (name === '~root') return this.getRoot();
             if (name.substr(0, 5) === '~par(') {
-              var target = name.substr(5, name.length - 6).trim();
+              /*var target = name.substr(5, name.length - 6).trim();
               var ptr = this.par;
               while (ptr !== null) {
                 if (ptr.outline.name === target) return ptr;
                 ptr = ptr.par;
               }
-              return null;
+              return null;*/
+              return this.getNamedPar(name.substr(5, name.length - 6).trim());
             }
             
+            return null;
+          },
+          getNamedPar: function(name) {
+            var ptr = this.par;
+            while (ptr !== null) {
+              if (ptr.outline.name === name) return ptr;
+              ptr = ptr.par;
+            }
             return null;
           },
           isRoot: function() {
@@ -819,39 +854,41 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           
           hasAbility: function(name) {
-            return (this.outline.p.abilities || {}).contains('$' + name);
+            return (this.outline.p.abilities || {}).contains(name);
           },
-          stageAbility: function(name, params) {
+          getAbility: function(name) {
+            return this.outline.p.abilities[name];
+          },
+          stageAbility: function(name, editor, below, params) {
             var abilities = this.outline.p.abilities || {};
-            if (!abilities.contains(trueName)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + name + '"') });
+            if (!abilities.contains(name)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + name + '"') });
+            
+            return abilities[name].use(editor, this, below, params);
           },
           $useAbility: function(name, params) {
-            var trueName = '$' + name;
-            var abilities = this.outline.p.abilities || {};
-            if (!abilities.contains(trueName)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + name + '"') });
-            
-            if (!params) params = {};
-            var immediate = !params.contains('editor');
-            if (immediate) params.editor = new ds.Editor();
             
             try {
               
-              // TODO: There's a difference between the ability being done adding
-              // atomics, and the ability having run
-              // - Obviously the ability can't run until editor.$transact is called
-              // - editor.$transact should be called when abilities are done adding
-              //   atomics (calling immediately MIGHT? not always work)
+              var editor = new ds.Editor();
               
-              var $result = p.$(abilities[trueName](this, params));
-              if (immediate) params.editor.$transact().done();
-              return $result;
+              // TODO: It feels like a hack right now: `result` can be a promise
+              // for doing processing after the transaction; e.g. adding a doss
+              // may use `return editor.$transaction.then(function() { return { address: doss.getAddress() }; });`
+              // to return the address of a fully-transacted `Dossier`.
+              
+              // NOTE: `result` is returned from a `then` method, so it may be either
+              // an immediate value or a promise. This means that the result of
+              // an `Ability.prototype.use` method, or the result of an `ability.decorate`
+              // function, may be a promise - even if these aren't $-prefixed.
+              var result = this.stageAbility(name, editor, null, params);
+              return editor.$transact().then(function() { return result; });
               
             } catch(err) {
-              
-              err.message = 'Bad ability: ' + this.getAddress() + '.' + name + '(' + params + ') - ' + err.message;
-              return new P({ err: err });
-              
+              return new P({ err: err.update({
+                message: 'Bad ability: ' + err.message + ': ' + this.getAddress() + '.' + name + '($1)\n$1 = ' + JSON.stringify(params)
+              })});
             }
+          
           },
           
           dereference: function() {
@@ -859,6 +896,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           
           getData: function() {
+            throw new Error('Not implemented');
+          },
+          getJson: function(params /* */) {
             throw new Error('Not implemented');
           },
           
@@ -872,7 +912,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!this.hasResolvedName() || (this.par && !this.par.started))
               throw new Error('Not ready to start "' + this.getAddress() + '"');
             
-            // Add any contentFunc
+            // Run any contentFunc
             var contentFunc = this.outline.p.contentFunc;
             if (contentFunc) {
               this.content = contentFunc(this);
@@ -880,13 +920,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
               this.content.start();
             }
             
-            // Add any changeHandler
+            // Attach any changeHandler
             var changeHandler = this.outline.p.changeHandler;
             if (changeHandler) {
               this.changeHandler = changeHandler.bind(null, this);
               this.addConcern('value', this.changeHandler);
             }
             
+            // Apply any decorator function
             var decorateFunc = this.outline.p.decorateFunc;
             if (decorateFunc) {
               decorateFunc(this);
@@ -897,8 +938,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             if (!this.started) throw new Error('Tried to double-stop "' + this.getAddress() + '"');
             this.started = false;
-            
-            // console.log('Stopped: "' + this.getAddress() + '"');
             
             // Stop any content
             if (this.content) {
@@ -912,6 +951,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
               delete this.changeHandler;
             }
             
+          },
+          
+          valueOf: function() {
+            return this.getAddress();
           }
           
         };}
@@ -978,6 +1021,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return child;
             
           },
+          hasChild: function(child) {
+            return this.children.contains(child.name) && this.children[child.name] === child;
+          },
           getNamedChild0: function(name) {
             /* if (U.isObj(name, Object))
               return new ds.FilterResults({ origChildren: this.children, filter: name }); */
@@ -1003,7 +1049,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             } else {
               
               for (var k in arg1) {
-                if (!this.children.contains(k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+                if (!this.children.contains(k)) {
+                  console.log(new Error().stack);
+                  throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+                }
                 this.children[k].setValue(arg1[k]);
               }
               
@@ -1017,7 +1066,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
           },
-
+          
+          getJson: function(params /* */) {
+            
+          },
+          
           map: function(mapFunc) {
             return this.children.map(mapFunc);
           },
@@ -1189,7 +1242,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var template = this.outline.p.template;
             if (!U.isObj(template, Array)) template = template.split('.');
             
-            if (U.isObj(value, Array)) { return sc.setValue.call(this, value); }
+            if (U.isObj(value, Array)) {
+              // TODO: Verify that the `Array` is of the right length, and dereferences
+              // to an existing value??
+              return sc.setValue.call(this, value);
+            }
+            
             if (U.isObj(value, String)) {
               var pcs = value.split('.');
               if (pcs.length !== template.length) throw new Error('String value "' + value + '" does not match template "' + template.join('.') + '"');
@@ -1205,13 +1263,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
               var tmp = template[template.length - endOff];
               var val = addr[addr.length - endOff];
               
-              if (tmp[0] === '$')
-                vals.push(val);
-              else if (tmp[0] === '~')
-                break;
-              else if (tmp !== val)
-                throw new Error('`DossierRef` "' + this.getAddress() + '" was supplied value "' + addr.join('.') + '", ' +
-                  'but this doesn\'t match the template "' + template.join('.') + '"');
+              if (tmp[0] === '$')       vals.push(val);   // Add to `vals` for each variable component in `template`
+              else if (tmp[0] === '~')  break;            // We're iterating from end to start; variables cannot come before tilde-prefixed values
+              else if (tmp !== val)     throw new Error(  // Non-variable components of the supplied address must match the corresponding template component
+                  '`DossierRef` "' + this.getAddress() + '" was supplied value "' + addr.join('.') + '", ' +
+                  'but this doesn\'t match the template "' + template.join('.') + '"'
+                );
             }
             
             vals.reverse();
@@ -1453,7 +1510,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           $query: function(ref) {
             return queries.$doQuery({
               address: this.address,
-              command: 'getData',
+              command: 'get',
               ref: ref
             });
           },
@@ -1502,7 +1559,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return queries.$doQuery({
               address: addr,
-              command: 'getData',
+              command: 'get',
               params: {
                 selection: this.selection
               },
@@ -1545,13 +1602,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             var refDoss = editor.add({ par: holder, data: refData });
             
-            var trnDsc = editor.getTransactionDetails();
-            
             return editor.$transact().then(function() {
               if (refDoss !== doss.dereference()) throw new Error('Something went wrong');
-            }).fail(function(err) {
-              console.log('TRN:\n' + trnDsc.join('\n'));
-              throw err;
+              return refDoss;
             });
             
           }
@@ -1572,7 +1625,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           $query: function(ref) {
             return queries.$doQuery({
               address: this.address,
-              command: 'getData',
+              command: 'get',
               params: {
                 selection: this.selection
               },
@@ -1615,6 +1668,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // `uncovered` now contains keys which exists in `doss` but not `childData` - such keys are outdated
             for (var k in uncovered) { rem.push({ par: doss, child: uncovered[k] }); }
             
+            // TODO: Is an `Editor` really needed here?
             var editor = new ds.Editor();
             editor.edit({ add: add, rem: rem });
             return editor.$transact();
@@ -1624,8 +1678,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           $syncedAbility: function(ability, localParams, remoteParams) {
             var pass = this;
             if (!remoteParams) remoteParams = localParams.clone();
-            
-            if (localParams.contains('editor') || remoteParams.contains('editor')) throw new Error('Provided "editor" to `$syncedAbility`');
             
             // Adding remote 1st:
             return queries.$doQuery({ address: this.address, command: ability, params: remoteParams }).then(function(remoteVal) {
