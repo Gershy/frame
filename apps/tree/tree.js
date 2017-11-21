@@ -28,10 +28,10 @@ new PACK.pack.Package({ name: 'tree',
           if (addr.length === 0) return this; // Works for both strings and arrays
           
           if (U.isObj(addr, String)) addr = addr.split('.');
-          else if (!U.isObj(addr, Array)) addr = [ addr.toString() ]; // `addr` is probably numeric
+          else if (!U.isObj(addr, Array)) addr = [ addr ]; // `addr` is probably numeric
           
           var ptr = this;
-          for (var i = 0, len = addr.length; (i < len) && ptr; i++) ptr = ptr.getNamedChild(addr[i]);
+          for (var i = 0, len = addr.length; (i < len) && ptr; i++) ptr = ptr.getNamedChild(addr[i].toString());
           
           return ptr;
         },

@@ -25,33 +25,34 @@ var compiler = require('./compilers/default.js');
 new PACK.pack.Package({ name: 'server',
   dependencies: [ 'p', 'queries' ],
   buildFunc: function() {
-    return {
+    var sv = {
       ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
-      $readFile: function(filepath, isBinary) {
+      $readFile: function(filepath, encoding) {
         return new PACK.p.P({ custom: function(resolve, reject) {
-          fileSys.readFile(filepath, isBinary ? 'binary' : 'utf8', function(err, data) {
+          fileSys.readFile(filepath, encoding, function(err, data) {
             return err ? reject(err) : resolve(data);
           });
         }});
       },
       ResponseData: U.makeClass({ name: 'ResponseData',
         methods: function(sc) { return {
-          init: function(params /* code, encoding, binary, data */) {
+          init: function(params /* code, contentType, encoding, data */) {
+            var data = U.param(params, 'data');
+            
             this.code = U.param(params, 'code', 200);
-            this.encoding = U.param(params, 'encoding', 'text/json'); // TODO: Should be called `this.contentType`
-            this.binary = U.param(params, 'binary', false);
-            this.data = U.param(params, 'data');
+            this.contentType = U.param(params, 'contentType', U.isStdObj(data, Object) ? 'text/json' : 'text/plain');
+            this.encoding = U.param(params, 'encoding', 'binary'); // 'binary' | 'utf8'
+            this.data = data;
           },
           endResponse: function(res) {
             
-            var data = this.encoding === 'text/json' ? U.thingToString(this.data) : this.data;
-            var transferEncoding = this.binary ? 'binary' : 'utf8';
+            var data = this.contentType === 'text/json' ? U.thingToString(this.data) : this.data;
             
             res.writeHead(this.code ? this.code : 200, {
-              'Content-Type': this.encoding,
-              'Content-Length': Buffer.byteLength(data, transferEncoding)
+              'Content-Type': this.contentType,
+              'Content-Length': Buffer.byteLength(data, this.encoding)
             });
-            res.end(data, transferEncoding);
+            res.end(data, this.encoding);
             
           }
         };}
@@ -61,7 +62,7 @@ new PACK.pack.Package({ name: 'server',
           init: function(params /* appName, ip */) {
             this.ip = U.param(params, 'ip');
             this.appName = U.param(params, 'appName');
-            this.id = U.id(PACK.server.Session.NEXT_ID++);
+            this.id = U.id(sv.Session.NEXT_ID++);
             
             // Channeled queries RECEIVED are passed from `this.$respondToQuery` -> `this.clientChannel.$handleQuery`
             // Channeled queries SENT are passed to `this.clientChannel.$doQuery`
@@ -76,17 +77,22 @@ new PACK.pack.Package({ name: 'server',
             if (!config.legalExtensions.contains(ext)) throw new Error('Illegal extension: "' + ext + '"');
             ext = config.legalExtensions[ext];
             
-            var binary = ext[0] === '!';
-            if (binary) ext = ext.substr(1);
+            if (ext[0] === '!') {
+              var encoding = 'binary';
+              ext = ext.substr(1);
+            } else {
+              var encoding = 'utf8';
+            }
             
-            return PACK.server.$readFile(filepath, binary)
+            return sv.$readFile(filepath, encoding)
               .then(function(data) {
-                return new PACK.server.ResponseData({
+                return new sv.ResponseData({
                   data: data,
-                  encoding: ext,
-                  binary: binary
+                  contentType: ext,
+                  encoding: encoding
                 });
               });
+            
           },
           $respondToQuery: function(params /* address */) {
             /*
@@ -100,13 +106,6 @@ new PACK.pack.Package({ name: 'server',
             
             params.session = this;
             
-            /*
-            // TODO:
-            if (requestIsAddressedToChanneler(params)) {
-              return this.channeler.$handleRequest(params);
-            }
-            */
-            
             if (address.length) {
               
               var handler = PACK[this.appName].queryHandler.getChild(address);
@@ -118,18 +117,21 @@ new PACK.pack.Package({ name: 'server',
               
             }
             
+            return handler.$handleRequest(params);
+            
+            /*
             return handler.$handleRequest(params).then(function(response) {
               
               /*
               The session's children all reply with objects. The session is
               responsible for stringifying those objects, and clarifying that
               they are in json format.
-              */
-              return U.isInstance(response, PACK.server.ResponseData)
+              * /
+              return U.isInstance(response, sv.ResponseData)
                 ? response
-                : new PACK.server.ResponseData({ data: response });
+                : new sv.ResponseData({ data: response });
               
-            });
+            });*/
             
           },
           $handleRequest: function(params /* session, url */) {
@@ -143,11 +145,11 @@ new PACK.pack.Package({ name: 'server',
             if (url.length && url[url.length - 1].contains('.'))
               return this.getFileContents(url.join('/')) // TODO: Use `path.join` instead?
                 .fail(function(err) {
-                  return new PACK.server.ResponseData({
+                  return new sv.ResponseData({
                     code: 404,
                     data: 'File "' + url.join('/') + '" not found',
-                    encoding: 'text/plain', // This is "contentType", not "encoding"
-                    binary: false           // This should be `encoding: 'binary'`
+                    contentType: 'text/plain',
+                    encoding: 'utf8'
                   });
                 });
             
@@ -159,7 +161,7 @@ new PACK.pack.Package({ name: 'server',
               .then(function(html) {
                 // TODO: "cmp-client-" should not appear client-side
                 html.data = html.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
-                html.data = html.data.replace(/{{assetVersion}}/g, PACK.server.ASSET_VERSION);
+                html.data = html.data.replace(/{{assetVersion}}/g, sv.ASSET_VERSION);
                 html.data = html.data.replace('{{title}}', appName);
                 
                 if (PACK[appName].contains('resources')) {
@@ -167,7 +169,7 @@ new PACK.pack.Package({ name: 'server',
                   
                   var r = PACK[appName].resources;
                   
-                  var ver = '?' + PACK.server.ASSET_VERSION;
+                  var ver = '?' + sv.ASSET_VERSION;
                   
                   var htmlElems = [];
                   if (r.contains('css')) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
@@ -184,7 +186,7 @@ new PACK.pack.Package({ name: 'server',
               })
               .fail(function(err) {
                 console.error(err.stack);
-                return new PACK.server.ResponseData({
+                return new sv.ResponseData({
                   data: [
                     '<!DOCTYPE html>',
                     '<html>',
@@ -194,8 +196,8 @@ new PACK.pack.Package({ name: 'server',
                       '<body>Couldn\'t serve main page. :(</body>',
                     '</html>'
                   ].join(''),
-                  encoding: 'text/html',
-                  binary: false
+                  contentType: 'text/html',
+                  encoding: 'utf8'
                 })
               });
             
@@ -209,7 +211,7 @@ new PACK.pack.Package({ name: 'server',
             // TODO: Could be a problem if it's ever desired for the same
             // session to serve multiple apps?
             
-            var Session = PACK.server.Session;
+            var Session = sv.Session;
             var sessionList = Session.SESSIONS;
             
             if (!sessionList.contains(ip)) sessionList[ip] = new Session({ appName: appName, ip: ip });
@@ -223,7 +225,7 @@ new PACK.pack.Package({ name: 'server',
       $getSession: function(appName, req) {
         // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
         var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).replace(/[^0-9.]/g, '');
-        return PACK.p.$(PACK.server.Session.GET_SESSION(appName, ip));
+        return PACK.p.$(sv.Session.GET_SESSION(appName, ip));
       },
       $getQuery: function(req) {
         var url = req.url.substr(1); // Strip the leading "/"
@@ -307,26 +309,29 @@ new PACK.pack.Package({ name: 'server',
       },
       
       serverFunc: function(appName, req, res) {
-        new PACK.p.P({ args: [ PACK.server.$getSession(appName, req), PACK.server.$getQuery(req) ] })
+        new PACK.p.P({ args: [ sv.$getSession(appName, req), sv.$getQuery(req) ] })
           .them(function(session, query) {  // Get a response based on session and query
             return session.$respondToQuery(query);
           })
+          .then(function(response) {        // Ensure a `ResponseData` is being worked with
+            return U.isInstance(response, sv.ResponseData) ? response : new sv.ResponseData({ data: response });
+          })
           .then(function(response) {        // Insert error message in case of 404
             //return new PACK.p.P({ timeout: 1000 + Math.random(0, 3000) }).then(function() {
-              return response || new PACK.server.ResponseData({
+              return response || new sv.ResponseData({
+                encoding: 'utf8',
+                contentType: 'text/plain',
                 code: 404,
-                binary: false,
-                encoding: 'text/plain',
                 data: 'not found'
               });
             //});
           })
           .fail(function(err) {             // Insert error message in case of 400
             console.error(err.stack);
-            return new PACK.server.ResponseData({
+            return new sv.ResponseData({
+              encoding: 'utf8',
+              contentType: 'text/plain',
               code: 400,
-              binary: false,
-              encoding: 'text/plain',
               data: err.message
             });
           })
@@ -336,8 +341,10 @@ new PACK.pack.Package({ name: 'server',
           .done();
       }
     };
+    
+    return sv;
   },
-  runAfter: function() {
+  runAfter: function(sv) {
     
     // Parse process-level arguments
     if (process.argv[2] === '{') {
@@ -410,7 +417,7 @@ new PACK.pack.Package({ name: 'server',
     if (args.contains('port')) port = args.port;
     if (args.contains('ip')) ip = args.ip;
     
-    var server = http.createServer(PACK.server.serverFunc.bind(null, appName));
+    var server = http.createServer(sv.serverFunc.bind(null, appName));
     server.listen(port, ip);
     console.log('Listening at ' + ip + ':' + port + '...');
     

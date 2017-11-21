@@ -108,12 +108,11 @@ TASKS:
 }
 
 */
-        
 /// =REMOVE}
-var FILLSTORY = true;
-var LOADSTATE = true;
-
+var FILLSTORY = false;
+var LOADSTATE = false;
 new PACK.pack.Package({ name: 'creativity',
+  
   /// {SERVER=
   dependencies: [ 'dossier', 'p', 'persist' ],
   /// =SERVER}
@@ -580,9 +579,6 @@ new PACK.pack.Package({ name: 'creativity',
       
     };
     
-    // TODO: Recreate the outline using `abl` instead of `ds.abilities`!!
-    var abl = ds.abilities;
-    
     // ~root
     var outline = new ds.Outline({ name: 'creativity', c: cr.Creativity, });
     outline.addChild('version', ds.DossierStr, {
@@ -592,7 +588,7 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({})
+        get: new ds.AbilityGet({ public: true })
       }
     });
     /// {CLIENT=
@@ -653,30 +649,44 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({}),
-        add: new ds.AbilityAdd({
+        get: new ds.AbilityGet({ public: true }),
+        mod: new ds.AbilityMod({ public: true,
           validate: function(editor, doss, below, params) {
             
             var data = U.param(params, 'data');
-            return params.update({
+            if (!U.objSizeEq(data, 1)) throw new Error('"data" should only contain 1 key');
+            
+            var userKey = U.firstKey(data);
+            var userData = data[userKey];
+            
+            var username = U.param(userData, 'username');
+            var password = U.param(userData, 'password');
+            
+            return U.obj.update(params, {
+              /// {SERVER=
+              token: cr.getToken(username, password),
+              /// =SERVER}
               data: {
-                username: U.param(data, 'username'),
-                password: U.param(data, 'password'),
-                fname: U.param(data, 'fname', 'Anonymous'),
-                lname: U.param(data, 'lname', 'Individual')
+                0: {
+                  username: username,
+                  password: password,
+                  fname: U.param(userData, 'fname', 'Anonymous'),
+                  lname: U.param(userData, 'lname', 'Individual')
+                }
               }
             });
             
           },
-          decorate: function(newUser, editor) {
+          decorate: function(newUsers, editor) {
             
             return editor.$transaction.then(function() {
-              return {
-                /// {SERVER=
-                token: newUser.getToken(),
-                /// =SERVER}
-                address: newUser.getAddress()
-              };
+              var newUser = newUsers[0];
+              /// {SERVER=
+              return { address: newUser.getAddress(), token: newUser.getToken() };
+              /// =SERVER}
+              /// {CLIENT=
+              return { address: newUser.getAddress() };
+              /// =CLIENT}
             });
             
           }
@@ -688,19 +698,18 @@ new PACK.pack.Package({ name: 'creativity',
         return user.getValue('username');
       },
       abilities: {
-        get: new ds.AbilityGet({ par: userSet.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: userSet.getAbility('add'),
+        get: new ds.AbilityGet({ public: true, par: userSet.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: userSet.getAbility('mod'),
           validateBelow: function(editor, doss, below, params /* */) {
             
             /// {SERVER=
-            if (doss.started) {
-              // Don't check the token for uninitiated users; they're in the middle of being added
+            if (doss.started) { // An unstarted doss is verified for anyone!
               var token = U.param(params, 'token');
-              if (token !== user.getToken()) throw new Error('Couldn\'t authenticate');
+              if (token !== doss.getToken()) throw new Error('Couldn\'t authenticate');
             }
             /// =SERVER}
             
-            return { verifiedUser: user };
+            return { verifiedUser: doss };
             
           }
         })
@@ -708,8 +717,8 @@ new PACK.pack.Package({ name: 'creativity',
     });
     user.addChild('username', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: user.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: user.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: user.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: user.getAbility('mod'),
           validate: function(editor, doss, below, params) {
             cr.validate.string('user.username', U.param(params, 'data'), 3, 24, /^[a-zA-Z][a-zA-Z0-9]*$/);
             return params;
@@ -719,7 +728,7 @@ new PACK.pack.Package({ name: 'creativity',
     });
     user.addChild('password', ds.DossierStr, {
       abilities: {
-        mod: new ds.AbilityMod({ par: user.getAbility('mod'),
+        mod: new ds.AbilityMod({ public: true, par: user.getAbility('mod'),
           validate: function(editor, doss, below, params) {
             
             var str = U.param(params, 'data');
@@ -732,8 +741,8 @@ new PACK.pack.Package({ name: 'creativity',
     });
     user.addChild('fname', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: user.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: user.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: user.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: user.getAbility('mod'),
           validate: function(editor, doss, below, params) {
             
             var str = U.param(params, 'data');
@@ -750,8 +759,8 @@ new PACK.pack.Package({ name: 'creativity',
     });
     user.addChild('lname', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: user.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: user.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: user.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: user.getAbility('mod'),
           validate: function(editor, doss, below, params) {
             
             var str = U.param(params, 'data');
@@ -771,7 +780,6 @@ new PACK.pack.Package({ name: 'creativity',
     var storySet = outline.addChild('storySet', ds.DossierArr, {
       /// {CLIENT=
       contentFunc: function(doss) {
-        console.log('CONTENTFUNC???');
         return new ds.ContentSyncSet({ doss: doss, waitMs: 10000, syncOnStart: true, selection: {
           '*': {
             user: {},
@@ -788,8 +796,8 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({}),
-        add: new ds.AbilityAdd({
+        get: new ds.AbilityGet({ public: true }),
+        mod: new ds.AbilityMod({ public: true,
           validateBelow: function(editor, doss, below, params /* username, token */) {
             
             var username = U.param(params, 'username');
@@ -798,7 +806,7 @@ new PACK.pack.Package({ name: 'creativity',
             
             /// {SERVER=
             var token = U.param(params, 'token');
-            if (token !== user.getToken()) throw new Error('Couldn\'t authenticate');
+            if (token !== user.getToken()) throw new Error('Permission denied');
             /// =SERVER}
             
             return { verifiedUser: user };
@@ -806,49 +814,57 @@ new PACK.pack.Package({ name: 'creativity',
           },
           validate: function(editor, doss, below, params /* data */) {
             
+            // TODO: Limit the number of stories a user can create?
+            // if (!U.objSizeEq(data, 1)) throw new Error('"data" should only contain 1 key');
+            
             var user = below.verifiedUser;
             var currentTime = U.timeMs();
-            
-            // TODO: Limit the number of stories a user can create?
-            
-            var data = U.param(params, 'data');
-            var sanitizedData = {
-              user: user,
-              createdTime: currentTime,
-              quickName: U.param(data, 'quickName'),
-              description: U.param(data, 'description'),
-              authorLimit: U.param(data, 'authorLimit'),
-              contestTime: U.param(data, 'contestTime'),
-              maxWrites: U.param(data, 'maxWrites'),
-              maxVotes: U.param(data, 'maxVotes'),
-              maxWriteLength: U.param(data, 'maxWriteLength'),
-              contestLimit: U.param(data, 'contestLimit'),
-              anonymizeWriter: U.param(data, 'anonymizeWriter'),
-              anonymizeVoter: U.param(data, 'anonymizeVoter'),
-              slapLoadTime: U.param(data, 'slapLoadTime'),
-              slamLoadTime: U.param(data, 'slamLoadTime'),
-              contestInd: 0,
-              phase: 'awaitingWrite',
-              timePhaseStarted: currentTime,
-              authorSet: {},
-              contestSet: {
-                0: {
-                  num: 0,
-                  writeSet: {}
-                }
-              },
-              writeSet: {}
-            };
-            sanitizedData.authorSet[user.name] = {
-              user: user // NOTE: "authorSet" should be able to fill in the other values for an author record
-            };
-            
-            return params.clone({ data: sanitizedData });
+            return U.obj.clone(params, { data: U.obj.map(U.param(params, 'data'), function(v, k) {
+              
+              if (v === null) throw new Error('"data" values cannot be `null`');
+              
+              var storyData = {
+                user: user,
+                createdTime: currentTime,
+                quickName: U.param(v, 'quickName'),
+                description: U.param(v, 'description'),
+                authorLimit: U.param(v, 'authorLimit'),
+                contestTime: U.param(v, 'contestTime'),
+                maxWrites: U.param(v, 'maxWrites'),
+                maxVotes: U.param(v, 'maxVotes'),
+                maxWriteLength: U.param(v, 'maxWriteLength'),
+                contestLimit: U.param(v, 'contestLimit'),
+                anonymizeWriter: U.param(v, 'anonymizeWriter'),
+                anonymizeVoter: U.param(v, 'anonymizeVoter'),
+                slapLoadTime: U.param(v, 'slapLoadTime'),
+                slamLoadTime: U.param(v, 'slamLoadTime'),
+                contestInd: 0,
+                phase: 'awaitingWrite',
+                timePhaseStarted: currentTime,
+                authorSet: {},
+                contestSet: {
+                  0: {
+                    num: 0,
+                    writeSet: {}
+                  }
+                },
+                writeSet: {}
+              };
+              storyData.authorSet[user.name] = {
+                user: user // NOTE: "authorSet" should be able to fill in the other values for an author record
+              };
+              
+              return storyData;
+              
+            })});
             
           },
-          decorate: function(newStory, editor) {
+          decorate: function(newStories, editor) {
+            
+            // `newStories` can only contain 1 item
+            
             return editor.$transaction.then(function() {
-              return { address: newStory.getAddress() };
+              return { address: newStories[0].getAddress() };
             });
           }
         })
@@ -866,8 +882,10 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: storySet.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: storySet.getAbility('add'),
+        get: new ds.AbilityGet({ public: true, par: storySet.getAbility('get') }),
+        
+        // TODO: Setting `public: true` here would be annoying, because would need to filter out all `public: false` children
+        mod: new ds.AbilityMod({ public: false, par: storySet.getAbility('mod'),
           validateBelow: function(editor, doss, below, params) {
             
             return below.update({
@@ -876,7 +894,7 @@ new PACK.pack.Package({ name: 'creativity',
               story: doss,
               
               // Include a reference to the author, if it has been initialized (if this is a true "mod", and not an "add")
-              verifiedAuthor: doss.started ? doss.getChild([ 'userSet', below.verifiedUser.getValue('username') ]) : null
+              verifiedAuthor: doss.getChild([ 'authorSet', below.verifiedUser.getValue('username') ])
               
             });
             
@@ -900,13 +918,8 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.user');
-            return below;
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     /// {CLIENT=
@@ -958,90 +971,135 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     story.addChild('createdTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.createdTime');
-            return below;
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     story.addChild('quickName', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.quickName');
-            return below;
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.string('story.quickName', U.param(params, 'data'), 3, 20, /[a-z][a-zA-Z]*/);
+            return params;
           }
         })
       }
     });
     story.addChild('description', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.string('story.description', U.param(params, 'data'), 10, 250);
+            return params;
+          }
+        })
       }
     });
     story.addChild('authorLimit', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.integer('story.authorLimit', U.param(params, 'data'), 3);
+            return params;
+          }
+        })
       }
     });
     story.addChild('contestTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.integer('story.contestTime', U.param(params, 'data'), 1000 * 60 * 3);
+            return params;
+          }
+        })
       }
     });
     story.addChild('maxWrites', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.integer('story.maxWrites', U.param(params, 'data'), 3);
+            return params;
+          }
+        })
       }
     });
     story.addChild('maxVotes', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.integer('story.maxVotes', U.param(params, 'data'), 3);
+            return params;
+          }
+        })
       }
     });
     story.addChild('maxWriteLength', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod') })
       }
     });
     story.addChild('contestLimit', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.integer('story.contestLimit', U.param(params, 'data'), 3);
+            return params;
+          }
+        })
       }
     });
     story.addChild('anonymizeWriter', ds.DossierBln, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.boolean('story.anonymizeWriter', U.param(params, 'data'));
+            return params;
+          }
+        })
       }
     });
     story.addChild('anonymizeVoter', ds.DossierBln, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            cr.validate.boolean('story.anonymizeVoter', U.param(params, 'data'));
+            return params;
+          }
+        })
       }
     });
     story.addChild('slapLoadTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            // cr.validate.integer('story.slapLoadTime', U.param(params, 'data'), 1000 * 60 * 10 );
+            return params;
+          }
+        })
       }
     });
     story.addChild('slamLoadTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
+          validate: function(editor, doss, below, params /* data */) {
+            // cr.validate.integer('story.slamLoadTime', U.param(params, 'data'), 1000 * 60 * 10 );
+            return params;
+          }
+        })
       }
     });
     story.addChild('contestInd', ds.DossierInt, {
@@ -1058,13 +1116,8 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.contestInd');
-            return below;
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     story.addChild('phase', ds.DossierStr, {
@@ -1074,13 +1127,8 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.phase');
-            return below;
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     story.addChild('timePhaseStarted', ds.DossierInt, {
@@ -1090,13 +1138,8 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: story.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: story.getAbility('mod'),
-          validateBelow: function(editor, doss, below, params) {
-            if (doss.started) throw new Error('Can\'t modify existing story.timePhaseStarted');
-            return below;
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     
@@ -1108,18 +1151,25 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({}),
-        add: new ds.AbilityAdd({ par: story.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true }),
+        mod: new ds.AbilityMod({ public: true, par: story.getAbility('mod'),
           validate: function(editor, doss, below, params /* username, token */) {
             
+            var data = U.param(params, 'data');
+            if (!U.objSizeEq(data, 1)) throw new Error('"data" should only contain 1 key');
+            
             var currentTime = U.timeMs();
-            return {
-              user: below.verifiedUser,
-              numSlaps: 0,
-              lastSlapTime: currentTime,
-              numSlams: 0,
-              lastSlamTime: currentTime
-            };
+            return params.clone({ data: data.map(function(v, k) {
+              if (v === null) throw new Error('"data" values cannot be `null`');
+              if (!U.isObj(v, Object)) throw new Error('Invalid "data" format');
+              return {
+                user: below.verifiedUser,
+                numSlaps: 0,
+                lastSlapTime: currentTime,
+                numSlams: 0,
+                lastSlamTime: currentTime
+              };
+            })});
             
           },
           decorate: function(newAuthor, editor) {
@@ -1135,22 +1185,8 @@ new PACK.pack.Package({ name: 'creativity',
         return authorDoss.getChild('@user').name;
       },
       abilities: {
-        get: new ds.AbilityGet({ par: authorSet.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: authorSet.getAbility('add'),
-          validateBelow: function(editor, doss, below, params /* username, token */) {
-            
-            // NOTE: If non-add mods were allowed it would be important to verify that:
-            // doss.getChild('@user') === below.verifiedUser
-            //
-            // Right now the only way the data can be modified is via an "add", and at
-            // the moment of adding, `doss.getChild('@user')` is BY DEFINITION set to
-            // `below.verifiedUser`.
-            
-            if (doss.started) throw new Error('Can\'t modify an existing author');
-            return below;
-            
-          }
-        })
+        get: new ds.AbilityGet({ public: true, par: authorSet.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: authorSet.getAbility('mod') })
       }
     });
     author.addChild('user', ds.DossierRef, { template: '~root.userSet.$username',
@@ -1160,36 +1196,35 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: author.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: author.getAbility('get') })
       }
     });
     author.addChild('numSlaps', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: author.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: author.getAbility('get') })
       }
     });
     author.addChild('lastSlapTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: author.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: author.getAbility('get') })
       }
     });
     author.addChild('numSlams', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: author.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: author.getAbility('get') })
       }
     });
     author.addChild('lastSlamTime', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: author.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: author.getAbility('get') })
       }
     });
-    
-    // HEEERE: Creating a story initializes it with ZERO contests!! There should initially be 1 contest D':
     
     // ~root.storySet.story.contestSet
     var contestSet = story.addChild('contestSet', ds.DossierArr, {
       abilities: {
-        get: new ds.AbilityGet({})
+        get: new ds.AbilityGet({ public: true, par: story.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: story.getAbility('mod') })
       }
     });
     var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
@@ -1197,7 +1232,8 @@ new PACK.pack.Package({ name: 'creativity',
         return contestDoss.getValue('num');
       },
       abilities: {
-        get: new ds.AbilityGet({ par: contestSet.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: contestSet.getAbility('get') }),
+        mod: new ds.AbilityGet({ public: false, par: contestSet.getAbility('mod') })
       }
     });
     /// {CLIENT=
@@ -1231,22 +1267,45 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     contest.addChild('num', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: contest.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: contest.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: contest.getAbility('mod') })
       }
     });
     
     // ~root.storySet.story.contestSet.contest.writeSet
     var contestWriteSet = contest.addChild('writeSet', ds.DossierArr, {
+      /// {CLIENT=
+      contentFunc: function(doss) {
+        return new ds.ContentSyncSet({ doss: doss, syncOnStart: false, selection: ds.selectAll })
+      },
+      /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({}),
-        add: new ds.AbilityAdd({ par: story.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: contest.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: contest.getAbility('mod'),
           validate: function(editor, doss, below, params /* */) {
-            // TODO: This should happen via a `Worry`
-            editor.$transaction.then(cr.informWriteSubmitted.bind(null, doss.getNamedPar('story'))).done();
-            return params;
+            
+            var data = U.param(params, 'data');
+            if (!U.objSizeEq(data, 1)) throw new Error('"data" should only contain 1 key');
+            
+            return params.clone({ data: data.map(function(v, k) {
+              if (v === null) throw new Error('"data" values cannot be `null`');
+              return {
+                author: below.verifiedAuthor,
+                content: v.content
+              };
+            })});
+            
           },
-          decorate: function(newContestWrite, editor) {
+          decorate: function(newContestWrites, editor) {
             return editor.$transaction.then(function() {
+              // There can only be one item in the `newContestWrites` array
+              var newContestWrite = newContestWrites[0];
+              
+              /// {SERVER=
+              // TODO: This should happen via a `Worry`
+              cr.informWriteSubmitted(newContestWrite.getNamedPar('story'));
+              /// =SERVER}
+              
               return { address: newContestWrite.getAddress() };
             });
           }
@@ -1255,26 +1314,19 @@ new PACK.pack.Package({ name: 'creativity',
     });
     var contestWrite = contestWriteSet.addDynamicChild('write', ds.DossierObj, {
       nameFunc: function(writeSetDoss, writeDoss) {
-        return writeDoss.getChild('@user').name;
+        return writeDoss.getChild('@author.@user').name;
       },
       abilities: {
-        get: new ds.AbilityGet({ par: contestWriteSet.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: contestWriteSet.getAbility('add'),
-          validateBelow: function(editor, doss, below, params) {
-            
-            if (doss.started) throw new Error('Can\'t modify an existing contestWrite');
-            return below;
-            
-          },
+        get: new ds.AbilityGet({ public: true, par: contestWriteSet.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: contestWriteSet.getAbility('mod'),
           validate: function(editor, doss, below, params /* data */) {
             
-            var author = below.verifiedAuthor;
             var data = U.param(params, 'data');
             var content = U.param(data, 'content');
             
             return params.clone({
               data: {
-                author: author,
+                author: below.verifiedAuthor,
                 content: content
               }
             });
@@ -1285,8 +1337,8 @@ new PACK.pack.Package({ name: 'creativity',
     });
     contestWrite.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username', // TODO: SCHEMA CHANGE, formerly "user"
       abilities: {
-        get: new ds.AbilityGet({ par: contestWrite.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: contestWrite.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: contestWrite.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: contestWrite.getAbility('mod') })
       }
     });
     /// {CLIENT=
@@ -1301,8 +1353,8 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     contestWrite.addChild('content', ds.DossierStr, {
       abilities: {
-        get: new ds.AbilityGet({ par: contestWrite.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: contestWrite.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: contestWrite.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: contestWrite.getAbility('mod'),
           validate: function(editor, doss, below, params /* data */) {
             var data = U.param(params, 'data');
             var maxWriteLength = doss.getNamedPar('story').getValue('maxWriteLength');
@@ -1321,9 +1373,12 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({}),
-        add: new ds.AbilityAdd({ par: story.getAbility('mod'),
+        get: new ds.AbilityGet({ public: true, par: contestWrite.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: true, par: contestWrite.getAbility('mod'),
           validate: function(editor, doss, below, params /* username, token, data */) {
+            
+            var data = U.param(params, 'data');
+            if (!U.objSizeEq(data, 1)) throw new Error('"data" should only contain 1 key');
             
             // NOTE: "validate" may be a misnomer. A "validate" function just provides
             // functionality in 4 ways:
@@ -1331,11 +1386,6 @@ new PACK.pack.Package({ name: 'creativity',
             //  2) Changing the parameters for the ability, by returning a modified value
             //  3) Contributing to the overall transaction using `editor` methods
             //  4) Reacting to transaction success using `editor.$transaction.then(...)`
-            
-            /// {SERVER=
-            // TODO: Really vote-submission-informing should be done via a `Worry`
-            editor.$transaction.then(cr.informVoteSubmitted.bind(null, below.story)).done();
-            /// =SERVER}
             
             /* TODO: Verify that the author has enough vote-power remaining, and reduce vote power
             var data = U.param(params, 'data');
@@ -1348,12 +1398,28 @@ new PACK.pack.Package({ name: 'creativity',
             editor.mod({ doss: author, { votePower: votePower - value }); // TODO: Race conditions?
             */
             
-            return params;
+            return U.obj.clone(params, { data: U.obj.map(data, function(v, k) {
+              if (v === null) throw new Error('"data" values cannot be `null`');
+              return {
+                author: below.verifiedAuthor,
+                value: U.param(v, 'value')
+              };
+            })});
 
           },
-          decorate: function(newVote, editor) {
+          decorate: function(newVotes, editor) {
             return editor.$transaction.then(function() {
+              
+              // `newVotes` can only contain one item
+              var newVote = newVotes[0];
+              
+              /// {SERVER=
+              // TODO: Really vote-submission-informing should be done via a `Worry`
+              cr.informVoteSubmitted(newVote.getNamedPar('story'));
+              /// =SERVER}
+              
               return { address: newVote.getAddress() };
+              
             });
           }
         })
@@ -1361,29 +1427,19 @@ new PACK.pack.Package({ name: 'creativity',
     });
     var vote = voteSet.addDynamicChild('vote', ds.DossierObj, {
       nameFunc: function(voteSetDoss, voteDoss) {
-        return voteDoss.getChild('@user').name;
+        return voteDoss.getChild('@author.@user').name;
       },
       abilities: {
-        get: new ds.AbilityGet({ par: voteSet.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: voteSet.getAbility('add'),
-          validateBelow: function(editor, doss, below, params /* username, token */) {
-            
-            // This "mod" ability only exists to facilitate voteSet's "add". Submitted votes cannot be modified
-            if (doss.started) throw new Error('Can\'t modify an existing vote');
-            return below;
-            
-          },
+        get: new ds.AbilityGet({ public: true, par: voteSet.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: voteSet.getAbility('mod'),
           validate: function(editor, doss, below, params /* username, token, data */) {
             
             var data = U.param(params, 'data');
             var value = U.param(data, 'value');
             
-            var author = below.verifiedAuthor;
-            if (!author) throw new Error('Author "' + params.username + '" doesn\'t exist');
-            
             return params.clone({
               data: {
-                author: author,
+                author: below.verifiedAuthor,
                 value: value
               }
             });
@@ -1394,8 +1450,8 @@ new PACK.pack.Package({ name: 'creativity',
     });
     vote.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username', // TODO: SCHEMA CHANGE, formerly "user"
       abilities: {
-        get: new ds.AbilityGet({ par: vote.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: vote.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: vote.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: vote.getAbility('mod') })
       }
     });
     /// {CLIENT=
@@ -1410,8 +1466,8 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     vote.addChild('value', ds.DossierInt, {
       abilities: {
-        get: new ds.AbilityGet({ par: vote.getAbility('get') }),
-        mod: new ds.AbilityMod({ par: vote.getAbility('mod') })
+        get: new ds.AbilityGet({ public: true, par: vote.getAbility('get') }),
+        mod: new ds.AbilityMod({ public: false, par: vote.getAbility('mod') })
       }
     });
     
@@ -1423,7 +1479,7 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({})
+        get: new ds.AbilityGet({ public: true })
       }
     });
     winWriteSet.addDynamicChild('write', ds.DossierRef, { template: '~par.~par.contestSet.$contestInd.writeSet.$username',
@@ -1434,7 +1490,7 @@ new PACK.pack.Package({ name: 'creativity',
       },
       /// =CLIENT}
       abilities: {
-        get: new ds.AbilityGet({ par: winWriteSet.getAbility('get') })
+        get: new ds.AbilityGet({ public: true, par: winWriteSet.getAbility('get') })
       }
     });
     
@@ -1503,7 +1559,7 @@ new PACK.pack.Package({ name: 'creativity',
     
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
-      U.debug(doss.getData());
+      // U.debug(doss.getData());
       
       /// {SERVER=
       cr.queryHandler = doss;
@@ -1634,10 +1690,13 @@ new PACK.pack.Package({ name: 'creativity',
                               new uf.ActionDecorator({ $action: function() {
                                 
                                 var user = doss.getChild('@user');
-                                return info.getChild('authorSet').content.$syncedAbility('add', {
-                                  token: user.getAddress(),
+                                return info.getChild('authorSet').content.$syncedAbility('mod', {
+                                  username: user.getValue('username'),
+                                  token: doss.getRoot().getValue('token'),
                                   data: {
-                                    user: user.getAddress()
+                                    0: {
+                                      user: user.getAddress()
+                                    }
                                   }
                                 }).then(function(result) { doss.setValue('currentStory', info); });
                                 
@@ -1856,7 +1915,7 @@ new PACK.pack.Package({ name: 'creativity',
                             // TODO: Review efficiency here (could be terrible with a big writeSet)
                             var username = function() {
                               var deref = info.dereference();
-                              return deref ? deref.getChild('@user').name : 'loading...';
+                              return deref ? deref.getChild('@author').name : 'loading...';
                             };
                             var content = function() {
                               var deref = info.dereference();
@@ -1899,11 +1958,14 @@ new PACK.pack.Package({ name: 'creativity',
                             new uf.View({ name: 'submit', cssClasses: [ 'interactive', 'button' ], decorators: [
                               new uf.ActionDecorator({ $action: function() {
                                 
-                                return doss.getChild('@currentStory.@currentContest.writeSet').content.$syncedAbility('add', {
+                                var story = doss.getChild('@currentStory');
+                                return story.getChild('@currentContest.writeSet').content.$syncedAbility('mod', {
+                                  username: doss.getValue('@user.username'),
                                   token: doss.getValue('token'),
                                   data: {
-                                    user: doss.getChild('@user').getAddress(),
-                                    content: doss.getValue('currentWrite')
+                                    0: {
+                                      content: doss.getValue('currentWrite')
+                                    }
                                   }
                                 }).then(function() {
                                   // Clear the write if the action was successful
@@ -1944,7 +2006,7 @@ new PACK.pack.Package({ name: 'creativity',
                                       childInfo: writeVoteSet,
                                       genChildView: function(name, voteInfo) {
                                         
-                                        return new uf.TextView({ name: name, cssClasses: [ 'vote' ], info: voteInfo.getValue('user').split('.').pop() });
+                                        return new uf.TextView({ name: name, cssClasses: [ 'vote' ], info: voteInfo.getValue('author').split('.').pop() });
                                         
                                       }
                                     }),
@@ -1956,11 +2018,14 @@ new PACK.pack.Package({ name: 'creativity',
                                         new uf.View({ name: 'vote', cssClasses: [ 'interactive', 'button' ], decorators: [
                                           new uf.ActionDecorator({ $action: function() {
                                             
-                                            return writeVoteSet.content.$syncedAbility('add', {
+                                            return writeVoteSet.content.$syncedAbility('mod', {
+                                              username: doss.getValue('@user.username'),
                                               token: doss.getValue('token'),
                                               data: {
-                                                user: doss.getChild('@user').getAddress(),
-                                                value: 1 // This is ignored for now
+                                                0: {
+                                                  user: doss.getChild('@user').getAddress(),
+                                                  value: 1 // This is ignored for now
+                                                }
                                               }
                                             });
 
@@ -2035,10 +2100,12 @@ new PACK.pack.Package({ name: 'creativity',
           return p.$null;
         }
         
-        return doss.getChild('userSet').content.$syncedAbility('add', {
+        return doss.getChild('userSet').content.$syncedAbility('mod', {
           data: {
-            username: doss.getValue('username'),
-            password: doss.getValue('password')
+            0: {
+              username: doss.getValue('username'),
+              password: doss.getValue('password')
+            }
           }
         }).then(function(data) {
           doss.setValue('token', data.token);
@@ -2107,25 +2174,27 @@ new PACK.pack.Package({ name: 'creativity',
       
       var storyFormSubmitDec = storyFormDec.genSubmitDecorator(function(event) {
         
-        return doss.getChild('storySet').content.$syncedAbility('add', {
-          username: doss.getValue('username'),
+        return doss.getChild('storySet').content.$syncedAbility('mod', {
+          username: doss.getValue('@user.username'),
           token: doss.getValue('token'),
           data: {
-            user:             doss.getChild('@user').getAddress(),
-            quickName:        doss.getValue('editStory.quickName'),
-            description:      doss.getValue('editStory.description'),
-            contestTime:      doss.getValue('editStory.contestTime'), // This value is already an integer
-            authorLimit:      parseInt(doss.getValue('editStory.authorLimit')),
-            maxWrites:        parseInt(doss.getValue('editStory.maxWrites')),
-            maxVotes:         parseInt(doss.getValue('editStory.maxVotes')),
-            maxWriteLength:   parseInt(doss.getValue('editStory.maxWriteLength')),
-            contestLimit:     parseInt(doss.getValue('editStory.contestLimit')),
-            anonymizeWriter:  doss.getValue('editStory.anonymizeWriter'),
-            anonymizeVoter:   doss.getValue('editStory.anonymizeVoter'),
-            /*slapLoadTime: doss.getValue('editStory.slapLoadTime'),
-            slamLoadTime: doss.getValue('editStory.slamLoadTime'),*/
-            slapLoadTime:     1000 * 60 * 60 * 24 * 5,
-            slamLoadTime:     1000 * 60 * 60 * 24 * 5
+            0: {
+              user:             doss.getChild('@user').getAddress(),
+              quickName:        doss.getValue('editStory.quickName'),
+              description:      doss.getValue('editStory.description'),
+              contestTime:      doss.getValue('editStory.contestTime'), // This value is already an integer
+              authorLimit:      parseInt(doss.getValue('editStory.authorLimit')),
+              maxWrites:        parseInt(doss.getValue('editStory.maxWrites')),
+              maxVotes:         parseInt(doss.getValue('editStory.maxVotes')),
+              maxWriteLength:   parseInt(doss.getValue('editStory.maxWriteLength')),
+              contestLimit:     parseInt(doss.getValue('editStory.contestLimit')),
+              anonymizeWriter:  doss.getValue('editStory.anonymizeWriter'),
+              anonymizeVoter:   doss.getValue('editStory.anonymizeVoter'),
+              /*slapLoadTime: doss.getValue('editStory.slapLoadTime'),
+              slamLoadTime: doss.getValue('editStory.slamLoadTime'),*/
+              slapLoadTime:     1000 * 60 * 60 * 24 * 5,
+              slamLoadTime:     1000 * 60 * 60 * 24 * 5
+            }
           }
         }).then(function(result) {
           doss.setValue('isEditingStory', false);

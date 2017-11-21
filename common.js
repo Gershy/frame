@@ -242,11 +242,6 @@ Error.stackTraceLimit = Infinity;
         if (rem) this.length--;
         
         return rem;
-      },
-      shallowCompare: function(arr) {
-        if (!U.isObj(arr, Array) || this.length !== arr.length) return false;
-        for (var i = 0; i < this.length; i++) if (this[i] !== arr[i]) return false;
-        return true;
       }
     },
   },
@@ -269,6 +264,11 @@ global.C = {};      // All classes are stored here
 global.PACK = {};   // All packages are stored here
 global.NEXT_ID = 0;
 global.U = {
+  
+  // Alias
+  YEE: true,
+  NAW: false, // "bogus"
+  
   SKIP: { SKIP: true }, // directive to exclude an item during iteration
   
   isServer: typeof window === 'undefined' ? function() { return true; } : function() { return false; },
@@ -309,6 +309,12 @@ global.U = {
   isStdObj: function(obj) {
     return U.isObj(obj, Array) || U.isObj(obj, Object);
   },
+  isPrimitive: function(obj) {
+    return U.isObj(obj, String) || U.isObj(obj, Number) || U.isObj(obj, Boolean) || U.isObj(obj, RegExp) || obj === null;
+  },
+  isJson: function(obj) {
+    return U.isStdObj(obj) || U.isPrimitive(obj);
+  },
   isClassedObj: function(obj) {
     // TODO: Checking for a "title" attribute is hackish...
     try { return 'constructor' in obj && 'title' in obj.constructor; } catch(e) {};
@@ -329,6 +335,11 @@ global.U = {
     var count = 0;
     for (var k in obj) if (++count > min) return true;
     return false;
+  },
+  objSizeEq: function(obj, eq) {
+    var count = 0;
+    for (var k in obj) if (++count > eq) return false;
+    return count === eq;
   },
   firstKey: function(obj) {
     for (var k in obj) return k;
@@ -374,6 +385,94 @@ global.U = {
       ptr = ptr[c];
     }
     return ptr;
+  },
+  
+  obj: {
+    clone: function(obj1, obj2) {
+      var ret = {};
+      for (var k in obj1) ret[k] = obj1[k];
+      if (obj2) for (var k in obj2) ret[k] = obj2[k];
+      return ret;
+    },
+    contains: function(obj, k) {
+      return obj.hasOwnProperty(k);
+    },
+    each: function(obj, it) {
+      for (var k in obj) it(obj[k], k, obj);
+    },
+    map: function(obj, it) {
+      var ret = {};
+      for (var k in obj) {
+        var v = it(obj[k], k, obj);
+        if (v !== U.SKIP) ret[k] = v;
+      }
+      return ret;
+    },
+    pick: function(obj, names) {
+      var ret = {};
+      for (var i = 0, len = names.length; i < len; i++) ret[names[i]] = obj[names[i]];
+      return ret;
+    },
+    toArray: function(obj, it) {
+      var ret = [];
+        
+      if (it)
+        for (var k in obj) ret.push(it(obj[k], k, obj));
+      else
+        for (var k in obj) ret.push(obj[k]);
+      
+      return ret;
+    },
+    toss: function(obj, names) {
+      var ret = {};
+      for (var k in obj) ret[k] = obj[k];
+      for (var i = 0, len = names.length; i < len; i++) delete ret[names[i]];
+      return ret;
+    },
+    update: function(obj1, obj2) {
+      for (var k in obj2) obj1[k] = obj2[k];
+      return obj1;
+    }
+  },
+  arr: {
+    clone: function(arr) {
+      var ret = [];
+      for (var i = 0; i < arr.length; i++) ret.push(arr[i]);
+      return ret;
+    },
+    contains: function(arr, v) {
+      return arr.indexOf(v) !== -1;
+    },
+    map: function(arr, it) {
+      var ret = [];
+      for (var i = 0, len = arr.length; i < len; i++) {
+        var v = it(arr[i], i, arr);
+        if (v !== U.SKIP) ret.push(v);
+      }
+      return ret;
+    },
+    toObj: function(arr, itKey, itVal) {
+      var ret = {};
+        
+      if (itKey && itVal)
+        for (var i = 0, len = arr.length; i < len; i++) ret[itKey(arr[i], i)] = itVal(arr[i], i);
+      else if (itKey)
+        for (var i = 0, len = arr.length; i < len; i++) ret[itKey(arr[i], i)] = arr[i];
+      else
+        for (var i = 0, len = arr.length; i < len; i++) ret[i] = arr[i];
+      
+      return ret;
+    },
+    reverse: function(arr) {
+      var ret = [];
+      for (var i = arr.length - 1; i >= 0; i--) ret.push(arr[i]);
+      return ret;
+    },
+    count: function(arr, func) {
+      var ret = 0;
+      for (var i = 0, len = arr.length; i < len; i++) ret += !!func(arr[i]);
+      return ret;
+    }
   },
   
   // Class utility
@@ -582,7 +681,6 @@ global.U = {
     return cls;
   },
   
-  
   // Randomness utility
   randFloat: function() {
     return Math.random();
@@ -743,15 +841,34 @@ global.U = {
     
     return letters;
   },
-  debug: function(/* ... */) {
-    var stuff = [];
-    console.log('----------------------');
-    if (arguments.length > 1) console.log('::::' + arguments[0] + '::::');
-    console.log(JSON.stringify(arguments.length === 1 ? arguments[0] : arguments[1], function(k, v) {
-      if (~stuff.indexOf(v)) return '--CIRC--';
-      if (!U.isObj(v, String) && !U.isObj(v, Number) && !U.isObj(v, Boolean) && v !== null) stuff.push(v);
+  debugObj: function(val) {
+    
+    var mem = [];
+    return JSON.stringify(val, function(k, v) {
+      
+      if (!U.isJson(v)) v = U.typeOf(v) + ': ' + v;
+      if (~mem.indexOf(v)) return '-- circular --';
+      if (!U.isPrimitive(v)) mem.push(v);
       return v;
-    } + '\n', 2));
+      
+    }, 2);
+    
+  },
+  debug: function(/* ... */) {
+    console.log('----------------------');
+    
+    if (arguments.length === 2) {
+      var title = arguments[0];
+      var val = arguments[1];
+    } else {
+      var title = null;
+      var val = arguments[0];
+    }
+    
+    if (title) console.log('::::' + title + '::::');
+    
+    console.log(U.debugObj(val) + '\n');
+    
   }
   
 };
