@@ -423,9 +423,13 @@ new PACK.pack.Package({ name: 'server',
                 req.on('data', function(chunk) { chunks.push(chunk); });
                 req.on('end', function() {
                   
-                  var data = chunks.join('');
-                  data = data.length ? U.stringToThing(data) : {};
-                  resolve(queryParams.update(data));
+                  try {
+                    var data = chunks.join('');
+                    data = data.length ? U.stringToThing(data) : {};
+                    resolve(queryParams.update(data));
+                  } catch(err) {
+                    reject(err);
+                  }
                   
                 });
                 
@@ -571,6 +575,7 @@ new PACK.pack.Package({ name: 'server',
     };
     
     return sv;
+    
   },
   runAfter: function(sv) {
     

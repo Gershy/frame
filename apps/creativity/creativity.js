@@ -6,21 +6,50 @@
 - Writing devices as ability names (e.g. "hyperbolize" instead of "slam")
 
 TASKS:
-[ ] Finish anonymization
+[ ] Longpolling
+  [X] rootServer.js implementation
+  [ ] Get `ContentSync*` working with longpolling
+[X] Finish anonymization
+[ ] Client-side data initialization dependant on unsynced data issue
+      (e.g. only the current user loaded, then try to sync a "story": the "authorSet" will
+      reference lots of "user" `Dossier` instances which don't exist on the client-side)
+    [ ] List-of-dependencies is impossible (how can we know which users are needed before the story is synced?)
+          Dependencies need to be loaded WHILE the `Dossier` is syncing
+      [ ] "nameFunc" needs a reference to the `editor`
+      [ ] OR can have a "requirements" function which passes in such reqs:
+            {
+              
+              .
+              .
+              .
+              
+              requirements: function(doss) {
+                return {
+                  deepRef: { doss: doss, addr: '@ref.@ref.@ref.@ref' }
+                };
+              },
+              nameFunc: function(req) {
+                return req.deepRef.name;
+              },
+              
+              .
+              .
+              .
+              
+            }
+      
 [ ] Use `Outline` to speed up userification
 [ ] `ContentSyncSet` should have the best of both worlds!!
   [ ] 1 - doesn't emit requests until remote doss is initialized
   [ ] 2 - modifies local data as soon as possible
-[X] Decide if naming root Dossier "~root" is appropriate
+[ ] Decide if naming root Dossier "~root" is appropriate
   [X] If it is, handle this naming properly (the regex shouldn't accept "~")
+  [ ] Maybe there should BE NO ROOT, and all referencing is done with "~par(creativity)" instead??
 [ ] Improved content control
   [ ] `PACK.dossier.ContentSync*` classes should accept any "selection" parameter as either a function or an Info object
   [ ] Extend selection syntax. 
     [ ] skip and limit
     [ ] filtering (`PACK.dossier.FilterResults` needs refactoring)
-[ ] Interactive elements try to perform actions using `Content` instances which don't yet exist...
-      (Note: this could be an indication of a bigger, underlying design flaw??)
-      INTERIM SOLUTION: Manually detect unloaded `Dossier` instances, and disable controls appropriately with `Decorator`s
 [X] Form validation
   [X] Login
   [X] Story creation
@@ -30,13 +59,12 @@ TASKS:
 [ ] The scheduling functionality of `PACK.dossier.ContentAbstractSync` should be implemented separately in a `Scheduler` class
       (and `PACK.dossier.ContentAbstractSync` given a "scheduler" property or something of the sort)
       (Or maybe scheduling isn't needed at all, and all we need are sockets/long-polling??)
-[ ] Need to add lots of `changeHandler` methods for better responsiveness
-      (E.g. upon contest completion, the timer resets to "--:--:--" much more quickly than the voting pane is replaced with a writing pane)
+[ ] Get rid of the per-frame loop!! All changes should be processed via `changeHandler`s!
+  [ ] Add lots of changeHandlers
 [ ] LOTS OF ACTION VALIDATION
   [ ] Voting on an expired contest
   [ ] Submitting writes on an expired story
   [ ] User account creation
-[ ] Is the per-frame loop necessary? Can all changes be processed via `changeHandler`s?
 [ ] Files should be cacheable in development mode! Currently suffixes change and everything is invalidated upon restart
 [ ] Make sure there are no hard-coded strings in userify or quickdev
 [ ] Compiling for all files
@@ -112,7 +140,8 @@ TASKS:
 */
 /// =REMOVE}
 var FILLSTORY = false;
-var LOADSTATE = false;
+var LOADSTATE = true;
+var creativityLog = global['con' + 'sole'].log;
 new PACK.pack.Package({ name: 'creativity',
   
   /// {SERVER=
@@ -309,17 +338,17 @@ new PACK.pack.Package({ name: 'creativity',
             
           if (currentTime > phaseEndTime) {
             
-            console.log('RESOLVING ROUND on "' + story.name + '" because time is up');
+            creativityLog('RESOLVING ROUND on "' + story.name + '" because time is up');
             return cr.$resolveStoryVotePhase(story);
             
           } else if ((nextBest + votesRemaining) < best) { // Even if some people haven't voted pick a winner; further voting will make no difference
             
-            console.log('RESOLVING ROUND on "' + story.name + '" because voters decided early');
+            creativityLog('RESOLVING ROUND on "' + story.name + '" because voters decided early');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else if (votesRemaining === 0) {
             
-            console.log('RESOLVING ROUND on "' + story.name + '" because everyone has voted');
+            creativityLog('RESOLVING ROUND on "' + story.name + '" because everyone has voted');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else { 
@@ -696,8 +725,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var user = userSet.addDynamicChild('user', cr.CreativityUser, {
-      nameFunc: function(userSet, user) {
-        return user.getValue('username');
+      nameFunc: function(doss) {
+        return doss.getValue('username');
       },
       abilities: {
         get: new ds.AbilityGet({ public: true, par: userSet.getAbility('get') }),
@@ -790,9 +819,14 @@ new PACK.pack.Package({ name: 'creativity',
             description: {},
             contestInd: {},
             contestLimit: {},
+            maxWriteLength: {},
             phase: {},
             timePhaseStarted: {},
-            contestTime: {}
+            contestTime: {},
+            anonymizeWriter: {},
+            anonymizeVoter: {},
+            
+            authorSet: ds.selectAll
           }
         }});
       },
@@ -873,8 +907,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var story = storySet.addDynamicChild('story', ds.DossierObj, {
-      nameFunc: function(storySetDoss, storyDoss) {
-        return storyDoss.getValue('quickName');
+      nameFunc: function(doss) {
+        return doss.getValue('quickName');
       },
       /// {CLIENT=
       contentFunc: function(doss) {
@@ -1174,8 +1208,9 @@ new PACK.pack.Package({ name: 'creativity',
             })});
             
           },
-          decorate: function(newAuthor, editor) {
+          decorate: function(newAuthors, editor) {
             return editor.$transaction.then(function() {
+              var newAuthor = newAuthors[0];
               return { address: newAuthor.getAddress() };
             });
           }
@@ -1183,8 +1218,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var author = authorSet.addDynamicChild('author', ds.DossierObj, {
-      nameFunc: function(authorSetDoss, authorDoss) {
-        return authorDoss.getChild('@user').name;
+      nameFunc: function(doss) {
+        return doss.getChild('user').getNameParam('username');
       },
       abilities: {
         get: new ds.AbilityGet({ public: true, par: authorSet.getAbility('get') }),
@@ -1230,8 +1265,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
-      nameFunc: function(contestSetDoss, contestDoss) {
-        return contestDoss.getValue('num');
+      nameFunc: function(doss) {
+        return doss.getValue('num');
       },
       abilities: {
         get: new ds.AbilityGet({ public: true, par: contestSet.getAbility('get') }),
@@ -1250,7 +1285,7 @@ new PACK.pack.Package({ name: 'creativity',
         }});
       }
     });
-    contest.addChild('currentVote', ds.DossierRef, { template: '~par.writeSet.$username.voteSet.$username',
+    contest.addChild('currentVote', ds.DossierRef, { template: '~par.writeSet.$writeUsername.voteSet.$voteUsername',
       contentFunc: function(cvDoss) {
         return new ds.ContentCalc({ doss: cvDoss, cache: cr.updateOnFrame, func: function() {
           var username = cvDoss.getRoot().getValue('username');
@@ -1315,8 +1350,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var contestWrite = contestWriteSet.addDynamicChild('write', ds.DossierObj, {
-      nameFunc: function(writeSetDoss, writeDoss) {
-        return writeDoss.getChild('@author.@user').name;
+      nameFunc: function(doss) {
+        return doss.getChild('author').getNameParam('username');
       },
       abilities: {
         get: new ds.AbilityGet({ public: true, par: contestWriteSet.getAbility('get') }),
@@ -1345,10 +1380,11 @@ new PACK.pack.Package({ name: 'creativity',
     });
     /// {CLIENT=
     contestWrite.addChild('username', ds.DossierStr, {
-      contentFunc: function(usernameDoss) {
-        return new ds.ContentCalc({ doss: usernameDoss, cache: cr.updateOnFrame, func: function() {
-          var story = usernameDoss.getChild('~par(story)');
-          return story.getValue('anonymizeWriter') ? 'anon' : usernameDoss.name;
+      contentFunc: function(doss) {
+        return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+          if (doss.getValue('~par(story).anonymizeWriter')) return 'anon';
+          var author = doss.getChild('~par(write).@author');
+          return author ? author.name : '- loading -';
         }});
       }
     });
@@ -1428,8 +1464,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     var vote = voteSet.addDynamicChild('vote', ds.DossierObj, {
-      nameFunc: function(voteSetDoss, voteDoss) {
-        return voteDoss.getChild('@author.@user').name;
+      nameFunc: function(doss) {
+        return doss.getChild('author').getNameParam('username');
       },
       abilities: {
         get: new ds.AbilityGet({ public: true, par: voteSet.getAbility('get') }),
@@ -1458,10 +1494,13 @@ new PACK.pack.Package({ name: 'creativity',
     });
     /// {CLIENT=
     vote.addChild('username', ds.DossierStr, {
-      contentFunc: function(voteDoss) {
-        return new ds.ContentCalc({ doss: voteDoss, cache: cr.updateOnFrame, func: function() {
-          var story = voteDoss.getChild('~par(story)');
-          return story.getValue('anonymizeVoter') ? 'anon' : voteDoss.getChild('@author').name;
+      contentFunc: function(doss) {
+        return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
+          var story = doss.getChild('~par(story)');
+          if (story.getValue('anonymizeVoter')) return 'anon';
+          
+          var author = doss.getChild('~par(vote).@author');
+          return author ? author.name : '- loading -';
         }});
       }
     });
@@ -2017,14 +2056,14 @@ new PACK.pack.Package({ name: 'creativity',
                                     new uf.TextView({ name: 'content', info: write.getValue('content') }),
                                     
                                     // The username
-                                    new uf.TextView({ name: 'user', info: writeUsername }),
+                                    new uf.TextView({ name: 'user', info: write.getChild('username') }),
                                     
                                     // The set of votes on this write
                                     new uf.DynamicSetView({ name: 'voteSet',
                                       childInfo: writeVoteSet,
                                       genChildView: function(name, voteInfo) {
                                         
-                                        return new uf.TextView({ name: name, cssClasses: [ 'vote' ], info: voteInfo.getValue('author').split('.').pop() });
+                                        return new uf.TextView({ name: name, cssClasses: [ 'vote' ], info: voteInfo.getChild('username') });
                                         
                                       }
                                     }),
@@ -2046,23 +2085,21 @@ new PACK.pack.Package({ name: 'creativity',
                                                 }
                                               }
                                             });
-
+                                            
                                           }})
                                         ]})
                                       ]
                                     })
-                                  ]
+         /* TODO: LOLOL */        ]
                                 });
-                                
                               }
                             })
                             
                           ]})
-                          
+                        
                         ]
                       })
                     ]})
-                    
                     
                   ]})
                   

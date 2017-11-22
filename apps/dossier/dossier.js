@@ -151,7 +151,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           // The next 4 methods are NOT atomics; they are molecules
           // Atomics themselves cannot immediately add more atomics!!
-          add: function(params /* par, name, data, outline, recurse */) {
+          add: function(params /* par, name, data, outline, recurseArr, recurseObj */) {
             
             var guid = global.NEXT_ID++;
             
@@ -159,7 +159,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var name = U.param(params, 'name', null);
             var data = U.param(params, 'data', null);
             var outline = U.param(params, 'outline', null);
-            var recurse = U.param(params, 'recurse', true);
+            var recurseArr = U.param(params, 'recurseArr', true);
+            var recurseObj = U.param(params, 'recurseObj', true);
             
             if (!outline) {
               if (!par) throw new Error('`add` requires either "outline" or "par" param');
@@ -197,22 +198,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
             if (U.isInstance(doss, ds.DossierSet)) {
               
-              if (U.isInstance(doss, ds.DossierArr)) {
+              if (U.isInstance(doss, ds.DossierArr) && data && recurseArr) {
                 
-                if (data && recurse) {
-                  
-                  if (!U.isObj(data, Object)) throw new Error('DossierArr must receive an `Object` as its value');
-                  for (var k in data)
-                    this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k], recurse: true });
-                  
-                }
+                if (!U.isObj(data, Object)) throw new Error('DossierArr must receive an `Object` as its value');
+                for (var k in data)
+                  this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k], recurseArr: true, recurseObj: recurseObj });
                 
-              } else if (U.isInstance(doss, ds.DossierObj)) {
+              } else if (U.isInstance(doss, ds.DossierObj) && recurseObj) {
                 
                 data = data || {};
                 if (!U.isObj(data, Object)) throw new Error('DossierObj must receive an `Object` as its value');
                 for (var k in doss.outline.i)
-                  this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k] || null, name: k, recurse: recurse });
+                  this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k] || null, name: k, recurseArr: recurseArr, recurseObj: true });
                 
               }
               
@@ -519,6 +516,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           atomicSetNameCalculated: function(doss) {
             
+            /*
+            // TODO: REQUIREMENTS!!
+            var origName = doss.name;
+            return {
+              $result: doss.$getDependencies().then(function(deps) {
+                // TODO: `getChildName` isn't ready to accept a "deps" param
+                return doss.updateName(doss.par.getChildName(doss, deps));
+              })
+            }
+            */
+            
             var origName = doss.name;
             doss.updateName(doss.par.getChildName(doss));
             
@@ -730,7 +738,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                   
                 } else {
                   
-                  var child = editor.add({ par: doss, data: childData, recurse: false });
+                  var child = editor.add({ par: doss, data: childData, recurseArr: false, recurseObj: true });
                   children.push(child);
                   editor.$addAtomic(function(child0, editor0, below0, params0) {
                     
@@ -902,7 +910,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             try {
               
-              
               var editor = new ds.Editor();
               
               // TODO: It feels like a hack right now: `result` can be a promise
@@ -989,6 +996,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           setValue: function(/* [ addr, ] value */) {
             if (arguments.length === 1) this.setValue0(arguments[0]);
             else                        this.getChild(arguments[0]).setValue0(arguments[1]);
+          },
+          setValue0: function(value) {
+            throw new Error('not implemented');
           },
           
           getData: function() {
@@ -1203,8 +1213,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // `this.nextInd` keeps track of the lowest unused index
             // that a child is named in `this.children`. It is only
             // updated when children with numeric names are added.
-            // Useful as the "propName" when using address-props
-            // ("the.address.path/propName")
             this.nextInd = 0;
           },
           
@@ -1228,8 +1236,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           getChildName: function(doss) {
             if (!U.isInstance(doss, ds.Dossier)) throw new Error('Invalid "doss" param');
+            if (doss.par !== this) throw new Error('Can\'t get a name for a non-child');
+            
             var nameFunc = this.outline.p.nameFunc;
-            var name = nameFunc ? nameFunc(this, doss) : this.nextInd;
+            var name = nameFunc ? nameFunc(doss) : this.nextInd;
             if (!U.valid(name)) throw new Error('`nameFunc` in "' + doss.outline.getAddress() + '" returned an invalid name: ' + name);
             return name;
           },
@@ -1386,6 +1396,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getValue0: function() {
             return this.value ? this.getRefAddress() : null;
           },
+          getNameParam: function(nameParam) {
+            var template = this.outline.p.template;
+            if (!U.isObj(template, Array)) template = template.split('.');
+            
+            var valInd = 0;
+            for (var i = 0; i < template.length; i++)
+              if (template[i][0] === '$') {
+                if (template[i].substr(1) === nameParam) return this.value ? this.value[valInd] : null;
+                valInd++;
+              }
+            
+            throw new Error('Invalid template parameter: "' + nameParam + '"');
+            
+          },
           
           matches: function(value) {
             // TODO: Does this make sense? Is it efficient?
@@ -1393,13 +1417,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           
           getRefAddress: function() {
-            var valInd = 0;
             var template = this.outline.p.template;
             if (!U.isObj(template, Array)) template = template.split('.');
             
             // If `this.value` is null resolve it to an empty array
             var vals = this.value || [];
             var ret = [];
+            var valInd = 0;
             for (var i = 0; i < template.length; i++)
               ret.push(template[i][0] === '$' ? vals[valInd++] : template[i]);
             
@@ -1545,8 +1569,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           init: function(params /* doss, address, waitMs, jitterMs, syncOnStart */) {
             sc.init.call(this, params);
             
-            // TODO: Should it even be possible to have `this.address !== this.doss.getAddress()`??
-            this.address = U.param(params, 'address', this.doss.getAddress());
             this.waitMs = U.param(params, 'waitMs', 0);
             this.jitterMs = U.param(params, 'jitterMs', this.waitMs * 0.17);
             this.syncOnStart = U.param(params, 'syncOnStart', false);
@@ -1618,7 +1640,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         methods: function(sc, c) { return {
           $query: function(ref) {
             return queries.$doQuery({
-              address: this.address,
+              address: this.doss.getAddress(),
               command: 'get',
               ref: ref
             });
@@ -1701,8 +1723,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               holder = doss;
               for (var i = 0, len = holderAddr.length; i < len; i++) {
                 var childName = holderAddr[i];
-                var child = holder.getNamedChild(childName);
-                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, recurse: false });
+                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, recurseArr: false, recurseObj: false });
               }
               
               // Now `holder` has the correct address to hold the referenced data
@@ -1733,7 +1754,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           $query: function(ref) {
             return queries.$doQuery({
-              address: this.address,
+              address: this.doss.getAddress(),
               command: 'get',
               params: {
                 selection: this.selection
@@ -1789,7 +1810,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!remoteParams) remoteParams = localParams.clone();
             
             // Adding remote 1st:
-            return queries.$doQuery({ address: this.address, command: ability, params: remoteParams }).then(function(remoteVal) {
+            return queries.$doQuery({ address: this.doss.getAddress(), command: ability, params: remoteParams }).then(function(remoteVal) {
               
               // update cancelling/scheduling needs to be a stacked operations D:
               pass.cancelUpdates();
@@ -1805,7 +1826,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.cancelUpdates();
             return this.doss.$useAbility(ability, localParams).then(function(localVal) {
               
-              return queries.$doQuery({ address: pass.address, command: 'addData', params: { data: data } }).then(function(remoteVal) {
+              return queries.$doQuery({ address: pass.doss.getAddress(), command: 'addData', params: { data: data } }).then(function(remoteVal) {
                 
                 // Turn updates back on once the remote value has added successfully
                 pass.scheduleUpdates();
