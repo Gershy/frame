@@ -474,6 +474,17 @@ global.U = {
       return ret;
     }
   },
+  str: {
+    contains: function(str, str2) {
+      return str.indexOf(str2) !== -1;
+    },
+    startsWith: function(str, str2) {
+      return str.substr(0, str2.length) === str2;
+    },
+    endsWith: function(str, str2) {
+      return str.substr(str.length - str2.length, str2.length) === str2;
+    }
+  },
   
   // Class utility
   makeMixin: function(params /* namespace, name, description, methods */) {
@@ -769,7 +780,9 @@ global.U = {
     return JSON.stringify(st);
   },
   stringToThing: function(string) {
-    return U.unstraighten(JSON.parse(string));
+    return string[0] === '!'
+      ? JSON.parse(string.substr(1))
+      : U.unstraighten(JSON.parse(string));
   },
   
   // Misc

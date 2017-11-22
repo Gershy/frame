@@ -4,7 +4,7 @@ TODO: Names of Outline properties are confusing; e.g. "c" could stand for "child
 TODO: Differences between `doss.getValue`, `doss.getData` need to be better understood
 */
 
-LOG_QUERIES = false;
+var LOG_QUERIES = false;
 var package = new PACK.pack.Package({ name: 'dossier',
   dependencies: [ 'tree', 'queries', 'worry', 'p' ],
   buildFunc: function(packName, tree, queries, worry, p) {
@@ -914,10 +914,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
               // an immediate value or a promise. This means that the result of
               // an `Ability.prototype.use` method, or the result of an `ability.decorate`
               // function, may be a promise - even if these aren't $-prefixed.
-              if (!this.hasAbility(abilityName)) throw new Error('Ability "' + abilityName + ' unavailable');
               
-              var ability = this.getAbility(abilityName);
-              if (!ability.public) throw new Error('Ability "' + abilityName + ' unavailable');
+              var ability = this.hasAbility(abilityName) ? this.getAbility(abilityName) : null;
+              if (!ability || !ability.public) throw new Error('Ability "' + abilityName + '" unavailable');
               
               var result = this.stageAbility(ability, editor, null, abilityParams);
               var $result = editor.$transact().then(function() { return result; });

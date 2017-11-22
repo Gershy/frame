@@ -45,6 +45,8 @@ TASKS:
 [ ] Some day, need to keep track of reverse-references (to ensure data cannot be made unintegrous)
 */
 
+// HEEERE: Of all things, voting on submissions isn't working? It looks like a purely UI problem
+
 /* TODO: Advanced selection: 
 
 {
@@ -1570,6 +1572,22 @@ new PACK.pack.Package({ name: 'creativity',
       /// =SERVER}
       
       /// {CLIENT=
+      
+      /*
+      TODO: Websocket testing!
+      setTimeout(function() {
+        
+        var ws = new WebSocket('ws://127.0.0.1:8001/');
+        ws.onopen = function() {
+          console.log('WS OPEN');
+          ws.send('EYYY');
+        };
+        ws.onmessage = function(evt) {
+          console.log('WS MESS', evt);
+        };
+        
+      }, 1000);*/
+      
       var spinnerHtml =
         '<div class="spin">' +
           U.range({0:20}).map(function(n) {

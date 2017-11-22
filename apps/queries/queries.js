@@ -28,10 +28,14 @@ new PACK.pack.Package({ name: 'queries',
             ? stdStateChangeFunc.bind(null, query, resolve, reject, err)
             : refStateChangeFunc.bind(null, query, resolve, reject, err, ref);
           
+          var addr = U.param(params, 'address');
+          if (U.isObj(addr, String)) addr = addr.split('.');
+          addr.unshift('app'); // TODO: Is this the right place to do this? It will make it impossible for Dossiers to query the Session/ChannelCapabilities
+          
           query.open('POST', '', true);
           query.setRequestHeader('Content-Type', 'application/json');
           query.send(U.thingToString({
-            address: U.param(params, 'address'),
+            address: addr,
             command: U.param(params, 'command'),
             params: U.param(params, 'params', {})
           }));
