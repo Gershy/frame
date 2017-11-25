@@ -65,6 +65,14 @@ var package = new PACK.pack.Package({ name: 'p',
                 params.custom(this.resolve.bind(this), this.reject.bind(this));
               } catch(err) { this.reject(err); }
               
+            } else if (params.contains('cb')) {
+              
+              var cb = U.param(params, 'cb');
+              var args = U.param(params, 'args');
+              return cb.apply(null, args.concat([ function(err, v) {
+                return err? this.reject(err) : this.resolve(v);
+              }.bind(this) ]));
+              
             } else if (params.contains('all')) {     // Allow a list of promises to be treated as a single promise
               
               // TODO: all-style and args-style code is basically copy-pasted

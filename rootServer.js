@@ -29,13 +29,8 @@ new PACK.pack.Package({ name: 'server',
     
     var sv = {
       
-      ASSET_VERSION: U.charId(parseInt(Math.random() * 1000), 3),
       $readFile: function(filepath, encoding) {
-        return new PACK.p.P({ custom: function(resolve, reject) {
-          fileSys.readFile(filepath, encoding, function(err, data) {
-            return err ? reject(err) : resolve(data);
-          });
-        }});
+        return 
       },
       
       ResponseData: U.makeClass({ name: 'ResponseData',
@@ -63,8 +58,9 @@ new PACK.pack.Package({ name: 'server',
       
       SessionHandler: U.makeClass({ name: 'SessionHandler',
         methods: function(sc) { return {
-          init: function(params /* appName */) {
+          init: function(params /* appName, assetVersion */) {
             this.appName = U.param(params, 'appName');
+            this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
             this.sessionSet = {};
             this.capabilities = {};
           },
@@ -107,14 +103,13 @@ new PACK.pack.Package({ name: 'server',
               var encoding = 'utf8';
             }
             
-            return sv.$readFile(filepath, encoding)
-              .then(function(data) {
-                return new sv.ResponseData({
-                  encoding: encoding,
-                  contentType: ext,
-                  data: data
-                });
+            return new P({ cb: fileSys.readFile, args: [ filepath, encoding ] }).then(function(data) {
+              return new sv.ResponseData({
+                encoding: encoding,
+                contentType: ext,
+                data: data
               });
+            });
             
           },
           getChild: function(address) {
@@ -157,17 +152,18 @@ new PACK.pack.Package({ name: 'server',
               if (U.str.endsWith(lastCmp, '.html')) {
                 
                 var appName = this.sessionHandler.appName;
+                var assetVersion = this.sessionHandler.assetVersion
                 $contents = $contents.then(function(contents) {
                 
                   contents.data = contents.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
-                  contents.data = contents.data.replace(/{{assetVersion}}/g, sv.ASSET_VERSION);
+                  contents.data = contents.data.replace(/{{assetVersion}}/g, assetVersion);
                   contents.data = contents.data.replace('{{title}}', appName);
                   
                   if (PACK[appName].contains('resources')) {
                     
                     var r = PACK[appName].resources;
                     
-                    var ver = '?' + sv.ASSET_VERSION;
+                    var ver = '?' + assetVersion;
                     
                     var htmlElems = [];
                     if (r.contains('css')) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
@@ -279,9 +275,9 @@ new PACK.pack.Package({ name: 'server',
       ChannelCapabilityHttp: U.makeClass({ name: 'ChannelCapabilityHttp',
         superclassName: 'ChannelCapability',
         methods: function(sc, c) { return {
-          init: function(params /* name, sessionHandler, ip, port */) {
+          init: function(params /* name, sessionHandler, host, port */) {
             sc.init.call(this, params);
-            this.ip = U.param(params, 'ip');
+            this.host = U.param(params, 'host');
             this.port = U.param(params, 'port');
             this.$ready = new P({});
             this.server = null;
@@ -379,7 +375,7 @@ new PACK.pack.Package({ name: 'server',
             // Check if the url includes parameters (indicated by the "?" symbol)
             var qInd = url.indexOf('?');
             if (~qInd) {
-              // Eliminate the query portion from `queryUrl`
+              // Strip the query off `queryUrl`
               queryUrl = url.substr(0, qInd);
               
               // Get array of "k=v"-style url parameters
@@ -388,7 +384,7 @@ new PACK.pack.Package({ name: 'server',
                 var str = queryArr[i];
                 var eq = str.indexOf('=');
                 if (~eq)  queryParams[str.substr(0, eq)] = decodeURIComponent(str.substr(eq + 1));
-                else       queryParams[str] = null;
+                else      queryParams[str] = null;
               }
               
               // Handle the special "_data" parameter
@@ -412,11 +408,11 @@ new PACK.pack.Package({ name: 'server',
             var method = req.method.toLowerCase();
             if (method === 'get') {
               
-              var $ret = new PACK.p.P({ val: queryParams });
+              var $ret = new P({ val: queryParams });
               
             } else if (method === 'post') {
               
-              var $ret = new PACK.p.P({ custom: function(resolve, reject) {
+              var $ret = new P({ custom: function(resolve, reject) {
                 
                 req.setEncoding('utf8');
                 var chunks = [];
@@ -522,7 +518,7 @@ new PACK.pack.Package({ name: 'server',
           
           start: function() {
             this.server = require('http').createServer(this.serverFunc.bind(this));
-            this.server.listen(this.port, this.ip, 511, this.$ready.resolve.bind(this.$ready));
+            this.server.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
           },
           stop: function() {
             this.server.close();
@@ -533,9 +529,9 @@ new PACK.pack.Package({ name: 'server',
       ChannelCapabilitySocket: U.makeClass({ name: 'ChannelCapabilitySocket',
         superclassName: 'ChannelCapability',
         methods: function(sc, c) { return {
-          init: function(params /* name, sessionHandler, ip, port */) {
+          init: function(params /* name, sessionHandler, host, port */) {
             sc.init.call(this, params);
-            this.ip = U.param(params, 'ip');
+            this.host = U.param(params, 'host');
             this.port = U.param(params, 'port');
             this.$ready = new P({});
           },
@@ -557,13 +553,13 @@ new PACK.pack.Package({ name: 'server',
             this.socket = require('net').createServer(function(connectedSocket) {
               console.log('FOUND WS CONNECTION!');
             });
-            this.socket.listen(this.port, this.ip, 511, this.$ready.resolve.bind(this.$ready));
+            this.socket.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
             
             /*this.server.listen({
-              path: 'ws://' + this.ip + ':' + this.port,
+              path: 'ws://' + this.host + ':' + this.port,
               backlog: 511
             }, this.$ready.resolve.bind(this.$ready));*/
-            //this.server.listen(this.port, 'ws://' + this.ip, 511, );
+            //this.server.listen(this.port, 'ws://' + this.host, 511, );
             
           },
           stop: function() {
@@ -582,7 +578,7 @@ new PACK.pack.Package({ name: 'server',
     // ==== ARGUMENT RESOLUTION
     
     // Parse process-level arguments
-    if (process.argv[2] === '{') {
+    if (process.argv[2][0] === '{') {
       
       var argStr = process.argv.slice(2).join(' '); // Replace angle-brackets with quotes for *nix systems
       var args = eval('(' + process.argv.slice(2).join(' ') + ')');
@@ -611,7 +607,7 @@ new PACK.pack.Package({ name: 'server',
     if (deployment === 'openshift') {
       
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
-      var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
+      var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0'; // TODO: This variable should be called "host"
       
       var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
       if (!dataPathName) throw new Error('Can\'t access data directory');
@@ -645,10 +641,13 @@ new PACK.pack.Package({ name: 'server',
       
     }
     
-    if (args.contains('port')) port = args.port;
     if (args.contains('ip')) ip = args.ip;
+    if (args.contains('port')) port = args.port;
     
+    ENVIRONMENT.host = ip;
+    ENVIRONMENT.port = port;
     ENVIRONMENT.rawArgs = args;
+    ENVIRONMENT.appName = appName;
     
     // ==== APP SETUP
     
@@ -656,22 +655,6 @@ new PACK.pack.Package({ name: 'server',
     // console.log('SERVERFILENAME:', serverFileName);
     // require(serverFileName);
     require('./apps/' + appName + '/cmp-server-' + appName + '.js');
-    
-    // ==== SERVER SETUP
-    
-    var sessionHandler = new sv.SessionHandler({ appName: appName });
-    
-    var httpCap = new sv.ChannelCapabilityHttp({ sessionHandler: sessionHandler, name: 'http', ip: ip, port: port });
-    httpCap.start();
-    httpCap.$initialized().then(function() {
-      console.log('HTTP capability active at ' + ip + ':' + port);
-    });
-    
-    var soktCap = new sv.ChannelCapabilitySocket({ sessionHandler: sessionHandler, name: 'sokt', ip: ip, port: port + 1 })
-    soktCap.start();
-    soktCap.$initialized().then(function() {
-      console.log('SOKT capability active at ' + ip + ':' + (port + 1));
-    });
     
   }
 }).build();

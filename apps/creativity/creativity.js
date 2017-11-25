@@ -73,8 +73,6 @@ TASKS:
 [ ] Some day, need to keep track of reverse-references (to ensure data cannot be made unintegrous)
 */
 
-// HEEERE: Of all things, voting on submissions isn't working? It looks like a purely UI problem
-
 /* TODO: Advanced selection: 
 
 {
@@ -141,11 +139,11 @@ TASKS:
 /// =REMOVE}
 var FILLSTORY = false;
 var LOADSTATE = true;
-var creativityLog = global['con' + 'sole'].log;
+var crLog = global['c' + 'o' + 'n' + 's' + 'o' + 'l' + 'e'].log;
 new PACK.pack.Package({ name: 'creativity',
   
   /// {SERVER=
-  dependencies: [ 'dossier', 'p', 'persist' ],
+  dependencies: [ 'dossier', 'p', 'persist', 'server' ],
   /// =SERVER}
   /// {CLIENT=
   dependencies: [ 'dossier', 'p', 'userify' ],
@@ -338,17 +336,17 @@ new PACK.pack.Package({ name: 'creativity',
             
           if (currentTime > phaseEndTime) {
             
-            creativityLog('RESOLVING ROUND on "' + story.name + '" because time is up');
+            crLog('RESOLVING ROUND on "' + story.name + '" because time is up');
             return cr.$resolveStoryVotePhase(story);
             
           } else if ((nextBest + votesRemaining) < best) { // Even if some people haven't voted pick a winner; further voting will make no difference
             
-            creativityLog('RESOLVING ROUND on "' + story.name + '" because voters decided early');
+            crLog('RESOLVING ROUND on "' + story.name + '" because voters decided early');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else if (votesRemaining === 0) {
             
-            creativityLog('RESOLVING ROUND on "' + story.name + '" because everyone has voted');
+            crLog('RESOLVING ROUND on "' + story.name + '" because everyone has voted');
             return cr.$resolveStoryVotePhase(story, currentTime);
             
           } else { 
@@ -1540,16 +1538,19 @@ new PACK.pack.Package({ name: 'creativity',
         detect: function(prevVal) { return true; },
         $apply: function(prevVal) {
           
+          /// {SERVER=
+          var $data = LOADSTATE
+            ? cr.persister.$init().then(function() { return cr.persister.$getData(); })
+            : new P({ val: cr.persister.genDefaultData() });
+          /// =SERVER}
+          
+          /// {CLIENT=
+          var $data = new P({ val: { version: 'Loading...' } });
+          /// =CLIENT}
+          
           return new P({ all: {
             outline: outline,
-            /// {SERVER=
-            data: LOADSTATE
-              ? cr.persister.$init().then(function() { return cr.persister.$getData(); })
-              : new P({ val: cr.persister.genDefaultData() }),
-            /// =SERVER}
-            /// {CLIENT=
-            data: new P({ val: { version: 'Loading...' } }),
-            /// =CLIENT}
+            data: $data,
             doss: null
           }});
           
@@ -1596,7 +1597,41 @@ new PACK.pack.Package({ name: 'creativity',
   },
   runAfter: function(cr, ds, p, uf) {
     
+    var package = arguments[0];
+    /// {SERVER=
+    var ds = arguments[1];
+    var p = arguments[2];
+    var pr = arguments[3];
+    var sv = arguments[4];
+    /// =SERVER}
+    /// {CLIENT=
+    var ds = arguments[1];
+    var p = arguments[2];
+    var uf = arguments[3];
+    /// =CLIENT}
+    
     var P = p.P;
+    
+    /// {SERVER=
+    var host = ENVIRONMENT.host;
+    var port = ENVIRONMENT.port;
+    var appName = ENVIRONMENT.appName;
+    
+    var sessionHandler = new sv.SessionHandler({ appName: appName });
+    
+    var httpCap = new sv.ChannelCapabilityHttp({ sessionHandler: sessionHandler, name: 'http', host: host, port: port });
+    httpCap.start();
+    httpCap.$initialized().then(function() {
+      console.log('HTTP capability active at ' + host + ':' + port);
+    });
+    
+    var soktCap = new sv.ChannelCapabilitySocket({ sessionHandler: sessionHandler, name: 'sokt', host: host, port: port + 1 })
+    soktCap.start();
+    soktCap.$initialized().then(function() {
+      console.log('SOKT capability active at ' + host + ':' + (port + 1));
+    });
+    /// =SERVER}
+    
     
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
@@ -2085,7 +2120,6 @@ new PACK.pack.Package({ name: 'creativity',
                                                 }
                                               }
                                             });
-                                            
                                           }})
                                         ]})
                                       ]
@@ -2094,18 +2128,13 @@ new PACK.pack.Package({ name: 'creativity',
                                 });
                               }
                             })
-                            
                           ]})
-                        
                         ]
                       })
                     ]})
-                    
                   ]})
-                  
                 ]
               })
-              
             ]})
             
           ]}),
