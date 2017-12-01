@@ -17,10 +17,8 @@ if (!U.isServer()) throw new Error('only for server-side use');
 // var tcp = new TCP();
 
 new PACK.pack.Package({ name: 'frame',
-  dependencies: [ 'p', 'compile' ],
-  buildFunc: function(packageName, p, cm) {
-    
-    var P = p.P;
+  dependencies: [ 'compile' ],
+  buildFunc: function(packageName, cm) {
     
     // ==== ARGUMENT RESOLUTION
     
@@ -118,14 +116,14 @@ new PACK.pack.Package({ name: 'frame',
   },
   runAfter: function(fr) {
     
-    // ==== APP SETUP
+    // Give the "pack" app a reference to the compiler that ought to be used
     PACK.pack.compiler = fr.compiler;
     
     // Redefine `console.error` so that it uses the compiler to shape any errors
-    var oldErrLog = console.error.bind(console);
+    var logErr = console.error;
     console.error = function() {
       arguments[0] = fr.compiler.shapeError(arguments[0], 'server');
-      oldErrLog.apply(null, arguments);
+      return logErr.apply(console, arguments);
     };
     
     // Set this new `console.error` as the uncaught exception handler
