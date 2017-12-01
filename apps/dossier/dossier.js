@@ -1,7 +1,7 @@
 /*
 TODO: Long polling
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
-TODO: Differences between `doss.getValue`, `doss.getData` need to be better understood
+TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined
 */
 
 var LOG_QUERIES = false;

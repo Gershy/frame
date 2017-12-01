@@ -1,11 +1,9 @@
 /*
 The following top-level variables exist regardless of whether code is being
 run on server or client side:
-  
   -U: Contains utility methods
   -C: Default class directory
   -PACK: Contains all the packages
-  -DB: Reference to the mongodb database object
 */
 
 /* TODO: deep comparator:
@@ -257,9 +255,6 @@ Error.stackTraceLimit = Infinity;
 });
 
 // Build utility library (note: client-side, the "global" variable is installed by an inline <script> element)
-global.ENVIRONMENT = {
-  type: 'default'
-};
 global.C = {};      // All classes are stored here
 global.PACK = {};   // All packages are stored here
 global.NEXT_ID = 0;
@@ -294,7 +289,7 @@ global.U = {
     return p !== null && U.exists(p);
   },
   
-  // Object utility
+  // Type utility
   typeOf: function(obj) {
     if (obj === null) return '<NULL>';
     if (!U.exists(obj)) return '<UNDEFINED>';
@@ -387,6 +382,7 @@ global.U = {
     return ptr;
   },
   
+  // JSON utility
   obj: {
     clone: function(obj1, obj2) {
       var ret = {};
@@ -483,6 +479,14 @@ global.U = {
     },
     endsWith: function(str, str2) {
       return str.substr(str.length - str2.length, str2.length) === str2;
+    },
+    startPad: function(str, pad, len) {
+      while (str.length < len) str = pad + str;
+      return str;
+    },
+    endPad: function(str, pad, len) {
+      while (str.length < len) str += pad;
+      return str;
     }
   },
   
@@ -885,9 +889,13 @@ global.U = {
   }
   
 };
+global.A = U.arr;
+global.O = U.obj;
+global.S = U.str;
 
 // PACKAGE: Packaging
 global.PACK.pack = {
+  compiler: null,
   Package: U.makeClass({ name: 'Package',
     methods: function(sc, c) { return {
       init: function(params /* name, dependencies, buildFunc, runAfter */) {
@@ -955,19 +963,22 @@ global.PACK.pack = {
         // If there are no dependencies then instantly build
         if (missingDeps.length === 0) { this.endBuild(); return; }
         
-        if (U.isServer()) {
+        if (U.isServer()) { // TODO: This method should never be used!!
           
           missingDeps.forEach(function(dependencyName) {
+            
             // Possible that one of this package's dependencies
             // is also a dependency of a subpackage. In this case
             // the subpackage has already loaded the dependency.
             if (PACK.contains(dependencyName)) return;
             
             // This require statement needs to add the dependencyName key to PACK
-            require('./apps/' + dependencyName + '/' + dependencyName + '.js');
+            if (PACK.pack.compiler) PACK.pack.compiler.run(dependencyName, 'server');
+            else                    require('./apps/' + dependencyName + '/' + dependencyName + '.js');
             
             // Ensure the key was added
             if (!PACK.contains(dependencyName)) throw new Error('failed to load dependency "' + dependencyName + '"');
+            
           });
           
           this.endBuild();

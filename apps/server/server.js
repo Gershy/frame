@@ -1,47 +1,23 @@
-/*
-DB Reference:
-- https://github.com/FreeCodeCamp/FreeCodeCamp/wiki/Using-MongoDB-And-Deploying-To-Heroku
-- mongodb://localhost:27017/frame
-
-TODO: This is one UGLY goddang file
-TODO: Responses for non-existing files are no good, e.g. try removing favicon and loading
-TODO: Dependency loading should be done via promises
-TODO: Websockets eventually?
-*/
-
-require('./common.js');
-
-if (!U.isServer()) throw new Error('only for server-side use');
-
-// var TCP = process.binding('tcp_wrap').TCP;
-// var tcp = new TCP();
-
-var path = require('path');
-var fileSys = require('fs');
-var config = require('./config.js');
-var compiler = require('./compilers/default.js');
-
 new PACK.pack.Package({ name: 'server',
-  dependencies: [ 'p', 'queries' ],
-  buildFunc: function(packageName, p, qr) {
+  dependencies: [ 'p', 'frame' ],
+  buildFunc: function(packageName, p, fr) {
     
+    var fs = require('fs');
+    var path = require('path');
+    var config = require('../../config.js');
     var P = p.P;
     
     var sv = {
       
-      $readFile: function(filepath, encoding) {
-        return 
-      },
-      
       ResponseData: U.makeClass({ name: 'ResponseData',
         methods: function(sc) { return {
           init: function(params /* code, contentType, encoding, data */) {
-            var data = U.param(params, 'data');
             
             this.code = U.param(params, 'code', 200);
             this.contentType = U.param(params, 'contentType', 'text/json');
             this.encoding = U.param(params, 'encoding', 'binary'); // 'binary' | 'utf8'
-            this.data = data;
+            this.data = U.param(params, 'data');
+            
           },
           endResponse: function(res) {
             
@@ -103,7 +79,7 @@ new PACK.pack.Package({ name: 'server',
               var encoding = 'utf8';
             }
             
-            return new P({ cb: fileSys.readFile, args: [ filepath, encoding ] }).then(function(data) {
+            return new P({ cb: fs.readFile, args: [ filepath, encoding ] }).then(function(data) {
               return new sv.ResponseData({
                 encoding: encoding,
                 contentType: ext,
@@ -145,17 +121,15 @@ new PACK.pack.Package({ name: 'server',
             
             if (command === 'getFile') {
               
-              var $contents = this.$readFile(U.param(reqParams, 'path').join('/')); // TODO: Use `path.join`?
-              
               var reqPath = U.param(reqParams, 'path');
               var lastCmp = reqPath[reqPath.length - 1].toLowerCase();
-              if (U.str.endsWith(lastCmp, '.html')) {
+              if (S.endsWith(lastCmp, '.html')) {
                 
                 var appName = this.sessionHandler.appName;
                 var assetVersion = this.sessionHandler.assetVersion
-                $contents = $contents.then(function(contents) {
+                var $contents = this.$readFile(path.join.apply(path, reqPath)).then(function(contents) {
                 
-                  contents.data = contents.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/cmp-client-' + appName + '.js');
+                  contents.data = contents.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
                   contents.data = contents.data.replace(/{{assetVersion}}/g, assetVersion);
                   contents.data = contents.data.replace('{{title}}', appName);
                   
@@ -197,6 +171,42 @@ new PACK.pack.Package({ name: 'server',
                   
                 });
                 
+              } else if (S.endsWith(lastCmp, '.js')) {
+                
+                try {
+                  
+                  if (reqPath[0] === 'apps') {
+                    
+                    if (reqPath.length !== 3 || reqPath[1] !== reqPath[2].substr(0, reqPath[2].length - 3)) {
+                      
+                      console.log('BAD REQPATH:', reqPath);
+                      throw new Error('Application javascript filepaths must have the following format: "apps/<appName>/<appName>.js"');
+                      
+                    }
+                    
+                    // Note that `reqPath[1]` is the name of the directory within "/apps", therefore
+                    // it is the exact name of the app being requested. Note that the "client" variant
+                    // is specified, because this file is being requested by the client.
+                    var fullPath = fr.compiler.getCompiledFullPath(reqPath[1], 'client');
+                    
+                  } else {
+                    
+                    var fullPath = path.join.apply(path, reqPath);
+                    
+                  }
+                  
+                  var $contents = this.$readFile(fullPath);
+                  
+                } catch(err) {
+                  
+                  var $contents = new P({ err: err });
+                  
+                }
+                
+              } else {
+                
+                var $contents = this.$readFile(path.join.apply(path, reqPath));
+                
               }
               
               return $contents.fail(function(err) {
@@ -204,7 +214,7 @@ new PACK.pack.Package({ name: 'server',
                   contentType: 'text/plain',
                   encoding: 'utf8',
                   code: 404,
-                  data: 'File "' + filepath.join('/') + '" not found'
+                  data: 'File "' + reqPath.join('/') + '" unavailable (' + err.message + ')'
                 });
               });
               
@@ -231,11 +241,9 @@ new PACK.pack.Package({ name: 'server',
                 
               })});
               
-            } else {
-              
-              return U.param(params, 'channel').$handleRequest(params.update({ session: this }));
-              
             }
+            
+            return new P({ err: new Error('Invalid command: "' + command + '"') });
             
           }
         }},
@@ -272,8 +280,7 @@ new PACK.pack.Package({ name: 'server',
           }
         };}
       }),
-      ChannelCapabilityHttp: U.makeClass({ name: 'ChannelCapabilityHttp',
-        superclassName: 'ChannelCapability',
+      ChannelCapabilityHttp: U.makeClass({ name: 'ChannelCapabilityHttp', superclassName: 'ChannelCapability',
         methods: function(sc, c) { return {
           init: function(params /* name, sessionHandler, host, port */) {
             sc.init.call(this, params);
@@ -526,8 +533,7 @@ new PACK.pack.Package({ name: 'server',
           }
         };}
       }),
-      ChannelCapabilitySocket: U.makeClass({ name: 'ChannelCapabilitySocket',
-        superclassName: 'ChannelCapability',
+      ChannelCapabilitySocket: U.makeClass({ name: 'ChannelCapabilitySocket', superclassName: 'ChannelCapability',
         methods: function(sc, c) { return {
           init: function(params /* name, sessionHandler, host, port */) {
             sc.init.call(this, params);
@@ -571,90 +577,6 @@ new PACK.pack.Package({ name: 'server',
     };
     
     return sv;
-    
-  },
-  runAfter: function(sv) {
-    
-    // ==== ARGUMENT RESOLUTION
-    
-    // Parse process-level arguments
-    if (process.argv[2][0] === '{') {
-      
-      var argStr = process.argv.slice(2).join(' '); // Replace angle-brackets with quotes for *nix systems
-      var args = eval('(' + process.argv.slice(2).join(' ') + ')');
-      
-    } else {
-      
-      var args = {};
-      for (var i = 2; i < process.argv.length; i += 2) {
-        var key = process.argv[i];
-        var val = process.argv[i + 1];
-        
-        if (key.substr(0, 2) !== '--') throw new Error('Invalid key: "' + key + '"');
-        args[key.substr(2)] = val;
-      }
-      
-    }
-    
-    // Compile and load the app
-    var appName = U.param(args, 'app', config.defaultApp);
-    var dirPath = path.join(__dirname, 'apps', appName);
-    compiler.compile(appName, dirPath);
-    
-    // Bind ip and port based on deployment
-    var deployment = U.param(args, 'deployment', 'default');
-    
-    if (deployment === 'openshift') {
-      
-      var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
-      var ip = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0'; // TODO: This variable should be called "host"
-      
-      var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
-      if (!dataPathName) throw new Error('Can\'t access data directory');
-      
-      ENVIRONMENT.update({
-        type: 'openshift',
-        fileRootName: dataPathName
-      });
-      
-    } else if (deployment === 'heroku') {
-      
-      // TODO: need to verify port/ip work with heroku
-      var port = 8000;
-      var ip = '127.0.0.1';
-      
-      ENVIRONMENT.update({
-        type: 'heroku',
-        fileRootName: '<???>' // TODO: Figure this out
-      });
-      
-    } else if (deployment === 'default') {
-      
-      
-      var port = 8000;
-      var ip = '127.0.0.1';
-      
-      ENVIRONMENT.update({
-        type: 'default',
-        fileRootName: __dirname
-      });
-      
-    }
-    
-    if (args.contains('ip')) ip = args.ip;
-    if (args.contains('port')) port = args.port;
-    
-    ENVIRONMENT.host = ip;
-    ENVIRONMENT.port = port;
-    ENVIRONMENT.rawArgs = args;
-    ENVIRONMENT.appName = appName;
-    
-    // ==== APP SETUP
-    
-    // var serverFileName = compiler.getFileName(dirPath, 'server');
-    // console.log('SERVERFILENAME:', serverFileName);
-    // require(serverFileName);
-    require('./apps/' + appName + '/cmp-server-' + appName + '.js');
     
   }
 }).build();

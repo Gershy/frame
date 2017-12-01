@@ -2,8 +2,8 @@ var path = require('path');
 var fs = require('fs');
 
 new PACK.pack.Package({ name: 'persist',
-  dependencies: [ 'p' ],
-  buildFunc: function(packageName, p) {
+  dependencies: [ 'p', 'frame' ],
+  buildFunc: function(packageName, p, fr) {
     
     var P = p.P;
     
@@ -72,21 +72,25 @@ new PACK.pack.Package({ name: 'persist',
             
             this.pathName = null;
             
-            if (ENVIRONMENT.type === 'default') {
+            if (fr.deployment.type === 'default') {
               
-              this.pathName = path.join(ENVIRONMENT.fileRootName, 'apps', this.packageName, 'state', 'state.json');
+              this.pathName = path.join(fr.deployment.fileRootName, 'apps', this.packageName, 'state', 'state.json');
               
-            } else if (ENVIRONMENT.type === 'openshift') {
+            } else if (fr.deployment.type === 'openshift') {
               
-              this.pathName = path.join(ENVIRONMENT.fileRootName, this.packageName, 'state.json');
+              this.pathName = path.join(fr.deployment.fileRootName, this.packageName, 'state.json');
               console.log('Persister (openshift) at: ' + this.pathName);
+              
+            } else if (fr.deployment.type === 'heroku') {
+              
+              throw new Error('not implemented');
               
             }
             
           },
           $init: function() {
             
-            return ENVIRONMENT.rawArgs.resetPersistedData
+            return fr.rawArgs.resetPersistedData
               ? $ensureFile(this.pathName).then($writeFile.bind(null, this.pathName, ''))
               : $ensureFile(this.pathName, '{}');
             

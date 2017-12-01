@@ -143,7 +143,7 @@ var crLog = global['c' + 'o' + 'n' + 's' + 'o' + 'l' + 'e'].log;
 new PACK.pack.Package({ name: 'creativity',
   
   /// {SERVER=
-  dependencies: [ 'dossier', 'p', 'persist', 'server' ],
+  dependencies: [ 'dossier', 'p', 'persist', 'server', 'frame' ],
   /// =SERVER}
   /// {CLIENT=
   dependencies: [ 'dossier', 'p', 'userify' ],
@@ -1595,7 +1595,7 @@ new PACK.pack.Package({ name: 'creativity',
     return cr.update({ versioner: versioner });
     
   },
-  runAfter: function(cr, ds, p, uf) {
+  runAfter: function(cr /* ... */) {
     
     var package = arguments[0];
     /// {SERVER=
@@ -1603,6 +1603,7 @@ new PACK.pack.Package({ name: 'creativity',
     var p = arguments[2];
     var pr = arguments[3];
     var sv = arguments[4];
+    var fr = arguments[5];
     /// =SERVER}
     /// {CLIENT=
     var ds = arguments[1];
@@ -1613,9 +1614,9 @@ new PACK.pack.Package({ name: 'creativity',
     var P = p.P;
     
     /// {SERVER=
-    var host = ENVIRONMENT.host;
-    var port = ENVIRONMENT.port;
-    var appName = ENVIRONMENT.appName;
+    var host = fr.host;
+    var port = fr.port;
+    var appName = fr.appName;
     
     var sessionHandler = new sv.SessionHandler({ appName: appName });
     
@@ -1623,15 +1624,14 @@ new PACK.pack.Package({ name: 'creativity',
     httpCap.start();
     httpCap.$initialized().then(function() {
       console.log('HTTP capability active at ' + host + ':' + port);
-    });
+    }).done();
     
     var soktCap = new sv.ChannelCapabilitySocket({ sessionHandler: sessionHandler, name: 'sokt', host: host, port: port + 1 })
     soktCap.start();
     soktCap.$initialized().then(function() {
       console.log('SOKT capability active at ' + host + ':' + (port + 1));
-    });
+    }).done();
     /// =SERVER}
-    
     
     cr.versioner.$getDoss().then(function(doss) {
       console.log('Initialized!');
