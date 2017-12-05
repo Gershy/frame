@@ -146,7 +146,7 @@ new PACK.pack.Package({ name: 'creativity',
   dependencies: [ 'dossier', 'p', 'persist', 'server', 'frame' ],
   /// =SERVER}
   /// {CLIENT=
-  dependencies: [ 'dossier', 'p', 'userify' ],
+  dependencies: [ 'dossier', 'p', 'userify', 'server' ],
   /// =CLIENT}
   buildFunc: function(/* ... */) {
     
@@ -155,11 +155,14 @@ new PACK.pack.Package({ name: 'creativity',
     var ds = arguments[1];
     var p = arguments[2];
     var pr = arguments[3];
+    var sv = arguments[4];
+    var fr = arguments[5]
     /// =SERVER}
     /// {CLIENT=
     var ds = arguments[1];
     var p = arguments[2];
     var uf = arguments[3];
+    var sv = arguments[4];
     /// =CLIENT}
     
     var P = p.P;
@@ -608,6 +611,7 @@ new PACK.pack.Package({ name: 'creativity',
       
     };
     
+    // ==== OUTLINE
     // ~root
     var outline = new ds.Outline({ name: 'creativity', c: cr.Creativity, });
     outline.addChild('version', ds.DossierStr, {
@@ -1533,6 +1537,7 @@ new PACK.pack.Package({ name: 'creativity',
       }
     });
     
+    // ==== VERSIONER
     var versioner = new ds.Versioner({ versions: [
       { name: 'initial',
         detect: function(prevVal) { return true; },
@@ -1592,7 +1597,24 @@ new PACK.pack.Package({ name: 'creativity',
       }
     ]});
     
-    return cr.update({ versioner: versioner });
+    // ==== SESSIONHANDLER
+    /// {SERVER=
+    var host = fr.host;
+    var port = fr.port;
+    /// =SERVER}
+    /// {CLIENT=
+    var host = window.location.hostname;
+    var port = parseInt(window.location.port || 80); // TODO: This isn't taking https into account
+    /// =CLIENT}
+    
+    var sessionHandler = new sv.SessionHandler({ appName: packageName });
+    sessionHandler.addCapability(new sv.ChannelCapabilityHttp({ name: 'http', priority: 0, host: host, port: port }));
+    sessionHandler.addCapability(new sv.ChannelCapabilitySocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    
+    return cr.update({
+      sessionHandler: sessionHandler,
+      versioner: versioner
+    });
     
   },
   runAfter: function(cr /* ... */) {
@@ -1613,28 +1635,18 @@ new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    /// {SERVER=
-    var host = fr.host;
-    var port = fr.port;
-    var appName = fr.appName;
-    
-    var sessionHandler = new sv.SessionHandler({ appName: appName });
-    
-    var httpCap = new sv.ChannelCapabilityHttp({ sessionHandler: sessionHandler, name: 'http', host: host, port: port });
-    httpCap.start();
-    httpCap.$initialized().then(function() {
-      console.log('HTTP capability active at ' + host + ':' + port);
-    }).done();
-    
-    var soktCap = new sv.ChannelCapabilitySocket({ sessionHandler: sessionHandler, name: 'sokt', host: host, port: port + 1 })
-    soktCap.start();
-    soktCap.$initialized().then(function() {
-      console.log('SOKT capability active at ' + host + ':' + (port + 1));
-    }).done();
-    /// =SERVER}
+    // Tell all capabilities to start
+    var sessionHandler = cr.sessionHandler;
+    for (var k in sessionHandler.capabilities) {
+      
+      var cap = sessionHandler.capabilities[k];
+      cap.$initialized().then(function(cap) { console.log(cap.getReadyNotification()); }.bind(null, cap));
+      cap.start();
+      
+    }
     
     cr.versioner.$getDoss().then(function(doss) {
-      console.log('Initialized!');
+      // console.log('Initialized!');
       // U.debug(doss.getData());
       
       /// {SERVER=
@@ -1646,22 +1658,6 @@ new PACK.pack.Package({ name: 'creativity',
       /// =SERVER}
       
       /// {CLIENT=
-      
-      /*
-      TODO: Websocket testing!
-      setTimeout(function() {
-        
-        var ws = new WebSocket('ws://127.0.0.1:8001/');
-        ws.onopen = function() {
-          console.log('WS OPEN');
-          ws.send('EYYY');
-        };
-        ws.onmessage = function(evt) {
-          console.log('WS MESS', evt);
-        };
-        
-      }, 1000);*/
-      
       var spinnerHtml =
         '<div class="spin">' +
           U.range({0:20}).map(function(n) {

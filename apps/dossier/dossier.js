@@ -18,7 +18,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
     
     ds.update({
       
-      NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/, // The goddam tilde is now allowed in the name, to allow the root to be named "~root"
+      NAME_REGEX: /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/,
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(ds.NEXT_TEMP++);
@@ -1594,6 +1594,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.freshestReq = this.freshest;
           },
           scheduleUpdates: function() {
+            
             this.timeout = (this.waitMs || this.jitterMs)
               ? setTimeout(this.update.bind(this), this.waitMs + (Math.random() * this.jitterMs))
               : null;

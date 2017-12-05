@@ -178,6 +178,11 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function() {
         },
         shapeError: function(err, variant) {
           
+          if (!U.isInstance(err, Error)) return {
+            msg: 'NOT AN ERROR',
+            err: err
+          };
+          
           var lines = err.stack.split('\n');
           
           // `SyntaxError`s begin with a code snippet followed by whitespace
@@ -298,8 +303,8 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function() {
             
             var line = '|-- ';
             // if (lineDataItem.isEval) line += 'Something?'
-            line += S.endPad(lineDataItem.funcAddr ? lineDataItem.funcAddr : '<native>', ' ', 29) + ' ';
-            line += S.endPad(lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd, ' ', 50);
+            line += S.endPad(lineDataItem.funcAddr ? lineDataItem.funcAddr : '<native>', ' ', 45) + ' ';
+            line += lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd;
             
             if (line.length > 90) line = line.substr(0, 87) + '...';
             

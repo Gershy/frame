@@ -594,7 +594,7 @@ Give all .button elements a consistent feel
   z-index: 1;
 }
 #ws > .write {
-  display: inline;
+  display: inline-block;
   white-space: pre-wrap;
   cursor: default;
   margin-right: 3px;

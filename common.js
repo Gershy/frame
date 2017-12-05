@@ -468,6 +468,17 @@ global.U = {
       var ret = 0;
       for (var i = 0, len = arr.length; i < len; i++) ret += !!func(arr[i]);
       return ret;
+    },
+    seqIndexOf: function(arr, seq) {
+      
+      for (var i = 0, len = arr.length - seq.length; i <= len; i++) {
+        var found = true;
+        for (var j = 0, lenj = seq.length; j < lenj; j++) if (arr[i + j] !== seq[j]) { found = false; break; }
+        if (found) return i;
+      }
+      
+      return -1;
+      
     }
   },
   str: {
