@@ -37,6 +37,8 @@ TASKS:
               .
               
             }
+      [ ] OR all dataset functionality must be able to work with "unloaded" data items, and indicate
+          that they are pending until loaded
       
 [ ] Use `Outline` to speed up userification
 [ ] `ContentSyncSet` should have the best of both worlds!!
@@ -49,7 +51,6 @@ TASKS:
   [ ] `PACK.dossier.ContentSync*` classes should accept any "selection" parameter as either a function or an Info object
   [ ] Extend selection syntax. 
     [ ] skip and limit
-    [ ] filtering (`PACK.dossier.FilterResults` needs refactoring)
 [X] Form validation
   [X] Login
   [X] Story creation
@@ -150,6 +151,8 @@ new PACK.pack.Package({ name: 'creativity',
   /// =CLIENT}
   buildFunc: function(/* ... */) {
     
+    // ==== ARGUMENT PARSING
+    
     var packageName = arguments[0];
     /// {SERVER=
     var ds = arguments[1];
@@ -165,10 +168,13 @@ new PACK.pack.Package({ name: 'creativity',
     var sv = arguments[4];
     /// =CLIENT}
     
-    var P = p.P;
+    // ==== UTILITY
     
+    var P = p.P;
     var mapMillis = (function(r) { return { second: r *= 1000, minute: r *= 60, hour: r *= 60, day: r *= 24, week: r *= 7, year: r *= 52.1429 }; })(1);
-
+    
+    // ==== PACKAGE
+    
     var cr = {
       
       validate: {
@@ -205,29 +211,71 @@ new PACK.pack.Package({ name: 'creativity',
         superclass: ds.DossierObj,
         methods: function(sc, c) { return {
           /// {SERVER=
-          $handleRequest: function(params /* command */) {
-            var command = U.param(params, 'command');
+          $heedOrder: function(params /* session, command, params, sessionHandlerParams */) { // Creativity
             
+            var session = U.param(params, 'session');
+            var command = U.param(params, 'command');
             if (!command.length) throw new Error('Command cannot be empty string');
             
-            var funcName = '$handle' + command[0].toUpperCase() + command.substr(1) + 'Query';
-            if (this[funcName]) return this[funcName](U.param(params, 'params', {}));
+            if (command === 'currentTime') {
+              
+              this.$giveOrder({
+                session: session,
+                data: {
+                  address: '~root.serverTime',
+                  command: 'mod',
+                  params: {
+                    data: U.timeMs()
+                  }
+                },
+                sessionHandlerParams: params.sessionHandlerParams
+              });
+              
+            } else if (command === 'getToken') {
+              
+              // TODO: WHat about if U.param fails? Thrown errors aren't good feedback....
+              var error = null;
+              var reqParams = U.param(params, 'params');
+              var username = U.param(reqParams, 'username');
+              var password = U.param(reqParams, 'password');
+              
+              var user = this.getChild([ 'userSet', username ]);
+              if (!user) error = 'Invalid username: "' + username + '"';
+              if (user.getValue('password') !== password) error = 'Invalid password';
+              
+              if (error) {
+                
+                return this.$giveOrder({
+                  session: session,
+                  data: {
+                    address: '~root.error',
+                    command: 'mod',
+                    params: {
+                      data: error
+                    }
+                  },
+                  sessionHandlerParams: sessionHandlerParams
+                });
+                
+              } else {
+              
+                return this.$giveOrder({
+                  session: session,
+                  data: {
+                    address: '~root.token',
+                    command: 'mod',
+                    params: {
+                      data: user.getToken()
+                    }
+                  },
+                  sessionHandlerParams: params.sessionHandlerParams
+                });
+              
+              }
             
-            return sc.$handleRequest.call(this, params);
-          },
-          $handleCurrentTimeQuery: function(params) {
-            return new P({ val: U.timeMs() });
-          },
-          $handleGetTokenQuery: function(params /* username, password */) {
+            }
             
-            var username = U.param(params, 'username');
-            var password = U.param(params, 'password');
-            
-            var user = this.getChild([ 'userSet', username ]);
-            if (!user) throw new Error('Invalid username: "' + username + '"');
-            if (user.getValue('password') !== password) throw new Error('Invalid password');
-            
-            return new P({ val: { token: user.getToken() } });
+            return sc.$heedOrder.call(this, params);
             
           }
           /// =SERVER}
@@ -612,6 +660,7 @@ new PACK.pack.Package({ name: 'creativity',
     };
     
     // ==== OUTLINE
+    
     // ~root
     var outline = new ds.Outline({ name: 'creativity', c: cr.Creativity, });
     outline.addChild('version', ds.DossierStr, {
@@ -630,6 +679,9 @@ new PACK.pack.Package({ name: 'creativity',
     outline.addChild('token', ds.DossierStr, {
       changeHandler: function(doss) {
         doss.getChild('~root.user').content.update();
+      },
+      abilities: {
+        mod: new ds.AbilityMod({ public: true })
       }
     });
     outline.addChild('user', ds.DossierRef, {
@@ -1538,6 +1590,7 @@ new PACK.pack.Package({ name: 'creativity',
     });
     
     // ==== VERSIONER
+    
     var versioner = new ds.Versioner({ versions: [
       { name: 'initial',
         detect: function(prevVal) { return true; },
@@ -1597,7 +1650,8 @@ new PACK.pack.Package({ name: 'creativity',
       }
     ]});
     
-    // ==== SESSIONHANDLER
+    // ==== SESSION HANDLER
+    
     /// {SERVER=
     var host = fr.host;
     var port = fr.port;
@@ -1608,8 +1662,11 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     
     var sessionHandler = new sv.SessionHandler({ appName: packageName });
-    sessionHandler.addCapability(new sv.ChannelCapabilityHttp({ name: 'http', priority: 0, host: host, port: port }));
-    sessionHandler.addCapability(new sv.ChannelCapabilitySocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    sessionHandler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: host, port: port }));
+    sessionHandler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    
+    // Link the outline to the session handler
+    outline.sessionHandler = sessionHandler;
     
     return cr.update({
       sessionHandler: sessionHandler,
@@ -1635,11 +1692,11 @@ new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    // Tell all capabilities to start
+    // Tell all channels to start
     var sessionHandler = cr.sessionHandler;
-    for (var k in sessionHandler.capabilities) {
+    for (var k in sessionHandler.channels) {
       
-      var cap = sessionHandler.capabilities[k];
+      var cap = sessionHandler.channels[k];
       cap.$initialized().then(function(cap) { console.log(cap.getReadyNotification()); }.bind(null, cap));
       cap.start();
       
@@ -1649,12 +1706,34 @@ new PACK.pack.Package({ name: 'creativity',
       // console.log('Initialized!');
       // U.debug(doss.getData());
       
-      /// {SERVER=
+      sessionHandler.handler = doss;
       cr.queryHandler = doss;
       
+      /// {SERVER=
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
       setInterval(function() { cr.$updateCreativity(doss).done(); }, 1000 * 1);
       setInterval(function() { cr.persister.$putData(doss.getData()).done(); }, 1000 * 10);
+      
+      /*
+      // Socket notification test
+      setInterval(function() {
+        
+        var seshes = sessionHandler.sessionSet;
+        var sesh0 = seshes[U.firstKey(seshes)];
+        
+        sessionHandler.channels.sokt.$giveOrder({ session: sesh0, data: {
+          
+          address: [ '~root', 'version' ],
+          command: 'get',
+          params: {
+            selection: ds.selectAll
+          }
+          
+        }}).done();
+        
+      }, 5000);
+      */
+      
       /// =SERVER}
       
       /// {CLIENT=
@@ -2160,14 +2239,25 @@ new PACK.pack.Package({ name: 'creativity',
       loginFormView.getChild('password.input').decorators.push(passwordDec);
       
       var loginFormSubmitDec = loginFormDec.genSubmitDecorator(function(event) {
-        return doss.$doRequest({ command: 'getToken', params: {
-          username: doss.getValue('username'),
-          password: doss.getValue('password')
-        }}).then(function(data) {
-          doss.setValue('token', data.token);
-        }).fail(function(err) {
-          doss.setValue('loginError', err.message);
+        
+        // TODO: Loading will have to be implemented manually :(
+        // Need to set a "loginFormLoading" value to `true`, and then to `false`
+        // when credentials arrive.
+        return cr.sessionHandler.$giveOrder({
+          
+          data: {
+            
+            address: doss.getAddress(),
+            command: 'getToken',
+            params: {
+              username: doss.getValue('username'),
+              password: doss.getValue('password')
+            }
+            
+          }
+          
         });
+        
       });
       loginFormView.getChild('signin').decorators.push(loginFormSubmitDec);
       

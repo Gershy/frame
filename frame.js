@@ -23,7 +23,7 @@ new PACK.pack.Package({ name: 'frame',
     // ==== ARGUMENT RESOLUTION
     
     // Parse process-level arguments
-    if (process.argv[2][0] === '{') {
+    if (U.isObj(process.argv[2], String) && process.argv[2][0] === '{') {
       
       // JSON-style processing
       var argStr = process.argv.slice(2).join(' ');
@@ -41,7 +41,7 @@ new PACK.pack.Package({ name: 'frame',
     }
     
     // Get the app name
-    var appName = U.param(args, 'app', require('./config.js').defaultApp);
+    var appName = U.param(args, 'app');
     
     // Bind ip and port based on deployment
     var deployment = U.param(args, 'deployment', 'default');

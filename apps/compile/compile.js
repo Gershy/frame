@@ -1,9 +1,3 @@
-/* process.on('uncaughtException', function(err) {
-  
-  
-});
-*/
-
 new PACK.pack.Package({ name: 'compile', buildFunc: function() {
   
   var fs = require('fs');
@@ -68,6 +62,7 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function() {
           sc.init.call(this, params);
           this.directives = U.param(params, 'directives');
         },
+        
         doCompile: function(content, directive) {
           content = content.split('\n');
           
@@ -150,7 +145,6 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function() {
           };
           
         },
-
         compile0: function(appName) {
           
           var appDir = path.join(this.rootPath, 'apps', appName);
@@ -176,12 +170,15 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function() {
           return ret;
           
         },
+        
         shapeError: function(err, variant) {
           
           if (!U.isInstance(err, Error)) return {
             msg: 'NOT AN ERROR',
             err: err
           };
+          
+          console.log('MESSAGE:', err.message.split('\n').length + 1, ':', err.message);
           
           var lines = err.stack.split('\n');
           

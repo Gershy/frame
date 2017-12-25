@@ -1,7 +1,7 @@
 {
   "name": "gersh",
   "version": "0.0.1",
-  "description": "a cool thing",
+  "description": "Superspeed javascript development framework",
   "engines": {
     "node": "0.12.2"
   },

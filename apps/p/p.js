@@ -65,6 +65,16 @@ var package = new PACK.pack.Package({ name: 'p',
                 params.custom(this.resolve.bind(this), this.reject.bind(this));
               } catch(err) { this.reject(err); }
               
+            } else if (params.contains('run')) {
+              
+              var cb = U.param(params, 'run');
+              try {
+                var result = cb();
+                return PACK.p.$(result);
+              } catch(err) {
+                this.reject(err);
+              }
+              
             } else if (params.contains('cb')) {
               
               var cb = U.param(params, 'cb');
@@ -264,9 +274,6 @@ var package = new PACK.pack.Package({ name: 'p',
             var p = new PACK.p.P({ func: func, multi: true });
             p.tryResolve(this);
             return p;
-          },
-          insert: function(func) {
-            return this.then(function(v) { func(v); return v; });
           },
           fail: function(func) {
             var p = new PACK.p.P({ recoveryFunc: func });

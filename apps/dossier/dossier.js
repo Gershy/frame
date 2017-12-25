@@ -4,7 +4,6 @@ TODO: Names of Outline properties are confusing; e.g. "c" could stand for "child
 TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined
 */
 
-var LOG_QUERIES = false;
 var package = new PACK.pack.Package({ name: 'dossier',
   dependencies: [ 'tree', 'queries', 'worry', 'p' ],
   buildFunc: function(packName, tree, queries, worry, p) {
@@ -579,9 +578,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
         methods: function(sc, c) { return {
           init: function(params /* outline, par, validate, validateBelow */) {
             this.par = U.param(params, 'par', null);
+            
+            // Validation to apply to the immediate value
             this.validate = U.param(params, 'validate', null);
+            
+            // Validation to apply to the immediate value and any value beneath
             this.validateBelow = U.param(params, 'validateBelow', null);
+            
+            // Changes to make after an ability has been successfully run (does not apply to children)
             this.decorate = U.param(params, 'decorate', null);
+            
+            // Indicates if this ability is visible from the other side (for validation purposes)
             this.public = U.param(params, 'public', false);
           },
           doValidateRec: function(editor, doss, below, params) {
@@ -619,12 +626,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           use: function(editor, doss, below, params /* data */) {
             
-            //console.log('RUNNING ' + doss.outline.getAddress() + '.' + this.constructor.title + '()');
+            // 1) Complete the stem of Y-validation
             var validated = this.doValidate(editor, doss, below, params);
             var below = validated.below;
             var params = validated.params;
             
-            // Completes the stem of Y-validation, and calls `this.stage`
+            // 2) Complete the action, apply decoration if available
             var result = this.stage(editor, doss, below, params);
             return this.decorate ? this.decorate(result, editor, doss, below, params) : result;
             
@@ -887,30 +894,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.getRoot().isRoot();
           },
           
-          // Server/client
-          $doRequest: function(params /* address, command, params */) {
-            if (U.isObj(params, String)) params = { command: params };
+          $heedOrder: function(params /* session, command, params, sessionHandlerParams */) { // Dossier
             
-            var command = U.param(params, 'command');
-            var address = U.param(params, 'address', '');
-            var reqParams = U.param(params, 'params', {});
+            // TODO: "session" should be in `params`, not `params.channelParams`
+            // Dossiers always handle requests by executing abilities
             
-            if (U.isObj(address, String)) address = address ? address.split('.') : [];
-            
-            return PACK.queries.$doQuery({
-              address: this.getNameChain().concat(address),
-              command: command,
-              params: reqParams,
-            });
-          },
-          $handleRequest: function(params /* command, params */) {
-            
+            var session = U.param(params, 'session');
             var abilityName = U.param(params, 'command');
             var abilityParams = U.param(params, 'params', {});
+            var sessionHandlerParams = U.param(params, 'sessionHandlerParams', {}); // Passed on to the session handler; hints how to notify the remote side
             
             try {
-              
-              var editor = new ds.Editor();
               
               // TODO: It feels like a hack right now: `result` can be a promise
               // for doing processing after the transaction; e.g. adding a doss
@@ -925,36 +919,38 @@ var package = new PACK.pack.Package({ name: 'dossier',
               var ability = this.hasAbility(abilityName) ? this.getAbility(abilityName) : null;
               if (!ability || !ability.public) throw new Error('Ability "' + abilityName + '" unavailable');
               
+              var editor = new ds.Editor();
               var result = this.stageAbility(ability, editor, null, abilityParams);
-              var $result = editor.$transact().then(function() { return result; });
+              
+              // Note that `result` can be a promise, even if it isn't $-prefixed. So we can only deal with it
+              // after `editor.$transact` is complete!
+              var pass = this;
+              var $result = editor.$transact().then(function() { return result; }).then(function(data) {
+                
+                if (!data) return p.$null;
+                
+                return pass.$giveOrder({
+                  session: session,
+                  data: data,
+                  sessionHandlerParams: sessionHandlerParams
+                });
+                
+              });
               
             } catch(err) {
               
               var $result = new P({ err: err.update({
-                message: this.getAddress() + '.' + abilityName + '(' + JSON.stringify(abilityParams, null, 2) + '):\n' + err.message
+                message: this.getAddress() + '.' + abilityName + '(' + U.debugObj(abilityParams) + '):\n' + err.message
               })});
               
             }
             
-            var pass = this;
+            return $result;
             
-            if (!LOG_QUERIES) return $result;
+          },
+          $giveOrder: function(params /* session, data, sessionHandlerParams */) { // Dossier
             
-            return $result.then(function(v) {
-              
-              console.log('SUCCESS: ' + pass.getAddress() + '.' + abilityName + '(' + U.debugObj(abilityParams) + ')');
-              console.log('-->', v);
-              console.log('');
-              return v;
-              
-            }).fail(function(err) {
-              
-              console.log('FAILURE: ' + pass.getAddress() + '.' + abilityName + '(' + U.debugObj(abilityParams) + ')');
-              console.log('-->', err.message);
-              console.log('');
-              throw err;
-              
-            });
+            return this.outline.getRoot().sessionHandler.$giveOrder(params);
             
           },
           
@@ -975,7 +971,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           $useAbility: function(name, params) {
             
-            return this.$handleRequest({ command: name, params: params });
+            return this.$heedOrder({ command: name, params: params });
           
           },
           
@@ -1002,9 +998,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           
           getData: function() {
-            throw new Error('Not implemented');
-          },
-          getJson: function(params /* */) {
             throw new Error('Not implemented');
           },
           
@@ -1131,9 +1124,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.children.contains(child.name) && this.children[child.name] === child;
           },
           getNamedChild0: function(name) {
-            /* if (U.isObj(name, Object))
-              return new ds.FilterResults({ origChildren: this.children, filter: name }); */
-            
             if (this.children.contains(name)) return this.children[name];
             return sc.getNamedChild0.call(this, name);
           },
@@ -1157,10 +1147,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getChildOutline: function(name) {
             // Returns the outline needed by a child named "name"
             throw new Error('Not implemented');
-          },
-          
-          getJson: function(params /* */) {
-            
           },
           
           map: function(mapFunc) {
@@ -1444,52 +1430,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
         }; }
       }),
       
-      /* Psuedo-Dossier */
-      /*
-      FilterResults: U.makeClass({ name: 'FilterResults',
-        superclass: tree.TreeNode,
-        methods: function(sc, c) { return {
-          init: function(params /* origChildren, filter, par * /) {
-            var origChildren = U.param(params, 'origChildren');
-            var filter = U.param(params, 'filter');
-            
-            this.children = {};
-            this.par = U.param(params, 'par', null);
-            
-            console.log('FILTER', filter);
-            
-            if (!c.filters.contains(filter.type)) throw new Error('Unsupported filter type: "' + filter.type + '"');
-            c.filters[filter.type].call(this, filter.params);
-            
-          },
-          getNamedChild: function(name) {
-            return this.children[name] || null;
-          },
-          
-          // TODO: Next 4 methods are purely referenced from DossierSet and Dossier
-          /*$handleRequest: function(params /* command * /) {
-            return ds.Dossier.prototype.$handleRequest.call(this, params);
-          },
-          * /
-          getData: function() {
-            return ds.DossierSet.prototype.getData.call(this, params);
-          }
-        };},
-        statik: {
-          filters: {
-            // TODO: can implement more filters :D
-            match: function(filterData) {
-              var ret = {};
-              for (var k in origChildren) {
-                var child = origChildren[k];
-                if (child.matches(filterData)) this.children[k] = child;
-              }
-            }
-          }
-        }
-      }),
-      */
-      
       /* Versioner - maintain evolving Dossier structures */
       Versioner: U.makeClass({ name: 'Versioner',
         methods: function(sc) { return {
@@ -1627,8 +1567,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           start: function() {
             sc.start.call(this);
-            if (this.syncOnStart) this.update();
-            else                  this.scheduleUpdates();
+            
+            // TODO: when commented the app cannot update
+            // if (this.syncOnStart) this.update();
+            // else                  this.scheduleUpdates();
           },
           stop: function() {
             this.cancelUpdates();

@@ -1,11 +1,3 @@
-/*
-The following top-level variables exist regardless of whether code is being
-run on server or client side:
-  -U: Contains utility methods
-  -C: Default class directory
-  -PACK: Contains all the packages
-*/
-
 /* TODO: deep comparator:
 var cmpv = function(v1, v2, addr) {
   
@@ -274,7 +266,7 @@ global.U = {
     Used to retrieve an item from an object. If def is provided and no
     item under the "name" key is found, def is returned.
     */
-    if (U.isObj(params) && (params.contains(name))) return params[name];
+    if (U.isObj(params) && O.contains(params, name)) return params[name];
     if (U.exists(def)) return def;
     throw new Error('missing param: "' + name + '"');
   },
@@ -311,7 +303,7 @@ global.U = {
     return U.isStdObj(obj) || U.isPrimitive(obj);
   },
   isClassedObj: function(obj) {
-    // TODO: Checking for a "title" attribute is hackish...
+    // TODO: Checking for a "title" attribute is hackish... This method should probably be removed
     try { return 'constructor' in obj && 'title' in obj.constructor; } catch(e) {};
     return false;
   },
