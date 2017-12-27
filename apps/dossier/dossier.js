@@ -137,8 +137,39 @@ var package = new PACK.pack.Package({ name: 'dossier',
         };}
       }),
       
+      /*
+      HEEERE
+      
+      - The other side needs to be able to listen for any changes occurring on any Dossiers
+      - Dossiers need to concern any worriers when their values change
+      - A Dossier value is only considered to have changed once an editor transaction has
+        gone through
+      - Editor needs to call `doss.concern('valueChanged')`
+      - Editor needs to be able to include a full description of the change which occurred
+        in this call to `Dossier.prototype.concern`.
+      - Editor needs to accumulate a description of the effects of all atomics in a
+        transaction
+      - Telling the other side to "sync" on a Dossier should immediately return an entire
+        description of the Dossier, and as long as the sync persists, should inform the
+        other side of all changes which occur to the Dossier.
+        - Each of these notifications needs to include an integer indicating order
+        - The other side can't process an update notification if it is missing any
+          notifications that came before
+        - If the other side hasn't gotten an intermediate notification in too long, it can
+          issue a "resync" command (which can probably be just another "sync" call)
+      */
+      
       /* Editor - make changes to Dossier structures */
       Editor: U.makeClass({ name: 'Editor',
+        description: 'An Editor allows multiple actions to be performed together on ' +
+          'a Dossier structure. The user does not need to be concerned with action ' +
+          'ordering (e.g. if one action cannot succeed without another action having ' +
+          'first succeeded, the Editor will work this out on its own. The Editor ' +
+          'provides transactional consistency. All actions present when ' +
+          '`anEditor.$transact` is called will either succeed or fail, with no ' +
+          'partial effects. The value resulting from a transaction provides a full ' +
+          'description of the actions which occurred, and is used to signal concerns ' +
+          'on any involved Dossier instances.',
         methods: function(sc, c) { return {
           
           init: function(params) {
@@ -894,64 +925,50 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.getRoot().isRoot();
           },
           
-          $heedOrder: function(params /* session, command, params, sessionHandlerParams */) { // Dossier
+          $heedOrder: function(params /* session, command, params, channelerParams */) { // Dossier
             
-            // TODO: "session" should be in `params`, not `params.channelParams`
-            // Dossiers always handle requests by executing abilities
+            // Dossiers handle "sync" and "getType" orders; all other orders are handled
+            // through abilities.
             
-            var session = U.param(params, 'session');
-            var abilityName = U.param(params, 'command');
-            var abilityParams = U.param(params, 'params', {});
-            var sessionHandlerParams = U.param(params, 'sessionHandlerParams', {}); // Passed on to the session handler; hints how to notify the remote side
-            
-            try {
+            var pass = this;
+            return new P({ run: function() {
               
-              // TODO: It feels like a hack right now: `result` can be a promise
-              // for doing processing after the transaction; e.g. adding a doss
-              // may use `return editor.$transaction.then(function() { return { address: doss.getAddress() }; });`
-              // to return the address of a fully-transacted `Dossier`.
+              var session = U.param(params, 'session');
+              var command = U.param(params, 'command');
+              var orderParams = U.param(params, 'params', {});
+              var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
               
               // NOTE: `result` is returned from a `then` method, so it may be either
               // an immediate value or a promise. This means that the result of
               // an `Ability.prototype.use` method, or the result of an `ability.decorate`
               // function, may be a promise - even if these aren't $-prefixed.
               
-              var ability = this.hasAbility(abilityName) ? this.getAbility(abilityName) : null;
-              if (!ability || !ability.public) throw new Error('Ability "' + abilityName + '" unavailable');
+              var ability = this.hasAbility(command) ? this.getAbility(command) : null;
+              if (!ability || !ability.public) throw new Error('Ability "' + command + '" unavailable');
               
               var editor = new ds.Editor();
-              var result = this.stageAbility(ability, editor, null, abilityParams);
+              var result = this.stageAbility(ability, editor, null, orderParams);
               
               // Note that `result` can be a promise, even if it isn't $-prefixed. So we can only deal with it
               // after `editor.$transact` is complete!
-              var pass = this;
-              var $result = editor.$transact().then(function() { return result; }).then(function(data) {
+              return editor.$transact().then(function() { return result; }).then(function(data) {
                 
                 if (!data) return p.$null;
                 
                 return pass.$giveOrder({
                   session: session,
                   data: data,
-                  sessionHandlerParams: sessionHandlerParams
+                  channelerParams: channelerParams
                 });
                 
               });
               
-            } catch(err) {
-              
-              var $result = new P({ err: err.update({
-                message: this.getAddress() + '.' + abilityName + '(' + U.debugObj(abilityParams) + '):\n' + err.message
-              })});
-              
-            }
-            
-            return $result;
+            }});
             
           },
-          $giveOrder: function(params /* session, data, sessionHandlerParams */) { // Dossier
-            
-            return this.outline.getRoot().sessionHandler.$giveOrder(params);
-            
+          $giveOrder: function(params /* session, data, channelerParams */) { // Dossier
+            // TODO: In request-heavy environments it may be worth keeping a reference to the Channeler
+            return this.outline.getRoot().channeler.$giveOrder(params);
           },
           
           hasAbility: function(name) {
@@ -1023,7 +1040,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var changeHandler = this.outline.p.changeHandler;
             if (changeHandler) {
               this.changeHandler = changeHandler.bind(null, this);
-              this.addConcern('value', this.changeHandler);
+              this.addWorry('value', this.changeHandler);
             }
             
             // Apply any decorator function
@@ -1046,7 +1063,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             // Stop any change handler
             if (this.changeHandler) {
-              this.remConcern('value', this.changeHandler);
+              this.remWorry('value', this.changeHandler);
               delete this.changeHandler;
             }
             

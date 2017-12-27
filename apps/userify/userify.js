@@ -427,7 +427,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             var drg = this.dragDecorator.info.getValue();
             var dropZone = this.info.getValue();
             
-            // It's possible `dropZone` is null if the mouseup is occuring not as the final step of a drag action
+            // It's possible `dropZone` is null if the mouseup is occurring, but not as the final step of a drag action
             if (dropZone && drg.drag) this.action({ target: drg.view, dropZone: dropZone });
           },
           mouseEnter: function(view, event) {
@@ -499,10 +499,10 @@ var package = new PACK.pack.Package({ name: 'userify',
             view['~' + this.id + '.keyPress'] = c.keyPress.bind(this, view);
             uf.domAddListener(view.domRoot.getElementsByClassName('interactive')[0], 'onkeydown', view['~' + this.id + '.keyPress']);
             
-            if (this.validateFunc) view.info.addConcern('value', this.valConcern);
+            if (this.validateFunc) view.info.addWorry('value', this.valConcern);
           },
           stop: function(view) {
-            if (this.validateFunc) view.info.remConcern('value', this.valConcern);
+            if (this.validateFunc) view.info.remWorry('value', this.valConcern);
             
             if (view.domRoot) {
               var interactive = view.domRoot.getElementsByClassName('interactive')[0];

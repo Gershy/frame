@@ -1,7 +1,6 @@
 new PACK.pack.Package({ name: 'worry',
   buildFunc: function() {
     
-    
     var wr = {
       
       WORRY_ID: 0,
@@ -9,6 +8,7 @@ new PACK.pack.Package({ name: 'worry',
         methods: function(sc, c) { return {
           
           init: function(params) {
+            // To keep objects lightweight, this class doesn't add any properties until necessary
           },
           getKey: function() {
             if (!this.hasOwnProperty('worryId')) {
@@ -18,26 +18,79 @@ new PACK.pack.Package({ name: 'worry',
             }
             return '~wr.' + this.worryId;
           },
-          addConcern: function(type, func) {
-            var key = this.getKey();
-            if (key in func) throw new Error('Tried to add the same interest twice');
+          addWorry: function(type, func, key0) {
             
-            func[key] = this.nextId++;
             if (!(type in this.concerns)) this.concerns[type] = {};
-            this.concerns[type][func[key]] = func;
-          },
-          remConcern: function(type, func) {
-            var key = this.getKey();
-            if (!(key in func)) return;
-            if (this.concerns[type][func[key]] !== func) throw new Error('Something has gone horribly wrong');
             
-            delete func[key];
-            delete this.concerns[type][func[key]];
-            if (U.isEmptyObj(this.concerns[type])) delete this.concerns[type];
+            if (U.exists(key0)) {
+              
+              var key = key0;
+              if (O.contains(this.concerns[type], key)) throw new Error('Tried to add the same concern twice');
+              
+            } else {
+              
+              // If no key is supplied, a key is generated and attached to the function itself
+              // In this way the key can be found from the function, and the function itself
+              // can be provided for the removal call
+              var key = this.nextId++;
+              
+              var uniqKey = this.getKey();
+              if (!O.contains(func, uniqKey)) func[uniqKey] = {};
+              if (O.contains(func[uniqKey], type)) throw new Error('Tried to add the same concern twice');
+              
+              func[uniqKey][type] = key;
+              
+            }
+            
+            this.concerns[type][key] = func;
+            
           },
-          hasConcern: function(type, func) {
-            var key = this.getKey();
-            return (type in this.concerns) && (key in func) && (func[key] in this.concerns[type]);
+          remWorry: function(type, func) {
+            
+            if (!O.contains(this.concerns, type)) return;
+            
+            if (!U.isObj(func, Function)) {
+              
+              // `func` is a serial value
+              var key = func;
+              delete this.concerns[type][key];
+              
+            } else {
+              
+              var uniqKey = this.getKey();
+              if (!O.contains(func, uniqKey) || !O.contains(func[uniqKey], type)) return;
+              
+              var key = func[uniqKey][type];
+              if (this.concerns[type][key] !== func) throw new Error('Something has gone horribly wrong');
+              delete func[uniqKey][type];
+              if (O.isEmpty(func[uniqKey])) delete func[uniqKey];
+              
+            }
+            
+            delete this.concerns[type][key];
+            if (O.isEmpty(this.concerns[type])) delete this.concerns[type];
+            
+          },
+          hasWorry: function(type, func) {
+            
+            if (!O.contains(this.concerns, type)) return false;
+            
+            if (!U.isObj(func, Function)) {
+              
+              var key = func;
+              
+            } else {
+              
+              var uniqKey = this.getKey();
+              if (O.contains(func, uniqKey) && O.contains(func[uniqKey], type))
+                var key = func[uniqKey][type];
+              else
+                return false;
+              
+            }
+            
+            return O.contains(this.concerns[type], key);
+            
           },
           concern: function(type, params) {
             if (!('concerns' in this)) return;

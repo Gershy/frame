@@ -74,7 +74,10 @@ new PACK.pack.Package({ name: 'server',
         
       },
       
-      SessionHandler: U.makeClass({ name: 'SessionHandler', superclass: tr.TreeNode,
+      Channeler: U.makeClass({ name: 'Channeler', superclass: tr.TreeNode,
+        description: 'Entry point for remote communications. Manipulates a number ' +
+          'of channels in order to provide protocol-agnostic communication with ' +
+          'the other side.',
         methods: function(sc) { return {
           init: function(params /* appName, assetVersion */) {
             this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
@@ -91,7 +94,7 @@ new PACK.pack.Package({ name: 'server',
           getSession: function(ip) {
             
             if (!this.sessionSet.contains(ip)) {
-              this.sessionSet[ip] = new sv.Session({ ip: ip, sessionHandler: this });
+              this.sessionSet[ip] = new sv.Session({ ip: ip, channeler: this });
               // TODO: Session timeouts
               console.log('Initiated session: ' + this.sessionSet[ip].ip + ' (' + this.sessionSet[ip].id + ')');
             }
@@ -103,7 +106,7 @@ new PACK.pack.Package({ name: 'server',
           addChannel: function(channel) {
             
             this.channels[channel.name] = channel;
-            channel.sessionHandler = this;
+            channel.channeler = this;
             
             var pass = this;
             channel.$initialized().then(function() {
@@ -131,12 +134,12 @@ new PACK.pack.Package({ name: 'server',
             
           },
           
-          $giveOrder: function(params /* session, data, sessionHandlerParams { channelName, channelParams } */) { // SessionHandler
+          $giveOrder: function(params /* session, data, channelerParams { channelName, channelParams } */) { // Channeler
             
             /*
             Notifies the other side using the best possible method.
             
-            If `params.sessionHandlerParams.channelName` is provided, then the named
+            If `params.channelerParams.channelName` is provided, then the named
             channel is guaranteed to be used to communicate the order.
             */
             
@@ -147,9 +150,9 @@ new PACK.pack.Package({ name: 'server',
             var session = null;
             /// =CLIENT}
             
-            var sessionHandlerParams = U.param(params, 'sessionHandlerParams', {});
-            var channelName = U.param(sessionHandlerParams, 'channelName', null);
-            var channelParams = U.param(sessionHandlerParams, 'channelParams', {});
+            var channelerParams = U.param(params, 'channelerParams', {});
+            var channelName = U.param(channelerParams, 'channelName', null);
+            var channelParams = U.param(channelerParams, 'channelParams', {});
             
             var channel = channelName
               ? U.param(this.channels, channelName)
@@ -163,7 +166,7 @@ new PACK.pack.Package({ name: 'server',
             });
             
           },
-          $heedOrder: function(params /* session, address, command, params, sessionHandlerParams */) { // SessionHandler
+          $heedOrder: function(params /* session, address, command, params, channelerParams */) { // Channeler
             
             /*
             Obeys an order from the other side
@@ -185,9 +188,9 @@ new PACK.pack.Package({ name: 'server',
               var session = U.param(params, 'session');
               var command = U.param(params, 'command');
               var orderParams = U.param(params, 'params', {});
-              var sessionHandlerParams = U.param(params, 'sessionHandlerParams', {});
+              var channelerParams = U.param(params, 'channelerParams', {});
               
-              orderDesc = address.join('.') + '.' + command + '(' + U.debugObj(orderParams) + ');';
+              orderDesc = (address.length ? (address.join('.') + '.') : '~root') + command + '(' + U.debugObj(orderParams) + ');';
               
               var child = pass.getChild(address);
               if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
@@ -195,18 +198,18 @@ new PACK.pack.Package({ name: 'server',
               // TODO: This looks messy; checking if `child` is an `sv.Channel` seems hackish??
               if (child === pass) {
                 
-                // The SessionHandler itself is consuming the order (via `SessionHandler.prototype.$heedOrder0`)
-                return pass.$heedOrder0({ session: session, command: command, params: orderParams, sessionHandlerParams: sessionHandlerParams });
+                // The Channeler itself is consuming the order (via `Channeler.prototype.$heedOrder0`)
+                return pass.$heedOrder0({ session: session, command: command, params: orderParams, channelerParams: channelerParams });
               
               } else if (U.isInstance(child, sv.Channel)) {
                 
                 // A Channel is consuming the order (so it needs channel params, not sessionhandler params)
-                return child.$heedOrder({ session: session, command: command, params: orderParams, channelParams: U.param(sessionHandlerParams, 'channelParams', {}) });
+                return child.$heedOrder({ session: session, command: command, params: orderParams, channelParams: U.param(channelerParams, 'channelParams', {}) });
                 
               } else {
                 
                 // Some other child is consuming the order
-                return child.$heedOrder({ session: session, command: command, params: orderParams, sessionHandlerParams: sessionHandlerParams });
+                return child.$heedOrder({ session: session, command: command, params: orderParams, channelerParams: channelerParams });
                 
               }
               
@@ -227,14 +230,14 @@ new PACK.pack.Package({ name: 'server',
             });
             
           },
-          $heedOrder0: function(params /* session, command, params, sessionHandlerParams */) {
+          $heedOrder0: function(params /* session, command, params, channelerParams */) {
             
             var pass = this;
             return new P({ run: function() {
               
               var command = params.command;
               var orderParams = params.params;
-              var sessionHandlerParams = params.sessionHandlerParams;
+              var channelerParams = params.channelerParams;
               var session = params.session;
               
               if (command === 'getFile') {
@@ -340,9 +343,9 @@ new PACK.pack.Package({ name: 'server',
                 return $orderResponse.fail(function(err) {
                   
                   return new sv.OrderResponse({
-                    contentType: 'text/plain',
                     encoding: 'utf8',
-                    code: 404,
+                    contentType: 'text/plain',
+                    httpCode: 404,
                     data: 'File "' + reqPath.join('/') + '" unavailable (' + err.message + ')'
                   });
                   
@@ -351,7 +354,7 @@ new PACK.pack.Package({ name: 'server',
                   return pass.$giveOrder({
                     session: session,
                     data: orderResponse,
-                    sessionHandlerParams: sessionHandlerParams
+                    channelerParams: channelerParams
                   });
                   
                 });
@@ -365,7 +368,7 @@ new PACK.pack.Package({ name: 'server',
                     command: 'pong',
                     data: null
                   },
-                  sessionHandlerParams: sessionHandlerParams
+                  channelerParams: channelerParams
                 });
                 
               } else if (command === 'pong') {
@@ -388,7 +391,7 @@ new PACK.pack.Package({ name: 'server',
                       }
                     })
                   },
-                  sessionHandlerParams: sessionHandlerParams
+                  channelerParams: channelerParams
                 });
                 
               } else if (command === 'getServerTime') {
@@ -421,7 +424,7 @@ new PACK.pack.Package({ name: 'server',
             
             this.name = U.param(params, 'name');
             this.priority = U.param(params, 'priority', 0);
-            this.sessionHandler = null;
+            this.channeler = null;
             
           },
           $initialized: function() {
@@ -487,7 +490,7 @@ new PACK.pack.Package({ name: 'server',
       }),
       ChannelHttp: U.makeClass({ name: 'ChannelHttp', superclassName: 'Channel',
         methods: function(sc, c) { return {
-          init: function(params /* name, sessionHandler, host, port, numToBank */) {
+          init: function(params /* name, channeler, host, port, numToBank */) {
             sc.init.call(this, params);
             this.host = U.param(params, 'host');
             this.port = U.param(params, 'port');
@@ -759,15 +762,15 @@ new PACK.pack.Package({ name: 'server',
               
               // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
               var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
-              var session = pass.sessionHandler.getSession(ip);
+              var session = pass.channeler.getSession(ip);
               
-              // TODO: What about error handling? If `pass.sessionHandler.$heedOrder` rejects, it must not have given any orders...
-              return pass.sessionHandler.$heedOrder({
+              // TODO: What about error handling? If `pass.channeler.$heedOrder` rejects, it must not have given any orders...
+              return pass.channeler.$heedOrder({
                 session: session,
                 address: U.param(queryObj, 'address'),
                 command: U.param(queryObj, 'command'),
                 params: U.param(queryObj, 'params', {}),
-                sessionHandlerParams: {
+                channelerParams: {
                   channelName: pass.name,
                   channelParams: { res: res }
                 }
@@ -779,31 +782,6 @@ new PACK.pack.Package({ name: 'server',
               console.error(err);
               
             }).done();
-            
-            
-            /*
-            .then(function(responseObj) {                 // Ensure the result is a `OrderResponse` instance
-              
-              return U.isInstance(responseObj, sv.OrderResponse)
-                ? responseObj
-                : new sv.OrderResponse({ data: responseObj });
-              
-            }).fail(function(err) {                         // Errors result in 400 responses
-              
-              console.error(err);
-              return new sv.OrderResponse({
-                encoding: 'utf8',
-                contentType: 'text/plain',
-                code: 400,
-                data: err.message
-              });
-              
-            }).then(function(responseData) {                // Send the result
-              
-              responseData.endResponse(res);
-              
-            }).done();
-            */
             
           },
           /// =SERVER}
@@ -837,7 +815,7 @@ new PACK.pack.Package({ name: 'server',
             }}).then(function(order) {
               
               // TODO: What if `order` is the number zero (`0`)? It should probably be required to be an `Object`.
-              return order ? pass.sessionHandler.$heedOrder(order) : null;
+              return order ? pass.channeler.$heedOrder(order) : null;
               
             });
             
@@ -906,7 +884,7 @@ new PACK.pack.Package({ name: 'server',
       }),
       ChannelSocket: U.makeClass({ name: 'ChannelSocket', superclassName: 'Channel',
         methods: function(sc, c) { return {
-          init: function(params /* name, sessionHandler, host, port */) {
+          init: function(params /* name, channeler, host, port */) {
             sc.init.call(this, params);
             this.host = U.param(params, 'host');
             this.port = U.param(params, 'port');
@@ -982,15 +960,15 @@ new PACK.pack.Package({ name: 'server',
             /// =SERVER}
             /// {CLIENT=
             var socket = new WebSocket('ws://' + this.host + ':' + this.port);
-            var sessionHandler = this.sessionHandler;
+            var channeler = this.channeler;
             socket.onopen = this.$ready.resolve.bind(this.$ready);
             socket.onmessage = function(evt) {
               
-              sessionHandler.$heedOrder(O.update(
+              channeler.$heedOrder(O.update(
                 U.stringToThing(evt.data),
                 {
                   session: null,
-                  sessionHandlerParams: {}
+                  channelerParams: {}
                 }
               )).done();
               
@@ -1024,9 +1002,9 @@ new PACK.pack.Package({ name: 'server',
           'forwarded to the `Channel.prototype.$heedOrder` method - which is the ' +
           'client-side entry-point.',
         methods: function(sc) { return {
-          init: function(params /* ip, sessionHandler */) {
+          init: function(params /* ip, channeler */) {
             this.ip = U.param(params, 'ip');
-            this.sessionHandler = U.param(params, 'sessionHandler');
+            this.channeler = U.param(params, 'channeler');
             this.id = U.id(sv.Session.NEXT_ID++);
             this.userData = {};
             this.channelData = {};
@@ -1036,9 +1014,9 @@ new PACK.pack.Package({ name: 'server',
       }),
       OrderResponse: U.makeClass({ name: 'OrderResponse',
         methods: function(sc) { return {
-          init: function(params /* code, contentType, encoding, data */) {
+          init: function(params /* httpCode, contentType, encoding, data */) {
             
-            this.code = U.param(params, 'code', 200);
+            this.httpCode = U.param(params, 'code', 200);
             this.contentType = U.param(params, 'contentType', 'text/json');
             this.encoding = U.param(params, 'encoding', 'binary'); // 'binary' | 'utf8'
             this.data = U.param(params, 'data');
@@ -1047,7 +1025,7 @@ new PACK.pack.Package({ name: 'server',
           endResponse: function(res) {
             
             var data = this.contentType === 'text/json' ? U.thingToString(this.data) : this.data;
-            res.writeHead(this.code ? this.code : 200, {
+            res.writeHead(this.httpCode ? this.httpCode : 200, {
               'Content-Type': this.contentType,
               'Content-Length': Buffer.byteLength(data, this.encoding)
             });
@@ -1323,16 +1301,16 @@ new PACK.pack.Package({ name: 'server',
                     this.curOp = null;
                     this.curFrames = [];
                     
-                    var sessionHandler = this.channel.sessionHandler;
+                    var channeler = this.channel.channeler;
                     
                     var order = O.update(U.stringToThing(fullStr), {
-                      session: sessionHandler.getSession(this.ip),
-                      sessionHandlerParams: {}
+                      session: channeler.getSession(this.ip),
+                      channelerParams: {}
                     });
                     
-                    sessionHandler.$heedOrder(order).done();
-                    //var sessionHandler = this.channel.sessionHandler;
-                    //sessionHandler.getSession(this.ip).$heedOrder(obj).done();
+                    channeler.$heedOrder(order).done();
+                    //var channeler = this.channel.channeler;
+                    //channeler.getSession(this.ip).$heedOrder(obj).done();
                     
                     // this.$heedOrder(obj).done();
                     

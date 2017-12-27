@@ -13,9 +13,6 @@ require('./common.js');
 
 if (!U.isServer()) throw new Error('only for server-side use');
 
-// var TCP = process.binding('tcp_wrap').TCP;
-// var tcp = new TCP();
-
 new PACK.pack.Package({ name: 'frame',
   dependencies: [ 'compile' ],
   buildFunc: function(packageName, cm) {
@@ -131,6 +128,25 @@ new PACK.pack.Package({ name: 'frame',
     
     // Compile and run the "server" app
     fr.compiler.run(fr.appName, 'server');
+    
+  },
+  test: function(tester, fr) {
+    
+    tester.add(function() { return O.isEmpty({}); });
+    tester.add(function() { return !O.isEmpty({ a: 1 }); });
+    tester.add(function() {
+      
+      var obj = { a: 1, b: 2, c: 3, d: 4 };
+      obj = O.toss(obj, [ 'b', 'd' ]);
+      
+      return [
+        O.contains(obj, 'a'),
+        !O.contains(obj, 'b'),
+        O.contains(obj, 'c'),
+        !O.contains(obj, 'd')
+      ];
+      
+    });
     
   }
 }).build();

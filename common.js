@@ -332,6 +332,10 @@ global.U = {
     for (var k in obj) return k;
     throw new Error('Cannot get first property of empty object');
   },
+  firstVal: function(obj) {
+    for (var k in obj) return obj[k];
+    throw new Error('Cannot get first value of empty object');
+  },
   matches: function(o, o2) {
     for (var k in o2) if (!o.contains(k) || o[k] !== o2[k]) return false;
     return true;
@@ -420,6 +424,10 @@ global.U = {
     update: function(obj1, obj2) {
       for (var k in obj2) obj1[k] = obj2[k];
       return obj1;
+    },
+    isEmpty: function(obj) {
+      for (var k in obj) return false;
+      return true;
     }
   },
   arr: {

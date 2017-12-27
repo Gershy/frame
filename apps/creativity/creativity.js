@@ -211,7 +211,7 @@ new PACK.pack.Package({ name: 'creativity',
         superclass: ds.DossierObj,
         methods: function(sc, c) { return {
           /// {SERVER=
-          $heedOrder: function(params /* session, command, params, sessionHandlerParams */) { // Creativity
+          $heedOrder: function(params /* session, command, params, channelerParams */) { // Creativity
             
             var session = U.param(params, 'session');
             var command = U.param(params, 'command');
@@ -228,7 +228,7 @@ new PACK.pack.Package({ name: 'creativity',
                     data: U.timeMs()
                   }
                 },
-                sessionHandlerParams: params.sessionHandlerParams
+                channelerParams: params.channelerParams
               });
               
             } else if (command === 'getToken') {
@@ -254,7 +254,7 @@ new PACK.pack.Package({ name: 'creativity',
                       data: error
                     }
                   },
-                  sessionHandlerParams: sessionHandlerParams
+                  channelerParams: channelerParams
                 });
                 
               } else {
@@ -268,7 +268,7 @@ new PACK.pack.Package({ name: 'creativity',
                       data: user.getToken()
                     }
                   },
-                  sessionHandlerParams: params.sessionHandlerParams
+                  channelerParams: params.channelerParams
                 });
               
               }
@@ -1661,15 +1661,15 @@ new PACK.pack.Package({ name: 'creativity',
     var port = parseInt(window.location.port || 80); // TODO: This isn't taking https into account
     /// =CLIENT}
     
-    var sessionHandler = new sv.SessionHandler({ appName: packageName });
-    sessionHandler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: host, port: port }));
-    sessionHandler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    var channeler = new sv.Channeler({ appName: packageName });
+    channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: host, port: port }));
+    channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
     
     // Link the outline to the session handler
-    outline.sessionHandler = sessionHandler;
+    outline.channeler = channeler;
     
     return cr.update({
-      sessionHandler: sessionHandler,
+      channeler: channeler,
       versioner: versioner
     });
     
@@ -1693,10 +1693,10 @@ new PACK.pack.Package({ name: 'creativity',
     var P = p.P;
     
     // Tell all channels to start
-    var sessionHandler = cr.sessionHandler;
-    for (var k in sessionHandler.channels) {
+    var channeler = cr.channeler;
+    for (var k in channeler.channels) {
       
-      var cap = sessionHandler.channels[k];
+      var cap = channeler.channels[k];
       cap.$initialized().then(function(cap) { console.log(cap.getReadyNotification()); }.bind(null, cap));
       cap.start();
       
@@ -1706,7 +1706,7 @@ new PACK.pack.Package({ name: 'creativity',
       // console.log('Initialized!');
       // U.debug(doss.getData());
       
-      sessionHandler.handler = doss;
+      channeler.handler = doss;
       cr.queryHandler = doss;
       
       /// {SERVER=
@@ -1718,10 +1718,7 @@ new PACK.pack.Package({ name: 'creativity',
       // Socket notification test
       setInterval(function() {
         
-        var seshes = sessionHandler.sessionSet;
-        var sesh0 = seshes[U.firstKey(seshes)];
-        
-        sessionHandler.channels.sokt.$giveOrder({ session: sesh0, data: {
+        channeler.channels.sokt.$giveOrder({ session: U.firstVal(channeler.sessionSet), data: {
           
           address: [ '~root', 'version' ],
           command: 'get',
@@ -2243,7 +2240,7 @@ new PACK.pack.Package({ name: 'creativity',
         // TODO: Loading will have to be implemented manually :(
         // Need to set a "loginFormLoading" value to `true`, and then to `false`
         // when credentials arrive.
-        return cr.sessionHandler.$giveOrder({
+        return cr.channeler.$giveOrder({
           
           data: {
             

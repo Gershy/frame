@@ -67,17 +67,15 @@ var package = new PACK.pack.Package({ name: 'p',
               
             } else if (params.contains('run')) {
               
-              var cb = U.param(params, 'run');
               try {
-                var result = cb();
-                return PACK.p.$(result);
+                return PACK.p.$(params.run()).then(this.resolve.bind(this));
               } catch(err) {
                 this.reject(err);
               }
               
             } else if (params.contains('cb')) {
               
-              var cb = U.param(params, 'cb');
+              var cb = params.cb;
               var args = U.param(params, 'args');
               return cb.apply(null, args.concat([ function(err, v) {
                 return err? this.reject(err) : this.resolve(v);
