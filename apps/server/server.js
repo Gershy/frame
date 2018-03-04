@@ -104,7 +104,7 @@ new PACK.pack.Package({ name: 'server',
             
             this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
             this.appName = U.param(params, 'appName');
-            this.handler = U.param(params, 'handler');
+            this.handler = U.param(params, 'handler', null);
             
             this.channels = {};
             this.favouriteChannel = null;
@@ -200,7 +200,12 @@ new PACK.pack.Package({ name: 'server',
               var address = U.param(params, 'address', []);
               if (U.isObj(address, String)) address = address.split('.');
               
+              /// {SERVER=
               var session = U.param(params, 'session');
+              /// =SERVER}
+              /// {CLIENT=
+              var session = null;
+              /// =CLIENT}
               var command = U.param(params, 'command');
               var orderParams = U.param(params, 'params', {});
               var channelerParams = U.param(params, 'channelerParams', {});
@@ -231,6 +236,7 @@ new PACK.pack.Package({ name: 'server',
                 var $result = child.$heedOrder({ session: session, command: command, params: orderParams, channelerParams: channelerParams })
                 
                 // The Channel may need to do some cleanup if it is connection-based or potentially for other reasons (that I haven't thought of)
+                // TODO: Should cleanup be done for Channel and Channeler actions as well??
                 if (channel)
                   $result = $result.then(channel.cleanup.bind(channel, channelParams));
                 
@@ -536,7 +542,7 @@ new PACK.pack.Package({ name: 'server',
             this.server = null;
             
             /// {CLIENT=
-            this.numToBank = U.param(params, 'numToBank', 4);
+            this.numToBank = U.param(params, 'numToBank', 1);
             this.numBanked = 0;
             /// =CLIENT}
           },
@@ -603,13 +609,11 @@ new PACK.pack.Package({ name: 'server',
             var command = U.param(data, 'command');
             var params = U.param(data, 'params');
             
-            console.log('Beginning query (' + command + ')...');
             return this.$doQuery({
               address: address,
               command: command,
               params: params
-            })
-              .then(p.log('Done query...'))
+            });
             
             /// =CLIENT}
             
@@ -657,6 +661,8 @@ new PACK.pack.Package({ name: 'server',
                 return null;
                 
               } else if (command === 'fizzleAllPolls') {
+                
+                console.log('FIZZLING!!');
                 
                 var polls = pass.useSessionData(session).polls;
                 while (polls.length) pass.sendResponse(polls.shift(), null);
@@ -872,7 +878,7 @@ new PACK.pack.Package({ name: 'server',
                   if (xhr.status === 200) return resolve(formatIncoming(xhr));
                   
                   if (xhr.status === 0) {
-                    console.log('Warning: zero-status');
+                    console.log('Warning: xhr status: 0');
                     return resolve(null); // Status 0 indicates browser error. TODO: This can make cross domain errors hard to detect
                   }
                   
@@ -891,7 +897,6 @@ new PACK.pack.Package({ name: 'server',
               xhr.open('POST', '', true);
               xhr.setRequestHeader('Content-Type', 'application/json');
               xhr.send(U.thingToString({ address: address, command: command, params: reqParams }));
-              console.log('Query sent (' + command + ')...');
               
             }}).then(function(order) {
               
@@ -923,30 +928,11 @@ new PACK.pack.Package({ name: 'server',
           $start: function() {
             
             /// {SERVER=
-            
-            /* // Monitor session polls
-            var pass = this;
-            setInterval(function() {
-              
-              var sessionSet = pass.channeler.sessionSet;
-              var data = [];
-              
-              for (var k in sessionSet) {
-                data.push({
-                  ip: sessionSet[k].ip,
-                  num: sessionSet[k].channelData[pass.name].polls.length,
-                  data: sessionSet[k].channelData[pass.name]
-                });
-              }
-              
-              console.log('SESSIONDAT:', data);
-              
-            }, 2000);*/
-            
             this.server = require('http').createServer(this.serverFunc.bind(this));
             this.server.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
             return this.$ready;
             /// =SERVER}
+            
             /// {CLIENT=
             // Ensure there are no polls already held by the server. If the server attempted
             // to resolve these polls, *this* instance would not be informed because it has
@@ -970,7 +956,7 @@ new PACK.pack.Package({ name: 'server',
             this.server = null;
             /// =SERVER}
             /// {CLIENT=
-            console.log('STOPPED HTTP CHANNEL');
+            console.log('FIZZLING');
             this.$doQuery({ address: [ this.name ], command: 'fizzleAllPolls' }).done();
             /// =CLIENT}
             

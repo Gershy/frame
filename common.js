@@ -358,10 +358,9 @@ global.U = {
   // JSON utility
   obj: {
     is: function(v) { return U.isObj(v, Object); },
-    clone: function(obj1, obj2) {
+    clone: function(obj1) {
       var ret = {};
       for (var k in obj1) ret[k] = obj1[k];
-      if (obj2) for (var k in obj2) ret[k] = obj2[k];
       return ret;
     },
     contains: function(obj, k) {

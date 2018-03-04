@@ -52,3 +52,5 @@ node_modules/
 cmp-*.js
 apps/*/state/persisted.json
 apps/*/state/state.json
+apps/LEGACY/*/state/persisted.json
+apps/LEGACY/*/state/state.json

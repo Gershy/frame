@@ -54,151 +54,213 @@ var package = new PACK.pack.Package({ name: 'test',
     // This isn't possible because the root Doss is needed to declare the Channeler,
     // and the root Outline is needed first to declare the root Doss. Bad circle.
     
-    // Initialize outline
-    var outline = new ds.Outline({ name: 'test', c: ds.DossierObj });
-    outline.addChild('val', ds.DossierStr);
-    outline.channeler = null;
+    // Initialize activities
+    var activities = [];
     
-    var arr = outline.addChild('arr', ds.DossierArr, function(doss) {
-      
-      doss.addAbility('grow', function(session, channelerParams, editor, params /* doSync, data */) {
-        
-        var doSync = U.param(params, 'doSync');
-        var data = U.param(params, 'data');
-        
-        editor.add({ par: doss, data: data });
-        
-        if (doSync) {
-          
-          editor.$transaction
-            .then(doss.$giveOrder.bind(doss, { data: {
-              address: doss.getAddress(),
-              command: 'grow',
-              params: { doSync: false, data: data }
-            }}))
-            .done();
-          
-        }
-        
-        return p.$null;
-        
-      });
-      
-    });
-    arr.addDynamicChild('val', ds.DossierStr, { nameFunc: null });
+    /// {CLIENT=
+    window.addEventListener('unload', A.each.use(activities, 'stop'), { capture: true });
+    /// =CLIENT}
     
-    var obj = outline.addChild('obj', ds.DossierObj, function(doss) {
+    // ==== Initialize channeler
+    var hostData = sv.getPhysicalHostData();
+    var channeler = new sv.Channeler({ appName: 'test', handler: rootDoss });
+    channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: hostData.host, port: hostData.port, numToBank: 1 }));
+    channeler.$start()
+      .then(function() { console.log('Channeler ready'); })
+      .fail(function(err) { console.error(err); })
+      .done();
+    
+    activities.push(channeler);
+    
+    // ==== Initialize actionizer
+    var Actionizer = U.makeClass({ name: 'Actionizer', methods: function(sc, c) { return {
       
-      doss.addAbility('validate', function(editor, params /* data */) {
+      init: function(params /* channeler */) {
         
-        if (false) return new P({ err: new Error('Invalid') });
-        return new P({ val: 'PAR VAL' });
+        this.channeler = U.param(params, 'channeler');
         
-      });
-      
-    });
-    obj.addChild('val1', ds.DossierStr, function(doss) {
-      
-      doss.addAbility('mod', function(session, channelerParams, editor, params /* doSync, data, authParams */) {
+      },
+      addAbility: function(doss, name, act) {
         
-        var doSync = U.param(params, 'doSync');
-        var data = U.param(params, 'data');
-        var authParams = U.param(params, 'authParams', {});
+        var channeler = this.channeler;
         
-        // TODO: When many children of the same parent are all modified at once,
-        // the parent will be repetitively asked to validate the exact same data.
-        // Consider a caching solution on the parent: validate checks are cached
-        // temporarily??
-        return doss.par.$useAbility('validate', session, authParams).then(function(parVal) {
+        doss.addAbility(name, function(session, channelerParams, editor, params /* doSync, data */) {
           
-          editor.mod({ doss: doss, data: data });
+          // Perform whatever actions this ability ought to carry out
+          var data = U.param(params, 'data');
+          var $result = new P({ run: act.bind(null, editor, doss, data) });
           
-          if (doSync) {
+          return $result.then(function() { // After `act` has run, prepare post-transaction to sync changes
             
-            // Do the sync, but don't wait for it to complete before declaring that the ability is complete
-            console.log('Starting sync...');
+            // When the editor transacts, sync any sessions as is necessary
             editor.$transaction
-              .then(p.log('Transaction finished...'))
-              .then(doss.$giveOrder.bind(doss, { data: {
-                address: doss.getAddress(),
-                command: 'mod',
-                params: { doSync: false, data: data, authParams: authParams, val: Math.random() } // TODO: Unnecessary data sent across wire :(
-              }}))
-              .then(p.log('Sync COMPLETE'))
-              .fail(p.log('Something FAILURE'))
+              .then(function() {
+                
+                // Determine which sessions need to be informed, and then inform them!
+                
+                /// {CLIENT=
+                // Resolves a list containing either one or zero sessions. If `doSync` is true, will sync
+                // the server session (the only session of which a client session is aware).
+                var doSync = U.param(params, 'doSync');
+                var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
+                var orderParams = { data: data };
+                /// =CLIENT}
+                
+                /// {SERVER=
+                // If `session` is set, it means that this modification was spurred on by that session.
+                // That session does not need to be informed of the change, as it's the source of the change.
+                // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
+                var sessionsToInform = O.clone(channeler.sessionSet);
+                if (session !== null) { console.log('HEEDING:', session.ip); delete sessionsToInform[session.ip]; }
+                var orderParams = { data: data, doSync: false };
+                /// =SERVER}
+                
+                console.log('Informing:', Object.keys(sessionsToInform));
+                
+                return new P({ all: O.map(sessionsToInform, function(session) {
+                  
+                  return channeler.$giveOrder({
+                    session: session,
+                    channelerParams: channelerParams,
+                    data: {
+                      address: doss.getAddress(),
+                      command: name,
+                      params: orderParams
+                    }
+                  });
+                  
+                })});
+                
+              })
+              .fail(console.error.bind(console))
               .done();
             
-          }
-          
-          return p.$null;
+          });
           
         });
         
-      });
+      },
+      str: function(doss) {
+        
+        this.addAbility(doss, 'modify', function(editor, doss, data) {
+          
+          editor.mod({ doss: doss, data: data });
+          
+        });
+        
+        this.addAbility(doss, 'clear', function(editor, doss, data) {
+          
+          editor.mod({ doss: doss, data: '' });
+          
+        });
+        
+      },
+      arr: function(doss) {
+        
+        this.addAbility(doss, 'include', function(editor, doss, data) {
+          
+          editor.add({ par: doss, data: data });
+          
+        });
+        
+        this.addAbility(doss, 'exclude', function(editor, doss, data) {
+          
+          var childName = data;
+          var child = doss.children[childName];
+          editor.rem({ par: doss, child: child });
+          
+        });
+        
+        this.addAbility(doss, 'clear', function(editor, doss, data) {
+          
+          for (var k in doss.children) editor.rem({ par: doss, child: doss.children[k] });
+          
+        });
+        
+      }
+      
+    }}});
+    var actionizer = new Actionizer({ channeler: channeler });
+    
+    // ==== Initialize outline
+    var outline = new ds.Outline({ name: 'test', c: ds.DossierObj });
+    outline.addChild('val', ds.DossierStr, function(doss) {
+      
+      actionizer.str(doss);
       
     });
-    obj.addChild('val2', ds.DossierStr);
+    outline.channeler = channeler;
+    
+    var arr = outline.addChild('arr', ds.DossierArr, function(doss) {
+      
+      actionizer.arr(doss);
+      
+    });
+    arr.addDynamicChild('val', ds.DossierStr, null,
+      function(doss) {
+        
+        return actionizer.str(doss);
+        
+      });
+    
+    var obj = outline.addChild('obj', ds.DossierObj);
+    obj.addChild('val1', ds.DossierStr, function(doss) {
+      
+      actionizer.str(doss);
+      
+    });
+    obj.addChild('val2', ds.DossierStr, function(doss) {
+      
+      actionizer.str(doss);
+      
+    });
     
     var objArr = outline.addChild('objarr', ds.DossierArr);
-    var obj = objArr.addDynamicChild('obj', ds.DossierObj, { nameFunc: function(doss) { return doss.getValue('val1') + doss.getValue('val2'); } });
+    var obj = objArr.addDynamicChild('obj', ds.DossierObj,
+      function(doss) { return doss.getValue('val1') + doss.getValue('val2'); },
+      function() {
+        
+      });
     obj.addChild('val1', ds.DossierStr);
     obj.addChild('val2', ds.DossierStr);
     
     var editor = new ds.Editor();
     var rootDoss = editor.add({ outline: outline, data: {
       
-      val: 'hi',
+      val: 'val',
       arr: {
-        0: 'hi',
-        1: 'hi'
+        0: 'arr0',
+        1: 'arr1'
       },
       obj: {
-        val1: 'hi4',
-        val2: 'hi'
+        val1: 'obj1',
+        val2: 'obj2'
       },
       objarr: {
-        hi1hi2: {
-          val1: 'hi1',
-          val2: 'hi2'
+        objarr1objarr2: {
+          val1: 'objarr1',
+          val2: 'objarr2'
         },
-        hi3hi4: {
-          val1: 'hi3',
-          val2: 'hi4'
+        objarr3objarr4: {
+          val1: 'objarr3',
+          val2: 'objarr4'
         }
       }
       
     }});
+    channeler.handler = rootDoss; // Assign this Dossier as the Channeler's handler
     
-    editor.$transact().then(function() {
+    /// {CLIENT=
+    // ==== Initialize view
+    var viewFunc = function() {
       
-      var activities = [];
-      
-      var hostData = sv.getPhysicalHostData();
-      
-      // Initialize channeler
-      outline.channeler = new sv.Channeler({ appName: 'test', handler: rootDoss });
-      outline.channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: hostData.host, port: hostData.port, numToBank: 3 }));
-      outline.channeler.$start()
-        .then(function() { console.log('Ready'); })
-        .fail(function(err) { console.error(err); })
-        .done();
-      
-      activities.push(outline.channeler);
-      
-      /// {SERVER=
-      
-      // console.log(rootDoss.getData());
-      
-      /// =SERVER}
-      
-      /// {CLIENT=
       var view = new uf.RootView({ name: 'root',
         children: [
           new uf.TextView({ name: 'title', info: 'Test' }),
           new uf.SetView({ name: 'data', children: [
             
             // Simple text field
-            new uf.TextEditView({ name: 'val', info: rootDoss.getChild('val'), cssClasses: [ 'control' ] }),
+            new uf.TextEditView({ name: 'val', info: rootDoss.getChild('val').genAbilityFact(null, 'modify'), cssClasses: [ 'control' ] }),
             
             // Array of text fields
             new uf.SetView({ name: 'dynarr', cssClasses: [ 'control' ], children: [
@@ -208,7 +270,7 @@ var package = new PACK.pack.Package({ name: 'test',
                   
                   return new uf.SetView({ name: name, cssClasses: [ 'listItem' ], children: [
                     
-                    new uf.TextEditView({ name: 'listItemContent', info: info }),
+                    new uf.TextEditView({ name: 'listItemContent', info: info.genAbilityFact(null, 'modify') }),
                     new uf.SetView({ name: 'listItemControls', children: [
                       
                       new uf.TextView({ name: 'delete', info: '-', cssClasses: [ 'listItemControl', 'uiButton' ], decorators: [
@@ -232,7 +294,7 @@ var package = new PACK.pack.Package({ name: 'test',
                   new uf.ActionDecorator({ $action: function() {
                     
                     var editor = new ds.Editor();
-                    return rootDoss.getChild('arr').$useAbility('grow', outline.session || null, null, editor, { doSync: true, data: 'NEW' })
+                    return rootDoss.getChild('arr').$useAbility('include', outline.session || null, null, editor, { doSync: true, data: 'NEW' })
                       .then(function() {
                         return editor.$transact();
                       });
@@ -247,8 +309,8 @@ var package = new PACK.pack.Package({ name: 'test',
             // Object containing 2 text fields
             new uf.SetView({ name: 'obj', cssClasses: [ 'control' ], children: [
               
-              new uf.TextEditView({ name: 'val1', info: rootDoss.getChild('obj.val1').genAbilityFact(null, 'mod') }),
-              new uf.TextEditView({ name: 'val2', info: rootDoss.getChild('obj.val2').genAbilityFact(null, 'mod') })
+              new uf.TextEditView({ name: 'val1', info: rootDoss.getChild('obj.val1').genAbilityFact(null, 'modify') }),
+              new uf.TextEditView({ name: 'val2', info: rootDoss.getChild('obj.val2').genAbilityFact(null, 'modify') })
               
             ]}),
             
@@ -257,8 +319,8 @@ var package = new PACK.pack.Package({ name: 'test',
               genChildView: function(name, info) {
                 return new uf.SetView({ name: name, children: [
                   
-                  new uf.TextEditView({ name: 'val1', info: info.getChild('val1') }),
-                  new uf.TextEditView({ name: 'val2', info: info.getChild('val2') })
+                  new uf.TextEditView({ name: 'val1', info: info.getChild('val1').genAbilityFact(null, 'modify') }),
+                  new uf.TextEditView({ name: 'val2', info: info.getChild('val2').genAbilityFact(null, 'modify') })
                   
                 ]});
               }
@@ -270,11 +332,19 @@ var package = new PACK.pack.Package({ name: 'test',
           
         }
       });
-      view.start();
       
       activities.push(view);
       
-      window.addEventListener('unload', A.each.use(activities, 'stop'), { capture: true });
+      return view;
+      
+    };
+    
+    /// =CLIENT}
+    
+    editor.$transact().then(function() {
+      
+      /// {CLIENT=
+      viewFunc().start();
       /// =CLIENT}
       
     }).done();

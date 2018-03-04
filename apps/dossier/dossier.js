@@ -116,15 +116,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return outline;
             
           },
-          addDynamicChild: function(name, cls, p) {
+          addDynamicChild: function(name, cls, nameFunc, p) {
             
-            var nameFunc = U.param(p, 'nameFunc');
-            delete p.nameFunc;
-            
-            var data = { name: name, c: cls, dynamic: true, p: p };
-            
-            if (!data.name) throw new Error('Invalid "name" property');
+            if (!name) throw new Error('Invalid "name" property');
             if (!U.isEmptyObj(this.i)) throw new Error('Cannot add a dynamic child to an outline with children');
+            
+            var data = { name: name, c: cls, dynamic: true };
+            
+            if (U.isObj(p, Object)) {
+              data.p = p;
+            } else if (U.isObj(p, Function)) {
+              data.p = { decorateFunc: p };
+            } else if (U.isDefined(p)) {
+              throw new Error('Invalid "p" param: ' + U.typeOf(p));
+            }
             
             var outline = new ds.Outline(data);
             this.p.innerOutline = outline;
@@ -838,10 +843,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 // effects cancelled if possible.
                 
                 var editor = new ds.Editor();
-                pass.$useAbility(set, session, null, editor, { doSync: true, data: val, authParams: 'AUTH_PLZ' })
-                  .then(function() {
-                    return editor.$transact();
-                  })
+                console.log('Using ability...');
+                pass.$useAbility(set, session, null, editor, { doSync: true, data: val }) // TODO: The last param should just be `val`
+                  .then(editor.$transact.bind(editor))
                 
               }
               
@@ -888,7 +892,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!this.hasResolvedName() || (this.par && !this.par.started)) throw new Error('Not ready to start "' + this.getAddress() + '"');
             
             // Apply any decorator function
-            (this.outline.p.decorateFunc || function(){})(this);
+            if (this.outline.p.decorateFunc) {
+              
+              this.outline.p.decorateFunc(this);
+              
+            }
             
           },
           stop: function() {
