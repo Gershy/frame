@@ -9,9 +9,9 @@ TODO: Dependency loading should be done via promises
 TODO: Websockets eventually?
 */
 
-require('./common.js');
+if (typeof window !== 'undefined') throw new Error('only for server-side use');
 
-if (!U.isServer()) throw new Error('only for server-side use');
+require('./common.js');
 
 new PACK.pack.Package({ name: 'frame',
   dependencies: [ 'compile' ],
@@ -40,6 +40,8 @@ new PACK.pack.Package({ name: 'frame',
     // Get the app name
     var appName = U.param(args, 'app');
     
+    // ==== DEPLOYMENT SETUP
+    
     // Bind ip and port based on deployment
     var deployment = U.param(args, 'deployment', 'default');
     var deploymentData = {};
@@ -47,12 +49,12 @@ new PACK.pack.Package({ name: 'frame',
     if (deployment === 'openshift') {
       
       var port = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || 8080;
-      var host = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0'; // TODO: This variable should be called "host"
+      var host = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || '0.0.0.0';
       
       var dataPathName = process.env.OPENSHIFT_DATA_DIR || null;
       if (!dataPathName) throw new Error('Can\'t access data directory');
       
-      deploymentData.update({
+      O.update(deploymentData, {
         type: 'openshift',
         fileRootName: dataPathName
       });
@@ -63,17 +65,17 @@ new PACK.pack.Package({ name: 'frame',
       var port = 8000;
       var host = '127.0.0.1';
       
-      deploymentData.update({
+      O.update(deploymentData, {
         type: 'heroku',
         fileRootName: '<???>' // TODO: Figure this out
       });
       
     } else if (deployment === 'default') {
       
-      var port = 8000;
+      var port = 80;
       var host = '127.0.0.1';
       
-      deploymentData.update({
+      O.update(deploymentData, {
         type: 'default',
         fileRootName: __dirname
       });
@@ -89,12 +91,14 @@ new PACK.pack.Package({ name: 'frame',
         server: {
           client: 'remove',
           server: 'keep',
-          remove: 'remove'
+          remove: 'remove',
+          doc: 'remove'
         },
         client: {
           client: 'keep',
           server: 'remove',
-          remove: 'remove'
+          remove: 'remove',
+          doc: 'remove'
         }
       }
     });
@@ -105,9 +109,7 @@ new PACK.pack.Package({ name: 'frame',
       port: port,
       rawArgs: args,
       appName: appName,
-      
       compiler: compiler
-      
     };
     
   },

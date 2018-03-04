@@ -1,0 +1,193 @@
+{
+  "version": "0.0.2 (anonymity)",
+  "userSet": {
+    "admin": {
+      "username": "admin",
+      "password": "suchsmartadmin",
+      "fname": "Admin",
+      "lname": "Istrator"
+    }
+  },
+  "storySet": {
+    "heeheehaha": {
+      "user": "~root.userSet.admin",
+      "createdTime": 1511636794069,
+      "quickName": "heeheehaha",
+      "description": "hahahaheeheehee",
+      "authorLimit": 100,
+      "contestTime": 43200000,
+      "maxWrites": 100,
+      "maxVotes": 100,
+      "maxWriteLength": 100,
+      "contestLimit": 100,
+      "anonymizeWriter": false,
+      "anonymizeVoter": false,
+      "slapLoadTime": 432000000,
+      "slamLoadTime": 432000000,
+      "contestInd": 9,
+      "phase": "awaitingWrite",
+      "timePhaseStarted": 1512438442203,
+      "authorSet": {
+        "admin": {
+          "user": "~root.userSet.admin",
+          "numSlaps": 0,
+          "lastSlapTime": 1511636794087,
+          "numSlams": 0,
+          "lastSlamTime": 1511636794087
+        }
+      },
+      "contestSet": {
+        "0": {
+          "num": 0,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "HELLO!!",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "1": {
+          "num": 1,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "dsfadsfdsaf",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "2": {
+          "num": 2,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "gfdsgsdfgsfd",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "3": {
+          "num": 3,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "dddddddddddddddd",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "4": {
+          "num": 4,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "dfasdfsadf",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "5": {
+          "num": 5,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "WHEEEEE",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "6": {
+          "num": 6,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "LALALA",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "7": {
+          "num": 7,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "blblblbl",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "8": {
+          "num": 8,
+          "writeSet": {
+            "admin": {
+              "author": "~par(story).authorSet.admin",
+              "content": "haha haha hahaaa",
+              "voteSet": {
+                "admin": {
+                  "author": "~par(story).authorSet.admin",
+                  "value": 1
+                }
+              }
+            }
+          }
+        },
+        "9": {
+          "num": 9,
+          "writeSet": {}
+        }
+      },
+      "writeSet": {
+        "0": "~par.~par.contestSet.0.writeSet.admin",
+        "1": "~par.~par.contestSet.1.writeSet.admin",
+        "2": "~par.~par.contestSet.2.writeSet.admin",
+        "3": "~par.~par.contestSet.3.writeSet.admin",
+        "4": "~par.~par.contestSet.4.writeSet.admin",
+        "5": "~par.~par.contestSet.5.writeSet.admin",
+        "6": "~par.~par.contestSet.6.writeSet.admin",
+        "7": "~par.~par.contestSet.7.writeSet.admin",
+        "8": "~par.~par.contestSet.8.writeSet.admin"
+      }
+    }
+  }
+}

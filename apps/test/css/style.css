@@ -1,0 +1,37 @@
+body {
+  background-color: #000000;
+}
+
+.input.inline { width: 200px; }
+
+.uiButton {
+  cursor: pointer;
+  width: 14px; height: 14px; line-height: 14px;
+  text-align: center;
+  background-color: #000000;
+  color: #ffffff;
+  border-radius: 100%;
+}
+
+.control {
+  background-color: rgba(255, 255, 255, 0.1);
+  margin-bottom: 4px;
+}
+.list {
+  
+}
+.list > .listItem {
+  
+}
+.list > .listItem > .listItemContent {
+  display: inline-block;
+  vertical-align: middle;
+}
+.list > .listItem > .listItemControls {
+  display: inline-block;
+  vertical-align: middle;
+}
+.list > .listItem > .listItemControls > .listItemControl {
+  position: relative;
+  display: inline-block;
+}

@@ -5,8 +5,8 @@ TODO: Differences between `doss.getValue`, `doss.getData` need to be better defi
 */
 
 var package = new PACK.pack.Package({ name: 'dossier',
-  dependencies: [ 'tree', 'queries', 'worry', 'p' ],
-  buildFunc: function(packName, tree, queries, worry, p) {
+  dependencies: [ 'tree', 'worry', 'p' ],
+  buildFunc: function(packName, tree, worry, p) {
     
     var P = p.P;
     
@@ -43,7 +43,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.p = U.param(params, 'p', {});
             
             // Ensure the "innerOutline" is an `Outline` instance
-            if (this.p.contains('innerOutline') && !U.isInstance(this.p.innerOutline, ds.Outline)) {
+            if (O.contains(this.p, 'innerOutline') && !U.isInstance(this.p.innerOutline, ds.Outline)) {
               this.p.innerOutline = new ds.Outline(this.p.innerOutline.update({ dynamic: true }));
               this.p.innerOutline.par = this;
             }
@@ -66,7 +66,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 var outline = i[k];
                 
                 if (!U.isInstance(outline, ds.Outline)) {
-                  if (outline.contains('name') && outline.name !== k) throw new Error('Conflicting outline names: "' + outline.name + '" and "' + k + '"');
+                  if (O.contains(outline, 'name') && outline.name !== k) throw new Error('Conflicting outline names: "' + outline.name + '" and "' + k + '"');
                   outline = new ds.Outline(outline.update({ name: k }));
                 } else {
                   if (outline.name !== k) throw new Error('Conflicting outline names: "' + outline.name + '" and "' + k + '"');
@@ -83,7 +83,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             }
             
-            if (!U.isEmptyObj(this.i) && this.p.contains('innerOutline'))
+            if (!U.isEmptyObj(this.i) && O.contains(this.p, 'innerOutline'))
               throw new Error('An `Outline` cannot have both an inner outline and children');
             
           },
@@ -96,11 +96,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var data = {};
             data.name = name;
             data.c = cls;
-            data.p = p || {};
+            
+            if (U.isObj(p, Object)) {
+              data.p = p;
+            } else if (U.isObj(p, Function)) {
+              data.p = { decorateFunc: p };
+            } else if (U.isDefined(p)) {
+              throw new Error('Invalid "p" param: ' + U.typeOf(p));
+            }
             
             if (!data.name) throw new Error('Invalid "name" property');
             if (this.p.innerOutline) throw new Error('Cannot add children to an outline with "innerOutline" property');
-            if (this.i.contains(data.name)) throw new Error('Tried to overwrite outline "' + data.name + '"');
+            if (O.contains(this.i, data.name)) throw new Error('Tried to overwrite outline "' + data.name + '"');
             
             var outline = new ds.Outline(data);
             this.i[outline.name] = outline;
@@ -127,37 +134,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return outline;
             
-          },
-          getAbility: function(name) {
-            var abl = this.p.abilities;
-            if (!abl || !abl.contains(name)) throw new Error('Outline "' + this.getAddress() + '" has no ability "' + name + '"');
-            return abl[name];
           }
           
         };}
       }),
-      
-      /*
-      HEEERE
-      
-      - The other side needs to be able to listen for any changes occurring on any Dossiers
-      - Dossiers need to concern any worriers when their values change
-      - A Dossier value is only considered to have changed once an editor transaction has
-        gone through
-      - Editor needs to call `doss.concern('valueChanged')`
-      - Editor needs to be able to include a full description of the change which occurred
-        in this call to `Dossier.prototype.concern`.
-      - Editor needs to accumulate a description of the effects of all atomics in a
-        transaction
-      - Telling the other side to "sync" on a Dossier should immediately return an entire
-        description of the Dossier, and as long as the sync persists, should inform the
-        other side of all changes which occur to the Dossier.
-        - Each of these notifications needs to include an integer indicating order
-        - The other side can't process an update notification if it is missing any
-          notifications that came before
-        - If the other side hasn't gotten an intermediate notification in too long, it can
-          issue a "resync" command (which can probably be just another "sync" call)
-      */
       
       /* Editor - make changes to Dossier structures */
       Editor: U.makeClass({ name: 'Editor',
@@ -205,13 +185,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!outline.par) {
               name = '~root';
               forceName = true;
-            } else if (!outline.dynamic) {
+            } else if (!outline.dynamic) { // Note: `outline.dynamic` indicates that the outline repeatedly creates more doss instances
               if (name !== outline.name) throw new Error('Tried to rename non-dynamic doss "' + outline.name + '" to "' + name + '"');
             }
             
             // Step 1: Initialize the doss
-            var DossCls = U.deepGet({ root: C, name: outline.c });
-            var doss = new DossCls({ outline: outline }.update(outline.p).update({ name: outline.name }));
+            var DossCls = O.walk(C, outline.c.split('.'));
+            var doss = new DossCls(O.update({ outline: outline }, outline.p, { name: outline.name }));
             
             // Immediately setting `par` can give us more flexibility while creating `Dossiers`
             // Note that this is NOT the correct way to initialize the parent. An atomic must
@@ -255,6 +235,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             doss.par = null; // Ensure that `par` is not initialized by any means other than an atomic
             
+            // If this transaction goes through, `doss` gets a "created" worry
+            this.$transaction.then(function() {
+              doss.worry('editorCreated');
+            });
+            
             return doss;
             
           },
@@ -264,11 +249,19 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!U.isInstance(child, ds.Dossier)) throw new Error('"child" param for rem must be Dossier');
             this.$addAtomic(c.atomicStopDoss, [ child ]);
             this.$addAtomic(c.atomicRemChild, [ par, child ]);
+            
+            this.$transaction.then(function() { child.worry('editorRemoved'); });
           },
           mod: function(params /* doss, data */) {
             var doss = U.param(params, 'doss');
             var data = U.param(params, 'data');
             this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
+            
+            // Perhaps some fields in `data` aren't any different from the fields on `doss`
+            // Somehow `c.atomicModData` should be calculating this delta, and the result
+            // of that calculation should be sent along with the worry.
+            
+            this.$transaction.then(function() { doss.worry('editorAltered', data); });
           },
           edit: function(params /* add, mod, rem */) {
             return {
@@ -278,64 +271,39 @@ var package = new PACK.pack.Package({ name: 'dossier',
             };
           },
           
-          $addAtomic: function(atomic, args, desc) {
+          $addAtomic: function(func, args, desc) {
             
-            if (!desc) {
-              console.log('NO DESC FOR ', atomic);
-              throw new Error('Must provide "desc" to `$addAtomic`');
+            /// {DOC=
+            { desc: 'Adds a new "atomic" into the editor',
+              params: {
+                func: { signature: function(/* ... */){},
+                  desc: 'A function performing a single "rollable" effect',
+                  returns: {
+                    object: {
+                      desc: 'An object tracking all necessary aspects of the atomic effect',
+                      params: {
+                        $result: { desc: 'A promise indicating the atomic\'s success' },
+                        undoAtomic: { desc: 'A value describing a new atomic which can undo this atomic\'s effect' }
+                      }
+                    }
+                  },
+                  criteria: [
+                    'If calling the atomic throws an error, or if the atomic\'s `$result`, ' +
+                      'property becomes rejected, the atomic must not have made any changes ' +
+                      'to the state',
+                    'If the atomic\'s `$result` property resolves, activating the atomic ' +
+                      'described by the `undoAtomic` property should leave the state as if ' +
+                      'no action occurred in the first place'
+                  ]
+                },
+                args: { desc: 'An array of arguments to the atomic' },
+                desc: { desc: 'A description for this atomic' }
+              }
             }
-            
-            if (!U.isObj(atomic, Function)) throw new Error('"atomic" must be a `Function`');
-            
-            /*
-            An "atomic" is a function which returns a result of the following
-            format (or throws an error):
-            
-            anAtomic(...) === {
-              $result: <promise with atomic result>,
-              undoAtomic: <an atomic that is the inverse of the original>
-            }
-            
-            An "atomic" must also fulfill the following criteria:
-            1)  If the atomic function throws an error, or if the "$result"
-                property becomes rejected, the atomic must have not made any
-                changes to the state.
-            2)  Calling the "undoAtomic" property after the "$result"
-                property has resolved must leave the state as if no action
-                were performed in the first place
-            */
+            /// =DOC}
             
             var $ret = new P({});
-            
-            var func = function() {
-              
-              // `$ret` resolves if `result.$result` resolves, but doesn't necessarily
-              // reject if `result.$result` rejects
-              // TODO: When should `$ret` reject?? And implement this rejection
-              
-              try {
-                
-                var result = atomic.apply(null, args);
-                result.$result = result.$result.then(function(val) { $ret.resolve(val); return val; });
-                
-              } catch(err) {
-                
-                var result = {
-                  $result: new P({ err: err }),
-                  undoAtomic: function() { return { $result: p.$null }; }
-                };
-                
-              }
-              
-              result.$rejectable = $ret; // TODO: Need to tell `$ret` it rejected if it didn't resolve
-              
-              return result;
-              
-            };
-            
-            func.desc = desc || '- no description -';
-            this.atomics.push(func);
-            
+            this.atomics.push(c.formAtomic(func, args, desc, { $prm: $ret }));
             return $ret;
             
           },
@@ -368,28 +336,33 @@ var package = new PACK.pack.Package({ name: 'dossier',
               }));
               */
               
-              console.log('UNDOING???');
               return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
                 
                 if (undoResults.errors.length) {
                   // Undo batch could not be completed!
                   console.log('Undo failed (this is REAL BAD) due to ' + undoResults.errors.length + ' error(s):\n');
-                  for (var i = 0, len = undoResults.errors.length; i < len; i++) console.log('FATAL #' + (i + 1) + ':', undoResults.errors[i].stack, '\n');
-                  throw new Error('FATAL MFRF (transaction undo failed; data may be corrupted)');
+                  for (var i = 0, len = undoResults.errors.length; i < len; i++) {
+                    console.log('FATAL #' + (i + 1) + ':');
+                    console.error(undoResults.errors[i]);
+                    console.log('');
+                  }
+                  throw new Error('FATAL MFRF (data may be corrupted)');
                 }
                 
-                var msg = 'Stage failed due to ' + recResults.errors.length + ' error(s):\n' +
-                  recResults.errors.slice(0, 100).map(function(err, n) { return '  ' + (n + 1) + ': ' + err.stack.split('\n').slice(0, 2).join('\n'); }).join('\n');
-                
-                throw new Error(msg);
+                throw new Error(
+                  'Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n' +
+                  A.map(recResults.remainingAtomics, function(r) { return r.desc; }).join('\n') + '\n====ERRORS====\n' +
+                  A.map(recResults.errors, function(err) { return err.message; }).join('\n')
+                );
                 
               });
-                
+              
             }).then(function(recResults) {
               
               pass.$transaction.resolve(null);
               pass.atomics = [];
               pass.$transaction = new P({});
+              
               return recResults;
               
             }).fail(function(err) {
@@ -404,11 +377,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           $recurseStage: function(type, stageNum) {
             
-            /*
-            Recursively completes transaction stages until a transaction has completed
-            without generating any atomics for the next stage. When this happens the
-            stage is "complete".
-            */
+            // Recursively completes transaction stages until a transaction has completed
+            // without generating any atomics for the next stage. When this happens the
+            // stage is "completed successfully". Stages may be "completed unsuccessfully",
+            // or "failed".
             
             var desc = type + '(' + stageNum + ')';
             
@@ -423,7 +395,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               // 2) The stage successfully completed with errors - all is well so far, but another stage is necessary
               // 3) The stage failed. It cannot be completed, and an undo transaction will be performed
               //    (NOTE: The undo transaction will either be successful, or if not, result in a FATAL error).
-              
+              // 
               // console.log('Completed stage: ' + desc + ' with ' + recResults.undoAtomics.length + ' atomics');
               
               if (recResults.errors.length || !pass.atomics.length) {
@@ -435,10 +407,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               return pass.$recurseStage(type, stageNum + 1).then(function(recNextResults) {
                 
-                var oldAtm = pass.atomics;
-                pass.atomics = recNextResults.undoAtomics;
+                /*
+                var oldAtm = pass.atpomics;
+                pass.atpomics = recNextResults.undoAtomics;
                 var trnDesc = pass.getTransactionDetails();
-                pass.atomics = oldAtm;
+                pass.atpomics = oldAtm;
+                */
                 
                 // Add the recursive call's atomics to the previous call's atomics
                 recNextResults.undoAtomics = recResults.undoAtomics.concat(recNextResults.undoAtomics);
@@ -460,21 +434,43 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // within its return value. It doesn't throw errors or return rejected promises.
             
             var pass = this;
-            return new P({ all: U.arr.map(atomics, function(atomic) {  // Try to get the result of all atomics
+            return new P({ all: U.arr.map(atomics, function(atomic) {  // Try to get the results of all atomics
               
-              var result = atomic();
-              
-              if (!result || !result.contains('$result')) {
-                console.log('WTFFFF', atomic.desc);
-                throw new Error('DAMN');
+              try {
+                
+                var result = atomic.func.apply(null, atomic.args);
+                
+              } catch(err) {
+                
+                var undoPrevention = function() { return { $result: new P({ err: new Error('Can\'t undo an undo') }) }; };
+                
+                var result = {
+                  $result: new P({ err: err }),
+                  undoAtomic: ds.Editor.formAtomic(undoPrevention, [], 'native - thrown undo', { $prm: p.$null })
+                };
+                
               }
               
-              return result.$result.then(function(val) {
-                return { status: 'success', undoAtomic: result.undoAtomic };
-              }).fail(function(err) {
-                return { status: 'failure', error: err, atomic: atomic };
-              });
+              if (!result || !O.contains(result, '$result')) throw new Error('DAMN');
               
+              // This result being returned cannot be a failed promise, but it can mark whether a
+              // success or failure occurred
+              return result.$result.then(function(val) {
+                
+                // Signal that this atomic has succeeded, even though the transaction has not necessarily succeeded
+                if (O.contains(result, '$prm')) result.$prm.resolve(ret);
+                
+                // Set up a promise to handle the onComplete event for this atomic when the transaction has succeeded
+                if (O.contains(result, 'onComplete')) pass.$transaction.then(result.onComplete.bind(null, val));
+                
+                return { status: 'success', undoAtomic: result.undoAtomic };
+                
+              }).fail(function(err) {
+                
+                return { status: 'failure', error: err, atomic: atomic };
+                
+              });
+            
             })}).then(function(atomicResultArr) {               // Return results or reattempt as necessary
               
               var errors = [];
@@ -510,13 +506,28 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         };},
         statik: function(c) { return {
+          formAtomic: function(atomic, args, desc, more) {
+            
+            if (!desc) throw new Error('Must provide "desc" to `$addAtomic`');
+            if (!U.isObj(atomic, Function)) throw new Error('"atomic" must be a `Function`');
+            if (!args[0] && desc !== 'native - thrown undo') throw new Error('Missing 1st param');
+            
+            var ret = {
+              func: atomic,
+              args: args,
+              desc: desc
+            };
+            
+            return more ? O.update(ret, more) : ret;
+            
+          },
           atomicStartDoss: function(doss) {
             try {
               
               doss.start();
               return {
                 $result: p.$null,
-                undoAtomic: c.atomicStopDoss.bind(null, doss)
+                undoAtomic: c.formAtomic(c.atomicStopDoss, [ doss ], 'undo start doss')
               };
               
             } catch(err) {
@@ -531,38 +542,27 @@ var package = new PACK.pack.Package({ name: 'dossier',
             doss.stop();
             return {
               $result: p.$null,
-              undoAtomic: c.atomicStartDoss.bind(null, doss)
+              undoAtomic: c.formAtomic(c.atomicStartDoss, [ doss ], 'undo stop doss')
             };
           },
           atomicSetNameSimple: function(doss, name, force) {
             
             var origName = doss.name;
-            doss.updateName(name, force || null);
+            doss.updateName(name, force || false);
             return {
               $result: p.$null,
-              undoAtomic: c.atomicSetNameSimple.bind(null, doss, origName, true)
+              undoAtomic: c.formAtomic(c.atomicSetNameSimple, [ doss, origName, true ], 'undo set name smp')
             };
             
           },
           atomicSetNameCalculated: function(doss) {
-            
-            /*
-            // TODO: REQUIREMENTS!!
-            var origName = doss.name;
-            return {
-              $result: doss.$getDependencies().then(function(deps) {
-                // TODO: `getChildName` isn't ready to accept a "deps" param
-                return doss.updateName(doss.par.getChildName(doss, deps));
-              })
-            }
-            */
             
             var origName = doss.name;
             doss.updateName(doss.par.getChildName(doss));
             
             return {
               $result: p.$null,
-              undoAtomic: c.atomicSetNameSimple.bind(null, doss, origName, true)
+              undoAtomic: c.formAtomic(c.atomicSetNameSimple, [ doss, origName, true ], 'undo set name clc')
             };
             
           },
@@ -575,7 +575,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             doss.setValue(data);
             return {
               $result: p.$null,
-              undoAtomic: c.atomicModData.bind(null, doss, origVal)
+              onComplete: function(v) {
+                doss.concern('modified:', v);
+              },
+              undoAtomic: c.formAtomic(c.atomicModData, [ doss, origVal ], 'undo mod data')
             };
             
           },
@@ -585,7 +588,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return {
               $result: p.$null,
-              undoAtomic: c.atomicRemChild.bind(null, doss, child)
+              onComplete: function(v) {
+                doss.concern('modified', v);
+              },
+              undoAtomic: c.formAtomic(c.atomicRemChild, [ doss, child ], 'undo add child')
             };
             
           },
@@ -595,210 +601,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return {
               $result: p.$null,
-              undoAtomic: c.atomicAddChild.bind(null, doss, child)
+              onComplete: function(v) {
+                doss.concern('modified', v);
+              },
+              undoAtomic: c.formAtomic(c.atomicAddChild, [ doss, child ], 'undo rem child')
             };
-            
-          }
-        };}
-      }),
-      
-      /* Abilities - enable functionality on Dossiers */
-      Ability: U.makeClass({ name: 'Ability',
-        // TODO: Should this be a TreeNode?
-        // TODO: There may be some trouble with errors thrown in "stage" - ideally, errors should only be thrown from "doValidate(Rec)?"
-        methods: function(sc, c) { return {
-          init: function(params /* outline, par, validate, validateBelow */) {
-            this.par = U.param(params, 'par', null);
-            
-            // Validation to apply to the immediate value
-            this.validate = U.param(params, 'validate', null);
-            
-            // Validation to apply to the immediate value and any value beneath
-            this.validateBelow = U.param(params, 'validateBelow', null);
-            
-            // Changes to make after an ability has been successfully run (does not apply to children)
-            this.decorate = U.param(params, 'decorate', null);
-            
-            // Indicates if this ability is visible from the other side (for validation purposes)
-            this.public = U.param(params, 'public', false);
-          },
-          doValidateRec: function(editor, doss, below, params) {
-            
-            /*
-            - `editor`:
-                The editor instance associated with this ability's transaction
-            - `doss`:
-                The doss associated with this ability's transaction
-            - `below`:
-                The result of all parent's `validateBelow` functions chained.
-                If `below` is `null`, it means that no parent validation has
-                occurred yet. In this case, parents must be validated
-                recursively (beginning with the deepest validating parent)
-            - `params`:
-                The client-passed parameters associated with this transaction
-            */
-            
-            // Recursively runs all parent "validateBelow" checks starting with
-            // the deepest parent, and propagating return values from deepest to
-            // shallowest.
-            if (below === null && this.par) {
-              if (!doss.par) throw new Error('Can\'t validate parent when doss parent is null');
-              below = this.par.doValidateRec(editor, doss.par, null, params);
-            }
-            return this.validateBelow ? this.validateBelow(editor, doss, below, params) : below;
-            
-          },
-          doValidate: function(editor, doss, below, params) {
-            var below = this.doValidateRec(editor, doss, below, params);
-            return {
-              below: below,
-              params: this.validate ? this.validate(editor, doss, below, params) : params
-            };
-          },
-          use: function(editor, doss, below, params /* data */) {
-            
-            // 1) Complete the stem of Y-validation
-            var validated = this.doValidate(editor, doss, below, params);
-            var below = validated.below;
-            var params = validated.params;
-            
-            // 2) Complete the action, apply decoration if available
-            var result = this.stage(editor, doss, below, params);
-            return this.decorate ? this.decorate(result, editor, doss, below, params) : result;
-            
-          },
-          stage: function(editor, doss, below, params) {
-            
-            // Note: If `stage` ever calls the `use` methods of child abilities, it should
-            // pass `below` so that parent validation is not repeated
-            throw new Error('Not implemented');
-            
-          }
-        };}
-      }),
-      AbilityGet: U.makeClass({ name: 'AbilityGet', superclassName: 'Ability',
-        methods: function(sc, c) { return {
-          stage: function(editor, doss, below, params) {
-            
-            if (U.isInstance(doss, ds.DossierRef)) {          // Returning a ref's value is easy
-              
-              return doss.value ? doss.getRefAddress() : null;
-              
-            } else if (U.isInstance(doss, ds.DossierVal)) {   // Returning a val's value is super easy
-              
-              return doss.value;
-              
-            } else if (U.isInstance(doss, ds.DossierSet)) {   // Returning a set's value is tricky. Need to recurse, support "*" and "rename", etc.
-              
-              var selection = U.param(params, 'selection', ds.selectAll);
-          
-              // Support the "*" selector (TODO: Consider removing the "*" selector?)
-              if (selection.contains('*')) {
-                
-                var innerParams = params.clone({ selection: selection['*'] });
-                return doss.children.map(function(child, k) {
-                  return child.hasAbility('get') ? child.stageAbility('get', editor, below, innerParams) : U.SKIP;
-                });
-                
-              }
-                
-              var ret = {};
-              for (var k in selection) {
-                
-                // Support the "rename" operator
-                if (k[0] === '(') {
-                  var rb = k.indexOf(')');
-                  if (rb === -1) return new P({ err: 'Couldn\'t parse rename operator for selector "' + k + '"' });
-                  var rename = k.substr(1, rb - 1);
-                  var addr = k.substr(rb + 1).trim();
-                } else {
-                  var rename = k;
-                  var addr = k;
-                }
-                
-                var child = doss.getChild(addr);
-                if (!child || !child.hasAbility('get')) { throw new Error('Invalid selection address: "' + addr + '"'); console.log('WARNING, HERE!!'); }
-                
-                // NOTE: The "below" value is calculated from scratch if `getChild` resulted in a `Dossier` that isn't a direct child
-                ret[rename] = child.stageAbility('get', editor, doss.hasChild(child) ? below : null, params.clone({ selection: selection[k] }));
-                
-              }
-              return ret;
-              
-            }
-            
-            throw new Error('Unexpected `doss` value: ' + U.typeOf(doss));
-            
-          }
-        };}
-      }),
-      AbilityMod: U.makeClass({ name: 'AbilityMod', superclassName: 'Ability',
-        methods: function(sc, c) { return {
-          stage: function(editor, doss, below, params) {
-            
-            if (U.isInstance(doss, ds.DossierVal)) {
-              
-              editor.mod({ doss: doss, data: U.param(params, 'data') });
-              return null;
-              
-            } else if (U.isInstance(doss, ds.DossierObj)) {
-              
-              var data = U.param(params, 'data');
-              if (!U.isObj(data, Object)) throw new Error('mod ability expects "data" to be an `Object`');
-              
-              for (var k in data) {
-                if (!doss.children.contains(k)) {
-                  U.debug('MISSING KEY: ' + k, doss.getData());
-                  throw new Error('Invalid child key in mod ability: ' + doss.outline.getAddress() + ' -> ' + k);
-                }
-                doss.children[k].stageAbility('mod', editor, below, params.clone({ data: data[k] }));
-              }
-              return null;
-              
-            } else if (U.isInstance(doss, ds.DossierArr)) {
-              
-              // `DossierArr` modding works by supplying `data` as a "delta" `Object`,
-              // where any keys of the delta whose value is `null` are removed from
-              // the `DossierArr`, and any non-null values are added. Existing values
-              // CANNOT be modified. Instead, a "mod" ability should be used directly
-              // on the existing value.
-              
-              var data = U.param(params, 'data');
-              var children = [];
-              
-              for (var childName in data) {
-                
-                var childData = data[childName];
-                if (childData === null) { // TODO: Could consider using another value apart from `null` (can't have `null` values in a `DossierArr`)
-                  
-                  if (!doss.children.contains(childName)) throw new Error('Invalid removal name: ' + doss.getAddress() + ' -> ' + childName);
-                  editor.rem({ par: doss, child: doss.children[childName] });
-                  
-                } else {
-                  
-                  var child = editor.add({ par: doss, data: childData, recurseArr: false, recurseObj: true });
-                  children.push(child);
-                  editor.$addAtomic(function(child0, editor0, below0, params0) {
-                    
-                    if (!child0.started) throw new Error('Can\'t run until started');
-                    child0.stageAbility('mod', editor0, below0, params0);
-                    
-                    return {
-                      $result: p.$null,
-                      undoAtomic: function() { return { $result: p.$null }; }
-                    };
-                    
-                  }, [ child, editor, below, params.clone({ data: childData }) ], 'recstag ::: ' + child.outline.getAddress());
-                  
-                }
-                
-              }
-              
-              return children;
-              
-            }
-            
-            throw new Error('Unexpected `doss` value: ' + U.typeOf(doss));
             
           }
         };}
@@ -833,6 +640,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             this.name = ds.getTempName(); // Here's where `this.name` is overwritten
             this.outline = U.param(params, 'outline');
+            this.abilities = {}; // TODO: Consider storing these on the outline instead
             
             this.par = null; // The `Dossier` initializes with no parent
             this.started = false;
@@ -930,40 +738,27 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // Dossiers handle "sync" and "getType" orders; all other orders are handled
             // through abilities.
             
+            var orderDesc = this.getAddress() + '.' + params.command;
+            
+            var editor = new ds.Editor();
             var pass = this;
             return new P({ run: function() {
               
               var session = U.param(params, 'session');
               var command = U.param(params, 'command');
-              var orderParams = U.param(params, 'params', {});
+              var commandParams = U.param(params, 'params', {});
               var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
               
-              // NOTE: `result` is returned from a `then` method, so it may be either
-              // an immediate value or a promise. This means that the result of
-              // an `Ability.prototype.use` method, or the result of an `ability.decorate`
-              // function, may be a promise - even if these aren't $-prefixed.
+              orderDesc += '(' + U.debugObj(commandParams) + ')';
               
-              var ability = this.hasAbility(command) ? this.getAbility(command) : null;
-              if (!ability || !ability.public) throw new Error('Ability "' + command + '" unavailable');
+              return pass.$useAbility(command, session, channelerParams, editor, commandParams)
               
-              var editor = new ds.Editor();
-              var result = this.stageAbility(ability, editor, null, orderParams);
-              
-              // Note that `result` can be a promise, even if it isn't $-prefixed. So we can only deal with it
-              // after `editor.$transact` is complete!
-              return editor.$transact().then(function() { return result; }).then(function(data) {
-                
-                if (!data) return p.$null;
-                
-                return pass.$giveOrder({
-                  session: session,
-                  data: data,
-                  channelerParams: channelerParams
-                });
-                
+            }})
+              .then(function(abilityStaged) { return editor.$transact(); })
+              .fail(function(err) {
+                console.log('FAILURE: ' + orderDesc);
+                console.error(err);
               });
-              
-            }});
             
           },
           $giveOrder: function(params /* session, data, channelerParams */) { // Dossier
@@ -971,25 +766,87 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.outline.getRoot().channeler.$giveOrder(params);
           },
           
-          hasAbility: function(name) {
-            return (this.outline.p.abilities || {}).contains(name);
-          },
-          getAbility: function(name) {
-            return this.outline.p.abilities[name];
-          },
-          stageAbility: function(ability, editor, below, params) {
-            if (U.isObj(ability, String)) {
-              var abilities = this.outline.p.abilities || {};
-              if (!abilities.contains(ability)) return new P({ err: new Error(this.getAddress() + ' has no ability "' + ability + '"') });
-              ability = abilities[ability];
+          addAbility: function(name, func) {
+            
+            /// {DOC=
+            { desc: 'Adds a new ability to this Dossier under the name `name`',
+              params: {
+                name: { desc: 'The unique name of the ability' },
+                func: { signature: function(session, channelerParams, editor, params){},
+                  desc: 'A function which stages all changes, based on the ability, to the editor',
+                  params: {
+                    session: { desc: 'The session performing the ability' },
+                    channelerParams: { desc: 'Any channelerParams for the ability if available' },
+                    editor: { desc: 'The editor which will be used to perform this ability' },
+                    params: { desc: 'Any ability-specific params' }
+                  },
+                  returns: {
+                    $promise: {
+                      resolve: 'All necessary actions are staged to the `editor`',
+                      reject: 'Any error'
+                    }
+                  }
+                }
+              }
             }
+            /// =DOC}
             
-            return ability.use(editor, this, below, params);
+            if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability:', this.getAddress() + ': ' + name);
+            this.abilities[name] = func;
+            
           },
-          $useAbility: function(name, params) {
+          $useAbility: function(name, session, channelerParams, editor, params) {
             
-            return this.$heedOrder({ command: name, params: params });
-          
+            /// {DOC=
+            { desc: 'Stages a named ability. This means `editor` is prepared ' +
+                'with the necessary actions to carry out the ability. No changes ' +
+                'occur until `editor.$transact` is called',
+              params: {
+                name: { desc: 'The name of the ability to stage' },
+                session: { desc: 'The session using the ability' },
+                channelerParams: { desc: 'Any available params for the Channeler' },
+                editor: { desc: 'The editor to be prepared' },
+                params: { desc: 'Any ability-specific params' }
+              },
+              returns: {
+                $promise: {
+                  resolve: 'All necessary actions are staged to the `editor`',
+                  reject: 'Any error'
+                }
+              }
+            }
+            /// =DOC}
+            
+            return this.abilities[name](session, channelerParams, editor, params);
+            
+          },
+          genAbilityFact: function(get, set) {
+            
+            var pass = this;
+            var session = this.outline.getRoot().session || null;
+            
+            return {
+              
+              name: 'AbilityFact',
+              getValue: function(addr) {
+                return pass.getValue(addr);
+              },
+              setValue: function(val) {
+                
+                // Many fast calls to setValue should be ordered. If other calls haven't
+                // finished when a newer one begins, those other calls should have their
+                // effects cancelled if possible.
+                
+                var editor = new ds.Editor();
+                pass.$useAbility(set, session, null, editor, { doSync: true, data: val, authParams: 'AUTH_PLZ' })
+                  .then(function() {
+                    return editor.$transact();
+                  })
+                
+              }
+              
+            };
+            
           },
           
           dereference: function() {
@@ -1020,34 +877,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           start: function() {
             
+            // Validate that double-starting isn't occurring
             if (this.started) throw new Error('Tried to double-start "' + this.getAddress() + '"');
             this.started = true;
             
+            // Validate that this doss is rooted
             if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
             
-            if (!this.hasResolvedName() || (this.par && !this.par.started))
-              throw new Error('Not ready to start "' + this.getAddress() + '"');
-            
-            // Run any contentFunc
-            var contentFunc = this.outline.p.contentFunc;
-            if (contentFunc) {
-              this.content = contentFunc(this);
-              if (!U.isInstance(this.content, ds.Content)) throw new Error('Bad contentFunc');
-              this.content.start();
-            }
-            
-            // Attach any changeHandler
-            var changeHandler = this.outline.p.changeHandler;
-            if (changeHandler) {
-              this.changeHandler = changeHandler.bind(null, this);
-              this.addWorry('value', this.changeHandler);
-            }
+            // Validate that this doss has a resolved name, and that its parent is started
+            if (!this.hasResolvedName() || (this.par && !this.par.started)) throw new Error('Not ready to start "' + this.getAddress() + '"');
             
             // Apply any decorator function
-            var decorateFunc = this.outline.p.decorateFunc;
-            if (decorateFunc) {
-              decorateFunc(this);
-            }
+            (this.outline.p.decorateFunc || function(){})(this);
             
           },
           stop: function() {
@@ -1060,6 +901,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
               this.content.stop();
               delete this.content;
             }
+            
+            this.remWorry('editorCreated', 'builtin');
+            this.remWorry('editorRemoved', 'builtin');
+            this.remWorry('editorAltered', 'builtin');
             
             // Stop any change handler
             if (this.changeHandler) {
@@ -1089,7 +934,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // Child methods
           addChild: function(child) {
             if (child.par && child.par !== this) throw new Error('Tried to add: "' + child.getAddress() + '"');
-            if (this.children.contains(child.name)) throw new Error('Tried to overwrite doss "' + this.children[child.name].getAddress() + '"');
+            if (O.contains(this.children, child.name)) throw new Error('Tried to overwrite doss "' + this.children[child.name].getAddress() + '"');
             
             child.par = this;
             this.children[child.name] = child;
@@ -1106,7 +951,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             } else if (U.isObj(name, String)) { // `name` must be a `String`
               
-              if (name.contains('.')) {
+              if (S.contains(name, '.')) {
                 
                 var addr = name.split('.');
                 var child = this.getChild(addr);
@@ -1138,10 +983,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           },
           hasChild: function(child) {
-            return this.children.contains(child.name) && this.children[child.name] === child;
+            return O.contains(this.children, child.name) && this.children[child.name] === child;
           },
           getNamedChild0: function(name) {
-            if (this.children.contains(name)) return this.children[name];
+            if (O.contains(this.children, name)) return this.children[name];
             return sc.getNamedChild0.call(this, name);
           },
           
@@ -1154,7 +999,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           setValue0: function(val) {
             if (!U.isObj(val, Object)) throw new Error('Invalid value for `' + this.constructor.title + '`: ' + U.typeOf(val));
-            for (var k in val) if (!U.obj.contains(this.children, k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
+            
+            // Validate that all children exist before setting a value on any of them
+            for (var k in val) if (!O.contains(this.children, k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
             for (var k in val) this.children[k].setValue0(val[k]);
           },
           getChildName: function(child) {
@@ -1203,7 +1050,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           getChildOutline: function(name) {
             if (!name) throw new Error('DossierObj needs `name` for `getChildOutline`');
-            return this.outline.i.contains(name) ? this.outline.i[name] : null;
+            return O.contains(this.outline.i, name) ? this.outline.i[name] : null;
           }
         };}
       }),
@@ -1222,7 +1069,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // Child methods
           addChild: function(child) {
             child = sc.addChild.call(this, child);
-            while (this.children.contains(this.nextInd)) this.nextInd++; // A hole has just been filled. Ensure the next index is available
+            while (O.contains(this.children, this.nextInd)) this.nextInd++; // A hole has just been filled. Ensure the next index is available
             return child;
           },
           remChild: function(child) {
@@ -1488,338 +1335,210 @@ var package = new PACK.pack.Package({ name: 'dossier',
         };}
       }),
       
-      // TODO: Need to call `.stop` (`.fullyUnloaded`?) on Content objects! It's not being done at the moment!
-      // TODO: Generally need to put some thought into "start"/"fullyUnloaded" paradigm
-      /* Content - control how Dossiers determine their content */
-      Content: U.makeClass({ name: 'Content',
-        includeGuid: true,
-        methods: function(sc, c) { return {
-          init: function(params /* doss, cache */) {
-            this.doss = U.param(params, 'doss');
-            this.cache = U.param(params, 'cache', null);
-            
-            if (!this.doss.isRooted()) throw new Error('Dossier isn\'t rooted; can\'t init `Content`');
-          },
-          start: function() {
-            if (this.cache) this.cache[this.guid] = this;
-          },
-          stop: function() {
-            if (this.cache) delete this.cache[this.guid];
-          }
-        };}
-      }),
-      ContentCalc: U.makeClass({ name: 'ContentCalc',
-        superclassName: 'Content',
-        methods: function(sc, c) { return {
-          init: function(params /* doss, cache, func */) {
-            sc.init.call(this, params);
-            this.func = U.param(params, 'func');
-          },
-          update: function() {
-            this.doss.setValue(this.func());
-          }
-        };}
-      }),
-      ContentAbstractSync: U.makeClass({ name: 'ContentAbstractSync',
-        superclassName: 'Content',
-        methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs, syncOnStart */) {
-            sc.init.call(this, params);
-            
-            this.waitMs = U.param(params, 'waitMs', 0);
-            this.jitterMs = U.param(params, 'jitterMs', this.waitMs * 0.17);
-            this.syncOnStart = U.param(params, 'syncOnStart', false);
-            this.timeout = null;
-            
-            this.freshest = 0;
-            this.freshestReq = 0;
-          },
-          $query: function(ref) { throw new Error('not implemented'); },
-          $applyQueryResult: function(queryResult) { throw new Error('not implemented'); },
-          cancelUpdates: function() {
-            /*
-            Clears the current timeout, and also sets `this.timeout` to `null`, which will
-            cause any pending updates to be ignored upon their completion.
-            */
-            clearTimeout(this.timeout);
-            this.timeout = null;
-            
-            // Declare that our current value is fresher than any pending value
-            this.freshest = this.freshestReq + 1;
-            
-            // Ensure that if updates are started again, they are sufficiently fresh
-            this.freshestReq = this.freshest;
-          },
-          scheduleUpdates: function() {
-            
-            this.timeout = (this.waitMs || this.jitterMs)
-              ? setTimeout(this.update.bind(this), this.waitMs + (Math.random() * this.jitterMs))
-              : null;
-          },
-          update: function() {
-            
-            var pass = this;
-            
-            this.freshestReq++;
-            this.$query(this.freshestReq).then(function(refResult) {
-              
-              var freshness = refResult.ref;
-              var result = refResult.result;
-              
-              // Make sure a stale response never overwrites a fresher one
-              if (freshness < pass.freshest) return p.$null;
-              pass.freshest = freshness;
-              
-              pass.scheduleUpdates();
-              
-              return pass.$applyQueryResult(result);
-                
-            }).fail(function(err) {
-              
-              console.log('Sync error on: ' + pass.doss.getAddress());
-              throw err;
-              
-            }).done();
-            
-          },
-          start: function() {
-            sc.start.call(this);
-            
-            // TODO: when commented the app cannot update
-            // if (this.syncOnStart) this.update();
-            // else                  this.scheduleUpdates();
-          },
-          stop: function() {
-            this.cancelUpdates();
-            sc.stop.call(this);
-          }
-        };}
-      }),
-      ContentSync: U.makeClass({ name: 'ContentSync',
-        superclassName: 'ContentAbstractSync',
-        methods: function(sc, c) { return {
-          $query: function(ref) {
-            return queries.$doQuery({
-              address: this.doss.getAddress(),
-              command: 'get',
-              ref: ref
-            });
-          },
-          $applyQueryResult: function(rawData) {
-            this.doss.setValue(rawData);
-            return p.$null;
-          }
-        };}
-      }),
-      ContentSyncRef: U.makeClass({ name: 'ContentSyncRef',
-        superclassName: 'ContentAbstractSync',
-        methods: function(sc, c) { return {
-          init: function(params /* doss, address, refParAddress, waitMs, jitterMs, syncOnStart, selection */) {
-            sc.init.call(this, params);
-            
-            if (!U.isInstance(this.doss, ds.DossierRef)) throw new Error('`ContentSyncRef` needs its doss to be a `DossierRef`');
-            
-            // Supplying `calcRef` allows
-            this.calcRef = U.param(params, 'calcRef', null);
-            this.selection = U.param(params, 'selection', ds.selectAll);
-          },
-          $query: function(ref) {
-            
-            if (this.calcRef) this.doss.setValue(this.calcRef());
-            
-            if (!this.doss.value) return new P({ ref: ref, result: null });
-            
-            var addr = this.doss.getRefAddress().split('.');
-            
-            // If `addr` is a relative address, need to convert it to an absolute address
-            /*if (addr[0] !== '~root') {
-              var numPars = 0;
-              while (numPars < addr.length && addr[numPars] === '~par') numPars++;
-              if (numPars > prefix.length) throw new Error('Too many "~par" dereferencers');
-              addr = prefix.slice(0, prefix.length - numPars).concat(addr.slice(numPars));
-            }*/
-            
-            if (addr[0] !== '~root') {
-              var prefix = this.doss.getAddress().split('.');
-              while (addr[0] === '~par') {
-                addr = addr.slice(1);
-                prefix = prefix.slice(0, prefix.length - 1);
-              }
-              addr = (prefix.concat(addr)).join('.');
-            }
-            
-            return queries.$doQuery({
-              address: addr,
-              command: 'get',
-              params: {
-                selection: this.selection
-              },
-              ref: ref
-            });
-            
-          },
-          $applyQueryResult: function(refData) {
-            
-            // If no data is provided, or the reference already links properly, do nothing
-            if (!refData || this.doss.dereference()) return p.$null;
-            
-            var editor = new ds.Editor({});
-            var doss = this.doss;
-            
-            var holderAddr = doss.getHolderAddress().split('.');
-            var holder = doss.getChild(holderAddr);
-            
-            if (!holder) {
-              
-              // NOTE: We could use a simple recursive `editor.add` call to immediately generate
-              // the entire `Dossier` structure up until and including `holder`, but this means
-              // that we would not have immediate access to the final `holder` element; it would
-              // be lost within the transaction. We would have to make 2 separate transactions,
-              // one to build `holder`, we would then do `holder = doss.getChild(holderAddr)`,
-              // and then we would need a second transaction to actually add the referenced
-              // `Dossier`. Using a loop of non-recursive `editor.add` calls can grant 
-              // immediate access to `holder` at the end of the loop.
-              
-              holder = doss;
-              for (var i = 0, len = holderAddr.length; i < len; i++) {
-                var childName = holderAddr[i];
-                holder = holder.getNamedChild(childName) || editor.add({ par: holder, name: childName, recurseArr: false, recurseObj: false });
-              }
-              
-              // Now `holder` has the correct address to hold the referenced data
-              
-            }
-            
-            var refDoss = editor.add({ par: holder, data: refData });
-            
-            return editor.$transact().then(function() {
-              if (refDoss !== doss.dereference()) throw new Error('Something went wrong');
-              return refDoss;
-            });
-            
-          }
-        };}
-      }),
-      ContentSyncSet: U.makeClass({ name: 'ContentSyncSet',
-        superclassName: 'ContentAbstractSync',
-        description: 'Syncs the children of a set-type Dossier. Only removes and adds children; ' +
-          'this `Content` does not update the values of a child even if those values have changed. ' +
-          'In order to update such values, children should be assigned inner `Content`s.',
-        methods: function(sc, c) { return {
-          init: function(params /* doss, address, waitMs, jitterMs, syncOnStart, selection, preserveKeys */) {
-            sc.init.call(this, params);
-            
-            this.selection = U.param(params, 'selection');
-            this.preserveKeys = U.param(params, 'preserveKeys', []);
-          },
-          $query: function(ref) {
-            return queries.$doQuery({
-              address: this.doss.getAddress(),
-              command: 'get',
-              params: {
-                selection: this.selection
-              },
-              ref: ref
-            });
-          },
-          $applyQueryResult: function(childData) {
-            
-            // TODO: This method will not update children which have changed in `childData`
-            // relative to `doss`. Children are only modified when they exist in one but not
-            // the other.
-            
-            var doss = this.doss;
-            
-            var add = [];
-            var rem = [];
-            
-            var uncovered = doss.children.clone();
-            
-            // After this loop every child in uncovered will be a child which exists in `doss`, but not in `childData`
-            for (var k in childData) {
-              
-              if (uncovered.contains(k)) {
-                
-                // Found a key which is in both `childData` and `doss`
-                delete uncovered[k];
-                
-              } else {
-                
-                // Found a key which is in `childData`, but not in `doss`
-                add.push({ par: doss, name: k, data: childData[k] });
-                
-              }
-              
-            }
-            
-            // Cover all local keys
-            for (var i = 0, len = this.preserveKeys.length; i < len; i++) delete uncovered[this.preserveKeys[i]];
-            
-            // `uncovered` now contains keys which exists in `doss` but not `childData` - such keys are outdated
-            for (var k in uncovered) { rem.push({ par: doss, child: uncovered[k] }); }
-            
-            // TODO: Is an `Editor` really needed here?
-            var editor = new ds.Editor();
-            editor.edit({ add: add, rem: rem });
-            return editor.$transact();
-            
-          },
-          
-          $syncedAbility: function(ability, localParams, remoteParams) {
-            var pass = this;
-            if (!remoteParams) remoteParams = localParams.clone();
-            
-            // Adding remote 1st:
-            return queries.$doQuery({ address: this.doss.getAddress(), command: ability, params: remoteParams }).then(function(remoteVal) {
-              
-              // update cancelling/scheduling needs to be a stacked operations D:
-              pass.cancelUpdates();
-              return pass.doss.$useAbility(ability, localParams).then(function(localVal) {
-                pass.scheduleUpdates();
-                return remoteVal;
-              });
-              
-            });
-            
-            // Adding remote 2nd:
-            /*
-            this.cancelUpdates();
-            return this.doss.$useAbility(ability, localParams).then(function(localVal) {
-              
-              return queries.$doQuery({ address: pass.doss.getAddress(), command: 'addData', params: { data: data } }).then(function(remoteVal) {
-                
-                // Turn updates back on once the remote value has added successfully
-                pass.scheduleUpdates();
-                
-                // return localVal; // Work with the local value instead of remote
-                return remoteVal;
-                
-              }).fail(function(err) {
-                
-                // Note: this removal is untested
-                var addr = localVal.address;
-                var child = pass.doss.getChild(addr);
-                var editor = new ds.Editor({});
-                editor.rem({ par: pass.doss, child: pass.doss.getChild(addr) });
-                return editor.$transact().then(function() {
-                  throw err; // The undo was successful, but the overall "addData" ability was not
-                }).fail(function(err) {
-                  console.log('FATAL MFRF');
-                  throw err;
-                });
-                
-              });
-              
-            });
-            */
-          }
-          
-        };}
-      })
-    
     });
     
     return ds;
+  },
+  runAfter2: function(ds, tr, qr, wr, p) {
+    
+    var outline = new ds.Outline({ name: 'app', c: ds.DossierObj });
+    outline.addChild('version', ds.DossierStr);
+    
+    var userSet = outline.addChild('userSet', ds.DossierArr);
+    var user = userSet.addDynamicChild('user', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getValue('username'); }
+    });
+    user.addChild('username', ds.DossierStr);
+    user.addChild('password', ds.DossierStr);
+    user.addChild('fname', ds.DossierStr);
+    user.addChild('lname', ds.DossierStr);
+    
+    var storySet = outline.addChild('storySet', ds.DossierArr);
+    var story = storySet.addDynamicChild('story', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getValue('quickName'); }
+    });
+    story.addChild('user', ds.DossierRef, { template: '~root.userSet.$username' });
+    story.addChild('createdTime', ds.DossierInt);
+    story.addChild('quickName', ds.DossierStr);
+    story.addChild('description', ds.DossierStr);
+    story.addChild('authorLimit', ds.DossierInt);
+    story.addChild('contestTime', ds.DossierInt);
+    story.addChild('maxWrites', ds.DossierInt);
+    story.addChild('maxVotes', ds.DossierInt);
+    story.addChild('maxWriteLength', ds.DossierInt);
+    story.addChild('contestLimit', ds.DossierInt);
+    story.addChild('anonymizeWriter', ds.DossierBln);
+    story.addChild('anonymizeVoter', ds.DossierBln);
+    story.addChild('slapLoadTime', ds.DossierInt);
+    story.addChild('slamLoadTime', ds.DossierInt);
+    story.addChild('contestInd', ds.DossierInt);
+    story.addChild('phase', ds.DossierStr);
+    story.addChild('timePhaseStarted', ds.DossierInt);
+    
+    var authorSet = story.addChild('authorSet', ds.DossierArr);
+    var author = authorSet.addDynamicChild('author', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getChild('user').getNameParam('username'); },
+    });
+    author.addChild('user', ds.DossierRef, { template: '~root.userSet.$username' });
+    author.addChild('numSlaps', ds.DossierInt);
+    author.addChild('lastSlapTime', ds.DossierInt);
+    author.addChild('numSlams', ds.DossierInt);
+    author.addChild('lastSlamTime', ds.DossierInt);
+    
+    // ~root.storySet.story.contestSet
+    var contestSet = story.addChild('contestSet', ds.DossierArr);
+    var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getValue('num'); }
+    });
+    contest.addChild('num', ds.DossierInt);
+    
+    // ~root.storySet.story.contestSet.contest.writeSet
+    var contestWriteSet = contest.addChild('writeSet', ds.DossierArr);
+    var contestWrite = contestWriteSet.addDynamicChild('write', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getChild('author').getNameParam('username'); }
+    });
+    contestWrite.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username' });
+    contestWrite.addChild('content', ds.DossierStr);
+    
+    // ~root.storySet.story.contestSet.contest.writeSet.write.voteSet
+    var voteSet = contestWrite.addChild('voteSet', ds.DossierArr);
+    var vote = voteSet.addDynamicChild('vote', ds.DossierObj, {
+      nameFunc: function(doss) { return doss.getChild('author').getNameParam('username'); }
+    });
+    vote.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username' });
+    vote.addChild('value', ds.DossierInt);
+    
+    // ~root.storySet.story.writeSet.write
+    var winWriteSet = story.addChild('writeSet', ds.DossierArr);
+    winWriteSet.addDynamicChild('write', ds.DossierRef, { template: '~par.~par.contestSet.$contestInd.writeSet.$username',
+      nameFunc: null,
+    });
+    
+    var editor = new ds.Editor();
+    var doss = editor.add({ outline: outline, data: {
+      version: '0.0.2 (anonymity)',
+      userSet: {
+        admin: {
+          username: 'admin',
+          password: 'suchsmartadmin',
+          fname: 'Admin',
+          lname: 'Istrator'
+        }
+      },
+      storySet: {}
+      /*storySet: {
+        heeheehaha: {
+          user: '~root.userSet.admin',
+          createdTime: 1511636794069,
+          quickName: 'heeheehaha',
+          description: 'hahahaheeheehee',
+          authorLimit: 100,
+          contestTime: 43200000,
+          maxWrites: 100,
+          maxVotes: 100,
+          maxWriteLength: 100,
+          contestLimit: 100,
+          anonymizeWriter: false,
+          anonymizeVoter: false,
+          slapLoadTime: 432000000,
+          slamLoadTime: 432000000,
+          contestInd: 9,
+          phase: 'awaitingWrite',
+          timePhaseStarted: 1512438442203,
+          authorSet: {
+            admin: {
+              user: '~root.userSet.admin',
+              numSlaps: 0,
+              lastSlapTime: 1511636794087,
+              numSlams: 0,
+              lastSlamTime: 1511636794087
+            }
+          },
+          contestSet: {
+            0: {
+              num: 0,
+              writeSet: {
+                admin: {
+                  author: '~par(story).authorSet.admin',
+                  content: 'HELLO!!',
+                  voteSet: {
+                    admin: {
+                      author: '~par(story).authorSet.admin',
+                      value: 1
+                    }
+                  }
+                }
+              }
+            },
+            1: {
+              num: 1,
+              writeSet: {
+                admin: {
+                  author: '~par(story).authorSet.admin',
+                  content: 'dsfadsfdsaf',
+                  voteSet: {
+                    admin: {
+                      author: '~par(story).authorSet.admin',
+                      value: 1
+                    }
+                  }
+                }
+              }
+            },
+            2: {
+              num: 2,
+              writeSet: {
+                admin: {
+                  author: '~par(story).authorSet.admin',
+                  content: 'gfdsgsdfgsfd',
+                  voteSet: {
+                    admin: {
+                      author: '~par(story).authorSet.admin',
+                      value: 1
+                    }
+                  }
+                }
+              }
+            },
+          },
+          writeSet: {
+            0: '~par.~par.contestSet.0.writeSet.admin',
+            1: '~par.~par.contestSet.1.writeSet.admin'
+          }
+        }
+      }*/
+    }});
+    
+    doss.addWorry('editorCreated', function(d) {
+      console.log('Created:', doss.getAddress(), d);
+    });
+    
+    return editor.$transact().then(function(result) {
+      
+      var fname = doss.getChild('userSet.admin.fname');
+      fname.addWorry('editorAltered', function(d) {
+        console.log('Modified:', fname.getAddress(), d);
+      });
+      
+      editor.mod({ doss: fname, data: 'GREG' });
+      return editor.$transact();
+      
+    }).then(function() {
+      
+      var admin = doss.getChild('userSet.admin');
+      admin.addWorry('editorAltered', function(d) {
+        console.log('Modified:', admin.getAddress(), d);
+      });
+      
+      editor.mod({ doss: admin, data: { fname: 'HANK' } });
+      return editor.$transact();
+      
+    }).then(function() {
+      
+      console.log('Done!');
+      
+    }).done();
+    
   }
 });
 package.build();

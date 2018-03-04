@@ -747,7 +747,7 @@ new PACK.pack.Package({ name: 'creativity',
             var username = U.param(userData, 'username');
             var password = U.param(userData, 'password');
             
-            return U.obj.update(params, {
+            return O.update(params, {
               /// {SERVER=
               token: cr.getToken(username, password),
               /// =SERVER}
@@ -978,7 +978,7 @@ new PACK.pack.Package({ name: 'creativity',
         mod: new ds.AbilityMod({ public: false, par: storySet.getAbility('mod'),
           validateBelow: function(editor, doss, below, params) {
             
-            return below.update({
+            return O.update(below, {
               
               // Include a reference to the story
               story: doss,
@@ -1018,7 +1018,7 @@ new PACK.pack.Package({ name: 'creativity',
         return new ds.ContentCalc({ doss: doss, cache: cr.updateOnFrame, func: function() {
           var username = doss.getRoot().getValue('username');
           var story = doss.par;
-          return story.children.authorSet.children.contains(username);
+          return O.contains(story.children.authorSet.children, username);
         }});
       }
     });
@@ -1194,11 +1194,11 @@ new PACK.pack.Package({ name: 'creativity',
     });
     story.addChild('contestInd', ds.DossierInt, {
       /// {CLIENT=
-      contentFunc: function(ciDoss) {
-        return new ds.ContentSync({ doss: ciDoss, waitMs: 1000 });
+      contentFunc: function(doss) {
+        return new ds.ContentSync({ doss: doss, waitMs: 1000 });
       },
-      changeHandler: function(ciDoss) {
-        var storyDoss = ciDoss.par;
+      changeHandler: function(doss) {
+        var storyDoss = doss.par;
         storyDoss.getChild('currentContest').content.update();
         storyDoss.getChild('writeSet').content.update();
         storyDoss.getChild('phase').content.update();
@@ -1662,13 +1662,17 @@ new PACK.pack.Package({ name: 'creativity',
     /// =CLIENT}
     
     var channeler = new sv.Channeler({ appName: packageName });
-    channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: host, port: port }));
-    channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    
+    var http = channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: host, port: port }));
+    http.$initialized().then(function() { console.log('http ready at ' + host + ':' + port); });
+    
+    var sokt = channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, host: host, port: port + 1 }));
+    sokt.$initialized().then(function() { console.log('sokt ready at ' + host + ':' + (port + 1)); });
     
     // Link the outline to the session handler
     outline.channeler = channeler;
     
-    return cr.update({
+    return O.update(cr, {
       channeler: channeler,
       versioner: versioner
     });
@@ -1676,7 +1680,6 @@ new PACK.pack.Package({ name: 'creativity',
   },
   runAfter: function(cr /* ... */) {
     
-    var package = arguments[0];
     /// {SERVER=
     var ds = arguments[1];
     var p = arguments[2];
@@ -1692,15 +1695,8 @@ new PACK.pack.Package({ name: 'creativity',
     
     var P = p.P;
     
-    // Tell all channels to start
     var channeler = cr.channeler;
-    for (var k in channeler.channels) {
-      
-      var cap = channeler.channels[k];
-      cap.$initialized().then(function(cap) { console.log(cap.getReadyNotification()); }.bind(null, cap));
-      cap.start();
-      
-    }
+    channeler.start(); // Start the interplay between machines
     
     cr.versioner.$getDoss().then(function(doss) {
       // console.log('Initialized!');
@@ -1713,24 +1709,6 @@ new PACK.pack.Package({ name: 'creativity',
       // TODO: Use a single timeout+inform-on-vote instead of this ugly interval loop?
       setInterval(function() { cr.$updateCreativity(doss).done(); }, 1000 * 1);
       setInterval(function() { cr.persister.$putData(doss.getData()).done(); }, 1000 * 10);
-      
-      /*
-      // Socket notification test
-      setInterval(function() {
-        
-        channeler.channels.sokt.$giveOrder({ session: U.firstVal(channeler.sessionSet), data: {
-          
-          address: [ '~root', 'version' ],
-          command: 'get',
-          params: {
-            selection: ds.selectAll
-          }
-          
-        }}).done();
-        
-      }, 5000);
-      */
-      
       /// =SERVER}
       
       /// {CLIENT=
@@ -2101,12 +2079,12 @@ new PACK.pack.Package({ name: 'creativity',
                         choiceInfo: function() {
                           var phase = doss.getValue('@currentStory.phase');
                           
-                          if ([ 'awaitingWrite', 'writing' ].contains(phase)) {
+                          if (A.contains([ 'awaitingWrite', 'writing' ], phase)) {
                             
                             // Choice depends on whether the user has already submitted
                             return doss.getChild('@currentStory.@currentContest.@currentWrite') ? 'vote' : 'write';
                             
-                          } else if ([ 'awaitingVote', 'voting' ].contains(phase)) {
+                          } else if (A.contains([ 'awaitingVote', 'voting' ], phase)) {
                             
                             return 'vote';
                             

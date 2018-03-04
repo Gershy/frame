@@ -3,7 +3,8 @@
 // Then the client-side could forward orders to the app in the same way as the
 // server side!
 
-// TODO: Eventually "command" should be "order"
+// TODO: Eventually "order" should become "command" or vice-versa
+//  - "order" is shorter to type, but confused with ordinality
 
 // NOTE: An "app" seems to be getting defined as a component of the program that is able to completely
 // separate giving, and heeding, orders. Instead, an "app" can give an order, and later/independently
@@ -54,7 +55,7 @@ new PACK.pack.Package({ name: 'server',
         // Find a static file, return it as an `OrderResponse`
         
         var ext = path.extname(filepath);
-        if (!sv.legalExtensions.contains(ext)) throw new Error('Illegal extension: "' + ext + '"');
+        if (!O.contains(sv.legalExtensions, ext)) throw new Error('Illegal extension: "' + ext + '"');
         ext = sv.legalExtensions[ext];
         
         if (ext[0] === '!') {
@@ -74,26 +75,49 @@ new PACK.pack.Package({ name: 'server',
         
       },
       
+      getPhysicalHostData: function() {
+        
+        /// {SERVER=
+        return {
+          host: fr.host,
+          port: fr.port
+        };
+        /// =SERVER}
+        
+        /// {CLIENT=
+        return {
+          host: window.location.hostname,
+          port: parseInt(window.location.port || 80) // TODO: This isn't taking https into account
+        };
+        /// =CLIENT}
+        
+      },
+      
+      /* Channeler - manage multiple channels */
       Channeler: U.makeClass({ name: 'Channeler', superclass: tr.TreeNode,
         description: 'Entry point for remote communications. Manipulates a number ' +
           'of channels in order to provide protocol-agnostic communication with ' +
           'the other side.',
         methods: function(sc) { return {
-          init: function(params /* appName, assetVersion */) {
+          
+          init: function(params /* appName, assetVersion, handler */) {
+            
             this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
+            this.appName = U.param(params, 'appName');
+            this.handler = U.param(params, 'handler');
+            
             this.channels = {};
-            this.bestChannel = null;
+            this.favouriteChannel = null;
+            
             /// {SERVER=
             this.sessionSet = {};
             /// =SERVER}
             
-            this.appName = U.param(params, 'appName');
-            this.handler = null;
           },
           /// {SERVER=
           getSession: function(ip) {
             
-            if (!this.sessionSet.contains(ip)) {
+            if (!O.contains(this.sessionSet, ip)) {
               this.sessionSet[ip] = new sv.Session({ ip: ip, channeler: this });
               // TODO: Session timeouts
               console.log('Initiated session: ' + this.sessionSet[ip].ip + ' (' + this.sessionSet[ip].id + ')');
@@ -110,26 +134,19 @@ new PACK.pack.Package({ name: 'server',
             
             var pass = this;
             channel.$initialized().then(function() {
-              if (!pass.bestChannel || channel.priority > pass.bestChannel.priority) {
-                pass.bestChannel = channel;
+              if (!pass.favouriteChannel || channel.priority > pass.favouriteChannel.priority) {
+                pass.favouriteChannel = channel;
               }
             });
             
             return channel;
             
           },
-          getHandler: function() {
-            if (!this.handler) {
-              if (!O.contains(PACK, this.appName) || !PACK[this.appName].queryHandler) throw new Error('No handler available');
-              this.handler = PACK[this.appName].queryHandler;
-            }
-            return this.handler;
-          },
           
           getNamedChild: function(name) {
             
-            if (name === '~root') return this.handler;
-            if (this.channels.hasOwnProperty(name)) return this.channels[name];
+            if (name === '~root') { return this.handler; }
+            if (O.contains(this.channels, name)) return this.channels[name];
             return null;
             
           },
@@ -154,9 +171,7 @@ new PACK.pack.Package({ name: 'server',
             var channelName = U.param(channelerParams, 'channelName', null);
             var channelParams = U.param(channelerParams, 'channelParams', {});
             
-            var channel = channelName
-              ? U.param(this.channels, channelName)
-              : this.bestChannel;
+            var channel = channelName ? U.param(this.channels, channelName) : this.favouriteChannel;
             
             // Use the channel to give the order (with the appropriate params)
             return channel.$giveOrder({
@@ -176,7 +191,7 @@ new PACK.pack.Package({ name: 'server',
             order.
             */
             
-            if (params === null) return p.$null;
+            if (params === null) return p.$null; // `null` is received from fizzling
             
             var pass = this;
             var orderDesc = '<UNRECOGNIZED ORDER>';
@@ -190,7 +205,7 @@ new PACK.pack.Package({ name: 'server',
               var orderParams = U.param(params, 'params', {});
               var channelerParams = U.param(params, 'channelerParams', {});
               
-              orderDesc = (address.length ? (address.join('.') + '.') : '~root') + command + '(' + U.debugObj(orderParams) + ');';
+              orderDesc = (address.length ? address.join('.') : '~root') + '.' + command + '(' + U.debugObj(orderParams) + ');';
               
               var child = pass.getChild(address);
               if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
@@ -209,16 +224,23 @@ new PACK.pack.Package({ name: 'server',
               } else {
                 
                 // Some other child is consuming the order
-                return child.$heedOrder({ session: session, command: command, params: orderParams, channelerParams: channelerParams });
+                var channelName = U.param(channelerParams, 'channelName', null);
+                var channelParams = U.param(channelerParams, 'channelParams', {});
+                var channel = channelName ? U.param(pass.channels, channelName, null) : null;
+                
+                var $result = child.$heedOrder({ session: session, command: command, params: orderParams, channelerParams: channelerParams })
+                
+                // The Channel may need to do some cleanup if it is connection-based or potentially for other reasons (that I haven't thought of)
+                if (channel)
+                  $result = $result.then(channel.cleanup.bind(channel, channelParams));
+                
+                return $result;
                 
               }
               
-              return $ret;
-              
-            }}).then(function(data) {
+            }}).then(function() {
               
               console.log('SUCCESS: ' + orderDesc);
-              return data;
               
             }).fail(function(err) {
               
@@ -258,22 +280,20 @@ new PACK.pack.Package({ name: 'server',
                     orderResponse.data = orderResponse.data.replace(/{{assetVersion}}/g, assetVersion);
                     orderResponse.data = orderResponse.data.replace('{{title}}', appName);
                     
-                    if (PACK[appName].contains('resources')) {
-                      
+                    var ver = '?' + assetVersion;
+                    var htmlHeaderElems = [];
+                    // htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="apps/' + appName + '/css/style.css' + ver + '"/>');
+                    
+                    if (O.contains(PACK[appName], 'resources')) {
                       var r = PACK[appName].resources;
-                      
-                      var ver = '?' + assetVersion;
-                      
-                      var htmlElems = [];
-                      if (r.contains('css')) r.css.forEach(function(css) { htmlElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
-                      if (r.contains('js')) r.js.forEach(function(js) { htmlElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
-                      orderResponse.data = orderResponse.data.replace(/(\s*){{resources}}/, '\n' + htmlElems.map(function(html) { return '    ' + html; }).join('\n'));
-                      
-                    } else {
-                      
-                      orderResponse.data = orderResponse.data.replace(/(\s*){{resources}}/, '');
-                      
+                      if (O.contains(r, 'css')) r.css.forEach(function(css) { htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
+                      if (O.contains(r, 'js')) r.js.forEach(function(js) { htmlHeaderElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
                     }
+                    
+                    var htmlHeaderStr = htmlHeaderElems.length
+                      ? '\n' + htmlHeaderElems.map(function(html) { return '    ' + html; }).join('\n')
+                      : '';
+                    orderResponse.data = orderResponse.data.replace(/(\s*){{resources}}/, htmlHeaderStr);
                     
                     return orderResponse;
                     
@@ -405,10 +425,25 @@ new PACK.pack.Package({ name: 'server',
                 
             }});
             
+          },
+          
+          $start: function() {
+            
+            return new P({ all: O.map(this.channels, function(channel) {
+              return channel.$start();
+            })});
+            
+          },
+          stop: function() {
+            
+            O.each(this.channels, 'stop');
+            
           }
+          
         };}
       }),
       
+      /* Channel - manages sending orders between two remote locations */
       Channel: U.makeClass({ name: 'Channel', superclass: tr.TreeNode,
         methods: function(sc) { return {
           init: function(params /* name, priority */) {
@@ -449,6 +484,7 @@ new PACK.pack.Package({ name: 'server',
           },
           $heedOrder: function(params /* session, command, params, channelParams */) {  // Channel
             
+            // Causes this specific channel to send a notification
             // Channel params are included here in case the channel gives a bouncing order
             
             var pass = this;
@@ -482,9 +518,11 @@ new PACK.pack.Package({ name: 'server',
             }});
             
           },
-          getReadyNotification: function() { throw new Error('not implemented'); },
           
-          start: function() { throw new Error('not implemented'); },
+          cleanup: function(channelParams) {
+          },
+          
+          $start: function() { throw new Error('not implemented'); },
           stop: function() { throw new Error('not implemented'); }
         };}
       }),
@@ -512,7 +550,16 @@ new PACK.pack.Package({ name: 'server',
             };
           },
           
+          sendResponse: function(res, data) {
+            
+            var orderResponse = U.isInstance(data, sv.OrderResponse) ? data : new sv.OrderResponse({ data: data });
+            orderResponse.endResponse(res);
+            res['~finalized'] = true;
+            
+          },
           $giveOrder: function(params /* session, data, channelParams { res } */) { // ChannelHttp
+            
+            var data = U.param(params, 'data');
             
             /// {SERVER=
             
@@ -521,28 +568,28 @@ new PACK.pack.Package({ name: 'server',
             // If neither of these methods produces a Response instance, queue
             // the `params.data` value until a longpoll becomes available.
             
-            // Get the response that ought to be sent to the other side in the proper format
-            var data = U.param(params, 'data');
-            var orderResponse = U.isInstance(data, sv.OrderResponse) ? data : new sv.OrderResponse({ data: data });
+            // Note that promise fulfillment in this case means that the server
+            // has decided to send the order, NOT that the order has been
+            // received by the client.
             
             // Get the session data
             var session = U.param(params, 'session');
             var sessionData = this.useSessionData(session);
+            var channelParams = U.param(params, 'channelParams', {});
             
             // Get the Response instance
-            var channelParams = U.param(params, 'channelParams', {});
             var res = U.param(channelParams, 'res', null);  // Attempt one: use a provided Response object
             if (!res) res = sessionData.polls.shift();      // Attempt two: use a queued Response object
             
             if (res) {
               
               // We have a Response instance! Use `orderResponse` to respond with it.
-              orderResponse.endResponse(res);
+              this.sendResponse(res, data);
               
             } else {
               
               // No Response instance found. Need to queue `orderResponse` until we can send it.
-              sessionData.pending.push(orderResponse);
+              sessionData.pending.push(data);
               
             }
             
@@ -552,16 +599,17 @@ new PACK.pack.Package({ name: 'server',
             /// {CLIENT=
             
             // Get all the data for the query from `params.data`
-            var data = U.param(params, 'data');
             var address = U.param(data, 'address');
             var command = U.param(data, 'command');
             var params = U.param(data, 'params');
             
+            console.log('Beginning query (' + command + ')...');
             return this.$doQuery({
               address: address,
               command: command,
               params: params
-            });
+            })
+              .then(p.log('Done query...'))
             
             /// =CLIENT}
             
@@ -603,7 +651,7 @@ new PACK.pack.Package({ name: 'server',
                 // If an order is pending, send it using the poll. Otherwise, bank the
                 // poll until an order becomes available to be sent.
                 
-                if (sessionData.pending.length) sessionData.pending.shift().endResponse(res);
+                if (sessionData.pending.length) pass.sendResponse(res, sessionData.pending.shift());
                 else                            sessionData.polls.push(res);
                 
                 return null;
@@ -611,9 +659,7 @@ new PACK.pack.Package({ name: 'server',
               } else if (command === 'fizzleAllPolls') {
                 
                 var polls = pass.useSessionData(session).polls;
-                var orderResponse = new sv.OrderResponse({ data: null });
-                
-                while (polls.length) orderResponse.endResponse(polls.shift());
+                while (polls.length) pass.sendResponse(polls.shift(), null);
                 
                 return pass.$giveOrder({
                   session: session,
@@ -627,14 +673,22 @@ new PACK.pack.Package({ name: 'server',
                 
             }});
             /// =SERVER}
+            
             /// {CLIENT=
             // No requests available
+            return new P({ err: new Error('Invalid request') });
             /// =CLIENT}
             
           },
-          getReadyNotification: function() { return this.name.toUpperCase() + ' channel ready at http://' + this.host + ':' + this.port; },
           
           /// {SERVER=
+          cleanup: function(channelParams) {
+            
+            var res = U.param(channelParams, 'res');
+            if (!res['~finalized']) this.sendResponse(res, null);
+            
+          },
+          
           $parseQuery: function(req) { // Parses a Request into a `{ address, command, params }` value
             
             var url = req.url.substr(1); // Strip the leading "/"
@@ -659,7 +713,7 @@ new PACK.pack.Package({ name: 'server',
               }
               
               // Handle the special "_data" parameter
-              if (queryParams.contains('_data')) {
+              if (O.contains(queryParams, '_data')) {
                 // The "_data" property overwrites any properties in the query of the same name
                 try {
                   var obj = U.stringToThing(queryParams._data);
@@ -759,7 +813,7 @@ new PACK.pack.Package({ name: 'server',
             
             var pass = this;
             this.$parseQuery(req).then(function(queryObj) { // Send the query to the correct child
-              
+            
               // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
               var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
               var session = pass.channeler.getSession(ip);
@@ -788,30 +842,57 @@ new PACK.pack.Package({ name: 'server',
           /// {CLIENT=
           $doQuery: function(params /* address, command, params, ref */) {
             
+            // The only command that can be issued before the HttpChannel is $ready is "fizzleAllPolls"
+            var command = U.param(params, 'command');
+            if (this.$ready.status === 'pending' && command !== 'fizzleAllPolls') return new P({ err: new Error('Can\'t query until ready') });
+            
             var address = U.param(params, 'address');
             if (U.isObj(address, String)) address = address.split('.');
             
-            var command = U.param(params, 'command');
             var reqParams = U.param(params, 'params', {});
             var ref = U.param(params, 'ref', null);
             
+            var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(reqParams) + ')'); // TODOPRF: This should be a debug feature
+            
+            
             var pass = this;
-            var err = new Error('Query failed'); // TODOPRF: This should be a debug feature
             return new P({ custom: function(resolve, reject) {
               
+              var formatIncoming = ref === null
+                ? function(xhr) { return U.stringToThing(xhr.responseText); }
+                : function(xhr) { return { ref: ref, result: U.stringToThing(xhr.responseText) }; };
+              
               var xhr = new XMLHttpRequest();
-              xhr.onreadystatechange = ref === null
-                ? c.stdStateChangeFunc.bind(null, xhr, resolve, reject, err)
-                : c.refStateChangeFunc.bind(null, xhr, resolve, reject, err, ref);
+              xhr.onreadystatechange = function() {
+                
+                if (xhr.readyState !== 4) return;
+                
+                try {
+                  
+                  if (xhr.status === 200) return resolve(formatIncoming(xhr));
+                  
+                  if (xhr.status === 0) {
+                    console.log('Warning: zero-status');
+                    return resolve(null); // Status 0 indicates browser error. TODO: This can make cross domain errors hard to detect
+                  }
+                  
+                  dbgErr.message += '\nStatus: ' + xhr.status + '; Message: "' + xhr.responseText + '"';
+                  return reject(dbgErr);
+                  
+                } catch(err0) {
+                  
+                  err0.message = 'Deeper error: ' + err0.message;
+                  return reject(err0);
+                  
+                }
+                
+              };
               
               xhr.open('POST', '', true);
               xhr.setRequestHeader('Content-Type', 'application/json');
-              xhr.send(U.thingToString({
-                address: address,
-                command: command,
-                params: reqParams
-              }));
-            
+              xhr.send(U.thingToString({ address: address, command: command, params: reqParams }));
+              console.log('Query sent (' + command + ')...');
+              
             }}).then(function(order) {
               
               // TODO: What if `order` is the number zero (`0`)? It should probably be required to be an `Object`.
@@ -825,10 +906,12 @@ new PACK.pack.Package({ name: 'server',
             var pass = this;
             while (this.numBanked < this.numToBank) {
               
-              this.$doQuery({ address: [ this.name ], command: 'bankPoll' }).then(function(order) {
-                pass.numBanked--;
-                pass.doBankPolls();
-              }).done();
+              this.$doQuery({ address: [ this.name ], command: 'bankPoll' })
+                .then(function(order) {
+                  pass.numBanked--;
+                  pass.doBankPolls();
+                })
+                .done();
               
               this.numBanked++;
               
@@ -837,21 +920,46 @@ new PACK.pack.Package({ name: 'server',
           },
           /// =CLIENT}
           
-          start: function() {
+          $start: function() {
             
             /// {SERVER=
+            
+            /* // Monitor session polls
+            var pass = this;
+            setInterval(function() {
+              
+              var sessionSet = pass.channeler.sessionSet;
+              var data = [];
+              
+              for (var k in sessionSet) {
+                data.push({
+                  ip: sessionSet[k].ip,
+                  num: sessionSet[k].channelData[pass.name].polls.length,
+                  data: sessionSet[k].channelData[pass.name]
+                });
+              }
+              
+              console.log('SESSIONDAT:', data);
+              
+            }, 2000);*/
+            
             this.server = require('http').createServer(this.serverFunc.bind(this));
             this.server.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
+            return this.$ready;
             /// =SERVER}
             /// {CLIENT=
             // Ensure there are no polls already held by the server. If the server attempted
             // to resolve these polls, *this* instance would not be informed because it has
             // no reference to the XMLHttpRequest instances which initiated these polls.
             var pass = this;
-            this.$doQuery({ address: [ this.name ], command: 'fizzleAllPolls' }).then(function(data) {
-              pass.doBankPolls();
-              pass.$ready.resolve(null);
-            }).done();
+            
+            return this.$doQuery({ address: [ this.name ], command: 'fizzleAllPolls' })
+              .then(function(data) {
+                pass.$ready.resolve(null);
+                pass.doBankPolls();
+              })
+              .fail(console.error.bind(console))
+              .done();
             /// =CLIENT}
             
           },
@@ -862,25 +970,12 @@ new PACK.pack.Package({ name: 'server',
             this.server = null;
             /// =SERVER}
             /// {CLIENT=
+            console.log('STOPPED HTTP CHANNEL');
             this.$doQuery({ address: [ this.name ], command: 'fizzleAllPolls' }).done();
             /// =CLIENT}
             
           }
-        };},
-        statik: {
-          /// {CLIENT=
-          stdStateChangeFunc: function(xhr, resolve, reject, err) {
-            if (xhr.readyState !== 4) return;
-            if (xhr.status === 200) resolve(U.stringToThing(xhr.responseText));
-            else                    reject(err.update({ message: 'Query failed: ' + xhr.responseText }));
-          },
-          refStateChangeFunc: function(xhr, resolve, reject, err, ref) {
-            if (xhr.readyState !== 4) return;
-            if (xhr.status === 200) resolve({ ref: ref, result: U.stringToThing(xhr.responseText) });
-            else                    reject(err.update({ message: 'Query failed: ' + xhr.responseText }));
-          }
-          /// =CLIENT}
-        }
+        };}
       }),
       ChannelSocket: U.makeClass({ name: 'ChannelSocket', superclassName: 'Channel',
         methods: function(sc, c) { return {
@@ -896,7 +991,6 @@ new PACK.pack.Package({ name: 'server',
             /// =SERVER}
           },
           $initialized: function() { return this.$ready; },
-          getReadyNotification: function() { return this.name.toUpperCase() + ' channel ready at ws://' + this.host + ':' + this.port; },
           
           $giveOrder: function(params /* session, data, channelParams */) { // ChannelSocket
             
@@ -951,7 +1045,7 @@ new PACK.pack.Package({ name: 'server',
           },
           /// =SERVER}
           
-          start: function() {
+          $start: function() {
             
             /// {SERVER=
             // For secure connections, can swap "net" for "tls"
@@ -975,6 +1069,8 @@ new PACK.pack.Package({ name: 'server',
             };
             this.socket = socket;
             /// =CLIENT}
+            
+            return this.$ready;
             
           },
           stop: function() {
@@ -1006,13 +1102,13 @@ new PACK.pack.Package({ name: 'server',
             this.ip = U.param(params, 'ip');
             this.channeler = U.param(params, 'channeler');
             this.id = U.id(sv.Session.NEXT_ID++);
-            this.userData = {};
             this.channelData = {};
           },
         }},
         statik: { NEXT_ID: 0 }
       }),
       OrderResponse: U.makeClass({ name: 'OrderResponse',
+        description: 'Handles the sending of orders to the other side via HTTP',
         methods: function(sc) { return {
           init: function(params /* httpCode, contentType, encoding, data */) {
             
@@ -1033,7 +1129,9 @@ new PACK.pack.Package({ name: 'server',
             
           },
           endSocket: function(skt) {
+            
             throw new Error('not implemented');
+            
           }
         };}
       }),

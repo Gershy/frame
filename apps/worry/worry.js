@@ -11,16 +11,16 @@ new PACK.pack.Package({ name: 'worry',
             // To keep objects lightweight, this class doesn't add any properties until necessary
           },
           getKey: function() {
-            if (!this.hasOwnProperty('worryId')) {
-              this.concerns = {};
-              this.nextId = 0;
-              this.worryId = wr.WORRY_ID++;
-            }
+            if (!this.hasOwnProperty('concerns')) this.concerns = {};
+            if (!this.hasOwnProperty('nextId')) this.nextId = 0;
+            if (!this.hasOwnProperty('worryId')) this.worryId = wr.WORRY_ID++;
+            
             return '~wr.' + this.worryId;
           },
           addWorry: function(type, func, key0) {
             
-            if (!(type in this.concerns)) this.concerns[type] = {};
+            O.prepare(this, 'concerns');
+            O.prepare(this.concerns, type);
             
             if (U.exists(key0)) {
               
@@ -32,9 +32,8 @@ new PACK.pack.Package({ name: 'worry',
               // If no key is supplied, a key is generated and attached to the function itself
               // In this way the key can be found from the function, and the function itself
               // can be provided for the removal call
-              var key = this.nextId++;
-              
               var uniqKey = this.getKey();
+              var key = this.nextId++;
               if (!O.contains(func, uniqKey)) func[uniqKey] = {};
               if (O.contains(func[uniqKey], type)) throw new Error('Tried to add the same concern twice');
               
@@ -92,11 +91,18 @@ new PACK.pack.Package({ name: 'worry',
             return O.contains(this.concerns[type], key);
             
           },
-          concern: function(type, params) {
-            if (!('concerns' in this)) return;
+          worry: function(type, params) {
+            
+            if (!O.contains(this, 'concerns') || !O.contains(this.concerns, type)) return;
             
             var typeCares = this.concerns[type];
             for (var k in typeCares) typeCares[k](params);
+            
+          },
+          concern: function(type, params) { // TODO: Remove `concern` method eventually
+            
+            return this.worry(type, params);
+            
           },
           
           start: function() {},
@@ -121,5 +127,37 @@ new PACK.pack.Package({ name: 'worry',
     };
     
     return wr;
+  },
+  test: function(tester, wr) {
+    
+    var Wr = U.makeClass({ name: 'Wr', mixins: [ wr.Worry ],
+      methods: function(sc, c) {
+        
+      }
+    });
+    
+    var p = tester.dependencies.p;
+    var P = p.P;
+    
+    return tester({
+      
+      basicFunctionality: function() {
+        
+        var ret = new P({});
+        var params = { a: 'a', b: 'b' };
+        
+        var wr = new Wr({});
+        wr.addWorry('test', function(params0) {
+          if (params0 === params) ret.resolve(null);
+          else                    ret.reject(new Error());
+        });
+        wr.concern('test', params);
+        
+        return ret;
+        
+      }
+      
+    });
+    
   }
 }).build();

@@ -2,10 +2,9 @@
 // to implement independently
 
 var package = new PACK.pack.Package({ name: 'userify',
-  dependencies: [ 'tree', 'dossier', 'p', 'geom' ],
-  buildFunc: function(packageName, tree, ds, p, geom) {
+  dependencies: [ 'tree', 'dossier', 'p' ],
+  buildFunc: function(packageName, tree, ds, p) {
     var P = p.P;
-    //var Point = geom.Point;
     
     var uf = {
       
@@ -189,6 +188,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             this.$action(event).then(function() {
               pass.loadingInfo.setValue(false);
             }).done();
+            
           },
           isLoading: function() {
             return this.loadingInfo.getValue();
@@ -608,7 +608,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           stop: function() {
             for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].stop(this);
-            
             if (this.domRoot && this.domRoot.parentNode) this.domRoot.parentNode.removeChild(this.domRoot);
             this.domRoot = null;
           }
@@ -692,7 +691,13 @@ var package = new PACK.pack.Package({ name: 'userify',
             var input = document.createElement(this.multiline ? 'textarea' : 'input');
             input.classList.add('interactive');
             input.oninput = function(e) {
+              
               this.info.setValue(input.value);
+              
+              /*var editor = new ds.Editor();
+              editor.mod({ doss: this.info, data: input.value });
+              editor.$transact().done();*/
+              
             }.bind(this);
             ret.appendChild(input);
             
@@ -800,7 +805,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           addChild: function(child) {
             if (child.par === this) return child;
             if (child.par !== null) throw new Error('Tried to add View with parent: ' + child.getAddress());
-            if (this.children.contains(child.name)) throw new Error('Already have a child named "' + child.name + '"');
+            if (O.contains(this.children, child.name)) throw new Error('Already have a child named "' + child.name + '"');
             
             child.par = this;
             this.children[child.name] = child;
@@ -820,7 +825,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             // Resolve string to child
             if (U.isObj(child, String)) child = this.children[child];
             
-            if (!child || !this.children.contains(child.name)) return null;
+            if (!child || this.children[child.name] !== child) return null;
             
             child.stop(); // Detach dom
             child.par = null; // Detach info step 1
@@ -938,7 +943,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (choice === null) {
               var nextChild = null;
             } else {
-              if (!this.children.contains(choice)) throw new Error('Bad view choice: "' + choice + '"');
+              if (!O.contains(this.children, choice)) throw new Error('Bad view choice: "' + choice + '"');
               var nextChild = this.children[choice];
             }
             
@@ -1007,7 +1012,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           'raw info that the child was built from.',
         methods: function(sc, c) { return {
           init: function(params /* name, childInfo, getDataId, genChildView, comparator */) {
-            if (params.contains('children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
+            if (O.contains(params, 'children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
             
             sc.init.call(this, params);
             this.childInfo = uf.pafam(params, 'childInfo');
@@ -1041,7 +1046,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               delete rem[k];
               
               // Mark for addition
-              if (!this.children.contains(k)) add[k] = cd[k];
+              if (!O.contains(this.children, k)) add[k] = cd[k];
               
             }
             
@@ -1065,8 +1070,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           renameChild: function(view, newName) {
             if (newName === view.name) return;
             
-            if (this.children.contains(newName)) throw new Error('A child is already named "' + newName + '"; can\'t rename');
-            if (!this.childInfo.getValue().contains(newName)) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childInfo` before calling `renameChild`.');
+            if (O.contains(this.children, newName)) throw new Error('A child is already named "' + newName + '"; can\'t rename');
+            if (!O.contains(this.childInfo.getValue(), newName)) throw new Error('Renaming "' + view.name + '" to "' + newName + ' would leave it without any info. Update `childInfo` before calling `renameChild`.');
             
             this.children[newName] = this.children[view.name];
             delete this.children[view.name];
