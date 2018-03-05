@@ -814,6 +814,64 @@ global.U = {
   },
   
   // Misc
+  parseUrl: function(url, defaultProtocol) {
+    
+    if (url[0] === '/') url = url.substr(1);
+    
+    // Check if `url` includes a protocol
+    var pInd = url.indexOf('://');
+    if (~pInd) {
+      var protocol = url.substr(0, pInd);
+      url = url.substr(pInd + 3);
+    } else {
+      var protocol = defaultProtocol || 'http';
+    }
+    
+    var queryUrl = url;
+    var queryParams = {};
+    
+    // Check if the url includes parameters (indicated by the "?" symbol)
+    var qInd = url.indexOf('?');
+    if (~qInd) {
+      
+      // Strip the query off `queryUrl`
+      queryUrl = url.substr(0, qInd);
+      
+      // Get array of "k=v"-style url parameters
+      var queryArr = url.substr(qInd + 1).split('&');
+      for (var i = 0; i < queryArr.length; i++) {
+        var str = queryArr[i];
+        var eq = str.indexOf('=');
+        if (~eq)  queryParams[str.substr(0, eq)] = decodeURIComponent(str.substr(eq + 1));
+        else      queryParams[str] = null;
+      }
+      
+      // Handle the special "_data" parameter
+      if (O.contains(queryParams, '_data')) {
+        // The "_data" property overwrites any properties in the query of the same name
+        try {
+          var obj = U.stringToThing(queryParams._data);
+        } catch(err) {
+          return new P({ err: err });
+        }
+        if (!U.isObj(obj, Object)) throw new Error('Invalid "_data" parameter: "' + obj + '"');
+        
+        delete queryParams._data;
+        queryParams.update(obj);
+      }
+    }
+    
+    // Ensure that "queryUrl" is represented as an `Array`
+    if (queryUrl[queryUrl.length - 1] === '/') queryUrl = queryUrl.substr(0, queryUrl.length - 1);
+    queryUrl = queryUrl ? queryUrl.split('/') : [];
+    
+    return {
+      protocol: protocol,
+      url: queryUrl,
+      params: queryParams
+    };
+    
+  },
   timeMs: function() {
     return +new Date();
   },

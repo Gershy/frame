@@ -843,7 +843,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 // effects cancelled if possible.
                 
                 var editor = new ds.Editor();
-                console.log('Using ability...');
                 pass.$useAbility(set, session, null, editor, { doSync: true, data: val }) // TODO: The last param should just be `val`
                   .then(editor.$transact.bind(editor))
                 

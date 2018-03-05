@@ -6,9 +6,15 @@
 // TODO: Eventually "order" should become "command" or vice-versa
 //  - "order" is shorter to type, but confused with ordinality
 
-// NOTE: An "app" seems to be getting defined as a component of the program that is able to completely
-// separate giving, and heeding, orders. Instead, an "app" can give an order, and later/independently
-// heed an incoming order which may or may not be related to its original outgoing order.
+// TODO: Websocket fallback is available on client side, but the server isn't yet
+// learning that a client is missing websocket support. There should really be a
+// `favouriteChannel` property on Sessions instead of a single `favouriteChannel`
+// on the Channeler.
+
+/// {CLIENT=
+var testWebsocketFallback = false;
+if (testWebsocketFallback) WebSocket = null;
+/// =CLIENT}
 
 new PACK.pack.Package({ name: 'server',
   /// {SERVER=
@@ -113,18 +119,28 @@ new PACK.pack.Package({ name: 'server',
             this.sessionSet = {};
             /// =SERVER}
             
+            /// {CLIENT=
+            // TODODBG: Allow spoofing via url params
+            var urlParams = U.parseUrl(window.location.href).params;
+            this.ipSpoof = U.param(urlParams, 'spoof', null);
+            /// =CLIENT}
+            
           },
           /// {SERVER=
           getSession: function(ip) {
             
-            if (!O.contains(this.sessionSet, ip)) {
-              this.sessionSet[ip] = new sv.Session({ ip: ip, channeler: this });
-              // TODO: Session timeouts
-              console.log('Initiated session: ' + this.sessionSet[ip].ip + ' (' + this.sessionSet[ip].id + ')');
-            }
+            return O.contains(this.sessionSet, ip) ? this.sessionSet[ip] : new sv.Session({ ip: ip, channeler: this });
             
-            return this.sessionSet[ip];
+          },
+          addSession: function(session) {
+            this.sessionSet[session.ip] = session;
             
+            console.log('Persisted session: ' + session.ip);
+          },
+          remSession: function(ip) {
+            if (U.isObj(ip, sv.Session)) ip = ip.ip;
+            if (!O.contains(this.sessionSet, ip)) throw new Error('Can\'t remove nonexistant session: ' + ip);
+            delete this.sessionSet[ip];
           },
           /// =SERVER}
           addChannel: function(channel) {
@@ -133,10 +149,10 @@ new PACK.pack.Package({ name: 'server',
             channel.channeler = this;
             
             var pass = this;
-            channel.$initialized().then(function() {
-              if (!pass.favouriteChannel || channel.priority > pass.favouriteChannel.priority) {
-                pass.favouriteChannel = channel;
-              }
+            channel.$ready.then(function() {
+              
+              if (!pass.favouriteChannel || channel.priority > pass.favouriteChannel.priority) pass.favouriteChannel = channel;
+              
             });
             
             return channel;
@@ -150,6 +166,8 @@ new PACK.pack.Package({ name: 'server',
             return null;
             
           },
+          
+          // TODO: Some methods (or subsections of methods) should probably only exist on the SERVER
           
           $giveOrder: function(params /* session, data, channelerParams { channelName, channelParams } */) { // Channeler
             
@@ -195,6 +213,7 @@ new PACK.pack.Package({ name: 'server',
             
             var pass = this;
             var orderDesc = '<UNRECOGNIZED ORDER>';
+            var orderDescShort = '<UNRECOGNIZED ORDER>';
             return new P({ run: function() {
               
               var address = U.param(params, 'address', []);
@@ -210,7 +229,8 @@ new PACK.pack.Package({ name: 'server',
               var orderParams = U.param(params, 'params', {});
               var channelerParams = U.param(params, 'channelerParams', {});
               
-              orderDesc = (address.length ? address.join('.') : '~root') + '.' + command + '(' + U.debugObj(orderParams) + ');';
+              orderDescShort = (address.length ? address.join('.') : '~root') + '.' + command;
+              orderDesc = orderDescShort + '(' + U.debugObj(orderParams) + ');';
               
               var child = pass.getChild(address);
               if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
@@ -246,7 +266,7 @@ new PACK.pack.Package({ name: 'server',
               
             }}).then(function() {
               
-              console.log('SUCCESS: ' + orderDesc);
+              // console.log('SUCCESS: ' + orderDescShort);
               
             }).fail(function(err) {
               
@@ -274,32 +294,34 @@ new PACK.pack.Package({ name: 'server',
                 
                 var reqPath = U.param(orderParams, 'path');
                 var lastCmp = reqPath[reqPath.length - 1].toLowerCase();
+                
                 if (S.endsWith(lastCmp, '.html')) {
                   
                   // Do any required html replacement
                   
                   var appName = pass.appName;
-                  var assetVersion = pass.assetVersion
+                  var assetVersion = '?' + pass.assetVersion;
                   var $orderResponse = sv.$readFile(path.join.apply(path, reqPath)).then(function(orderResponse) {
                   
                     orderResponse.data = orderResponse.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
                     orderResponse.data = orderResponse.data.replace(/{{assetVersion}}/g, assetVersion);
                     orderResponse.data = orderResponse.data.replace('{{title}}', appName);
                     
-                    var ver = '?' + assetVersion;
                     var htmlHeaderElems = [];
-                    // htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="apps/' + appName + '/css/style.css' + ver + '"/>');
                     
                     if (O.contains(PACK[appName], 'resources')) {
                       var r = PACK[appName].resources;
-                      if (O.contains(r, 'css')) r.css.forEach(function(css) { htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="' + css + ver + '"/>'); });
-                      if (O.contains(r, 'js')) r.js.forEach(function(js) { htmlHeaderElems.push('<script type="text/javascript" src="' + js + ver + '"></script>'); });
+                      if (O.contains(r, 'css')) r.css.forEach(function(css) { htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="' + css + assetVersion + '"/>'); });
+                      if (O.contains(r, 'js')) r.js.forEach(function(js) { htmlHeaderElems.push('<script type="text/javascript" src="' + js + assetVersion + '"></script>'); });
                     }
                     
                     var htmlHeaderStr = htmlHeaderElems.length
                       ? '\n' + htmlHeaderElems.map(function(html) { return '    ' + html; }).join('\n')
                       : '';
                     orderResponse.data = orderResponse.data.replace(/(\s*){{resources}}/, htmlHeaderStr);
+                    
+                    // TODO: A bit meaningless to simply persist a session if it request an html page
+                    pass.addSession(session);
                     
                     return orderResponse;
                     
@@ -360,8 +382,7 @@ new PACK.pack.Package({ name: 'server',
                   
                 } else {
                   
-                  // Serve any non-html, non-js file directly
-                  
+                  // TODOVUL: Serves any non-html, non-js file directly
                   var $orderResponse = sv.$readFile(path.join.apply(path, reqPath));
                   
                 }
@@ -435,9 +456,21 @@ new PACK.pack.Package({ name: 'server',
           
           $start: function() {
             
+            var pass = this;
+            var successChannels = {};
+            
             return new P({ all: O.map(this.channels, function(channel) {
-              return channel.$start();
-            })});
+              
+              return channel.$start()
+                .then(function() {
+                  successChannels[channel.name] = channel;
+                })
+                .fail(function() {
+                  console.log('Warning: Channel "' + channel.name + '" unsupported.');
+                });
+              
+            })})
+              .then(function() { pass.channels = successChannels; });
             
           },
           stop: function() {
@@ -528,16 +561,21 @@ new PACK.pack.Package({ name: 'server',
           cleanup: function(channelParams) {
           },
           
-          $start: function() { throw new Error('not implemented'); },
+          $start: function() { return new P({ err: new Error('not implemented') }); },
           stop: function() { throw new Error('not implemented'); }
         };}
       }),
       ChannelHttp: U.makeClass({ name: 'ChannelHttp', superclassName: 'Channel',
         methods: function(sc, c) { return {
           init: function(params /* name, channeler, host, port, numToBank */) {
+            
             sc.init.call(this, params);
-            this.host = U.param(params, 'host');
-            this.port = U.param(params, 'port');
+            
+            // Defaults for host/port are based on physical host data
+            var physData = sv.getPhysicalHostData();
+            this.host = U.param(params, 'host', physData.host);
+            this.port = U.param(params, 'port', physData.port);
+            
             this.$ready = new P({});
             this.server = null;
             
@@ -582,6 +620,7 @@ new PACK.pack.Package({ name: 'server',
             var session = U.param(params, 'session');
             var sessionData = this.useSessionData(session);
             var channelParams = U.param(params, 'channelParams', {});
+            
             
             // Get the Response instance
             var res = U.param(channelParams, 'res', null);  // Attempt one: use a provided Response object
@@ -662,8 +701,6 @@ new PACK.pack.Package({ name: 'server',
                 
               } else if (command === 'fizzleAllPolls') {
                 
-                console.log('FIZZLING!!');
-                
                 var polls = pass.useSessionData(session).polls;
                 while (polls.length) pass.sendResponse(polls.shift(), null);
                 
@@ -694,47 +731,11 @@ new PACK.pack.Package({ name: 'server',
             if (!res['~finalized']) this.sendResponse(res, null);
             
           },
-          
           $parseQuery: function(req) { // Parses a Request into a `{ address, command, params }` value
             
-            var url = req.url.substr(1); // Strip the leading "/"
-            
-            // Initialize defaults for all url components
-            var queryUrl = url;
-            var queryParams = {};
-            
-            // Check if the url includes parameters (indicated by the "?" symbol)
-            var qInd = url.indexOf('?');
-            if (~qInd) {
-              // Strip the query off `queryUrl`
-              queryUrl = url.substr(0, qInd);
-              
-              // Get array of "k=v"-style url parameters
-              var queryArr = url.substr(qInd + 1).split('&');
-              for (var i = 0; i < queryArr.length; i++) {
-                var str = queryArr[i];
-                var eq = str.indexOf('=');
-                if (~eq)  queryParams[str.substr(0, eq)] = decodeURIComponent(str.substr(eq + 1));
-                else      queryParams[str] = null;
-              }
-              
-              // Handle the special "_data" parameter
-              if (O.contains(queryParams, '_data')) {
-                // The "_data" property overwrites any properties in the query of the same name
-                try {
-                  var obj = U.stringToThing(queryParams._data);
-                } catch(err) {
-                  return new P({ err: err });
-                }
-                if (!U.isObj(obj, Object)) throw new Error('Invalid "_data" parameter: "' + obj + '"');
-                
-                delete queryParams._data;
-                queryParams.update(obj);
-              }
-            }
-            
-            // Ensure that "queryUrl" is represented as an `Array`
-            queryUrl = queryUrl ? queryUrl.split('/') : [];
+            var queryData = U.parseUrl(req.url);
+            var queryUrl = queryData.url;
+            var queryParams = queryData.params;
             
             var method = req.method.toLowerCase();
             if (method === 'get') {
@@ -767,6 +768,9 @@ new PACK.pack.Package({ name: 'server',
             }
             
             return $ret.then(function(queryData) {
+              
+              var tmp = {};
+              if (queryData.hasOwnProperty('spoof')) { tmp.spoof = queryData.spoof; delete queryData.spoof; }
               
               var queryAddress = U.param(queryData, 'address', []);
               if (U.isObj(queryAddress, String)) queryAddress = queryAddress.split('.');
@@ -809,7 +813,7 @@ new PACK.pack.Package({ name: 'server',
               return {
                 address: address, // Array
                 command: command, // String
-                params: params    // Object
+                params: O.update(params, tmp) // Object
               };
               
             });
@@ -819,9 +823,13 @@ new PACK.pack.Package({ name: 'server',
             
             var pass = this;
             this.$parseQuery(req).then(function(queryObj) { // Send the query to the correct child
-            
+              
               // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
               var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
+              
+              // TODODBG: Spoofing shouldn't be possible outside debug mode
+              if (queryObj.params.spoof) ip = queryObj.params.spoof;
+              
               var session = pass.channeler.getSession(ip);
               
               // TODO: What about error handling? If `pass.channeler.$heedOrder` rejects, it must not have given any orders...
@@ -858,8 +866,9 @@ new PACK.pack.Package({ name: 'server',
             var reqParams = U.param(params, 'params', {});
             var ref = U.param(params, 'ref', null);
             
-            var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(reqParams) + ')'); // TODOPRF: This should be a debug feature
-            
+            // TODODBG: Localized error and spoofing should be debug features
+            var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(reqParams) + ')');
+            var trgUrl = this.channeler.ipSpoof ? '?spoof=' + this.channeler.ipSpoof : '';
             
             var pass = this;
             return new P({ custom: function(resolve, reject) {
@@ -894,7 +903,7 @@ new PACK.pack.Package({ name: 'server',
                 
               };
               
-              xhr.open('POST', '', true);
+              xhr.open('POST', trgUrl, true);
               xhr.setRequestHeader('Content-Type', 'application/json');
               xhr.send(U.thingToString({ address: address, command: command, params: reqParams }));
               
@@ -937,15 +946,14 @@ new PACK.pack.Package({ name: 'server',
             // Ensure there are no polls already held by the server. If the server attempted
             // to resolve these polls, *this* instance would not be informed because it has
             // no reference to the XMLHttpRequest instances which initiated these polls.
-            var pass = this;
             
+            var pass = this;
             return this.$doQuery({ address: [ this.name ], command: 'fizzleAllPolls' })
               .then(function(data) {
                 pass.$ready.resolve(null);
                 pass.doBankPolls();
               })
-              .fail(console.error.bind(console))
-              .done();
+              .fail(console.error.bind(console));
             /// =CLIENT}
             
           },
@@ -967,8 +975,10 @@ new PACK.pack.Package({ name: 'server',
         methods: function(sc, c) { return {
           init: function(params /* name, channeler, host, port */) {
             sc.init.call(this, params);
-            this.host = U.param(params, 'host');
-            this.port = U.param(params, 'port');
+            
+            var physData = sv.getPhysicalHostData();
+            this.host = U.param(params, 'host', physData.host);
+            this.port = U.param(params, 'port', physData.port);
             this.$ready = new P({});
             
             /// {SERVER=
@@ -976,7 +986,9 @@ new PACK.pack.Package({ name: 'server',
             this.connections = {}; // Could save the connections using `this.useSessionData` instead of initializing a new list...
             /// =SERVER}
           },
-          $initialized: function() { return this.$ready; },
+          $initialized: function() {
+            return this.$ready;
+          },
           
           $giveOrder: function(params /* session, data, channelParams */) { // ChannelSocket
             
@@ -988,10 +1000,20 @@ new PACK.pack.Package({ name: 'server',
             var connection = this.connections[session.ip];
             return connection.$giveOrder({ data: U.thingToString(data) });
             /// =SERVER}
+            
             /// {CLIENT=
             this.socket.send(U.thingToString(data));
             return p.$null;
             /// =CLIENT}
+            
+          },
+          $passOrder: function(ip, channelerParams, orderData) {
+            
+            // Orders discovered by ChannelSocket functionality will inform the Channeler through this method
+            
+            orderData.session = ip ? this.channeler.getSession(ip) : null;
+            orderData.channelerParams = channelerParams;
+            return this.channeler.$heedOrder(orderData);
             
           },
           $heedOrder: function(params /* session, command, params, channelParams */) { // ChannelSocket
@@ -1014,19 +1036,12 @@ new PACK.pack.Package({ name: 'server',
             var ip = socket.remoteAddress;
             if (O.contains(this.connections, ip)) { console.log('Refused connection overwrite attempt: "' + ip + '"'); return; }
             
-            this.connections[ip] = new sv.SocketConnection({ ip: ip, channel: this, socket: socket });
+            var connection = new sv.SocketConnection({ ip: ip, channel: this, socket: socket });
             
-            socket.on('close', this.closeConnection.bind(this, ip, this.connections[ip]));
-
-          },
-          closeConnection: function(ip, connection) {
-            
-            this.status = 'ending';
-            
-            connection.socket.on('close', function() { this.status = 'ended'; }.bind(this)); // TODO: This even may have already been thrown
-            connection.socket.close();
-            
-            delete this.connections[ip];
+            var pass = this;
+            socket.once('handshakeComplete', function() {
+              pass.connections[connection.ip] = connection;
+            });
             
           },
           /// =SERVER}
@@ -1034,25 +1049,27 @@ new PACK.pack.Package({ name: 'server',
           $start: function() {
             
             /// {SERVER=
-            // For secure connections, can swap "net" for "tls"
-            this.socket = require('net').createServer(this.socketConnectAttempt.bind(this));
+            // TODO: `require('tls')` for secure connections
+            var pass = this;
+            this.socket = require('net').createServer(function(socket) {
+              return pass.socketConnectAttempt(socket);
+            });
             this.socket.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
             /// =SERVER}
+            
             /// {CLIENT=
-            var socket = new WebSocket('ws://' + this.host + ':' + this.port);
-            var channeler = this.channeler;
+            try {
+              var spoof = this.channeler.ipSpoof ? '/?spoof=' + this.channeler.ipSpoof : '';
+              var socket = new WebSocket('ws://' + this.host + ':' + this.port + spoof);
+            } catch(err) {
+              err.message = 'Websockets unsupported: ' + err.message;
+              return new P({ err: err });
+            }
+            
+            //var channeler = this.channeler;
+            var pass = this;
             socket.onopen = this.$ready.resolve.bind(this.$ready);
-            socket.onmessage = function(evt) {
-              
-              channeler.$heedOrder(O.update(
-                U.stringToThing(evt.data),
-                {
-                  session: null,
-                  channelerParams: {}
-                }
-              )).done();
-              
-            };
+            socket.onmessage = function(evt) { pass.$passOrder(null, {}, U.stringToThing(evt.data)).done(); };
             this.socket = socket;
             /// =CLIENT}
             
@@ -1075,14 +1092,7 @@ new PACK.pack.Package({ name: 'server',
       
       /// {SERVER=
       Session: U.makeClass({ name: 'Session',
-        description: 'The entry-point for queries on the server-side. A Session references ' +
-          'all available channels, and the application (which can be accessed via its `getChild` ' +
-          'method). Any request either sends the session an order (e.g. "ping", "getFile", ' +
-          '"getSessionData"), or locates another handler via the session\'s `getChild` method. ' +
-          'Note that this is a very different style of entry-point from the client-side! On the ' +
-          'client-side, orders are received by some available Channel and in all cases ' +
-          'forwarded to the `Channel.prototype.$heedOrder` method - which is the ' +
-          'client-side entry-point.',
+        description: 'Representation of a Session',
         methods: function(sc) { return {
           init: function(params /* ip, channeler */) {
             this.ip = U.param(params, 'ip');
@@ -1127,7 +1137,7 @@ new PACK.pack.Package({ name: 'server',
           init: function(params /* ip, channel, socket */) {
             
             this.ip = U.param(params, 'ip');
-            var socket = this.socket = U.param(params, 'socket');
+            this.socket = U.param(params, 'socket');
             this.channel = U.param(params, 'channel');
             this.status = 'starting'; // starting | started | ending | ended
             this.buffer = new Buffer(0);
@@ -1135,6 +1145,7 @@ new PACK.pack.Package({ name: 'server',
             this.curFrames = [];
             
             var pass = this;
+            var socket = this.socket;
             
             socket.on('readable', function() {
               
@@ -1153,9 +1164,17 @@ new PACK.pack.Package({ name: 'server',
               
             });
             
+            socket.on('close', function() {
+              
+              pass.status = 'ended';
+              delete pass.channel.connections[pass.ip];
+              console.log('Terminated socket connection: ' + pass.ip);
+              
+            });
+            
             socket.on('error', function(err) {
               
-              console.log('SOCKET ERR');
+              console.log('Websocket error:');
               console.error(err);
               
             });
@@ -1204,13 +1223,17 @@ new PACK.pack.Package({ name: 'server',
           
           tryResolveHandshake: function(packet) {
             
+            // Parses `packet` to make sure it's a valid handshake
+            
             try {
               
               var lines = packet.split('\r\n');
               if (lines.length <= 5) throw new Error('Invalid packet');
               
-              var path = lines[0].match(/^GET (.+) HTTP\/\d\.\d$/i);
-              if (!path) throw new Error('Invalid packet request');
+              var parseHeader = lines[0].match(/^GET (.+) HTTP\/\d\.\d$/i);
+              if (!parseHeader) throw new Error('Invalid packet request');
+              
+              var urlData = U.parseUrl(parseHeader[1], 'ws');
               
               // Parse headers:
               var headers = {};
@@ -1248,6 +1271,9 @@ new PACK.pack.Package({ name: 'server',
                 // 'Sec-Websocket-Protocol: ... \r\n' +
                 '\r\n');
               
+              // TODODBG: spoofing
+              if (O.contains(urlData.params, 'spoof')) this.ip = urlData.params.spoof;
+              
               return true;
               
             } catch(err) {
@@ -1274,6 +1300,8 @@ new PACK.pack.Package({ name: 'server',
             
             if (this.tryResolveHandshake(packet)) {
               
+              this.socket.emit('handshakeComplete');
+              
               // Handshake successful
               this.status = 'started'; // Switch from hypertext-transfer-protocol to websocket-protocol
               
@@ -1291,6 +1319,9 @@ new PACK.pack.Package({ name: 'server',
             
           },
           receivedData: function () {
+            
+            // Socket is already connected; websocket protocol implemented here.
+            // Results in calls to `this.channel.$passOrder`.
             
             try {
               
@@ -1350,7 +1381,10 @@ new PACK.pack.Package({ name: 'server',
                 // The following operations can occur regardless of the socket's status
                 if (op === 8) {         // Process "close" op
                   
-                  throw Error('not implemented op: 8');
+                  // throw Error('not implemented op: 8');
+                  this.status = 'ending';
+                  this.socket.end();
+                  break;
                   
                 } else if (op === 9) {  // Process "ping" op
                   
@@ -1385,18 +1419,8 @@ new PACK.pack.Package({ name: 'server',
                     this.curOp = null;
                     this.curFrames = [];
                     
-                    var channeler = this.channel.channeler;
-                    
-                    var order = O.update(U.stringToThing(fullStr), {
-                      session: channeler.getSession(this.ip),
-                      channelerParams: {}
-                    });
-                    
-                    channeler.$heedOrder(order).done();
-                    //var channeler = this.channel.channeler;
-                    //channeler.getSession(this.ip).$heedOrder(obj).done();
-                    
-                    // this.$heedOrder(obj).done();
+                    var order = U.stringToThing(fullStr);
+                    this.channel.$passOrder(this.ip, {}, order).done();
                     
                   }
                   
@@ -1410,13 +1434,12 @@ new PACK.pack.Package({ name: 'server',
               
             } catch(err) {
               
-              console.log('ERROR:', err);
+              console.log('Websocket error on received data:');
+              console.error(err);
               
               this.buffer = new Buffer(0);
               this.curOp = null;
               this.curFrames = null;
-              
-              // TODO: close socket (from nodejsWebsocket:Connection.prototype.close)
               
             } 
             

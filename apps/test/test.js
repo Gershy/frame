@@ -50,10 +50,6 @@ var package = new PACK.pack.Package({ name: 'test',
     
     var P = p.P;
     
-    // Ideally the Channeler could be set on the root Outline at it's declaration
-    // This isn't possible because the root Doss is needed to declare the Channeler,
-    // and the root Outline is needed first to declare the root Doss. Bad circle.
-    
     // Initialize activities
     var activities = [];
     
@@ -62,9 +58,9 @@ var package = new PACK.pack.Package({ name: 'test',
     /// =CLIENT}
     
     // ==== Initialize channeler
-    var hostData = sv.getPhysicalHostData();
     var channeler = new sv.Channeler({ appName: 'test', handler: rootDoss });
-    channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: hostData.host, port: hostData.port, numToBank: 1 }));
+    channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
+    channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
     channeler.$start()
       .then(function() { console.log('Channeler ready'); })
       .fail(function(err) { console.error(err); })
@@ -111,17 +107,15 @@ var package = new PACK.pack.Package({ name: 'test',
                 // That session does not need to be informed of the change, as it's the source of the change.
                 // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
                 var sessionsToInform = O.clone(channeler.sessionSet);
-                if (session !== null) { console.log('HEEDING:', session.ip); delete sessionsToInform[session.ip]; }
+                if (session !== null) delete sessionsToInform[session.ip];
                 var orderParams = { data: data, doSync: false };
                 /// =SERVER}
                 
-                console.log('Informing:', Object.keys(sessionsToInform));
-                
-                return new P({ all: O.map(sessionsToInform, function(session) {
+                return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
                   
                   return channeler.$giveOrder({
-                    session: session,
-                    channelerParams: channelerParams,
+                    session: sessionToInform,
+                    channelerParams: sessionToInform === session ? channelerParams : null,
                     data: {
                       address: doss.getAddress(),
                       command: name,
@@ -138,6 +132,11 @@ var package = new PACK.pack.Package({ name: 'test',
           });
           
         });
+        
+      },
+      basic: function(doss) {
+        
+        this.addAbility
         
       },
       str: function(doss) {
