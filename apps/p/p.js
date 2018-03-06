@@ -35,6 +35,9 @@ var package = new PACK.pack.Package({ name: 'p',
     var P = U.makeClass({ name: 'P',
       methods: function(sc) { return {
         init: function(params /* val, func | cb, cbParams, cbName, all */) {
+          
+          if (U.isInstance(params, Error)) params = { err: params };
+          
           this.children = [];
           this.status = 'pending'; // | 'resolved' | 'rejected'
           this.val = null;
@@ -66,7 +69,9 @@ var package = new PACK.pack.Package({ name: 'p',
             // If the function throws an inline error, converts to rejected promise.
             
             try {
-              return promisify(params.run()).then(this.resolve.bind(this));
+              return promisify(params.run())
+                .then(this.resolve.bind(this))
+                .fail(this.reject.bind(this));
             } catch(err) {
               this.reject(err);
             }

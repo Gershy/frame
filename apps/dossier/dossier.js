@@ -1,5 +1,5 @@
 /*
-TODO: Long polling
+TODO: Move Editor to its own package and implement a DossierEditor
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined
 */
@@ -740,9 +740,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           $heedOrder: function(params /* session, command, params, channelerParams */) { // Dossier
             
-            // Dossiers handle "sync" and "getType" orders; all other orders are handled
-            // through abilities.
-            
             var orderDesc = this.getAddress() + '.' + params.command;
             
             var editor = new ds.Editor();
@@ -756,14 +753,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               orderDesc += '(' + U.debugObj(commandParams) + ')';
               
-              return pass.$useAbility(command, session, channelerParams, editor, commandParams)
+              return pass.$useAbility(command, session, channelerParams, editor, commandParams);
               
             }})
-              .then(function(abilityStaged) { return editor.$transact(); })
-              .fail(function(err) {
-                console.log('FAILURE: ' + orderDesc);
-                console.error(err);
-              });
+              .then(function(abilityStaged) { return editor.$transact(); });
             
           },
           $giveOrder: function(params /* session, data, channelerParams */) { // Dossier
@@ -822,6 +815,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             /// =DOC}
             
+            if (!O.contains(this.abilities, name)) return new P({ err: new Error('Invalid ability: "' + name + '"') });
             return this.abilities[name](session, channelerParams, editor, params);
             
           },

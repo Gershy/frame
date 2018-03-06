@@ -136,12 +136,46 @@ var package = new PACK.pack.Package({ name: 'test',
       },
       basic: function(doss) {
         
-        this.addAbility
+        doss.addAbility('sync', function(session, channelerParams, editor, params /* */) {
+          
+          editor.$transaction.then(function() {
+            
+            /// {CLIENT=
+            // The client side requests syncs
+            return channeler.$giveOrder({
+              session: null,
+              channelerParams: channelerParams,
+              data: {
+                address: doss.getAddress(),
+                command: 'sync',
+                params: {}
+              }
+            });
+            /// =CLIENT}
+            
+            /// {SERVER=
+            // The server side provides syncs
+            return channeler.$giveOrder({
+              session: session,
+              channelerParams: channelerParams,
+              data: {
+                address: doss.getAddress(),
+                command: 'mod',
+                params: { doSync: false, data: doss.getData() }
+              }
+            });
+            /// =SERVER}
+            
+          });
+          
+        });
         
       },
       str: function(doss) {
         
-        this.addAbility(doss, 'modify', function(editor, doss, data) {
+        this.basic(doss);
+        
+        this.addAbility(doss, 'mod', function(editor, doss, data) {
           
           editor.mod({ doss: doss, data: data });
           
@@ -154,15 +188,22 @@ var package = new PACK.pack.Package({ name: 'test',
         });
         
       },
+      obj: function(doss) {
+        
+        this.basic(doss);
+        
+      },
       arr: function(doss) {
         
-        this.addAbility(doss, 'include', function(editor, doss, data) {
+        this.basic(doss);
+        
+        this.addAbility(doss, 'add', function(editor, doss, data) {
           
           editor.add({ par: doss, data: data });
           
         });
         
-        this.addAbility(doss, 'exclude', function(editor, doss, data) {
+        this.addAbility(doss, 'rem', function(editor, doss, data) {
           
           var childName = data;
           var child = doss.children[childName];
@@ -259,7 +300,7 @@ var package = new PACK.pack.Package({ name: 'test',
           new uf.SetView({ name: 'data', children: [
             
             // Simple text field
-            new uf.TextEditView({ name: 'val', info: rootDoss.getChild('val').genAbilityFact(null, 'modify'), cssClasses: [ 'control' ] }),
+            new uf.TextEditView({ name: 'val', info: rootDoss.getChild('val').genAbilityFact(null, 'mod'), cssClasses: [ 'control' ] }),
             
             // Array of text fields
             new uf.SetView({ name: 'dynarr', cssClasses: [ 'control' ], children: [
@@ -269,7 +310,7 @@ var package = new PACK.pack.Package({ name: 'test',
                   
                   return new uf.SetView({ name: name, cssClasses: [ 'listItem' ], children: [
                     
-                    new uf.TextEditView({ name: 'listItemContent', info: info.genAbilityFact(null, 'modify') }),
+                    new uf.TextEditView({ name: 'listItemContent', info: info.genAbilityFact(null, 'mod') }),
                     new uf.SetView({ name: 'listItemControls', children: [
                       
                       new uf.TextView({ name: 'delete', info: '-', cssClasses: [ 'listItemControl', 'uiButton' ], decorators: [
@@ -293,7 +334,7 @@ var package = new PACK.pack.Package({ name: 'test',
                   new uf.ActionDecorator({ $action: function() {
                     
                     var editor = new ds.Editor();
-                    return rootDoss.getChild('arr').$useAbility('include', outline.session || null, null, editor, { doSync: true, data: 'NEW' })
+                    return rootDoss.getChild('arr').$useAbility('add', outline.session || null, null, editor, { doSync: true, data: 'NEW' })
                       .then(function() {
                         return editor.$transact();
                       });
@@ -308,8 +349,8 @@ var package = new PACK.pack.Package({ name: 'test',
             // Object containing 2 text fields
             new uf.SetView({ name: 'obj', cssClasses: [ 'control' ], children: [
               
-              new uf.TextEditView({ name: 'val1', info: rootDoss.getChild('obj.val1').genAbilityFact(null, 'modify') }),
-              new uf.TextEditView({ name: 'val2', info: rootDoss.getChild('obj.val2').genAbilityFact(null, 'modify') })
+              new uf.TextEditView({ name: 'val1', info: rootDoss.getChild('obj.val1').genAbilityFact(null, 'mod') }),
+              new uf.TextEditView({ name: 'val2', info: rootDoss.getChild('obj.val2').genAbilityFact(null, 'mod') })
               
             ]}),
             
@@ -318,8 +359,8 @@ var package = new PACK.pack.Package({ name: 'test',
               genChildView: function(name, info) {
                 return new uf.SetView({ name: name, children: [
                   
-                  new uf.TextEditView({ name: 'val1', info: info.getChild('val1').genAbilityFact(null, 'modify') }),
-                  new uf.TextEditView({ name: 'val2', info: info.getChild('val2').genAbilityFact(null, 'modify') })
+                  new uf.TextEditView({ name: 'val1', info: info.getChild('val1').genAbilityFact(null, 'mod') }),
+                  new uf.TextEditView({ name: 'val2', info: info.getChild('val2').genAbilityFact(null, 'mod') })
                   
                 ]});
               }
