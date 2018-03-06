@@ -17,6 +17,8 @@ new PACK.pack.Package({ name: 'frame',
   dependencies: [ 'compile' ],
   buildFunc: function(packageName, cm) {
     
+    var debugMode = true; // TODO: This should be somehow dynamic
+    
     // ==== ARGUMENT RESOLUTION
     
     // Parse process-level arguments
@@ -92,18 +94,21 @@ new PACK.pack.Package({ name: 'frame',
           client: 'remove',
           server: 'keep',
           remove: 'remove',
-          doc: 'remove'
+          doc: 'remove',
+          debug: debugMode ? 'keep' : 'remove'
         },
         client: {
           client: 'keep',
           server: 'remove',
           remove: 'remove',
-          doc: 'remove'
+          doc: 'remove',
+          debug: debugMode ? 'keep' : 'remove'
         }
       }
     });
     
     return {
+      debugMode: debugMode,
       deployment: deploymentData,
       host: host,
       port: port,

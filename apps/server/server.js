@@ -293,10 +293,14 @@ new PACK.pack.Package({ name: 'server',
                   var appName = pass.appName;
                   var assetVersion = '?' + pass.assetVersion;
                   var $commandResponse = sv.$readFile(path.join.apply(path, reqPath)).then(function(commandResponse) {
-                  
+                    
+                    console.log('SPOOF?', commandParams);
+                    
+                    var title = appName + '<' + session.ip + '>';
+                    
                     commandResponse.data = commandResponse.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
                     commandResponse.data = commandResponse.data.replace(/{{assetVersion}}/g, assetVersion);
-                    commandResponse.data = commandResponse.data.replace('{{title}}', appName);
+                    commandResponse.data = commandResponse.data.replace('{{title}}', title);
                     
                     var htmlHeaderElems = [];
                     
@@ -734,11 +738,10 @@ new PACK.pack.Package({ name: 'server',
             if (!res['~finalized']) this.sendResponse(res, null);
             
           },
-          $parseQuery: function(req) { // Parses a Request into a `{ address, command, params }` value
+          $captureRequest: function(req, urlData) { // Captures a Request as a `{ address, command, params }` value
             
-            var queryData = U.parseUrl(req.url);
-            var queryUrl = queryData.url;
-            var queryParams = queryData.params;
+            var queryUrl = urlData.url;
+            var queryParams = urlData.params;
             
             var method = req.method.toLowerCase();
             if (method === 'get') {
@@ -770,15 +773,12 @@ new PACK.pack.Package({ name: 'server',
               
             }
             
-            return $ret.then(function(queryData) {
+            return $ret.then(function(queryParams) {
               
-              var tmp = {};
-              if (queryData.hasOwnProperty('spoof')) { tmp.spoof = queryData.spoof; delete queryData.spoof; }
-              
-              var queryAddress = U.param(queryData, 'address', []);
+              var queryAddress = U.param(queryParams, 'address', []);
               if (U.isObj(queryAddress, String)) queryAddress = queryAddress.split('.');
               
-              if (!queryAddress.length && !queryUrl.length && U.isEmptyObj(queryData)) {
+              if (!queryAddress.length && !queryUrl.length && U.isEmptyObj(queryParams)) {
                 
                 // Supplying no URL, address, or params results in a request for "mainPage.html"
                 var address = [];
@@ -825,8 +825,8 @@ new PACK.pack.Package({ name: 'server',
                   // Addressing a non-file in the URL results in a command (defaulting to "get") being issued to the child addressed by the URL
                   if (queryAddress.length) throw new Error('Supplying a non-empty, non-file url along with an address is invalid');
                   var address = queryUrl;
-                  var command = U.param(queryData, 'command', 'sync');
-                  var params = U.param(queryData, 'params', {});
+                  var command = U.param(queryParams, 'command', 'sync');
+                  var params = U.param(queryParams, 'params', {});
                   
                 }
                 
@@ -834,15 +834,15 @@ new PACK.pack.Package({ name: 'server',
                 
                 // A blank URL with an address provided issues a command to the addressed child
                 var address = queryAddress;
-                var command = U.param(queryData, 'command');
-                var params = U.param(queryData, 'params', {});
+                var command = U.param(queryParams, 'command');
+                var params = U.param(queryParams, 'params', {});
                 
               }
               
               return {
                 address: address, // Array
                 command: command, // String
-                params: O.update(params, tmp) // Object
+                params: params // Object
               };
               
             });
@@ -857,13 +857,29 @@ new PACK.pack.Package({ name: 'server',
             
             // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
             var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
+            
+            try {
+              
+              var urlData = U.parseUrl(req.url, 'http');
+              if (O.contains(urlData.params, 'spoof')) {
+                ip = urlData.params.spoof;
+                delete urlData.params.spoof;
+              }
+              var $commandData = this.$captureRequest(req, urlData);
+              
+            } catch(err) {
+              
+              var $commandData = new P(err);
+              
+            }
+            
             var session = this.channeler.getSession(ip);
             
             return this.channeler.$passCommand({
               
               session: session,
               channelerParams: channelerParams,
-              $commandData: this.$parseQuery(req)
+              $commandData: $commandData
               
             }).done();
             
@@ -1024,13 +1040,17 @@ new PACK.pack.Package({ name: 'server',
             /// =CLIENT}
             
           },
-          $passCommand: function(ip, channelerParams, commandData) {
+          $passCommand: function(session, $commandData) {
             
             // Commands discovered by ChannelSocket functionality will inform the Channeler through this method
             
-            commandData.session = ip ? this.channeler.getSession(ip) : null;
-            commandData.channelerParams = channelerParams;
-            return this.channeler.$passCommand(commandData);
+            // commandData.session = ip ? this.channeler.getSession(ip) : null;
+            // commandData.channelerParams = channelerParams;
+            return this.channeler.$passCommand({
+              session: session,
+              channelerParams: {}, // For now ChannelSocket doesn't use any channelParams
+              $commandData: $commandData
+            });
             
           },
           $heedCommand: function(params /* session, channelerParams, command, params */) { // ChannelSocket
@@ -1086,7 +1106,12 @@ new PACK.pack.Package({ name: 'server',
             //var channeler = this.channeler;
             var pass = this;
             socket.onopen = this.$ready.resolve.bind(this.$ready);
-            socket.onmessage = function(evt) { pass.$passCommand(null, {}, U.stringToThing(evt.data)).done(); };
+            socket.onmessage = function(evt) {
+              pass.$passCommand(
+                null,
+                new P({ run: U.stringToThing.bind(null, evt.data) })
+              ).done();
+            };
             this.socket = socket;
             /// =CLIENT}
             
@@ -1332,7 +1357,6 @@ new PACK.pack.Package({ name: 'server',
             } else {
               
               // The handshake wasn't successful, but we're still listening!
-              
               // Try to process any remaining data using http
               if (this.buffer.length) this.receivedHandshakeData();
               
@@ -1440,8 +1464,10 @@ new PACK.pack.Package({ name: 'server',
                     this.curOp = null;
                     this.curFrames = [];
                     
-                    var command = U.stringToThing(fullStr);
-                    this.channel.$passCommand(this.ip, {}, command).done();
+                    this.channel.$passCommand(
+                      this.channel.channeler.getSession(this.ip),
+                      new P({ run: U.stringToThing.bind(null, fullStr) })
+                    ).done();
                     
                   }
                   

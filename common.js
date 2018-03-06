@@ -1,93 +1,3 @@
-/* TODO: deep comparator:
-var cmpv = function(v1, v2, addr) {
-  
-  var t1 = U.typeOf(v1);
-  var t2 = U.typeOf(v2);
-  
-  if (t1 !== t2) {
-    return 'Constructor mismatch @' + addr + ': ' + t1 + ' / ' + t2;
-  }
-  
-  if (U.isObj(v1, Object)) {
-    
-    var pKeyArr = Object.keys(v1).concat(Object.keys(v1));
-    var pKeys = {};
-    for (var i = 0; i < pKeyArr.length; i++) pKeys[pKeyArr[i]] = true;
-    
-    for (var k in pKeys) {
-      
-      var result = cmpv(v1[k], v2[k], addr + '.' + k);
-      if (result) return result;
-      
-    }
-    
-  } else if (U.isObj(v1, Function)) {
-    
-    if (v1 !== v2) {
-    
-      var strs = [ v1.toString(), v2.toString() ].map(function(funcStr) {
-        
-        var lns = funcStr.split('\n');
-        if (lns.length === 1) return lns[0].trim();
-        
-        var lastLn = lns[lns.length - 1];
-        var n = 0;
-        while (lastLn[n] === ' ') n++;
-        
-        return (lns[0] + '\n' + lns.slice(1).map(function(ln) { return ln.substr(n); }).join('\n')).trim();
-        
-      });
-      
-      if (strs[0] !== strs[1]) return 'COMPARE FUNCS (' + addr + '):\n------\n' + strs[0] + '\n------\n' + strs[1] + '\n------\n';
-    
-    }
-    //return addr + ': cmp: ' + t1 + ' vs ' + t2;
-    
-  }
-  
-  return null;
-  
-};
-var cmp = function(out1, out2) {
-  
-  if (!out1) { console.log('MISSING ' + out2.getAddress()); return; }
-  if (!out2) { console.log('MISSING ' + out1.getAddress()); return; }
-  
-  
-  var errs = [];
-  
-  if (out1.c !== out2.c) errs.push('Constructor mismatch: ' + out1.c.title + ' vs ' + out2.c.title);
-  
-  var cmpp = cmpv(out1.p, out2.p, 'p');
-  if (cmpp) errs.push(cmpp);
-  
-  if (errs.length) {
-    console.log(out1.getAddress() + '\n' + errs.join('\n'));
-    console.log('');
-  }
-  
-  if (!U.isEmpty(out1.i)) {
-    
-    var keyArr = Object.keys(out1.i).concat(Object.keys(out2.i));
-    var keys = {};
-    for (var i = 0; i < keyArr.length; i++) keys[keyArr[i]] = true;
-    
-    for (var k in keys) {
-      
-      cmp(out1.i[k], out2.i[k]);
-      
-    }
-    
-  } else if (out1.p.innerOutline) {
-    
-    cmp(out1.p.innerOutline, out2.p.innerOutline);
-    
-  }
-  
-};
-cmp(outline, outline);
-*/
-
 Error.stackTraceLimit = Infinity;
 
 // Add convenience methods to pre-existing classes
@@ -976,7 +886,7 @@ global.U = {
 };
 
 U.runId = U.randId();
-console.log('NEW RUN:', U.runId);
+console.log('====== NEW RUN: ' + U.runId + ' ======');
 
 // Shorthand access to value manipulation
 global.A = U.arr;

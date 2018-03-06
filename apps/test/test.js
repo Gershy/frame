@@ -100,6 +100,8 @@ var package = new PACK.pack.Package({ name: 'test',
                 var doSync = U.param(params, 'doSync');
                 var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
                 var commandParams = { data: data };
+                
+                //if (doSync) console.log('Syncing server...');
                 /// =CLIENT}
                 
                 /// {SERVER=
@@ -109,6 +111,8 @@ var package = new PACK.pack.Package({ name: 'test',
                 var sessionsToInform = O.clone(channeler.sessionSet);
                 if (session !== null) delete sessionsToInform[session.ip];
                 var commandParams = { data: data, doSync: false };
+                
+                //console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
                 /// =SERVER}
                 
                 return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
