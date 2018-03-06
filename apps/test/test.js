@@ -99,7 +99,7 @@ var package = new PACK.pack.Package({ name: 'test',
                 // the server session (the only session of which a client session is aware).
                 var doSync = U.param(params, 'doSync');
                 var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
-                var orderParams = { data: data };
+                var commandParams = { data: data };
                 /// =CLIENT}
                 
                 /// {SERVER=
@@ -108,18 +108,18 @@ var package = new PACK.pack.Package({ name: 'test',
                 // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
                 var sessionsToInform = O.clone(channeler.sessionSet);
                 if (session !== null) delete sessionsToInform[session.ip];
-                var orderParams = { data: data, doSync: false };
+                var commandParams = { data: data, doSync: false };
                 /// =SERVER}
                 
                 return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
                   
-                  return channeler.$giveOrder({
+                  return channeler.$giveCommand({
                     session: sessionToInform,
                     channelerParams: sessionToInform === session ? channelerParams : null,
                     data: {
                       address: doss.getAddress(),
                       command: name,
-                      params: orderParams
+                      params: commandParams
                     }
                   });
                   
@@ -142,7 +142,7 @@ var package = new PACK.pack.Package({ name: 'test',
             
             /// {CLIENT=
             // The client side requests syncs
-            return channeler.$giveOrder({
+            return channeler.$giveCommand({
               session: null,
               channelerParams: channelerParams,
               data: {
@@ -155,7 +155,7 @@ var package = new PACK.pack.Package({ name: 'test',
             
             /// {SERVER=
             // The server side provides syncs
-            return channeler.$giveOrder({
+            return channeler.$giveCommand({
               session: session,
               channelerParams: channelerParams,
               data: {

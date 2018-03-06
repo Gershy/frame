@@ -1,7 +1,3 @@
-// TODO: Eventually "order" should become "command" or vice-versa
-//  - "order" is shorter to type, but confused with ordinality
-//  - consider "bid" or "call"
-
 // TODO: Websocket fallback is available on client side, but the server isn't yet
 // learning that a client is missing websocket support. There should really be a
 // `favouriteChannel` property on Sessions instead of a single `favouriteChannel`
@@ -98,8 +94,8 @@ new PACK.pack.Package({ name: 'server',
       /* Channeler - manage multiple channels */
       Channeler: U.makeClass({ name: 'Channeler', superclass: tr.TreeNode,
         description: 'Entry point for remote communications. Manipulates a number ' +
-          'of channels in order to provide protocol-agnostic communication with ' +
-          'the other side',
+          'of channels to provide protocol-agnostic communication with the other ' +
+          'side',
         methods: function(sc) { return {
           
           init: function(params /* appName, assetVersion, handler */) {
@@ -169,13 +165,13 @@ new PACK.pack.Package({ name: 'server',
             
           },
           
-          $giveOrder: function(params /* session, channelerParams, data { channelName, channelParams } */) { // Channeler
+          $giveCommand: function(params /* session, channelerParams, data { channelName, channelParams } */) { // Channeler
             
             /*
             Notifies the other side using the best possible method.
             
             If `params.channelerParams.channelName` is provided, then the named
-            channel is guaranteed to be used to communicate the order.
+            channel is guaranteed to be used to communicate the command.
             */
             
             /// {SERVER=
@@ -191,29 +187,22 @@ new PACK.pack.Package({ name: 'server',
             
             var channel = channelName ? U.param(this.channels, channelName) : this.favouriteChannel;
             
-            // Use the channel to give the order (with the appropriate params)
-            return channel.$giveOrder({
+            // Use the channel to give the command (with the appropriate params)
+            return channel.$giveCommand({
               session: session,
               data: params.data,
               channelParams: channelParams
             });
             
           },
-          $passOrder: function(params /* session, channelerParams, address, command, params, $commandData */) { // Channeler
+          $passCommand: function(params /* session, channelerParams, address, command, params, $commandData */) { // Channeler
             
-            /*
-            TODO: SHOULD THIS METHOD ONLY EXIST SERVERSIDE?
-            Obeys an order from the other side
-            
-            The existence of `params.channelParams` is useful when bouncing orders need
-            to be generated, and so it is provided to the child which will consume the
-            order.
-            */
+            // Obeys a command from the other side
             
             if (params === null) return p.$null; // `null` is received from fizzling
             
             var pass = this;
-            var orderDescription = '<NO_DESCRIPTION>';
+            var commandDescription = '<NO_DESCRIPTION>';
             
             // If this overarching P fails, it's prolly a 500 error indication
             return new P({ run: function() {
@@ -246,10 +235,10 @@ new PACK.pack.Package({ name: 'server',
               return $commandData.then(function(commandData) {
                 
                 var address = U.param(commandData, 'address');
-                orderDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.<NO_COMMAND>';
+                commandDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.<NO_COMMAND>';
                 
                 var command = U.param(commandData, 'command');
-                orderDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.' + command;
+                commandDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.' + command;
                 
                 var params = U.param(commandData, 'params', {});
                 
@@ -257,19 +246,19 @@ new PACK.pack.Package({ name: 'server',
                 if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
                 
                 // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
-                // `$heedOrder` is called with the same signature:
+                // `$heedCommand` is called with the same signature:
                 
-                return child.$heedOrder({ session: session, command: command, params: params, channelerParams: channelerParams })
+                return child.$heedCommand({ session: session, command: command, params: params, channelerParams: channelerParams })
                 
               }).then(function() {
                 
-                console.log('Command success: ' + orderDescription);
+                console.log('Command success: ' + commandDescription);
                 
               }).fail(function(err) {
                 
-                console.log('Command failure: ' + orderDescription);
+                console.log('Command failure: ' + commandDescription);
                 console.error(err);
-                return pass.$orderFailed(session, channelerParams, err);
+                return pass.$commandFailed(session, channelerParams, err);
                 
               }).then(function() {
                 
@@ -280,13 +269,13 @@ new PACK.pack.Package({ name: 'server',
             }});
             
           },
-          $heedOrder: function(params /* session, command, params, channelerParams */) {
+          $heedCommand: function(params /* session, command, params, channelerParams */) {
             
             var pass = this;
             return new P({ run: function() {
               
               var command = params.command;
-              var orderParams = params.params;
+              var commandParams = params.params;
               var channelerParams = params.channelerParams;
               var session = params.session;
               
@@ -294,7 +283,7 @@ new PACK.pack.Package({ name: 'server',
                 
                 // TODOVUL: The file access validation here is FARRRRR TOOOOOO LOOOOOOOOOOSE
                 
-                var reqPath = U.param(orderParams, 'path');
+                var reqPath = U.param(commandParams, 'path');
                 var lastCmp = reqPath[reqPath.length - 1].toLowerCase();
                 
                 if (S.endsWith(lastCmp, '.html')) {
@@ -303,11 +292,11 @@ new PACK.pack.Package({ name: 'server',
                   
                   var appName = pass.appName;
                   var assetVersion = '?' + pass.assetVersion;
-                  var $orderResponse = sv.$readFile(path.join.apply(path, reqPath)).then(function(orderResponse) {
+                  var $commandResponse = sv.$readFile(path.join.apply(path, reqPath)).then(function(commandResponse) {
                   
-                    orderResponse.data = orderResponse.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
-                    orderResponse.data = orderResponse.data.replace(/{{assetVersion}}/g, assetVersion);
-                    orderResponse.data = orderResponse.data.replace('{{title}}', appName);
+                    commandResponse.data = commandResponse.data.replace('{{appScriptUrl}}', 'apps/' + appName + '/' + appName + '.js');
+                    commandResponse.data = commandResponse.data.replace(/{{assetVersion}}/g, assetVersion);
+                    commandResponse.data = commandResponse.data.replace('{{title}}', appName);
                     
                     var htmlHeaderElems = [];
                     
@@ -320,12 +309,12 @@ new PACK.pack.Package({ name: 'server',
                     var htmlHeaderStr = htmlHeaderElems.length
                       ? '\n' + htmlHeaderElems.map(function(html) { return '    ' + html; }).join('\n')
                       : '';
-                    orderResponse.data = orderResponse.data.replace(/(\s*){{resources}}/, htmlHeaderStr);
+                    commandResponse.data = commandResponse.data.replace(/(\s*){{resources}}/, htmlHeaderStr);
                     
                     // TODO: A bit meaningless to simply persist a session if it request an html page
                     pass.addSession(session);
                     
-                    return orderResponse;
+                    return commandResponse;
                     
                   }).fail(function(err) {
                     
@@ -373,23 +362,23 @@ new PACK.pack.Package({ name: 'server',
                       
                     }
                     
-                    var $orderResponse = sv.$readFile(fullPath);
+                    var $commandResponse = sv.$readFile(fullPath);
                     
                   } catch(err) {
                     
                     console.log('BAD:', err.message);
-                    var $orderResponse = new P({ err: err });
+                    var $commandResponse = new P({ err: err });
                     
                   }
                   
                 } else {
                   
                   // TODOVUL: Serves any non-html, non-js file directly
-                  var $orderResponse = sv.$readFile(path.join.apply(path, reqPath));
+                  var $commandResponse = sv.$readFile(path.join.apply(path, reqPath));
                   
                 }
                 
-                return $orderResponse.fail(function(err) {
+                return $commandResponse.fail(function(err) {
                   
                   return new sv.CommandResponse({
                     encoding: 'utf8',
@@ -398,23 +387,23 @@ new PACK.pack.Package({ name: 'server',
                     data: 'File "' + reqPath.join('/') + '" unavailable (' + err.message + ')'
                   });
                   
-                }).then(function(orderResponse) {
+                }).then(function(commandResponse) {
                   
-                  return pass.$giveOrder({
+                  return pass.$giveCommand({
                     session: session,
                     channelerParams: channelerParams,
-                    data: orderResponse
+                    data: commandResponse
                   });
                   
                 });
                 
               } else if (command === 'ping') {
                 
-                return pass.$giveOrder({
+                return pass.$giveCommand({
                   session: session,
                   channelerParams: channelerParams,
                   data: {
-                    address: U.param(orderParams, 'returnAddress', '~root'),
+                    address: U.param(commandParams, 'returnAddress', '~root'),
                     command: 'pong',
                     data: null
                   }
@@ -422,15 +411,15 @@ new PACK.pack.Package({ name: 'server',
                 
               } else if (command === 'pong') {
                 
-                return null; // No bouncing order from a "pong" command
+                return null; // No response from a "pong" command
                 
               } else if (command === 'getSessionData') {
                 
-                return pass.$giveOrder({
+                return pass.$giveCommand({
                   session: session,
                   channelerParams: channelerParams,
                   data: {
-                    address: U.param(orderParams, 'returnAddress', '~root'),
+                    address: U.param(commandParams, 'returnAddress', '~root'),
                     command: 'gotSessionData',
                     data: new sv.CommandResponse({
                       encoding: 'utf8',
@@ -447,15 +436,15 @@ new PACK.pack.Package({ name: 'server',
                 
               }
               
-              throw new Error('Invalid order: "' + command + '"');
+              throw new Error('Invalid command: "' + command + '"');
                 
             }});
             
           },
           
-          $orderFailed: function(session, channelerParams, err) {
+          $commandFailed: function(session, channelerParams, err) {
             
-            return this.$giveOrder({
+            return this.$giveCommand({
               session: session,
               channelerParams: channelerParams,
               data: err
@@ -491,7 +480,7 @@ new PACK.pack.Package({ name: 'server',
         };}
       }),
       
-      /* Channel - manages sending orders between two remote locations */
+      /* Channel - manages sending commands between two remote locations */
       Channel: U.makeClass({ name: 'Channel', superclass: tr.TreeNode,
         description: 'An implementation of a protocol for communicating between two physical machines.',
         methods: function(sc) { return {
@@ -521,7 +510,7 @@ new PACK.pack.Package({ name: 'server',
             return session.channelData[this.name];
           },
           
-          $giveOrder: function(params /* session, channelerParams, channelParams, data */) { // Channel
+          $giveCommand: function(params /* session, channelerParams, channelParams, data */) { // Channel
             
             // "channelerParams" are the params which the Channeler is currently using.
             // "channelParams" are the specific params which this Channel should use to
@@ -530,15 +519,15 @@ new PACK.pack.Package({ name: 'server',
             return new P({ err: new Error('not implemented') });
             
           },
-          $heedOrder: function(params /* session, channelerParams, command, params */) {  // Channel
+          $heedCommand: function(params /* session, channelerParams, command, params */) {  // Channel
             
             // Causes this specific channel to send a notification
-            // Channel params are included here in case the channel gives a bouncing order
+            // Channel params are included here in case the channel gives a bouncing command
             
             // Note that this method receives "channelerParams", not "channelParams". This
             // These "channelerParams" indicate the params the Channeler is currently using
             // for this request, and may be completely unrelated to this Channel. If this
-            // method is going to issue `this.$giveOrder`, it should make sure that the
+            // method is going to issue `this.$giveCommand`, it should make sure that the
             // "channelParams" passed are compatible. If the "channelerParams" are compatible
             // it is usually better to use them.
             
@@ -547,7 +536,7 @@ new PACK.pack.Package({ name: 'server',
               
               var session = U.param(params, 'session');
               var command = U.param(params, 'command');
-              var orderParams = U.param(params, 'params', {});
+              var commandParams = U.param(params, 'params', {});
               
               if (command === 'notifyMe') {
                 
@@ -556,11 +545,11 @@ new PACK.pack.Package({ name: 'server',
                 var channelerParams = U.param(params, 'channelerParams');
                 if (channelerParams.channelName !== pass.name) channelerParams = { channelName: pass.name };
                 
-                pass.channeler.$giveOrder({
+                pass.channeler.$giveCommand({
                   session: session,
                   channelerParams: channelerParams,
                   data: {
-                    address: U.param(orderParams, 'address', '~root'),
+                    address: U.param(commandParams, 'address', '~root'),
                     command: 'notify',
                     data: 'Your notification!'
                   }
@@ -613,24 +602,24 @@ new PACK.pack.Package({ name: 'server',
           
           sendResponse: function(res, data) {
             
-            var orderResponse = U.isInstance(data, sv.CommandResponse) ? data : new sv.CommandResponse({ data: data });
-            orderResponse.endResponse(res);
+            var commandResponse = U.isInstance(data, sv.CommandResponse) ? data : new sv.CommandResponse({ data: data });
+            commandResponse.endResponse(res);
             res['~finalized'] = true;
             
           },
-          $giveOrder: function(params /* session, data, channelParams { res } */) { // ChannelHttp
+          $giveCommand: function(params /* session, data, channelParams { res } */) { // ChannelHttp
             
             var data = U.param(params, 'data');
             
             /// {SERVER=
             
-            // Reply to the order using either the Response instance found at
+            // Reply to the command using either the Response instance found at
             // `params.channelParams.res`, or using the oldest queued longpoll.
             // If neither of these methods produces a Response instance, queue
             // the `params.data` value until a longpoll becomes available.
             
             // Note that promise fulfillment in this case means that the server
-            // has decided to send the order, NOT that the order has been
+            // has decided to send the command, NOT that the command has been
             // received by the client.
             
             // Get the session data
@@ -644,12 +633,12 @@ new PACK.pack.Package({ name: 'server',
             
             if (res) {
               
-              // We have a Response instance! Use `orderResponse` to respond with it.
+              // We have a Response instance! Use `commandResponse` to respond with it.
               this.sendResponse(res, data);
               
             } else {
               
-              // No Response instance found. Need to queue `orderResponse` until we can send it.
+              // No Response instance found. Need to queue `commandResponse` until we can send it.
               sessionData.pending.push(data);
               
             }
@@ -673,7 +662,7 @@ new PACK.pack.Package({ name: 'server',
             /// =CLIENT}
             
           },
-          $heedOrder: function(params /* session, command, params, channelerParams */) { // ChannelHttp
+          $heedCommand: function(params /* session, command, params, channelerParams */) { // ChannelHttp
             
             /// {SERVER=
             var pass = this;
@@ -681,15 +670,15 @@ new PACK.pack.Package({ name: 'server',
               
               var session = U.param(params, 'session');
               var command = U.param(params, 'command');
-              var orderParams = U.param(params, 'params', {});
+              var commandParams = U.param(params, 'params', {});
               
               if (command === 'syncNumBankedPolls') {
                 
-                return pass.channeler.$giveOrder({
+                return pass.channeler.$giveCommand({
                   session: session,
                   channelerParams: U.param(params, 'channelerParams', {}),
                   data: {
-                    address: U.param(orderParams, 'returnAddress', '~root'),
+                    address: U.param(commandParams, 'returnAddress', '~root'),
                     command: 'syncNumBankedPolls',
                     data: pass.useSessionData(session).polls.length
                   }
@@ -703,7 +692,7 @@ new PACK.pack.Package({ name: 'server',
                 var res = U.param(channelerParams.channelParams, 'res'); // It shouldn't be possible for this to fail
                 res['~finalized'] = true; // Don't allow this Response to be cleaned up
                 
-                // If an order is pending, immediately send it using the poll
+                // If a command is pending send it immediately using the poll
                 // Otherwise, bank the poll for use with the next command
                 var sessionData = pass.useSessionData(session);
                 if (sessionData.pending.length) pass.sendResponse(res, sessionData.pending.shift());
@@ -716,7 +705,7 @@ new PACK.pack.Package({ name: 'server',
                 var polls = pass.useSessionData(session).polls;
                 while (polls.length) pass.sendResponse(polls.shift(), null);
                 
-                return pass.channeler.$giveOrder({
+                return pass.channeler.$giveCommand({
                   session: session,
                   channelerParams: U.param(params, 'channelerParams', {}),
                   data: null
@@ -724,7 +713,7 @@ new PACK.pack.Package({ name: 'server',
                 
               }
               
-              return sc.$heedOrder.call(pass, params);
+              return sc.$heedCommand.call(pass, params);
                 
             }});
             /// =SERVER}
@@ -870,7 +859,7 @@ new PACK.pack.Package({ name: 'server',
             var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
             var session = this.channeler.getSession(ip);
             
-            return this.channeler.$passOrder({
+            return this.channeler.$passCommand({
               
               session: session,
               channelerParams: channelerParams,
@@ -935,13 +924,13 @@ new PACK.pack.Package({ name: 'server',
               xhr.setRequestHeader('Content-Type', 'application/json');
               xhr.send(U.thingToString({ address: address, command: command, params: reqParams }));
               
-            }}).then(function(order) {
+            }}).then(function(command) {
               
               console.log('PASS FOR:', params);
-              console.log('RESULT:', order);
+              console.log('RESULT:', command);
               
-              // TODO: What if `order` is the number zero (`0`)? It should probably be required to be an `Object`.
-              return order ? pass.channeler.$passOrder(order) : null;
+              // TODO: What if `command` is the number zero (`0`)? It should probably be required to be an `Object`.
+              return command ? pass.channeler.$passCommand(command) : null;
               
             });
             
@@ -952,7 +941,7 @@ new PACK.pack.Package({ name: 'server',
             while (this.numBanked < this.numToBank) {
               
               this.$doQuery({ address: [ this.name ], command: 'bankPoll' })
-                .then(function(order) {
+                .then(function() {
                   pass.numBanked--;
                   pass.doBankPolls();
                 })
@@ -1018,7 +1007,7 @@ new PACK.pack.Package({ name: 'server',
             /// =SERVER}
           },
           
-          $giveOrder: function(params /* session, channelerParams, channelParams, data */) { // ChannelSocket
+          $giveCommand: function(params /* session, channelerParams, channelParams, data */) { // ChannelSocket
             
             var channelParams = U.param(params, 'channelParams', {});
             var data = U.param(params, 'data');
@@ -1026,7 +1015,7 @@ new PACK.pack.Package({ name: 'server',
             /// {SERVER=
             var session = U.param(params, 'session');
             var connection = this.connections[session.ip];
-            return connection.$giveOrder({ data: U.thingToString(data) });
+            return connection.$giveCommand({ data: U.thingToString(data) });
             /// =SERVER}
             
             /// {CLIENT=
@@ -1035,16 +1024,16 @@ new PACK.pack.Package({ name: 'server',
             /// =CLIENT}
             
           },
-          $passOrder: function(ip, channelerParams, orderData) {
+          $passCommand: function(ip, channelerParams, commandData) {
             
-            // Orders discovered by ChannelSocket functionality will inform the Channeler through this method
+            // Commands discovered by ChannelSocket functionality will inform the Channeler through this method
             
-            orderData.session = ip ? this.channeler.getSession(ip) : null;
-            orderData.channelerParams = channelerParams;
-            return this.channeler.$passOrder(orderData);
+            commandData.session = ip ? this.channeler.getSession(ip) : null;
+            commandData.channelerParams = channelerParams;
+            return this.channeler.$passCommand(commandData);
             
           },
-          $heedOrder: function(params /* session, channelerParams, command, params */) { // ChannelSocket
+          $heedCommand: function(params /* session, channelerParams, command, params */) { // ChannelSocket
             
             /// {SERVER=
             var session = params.session;
@@ -1054,7 +1043,7 @@ new PACK.pack.Package({ name: 'server',
             /// {CLIENT=
             /// =CLIENT}
             
-            return sc.$heedOrder.call(this, params);
+            return sc.$heedCommand.call(this, params);
             
           },
           
@@ -1097,7 +1086,7 @@ new PACK.pack.Package({ name: 'server',
             //var channeler = this.channeler;
             var pass = this;
             socket.onopen = this.$ready.resolve.bind(this.$ready);
-            socket.onmessage = function(evt) { pass.$passOrder(null, {}, U.stringToThing(evt.data)).done(); };
+            socket.onmessage = function(evt) { pass.$passCommand(null, {}, U.stringToThing(evt.data)).done(); };
             this.socket = socket;
             /// =CLIENT}
             
@@ -1132,7 +1121,7 @@ new PACK.pack.Package({ name: 'server',
         statik: { NEXT_ID: 0 }
       }),
       CommandResponse: U.makeClass({ name: 'CommandResponse',
-        description: 'Handles the sending of orders to the other side via HTTP',
+        description: 'Handles the sending of commands to the other side via HTTP',
         methods: function(sc) { return {
           init: function(params /* httpCode, contentType, encoding, data */) {
             
@@ -1213,7 +1202,7 @@ new PACK.pack.Package({ name: 'server',
             
           },
           
-          $giveOrder: function(params /* data, socketParams */) { // SocketConnection
+          $giveCommand: function(params /* data, socketParams */) { // SocketConnection
             
             // Doesn't need a session, as a socket is by definition pointed at a single target
             // No extra information is required to narrow down the identity of the recipient
@@ -1353,7 +1342,7 @@ new PACK.pack.Package({ name: 'server',
           receivedData: function () {
             
             // Socket is already connected; websocket protocol implemented here.
-            // Results in calls to `this.channel.$passOrder`.
+            // Results in calls to `this.channel.$passCommand`.
             
             try {
               
@@ -1451,8 +1440,8 @@ new PACK.pack.Package({ name: 'server',
                     this.curOp = null;
                     this.curFrames = [];
                     
-                    var order = U.stringToThing(fullStr);
-                    this.channel.$passOrder(this.ip, {}, order).done();
+                    var command = U.stringToThing(fullStr);
+                    this.channel.$passCommand(this.ip, {}, command).done();
                     
                   }
                   

@@ -681,7 +681,7 @@ global.U = {
             SeveralClassesWithTheSameName: [ function() { ... }, function() { ... } ]
           }
           
-          In case of such lists the order will be
+          In case of such lists the order will be:
           1) mixin methods in the order they're specified (with parent mixins taking precedence)
           2) super- or sub-class method
           */

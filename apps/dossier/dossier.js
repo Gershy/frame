@@ -738,9 +738,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.getRoot().isRoot();
           },
           
-          $heedOrder: function(params /* session, command, params, channelerParams */) { // Dossier
+          $heedCommand: function(params /* session, command, params, channelerParams */) { // Dossier
             
-            var orderDesc = this.getAddress() + '.' + params.command;
+            var commandDescription = this.getAddress() + '.' + params.command;
             
             var editor = new ds.Editor();
             var pass = this;
@@ -751,7 +751,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               var commandParams = U.param(params, 'params', {});
               var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
               
-              orderDesc += '(' + U.debugObj(commandParams) + ')';
+              commandDescription += '(' + U.debugObj(commandParams) + ')';
               
               return pass.$useAbility(command, session, channelerParams, editor, commandParams);
               
@@ -759,9 +759,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
               .then(function(abilityStaged) { return editor.$transact(); });
             
           },
-          $giveOrder: function(params /* session, data, channelerParams */) { // Dossier
+          $giveCommand: function(params /* session, data, channelerParams */) { // Dossier
             // TODO: In request-heavy environments it may be worth keeping a reference to the Channeler
-            return this.outline.getRoot().channeler.$giveOrder(params);
+            return this.outline.getRoot().channeler.$giveCommand(params);
           },
           
           addAbility: function(name, func) {
