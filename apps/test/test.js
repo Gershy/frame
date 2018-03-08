@@ -1,3 +1,11 @@
+/// {CLIENT=
+var old = console.error.bind(console);
+console.error = function(err) {
+  old(err.message);
+  old(err.stack);
+};
+/// =CLIENT}
+
 var package = new PACK.pack.Package({ name: 'test',
   /// {SERVER=
   dependencies: [ 'dossier', 'p', 'server', 'frame' ],
@@ -25,8 +33,8 @@ var package = new PACK.pack.Package({ name: 'test',
     return {
       resources: {
         css: [
-          'apps/' + packageName + '/css/style.css',
-          'apps/userify/style.css'
+          'apps/test/css/style.css',
+          'apps/userify/css/substance.css'
         ]
       }
     };
@@ -61,10 +69,6 @@ var package = new PACK.pack.Package({ name: 'test',
     var channeler = new sv.Channeler({ appName: 'test', handler: rootDoss });
     channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
     channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
-    channeler.$start()
-      .then(function() { console.log('Channeler ready'); })
-      .fail(function(err) { console.error(err); })
-      .done();
     
     activities.push(channeler);
     
@@ -142,35 +146,34 @@ var package = new PACK.pack.Package({ name: 'test',
         
         doss.addAbility('sync', function(session, channelerParams, editor, params /* */) {
           
+          // Attach a sync action to occur when the `editor` is done (but don't wait for this!)
           editor.$transaction.then(function() {
             
             /// {CLIENT=
             // The client side requests syncs
-            return channeler.$giveCommand({
-              session: null,
-              channelerParams: channelerParams,
-              data: {
-                address: doss.getAddress(),
-                command: 'sync',
-                params: {}
-              }
-            });
+            var command = 'sync';
+            var params = {};
             /// =CLIENT}
             
             /// {SERVER=
-            // The server side provides syncs
+            // The server side issues mods
+            var command = 'mod';
+            var params = { doSync: false, data: doss.getData() };
+            /// =SERVER}
+            
             return channeler.$giveCommand({
               session: session,
               channelerParams: channelerParams,
               data: {
                 address: doss.getAddress(),
-                command: 'mod',
-                params: { doSync: false, data: doss.getData() }
+                command: command,
+                params: params
               }
             });
-            /// =SERVER}
             
-          });
+          }).done();
+          
+          return p.$null;
           
         });
         
@@ -192,9 +195,36 @@ var package = new PACK.pack.Package({ name: 'test',
         });
         
       },
+      num: function(doss) {
+        
+        this.basic(doss);
+        
+        this.addAbility(doss, 'mod', function(editor, doss, data) {
+          
+          editor.mod({ doss: doss, data: data });
+          
+        });
+        
+        this.addAbility(doss, 'clear', function(editor, doss, data) {
+          
+          editor.mod({ doss: doss, data: '' });
+          
+        });
+        
+      },
       obj: function(doss) {
         
         this.basic(doss);
+        
+        this.addAbility(doss, 'mod', function(editor, doss, data) {
+          
+          console.log('Mod not implemented ;D');
+          
+          // TODO: It's not nearly this easy!!
+          // Modifying an object results in many removed, added, and modified children.
+          // editor.mod({ doss: doss, data: data });
+          
+        });
         
       },
       arr: function(doss) {
@@ -221,177 +251,417 @@ var package = new PACK.pack.Package({ name: 'test',
           
         });
         
+      },
+      ref: function(doss) {
+        
+        this.basic(doss);
+        
       }
       
     }}});
     var actionizer = new Actionizer({ channeler: channeler });
     
+    var str = actionizer.str.bind(actionizer);
+    var obj = actionizer.obj.bind(actionizer);
+    var arr = actionizer.arr.bind(actionizer);
+    var ref = actionizer.arr.bind(actionizer);
+    
     // ==== Initialize outline
-    var outline = new ds.Outline({ name: 'test', c: ds.DossierObj });
-    outline.addChild('val', ds.DossierStr, function(doss) {
-      
-      actionizer.str(doss);
-      
-    });
-    outline.channeler = channeler;
+    var outline = new ds.Outline({ name: 'json', c: ds.DossierObj, p: { wrap: obj } });
     
-    var arr = outline.addChild('arr', ds.DossierArr, function(doss) {
+    var typeSet = outline.addChild('typeSet', ds.DossierObj);
+    
+    var stringSet = typeSet.addChild('stringSet', ds.DossierArr, arr);
+    var string = stringSet.addDynamicChild('string', ds.DossierObj, null);
+    string.addChild('value', ds.DossierStr);
+    
+    var objectSet = typeSet.addChild('objectSet', ds.DossierArr, arr);
+    var object = objectSet.addDynamicChild('object', ds.DossierObj, null);
+    /// {CLIENT=
+    object.addChild('open', ds.DossierBln, function(doss) { doss.setValue(true); });
+    /// =CLIENT}
+    var pairSet = object.addChild('pairSet', ds.DossierArr, arr);
+    var pair = pairSet.addDynamicChild('pair', ds.DossierObj, null);
+    pair.addChild('key', ds.DossierStr, str);
+    pair.addChild('val', ds.DossierRef, { template: '~root.itemSet.$id', wrap: ref });
+    
+    var arraySet = typeSet.addChild('arraySet', ds.DossierArr, arr);
+    var array = arraySet.addDynamicChild('array', ds.DossierObj, null);
+    /// {CLIENT=
+    array.addChild('open', ds.DossierBln, function(doss) { doss.setValue(true); });
+    /// =CLIENT}
+    var indexSet = array.addChild('indexSet', ds.DossierArr, arr);
+    indexSet.addDynamicChild('index', ds.DossierRef, null, { template: '~root.itemSet.$id', wrap: ref });
+    
+    var itemSet = outline.addChild('itemSet', ds.DossierArr, arr);
+    var item = itemSet.addDynamicChild('type', ds.DossierRef, null, { template: '~root.typeSet.$type.$id' });
+    
+    var render = outline.addChild('render', ds.DossierRef, { template: '~root.itemSet.$id', wrap: ref });
+    
+    // TODO: The following the should be implemented via abilities
+    var remItem = function(editor, item) {
       
-      actionizer.arr(doss);
+      var type = item.getChild('@');
       
-    });
-    arr.addDynamicChild('val', ds.DossierStr, null,
-      function(doss) {
+      editor.rem({ child: item });
+      editor.rem({ child: type });
+      
+      if (type.outline.name === 'object') {
         
-        return actionizer.str(doss);
-        
-      });
-    
-    var obj = outline.addChild('obj', ds.DossierObj);
-    obj.addChild('val1', ds.DossierStr, function(doss) {
-      
-      actionizer.str(doss);
-      
-    });
-    obj.addChild('val2', ds.DossierStr, function(doss) {
-      
-      actionizer.str(doss);
-      
-    });
-    
-    var objArr = outline.addChild('objarr', ds.DossierArr);
-    var obj = objArr.addDynamicChild('obj', ds.DossierObj,
-      function(doss) { return doss.getValue('val1') + doss.getValue('val2'); },
-      function() {
-        
-      });
-    obj.addChild('val1', ds.DossierStr);
-    obj.addChild('val2', ds.DossierStr);
-    
-    var editor = new ds.Editor();
-    var rootDoss = editor.add({ outline: outline, data: {
-      
-      val: 'val',
-      arr: {
-        0: 'arr0',
-        1: 'arr1'
-      },
-      obj: {
-        val1: 'obj1',
-        val2: 'obj2'
-      },
-      objarr: {
-        objarr1objarr2: {
-          val1: 'objarr1',
-          val2: 'objarr2'
-        },
-        objarr3objarr4: {
-          val1: 'objarr3',
-          val2: 'objarr4'
+        var pairSet = type.getChild('pairSet');
+        for (var k in pairSet.children) {
+          remItem(editor, pairSet.children[k].getChild('@val'));
         }
+        
+      } else if (type.outline.name === 'array') {
+        
+        var indexSet = type.getChild('indexSet');
+        for (var k in indexSet.children) {
+          remItem(editor, indexSet.children[k].getChild('@'));
+        }
+        
       }
       
+    };
+    var exportJson = function(type) {
+      
+      if (type.outline.name === 'string') {
+        
+        return type.getValue('value');
+        
+      } else if (type.outline.name === 'object') {
+        
+        var ret = {};
+        var pairSet = type.getChild('pairSet');
+        for (var k in pairSet.children) {
+          var pair = pairSet.children[k];
+          var key = pair.getChild('key');
+          var val = exportJson(pair.getChild('@@val')); // @val is an item (DossierRef), @@val is the type pointed at by the item
+        }
+        return ret;
+        
+      } else if (type.outline.name === 'array') {
+        
+        var ret = [];
+        var indexSet = type.getChild('indexSet');
+        for (var k in indexSet.children) {
+          var index = indexSet.children[k];
+          ret.push(exportJson(index.getChild('@@'))); // index.getChild('@') is an item (DossierRef), index.getChild('@@') is the type it points to
+        }
+        
+      }
+      
+      throw new Error('Unsupported type: ', type.outline.name);
+      
+    };
+    var importJson = function(editor, item, json) {
+      // TODO
+    };
+    
+    // ==== Initialize rootDoss
+    var editor = new ds.Editor();
+    var rootDoss = editor.add({ outline: outline, data: {
+      /// {REMOVE=
+      typeSet: {},
+      itemSet: {},
+      render: null
+      /// =REMOVE}
+      /// {S/ERVER=
+      typeSet: {
+        
+        stringSet: {
+          0: {
+            value: 'val'
+          }
+        },
+        
+        objectSet: {
+          0: {
+            pairSet: {
+              0: {
+                key: 'key',
+                val: '~root.itemSet.0'
+              }
+            }
+          }
+        },
+        
+        arraySet: {
+        }
+        
+      },
+        
+      itemSet: {
+        0: '~root.typeSet.stringSet.0',
+        1: '~root.typeSet.objectSet.0'
+      },
+      
+      render: '~root.itemSet.1'
+      /// =S/ERVER}
     }});
     channeler.handler = rootDoss; // Assign this Dossier as the Channeler's handler
     
     /// {CLIENT=
     // ==== Initialize view
+    var n = 0;
     var viewFunc = function() {
       
-      var view = new uf.RootView({ name: 'root',
-        children: [
-          new uf.TextView({ name: 'title', info: 'Test' }),
-          new uf.SetView({ name: 'data', children: [
+      var renderer = function(name, itemDoss) {
+        
+        var childInfo = function() {
+          // Returns a list containing a single value: the "item" to render
+          var ret = {};
+          ret[itemDoss.name] = itemDoss;
+          return ret;
+        };
+        
+        return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: 'renderer', genChildView: function(name, info) {
+          
+          if (n++ === 0) console.log('INFO:', info);
+          
+          var setType = info.value ? info.value[0] : null;
+          
+          if (setType === 'stringSet') {
             
-            // Simple text field
-            new uf.TextEditView({ name: 'val', info: rootDoss.getChild('val').genAbilityFact(null, 'mod'), cssClasses: [ 'control' ] }),
+            var view = new uf.TextEditView({ name: name, info: info.getChild('@.value') })
             
-            // Array of text fields
-            new uf.SetView({ name: 'dynarr', cssClasses: [ 'control' ], children: [
-              
-              new uf.DynamicSetView({ name: 'arr', childInfo: rootDoss.getChild('arr'), cssClasses: [ 'list' ],
-                genChildView: function(name, info) {
-                  
-                  return new uf.SetView({ name: name, cssClasses: [ 'listItem' ], children: [
-                    
-                    new uf.TextEditView({ name: 'listItemContent', info: info.genAbilityFact(null, 'mod') }),
-                    new uf.SetView({ name: 'listItemControls', children: [
-                      
-                      new uf.TextView({ name: 'delete', info: '-', cssClasses: [ 'listItemControl', 'uiButton' ], decorators: [
-                        
-                        new uf.ActionDecorator({ $action: function() {
-                          console.log('Delete:', info);
-                          return p.$null;
-                        }})
-                        
-                      ]})
-                      
-                    ]})
-                    
-                  ]});
-                  
+          } else if (setType === 'objectSet') {
+            
+            var objectInfo = info.getChild('@');
+            var doFold = new uf.ActionDecorator({ $action: function() {
+              objectInfo.getChild('open').modValue(function(open) { return !open; });
+              return p.$null;
+            }});
+            var applyFoldOuter = new uf.ClassDecorator({
+              list: [ 'open', 'closed' ],
+              info: function() { return objectInfo.getValue('open') ? 'open' : 'closed' }
+            });
+            var applyFoldInner = new uf.CssDecorator({
+              list: [ 'max-height' ],
+              info: function(domElem) {
+                return {
+                  'max-height': objectInfo.getValue('open') ? domElem.scrollHeight + 'px' : 0
                 }
-              }),
+              }
+            });
+            
+            var view = new uf.SetView({ name: name, decorators: [ applyFoldOuter ], children: [
+              
+              new uf.TextView({ name: 'lb', info: '{', decorators: [ doFold ] }),
+              
+              new uf.DynamicSetView({ name: 'pairSet', childInfo: info.getChild('@.pairSet'), decorators: [ applyFoldInner ], genChildView: function(name, info) {
+                
+                return new uf.SetView({ name: name, cssClasses: [ 'pair' ], children: [
+                  
+                  new uf.TextEditView({ name: 'key', info: info.getChild('key') }),
+                  
+                  new uf.TextView({ name: 'sep', info: ':' }),
+                  
+                  renderer('val', info.getChild('@val')),
+                  
+                  // Pair controls
+                  new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
+                    
+                    new uf.ActionDecorator({ $action: function() {
+                      
+                      var pair = info;
+                      var item = pair.getChild('@val');
+                      var type = item.getChild('@');
+                      
+                      var editor = new ds.Editor();
+                      editor.rem({ child: pair });
+                      remItem(editor, item);
+                      
+                      return editor.$transact();
+                      
+                    }})
+                    
+                  ]})
+                  
+                ]})
+                
+              }}),
+              
+              new uf.TextView({ name: 'rb', info: '}', decorators: [ doFold ] }),
+              
               new uf.SetView({ name: 'controls', children: [
                 
-                new uf.TextView({ name: 'add', info: '+', cssClasses: [ 'uiButton' ], decorators: [
+                new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
                     var editor = new ds.Editor();
-                    return rootDoss.getChild('arr').$useAbility('add', outline.session || null, null, editor, { doSync: true, data: 'NEW' })
-                      .then(function() {
-                        return editor.$transact();
-                      });
+                    var newString = editor.add({ par: rootDoss.getChild('typeSet.stringSet'), data: { value: 'val' } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newString });
+                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'str', val: newItem } });
+                    return editor.$transact();
+                    
+                  }})
+                ]}),
+                new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
+                  new uf.ActionDecorator({ $action: function() {
+                    
+                    var editor = new ds.Editor();
+                    var newObject = editor.add({ par: rootDoss.getChild('typeSet.objectSet'), data: { pairSet: {} } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newObject });
+                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'obj', val: newItem } });
+                    return editor.$transact();
+                    
+                  }})
+                ]}),
+                new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
+                  new uf.ActionDecorator({ $action: function() {
+                    
+                    var editor = new ds.Editor();
+                    var newArray = editor.add({ par: rootDoss.getChild('typeSet.arraySet'), data: { indexSet: {} } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newArray });
+                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'arr', val: newItem } });
+                    return editor.$transact();
                     
                   }})
                 ]})
                 
               ]})
               
-            ]}),
+            ]});
             
-            // Object containing 2 text fields
-            new uf.SetView({ name: 'obj', cssClasses: [ 'control' ], children: [
-              
-              new uf.TextEditView({ name: 'val1', info: rootDoss.getChild('obj.val1').genAbilityFact(null, 'mod') }),
-              new uf.TextEditView({ name: 'val2', info: rootDoss.getChild('obj.val2').genAbilityFact(null, 'mod') })
-              
-            ]}),
+          } else if (setType === 'arraySet') {
             
-            // Array containings objects, each of which contains 2 text fields
-            new uf.DynamicSetView({ name: 'objarr', childInfo: rootDoss.getChild('objarr'), cssClasses: [ 'control' ],
-              genChildView: function(name, info) {
-                return new uf.SetView({ name: name, children: [
+            var arrayInfo = info.getChild('@');
+            var doFold = new uf.ActionDecorator({ $action: function() {
+              arrayInfo.getChild('open').modValue(function(open) { return !open; });
+              return p.$null;
+            }});
+            var applyFoldOuter = new uf.ClassDecorator({
+              list: [ 'open', 'closed' ],
+              info: function() { return arrayInfo.getValue('open') ? 'open' : 'closed' }
+            });
+            var applyFoldInner = new uf.CssDecorator({
+              list: [ 'max-height' ],
+              info: function(domElem) {
+                return {
+                  'max-height': arrayInfo.getValue('open') ? domElem.scrollHeight + 'px' : 0
+                }
+              }
+            });
+            
+            var view = new uf.SetView({ name: name, decorators: [ applyFoldOuter ], children: [
+              
+              new uf.TextView({ name: 'lb', info: '[', decorators: [ doFold ] }),
+              
+              new uf.DynamicSetView({ name: 'indexSet', childInfo: info.getChild('@.indexSet'), decorates: [ applyFoldInner ], genChildView: function(name, info) {
+                
+                return new uf.SetView({ name: name, cssClasses: [ 'index' ], children: [
                   
-                  new uf.TextEditView({ name: 'val1', info: info.getChild('val1').genAbilityFact(null, 'mod') }),
-                  new uf.TextEditView({ name: 'val2', info: info.getChild('val2').genAbilityFact(null, 'mod') })
+                  renderer('val', info.getChild('@')),
+                  
+                  // Index controls
+                  new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
+                    
+                    new uf.ActionDecorator({ $action: function() {
+                      
+                      var index = info;
+                      var item = index.getChild('@');
+                      
+                      var editor = new ds.Editor();
+                      editor.rem({ child: index });
+                      remItem(editor, item);
+                      
+                      return editor.$transact();
+                      
+                    }})
+                    
+                  ]})
                   
                 ]});
-              }
-            })
+                
+              }}),
+              
+              new uf.TextView({ name: 'rb', info: ']', decorators: [ doFold ] }),
+              
+              new uf.SetView({ name: 'controls', children: [
+                
+                new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
+                  new uf.ActionDecorator({ $action: function() {
+                    
+                    var editor = new ds.Editor();
+                    var newString = editor.add({ par: rootDoss.getChild('typeSet.stringSet'), data: { value: 'val' } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newString });
+                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
+                    return editor.$transact();
+                    
+                  }})
+                ]}),
+                new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
+                  new uf.ActionDecorator({ $action: function() {
+                    
+                    var editor = new ds.Editor();
+                    var newObject = editor.add({ par: rootDoss.getChild('typeSet.objectSet'), data: { pairSet: {} } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newObject });
+                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
+                    return editor.$transact();
+                    
+                  }})
+                ]}),
+                new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
+                  new uf.ActionDecorator({ $action: function() {
+                    
+                    var editor = new ds.Editor();
+                    var newArray = editor.add({ par: rootDoss.getChild('typeSet.arraySet'), data: { indexSet: {} } });
+                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newArray });
+                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
+                    return editor.$transact();
+                    
+                  }})
+                ]})
+                
+              ]})
+              
+            ]});
+            
+          }
+          
+          view.cssClasses = [ 'item', setType.substr(0, setType.length - 3), 'horzCompact' ];
+          
+          return view;
+          
+        }});
+        
+      };
+      var view = new uf.RootView({ name: 'root',
+        children: [
+          new uf.TextView({ name: 'title', info: 'json' }),
+          new uf.SetView({ name: 'render', children: [
+            
+            renderer('main', rootDoss.getChild('@render'))
             
           ]})
         ],
-        updateFunc: function() {
-          
-        }
+        updateFunc: function(){}
       });
       
+      window.doss = rootDoss;
+      window.view = view;
       activities.push(view);
-      
       return view;
       
     };
-    
     /// =CLIENT}
     
-    editor.$transact().then(function() {
-      
+    editor.$transact()
+      .then(function() { console.log('TRANSACTED'); return channeler.$start(); }) // Start the channeler once `rootDoss` is ready
       /// {CLIENT=
-      viewFunc().start();
+      .then(function() {
+        
+        return rootDoss.$useAbility('sync');
+        
+      })
+      .then(function() {
+        
+        viewFunc().start();
+        
+      })
       /// =CLIENT}
-      
-    }).done();
+      .done();
     
   }
   

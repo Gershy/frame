@@ -1,0 +1,19 @@
+.interactive {
+  outline: none !important;
+  font-family: inherit;
+  border: none;
+  background-color: #d0d0d0;
+}
+.interactive.button {
+  cursor: pointer;
+  user-select: none;
+}
+.interactive.button.waiting {
+  cursor: not-allowed;
+}
+
+.input > .placeholder {
+  position: absolute;
+  left: 0; top: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}

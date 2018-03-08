@@ -100,7 +100,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (U.isObj(p, Object)) {
               data.p = p;
             } else if (U.isObj(p, Function)) {
-              data.p = { decorateFunc: p };
+              data.p = { wrap: p };
             } else if (U.isDefined(p)) {
               throw new Error('Invalid "p" param: ' + U.typeOf(p));
             }
@@ -126,7 +126,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (U.isObj(p, Object)) {
               data.p = p;
             } else if (U.isObj(p, Function)) {
-              data.p = { decorateFunc: p };
+              data.p = { wrap: p };
             } else if (U.isDefined(p)) {
               throw new Error('Invalid "p" param: ' + U.typeOf(p));
             }
@@ -134,7 +134,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var outline = new ds.Outline(data);
             this.p.innerOutline = outline;
             this.p.nameFunc = nameFunc;
-            
             outline.par = this;
             
             return outline;
@@ -249,11 +248,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           },
           rem: function(params /* par, child */) {
-            var par = U.param(params, 'par');
             var child = U.param(params, 'child');
+            var par = U.param(params, 'par', child.par);
             if (!U.isInstance(child, ds.Dossier)) throw new Error('"child" param for rem must be Dossier');
-            this.$addAtomic(c.atomicStopDoss, [ child ]);
-            this.$addAtomic(c.atomicRemChild, [ par, child ]);
+            
+            this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
+            this.$addAtomic(c.atomicRemChild, [ par, child ], 'remdoss ::: ' + child.outline.getAddress());
             
             this.$transaction.then(function() { child.worry('editorRemoved'); });
           },
@@ -753,7 +753,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               commandDescription += '(' + U.debugObj(commandParams) + ')';
               
-              return pass.$useAbility(command, session, channelerParams, editor, commandParams);
+              return pass.$stageAbility(command, session, channelerParams, editor, commandParams);
               
             }})
               .then(function(abilityStaged) { return editor.$transact(); });
@@ -789,11 +789,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             /// =DOC}
             
-            if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability:', this.getAddress() + ': ' + name);
+            
+            if (O.contains(this.abilities, name)) {
+              
+              //console.error(new Error('WTFFFF: "' + name + '"'));
+              throw new Error('Tried to overwrite ability:' + this.getAddress() + ': "' + name + '"');
+            
+            }
             this.abilities[name] = func;
             
           },
-          $useAbility: function(name, session, channelerParams, editor, params) {
+          $stageAbility: function(name, session, channelerParams, editor, params) {
             
             /// {DOC=
             { desc: 'Stages a named ability. This means `editor` is prepared ' +
@@ -819,6 +825,21 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.abilities[name](session, channelerParams, editor, params);
             
           },
+          $useAbility: function(name, params, session, channelerParams) {
+            
+            var editor = new ds.Editor();
+            
+            /// {CLIENT=
+            var $stage = this.$stageAbility(name, null, null, editor, params || {});
+            /// =CLIENT}
+            
+            /// {SERVER=
+            var $stage = this.$stageAbility(name, session, channelerParams, editor, params);
+            /// =SERVER}
+            
+            return $stage.then(editor.$transact.bind(editor));
+            
+          },
           genAbilityFact: function(get, set) {
             
             var pass = this;
@@ -837,7 +858,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 // effects cancelled if possible.
                 
                 var editor = new ds.Editor();
-                pass.$useAbility(set, session, null, editor, { doSync: true, data: val }) // TODO: The last param should just be `val`
+                pass.$stageAbility(set, session, null, editor, { doSync: true, data: val }) // TODO: The last param should just be `val`
                   .then(editor.$transact.bind(editor))
                 
               }
@@ -882,14 +903,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
             
             // Validate that this doss has a resolved name, and that its parent is started
-            if (!this.hasResolvedName() || (this.par && !this.par.started)) throw new Error('Not ready to start "' + this.getAddress() + '"');
-            
-            // Apply any decorator function
-            if (this.outline.p.decorateFunc) {
-              
-              this.outline.p.decorateFunc(this);
-              
+            if (!this.hasResolvedName()) {
+              throw new Error('Can\'t start ' + this.getAddress() + '; name unresolved');
             }
+            
+            if (this.par && !this.par.started) {
+              throw new Error('Can\'t start ' + this.getAddress() + '; unrooted');
+            }
+            
+            // Apply the decorator. This can only happen once the rest of the validation is complete
+            if (this.outline.p.wrap) this.outline.p.wrap(this);
             
           },
           stop: function() {
@@ -1201,6 +1224,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               var arrVal = pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; });
               
             } else if (U.isInstance(value, ds.Dossier)) {
+              
+              if (!value.started) throw new Error('Can\'t reference unstarted Dossier');
               
               var vals = [];
               var addr = value.getNameChain();

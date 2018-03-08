@@ -1,37 +1,340 @@
-body {
-  background-color: #000000;
+@keyframes titleBg {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 40px;
+  }
 }
 
-.input.inline { width: 200px; }
-
-.uiButton {
-  cursor: pointer;
-  width: 14px; height: 14px; line-height: 14px;
-  text-align: center;
-  background-color: #000000;
+body, html, #root {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background-color: #221912;
   color: #ffffff;
-  border-radius: 100%;
+  overflow: hidden;
+}
+#root-title {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 40px; line-height: 40px;
+  font-size: 30px;
+  text-align: center;
+  
+  background: linear-gradient(40deg, rgba(255, 255, 255, 0.1), rgba(0, 255, 255, 0.25), rgba(255, 255, 255, 0.1));
+  
+  animation-name: titleBg;
+  animation-duration: 10000ms;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  
+  z-index: 2;
+}
+#root-render {
+  position: absolute;
+  font-family: monospace;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  box-sizing: border-box;
+  border-top: 40px solid transparent;
+  z-index: 1;
+}
+#root-render-renderer {
+  background-color: #000000;
 }
 
-.control {
-  background-color: rgba(255, 255, 255, 0.1);
-  margin-bottom: 4px;
+span[tabindex] {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
-.list {
-  
+
+.main {
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-width: 1000px;
+  height: 100%;
 }
-.list > .listItem {
-  
+.main > .item {
+  margin-bottom: 50px;
 }
-.list > .listItem > .listItemContent {
-  display: inline-block;
-  vertical-align: middle;
-}
-.list > .listItem > .listItemControls {
-  display: inline-block;
-  vertical-align: middle;
-}
-.list > .listItem > .listItemControls > .listItemControl {
+
+.input {
   position: relative;
+  width: 100px; height: 20px;
   display: inline-block;
+  padding: 0;
+}
+.input > .interactive {
+  display: inline-block;
+  position: relative;
+  box-sizing: border-box;
+  width: 100%; height: 100%;
+  padding: 0 1px;
+  background-color: rgba(255, 255, 255, 0);
+  color: inherit;
+  outline: none !important;
+  border: none;
+}
+.input.focus > .interactive {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.input > .placeholder {
+}
+.input > .anim {
+  display: none;
+}
+
+.item {
+  position: relative;
+  font-size: 0;
+  display: inline-block;
+  background-color: rgba(255, 255, 255, 0);
+  z-index: 1;
+  
+  transition: background-color 0.1s linear;
+}
+.item:before { /* minimum size */
+  content: "";
+  position: relative;
+  display: block;
+  left: 0; top: 0;
+  width: 140px;
+}
+.item.horzCompact {
+  display: block;
+  width: 1000px;
+}
+
+.item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.item > .controls {
+  position: absolute;
+  display: inline-block;
+  white-space: nowrap;
+  left: 20px; bottom: 0;
+  height: 20px;
+  z-index: 10;
+  
+  opacity: 0.5;
+  
+  transition: opacity 0.2s linear;
+}
+.item > .controls:hover {
+  opacity: 1;
+}
+.item > .controls > .control {
+  display: inline-block;
+  vertical-align: top;
+  width: 40px; height: 20px; line-height: 20px; font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+  background-color: rgba(124, 160, 160, 0);
+  color: rgba(255, 255, 255, 0.4);
+  
+  transition: background-color 0.2s linear, color 0.2s linear;
+}
+.item > .controls > .control:hover {
+  background-color: rgba(124, 160, 160, 1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.item.string {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: 0 10px;
+  margin-left: 5px;
+}
+.item.string.horzCompact > .interactive {
+  width: 200px;
+}
+.item.string.horzCompact > .placeholder {
+  width: 220px; left: 0;
+}
+.item.string.horzCompact > .placeholder:before,
+.item.string.horzCompact > .placeholder:after {
+  content: "\"";
+  position: absolute;
+  display: inline-block;
+  width: 10px; height: 20px; line-height: 20px;
+  top: 0; left: initial;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.3);
+}
+.item.string.horzCompact > .placeholder:before { left: 0; }
+.item.string.horzCompact > .placeholder:after { right: 0; }
+
+.item.object {
+  position: relative;
+}
+.item.object > .lb,
+.item.object > .rb {
+  position: relative;
+  display: block;
+  width: 20px; height: 20px; line-height: 20px;
+  color: #ffffff;
+  text-align: center;
+  font-size: 20px;
+  outline: none !important;
+  cursor: pointer;
+  
+  transition: transform 0.2s ease-in-out;
+}
+.item.object > .lb { transform: rotate(10deg); }
+.item.object > .rb { transform: rotate(-190deg); }
+.item.object.closed > .lb { transform: rotate(40deg); }
+.item.object.closed > .rb { transform: rotate(-220deg); }
+.item.object > .pairSet  {
+  position: relative;
+  padding-left: 20px;
+  transition: transform 0.2s ease-in-out;
+}
+.item.object.closed > .pairSet {
+  transform: scale(1, 0);
+  pointer-events: none;
+}
+.item.object > .pairSet > .pair {
+  position: relative;
+  display: block;
+}
+.item.object > .pairSet > .pair > .key {
+  position: relative;
+  width: 40px;
+  display: inline-block;
+  vertical-align: top;
+  color: rgba(0, 255, 255, 1);
+}
+.item.object > .pairSet > .pair > .sep {
+  display: inline-block;
+  vertical-align: top;
+  width: 10px; height: 20px; line-height: 20px;
+  text-align: center;
+  font-size: 20px;
+  color: rgba(0, 255, 255, 1);
+}
+.item.object > .pairSet > .pair > .val {
+  display: inline-block;
+  vertical-align: top;
+}
+.item.object > .pairSet > .pair > .delete {
+  position: absolute;
+  right: 100%; top: 5px; margin-right: 2px;
+  width: 10px; height: 10px; line-height: 10px; font-size: 10px;
+  text-align: center;
+  background-color: rgba(150, 0, 0, 0);
+  border-radius: 100%;
+  cursor: pointer;
+  font-size: 0;
+  
+  transition: background-color 0.2s linear;
+}
+.item.object > .pairSet > .pair > .delete:hover {
+  background-color: rgba(150, 0, 0, 1);
+}
+.item.object.horzCompact > .pairSet {
+  padding-left: 10px;
+  transition: transform 0.2s ease-in-out, max-height 0.2s ease-in-out;
+}
+.item.object.horzCompact > .pairSet > .pair {
+  width: 90px; /* Only enough length for key and sep; forces val to new line */
+  margin-left: 20px;
+}
+.item.object.horzCompact > .pairSet > .pair > .key {
+  box-sizing: border-box;
+  width: 80px; padding: 0 10px;
+}
+.item.object.horzCompact > .pairSet > .pair > .key:before,
+.item.object.horzCompact > .pairSet > .pair > .key:after {
+  content: "\"";
+  position: absolute;
+  display: inline-block;
+  width: 10px; height: 20px; line-height: 20px;
+  top: 0; left: initial;
+  font-size: 16px;
+  color: rgba(0, 255, 255, 0.35);
+}
+.item.object.horzCompact > .pairSet > .pair > .key:before { left: 0; }
+.item.object.horzCompact > .pairSet > .pair > .key:after { right: 0; }
+.item.object.horzCompact > .pairSet > .pair > .val {
+  display: block;
+}
+
+.control.delete:before,
+.control.delete:after {
+  content: "";
+  display: block;
+  position: absolute;
+  width: 16%; height: 100%;
+  left: 42%; top: 0;
+  background-color: rgba(255, 255, 255, 0.4);
+  border-radius: 100%;
+  
+  transition: background-color 0.2s linear;
+}
+.control.delete:hover:before,
+.control.delete:hover:after {
+  background-color: rgba(255, 255, 255, 1);
+}
+.control.delete:before { transform: rotate(45deg); }
+.control.delete:after { transform: rotate(-45deg); }
+
+.item.array {
+
+}
+.item.array > .lb,
+.item.array > .rb {
+  position: relative;
+  display: block;
+  width: 20px; height: 20px; line-height: 20px;
+  color: #ffffff;
+  text-align: center;
+  font-size: 20px;
+  outline: none !important;
+  cursor: pointer;
+  
+  transition: transform 0.2s ease-in-out;
+}
+.item.array > .lb { transform: rotate(10deg); }
+.item.array > .rb { transform: rotate(-190deg); }
+.item.array.closed > .lb { transform: rotate(40deg); }
+.item.array.closed > .rb { transform: rotate(-220deg); }
+.item.array > .indexSet {
+  position: relative;
+  padding-left: 70px;
+  transition: transform 0.2s ease-in-out, max-height 0.2s ease-in-out;
+}
+.item.array.closed > .indexSet {
+  transform: scale(1, 0);
+  pointer-events: none;
+}
+.item.array > .indexSet > .index {
+  position: relative;
+}
+.item.array > .indexSet > .index > .val {
+  display: inline-block;
+  vertical-align: top;
+}
+.item.array > .indexSet > .index > .delete {
+  position: absolute;
+  right: 100%; top: 5px; margin-right: 2px;
+  width: 10px; height: 10px; line-height: 10px; font-size: 10px;
+  text-align: center;
+  background-color: rgba(150, 0, 0, 0);
+  border-radius: 100%;
+  cursor: pointer;
+  font-size: 0;
+  
+  transition: background-color 0.2s linear;
+}
+.item.array > .indexSet > .index > .delete:hover {
+  background-color: rgba(150, 0, 0, 1);
+}
+.item.array.horzCompact > .indexSet {
+  padding-left: 30px;
 }

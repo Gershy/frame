@@ -103,6 +103,12 @@ new PACK.pack.Package({ name: 'server',
             this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
             this.appName = U.param(params, 'appName');
             this.handler = U.param(params, 'handler', null);
+            this.errorHandler = {
+              $heedCommand: function(params /* session, channelerParams, command, params */){
+                console.log('ERRORHANDLER:', params.params);
+                return p.$null;
+              }
+            };
             
             this.channels = {};
             this.favouriteChannel = null; // TODO: There's no such thing as a single favourite channel. There's a favourite channel per Session
@@ -160,12 +166,13 @@ new PACK.pack.Package({ name: 'server',
           getNamedChild: function(name) {
             
             if (name === '~root') { return this.handler; }
+            if (name === '~error') { return this.errorHandler; }
             if (O.contains(this.channels, name)) return this.channels[name];
             return null;
             
           },
           
-          $giveCommand: function(params /* session, channelerParams, data { channelName, channelParams } */) { // Channeler
+          $giveCommand: function(params /* session, channelerParams { channelName, channelParams }, data */) { // Channeler
             
             /*
             Notifies the other side using the best possible method.
@@ -187,11 +194,34 @@ new PACK.pack.Package({ name: 'server',
             
             var channel = channelName ? U.param(this.channels, channelName) : this.favouriteChannel;
             
+            if (params.data === null) return;
+            
+            if (U.isInstance(params.data, Error)) {
+              var err = params.data;
+              params.data = {
+                address: '~error',
+                command: 'mod',
+                data: { doSync: false, value: err.message }
+              };
+            }
+            
+            /// {CLIENT=
+            if (!params.data || !params.data.address) throw new Error('Missing address');
+            /// =CLIENT}
+            
+            /// {SERVER=
+            if (!U.isInstance(params.data, sv.CommandResponse) && (!params.data || !params.data.address)) {
+              console.log(params);
+              throw new Error('Missing address');
+            }
+            /// =SERVER}
+            
             // Use the channel to give the command (with the appropriate params)
             return channel.$giveCommand({
               session: session,
-              data: params.data,
-              channelParams: channelParams
+              channelerParams: channelerParams,
+              channelParams: channelParams,
+              data: params.data
             });
             
           },
@@ -235,10 +265,11 @@ new PACK.pack.Package({ name: 'server',
               return $commandData.then(function(commandData) {
                 
                 var address = U.param(commandData, 'address');
-                commandDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.<NO_COMMAND>';
+                if (U.isObj(address, String)) address = address.split('.');
+                commandDescription = address.join('.') + '.<NO_COMMAND>';
                 
                 var command = U.param(commandData, 'command');
-                commandDescription = (U.isObj(address, Array) ? address.join('.') : address) + '.' + command;
+                commandDescription = address.join('.') + '.' + command;
                 
                 var params = U.param(commandData, 'params', {});
                 
@@ -247,7 +278,6 @@ new PACK.pack.Package({ name: 'server',
                 
                 // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
                 // `$heedCommand` is called with the same signature:
-                
                 return child.$heedCommand({ session: session, command: command, params: params, channelerParams: channelerParams })
                 
               }).then(function() {
@@ -262,7 +292,7 @@ new PACK.pack.Package({ name: 'server',
                 
               }).then(function() {
                 
-                if (channel) channel.finalizeCommand(channelParams);
+                if (channel) channel.finalizeCommand(session, channelParams);
                 
               });
               
@@ -293,8 +323,6 @@ new PACK.pack.Package({ name: 'server',
                   var appName = pass.appName;
                   var assetVersion = '?' + pass.assetVersion;
                   var $commandResponse = sv.$readFile(path.join.apply(path, reqPath)).then(function(commandResponse) {
-                    
-                    console.log('SPOOF?', commandParams);
                     
                     var title = appName + '<' + session.ip + '>';
                     
@@ -486,7 +514,9 @@ new PACK.pack.Package({ name: 'server',
       
       /* Channel - manages sending commands between two remote locations */
       Channel: U.makeClass({ name: 'Channel', superclass: tr.TreeNode,
-        description: 'An implementation of a protocol for communicating between two physical machines.',
+        description: 'An implementation of a protocol for communicating between two physical machines. ' +
+          'Must be able to make distinctions between different machines. This base class provides ' +
+          'functionality for storing data for different sessions server-side.',
         methods: function(sc) { return {
           init: function(params /* name, priority */) {
             
@@ -514,6 +544,7 @@ new PACK.pack.Package({ name: 'server',
             return session.channelData[this.name];
           },
           
+          // TODO: `$giveCommand` uses "data" but `$heedCommand` uses "params" - inconsistent?
           $giveCommand: function(params /* session, channelerParams, channelParams, data */) { // Channel
             
             // "channelerParams" are the params which the Channeler is currently using.
@@ -528,34 +559,41 @@ new PACK.pack.Package({ name: 'server',
             // Causes this specific channel to send a notification
             // Channel params are included here in case the channel gives a bouncing command
             
-            // Note that this method receives "channelerParams", not "channelParams". This
+            // Note that this method receives "channelerParams", not "channelParams".
             // These "channelerParams" indicate the params the Channeler is currently using
             // for this request, and may be completely unrelated to this Channel. If this
-            // method is going to issue `this.$giveCommand`, it should make sure that the
-            // "channelParams" passed are compatible. If the "channelerParams" are compatible
-            // it is usually better to use them.
+            // method is going to issue `this.$giveCommand`, it may pass the "channelParams"
+            // property of `channelerParams` ONLY after validating that the channelParams
+            // retrieved this way are compatible with this Channel. In most cases, it will
+            // be sufficient to check using the following:
+            //
+            // |  var channelerParams = U.param(params, 'channelerParams');
+            // |  var compatibleChannelParams = channelerParams.channelName === this.name;
             
             var pass = this;
             return new P({ run: function() {
               
-              var session = U.param(params, 'session');
               var command = U.param(params, 'command');
-              var commandParams = U.param(params, 'params', {});
               
               if (command === 'notifyMe') {
                 
-                // If the provided channelerParams aren't compatible, create our own.
-                // We want to ensure that this specific channel sends the notification.
+                var session = U.param(params, 'session');
+                var commandParams = U.param(params, 'params', {});
                 var channelerParams = U.param(params, 'channelerParams');
-                if (channelerParams.channelName !== pass.name) channelerParams = { channelName: pass.name };
+                
+                // If the provided channelerParams aren't compatible, create our own.
+                // We want to ensure that THIS Channel sends the notification.
+                var selfChannelerParams = channelerParams.channelName === pass.name
+                  ? channelerParams
+                  : { channelName: pass.name };
                 
                 pass.channeler.$giveCommand({
                   session: session,
-                  channelerParams: channelerParams,
+                  channelerParams: selfChannelerParams,
                   data: {
                     address: U.param(commandParams, 'address', '~root'),
                     command: 'notify',
-                    data: 'Your notification!'
+                    data: 'Your notification via channel: "' + pass.name + '"'
                   }
                 }).done();
                 
@@ -569,7 +607,7 @@ new PACK.pack.Package({ name: 'server',
             
           },
           
-          finalizeCommand: function(channelParams) {
+          finalizeCommand: function(session, channelParams) {
           },
           
           $start: function() { return new P({ err: new Error('not implemented') }); },
@@ -730,12 +768,17 @@ new PACK.pack.Package({ name: 'server',
           },
           
           /// {SERVER=
-          finalizeCommand: function(channelParams) {
+          finalizeCommand: function(session, channelParams) {
             
             // `res` is marked "~finalized" if it shouldn't be automatically cleaned up
             
             var res = U.param(channelParams, 'res');
-            if (!res['~finalized']) this.sendResponse(res, null);
+            if (res['~finalized']) return; // `res` is unusable; it's either queued for polling or has already sent data
+            
+            // `res` isn't going to be used by any other source! If there's a pending response,
+            // `res` is an ideal candidate to send it!
+            var sessionData = this.useSessionData(session);
+            this.sendResponse(res, sessionData.pending.shift() || null);
             
           },
           $captureRequest: function(req, urlData) { // Captures a Request as a `{ address, command, params }` value
@@ -942,9 +985,6 @@ new PACK.pack.Package({ name: 'server',
               
             }}).then(function(command) {
               
-              console.log('PASS FOR:', params);
-              console.log('RESULT:', command);
-              
               // TODO: What if `command` is the number zero (`0`)? It should probably be required to be an `Object`.
               return command ? pass.channeler.$passCommand(command) : null;
               
@@ -1046,6 +1086,7 @@ new PACK.pack.Package({ name: 'server',
             
             // commandData.session = ip ? this.channeler.getSession(ip) : null;
             // commandData.channelerParams = channelerParams;
+            
             return this.channeler.$passCommand({
               session: session,
               channelerParams: {}, // For now ChannelSocket doesn't use any channelParams

@@ -1,6 +1,3 @@
-// TODO: A Decorator to combine dragging + clicking? These 2 features are probably usually desirable together, and annoying
-// to implement independently
-
 var package = new PACK.pack.Package({ name: 'userify',
   dependencies: [ 'tree', 'dossier', 'p' ],
   buildFunc: function(packageName, tree, ds, p) {
@@ -82,8 +79,25 @@ var package = new PACK.pack.Package({ name: 'userify',
           delete elem[setName]; // But this is a custom property, so it can be removed
         }
       },
+      domEventNode: function(event) {
+        
+        return event.target;
+        
+      },
+      domEventView: function(event) {
+        
+        var node = uf.domEventNode(event);
+        while (node && !node['~view']) node = node.parentNode;
+        return node ? node['~view'] : null;
+        
+      },
       
       /* DECORATOR */
+      // TODO: Decorators are called EVERY FRAME
+      // Decorators need a list of infos they rely on, and should only update when their infos change
+      // Sometimes dom data is info on which a Decorator must rely - e.g. scrollHeight in the current "test" app (for resizing on fold, add/remove element, etc)
+      // All this calls for is a method of converting dom data into info (potentially through MutationObserver?)
+      // HEEERE THIS IS PRIORITY
       Decorator: U.makeClass({ name: 'Decorator',
         methods: function(sc, c) { return {
           init: function(params /* */) {
@@ -129,22 +143,22 @@ var package = new PACK.pack.Package({ name: 'userify',
       }),
       CssDecorator: U.makeClass({ name: 'CssDecorator',
         superclassName: 'Decorator',
-        description: 'Dynamically changes css properties on an element',
+        description: 'Dynamically changes inline css properties on an element',
         methods: function(sc, c) { return {
-          init: function(params /* info, properties */) {
+          init: function(params /* list, info */) {
             sc.init.call(this, params);
-            this.properties = U.param(params, 'properties');
+            this.list = U.param(params, 'list');
             this.info = uf.pafam(params, 'info');
           },
           start: function(view) {
           },
           update: function(view) {
-            var nextProps = this.info.getValue();
+            var nextProps = this.info.getValue(view.domRoot);
             var style = view.domRoot.style;
             
             // Calculate the difference...
-            for (var i = 0; i < this.properties.length; i++) {
-              var prop = this.properties[i];
+            for (var i = 0; i < this.list.length; i++) {
+              var prop = this.list[i];
               var val = (prop in nextProps) ? nextProps[prop] : ''; // Unspecified properties are removed
               if (val !== style[prop]) style[prop] = val; // Only update the style props that have changed
             }
@@ -152,7 +166,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           stop: function(view) {
             if (view.domRoot) {
               var style = view.domRoot.style;
-              for (var i = 0; i < this.properties.length; i++) style[this.properties[i]] = '';
+              for (var i = 0; i < this.list.length; i++) style[this.list[i]] = '';
             }
           }
         };}
@@ -207,7 +221,91 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
         };}
       }),
+      HoverDecorator: U.makeClass({ name: 'HoverDecorator',
+        superclassName: 'Decorator',
+        description: 'Manipulates "hoverActive and "hoverInactive" classes. Differs ' +
+          'from css :hover pseudoclass in that it applies to only the single element, ' +
+          'and will not respond to events which have bubbled from children',
+        methods: function(sc, c) { return {
+          init: function(params /* onClassName, delayClassName, offClassName, includeDepth, offDelay */) {
+            
+            sc.init.call(this, params);
+            
+            this.onClassName = U.param(params, 'onClassName', 'hoverActive');
+            this.delayClassName = U.param(params, 'delayClassName', 'hoverEnding');
+            this.offClassName = U.param(params, 'offClassName', 'hoverInactive');
+            this.includeDepth = U.param(params, 'includeDepth', 0); // If the hover occurs on a child, consider it a hover at this depth
+            this.offDelay = U.param(params, 'offDelay', 0); // Amount of time to delay class change after mouse exits
+            this.offTimeout = null;
+            
+          },
+          
+          start: function(view) {
+            
+            // TODO: Could consider only adding the mouseout event after mouseover occurs
+            var mouseOver = view['~' + this.id + '.mouseOver'] = c.mouseOver.bind(this, view);
+            var mouseOut = view['~' + this.id + '.mouseOut'] = c.mouseOut.bind(this, view);
+            
+            uf.domAddListener(view.domRoot, 'onmouseover', mouseOver);
+            uf.domAddListener(view.domRoot, 'onmouseout', mouseOut);
+            
+          },
+          stop: function(view) {
+            
+            uf.domRemListener(view.domRoot, 'onmouseover', view['~' + this.id + '.mouseOver']);
+            uf.domRemListener(view.domRoot, 'onmouseout', view['~' + this.id + '.mouseOut']);
+            
+            delete view['~' + this.id + '.mouseOver'];
+            delete view['~' + this.id + '.mouseOut'];
+            
+          }
+        }},
+        statik: {
+          mouseOver: function(view, event) {
+            
+            var eventView = uf.domEventView(event);
+            var withinDepth = eventView === view;
+            for (var i = 0; i < this.includeDepth && !withinDepth && eventView; i++) {
+              eventView = eventView.par;
+              if (eventView === view) withinDepth = true;
+            }
+            
+            if (withinDepth) {
+              view.domRoot.classList.remove(this.offClassName);
+              view.domRoot.classList.remove(this.delayClassName);
+              view.domRoot.classList.add(this.onClassName);
+              clearTimeout(this.offTimeout);
+            }
+            
+          },
+          mouseOut: function(view, event) {
+            
+            if (this.offDelay) {
+              
+              view.domRoot.classList.add(this.delayClassName);
+              setTimeout(function() {
+                console.log('OFF AFTER', this.offDelay);
+                view.domRoot.classList.remove(this.onClassName);
+                view.domRoot.classList.remove(this.delayClassName);
+                view.domRoot.classList.add(this.offClassName);
+              }.bind(this), this.offDelay);
+              
+            } else {
+              
+              view.domRoot.classList.remove(this.onClassName);
+              view.domRoot.classList.add(this.offClassName);
+              
+            }
+            
+          }
+        }
+      }),
+      
       /* // TODO: move these to a new package???
+      
+      // TODO: A Decorator to combine dragging + clicking? These 2 features are probably
+      // usually desirable together, and annoying to implement independently
+      
       PointerDecorator: U.makeClass({ name: 'PointerDecorator',
         superclassName: 'Decorator',
         description: 'Generic class for decorators which deal with pointer actions; ' +
@@ -590,6 +688,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           },
           
           start: function() {
+            
             this.domRoot = this.createDomRoot();
             
             this.domRoot['~view'] = this;
@@ -605,6 +704,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             (this.par ? this.par.provideContainer(this) : document.body).appendChild(this.domRoot);
             
             for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].start(this);
+            
           },
           stop: function() {
             for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].stop(this);
