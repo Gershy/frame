@@ -106,11 +106,6 @@ new PACK.pack.Package({ name: 'worry',
             for (var k in typeCares) typeCares[k](params);
             
           },
-          concern: function(type, params) { // TODO: Remove `concern` method eventually
-            
-            return this.worry(type, params);
-            
-          },
           
           start: function() {},
           stop: function() {
@@ -134,37 +129,6 @@ new PACK.pack.Package({ name: 'worry',
     };
     
     return wr;
-  },
-  test: function(tester, wr) {
-    
-    var Wr = U.makeClass({ name: 'Wr', mixins: [ wr.Worry ],
-      methods: function(sc, c) {
-        
-      }
-    });
-    
-    var p = tester.dependencies.p;
-    var P = p.P;
-    
-    return tester({
-      
-      basicFunctionality: function() {
-        
-        var ret = new P({});
-        var params = { a: 'a', b: 'b' };
-        
-        var wr = new Wr({});
-        wr.addWorry('test', function(params0) {
-          if (params0 === params) ret.resolve(null);
-          else                    ret.reject(new Error());
-        });
-        wr.concern('test', params);
-        
-        return ret;
-        
-      }
-      
-    });
     
   }
 }).build();

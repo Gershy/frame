@@ -1,8 +1,6 @@
 /*
 TODO: Move Editor to its own package and implement a DossierEditor
-TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
-TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined
-TODO: Worries like "editorCreated", "editorAltered" etc may not be relevant anymore!
+TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined. One of these should probably become "getJson"
 */
 
 var package = new PACK.pack.Package({ name: 'dossier',
@@ -566,16 +564,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           atomicModData: function(doss, data) {
             
-            // Symmetry breaking: `getData()` and `setValue()`, instead of `getData()` and `setData()`
-            // Except the symmetrical version doesn't work.
-            // TODO: renaming `getData` to `getJson` would clarify this
+            // TODO: renaming `getData` to `getJson` would lead to more symmetry
             var origVal = doss.getData();
-            doss.setValue(data);
+            doss.setInternalValue(data);
             return {
               $result: p.$null,
-              onComplete: function(v) {
-                doss.concern('modified:', v);
-              },
               undoAtomic: c.formAtomic(c.atomicModData, [ doss, origVal ], 'undo mod data')
             };
             
@@ -586,9 +579,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return {
               $result: p.$null,
-              onComplete: function(v) {
-                doss.concern('modified', v);
-              },
               undoAtomic: c.formAtomic(c.atomicRemChild, [ doss, child ], 'undo add child')
             };
             
@@ -599,9 +589,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return {
               $result: p.$null,
-              onComplete: function(v) {
-                doss.concern('modified', v);
-              },
               undoAtomic: c.formAtomic(c.atomicAddChild, [ doss, child ], 'undo rem child')
             };
             
@@ -644,7 +631,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (this.modAbilityName) {
               this.doss.$useAbility(this.modAbilityName, { doSync: this.doSync, data: newVal }).done();
             } else {
-              this.doss.setValue(newVal);
+              this.doss.setInternalValue(newVal);
               this.worry('invalidated');
             }
             
@@ -873,7 +860,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             /// =DOC}
             
             if (!O.contains(this.abilities, name)) return new P({ err: new Error('Invalid ability: "' + name + '"') });
-            editor.$transaction.then(this.worry.bind(this, 'invalidated', { abilityName: name }));
             return this.abilities[name](session, channelerParams, editor, params);
             
           },
@@ -908,11 +894,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getValue0: function() {
             throw new Error('not implemented');
           },
-          setValue: function(/* [ addr, ] value */) {
-            if (arguments.length === 1) this.setValue0(arguments[0]);
-            else                        this.getChild(arguments[0]).setValue0(arguments[1]);
+          setInternalValue: function(/* [ addr, ] value */) {
+            if (arguments.length === 1) this.setInternalValue0(arguments[0]);
+            else                        this.getChild(arguments[0]).setInternalValue0(arguments[1]);
           },
-          setValue0: function(value) {
+          setInternalValue0: function(value) {
             throw new Error('not implemented');
           },
           getData: function() {
@@ -1012,19 +998,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return sc.getNamedChild0.call(this, name);
           },
           
-          // TODO: `getValue0` and `setValue0` here aren't compatible
-          // e.g. `doss.setValue(doss.getValue())` will fail - `doss`, being a `DossierSet`,
-          // will pass each of its children an instance of itself as the parameter to the child's
-          // `getValue` method
           getValue0: function() {
             return this.children;
           },
-          setValue0: function(val) {
+          setInternalValue0: function(val) {
             if (!U.isObj(val, Object)) throw new Error('Invalid value for `' + this.constructor.title + '`: ' + U.typeOf(val));
             
             // Validate that all children exist before setting a value on any of them
-            for (var k in val) if (!O.contains(this.children, k)) throw new Error('Invalid setValue key: ' + this.getAddress() + ' -> ' + k);
-            for (var k in val) this.children[k].setValue0(val[k]);
+            for (var k in val) if (!O.contains(this.children, k)) throw new Error('Invalid setInternalValue key: ' + this.getAddress() + ' -> ' + k);
+            for (var k in val) this.children[k].setInternalValue0(val[k]);
           },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
@@ -1145,7 +1127,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           init: function(params /* outline, value */) {
             sc.init.call(this, params);
             this.value = null;
-            this.setValue(null);
+            this.setInternalValue(null);
           },
           
           matches: function(value) {
@@ -1156,13 +1138,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getValue0: function(value) {
             return this.value;
           },
-          setValue0: function(value) {
-            if (value === this.value) return;
+          setInternalValue0: function(value) {
             this.value = value;
-            this.concern('value', this.value); // TODO: Maybe this should be implemented in `Dossier.prototype.setValue`?
-          },
-          modValue: function(modFunc) {
-            this.setValue(modFunc(this.getValue()));
           },
           
           getData: function() {
@@ -1174,15 +1151,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
       DossierStr: U.makeClass({ name: 'DossierStr',
         superclassName: 'DossierVal',
         methods: function(sc) { return {
-          setValue0: function(val) {
-            sc.setValue0.call(this, val === null ? '' : val.toString());
+          setInternalValue0: function(val) {
+            sc.setInternalValue0.call(this, val === null ? '' : val.toString());
           }
         }; }
       }),
       DossierInt: U.makeClass({ name: 'DossierInt',
         superclassName: 'DossierVal',
         methods: function(sc) { return {
-          setValue0: function(value) {
+          setInternalValue0: function(value) {
             // Accept the value "null"
             if (value === null) value = 0;
             
@@ -1190,17 +1167,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
             value = parseInt(value);
             if (isNaN(value)) throw new Error(this.getAddress() + ' received non-numeric value: "' + value + '"');
             
-            sc.setValue0.call(this, value);
+            sc.setInternalValue0.call(this, value);
           }
         }; }
       }),
       DossierBln: U.makeClass({ name: 'DossierBln',
         superclassName: 'DossierVal',
         methods: function(sc) { return {
-          setValue0: function(value) {
+          setInternalValue0: function(value) {
             if (value === null) value = false;
             if (value !== true && value !== false) throw new Error('Received non-boolean value: "' + value + '"');
-            sc.setValue0.call(this, value);
+            sc.setInternalValue0.call(this, value);
           }
         }; }
       }),
@@ -1215,7 +1192,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!outline.format) throw new Error('Cannot init ' + this.constructor.title + ' with Outline missing "format" value');
             sc.init.call(this, params);
           },
-          setValue0: function(value) {
+          setInternalValue0: function(value) {
             
             var format = this.outline.format;
             
@@ -1256,7 +1233,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             } else {
               
-              throw new Error('`DosserRef.prototype.setValue` accepts `null`, `Array`, `String` and `Dossier` but received ' + U.typeOf(value));
+              throw new Error('`DosserRef.prototype.setInternalValue` accepts `null`, `Array`, `String` and `Dossier` but received ' + U.typeOf(value));
               
             }
             
@@ -1287,7 +1264,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
             }
             
-            return sc.setValue0.call(this, arrVal);
+            return sc.setInternalValue0.call(this, arrVal);
             
           },
           getValue0: function() {

@@ -642,9 +642,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         list: [ 'horzCompact', 'vertCompact' ],
         informer: compactness
       });
-      
-      console.log('DATA:', U.debugObj(rootDoss.getData())); // rootDoss.getChild(rootDoss.getValue('render')));
-      
+            
       var view = new uf.RootView({ name: 'root',
         children: [
           new uf.TextView({ name: 'title', info: 'json', decorators: [ toggleCompactness ] }),
