@@ -279,36 +279,41 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     var actionizer = new Actionizer({ channeler: channeler });
     
     // ==== Initialize outline
-    var outline = new ds.Outline({ name: 'json', c: ds.DossierObj });
+    var Val = ds.Val, Obj = ds.Obj, Arr = ds.Arr, Ref = ds.Ref;
     
-    var typeSet = outline.addChild('typeSet', ds.DossierObj);
+    var outline = new Obj({ name: 'jsonBuilder' });
     
-    var stringSet = typeSet.addChild('stringSet', ds.DossierArr);
-    var string = stringSet.addDynamicChild('string', ds.DossierObj, null);
-    string.addChild('value', ds.DossierStr);
+    var typeSet = outline.addChild(new Obj({ name: 'typeSet' }));
     
-    var objectSet = typeSet.addChild('objectSet', ds.DossierArr);
-    var object = objectSet.addDynamicChild('object', ds.DossierObj, null);
+    // String type
+    var stringSet = typeSet.addChild(new Arr({ name: 'stringSet' }));
+    var string = stringSet.setTemplate(new Obj({ name: 'string' }), null);
+    string.addChild(new Val({ name: 'value', defaultValue: '' }));
+    
+    // Object type
+    var objectSet = typeSet.addChild(new Arr({ name: 'objectSet' }));
+    var object = objectSet.setTemplate(new Obj({ name: 'object' }));
+    var pairSet = object.addChild(new Arr({ name: 'pairSet' }));
+    var pair = pairSet.setTemplate(new Obj({ name: 'pair' }));
+    pair.addChild(new Val({ name: 'key' }));
+    pair.addChild(new Ref({ name: 'val', format: '~root.itemSet.$id' }));
     /// {CLIENT=
-    object.addChild('folded', ds.DossierBln, function(doss) { doss.setValue(false); });
+    object.addChild(new Val({ name: 'folded', dossClass: ds.DossierBln, defaultValue: false }));
     /// =CLIENT}
-    var pairSet = object.addChild('pairSet', ds.DossierArr);
-    var pair = pairSet.addDynamicChild('pair', ds.DossierObj, null);
-    pair.addChild('key', ds.DossierStr);
-    pair.addChild('val', ds.DossierRef, { template: '~root.itemSet.$id' });
     
-    var arraySet = typeSet.addChild('arraySet', ds.DossierArr);
-    var array = arraySet.addDynamicChild('array', ds.DossierObj, null);
+    // Array type
+    var arraySet = typeSet.addChild(new Arr({ name: 'arraySet' }));
+    var array = arraySet.setTemplate(new Obj({ name: 'array' }));
+    var indexSet = array.addChild(new Arr({ name: 'indexSet' }));
+    var index = indexSet.setTemplate(new Ref({ name: 'index', format: '~root.itemSet.$id' }));
     /// {CLIENT=
-    array.addChild('folded', ds.DossierBln, function(doss) { doss.setValue(false); });
+    array.addChild(new Val({ name: 'folded', dossClass: ds.DossierBln, defaultValue: false }));
     /// =CLIENT}
-    var indexSet = array.addChild('indexSet', ds.DossierArr);
-    indexSet.addDynamicChild('index', ds.DossierRef, null, { template: '~root.itemSet.$id' });
     
-    var itemSet = outline.addChild('itemSet', ds.DossierArr);
-    var item = itemSet.addDynamicChild('type', ds.DossierRef, null, { template: '~root.typeSet.$type.$id' });
+    var itemSet = outline.addChild(new Arr({ name: 'itemSet' }));
+    itemSet.setTemplate(new Ref({ name: 'item', format: '~root.typeSet.$type.$id' }));
     
-    var render = outline.addChild('render', ds.DossierRef, { template: '~root.itemSet.$id' });
+    var render = outline.addChild(new Ref({ name: 'render', format: '~root.itemSet.$id' }));
     
     // TODO: The following the should be implemented via abilities
     var remItem = function(editor, item) {
@@ -421,6 +426,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       var hoverFlash = new uf.HoverDecorator({ includeDepth: 3 });
       
       var renderer = function(name, itemDoss) {
+        
+        if (!itemDoss) throw new Error('BAD');
         
         var childInfo = function() {
           // Returns a list containing a single value: the "item" to render
@@ -635,6 +642,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         list: [ 'horzCompact', 'vertCompact' ],
         informer: compactness
       });
+      
+      console.log('DATA:', U.debugObj(rootDoss.getData())); // rootDoss.getChild(rootDoss.getValue('render')));
       
       var view = new uf.RootView({ name: 'root',
         children: [

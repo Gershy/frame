@@ -22,124 +22,120 @@ var package = new PACK.pack.Package({ name: 'dossier',
       NEXT_TEMP: 0,
       getTempName: function() {
         var id = U.id(ds.NEXT_TEMP++);
-        if (id === 'ffffffff') throw new Error('EXHAUSTED IDS');
+        if (id === 'ffffffff') throw new Error('EXHAUSTED IDS'); // Checking for this is almost silly
         return 'TEMP((' + id + '))';
       },
       
       /* Outline - define what a Dossier structure looks like */
-      Outline: U.makeClass({ name: 'Outline',
-        superclass: tree.TreeNode,
-        propertyNames: [ 'c', 'p', 'i' ],
-        methods: function(sc) { return {
+      
+      Outline: U.makeClass({ name: 'Outline', superclass: tree.TreeNode,
+        methods: function(sc, c) { return {
           
-          init: function(params /* name, dynamic, c, p, i */) {
+          init: function(params /* name, dossClass */) {
             
             sc.init.call(this, params);
             
-            // NOTE: A dynamic `Outline` should correspond to a `DossierArr`
-            this.dynamic = U.param(params, 'dynamic', false);
-            
-            var c = U.param(params, 'c');
-            this.c = U.isObj(c, String) ? c : c.title; // If not a string, it's a class
-            this.p = U.param(params, 'p', {});
-            
-            // Ensure the "innerOutline" is an `Outline` instance
-            if (O.contains(this.p, 'innerOutline') && !U.isInstance(this.p.innerOutline, ds.Outline)) {
-              this.p.innerOutline = new ds.Outline(this.p.innerOutline.update({ dynamic: true }));
-              this.p.innerOutline.par = this;
-            }
-            
-            var i = U.param(params, 'i', []);
-            this.i = {};
-            
-            if (U.isObj(i, Array)) {
-              
-              for (var j = 0, len = i.length; j < len; j++) {
-                var outline = i[j];
-                if (!U.isInstance(outline, ds.Outline)) outline = new ds.Outline(outline);
-                this.i[outline.name] = outline;
-                outline.par = this;
-              }
-              
-            } else if (U.isObj(i, Object)) {
-              
-              for (var k in i) {
-                var outline = i[k];
-                
-                if (!U.isInstance(outline, ds.Outline)) {
-                  if (O.contains(outline, 'name') && outline.name !== k) throw new Error('Conflicting outline names: "' + outline.name + '" and "' + k + '"');
-                  outline = new ds.Outline(outline.update({ name: k }));
-                } else {
-                  if (outline.name !== k) throw new Error('Conflicting outline names: "' + outline.name + '" and "' + k + '"');
-                }
-                
-                this.i[outline.name] = outline;
-                outline.par = this;
-                
-              }
-              
-            } else {
-              
-              throw new Error('Invalid "i" parameter');
-              
-            }
-            
-            if (!U.isEmptyObj(this.i) && O.contains(this.p, 'innerOutline'))
-              throw new Error('An `Outline` cannot have both an inner outline and children');
+            this.dossClass = U.param(params, 'dossClass', this.getDefaultClass());
+            if (!U.isObj(this.dossClass, String)) this.dossClass = this.dossClass.title; // TODO: This requires class names to be globally unique
             
           },
+          
+          getDefaultClass: function() { throw new Error('not implemented'); },
+          childNameMustMatch: function() { return true; },
           getNamedChild: function(name) {
-            if (this.p.innerOutline) return this.p.innerOutline;
-            return this.i[name] || null;
-          },
-          addChild: function(name, cls, p) {
+            return null;
+          }
+          
+        };}
+      }),
+      Val: U.makeClass({ name: 'Val', superclassName: 'Outline',
+        methods: function(sc, c) { return {
+          
+          init: function(params /* name, dossClass, defaultValue */) {
             
-            var data = {};
-            data.name = name;
-            data.c = cls;
-            
-            if (U.isObj(p, Object)) {
-              data.p = p;
-            } else if (U.isObj(p, Function)) {
-              data.p = { wrap: p };
-            } else if (U.isDefined(p)) {
-              throw new Error('Invalid "p" param: ' + U.typeOf(p));
-            }
-            
-            if (!data.name) throw new Error('Invalid "name" property');
-            if (this.p.innerOutline) throw new Error('Cannot add children to an outline with "innerOutline" property');
-            if (O.contains(this.i, data.name)) throw new Error('Tried to overwrite outline "' + data.name + '"');
-            
-            var outline = new ds.Outline(data);
-            this.i[outline.name] = outline;
-            outline.par = this;
-            
-            return outline;
+            sc.init.call(this, params);
+            this.defaultValue = U.param(params, 'defaultValue', null);
             
           },
-          addDynamicChild: function(name, cls, nameFunc, p) {
+          
+          getDefaultClass: function() { return ds.DossierStr; }
+          
+        };}
+      }),
+      Obj: U.makeClass({ name: 'Obj', superclassName: 'Outline',
+        methods: function(sc, c) { return {
+          
+          init: function(params /* name, dossClass, children */) {
             
-            if (!name) throw new Error('Invalid "name" property');
-            if (!U.isEmptyObj(this.i)) throw new Error('Cannot add a dynamic child to an outline with children');
+            sc.init.call(this, params);
             
-            var data = { name: name, c: cls, dynamic: true };
+            this.children = {};
             
-            if (U.isObj(p, Object)) {
-              data.p = p;
-            } else if (U.isObj(p, Function)) {
-              data.p = { wrap: p };
-            } else if (U.isDefined(p)) {
-              throw new Error('Invalid "p" param: ' + U.typeOf(p));
-            }
+          },
+          
+          getDefaultClass: function() { return ds.DossierObj; },
+          getNamedChild: function(name) {
+            return U.param(this.children, name, null);
+          },
+          addChild: function(outline) {
             
-            var outline = new ds.Outline(data);
-            this.p.innerOutline = outline;
-            this.p.nameFunc = nameFunc;
-            outline.par = this;
+            if (outline.par) throw new Error('Tried to add Outline(' + outline.getAddress() + ') which already has a parent');
+            if (O.contains(this.children, outline.name)) throw new Error('Tried to overwrite ' + this.getAddress() + ' -> ' + outline.name);
+            
+            this.children[outline.name] = outline;
+            this.children[outline.name].par = this;
             
             return outline;
             
           }
+          
+        };}
+      }),
+      Arr: U.makeClass({ name: 'Arr', superclassName: 'Outline',
+        methods: function(sc, c) { return {
+          
+          init: function(params /* name, dossClass, template, nameFunc */) {
+            
+            sc.init.call(this, params);
+            
+            this.template = null;
+            this.nameFunc = null;
+            
+          },
+          
+          getDefaultClass: function() { return ds.DossierArr; },
+          childNameMustMatch: function() { return false; }, // Arrs regularly have children whose names don't match
+          getNamedChild: function(name) {
+            
+            return this.template;
+            
+          },
+          setTemplate: function(template, nameFunc) {
+            
+            this.template = template;
+            this.template.par = this;
+            
+            this.nameFunc = nameFunc || null;
+            
+            return template;
+            
+          }
+          
+        };}
+      }),
+      Ref: U.makeClass({ name: 'Ref', superclassName: 'Outline',
+        methods: function(sc, c) { return {
+          
+          init: function(params /* name, dossClass, format */) {
+            
+            sc.init.call(this, params);
+            
+            this.format = U.param(params, 'format');
+            if (U.isObj(this.format, String)) this.format = this.format.split('.');
+            
+          },
+          
+          getDefaultClass: function() { return ds.DossierRef; }
           
         };}
       }),
@@ -188,14 +184,26 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // 2) The outline isn't dynamic, in which case names are known ahead of time via `outline.name`
             var forceName = false;
             if (!outline.par) {
+              
               name = '~root';
               forceName = true;
-            } else if (!outline.dynamic) { // Note: `outline.dynamic` indicates that the outline repeatedly creates more doss instances
-              if (name !== outline.name) throw new Error('Tried to rename non-dynamic doss "' + outline.name + '" to "' + name + '"');
+              
+            } else {
+              
+              if (outline.par.childNameMustMatch() && name !== outline.name)
+                throw new Error('For outline "' + outline.getAddress() + '", cannot name doss "' + name + '"; its name must match.');
+              
             }
             
+            /*else if (!outline.dynamic) { // Note: The requested name can (and will) be different from the Outline name if the Outline is dynamic
+              
+              if (name !== outline.name) throw new Error('Tried to rename non-dynamic doss "' + outline.name + '" to "' + name + '"');
+              
+            }*/
+            
             // Step 1: Initialize the doss
-            var DossCls = O.walk(C, outline.c.split('.'));
+            
+            var DossCls = O.walk(C, outline.dossClass.split('.'));
             var doss = new DossCls(O.update({ outline: outline }, outline.p, { name: outline.name }));
             
             // Immediately setting `par` can give us more flexibility while creating `Dossiers`
@@ -223,7 +231,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 
                 data = data || {};
                 if (!U.isObj(data, Object)) throw new Error('DossierObj must receive an `Object` as its value');
-                for (var k in doss.outline.i)
+                for (var k in doss.outline.children)
                   this.add({ par: doss, outline: doss.getChildOutline(k), data: data[k] || null, name: k, recurseArr: recurseArr, recurseObj: true });
                 
               }
@@ -908,7 +916,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             throw new Error('not implemented');
           },
           getData: function() {
-            throw new Error('Not implemented');
+            throw new Error('not implemented');
           },
           
           start: function() {
@@ -920,17 +928,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             this.started = true;
             
-            // Apply any external changes. Must be performed after the validation.
-            if (this.outline.p.wrap) this.outline.p.wrap(this);
-            
           },
           stop: function() {
             
             if (!this.started) throw new Error('Tried to double-stop "' + this.getAddress() + '"');
             this.started = false;
-            
-            // Remove any external changes
-            if (this.outline.p.unwrap) this.outline.p.unwrap(this);
             
           },
           
@@ -1026,11 +1028,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           getChildName: function(child) {
             // Calculates the name that should be used to label the child
-            throw new Error('Not implemented');
+            throw new Error('not implemented');
           },
           getChildOutline: function(name) {
             // Returns the outline needed by a child named "name"
-            throw new Error('Not implemented');
+            throw new Error('not implemented');
           },
           
           map: function(mapFunc) {
@@ -1070,7 +1072,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           getChildOutline: function(name) {
             if (!name) throw new Error('DossierObj needs `name` for `getChildOutline`');
-            return O.contains(this.outline.i, name) ? this.outline.i[name] : null;
+            return O.contains(this.outline.children, name) ? this.outline.children[name] : null;
           }
         };}
       }),
@@ -1083,7 +1085,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // `this.nextInd` keeps track of the lowest unused index
             // that a child is named in `this.children`. It is only
             // updated when children with numeric names are added.
+            // Note that DossierArrs don't maintain children in the
+            // order they are added.
             this.nextInd = 0;
+            
           },
           
           // Child methods
@@ -1105,17 +1110,29 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return child;
           },
           getChildName: function(doss) {
+            
+            // TODO: If `getChildName` is called many times for a bunch of Dossiers, but
+            // none of those Dossiers are actually added during the process, these those
+            // Dossiers will all get the exact same name: `this.nextInd`.
+            
+            // QUESTION: Is there a guarantee that after `getChildName(doss)` is called,
+            // `doss` is added before `getChildName(anyOtherDoss)` is called??
+            
+            // It's possible that duplicate-name failures are causing silent
+            // inefficiencies within Editor.
+            
             if (!U.isInstance(doss, ds.Dossier)) throw new Error('Invalid "doss" param');
             if (doss.par !== this) throw new Error('Can\'t get a name for a non-child');
             
-            var nameFunc = this.outline.p.nameFunc;
+            var nameFunc = this.outline.nameFunc;
             var name = nameFunc ? nameFunc(doss) : this.nextInd;
-            if (!U.valid(name)) throw new Error('`nameFunc` in "' + doss.outline.getAddress() + '" returned an invalid name: ' + name);
+            if (!U.valid(name)) throw new Error('Invalid name produced by `Outline(' + doss.outline.getAddress() + ').nameFunc`: "' + name + '"');
             return name;
+            
           },
           getChildOutline: function(name) {
             // All DossierArr children have the same outline
-            return this.outline.p.innerOutline;
+            return this.outline.template;
           },
           
         };}
@@ -1145,9 +1162,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.concern('value', this.value); // TODO: Maybe this should be implemented in `Dossier.prototype.setValue`?
           },
           modValue: function(modFunc) {
-            var moddedVal = modFunc(this.getValue());
-            if (!U.exists(moddedVal)) throw new Error('modFunc should return a value');
-            this.setValue(moddedVal);
+            this.setValue(modFunc(this.getValue()));
           },
           
           getData: function() {
@@ -1194,15 +1209,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
       DossierRef: U.makeClass({ name: 'DossierRef',
         superclassName: 'DossierVal',
         methods: function(sc) { return {
+          
           init: function(params) {
             var outline = U.param(params, 'outline');
-            if (!outline.p.template) throw new Error('Cannot init Ref without "template" value');
+            if (!outline.format) throw new Error('Cannot init ' + this.constructor.title + ' with Outline missing "format" value');
             sc.init.call(this, params);
           },
           setValue0: function(value) {
             
-            var template = this.outline.p.template;
-            if (!U.isObj(template, Array)) template = template.split('.');
+            var format = this.outline.format;
             
             if (value === null) {
               
@@ -1216,8 +1231,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             } else if (U.isObj(value, String)) {
               
               var pcs = value.split('.');
-              if (pcs.length !== template.length) throw new Error('String value "' + value + '" does not match template "' + template.join('.') + '"');
-              var arrVal = pcs.map(function(v, i) { return template[i][0] === '$' ? v : U.SKIP; });
+              if (pcs.length !== format.length) throw new Error('String value "' + value + '" does not match format "' + format.join('.') + '"');
+              var arrVal = pcs.map(function(v, i) { return format[i][0] === '$' ? v : U.SKIP; });
               
             } else if (U.isInstance(value, ds.Dossier)) {
               
@@ -1225,15 +1240,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
               
               var vals = [];
               var addr = value.getNameChain();
-              for (var endOff = 1, len = Math.min(template.length, addr.length); endOff <= len; endOff++) {
-                var tmp = template[template.length - endOff];
+              for (var endOff = 1, len = Math.min(format.length, addr.length); endOff <= len; endOff++) {
+                var tmp = format[format.length - endOff];
                 var val = addr[addr.length - endOff];
                 
-                if (tmp[0] === '$')       vals.push(val);   // Add to `vals` for each variable component in `template`
+                if (tmp[0] === '$')       vals.push(val);   // Add to `vals` for each variable component in `format`
                 else if (tmp[0] === '~')  break;            // We're iterating from end to start; variables cannot occur before tilde-prefixed values
-                else if (tmp !== val)     throw new Error(  // Non-variable components of the supplied address must match the corresponding template component
+                else if (tmp !== val)     throw new Error(  // Non-variable components of the supplied address must match the corresponding format component
                     '`DossierRef` "' + this.getAddress() + '" was supplied value "' + addr.join('.') + '", ' +
-                    'but this doesn\'t match the template "' + template.join('.') + '"'
+                    'but this doesn\'t match the format "' + format.join('.') + '"'
                   );
               }
               
@@ -1247,40 +1262,36 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             if (arrVal !== null) {
               
-              if (arrVal.length !== U.arr.count(template, function(pc) { return pc[0] === '$'; })) {
-                console.log('BAD VALUE:', arrVal, ' ORIGINALLY:', value);
-                throw new Error('Incorrect number of components');
+              // Validate that the value has the correct number of parameters
+              if (arrVal.length !== A.count(format, function(pc) { return pc[0] === '$'; })) {
+                
+                throw new Error(
+                  this.constructor.title + '(' + this.getAddress() + ') rejects value [ ' + arrVal.join(', ') + ' ] - ' +
+                  'incorrect number of parameters for format: "' + format.join('.') + '"'
+                );
+                
+              }
+              
+              // Verify that all parameters are either Strings or Numbers
+              for (var i = 0; i < arrVal.length; i++) {
+                if (!U.isObj(arrVal[i], String) && !U.isObj(arrVal[i], Number)) {
+                  throw new Error(
+                    this.constructor.title + '(' + this.getAddress() + ') rejects value value - ' +
+                    'value contains invalid type: ' + U.typeOf(arrVal[i])
+                  );
+                }
               }
               
               // TODO: Verify that the `Array` is of the right length, and dereferences
-              // to an existing value??
-              for (var i = 0; i < arrVal.length; i++) {
-                if (!U.exists(arrVal[i]) || !(U.isObj(arrVal[i], String) || U.isObj(value[i], Number))) {
-                  console.log('INVALID REF ARRAY VALS:', arrVal);
-                  throw new Error('Array contains invalid values');
-                }
-              }
+              // to an existing value?? May make the values check irrelevant.
               
             }
             
             return sc.setValue0.call(this, arrVal);
+            
           },
           getValue0: function() {
-            return this.value ? this.getRefAddress() : null;
-          },
-          getNameParam: function(nameParam) {
-            var template = this.outline.p.template;
-            if (!U.isObj(template, Array)) template = template.split('.');
-            
-            var valInd = 0;
-            for (var i = 0; i < template.length; i++)
-              if (template[i][0] === '$') {
-                if (template[i].substr(1) === nameParam) return this.value ? this.value[valInd] : null;
-                valInd++;
-              }
-            
-            throw new Error('Invalid template parameter: "' + nameParam + '"');
-            
+            return this.value ? this.getRefAddress().join('.') : null;
           },
           
           matches: function(value) {
@@ -1289,23 +1300,19 @@ var package = new PACK.pack.Package({ name: 'dossier',
           },
           
           getRefAddress: function() {
-            var template = this.outline.p.template;
-            if (!U.isObj(template, Array)) template = template.split('.');
+            
+            var format = this.outline.format;
             
             // If `this.value` is null resolve it to an empty array
             var vals = this.value || [];
             var ret = [];
             var valInd = 0;
-            for (var i = 0; i < template.length; i++)
-              ret.push(template[i][0] === '$' ? vals[valInd++] : template[i]);
+            for (var i = 0; i < format.length; i++)
+              ret.push(format[i][0] === '$' ? vals[valInd++] : format[i]);
             
             // TODO: This should return an `Array` instead of `String`
-            return ret.join('.');
-          },
-          getHolderAddress: function() {
-            // TODO: Should this return an absolute address?
-            var addr = this.getRefAddress().split('.');
-            return addr.slice(0, addr.length - 1).join('.');
+            return ret;
+            
           },
           dereference: function() {
             return this.value ? this.getChild(this.getRefAddress()) : null;
@@ -1313,6 +1320,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           getData: function() {
             return this.value ? this.getRefAddress() : null;
           }
+          
         }; }
       }),
       
