@@ -7,6 +7,11 @@ TODO: This is one UGLY goddang file
 TODO: Responses for non-existing files are no good, e.g. try removing favicon and loading
 TODO: Dependency loading should be done via promises
 TODO: Websockets eventually?
+
+TODO: Here's a big one: start/stop paradigm could be deprecated if there was something like
+  an Action class which applies an action, and can later undo that same action. Then anything
+  which starts/stops just needs a list of Actions, which it will apply at start, and unapply
+  at stop. This REALLY enables a mixin called Temporary or something of the sort.
 */
 
 if (typeof window !== 'undefined') throw new Error('only for server-side use');
