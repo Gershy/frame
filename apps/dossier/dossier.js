@@ -2,11 +2,12 @@
 TODO: Move Editor to its own package and implement a DossierEditor
 TODO: Names of Outline properties are confusing; e.g. "c" could stand for "children"
 TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined
+TODO: Worries like "editorCreated", "editorAltered" etc may not be relevant anymore!
 */
 
 var package = new PACK.pack.Package({ name: 'dossier',
-  dependencies: [ 'tree', 'worry', 'p' ],
-  buildFunc: function(packName, tree, worry, p) {
+  dependencies: [ 'tree', 'worry', 'informer', 'p' ],
+  buildFunc: function(packName, tree, worry, nf, p) {
     
     var P = p.P;
     
@@ -239,15 +240,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             doss.par = null; // Ensure that `par` is not initialized by any means other than an atomic
             
-            // If this transaction goes through, `doss` gets a "created" worry
-            this.$transaction.then(function() {
-              doss.worry('editorCreated');
-            });
-            
             return doss;
             
           },
           rem: function(params /* par, child */) {
+            
             var child = U.param(params, 'child');
             var par = U.param(params, 'par', child.par);
             if (!U.isInstance(child, ds.Dossier)) throw new Error('"child" param for rem must be Dossier');
@@ -255,25 +252,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
             this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
             this.$addAtomic(c.atomicRemChild, [ par, child ], 'remdoss ::: ' + child.outline.getAddress());
             
-            this.$transaction.then(function() { child.worry('editorRemoved'); });
           },
           mod: function(params /* doss, data */) {
+            
             var doss = U.param(params, 'doss');
             var data = U.param(params, 'data');
             this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
             
-            // Perhaps some fields in `data` aren't any different from the fields on `doss`
-            // Somehow `c.atomicModData` should be calculating this delta, and the result
-            // of that calculation should be sent along with the worry.
-            
-            this.$transaction.then(function() { doss.worry('editorAltered', data); });
-          },
-          edit: function(params /* add, mod, rem */) {
-            return {
-              add: U.param(params, 'add', []).map(this.add.bind(this)),
-              mod: U.param(params, 'mod', []).map(this.mod.bind(this)),
-              rem: U.param(params, 'rem', []).map(this.rem.bind(this))
-            };
           },
           
           $addAtomic: function(func, args, desc) {
@@ -616,6 +601,67 @@ var package = new PACK.pack.Package({ name: 'dossier',
         };}
       }),
       
+      /* DossierInformer - creates an Informer which modifies a Dossier */
+      DossierInformer: U.makeClass({ name: 'DossierInformer',
+        description: 'Gets an Informer for a Dossier. When the Dossier is invalidated, ' +
+          'the Informer is also invalidated',
+        superclass: nf.Informer,
+        methods: function(sc, c) { return {
+          
+          init: function(params /* doss, doSync, modAbilityName */) {
+            
+            sc.init.call(this, params);
+            this.doss = U.param(params, 'doss');
+            this.doSync = U.param(params, 'doSync', true);
+            this.modAbilityName = U.param(params, 'modAbilityName', null);
+            this.onDossChange = null;
+            
+          },
+          
+          getValue: function() {
+            
+            return this.doss.getValue();
+            
+          },
+          setValue0: function(newVal) {
+            
+            /// {SERVER=
+            throw new Error('not implemented');
+            /// =SERVER}
+            
+            // TODO: The following looks funky. Abilities naturally concern "invalidated" as they must work
+            // with an Editor... but do editors need to fire concerns on Dossiers?
+            
+            if (this.modAbilityName) {
+              this.doss.$useAbility(this.modAbilityName, { doSync: this.doSync, data: newVal }).done();
+            } else {
+              this.doss.setValue(newVal);
+              this.worry('invalidated');
+            }
+            
+          },
+          
+          isStarted: function() {
+            return !!this.onDossChange;
+          },
+          start: function() {
+            
+            sc.start.call(this);
+            this.onDossChange = this.worry.bind(this, 'invalidated');
+            this.doss.addWorry('invalidated', this.onDossChange);
+            
+          },
+          stop: function() {
+            
+            this.doss.remWorry('invalidated', this.onDossChange);
+            this.onDossChange = null;
+            sc.stop.call(this);
+            
+          }
+          
+        }}
+      }),
+      
       /* Dossier - data description structure */
       Dossier: U.makeClass({ name: 'Dossier',
         superclass: tree.TreeNode, mixins: [ worry.Worry ],
@@ -738,6 +784,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.getRoot().isRoot();
           },
           
+          // Commands
           $heedCommand: function(params /* session, command, params, channelerParams */) { // Dossier
             
             var commandDescription = this.getAddress() + '.' + params.command;
@@ -764,6 +811,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.outline.getRoot().channeler.$giveCommand(params);
           },
           
+          // Abilities
           addAbility: function(name, func) {
             
             /// {DOC=
@@ -789,13 +837,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             /// =DOC}
             
-            
-            if (O.contains(this.abilities, name)) {
-              
-              //console.error(new Error('WTFFFF: "' + name + '"'));
-              throw new Error('Tried to overwrite ability:' + this.getAddress() + ': "' + name + '"');
-            
-            }
+            if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability:' + this.getAddress() + ' -> ' + name);
             this.abilities[name] = func;
             
           },
@@ -822,6 +864,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             /// =DOC}
             
             if (!O.contains(this.abilities, name)) return new P({ err: new Error('Invalid ability: "' + name + '"') });
+            editor.$transaction.then(this.worry.bind(this, 'invalidated', { abilityName: name }));
             return this.abilities[name](session, channelerParams, editor, params);
             
           },
@@ -840,37 +883,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return $stage.then(editor.$transact.bind(editor));
             
           },
-          genAbilityFact: function(get, set) {
-            
-            var pass = this;
-            var session = this.outline.getRoot().session || null;
-            
-            return {
-              
-              name: 'AbilityFact',
-              getValue: function(addr) {
-                return pass.getValue(addr);
-              },
-              setValue: function(val) {
-                
-                // Many fast calls to setValue should be ordered. If other calls haven't
-                // finished when a newer one begins, those other calls should have their
-                // effects cancelled if possible.
-                
-                var editor = new ds.Editor();
-                pass.$stageAbility(set, session, null, editor, { doSync: true, data: val }) // TODO: The last param should just be `val`
-                  .then(editor.$transact.bind(editor))
-                
-              }
-              
-            };
-            
-          },
           
           dereference: function() {
             throw new Error('Cannot dereference "' + this.constructor.title + '"');
           },
           
+          // Values
           getValue: function(addr) {
             if (U.exists(addr)) {
               var c = this.getChild(addr);
@@ -879,7 +897,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             return this.getValue0();
           },
           getValue0: function() {
-            return 'not implemented';
+            throw new Error('not implemented');
           },
           setValue: function(/* [ addr, ] value */) {
             if (arguments.length === 1) this.setValue0(arguments[0]);
@@ -888,30 +906,20 @@ var package = new PACK.pack.Package({ name: 'dossier',
           setValue0: function(value) {
             throw new Error('not implemented');
           },
-          
           getData: function() {
             throw new Error('Not implemented');
           },
           
           start: function() {
             
-            // Validate that double-starting isn't occurring
             if (this.started) throw new Error('Tried to double-start "' + this.getAddress() + '"');
+            if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
+            if (!this.hasResolvedName()) throw new Error('Can\'t start ' + this.getAddress() + '; name unresolved');
+            if (this.par && !this.par.started) throw new Error('Can\'t start ' + this.getAddress() + '; unrooted');
+            
             this.started = true;
             
-            // Validate that this doss is rooted
-            if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
-            
-            // Validate that this doss has a resolved name, and that its parent is started
-            if (!this.hasResolvedName()) {
-              throw new Error('Can\'t start ' + this.getAddress() + '; name unresolved');
-            }
-            
-            if (this.par && !this.par.started) {
-              throw new Error('Can\'t start ' + this.getAddress() + '; unrooted');
-            }
-            
-            // Apply the decorator. This can only happen once the rest of the validation is complete
+            // Apply any external changes. Must be performed after the validation.
             if (this.outline.p.wrap) this.outline.p.wrap(this);
             
           },
@@ -920,21 +928,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             if (!this.started) throw new Error('Tried to double-stop "' + this.getAddress() + '"');
             this.started = false;
             
-            // Stop any content
-            if (this.content) {
-              this.content.stop();
-              delete this.content;
-            }
-            
-            this.remWorry('editorCreated', 'builtin');
-            this.remWorry('editorRemoved', 'builtin');
-            this.remWorry('editorAltered', 'builtin');
-            
-            // Stop any change handler
-            if (this.changeHandler) {
-              this.remWorry('value', this.changeHandler);
-              delete this.changeHandler;
-            }
+            // Remove any external changes
+            if (this.outline.p.unwrap) this.outline.p.unwrap(this);
             
           },
           
@@ -1364,207 +1359,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
     });
     
     return ds;
-  },
-  runAfter2: function(ds, tr, qr, wr, p) {
-    
-    var outline = new ds.Outline({ name: 'app', c: ds.DossierObj });
-    outline.addChild('version', ds.DossierStr);
-    
-    var userSet = outline.addChild('userSet', ds.DossierArr);
-    var user = userSet.addDynamicChild('user', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getValue('username'); }
-    });
-    user.addChild('username', ds.DossierStr);
-    user.addChild('password', ds.DossierStr);
-    user.addChild('fname', ds.DossierStr);
-    user.addChild('lname', ds.DossierStr);
-    
-    var storySet = outline.addChild('storySet', ds.DossierArr);
-    var story = storySet.addDynamicChild('story', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getValue('quickName'); }
-    });
-    story.addChild('user', ds.DossierRef, { template: '~root.userSet.$username' });
-    story.addChild('createdTime', ds.DossierInt);
-    story.addChild('quickName', ds.DossierStr);
-    story.addChild('description', ds.DossierStr);
-    story.addChild('authorLimit', ds.DossierInt);
-    story.addChild('contestTime', ds.DossierInt);
-    story.addChild('maxWrites', ds.DossierInt);
-    story.addChild('maxVotes', ds.DossierInt);
-    story.addChild('maxWriteLength', ds.DossierInt);
-    story.addChild('contestLimit', ds.DossierInt);
-    story.addChild('anonymizeWriter', ds.DossierBln);
-    story.addChild('anonymizeVoter', ds.DossierBln);
-    story.addChild('slapLoadTime', ds.DossierInt);
-    story.addChild('slamLoadTime', ds.DossierInt);
-    story.addChild('contestInd', ds.DossierInt);
-    story.addChild('phase', ds.DossierStr);
-    story.addChild('timePhaseStarted', ds.DossierInt);
-    
-    var authorSet = story.addChild('authorSet', ds.DossierArr);
-    var author = authorSet.addDynamicChild('author', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getChild('user').getNameParam('username'); },
-    });
-    author.addChild('user', ds.DossierRef, { template: '~root.userSet.$username' });
-    author.addChild('numSlaps', ds.DossierInt);
-    author.addChild('lastSlapTime', ds.DossierInt);
-    author.addChild('numSlams', ds.DossierInt);
-    author.addChild('lastSlamTime', ds.DossierInt);
-    
-    // ~root.storySet.story.contestSet
-    var contestSet = story.addChild('contestSet', ds.DossierArr);
-    var contest = contestSet.addDynamicChild('contest', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getValue('num'); }
-    });
-    contest.addChild('num', ds.DossierInt);
-    
-    // ~root.storySet.story.contestSet.contest.writeSet
-    var contestWriteSet = contest.addChild('writeSet', ds.DossierArr);
-    var contestWrite = contestWriteSet.addDynamicChild('write', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getChild('author').getNameParam('username'); }
-    });
-    contestWrite.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username' });
-    contestWrite.addChild('content', ds.DossierStr);
-    
-    // ~root.storySet.story.contestSet.contest.writeSet.write.voteSet
-    var voteSet = contestWrite.addChild('voteSet', ds.DossierArr);
-    var vote = voteSet.addDynamicChild('vote', ds.DossierObj, {
-      nameFunc: function(doss) { return doss.getChild('author').getNameParam('username'); }
-    });
-    vote.addChild('author', ds.DossierRef, { template: '~par(story).authorSet.$username' });
-    vote.addChild('value', ds.DossierInt);
-    
-    // ~root.storySet.story.writeSet.write
-    var winWriteSet = story.addChild('writeSet', ds.DossierArr);
-    winWriteSet.addDynamicChild('write', ds.DossierRef, { template: '~par.~par.contestSet.$contestInd.writeSet.$username',
-      nameFunc: null,
-    });
-    
-    var editor = new ds.Editor();
-    var doss = editor.add({ outline: outline, data: {
-      version: '0.0.2 (anonymity)',
-      userSet: {
-        admin: {
-          username: 'admin',
-          password: 'suchsmartadmin',
-          fname: 'Admin',
-          lname: 'Istrator'
-        }
-      },
-      storySet: {}
-      /*storySet: {
-        heeheehaha: {
-          user: '~root.userSet.admin',
-          createdTime: 1511636794069,
-          quickName: 'heeheehaha',
-          description: 'hahahaheeheehee',
-          authorLimit: 100,
-          contestTime: 43200000,
-          maxWrites: 100,
-          maxVotes: 100,
-          maxWriteLength: 100,
-          contestLimit: 100,
-          anonymizeWriter: false,
-          anonymizeVoter: false,
-          slapLoadTime: 432000000,
-          slamLoadTime: 432000000,
-          contestInd: 9,
-          phase: 'awaitingWrite',
-          timePhaseStarted: 1512438442203,
-          authorSet: {
-            admin: {
-              user: '~root.userSet.admin',
-              numSlaps: 0,
-              lastSlapTime: 1511636794087,
-              numSlams: 0,
-              lastSlamTime: 1511636794087
-            }
-          },
-          contestSet: {
-            0: {
-              num: 0,
-              writeSet: {
-                admin: {
-                  author: '~par(story).authorSet.admin',
-                  content: 'HELLO!!',
-                  voteSet: {
-                    admin: {
-                      author: '~par(story).authorSet.admin',
-                      value: 1
-                    }
-                  }
-                }
-              }
-            },
-            1: {
-              num: 1,
-              writeSet: {
-                admin: {
-                  author: '~par(story).authorSet.admin',
-                  content: 'dsfadsfdsaf',
-                  voteSet: {
-                    admin: {
-                      author: '~par(story).authorSet.admin',
-                      value: 1
-                    }
-                  }
-                }
-              }
-            },
-            2: {
-              num: 2,
-              writeSet: {
-                admin: {
-                  author: '~par(story).authorSet.admin',
-                  content: 'gfdsgsdfgsfd',
-                  voteSet: {
-                    admin: {
-                      author: '~par(story).authorSet.admin',
-                      value: 1
-                    }
-                  }
-                }
-              }
-            },
-          },
-          writeSet: {
-            0: '~par.~par.contestSet.0.writeSet.admin',
-            1: '~par.~par.contestSet.1.writeSet.admin'
-          }
-        }
-      }*/
-    }});
-    
-    doss.addWorry('editorCreated', function(d) {
-      console.log('Created:', doss.getAddress(), d);
-    });
-    
-    return editor.$transact().then(function(result) {
-      
-      var fname = doss.getChild('userSet.admin.fname');
-      fname.addWorry('editorAltered', function(d) {
-        console.log('Modified:', fname.getAddress(), d);
-      });
-      
-      editor.mod({ doss: fname, data: 'GREG' });
-      return editor.$transact();
-      
-    }).then(function() {
-      
-      var admin = doss.getChild('userSet.admin');
-      admin.addWorry('editorAltered', function(d) {
-        console.log('Modified:', admin.getAddress(), d);
-      });
-      
-      editor.mod({ doss: admin, data: { fname: 'HANK' } });
-      return editor.$transact();
-      
-    }).then(function() {
-      
-      console.log('Done!');
-      
-    }).done();
-    
   }
 });
 package.build();

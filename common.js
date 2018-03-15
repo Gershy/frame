@@ -597,9 +597,11 @@ global.U = {
           */
           
           return function(/* ... */) {
+            
             var args = [ conflicts ];
             args.push.apply(args, arguments);
             return resolver.apply(this, args);
+            
           };
           
         })(resolvers[k], propList.toObj(function(v) { return v.name; }, function(v) { return v.prop; }));

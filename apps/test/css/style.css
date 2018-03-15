@@ -193,11 +193,13 @@ span[tabindex] {
 .item.object > .pairSet  {
   position: relative;
   padding-left: 20px;
-  transition: transform 0.2s ease-in-out;
+  max-height: 10000px;
+  transition: transform 0.2s ease-in-out, max-height 0.2s ease-in-out;
 }
 .item.object.closed > .pairSet {
   transform: scale(1, 0);
   pointer-events: none;
+  max-height: 0;
 }
 .item.object > .pairSet > .pair {
   position: relative;
@@ -307,11 +309,13 @@ span[tabindex] {
 .item.array > .indexSet {
   position: relative;
   padding-left: 70px;
+  max-height: 10000px;
   transition: transform 0.2s ease-in-out, max-height 0.2s ease-in-out;
 }
 .item.array.closed > .indexSet {
   transform: scale(1, 0);
   pointer-events: none;
+  max-height: 0;
 }
 .item.array > .indexSet > .index {
   position: relative;

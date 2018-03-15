@@ -1,3 +1,6 @@
+// TODO: Outline and View definition is incredibly ugly.
+// The best solution is probably XML parsing (consider high impact on client-side?)
+
 /// {CLIENT=
 var old = console.error.bind(console);
 console.error = function(err) {
@@ -8,10 +11,10 @@ console.error = function(err) {
 
 var package = new PACK.pack.Package({ name: 'test',
   /// {SERVER=
-  dependencies: [ 'dossier', 'p', 'server', 'frame' ],
+  dependencies: [ 'dossier', 'informer', 'p', 'server', 'frame' ],
   /// =SERVER}
   /// {CLIENT=
-  dependencies: [ 'dossier', 'p', 'server', 'userify' ],
+  dependencies: [ 'dossier', 'informer', 'p', 'server', 'userify' ],
   /// =CLIENT}
   
   buildFunc: function(/* ... */) {
@@ -19,15 +22,17 @@ var package = new PACK.pack.Package({ name: 'test',
     var packageName = arguments[0];
     /// {SERVER=
     var ds = arguments[1];
-    var p = arguments[2];
+    var nf = arguments[2];
+    var p = arguments[3];
     var sv = arguments[4];
     var fr = arguments[5]
     /// =SERVER}
     /// {CLIENT=
     var ds = arguments[1];
-    var p = arguments[2];
+    var nf = arguments[2];
+    var p = arguments[3];
     var sv = arguments[4];
-    var uf = arguments[3];
+    var uf = arguments[5];
     /// =CLIENT}
     
     return {
@@ -45,20 +50,22 @@ var package = new PACK.pack.Package({ name: 'test',
     var ts = arguments[0];
     /// {SERVER=
     var ds = arguments[1];
-    var p = arguments[2];
-    var sv = arguments[3];
-    var fr = arguments[4]
+    var nf = arguments[2];
+    var p = arguments[3];
+    var sv = arguments[4];
+    var fr = arguments[5]
     /// =SERVER}
     /// {CLIENT=
     var ds = arguments[1];
-    var p = arguments[2];
-    var sv = arguments[3];
-    var uf = arguments[4];
+    var nf = arguments[2];
+    var p = arguments[3];
+    var sv = arguments[4];
+    var uf = arguments[5];
     /// =CLIENT}
     
     var P = p.P;
     
-    // Initialize activities
+    // ==== Initialize activities (TODO: This needs a class and potentially package)
     var activities = [];
     
     /// {CLIENT=
@@ -403,7 +410,6 @@ var package = new PACK.pack.Package({ name: 'test',
     
     /// {CLIENT=
     // ==== Initialize view
-    var n = 0;
     var viewFunc = function() {
       
       var renderer = function(name, itemDoss) {
@@ -417,8 +423,6 @@ var package = new PACK.pack.Package({ name: 'test',
         
         return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: 'renderer', genChildView: function(name, info) {
           
-          if (n++ === 0) console.log('INFO:', info);
-          
           var setType = info.value ? info.value[0] : null;
           
           if (setType === 'stringSet') {
@@ -428,28 +432,40 @@ var package = new PACK.pack.Package({ name: 'test',
           } else if (setType === 'objectSet') {
             
             var objectInfo = info.getChild('@');
-            var doFold = new uf.ActionDecorator({ $action: function() {
-              objectInfo.getChild('open').modValue(function(open) { return !open; });
+            var unfoldedInf = new ds.DossierInformer({ doss: objectInfo.getChild('open') });
+            
+            var toggleFold = new uf.ActionDecorator({ $action: function() {
+              unfoldedInf.modValue(function(open) { return !open; });
               return p.$null;
             }});
-            var applyFoldOuter = new uf.ClassDecorator({
+            
+            var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
-              info: function() { return objectInfo.getValue('open') ? 'open' : 'closed' }
-            });
-            var applyFoldInner = new uf.CssDecorator({
-              list: [ 'max-height' ],
-              info: function(domElem) {
-                return {
-                  'max-height': objectInfo.getValue('open') ? domElem.scrollHeight + 'px' : 0
-                }
-              }
+              informer: new nf.CalculationInformer({
+                dependencies: [ unfoldedInf ],
+                calc: function(unfolded) { return unfolded ? 'open' : 'closed'; }
+              })
             });
             
-            var view = new uf.SetView({ name: name, decorators: [ applyFoldOuter ], children: [
+            /*new uf.CssDecorator({
+              list: [ 'max-height' ],
+              informer: new nf.CalculationInformer({
+                dependencies: [ unfoldedInf, new uf.DomInformer({ domElement: pairSet.initDomRoot(), props: [ 'scrollHeight' ] }) ],
+                calc: function(unfolded, domValues) {
+                  
+                  return {
+                    'max-height': unfolded ? domValues.scrollHeight + 'px' : 0
+                  };
+                  
+                }
+              })
+            })*/
+            
+            var view = new uf.SetView({ name: name, decorators: [ applyFold ], children: [
               
-              new uf.TextView({ name: 'lb', info: '{', decorators: [ doFold ] }),
+              new uf.TextView({ name: 'lb', info: '{', decorators: [ toggleFold ] }),
               
-              new uf.DynamicSetView({ name: 'pairSet', childInfo: info.getChild('@.pairSet'), decorators: [ applyFoldInner ], genChildView: function(name, info) {
+              new uf.DynamicSetView({ name: 'pairSet', childInfo: info.getChild('@.pairSet'), genChildView: function(name, info) {
                 
                 return new uf.SetView({ name: name, cssClasses: [ 'pair' ], children: [
                   
@@ -482,7 +498,7 @@ var package = new PACK.pack.Package({ name: 'test',
                 
               }}),
               
-              new uf.TextView({ name: 'rb', info: '}', decorators: [ doFold ] }),
+              new uf.TextView({ name: 'rb', info: '}', decorators: [ toggleFold ] }),
               
               new uf.SetView({ name: 'controls', children: [
                 
@@ -527,28 +543,26 @@ var package = new PACK.pack.Package({ name: 'test',
           } else if (setType === 'arraySet') {
             
             var arrayInfo = info.getChild('@');
-            var doFold = new uf.ActionDecorator({ $action: function() {
-              arrayInfo.getChild('open').modValue(function(open) { return !open; });
+            var unfoldedInf = new ds.DossierInformer({ doss: arrayInfo.getChild('open') });
+            
+            var toggleFold = new uf.ActionDecorator({ $action: function() {
+              unfoldedInf.modValue(function(open) { return !open; });
               return p.$null;
             }});
-            var applyFoldOuter = new uf.ClassDecorator({
+            
+            var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
-              info: function() { return arrayInfo.getValue('open') ? 'open' : 'closed' }
-            });
-            var applyFoldInner = new uf.CssDecorator({
-              list: [ 'max-height' ],
-              info: function(domElem) {
-                return {
-                  'max-height': arrayInfo.getValue('open') ? domElem.scrollHeight + 'px' : 0
-                }
-              }
+              informer: new nf.CalculationInformer({
+                dependencies: [ unfoldedInf ],
+                calc: function(unfolded) { return unfolded ? 'open' : 'closed'; }
+              })
             });
             
-            var view = new uf.SetView({ name: name, decorators: [ applyFoldOuter ], children: [
+            var view = new uf.SetView({ name: name, decorators: [ applyFold ], children: [
               
-              new uf.TextView({ name: 'lb', info: '[', decorators: [ doFold ] }),
+              new uf.TextView({ name: 'lb', info: '[', decorators: [ toggleFold ] }),
               
-              new uf.DynamicSetView({ name: 'indexSet', childInfo: info.getChild('@.indexSet'), decorates: [ applyFoldInner ], genChildView: function(name, info) {
+              new uf.DynamicSetView({ name: 'indexSet', childInfo: info.getChild('@.indexSet'), genChildView: function(name, info) {
                 
                 return new uf.SetView({ name: name, cssClasses: [ 'index' ], children: [
                   
@@ -576,7 +590,7 @@ var package = new PACK.pack.Package({ name: 'test',
                 
               }}),
               
-              new uf.TextView({ name: 'rb', info: ']', decorators: [ doFold ] }),
+              new uf.TextView({ name: 'rb', info: ']', decorators: [ toggleFold ] }),
               
               new uf.SetView({ name: 'controls', children: [
                 
