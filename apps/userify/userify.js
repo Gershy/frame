@@ -188,6 +188,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         superclassName: 'Decorator',
         description: 'Dynamically changes html classes on an element',
         methods: function(sc, c) { return {
+          
           init: function(params /* informer, list */) {
             
             sc.init.call(this, params);
@@ -196,7 +197,9 @@ var package = new PACK.pack.Package({ name: 'userify',
             
           },
           getAllInformers: function() {
+            
             return [ this.informer ];
+            
           },
           update: function(view) {
             
@@ -303,8 +306,18 @@ var package = new PACK.pack.Package({ name: 'userify',
         methods: function(sc, c) { return {
           init: function(params /* $action */) {
             sc.init.call(this, params);
-            this.$action = U.param(params, '$action');
+            
+            var $action = U.param(params, '$action', null);
+            var action = U.param(params, 'action', null);
+            
+            if (!!$action === !!action) throw new Error('Need to supply exactly one of "$action" and "action"');
+            
+            this.$action = action
+              ? function() { action(); return p.$null; }
+              : $action;
+            
             this.loadingInfo = new nf.ValueInformer({ value: false });
+            
           },
           doAction: function(view, event) {
             

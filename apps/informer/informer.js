@@ -147,7 +147,7 @@ var package = new PACK.pack.Package({ name: 'informer',
             this.value = this.calc.apply(null, A.map(this.dependencies, function(dep) { return dep.getValue() }));
             
           },
-          onInvalidate: function() {
+          onDependencyInvalidated: function() {
             
             this.value = this.calc.apply(null, A.map(this.dependencies, function(dep) { return dep.getValue() }));
             this.worry('invalidated');
@@ -168,7 +168,7 @@ var package = new PACK.pack.Package({ name: 'informer',
             
             sc.start.call(this);
             
-            var selfInvalidated = this.selfInvalidated = this.onInvalidate.bind(this);
+            var selfInvalidated = this.selfInvalidated = this.onDependencyInvalidated.bind(this);
             A.each(this.dependencies, function(dep) { dep.addWorry('invalidated', selfInvalidated); });
             
           },

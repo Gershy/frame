@@ -6,6 +6,22 @@
     background-position: 0 40px;
   }
 }
+@keyframes flashItem {
+  
+  0% {
+    background-color: rgba(255, 255, 255, 0);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0);
+  }
+  35% {
+    background-color: rgba(0, 255, 255, 0.3);
+    box-shadow: inset 0 0 0 2px rgba(0, 255, 255, 0.5);
+  }
+  100% {
+    background-color: rgba(255, 255, 255, 0);
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0);
+  }
+
+}
 
 body, html, #root {
   position: absolute;
@@ -95,34 +111,35 @@ span[tabindex] {
   display: inline-block;
   background-color: rgba(255, 255, 255, 0);
   z-index: 1;
+  min-width: 140px;
   
-  transition: background-color 0.1s linear;
+  /*transition: background-color 0.1s linear;*/
 }
-.item:before { /* minimum size */
-  content: "";
-  position: relative;
-  display: block;
-  left: 0; top: 0;
-  width: 140px;
-}
-.item.horzCompact {
+.horzCompact .item {
   display: block;
   width: 1000px;
 }
 
 .item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.item.hoverActive {
+  animation-name: flashItem;
+  animation-duration: 1s;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
 }
 
 .item > .controls {
   position: absolute;
   display: inline-block;
   white-space: nowrap;
-  left: 20px; bottom: 0;
+  left: 20px; top: 0;
   height: 20px;
   z-index: 10;
   
-  opacity: 0.5;
+  opacity: 0.3;
   
   transition: opacity 0.2s linear;
 }
@@ -149,16 +166,18 @@ span[tabindex] {
   display: inline-block;
   box-sizing: border-box;
   padding: 0 10px;
-  margin-left: 5px;
 }
-.item.string.horzCompact > .interactive {
+.horzCompact .item.string {
+  margin-left: 0;
+}
+.horzCompact .item.string > .interactive {
   width: 200px;
 }
-.item.string.horzCompact > .placeholder {
+.horzCompact .item.string > .placeholder {
   width: 220px; left: 0;
 }
-.item.string.horzCompact > .placeholder:before,
-.item.string.horzCompact > .placeholder:after {
+.horzCompact .item.string > .placeholder:before,
+.horzCompact .item.string > .placeholder:after {
   content: "\"";
   position: absolute;
   display: inline-block;
@@ -167,8 +186,8 @@ span[tabindex] {
   font-size: 16px;
   color: rgba(255, 255, 255, 0.3);
 }
-.item.string.horzCompact > .placeholder:before { left: 0; }
-.item.string.horzCompact > .placeholder:after { right: 0; }
+.horzCompact .item.string > .placeholder:before { left: 0; }
+.horzCompact .item.string > .placeholder:after { right: 0; }
 
 .item.object {
   position: relative;
@@ -204,6 +223,7 @@ span[tabindex] {
 .item.object > .pairSet > .pair {
   position: relative;
   display: block;
+  white-space: nowrap;
 }
 .item.object > .pairSet > .pair > .key {
   position: relative;
@@ -239,20 +259,20 @@ span[tabindex] {
 .item.object > .pairSet > .pair > .delete:hover {
   background-color: rgba(150, 0, 0, 1);
 }
-.item.object.horzCompact > .pairSet {
+.horzCompact .item.object > .pairSet {
   padding-left: 10px;
   transition: transform 0.2s ease-in-out, max-height 0.2s ease-in-out;
 }
-.item.object.horzCompact > .pairSet > .pair {
-  width: 90px; /* Only enough length for key and sep; forces val to new line */
+.horzCompact .item.object > .pairSet > .pair {
+  width: 130px; /* Only enough length for key and sep; forces val to new line */
   margin-left: 20px;
 }
-.item.object.horzCompact > .pairSet > .pair > .key {
+.horzCompact .item.object > .pairSet > .pair > .key {
   box-sizing: border-box;
-  width: 80px; padding: 0 10px;
+  width: 120px; padding: 0 10px;
 }
-.item.object.horzCompact > .pairSet > .pair > .key:before,
-.item.object.horzCompact > .pairSet > .pair > .key:after {
+.horzCompact .item.object > .pairSet > .pair > .key:before,
+.horzCompact .item.object > .pairSet > .pair > .key:after {
   content: "\"";
   position: absolute;
   display: inline-block;
@@ -261,9 +281,9 @@ span[tabindex] {
   font-size: 16px;
   color: rgba(0, 255, 255, 0.35);
 }
-.item.object.horzCompact > .pairSet > .pair > .key:before { left: 0; }
-.item.object.horzCompact > .pairSet > .pair > .key:after { right: 0; }
-.item.object.horzCompact > .pairSet > .pair > .val {
+.horzCompact .item.object > .pairSet > .pair > .key:before { left: 0; }
+.horzCompact .item.object > .pairSet > .pair > .key:after { right: 0; }
+.horzCompact .item.object > .pairSet > .pair > .val {
   display: block;
 }
 
@@ -339,6 +359,6 @@ span[tabindex] {
 .item.array > .indexSet > .index > .delete:hover {
   background-color: rgba(150, 0, 0, 1);
 }
-.item.array.horzCompact > .indexSet {
+.horzCompact .item.array > .indexSet {
   padding-left: 30px;
 }
