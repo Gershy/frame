@@ -632,6 +632,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             // TODO: The following looks funky. Abilities naturally concern "invalidated" as they must work
             // with an Editor... but do editors need to fire concerns on Dossiers?
             
+            
             if (this.modAbilityName) {
               this.doss.$useAbility(this.modAbilityName, { doSync: this.doSync, data: newVal }).done();
             } else {

@@ -1,6 +1,16 @@
 // TODO: Outline and View definition is incredibly ugly.
 // The best solution is probably XML parsing (consider high impact on client-side?)
 
+/*
+- Formalize syncing
+  - Abilities should be on Outline
+- Formalize Activities
+- "Hovering" Dossiers?
+- Ensure that there are no more per-frame updates
+- Formalize an entire application (e.g. it consists of Actionizer, Channeler+Channels, Outline, Versioner, etc.)
+- Go write something amazing (Lapse? Blindspot?)
+*/
+
 /// {CLIENT=
 var old = console.error.bind(console);
 console.error = function(err) {
@@ -9,7 +19,7 @@ console.error = function(err) {
 };
 /// =CLIENT}
 
-var package = new PACK.pack.Package({ name: 'test',
+var package = new PACK.pack.Package({ name: 'jsonBuilder',
   /// {SERVER=
   dependencies: [ 'dossier', 'informer', 'p', 'server', 'frame' ],
   /// =SERVER}
@@ -38,7 +48,7 @@ var package = new PACK.pack.Package({ name: 'test',
     return {
       resources: {
         css: [
-          'apps/test/css/style.css',
+          'apps/jsonBuilder/css/style.css',
           'apps/userify/css/substance.css'
         ]
       }
@@ -73,7 +83,7 @@ var package = new PACK.pack.Package({ name: 'test',
     /// =CLIENT}
     
     // ==== Initialize channeler
-    var channeler = new sv.Channeler({ appName: 'test', handler: rootDoss });
+    var channeler = new sv.Channeler({ appName: 'jsonBuilder', handler: rootDoss });
     channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
     channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
     
@@ -105,16 +115,6 @@ var package = new PACK.pack.Package({ name: 'test',
                 
                 // Determine which sessions need to be informed, and then inform them!
                 
-                /// {CLIENT=
-                // Resolves a list containing either one or zero sessions. If `doSync` is true, will sync
-                // the server session (the only session of which a client session is aware).
-                var doSync = U.param(params, 'doSync');
-                var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
-                var commandParams = { data: data };
-                
-                //if (doSync) console.log('Syncing server...');
-                /// =CLIENT}
-                
                 /// {SERVER=
                 // If `session` is set, it means that this modification was spurred on by that session.
                 // That session does not need to be informed of the change, as it's the source of the change.
@@ -125,6 +125,16 @@ var package = new PACK.pack.Package({ name: 'test',
                 
                 //console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
                 /// =SERVER}
+                
+                /// {CLIENT=
+                // Resolves a list containing either one or zero sessions. If `doSync` is true, will sync
+                // the server session (the only session of which a client session is aware).
+                var doSync = U.param(params, 'doSync');
+                var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
+                var commandParams = { data: data };
+                
+                //if (doSync) console.log('Syncing server...');
+                /// =CLIENT}
                 
                 return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
                   
@@ -268,42 +278,37 @@ var package = new PACK.pack.Package({ name: 'test',
     }}});
     var actionizer = new Actionizer({ channeler: channeler });
     
-    var str = actionizer.str.bind(actionizer);
-    var obj = actionizer.obj.bind(actionizer);
-    var arr = actionizer.arr.bind(actionizer);
-    var ref = actionizer.arr.bind(actionizer);
-    
     // ==== Initialize outline
-    var outline = new ds.Outline({ name: 'json', c: ds.DossierObj, p: { wrap: obj } });
+    var outline = new ds.Outline({ name: 'json', c: ds.DossierObj });
     
     var typeSet = outline.addChild('typeSet', ds.DossierObj);
     
-    var stringSet = typeSet.addChild('stringSet', ds.DossierArr, arr);
+    var stringSet = typeSet.addChild('stringSet', ds.DossierArr);
     var string = stringSet.addDynamicChild('string', ds.DossierObj, null);
     string.addChild('value', ds.DossierStr);
     
-    var objectSet = typeSet.addChild('objectSet', ds.DossierArr, arr);
+    var objectSet = typeSet.addChild('objectSet', ds.DossierArr);
     var object = objectSet.addDynamicChild('object', ds.DossierObj, null);
     /// {CLIENT=
-    object.addChild('open', ds.DossierBln, function(doss) { doss.setValue(true); });
+    object.addChild('folded', ds.DossierBln, function(doss) { doss.setValue(false); });
     /// =CLIENT}
-    var pairSet = object.addChild('pairSet', ds.DossierArr, arr);
+    var pairSet = object.addChild('pairSet', ds.DossierArr);
     var pair = pairSet.addDynamicChild('pair', ds.DossierObj, null);
-    pair.addChild('key', ds.DossierStr, str);
-    pair.addChild('val', ds.DossierRef, { template: '~root.itemSet.$id', wrap: ref });
+    pair.addChild('key', ds.DossierStr);
+    pair.addChild('val', ds.DossierRef, { template: '~root.itemSet.$id' });
     
-    var arraySet = typeSet.addChild('arraySet', ds.DossierArr, arr);
+    var arraySet = typeSet.addChild('arraySet', ds.DossierArr);
     var array = arraySet.addDynamicChild('array', ds.DossierObj, null);
     /// {CLIENT=
-    array.addChild('open', ds.DossierBln, function(doss) { doss.setValue(true); });
+    array.addChild('folded', ds.DossierBln, function(doss) { doss.setValue(false); });
     /// =CLIENT}
-    var indexSet = array.addChild('indexSet', ds.DossierArr, arr);
-    indexSet.addDynamicChild('index', ds.DossierRef, null, { template: '~root.itemSet.$id', wrap: ref });
+    var indexSet = array.addChild('indexSet', ds.DossierArr);
+    indexSet.addDynamicChild('index', ds.DossierRef, null, { template: '~root.itemSet.$id' });
     
-    var itemSet = outline.addChild('itemSet', ds.DossierArr, arr);
+    var itemSet = outline.addChild('itemSet', ds.DossierArr);
     var item = itemSet.addDynamicChild('type', ds.DossierRef, null, { template: '~root.typeSet.$type.$id' });
     
-    var render = outline.addChild('render', ds.DossierRef, { template: '~root.itemSet.$id', wrap: ref });
+    var render = outline.addChild('render', ds.DossierRef, { template: '~root.itemSet.$id' });
     
     // TODO: The following the should be implemented via abilities
     var remItem = function(editor, item) {
@@ -410,7 +415,10 @@ var package = new PACK.pack.Package({ name: 'test',
     
     /// {CLIENT=
     // ==== Initialize view
+    
     var viewFunc = function() {
+      
+      var hoverFlash = new uf.HoverDecorator({ includeDepth: 3 });
       
       var renderer = function(name, itemDoss) {
         
@@ -421,7 +429,7 @@ var package = new PACK.pack.Package({ name: 'test',
           return ret;
         };
         
-        return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: 'renderer', genChildView: function(name, info) {
+        return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: [ 'renderer' ], genChildView: function(name, info) {
           
           var setType = info.value ? info.value[0] : null;
           
@@ -431,37 +439,17 @@ var package = new PACK.pack.Package({ name: 'test',
             
           } else if (setType === 'objectSet') {
             
-            var objectInfo = info.getChild('@');
-            var unfoldedInf = new ds.DossierInformer({ doss: objectInfo.getChild('open') });
-            
-            var toggleFold = new uf.ActionDecorator({ $action: function() {
-              unfoldedInf.modValue(function(open) { return !open; });
-              return p.$null;
-            }});
-            
+            var foldedInf = new ds.DossierInformer({ doss: info.getChild('@.folded') });
+            var toggleFold = new uf.ActionDecorator({ action: foldedInf.modValue.bind(foldedInf, function(f) { return !f; }) });
             var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
               informer: new nf.CalculationInformer({
-                dependencies: [ unfoldedInf ],
-                calc: function(unfolded) { return unfolded ? 'open' : 'closed'; }
+                dependencies: [ foldedInf ],
+                calc: function(folded) { return folded ? 'closed' : 'open'; }
               })
             });
             
-            /*new uf.CssDecorator({
-              list: [ 'max-height' ],
-              informer: new nf.CalculationInformer({
-                dependencies: [ unfoldedInf, new uf.DomInformer({ domElement: pairSet.initDomRoot(), props: [ 'scrollHeight' ] }) ],
-                calc: function(unfolded, domValues) {
-                  
-                  return {
-                    'max-height': unfolded ? domValues.scrollHeight + 'px' : 0
-                  };
-                  
-                }
-              })
-            })*/
-            
-            var view = new uf.SetView({ name: name, decorators: [ applyFold ], children: [
+            var view = new uf.SetView({ name: name, decorators: [ applyFold, hoverFlash ], children: [
               
               new uf.TextView({ name: 'lb', info: '{', decorators: [ toggleFold ] }),
               
@@ -542,23 +530,17 @@ var package = new PACK.pack.Package({ name: 'test',
             
           } else if (setType === 'arraySet') {
             
-            var arrayInfo = info.getChild('@');
-            var unfoldedInf = new ds.DossierInformer({ doss: arrayInfo.getChild('open') });
-            
-            var toggleFold = new uf.ActionDecorator({ $action: function() {
-              unfoldedInf.modValue(function(open) { return !open; });
-              return p.$null;
-            }});
-            
+            var foldedInf = new ds.DossierInformer({ doss: info.getChild('@.folded') });
+            var toggleFold = new uf.ActionDecorator({ action: foldedInf.modValue.bind(foldedInf, function(f) { return !f; }) });
             var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
               informer: new nf.CalculationInformer({
-                dependencies: [ unfoldedInf ],
-                calc: function(unfolded) { return unfolded ? 'open' : 'closed'; }
+                dependencies: [ foldedInf ],
+                calc: function(folded) { return folded ? 'closed' : 'open'; }
               })
             });
             
-            var view = new uf.SetView({ name: name, decorators: [ applyFold ], children: [
+            var view = new uf.SetView({ name: name, decorators: [ applyFold, hoverFlash ], children: [
               
               new uf.TextView({ name: 'lb', info: '[', decorators: [ toggleFold ] }),
               
@@ -634,17 +616,30 @@ var package = new PACK.pack.Package({ name: 'test',
             
           }
           
-          view.cssClasses = [ 'item', setType.substr(0, setType.length - 3), 'horzCompact' ];
+          view.cssClasses = [ 'item', setType.substr(0, setType.length - 3) ];
           
           return view;
           
         }});
         
       };
+      
+      var compactness = new nf.ValueInformer({ value: 'vertCompact' });
+      var toggleCompactness = new uf.ActionDecorator({ $action: function() {
+        
+        compactness.modValue(function(compact) { return compact === 'horzCompact' ? 'vertCompact' : 'horzCompact'; });
+        return p.$null;
+        
+      }});
+      var applyCompactness = new uf.ClassDecorator({
+        list: [ 'horzCompact', 'vertCompact' ],
+        informer: compactness
+      });
+      
       var view = new uf.RootView({ name: 'root',
         children: [
-          new uf.TextView({ name: 'title', info: 'json' }),
-          new uf.SetView({ name: 'render', children: [
+          new uf.TextView({ name: 'title', info: 'json', decorators: [ toggleCompactness ] }),
+          new uf.SetView({ name: 'render', decorators: [ applyCompactness ], children: [
             
             renderer('main', rootDoss.getChild('@render'))
             
@@ -666,7 +661,7 @@ var package = new PACK.pack.Package({ name: 'test',
       /// {CLIENT=
       .then(function() {
         
-        return rootDoss.$useAbility('sync');
+        // return rootDoss.$useAbility('sync');
         
       })
       .then(function() {
