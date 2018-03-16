@@ -1,6 +1,6 @@
 var package = new PACK.pack.Package({ name: 'p',
   dependencies: [ ],
-  buildFunc: function() {
+  buildFunc: function(p) {
     
     var getValueData = function(v) {
       
@@ -297,7 +297,7 @@ var package = new PACK.pack.Package({ name: 'p',
       };}
     });
     
-    return {
+    O.update(p, {
       $: promisify,
       P: P,
       $null: new P({ val: null }),
@@ -310,7 +310,7 @@ var package = new PACK.pack.Package({ name: 'p',
         };
         
       }
-    };
+    });
     
   }
 });

@@ -939,7 +939,8 @@ global.PACK.pack = {
         if (O.contains(PACK, this.name)) throw new Error('double-loaded dependency "' + this.name + '"');
         
         var args = this.dependencies.map(function(n) { return O.walk(PACK, n.split('.')); });
-        PACK[this.name] = this.buildFunc.apply(null, [ this.name ].concat(args));
+        PACK[this.name] = {};
+        this.buildFunc.apply(null, [ PACK[this.name] ].concat(args));
         
         if (!U.isServer()) {
           var waiting = this.script['~waiting'];
