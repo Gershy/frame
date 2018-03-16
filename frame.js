@@ -20,7 +20,7 @@ require('./common.js');
 
 new PACK.pack.Package({ name: 'frame',
   dependencies: [ 'compile' ],
-  buildFunc: function(packageName, cm) {
+  buildFunc: function(fr, cm) {
     
     var debugMode = true; // TODO: This should be somehow dynamic
     
@@ -112,7 +112,7 @@ new PACK.pack.Package({ name: 'frame',
       }
     });
     
-    return {
+    O.update(fr, {
       debugMode: debugMode,
       deployment: deploymentData,
       host: host,
@@ -120,7 +120,7 @@ new PACK.pack.Package({ name: 'frame',
       rawArgs: args,
       appName: appName,
       compiler: compiler
-    };
+    });
     
   },
   runAfter: function(fr) {

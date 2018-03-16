@@ -2,13 +2,22 @@
 // The best solution is probably XML parsing (consider high impact on client-side?)
 
 /*
+
 - Formalize syncing
+  - getValue -> getInternalValue
   - Abilities should be on Outline
 - Formalize Activities
-- "Hovering" Dossiers?
 - Ensure that there are no more per-frame updates
 - Formalize an entire application (e.g. it consists of Actionizer, Channeler+Channels, Outline, Versioner, etc.)
+
+************************************************
 - Go write something amazing (Lapse? Blindspot?)
+************************************************
+
+- "Hovering" Dossiers
+- Persistence
+- Reduce file sizes
+
 */
 
 /// {CLIENT=
@@ -27,9 +36,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
   dependencies: [ 'dossier', 'informer', 'p', 'server', 'userify' ],
   /// =CLIENT}
   
-  buildFunc: function(/* ... */) {
+  buildFunc: function(pack /* ... */) {
     
-    var packageName = arguments[0];
     /// {SERVER=
     var ds = arguments[1];
     var nf = arguments[2];
@@ -45,13 +53,11 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     var uf = arguments[5];
     /// =CLIENT}
     
-    return {
-      resources: {
-        css: [
-          'apps/jsonBuilder/css/style.css',
-          'apps/userify/css/substance.css'
-        ]
-      }
+    pack.resources = {
+      css: [
+        'apps/jsonBuilder/css/style.css',
+        'apps/userify/css/substance.css'
+      ]
     };
     
   },

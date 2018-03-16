@@ -1,7 +1,7 @@
 new PACK.pack.Package({ name: 'tree',
-  buildFunc: function() { return {
+  buildFunc: function(tr) {
     
-    TreeNode: U.makeClass({ name: 'TreeNode',
+    tr.TreeNode = U.makeClass({ name: 'TreeNode',
       methods: function(sc, c) { return {
         init: function(params /* */) {
           this.name = U.param(params, 'name');
@@ -39,7 +39,7 @@ new PACK.pack.Package({ name: 'tree',
           throw new Error('not implemented');
         }
       };}
-    })
+    });
     
-  };}
+  }
 }).build();
