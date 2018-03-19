@@ -225,7 +225,8 @@ global.U = {
     return U.isObj(obj, Array) || U.isObj(obj, Object);
   },
   isPrimitive: function(obj) {
-    return U.isObj(obj, String) || U.isObj(obj, Number) || U.isObj(obj, Boolean) || U.isObj(obj, RegExp) || obj === null;
+    // Technically this list should include `RegExp`
+    return U.isObj(obj, String) || U.isObj(obj, Number) || U.isObj(obj, Boolean) || obj === null;
   },
   isJson: function(obj) {
     return U.isStdObj(obj) || U.isPrimitive(obj);
@@ -439,7 +440,7 @@ global.U = {
     if (U.isObj(namespace, String)) namespace = O.walk(global.C, namespace.split('.'));
     
     var name = U.param(params, 'name');
-    if (O.contains(namespace, name)) throw new Error('tried to overwrite class "' + name + '"');
+    if (O.contains(namespace, name)) throw new Error('Tried to overwrite mixin "' + name + '"');
     
     var description = U.param(params, 'description', null);
     
@@ -451,7 +452,9 @@ global.U = {
     };
     
   },
-  makeClass: function(params /* namespace, name, description, includeGuid, superclass, superclassName, mixins, resolvers, methods, statik */) {
+  makeClass: function(params /* namespace, name, description, superclass, mixins, resolvers, methods, statik */) {
+    
+    if (O.contains(params, 'superclassName')) throw new Error('Can\'t use "superclassName" anymore!');
     
     // `namespace` may either be an object or a string naming the namespace
     var namespace = U.param(params, 'namespace', global.C);
@@ -461,18 +464,8 @@ global.U = {
     var name = U.param(params, 'name'); // TODO: this should be "title", not "name"
     if (O.contains(namespace, name)) throw new Error('tried to overwrite class "' + name + '"');
     
-    // `superclass` is calculated either via `superclassName`, or provided directly with `superclass`
-    var superclassName = U.param(params, 'superclassName', null);
-    if (superclassName) {
-      
-      if (!O.contains(namespace, superclassName)) throw new Error('bad superclass name: "' + superclassName + '"');
-      var superclass = namespace[superclassName];
-      
-    } else {
-      
-      var superclass = U.param(params, 'superclass', Object);
-      
-    }
+    // Get the superclass we're using to derive this one
+    var superclass = U.param(params, 'superclass', Object);
     
     // Generate `heirName`
     var heirName = (superclass === Object) ? (Object.name + '.' + name) : (superclass.heirName + '.' + name);
@@ -480,13 +473,19 @@ global.U = {
     // Check for "description" property
     var description = U.param(params, 'description', heirName);
     
+    /* NOTE: If uncommenting fix the broken uncomments - "* /" - in the class evals
     // Check for "includeGuid" property; if not found, copy value from superclass
     var includeGuid = U.param(params, 'includeGuid', (superclass === Object) ? false : (superclass.includeGuid));
     
     // Use eval to get a named constructor
     var cls = namespace[name] = includeGuid
-      ? eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.guid=global.NEXT_ID++;this.init(params?params:{});})')
-      : eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params?params:{});})');
+      ? eval('(function ' + name + '(params) {\n/* ' + description + ' * /\nthis.guid=global.NEXT_ID++;this.init(params?params:{});})')
+      : eval('(function ' + name + '(params) {\n/* ' + description + ' * /\nthis.init(params?params:{});})');
+    
+    */
+    
+    // TODO: Do we really need to track classes within namespaces??
+    var cls = namespace[name] = eval('(function ' + name + '(params) {\n/* ' + description + ' */\nthis.init(params?params:{});})');
     
     // Inherit superclass methods
     if (superclass !== Object) { cls.prototype = Object.create(superclass.prototype); }
@@ -626,7 +625,6 @@ global.U = {
     cls.title = name;
     cls.heirName = heirName;
     cls.par = superclass;
-    cls.includeGuid = includeGuid;
     for (var k in statik) cls[k] = statik[k];
     
     return cls;

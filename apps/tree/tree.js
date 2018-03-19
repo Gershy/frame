@@ -1,7 +1,7 @@
 new PACK.pack.Package({ name: 'tree',
   buildFunc: function(tr) {
     
-    tr.TreeNode = U.makeClass({ name: 'TreeNode',
+    tr.TreeNode = U.makeMixin({ name: 'TreeNode',
       methods: function(sc, c) { return {
         init: function(params /* */) {
           this.name = U.param(params, 'name');
@@ -34,10 +34,8 @@ new PACK.pack.Package({ name: 'tree',
           for (var i = 0, len = addr.length; (i < len) && ptr; i++) ptr = ptr.getNamedChild(addr[i].toString());
           
           return ptr;
-        },
-        getNamedChild: function(name) {
-          throw new Error('not implemented');
         }
+        // getNamedChild: function(name) { throw new Error('not implemented'); }
       };}
     });
     
