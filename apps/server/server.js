@@ -91,10 +91,16 @@ new PACK.pack.Package({ name: 'server',
     };
     
     /* Channeler - manage multiple channels */
-    sv.Channeler = U.makeClass({ name: 'Channeler', superclass: tr.TreeNode,
+    sv.Channeler = U.makeClass({ name: 'Channeler', mixins: [ tr.TreeNode ],
       description: 'Entry point for remote communications. Manipulates a number ' +
         'of channels to provide protocol-agnostic communication with the other ' +
         'side',
+      resolvers: {
+        init: function(initConflicts, params) {
+          initConflicts.TreeNode.call(this, params);
+          initConflicts.Channeler.call(this, params);
+        }
+      },
       methods: function(sc) { return {
         
         init: function(params /* appName, assetVersion, handler */) {
@@ -233,6 +239,8 @@ new PACK.pack.Package({ name: 'server',
           var pass = this;
           var commandDescription = '<NO_DESCRIPTION>';
           
+          var dbgErr = new Error();
+          
           // If this overarching P fails, it's prolly a 500 error indication
           return new P({ run: function() {
             
@@ -273,7 +281,7 @@ new PACK.pack.Package({ name: 'server',
               var params = U.param(commandData, 'params', {});
               
               var child = pass.getChild(address);
-              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              if (!child) { dbgErr.message = 'Invalid address: "' + address.join('.') + '"'; throw dbgErr; }
               
               // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
               // `$heedCommand` is called with the same signature:
@@ -285,9 +293,10 @@ new PACK.pack.Package({ name: 'server',
               
             }).fail(function(err) {
               
+              dbgErr.message = err.message;
               console.log('Command failure: ' + commandDescription);
-              console.error(err);
-              return pass.$commandFailed(session, channelerParams, err);
+              console.error(dbgErr);
+              return pass.$commandFailed(session, channelerParams, dbgErr);
               
             }).then(function() {
               
@@ -397,7 +406,6 @@ new PACK.pack.Package({ name: 'server',
                   
                 } catch(err) {
                   
-                  console.log('BAD:', err.message);
                   var $commandResponse = new P({ err: err });
                   
                 }
@@ -512,10 +520,16 @@ new PACK.pack.Package({ name: 'server',
     });
     
     /* Channel - manages sending commands between two remote locations */
-    sv.Channel = U.makeClass({ name: 'Channel', superclass: tr.TreeNode,
+    sv.Channel = U.makeClass({ name: 'Channel', mixins: [ tr.TreeNode ],
       description: 'An implementation of a protocol for communicating between two physical machines. ' +
         'Must be able to make distinctions between different machines. This base class provides ' +
         'functionality for storing data for different sessions server-side.',
+      resolvers: {
+        init: function(initConflicts, params) {
+          initConflicts.TreeNode.call(this, params);
+          initConflicts.Channel.call(this, params);
+        }
+      },
       methods: function(sc) { return {
         init: function(params /* name, priority */) {
           

@@ -1,6 +1,5 @@
 /*
 TODO: Move Editor to its own package and implement a DossierEditor
-TODO: Differences between `doss.getValue`, `doss.getData` need to be better defined. One of these should probably become "getJson"
 */
 
 var package = new PACK.pack.Package({ name: 'dossier',
@@ -21,21 +20,89 @@ var package = new PACK.pack.Package({ name: 'dossier',
       
     };
     
+    ds.defaultModObj = function(session, channelerParams, editor, doss, params /* data, doSync */) {
+      
+      var data = U.param(params, 'data');
+      var doSync = U.param(params, 'doSync');
+      
+      editor.$transaction.then(function() { doss.worry('invalidated'); }).done();
+      
+      return new P({ all: O.map(data, function(childData, childName) {
+        
+        if (!O.contains(doss.children, childName)) throw new Error('Invalid child name for mod: Dossier(' + doss.getAddress() + ') -> ' + childName);
+        var child = doss.children[childName];
+        
+        // TODO: Really the Obj should do the sync for its entire tree with a single request.
+        // Awkward to implemet that here? But if not implemented here then children need to sync on their own.
+        // Which may not even work.
+        return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: doSync });
+        
+      })});
+      
+    };
+    
+    ds.defaultModArr = function(session, channelerParams, editor, doss, params /* data */) {
+      
+      console.log('Not implemented haha');
+      return p.$null;
+      
+    };
+    
     /* Outline - define what a Dossier structure looks like */
-    ds.Outline = U.makeClass({ name: 'Outline', superclass: tr.TreeNode,
+    ds.Outline = U.makeClass({ name: 'Outline', mixins: [ tr.TreeNode ],
+      resolvers: {
+        init: function(initConflicts, params) {
+          initConflicts.TreeNode.call(this, params);
+          initConflicts.Outline.call(this, params);
+        }
+      },
       methods: function(sc, c) { return {
         
-        init: function(params /* name, dossClass */) {
-          
-          sc.init.call(this, params);
+        init: function(params /* name, dossClass, abilities, decorate */) {
           
           this.dossClass = U.param(params, 'dossClass', this.getDefaultClass());
-          if (!U.isObj(this.dossClass, String)) this.dossClass = this.dossClass.title; // TODO: This requires class names to be globally unique
+          // if (!U.isObj(this.dossClass, String)) this.dossClass = this.dossClass.title; // TODO: This requires class names to be globally unique
+          
+          this.abilities = U.param(params, 'abilities', {});
+          
+          var decorate = U.param(params, 'decorate', null);
+          if (decorate) decorate(this);
           
         },
         
         getDefaultClass: function() { throw new Error('not implemented'); },
         childNameMustMatch: function() { return true; },
+        addAbility: function(name, $func) {
+          
+          /// {DOC=
+          { desc: 'Adds a new ability to this Dossier under the name `name`',
+            params: {
+              name: { desc: 'The unique name of the ability' },
+              $func: { signature: function(session, channelerParams, editor, doss, params){},
+                desc: 'A function which stages all changes on `doss`, based on the ability, to the editor',
+                params: {
+                  session: { desc: 'The session performing the ability' },
+                  channelerParams: { desc: 'Any channelerParams for the ability if available' },
+                  editor: { desc: 'The editor which will be used to perform this ability' },
+                  doss: { desc: 'The `Dossier` which this ability concerns' },
+                  params: { desc: 'Any ability-specific params' }
+                },
+                returns: {
+                  $promise: {
+                    resolve: 'All necessary atoms are staged to the `editor`',
+                    reject: 'Any error'
+                  }
+                }
+              }
+            }
+          }
+          /// =DOC}
+          
+          if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability Outline(' + this.getAddress() + ').' + name);
+          this.abilities[name] = $func;
+          
+          
+        },
         getNamedChild: function(name) {
           return null;
         }
@@ -59,7 +126,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
     ds.Obj = U.makeClass({ name: 'Obj', superclass: ds.Outline,
       methods: function(sc, c) { return {
         
-        init: function(params /* name, dossClass, children */) {
+        init: function(params /* name, dossClass, abilities, children */) {
+          
+          var abilities = U.param(params, 'abilities', {});
+          params.abilities = abilities;
+          if (!O.contains(abilities, 'mod')) abilities.mod = ds.defaultModObj;
           
           sc.init.call(this, params);
           
@@ -81,6 +152,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           return outline;
           
+        },
+        addChildren: function(children) {
+          
+          A.each(children, this.addChild.bind(this));
+          return this;
+          
         }
         
       };}
@@ -89,6 +166,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
       methods: function(sc, c) { return {
         
         init: function(params /* name, dossClass, template, nameFunc */) {
+          
+          var abilities = U.param(params, 'abilities', {});
+          params.abilities = abilities;
+          if (!O.contains(abilities, 'mod')) abilities.mod = ds.defaultModArr;
           
           sc.init.call(this, params);
           
@@ -112,6 +193,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
           this.nameFunc = nameFunc || null;
           
           return template;
+          
+        },
+        addTemplate: function(arr /* template, nameFunc */) {
+          
+          this.template = arr[0];
+          this.template.par = this;
+          
+          this.nameFunc = arr[1] || null;
+          
+          return this;
           
         }
         
@@ -158,8 +249,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
         // Atomics themselves cannot immediately add more atomics!!
         add: function(params /* par, name, data, outline, recurseArr, recurseObj */) {
           
-          var guid = global.NEXT_ID++;
-          
           var par = U.param(params, 'par', null);
           var name = U.param(params, 'name', null);
           var data = U.param(params, 'data', null);
@@ -197,7 +286,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           // Step 1: Initialize the doss
           
-          var DossCls = O.walk(C, outline.dossClass.split('.'));
+          var DossCls = outline.dossClass;
           var doss = new DossCls(O.update({ outline: outline }, outline.p, { name: outline.name }));
           
           // Immediately setting `par` can give us more flexibility while creating `Dossiers`
@@ -237,8 +326,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           }
           
-          // Step 5: Start the doss
-          this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.outline.getAddress());
+          //// Step 5: Start the doss
+          //this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.outline.getAddress());
           
           doss.par = null; // Ensure that `par` is not initialized by any means other than an atomic
           
@@ -251,7 +340,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var par = U.param(params, 'par', child.par);
           if (!U.isInstance(child, ds.Dossier)) throw new Error('"child" param for rem must be Dossier');
           
-          this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
+          // this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
           this.$addAtomic(c.atomicRemChild, [ par, child ], 'remdoss ::: ' + child.outline.getAddress());
           
         },
@@ -560,8 +649,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         atomicModData: function(doss, data) {
           
-          // TODO: renaming `getData` to `getJson` would lead to more symmetry
-          var origVal = doss.getData();
+          var origVal = doss.getJson(); // TODO: non-internal-value can get set as internal-value? I think this makes sense?
           doss.setInternalValue(data);
           return {
             $result: p.$null,
@@ -592,83 +680,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
       };}
     });
     
-    /* DossierInformer - creates an Informer which modifies a Dossier */
-    ds.DossierInformer = U.makeClass({ name: 'DossierInformer',
-      description: 'Gets an Informer for a Dossier. When the Dossier is invalidated, ' +
-        'the Informer is also invalidated',
-      superclass: nf.Informer,
-      methods: function(sc, c) { return {
-        
-        init: function(params /* doss, doSync, modAbilityName */) {
-          
-          sc.init.call(this, params);
-          this.doss = U.param(params, 'doss');
-          this.doSync = U.param(params, 'doSync', true);
-          this.modAbilityName = U.param(params, 'modAbilityName', null);
-          this.onDossChange = null;
-          
-        },
-        
-        getValue: function() {
-          
-          return this.doss.getValue();
-          
-        },
-        setValue0: function(newVal) {
-          
-          /// {SERVER=
-          throw new Error('not implemented');
-          /// =SERVER}
-          
-          // TODO: The following looks funky. Abilities naturally concern "invalidated" as they must work
-          // with an Editor... but do editors need to fire concerns on Dossiers?
-          
-          
-          if (this.modAbilityName) {
-            this.doss.$useAbility(this.modAbilityName, { doSync: this.doSync, data: newVal }).done();
-          } else {
-            this.doss.setInternalValue(newVal);
-            this.worry('invalidated');
-          }
-          
-        },
-        
-        isStarted: function() {
-          return !!this.onDossChange;
-        },
-        start: function() {
-          
-          sc.start.call(this);
-          this.onDossChange = this.worry.bind(this, 'invalidated');
-          this.doss.addWorry('invalidated', this.onDossChange);
-          
-        },
-        stop: function() {
-          
-          this.doss.remWorry('invalidated', this.onDossChange);
-          this.onDossChange = null;
-          sc.stop.call(this);
-          
-        }
-        
-      }}
-    });
-    
     /* Dossier - data description structure */
-    ds.Dossier = U.makeClass({ name: 'Dossier',
-      superclass: tr.TreeNode, mixins: [ wr.Worry ],
+    ds.Dossier = U.makeClass({ name: 'Dossier', superclass: nf.Informer,
+      mixins: [ tr.TreeNode ],
       resolvers: {
         init: function(initConflicts, params) {
-          initConflicts.Worry.call(this, params);
+          initConflicts.TreeNode.call(this, params);
           initConflicts.Dossier.call(this, params);
-        },
-        start: function(startConflicts) {
-          startConflicts.Worry.call(this);
-          startConflicts.Dossier.call(this);
-        },
-        stop: function(stopConflicts) {
-          stopConflicts.Worry.call(this);
-          stopConflicts.Dossier.call(this);
         }
       },
       methods: function(sc, c) { return {
@@ -804,41 +822,15 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         
         // Abilities
-        addAbility: function(name, func) {
-          
-          /// {DOC=
-          { desc: 'Adds a new ability to this Dossier under the name `name`',
-            params: {
-              name: { desc: 'The unique name of the ability' },
-              func: { signature: function(session, channelerParams, editor, params){},
-                desc: 'A function which stages all changes, based on the ability, to the editor',
-                params: {
-                  session: { desc: 'The session performing the ability' },
-                  channelerParams: { desc: 'Any channelerParams for the ability if available' },
-                  editor: { desc: 'The editor which will be used to perform this ability' },
-                  params: { desc: 'Any ability-specific params' }
-                },
-                returns: {
-                  $promise: {
-                    resolve: 'All necessary actions are staged to the `editor`',
-                    reject: 'Any error'
-                  }
-                }
-              }
-            }
-          }
-          /// =DOC}
-          
-          if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability:' + this.getAddress() + ' -> ' + name);
-          this.abilities[name] = func;
-          
+        getAbility: function(name) {
+          return O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
         },
         $stageAbility: function(name, session, channelerParams, editor, params) {
           
           /// {DOC=
           { desc: 'Stages a named ability. This means `editor` is prepared ' +
               'with the necessary actions to carry out the ability. No changes ' +
-              'occur until `editor.$transact` is called',
+              'actually occur until `editor.$transact` is called',
             params: {
               name: { desc: 'The name of the ability to stage' },
               session: { desc: 'The session using the ability' },
@@ -855,11 +847,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           }
           /// =DOC}
           
-          if (!O.contains(this.abilities, name)) return new P({ err: new Error('Invalid ability: "' + name + '"') });
-          return this.abilities[name](session, channelerParams, editor, params);
+          var $func = this.getAbility(name);
+          if (!$func) return new P({ err: new Error('Dossier(' + this.getAddress() + ') doesn\'t support ability "' + name + '"') });
+          return $func(session, channelerParams, editor, this, params);
           
         },
         $useAbility: function(name, params, session, channelerParams) {
+          
+          console.log('Dossier(' + this.getAddress() + ') DO ' + name);
           
           var editor = new ds.Editor();
           
@@ -871,23 +866,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var $stage = this.$stageAbility(name, session, channelerParams, editor, params);
           /// =SERVER}
           
-          return $stage.then(editor.$transact.bind(editor));
+          return $stage
+            .fail(function(err) { console.log('COULDN\'T STAGE', err.stack); })
+            .then(editor.$transact.bind(editor))
           
         },
-        
         dereference: function() {
           throw new Error('Cannot dereference "' + this.constructor.title + '"');
         },
         
-        // Values
-        getValue: function(addr) {
+        // Internal value
+        getInternalValue: function(addr) {
           if (U.exists(addr)) {
             var c = this.getChild(addr);
-            return c ? c.getValue0() : null;
+            return c ? c.getInternalValue0() : null;
           }
-          return this.getValue0();
+          return this.getInternalValue0();
         },
-        getValue0: function() {
+        getInternalValue0: function() {
           throw new Error('not implemented');
         },
         setInternalValue: function(/* [ addr, ] value */) {
@@ -897,25 +893,37 @@ var package = new PACK.pack.Package({ name: 'dossier',
         setInternalValue0: function(value) {
           throw new Error('not implemented');
         },
-        getData: function() {
+        
+        // Value
+        getJson: function() {
           throw new Error('not implemented');
         },
-        
-        start: function() {
+        getValue: function() {
+          return this.getJson();
+        },
+        setValue: function(val) {
           
-          if (this.started) throw new Error('Tried to double-start "' + this.getAddress() + '"');
-          if (!this.isRooted()) throw new Error('Cannot start unrooted doss ' + this.outline.getAddress());
-          if (!this.hasResolvedName()) throw new Error('Can\'t start ' + this.getAddress() + '; name unresolved');
-          if (this.par && !this.par.started) throw new Error('Can\'t start ' + this.getAddress() + '; unrooted');
+          // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
+          // instead of "setValue" - but this includes the functionality of causing "invalidated"
+          // worries the moment "setValue" is called. We don't want this; instead we want the
+          // ability activated by "setValue" to be responsible for calling "invalidated".
           
-          this.started = true;
+          throw new Error('not implemented');
+          
+          this.$useAbility('mod', { data: val }).done()
           
         },
+        
+        isStarted: function() {
+          return this.started;
+        },
+        start: function() {
+          this.started = true;
+          sc.start.call(this);
+        },
         stop: function() {
-          
-          if (!this.started) throw new Error('Tried to double-stop "' + this.getAddress() + '"');
+          sc.stop.call(this);
           this.started = false;
-          
         },
         
         valueOf: function() {
@@ -993,7 +1001,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return sc.getNamedChild0.call(this, name);
         },
         
-        getValue0: function() {
+        getInternalValue0: function() {
           return this.children;
         },
         setInternalValue0: function(val) {
@@ -1032,9 +1040,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         },
         
-        getData: function() {
+        getJson: function() {
           var ret = {};
-          for (var k in this.children) ret[k] = this.children[k].getData();
+          for (var k in this.children) ret[k] = this.children[k].getJson();
           return ret;
         }
       
@@ -1127,14 +1135,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.value == value;
         },
         
-        getValue0: function(value) {
+        getInternalValue0: function() {
           return this.value;
         },
         setInternalValue0: function(value) {
           this.value = value;
         },
         
-        getData: function() {
+        getJson: function() {
           return this.value;
         }
         
@@ -1201,7 +1209,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           } else if (U.isInstance(value, ds.Dossier)) {
             
-            if (!value.started) throw new Error('Can\'t reference unstarted Dossier');
+            if (!value.hasResolvedName()) throw new Error('Can\'t reference Dossier without resolved name');
             
             var vals = [];
             var addr = value.getNameChain();
@@ -1255,8 +1263,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return sc.setInternalValue0.call(this, arrVal);
           
         },
-        getValue0: function() {
-          return this.value ? this.getRefAddress().join('.') : null;
+        getInternalValue0: function() {
+          return this.value ? this.getRefAddress() : null;
         },
         
         matches: function(value) {
@@ -1282,8 +1290,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
         dereference: function() {
           return this.value ? this.getChild(this.getRefAddress()) : null;
         },
-        getData: function() {
-          return this.value ? this.getRefAddress() : null;
+        getJson: function() {
+          return this.value ? this.getRefAddress().join('.') : null;
         }
         
       };}

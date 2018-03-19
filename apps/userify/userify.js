@@ -1,27 +1,15 @@
+/// {SERVER=
+throw new Error('For client-side use only');
+/// =SERVER}
+
 var package = new PACK.pack.Package({ name: 'userify',
   dependencies: [ 'tree', 'dossier', 'informer', 'p' ],
-  buildFunc: function(uf, tree, ds, nf, p) {
+  buildFunc: function(uf, tr, ds, nf, p) {
     var P = p.P;
   
     /* Info */
-    uf.SimpleInfo = U.makeClass({ name: 'SimpleInfo',
-      description: 'Simple class for applying `getValue` and `setValue` ' +
-        'methods to a simple value',
-      methods: function(sc, c) { return {
-        init: function(params) {
-          this.value = U.param(params, 'value');
-        },
-        getValue: function() { return this.value; },
-        setValue: function(val) { this.value = val; }
-      };}
-    });
-    uf.toInfo = function(obj) {
-      if (U.isObj(obj) && U.isObj(obj.getValue, Function)) return obj;
-      if (U.isObj(obj, Function)) return { getValue: obj };
-      return new uf.SimpleInfo({ value: obj });
-    };
     uf.pafam = function(params, name, def) {
-      return uf.toInfo(U.param(params, name, def));
+      return nf.toInfo(U.param(params, name, def));
     };
     
     /* Dom util */
@@ -765,10 +753,15 @@ var package = new PACK.pack.Package({ name: 'userify',
     // TODO: `update` should not need to check for `start`. `start` should be called by an outside source.
     // `update` ruins `start`/`stop` symmetry
     uf.NAME_REGEX = /^[a-z0-9]+[a-zA-Z0-9]*$/;
-    uf.View = U.makeClass({ name: 'View', superclass: tree.TreeNode,
+    uf.View = U.makeClass({ name: 'View', mixins: [ tr.TreeNode ],
+      resolvers: {
+        init: function(initConflicts, params) {
+          initConflicts.TreeNode.call(this, params);
+          initConflicts.View.call(this, params);
+        }
+      },
       methods: function(sc, c) { return {
         init: function(params /* name, cssId, framesPerTick, cssClasses, decorators */) {
-          sc.init.call(this, params);
           if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
           
           // `this.cssId` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
@@ -1127,7 +1120,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         init: function(params /* updateFunc */) {
           sc.init.call(this, params);
           this.updateFunc = U.param(params, 'updateFunc', null);
-          this.updateTimingInfo = uf.toInfo(0);
+          this.updateTimingInfo = nf.toInfo(0);
           this.running = false;
           this.updateMs = 1000 / 60; // 60fps
         },
@@ -1228,7 +1221,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         init: function(params /* name, info */) {
           var info = uf.pafam(params, 'info');
           sc.init.call(this, O.update(params, {
-            choiceInfo: uf.toInfo(function() { return info.getValue() ? 'text' : null; }),
+            choiceInfo: nf.toInfo(function() { return info.getValue() ? 'text' : null; }),
             children: [  new uf.TextView({ name: 'text', info: info })  ]
           }));
         }
@@ -1242,7 +1235,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           this.info = uf.pafam(params, 'info');
           var inputViewParams = U.param(params, 'inputViewParams', {});
           sc.init.call(this, O.update(params, {
-            choiceInfo: uf.toInfo(function() { return editableData.getValue() ? 'edit' : 'display'; }),
+            choiceInfo: nf.toInfo(function() { return editableData.getValue() ? 'edit' : 'display'; }),
             children: [
               new uf.TextEditView(O.update(inputViewParams, { name: 'edit', info: this.info })),
               new uf.TextView({ name: 'display', info: this.info })
@@ -1258,16 +1251,15 @@ var package = new PACK.pack.Package({ name: 'userify',
         'raw info that the child was built from.',
       methods: function(sc, c) { return {
         
-        init: function(params /* name, childInfo, getDataId, genChildView, comparator */) {
+        init: function(params /* name, childInfo, genChildView, comparator */) {
           if (O.contains(params, 'children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
           
           sc.init.call(this, params);
           this.childInfo = uf.pafam(params, 'childInfo');
-          //this.getDataId = U.param(params, 'getDataId'), // Returns a unique id for a piece of info (will be used for child.name)
           this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
           this.comparator = U.param(params, 'comparator', null); // TODO: implement!
           
-          this.running = false;
+          this.onChildrenInvalidated = null;
           
         },
         
@@ -1288,7 +1280,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           var rem = this.children.clone(); // Initially mark all children for removal
           var add = {};  // Initially mark no children for addition
           
-          if (!U.exists(cd)) cd = this.childInfo.getValue();
+          if (!cd) cd = this.childInfo.getValue();
           
           for (var k in cd) {
             
@@ -1306,7 +1298,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             // TODO: remChild stops the child. addChild doesn't start the child.
             // That's an annoying lack of symmetry.
             var child = this.remChild(k);
-            // if (this.running) child.stop();
+            // if (this.isStarted()) child.stop();
           
           }
           
@@ -1320,7 +1312,7 @@ var package = new PACK.pack.Package({ name: 'userify',
             add[k] = this.addChild(child);
             if (!add[k]) throw new Error('DynamicSetView `addChild` failed');
             
-            if (this.running) add[k].start();
+            if (this.isStarted()) add[k].start();
             
           }
           
@@ -1351,10 +1343,16 @@ var package = new PACK.pack.Package({ name: 'userify',
           view.name = newName;
         },
         
+        isStarted: function() {
+          return !!this.onChildrenInvalidated;
+        },
         start: function() {
           
           sc.start.call(this);
-          this.running = true;
+          
+          // TODO: Child-info may be passing its value through Worry parameters exactly where that `null` is...
+          this.onChildrenInvalidated = this.updateChildren.bind(this, null);
+          this.childInfo.addWorry('invalidated', this.onChildrenInvalidated);
           
         },
         stop: function() {
@@ -1382,7 +1380,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           */
           
           this.updateChildren({});
-          this.running = false;
+          
+          this.childInfo.remWorry('invalidated', this.onChildrenInvalidated);
+          this.onChildrenInvalidated = null;
+          
           sc.stop.call(this);
           
         }

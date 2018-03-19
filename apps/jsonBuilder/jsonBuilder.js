@@ -4,8 +4,11 @@
 /*
 
 - Formalize syncing
-  - getValue -> getInternalValue
-  - Abilities should be on Outline
+  - View needs to initialize empty, and load when the Dossier syncs
+  - Use Dossier instead of DossierInformer
+  - The loading is prolly sketchy right now
+  - Weird to have Outlines with default abilities, maybe Actionizer can handle this
+    - Default ability for Array 'mod' not implemented
 - Formalize Activities
 - Ensure that there are no more per-frame updates
 - Formalize an entire application (e.g. it consists of Actionizer, Channeler+Channels, Outline, Versioner, etc.)
@@ -24,7 +27,7 @@
 var old = console.error.bind(console);
 console.error = function(err) {
   old(err.message);
-  old(err.stack);
+  //old(err.stack);
 };
 /// =CLIENT}
 
@@ -89,7 +92,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     /// =CLIENT}
     
     // ==== Initialize channeler
-    var channeler = new sv.Channeler({ appName: 'jsonBuilder', handler: rootDoss });
+    var channeler = new sv.Channeler({ name: 'jsonBuilder', appName: 'jsonBuilder', handler: rootDoss });
     channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
     channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
     
@@ -100,24 +103,93 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       
       init: function(params /* channeler */) {
         
-        this.channeler = U.param(params, 'channeler');
+        var channeler = this.channeler = U.param(params, 'channeler');
+        
+        this.sync = function(session, channelerParams, editor, doss, params /* */) {
+          
+          // Note that the server side never gives a "sync" command; the server is the source of truth,
+          // it doesn't rely on any outside sources to synchronize it.
+          // Attach a sync action to occur when the `editor` is done (but don't wait to fulfill $staged!)
+          editor.$transaction.then(function() {
+            
+            /// {CLIENT=
+            // The client side requests syncs
+            var command = 'sync';
+            var params = {};
+            /// =CLIENT}
+            
+            /// {SERVER=
+            // The server side issues mods
+            var command = 'mod';
+            var params = { doSync: false, data: doss.getJson() };
+            /// =SERVER}
+            
+            return channeler.$giveCommand({
+              session: session,
+              channelerParams: channelerParams,
+              data: {
+                address: doss.getAddress(),
+                command: command,
+                params: params
+              }
+            });
+            
+          }).done();
+          
+          return p.$null;
+          
+        };
+        
+        this.mod = this.makeAbility('mod', true, function(editor, doss, data) {
+          
+          // TODO: It's not nearly this easy as the currentl uncommented code!
+          // console.log('Mod not implemented ;D');
+          // Modifying an object results in many removed, added, and modified children.
+          // Verification needs to happen for everything in the tree of changes.
+          
+          editor.mod({ doss: doss, data: data });
+          
+        });
         
       },
-      addAbility: function(doss, name, act) {
+      
+      makeAbility: function(name, invalidates, editsFunc) {
+        
+        /// {DOC=
+        { desc: 'Makes a syncing ability, allowing the writer to worry only about the edits ' +
+            'without needing to take anything else into account',
+          params: {
+            name: { desc: 'The unique name of the ability' },
+            invalidates: { desc: 'Indicates whether this ability invalidates the Dossier' },
+            editsFunc: { signature: function(editor, doss, data){},
+              desc: 'A function which calls edit methods on `editor`. This method is allowed ' +
+                'to return a promise',
+              params: {
+                editor: { desc: 'The editor' },
+                doss: { desc: 'The Dossier instance which may be needed for some edits' },
+                data: { desc: 'Arbitrary parameters for the ability' }
+              }
+            }
+          }
+        }
+        /// =DOC}
         
         var channeler = this.channeler;
         
-        doss.addAbility(name, function(session, channelerParams, editor, params /* doSync, data */) {
+        return function(session, channelerParams, editor, doss, params /* doSync, data */) {
           
           // Perform whatever actions this ability ought to carry out
           var data = U.param(params, 'data');
-          var $result = new P({ run: act.bind(null, editor, doss, data) });
+          var $result = new P({ run: editsFunc.bind(null, editor, doss, data) });
           
           return $result.then(function() { // After `act` has run, prepare post-transaction to sync changes
             
-            // When the editor transacts, sync any sessions as is necessary
+            // When the editor transacts, sync any sessions as is necessary. This doesn't block $staging.
             editor.$transaction
               .then(function() {
+                
+                // Send worries if invalidated
+                if (invalidates) doss.worry('invalidated');
                 
                 // Determine which sessions need to be informed, and then inform them!
                 
@@ -162,132 +234,44 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
             
           });
           
-        });
+        };
         
-      },
-      basic: function(doss) {
-        
-        doss.addAbility('sync', function(session, channelerParams, editor, params /* */) {
-          
-          // Attach a sync action to occur when the `editor` is done (but don't wait for this!)
-          editor.$transaction.then(function() {
-            
-            /// {CLIENT=
-            // The client side requests syncs
-            var command = 'sync';
-            var params = {};
-            /// =CLIENT}
-            
-            /// {SERVER=
-            // The server side issues mods
-            var command = 'mod';
-            var params = { doSync: false, data: doss.getData() };
-            /// =SERVER}
-            
-            return channeler.$giveCommand({
-              session: session,
-              channelerParams: channelerParams,
-              data: {
-                address: doss.getAddress(),
-                command: command,
-                params: params
-              }
-            });
-            
-          }).done();
-          
-          return p.$null;
-          
-        });
-        
-      },
-      str: function(doss) {
-        
-        this.basic(doss);
-        
-        this.addAbility(doss, 'mod', function(editor, doss, data) {
-          
-          editor.mod({ doss: doss, data: data });
-          
-        });
-        
-        this.addAbility(doss, 'clear', function(editor, doss, data) {
-          
-          editor.mod({ doss: doss, data: '' });
-          
-        });
-        
-      },
-      num: function(doss) {
-        
-        this.basic(doss);
-        
-        this.addAbility(doss, 'mod', function(editor, doss, data) {
-          
-          editor.mod({ doss: doss, data: data });
-          
-        });
-        
-        this.addAbility(doss, 'clear', function(editor, doss, data) {
-          
-          editor.mod({ doss: doss, data: '' });
-          
-        });
-        
-      },
-      obj: function(doss) {
-        
-        this.basic(doss);
-        
-        this.addAbility(doss, 'mod', function(editor, doss, data) {
-          
-          console.log('Mod not implemented ;D');
-          
-          // TODO: It's not nearly this easy!!
-          // Modifying an object results in many removed, added, and modified children.
-          // editor.mod({ doss: doss, data: data });
-          
-        });
-        
-      },
-      arr: function(doss) {
-        
-        this.basic(doss);
-        
-        this.addAbility(doss, 'add', function(editor, doss, data) {
-          
-          editor.add({ par: doss, data: data });
-          
-        });
-        
-        this.addAbility(doss, 'rem', function(editor, doss, data) {
-          
-          var childName = data;
-          var child = doss.children[childName];
-          editor.rem({ par: doss, child: child });
-          
-        });
-        
-        this.addAbility(doss, 'clear', function(editor, doss, data) {
-          
-          for (var k in doss.children) editor.rem({ par: doss, child: doss.children[k] });
-          
-        });
-        
-      },
-      ref: function(doss) {
-        
-        this.basic(doss);
         
       }
       
-    }}});
-    var actionizer = new Actionizer({ channeler: channeler });
+    };}});
+    var actionizer = new Actionizer/*2*/({ channeler: channeler });
     
     // ==== Initialize outline
     var Val = ds.Val, Obj = ds.Obj, Arr = ds.Arr, Ref = ds.Ref;
     
-    var outline = new Obj({ name: 'jsonBuilder' });
+    /* TODO: Maybe this heirarchical definition is nice??
+    var outline = new Obj({ name: 'jsonBuilder', abilities: { sync: actionizer.sync }})
+      .addChildren([
+        
+        new Obj({ name: 'typeSet' })
+          .addChildren([
+            
+            new Arr({ name: 'stringSet' })
+              .addTemplate([
+                
+                new Obj({ name: 'string' })
+                  .addChildren([
+                    
+                    new Val({ name: 'value', defaultValue: '' })
+                    
+                  ])
+                
+              ])
+            
+            new Arr({ name: 'objectSet'
+            
+          ])
+      
+      
+      ]);*/
+    
+    var outline = new Obj({ name: 'jsonBuilder', abilities: { sync: actionizer.sync }});
     
     var typeSet = outline.addChild(new Obj({ name: 'typeSet' }));
     
@@ -319,7 +303,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     var itemSet = outline.addChild(new Arr({ name: 'itemSet' }));
     itemSet.setTemplate(new Ref({ name: 'item', format: '~root.typeSet.$type.$id' }));
     
-    var render = outline.addChild(new Ref({ name: 'render', format: '~root.itemSet.$id' }));
+    var render = outline.addChild(new Ref({ name: 'render', format: '~root.itemSet.$id', abilities: { mod: actionizer.mod } }));
     
     // TODO: The following the should be implemented via abilities
     var remItem = function(editor, item) {
@@ -384,20 +368,20 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     // ==== Initialize rootDoss
     var editor = new ds.Editor();
     var rootDoss = editor.add({ outline: outline, data: {
-      /// {REMOVE=
+      
+      /// {CLIENT=
       typeSet: {},
       itemSet: {},
       render: null
-      /// =REMOVE}
-      /// {S/ERVER=
+      /// =CLIENT}
+      
+      /// {SERVER=
       typeSet: {
-        
         stringSet: {
           0: {
             value: 'val'
           }
         },
-        
         objectSet: {
           0: {
             pairSet: {
@@ -408,19 +392,16 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
             }
           }
         },
-        
         arraySet: {
         }
-        
       },
-        
       itemSet: {
         0: '~root.typeSet.stringSet.0',
         1: '~root.typeSet.objectSet.0'
       },
-      
       render: '~root.itemSet.1'
-      /// =S/ERVER}
+      /// =SERVER}
+      
     }});
     channeler.handler = rootDoss; // Assign this Dossier as the Channeler's handler
     
@@ -431,16 +412,22 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       
       var hoverFlash = new uf.HoverDecorator({ includeDepth: 3 });
       
-      var renderer = function(name, itemDoss) {
+      var renderer = function(name, itemRef) {
         
-        if (!itemDoss) throw new Error('BAD');
+        console.log(itemRef.constructor.title + '(' + itemRef.getAddress() + ')');
         
-        var childInfo = function() {
-          // Returns a list containing a single value: the "item" to render
-          var ret = {};
-          ret[itemDoss.name] = itemDoss;
-          return ret;
-        };
+        var childInfo = new nf.CalculationInformer({
+          dependencies: [ itemRef ],
+          calc: function() {
+            
+            console.log('RECALC CHILDINFO');
+            var item = itemRef.dereference();
+            var ret = {};
+            if (item) ret[item.name] = item;
+            return ret;
+            
+          }
+        });
         
         return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: [ 'renderer' ], genChildView: function(name, info) {
           
@@ -474,7 +461,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                   
                   new uf.TextView({ name: 'sep', info: ':' }),
                   
-                  renderer('val', info.getChild('@val')),
+                  renderer('val', info.getChild('val')),
                   
                   // Pair controls
                   new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
@@ -561,7 +548,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 
                 return new uf.SetView({ name: name, cssClasses: [ 'index' ], children: [
                   
-                  renderer('val', info.getChild('@')),
+                  renderer('val', info),
                   
                   // Index controls
                   new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
@@ -654,7 +641,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           new uf.TextView({ name: 'title', info: 'json', decorators: [ toggleCompactness ] }),
           new uf.SetView({ name: 'render', decorators: [ applyCompactness ], children: [
             
-            renderer('main', rootDoss.getChild('@render'))
+            renderer('main', rootDoss.getChild('render'))
             
           ]})
         ],
@@ -674,11 +661,15 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       /// {CLIENT=
       .then(function() {
         
-        // return rootDoss.$useAbility('sync');
+        return rootDoss.$useAbility('sync') 
+          .then(function() { console.log('DONE SYNC'); });
         
       })
       .then(function() {
         
+        console.log('HEEE:', rootDoss.getJson());
+        
+        window.doss = rootDoss;
         viewFunc().start();
         
       })

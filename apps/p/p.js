@@ -66,7 +66,7 @@ var package = new PACK.pack.Package({ name: 'p',
           } else if (O.contains(params, 'run')) {
             
             // Runs a function. If the return value is non-promise, converts to promise.
-            // If the function throws an inline error, converts to rejected promise.
+            // If the function throws an immediate error, converts to rejected promise.
             
             try {
               return promisify(params.run())

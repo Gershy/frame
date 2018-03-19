@@ -20,8 +20,15 @@ var package = new PACK.pack.Package({ name: 'informer',
   dependencies: [ 'worry' ],
   buildFunc: function(nf, wr) {
     
-    nf.Informer = U.makeClass({ name: 'Informer',
-      mixins: [ wr.Worry ],
+    nf.toInfo = function(val) {
+      
+      if (U.isPrimitive(val)) return new nf.ValueInformer({ value: val });
+      if (!U.isInstance(val, nf.Informer)) throw new Error('Can\'t use ' + U.typeOf(val) + ' as an Informer');
+      return val;
+      
+    };
+    
+    nf.Informer = U.makeClass({ name: 'Informer', mixins: [ wr.Worry ],
       resolvers: {
         init: function(initConflicts, params) {
           initConflicts.Worry.call(this, params);
@@ -86,7 +93,6 @@ var package = new PACK.pack.Package({ name: 'informer',
           throw new Error('not implemented');
         },
         start: function() {
-          
         },
         stop: function() {
         }
