@@ -50,7 +50,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     var P = p.P;
     var App = app.App;
     
-    var app = new App({ name: 'jsonBuilder',
+    new App({ name: 'jsonBuilder',
       
       setupChanneler: function(channeler) {
         channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
@@ -497,8 +497,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       }
       /// =CLIENT}
       
-    });
-    app.$run().done();
+    }).$run().done();
     
   }
   

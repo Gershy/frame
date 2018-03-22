@@ -1,0 +1,88 @@
+
+.board {
+  position: absolute;
+  width: 500px;
+  font-size: 0;
+}
+.board > .wrapper {
+  position: absolute;
+  width: 100%;
+  padding-bottom: 100%;
+  left: 0; top: 0;
+  background-color: rgba(128, 128, 128, 1);
+}
+.board > .wrapper > .tiles {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  pointer-events: none;
+}
+.tile {
+  position: relative;
+  display: inline-block;
+  width: 12.5%; height: 12.5%;
+}
+.tile.light {
+  background-color: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.15);
+}
+.tile.dark {
+  background-color: rgba(0, 0, 0, 0.6);
+  box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.15);
+}
+
+.board > .wrapper > .pieces {
+  position: absolute;
+  width: 100%; height: 100%;
+  left: 0; top: 0;
+  outline: 2px solid red;
+  pointer-events: none;
+}
+.pieces  > .piece {
+  position: absolute;
+  width: 12.5%; height: 12.5%;
+  
+  left: 43.75%; bottom: 43.75%;
+  
+  text-align: center; white-space: nowrap;
+  border-radius: 100%;
+  pointer-events: all;
+  
+  transition: left 1s ease-out, bottom 1s ease-out;
+}
+.pieces  > .piece:before {
+  content: '';
+  position: relative;
+  display: inline-block;
+  width: 0; height: 100%;
+  vertical-align: middle;
+}
+.pieces > .piece > .avatar {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  pointer-events: none;
+}
+.pieces > .piece.pawn > .avatar {
+  font-size: 40px;
+}
+.pieces > .piece.knight > .avatar,
+.pieces > .piece.bishop > .avatar {
+  font-size: 45px;
+}
+.pieces > .piece.rook > .avatar {
+  font-size: 50px;
+}
+.pieces > .piece.queen > .avatar,
+.pieces > .piece.king > .avatar {
+  font-size: 60px;
+}
+
+.pieces.p1Pieces > .piece {
+  color: rgba(255, 255, 255, 1);
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.pieces.p2Pieces > .piece {
+  color: rgba(0, 0, 0, 1);
+  background-color: rgba(0, 0, 0, 0.2);
+}

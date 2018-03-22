@@ -342,6 +342,8 @@ new PACK.pack.Package({ name: 'server',
                   
                   var htmlHeaderElems = [];
                   
+                  console.log('APPNAME:', appName, 'PACK:', PACK[appName]);
+                  
                   if (O.contains(PACK[appName], 'resources')) {
                     var r = PACK[appName].resources;
                     if (O.contains(r, 'css')) r.css.forEach(function(css) { htmlHeaderElems.push('<link rel="stylesheet" type="text/css" href="' + css + assetVersion + '"/>'); });
