@@ -286,7 +286,9 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function(cm) {
           if (/\.js:[0-9]+$/.test(errorTextLines[i])) {
             
             var data = this.getLineData('errorLoc (' + errorTextLines[i].trim() + ':1)', 0, variant);
-            errorText = 'Parse error: ' + err.message + '\n|- ' + data.fileName + ':' + data.lineInd;
+            errorText = 'Parse error: ' + err.message + '\n' +
+              '|- ' + S.endPad(data.fileName + ':' + data.lineInd, ' ', 40) + ' ' +
+              'SYNTAX ERROR';
             break;
             
           }
@@ -306,7 +308,7 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function(cm) {
           var funcAddr = (lineDataItem.funcAddr ? lineDataItem.funcAddr : '<native>').trim();
           if (funcAddr.length > 40) funcAddr = funcAddr.substr(0, 37) + '...';
           
-          var errorLoc = lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd;
+          var errorLoc = (lineDataItem.fileName + ':' + lineDataItem.lineInd + ':' + lineDataItem.charInd).trim();
           if (errorLoc.length > 45) errorLoc = '...' + errorLoc.substr(errorLoc.length - 42);
           
           // if (lineDataItem.isEval) line += 'Something?'

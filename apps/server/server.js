@@ -265,7 +265,7 @@ new PACK.pack.Package({ name: 'server',
               
             } else {
               
-              var $commandData = new P({ val: params});
+              var $commandData = new P({ value: params});
               
             }
             
@@ -281,7 +281,8 @@ new PACK.pack.Package({ name: 'server',
               var params = U.param(commandData, 'params', {});
               
               var child = pass.getChild(address);
-              if (!child) { dbgErr.message = 'Invalid address: "' + address.join('.') + '"'; throw dbgErr; }
+              //if (!child) { dbgErr.message = 'Invalid address: "' + address.join('.') + '"'; throw dbgErr; }
+              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
               
               // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
               // `$heedCommand` is called with the same signature:
@@ -295,8 +296,9 @@ new PACK.pack.Package({ name: 'server',
               
               dbgErr.message = err.message;
               console.log('Command failure: ' + commandDescription);
-              console.error(dbgErr);
-              return pass.$commandFailed(session, channelerParams, dbgErr);
+              //console.error(dbgErr);
+              console.error(err);
+              return pass.$commandFailed(session, channelerParams, err);
               
             }).then(function() {
               
@@ -802,7 +804,7 @@ new PACK.pack.Package({ name: 'server',
           var method = req.method.toLowerCase();
           if (method === 'get') {
             
-            var $ret = new P({ val: queryParams });
+            var $ret = new P({ value: queryParams });
             
           } else if (method === 'post') {
             

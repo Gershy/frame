@@ -741,7 +741,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           sc.init.call(this, O.update(params, { $action: function(event) {
             var errorText = pass.form.getErrorText();
             return errorText
-              ? new P({ val: null }) // new P({ err: new Error(errorText) }) // What happens if there's an error on submission? Probably nothing?
+              ? new P({ value: null }) // new P({ err: new Error(errorText) }) // What happens if there's an error on submission? Probably nothing?
               : $action(event);
           }}));
         }
@@ -943,6 +943,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           return ret;
         },
         tick: function(millis) {
+          
           sc.tick.call(this, millis);
           
           var input = this.domRoot.childNodes[0];
@@ -967,6 +968,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           } else if (document.activeElement !== input) {
             this.domRoot.classList.remove('focus');
           }
+          
         },
       };}
     });

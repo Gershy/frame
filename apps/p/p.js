@@ -2,35 +2,35 @@ var package = new PACK.pack.Package({ name: 'p',
   dependencies: [ ],
   buildFunc: function(p) {
     
-    var getValueData = function(v) {
+    var getValueData = function(value) {
       
       // Resolves an inline value OR `P` instance to a convenient,
       // manageable inline value. If this resulting inline value is
       // converted from a `P` instance, and the promise was rejected,
       // the value will represent this (no error thrown).
       
-      if (!U.isInstance(v, P))
-        return { type: 'resolved', multi: false, value: v };
+      if (!U.isInstance(value, P))
+        return { type: 'resolved', multi: false, value: value };
       
-      var multi = v.multi;
-      while (U.isInstance(v, P) && v.status !== 'pending') {
-        if (v.status === 'rejected') return { type: 'rejected', value: v.val };
-        if (v.status === 'resolved') { multi = v.multi; v = v.val; }
+      var multi = value.multi;
+      while (U.isInstance(value, P) && value.status !== 'pending') {
+        if (value.status === 'rejected') return { type: 'rejected', value: value.value };
+        if (value.status === 'resolved') { multi = value.multi; value = value.value; }
       }
       
       return {
-        type: U.isInstance(v, P) ? 'pending' : 'resolved',
+        type: U.isInstance(value, P) ? 'pending' : 'resolved',
         multi: multi,
-        value: v
+        value: value
       };
       
     };
-    var promisify = function(val) {
+    var promisify = function(value) {
       /*
       Convert a value into a promise.
-      If `val` is a promise return it, otherwise return a promise wrapping `val`.
+      If `value` is a promise return it, otherwise return a promise wrapping `value`.
       */
-      return U.isInstance(val, P) ? val : new P({ val: val });
+      return U.isInstance(value, P) ? value : new P({ value: value });
     };
     var P = U.makeClass({ name: 'P',
       methods: function(sc) { return {
@@ -40,19 +40,19 @@ var package = new PACK.pack.Package({ name: 'p',
           
           this.children = [];
           this.status = 'pending'; // | 'resolved' | 'rejected'
-          this.val = null;
+          this.value = null;
           this.multi = U.param(params, 'multi', false);
           this.func = U.param(params, 'func', null);
           this.recoveryFunc = U.param(params, 'recoveryFunc', null);
           // this.initStack = new Error('');
           
-          if (O.contains(params, 'val')) {
+          if (O.contains(params, 'value')) {
             
-            if (U.isInstance(params.val, this.constructor)) { // `this.constructor` instead of `P` simply just to all the addition of $null before `p.P` exists
-              this.tryResolve(params.val);
+            if (U.isInstance(params.value, this.constructor)) { // `this.constructor` instead of `P` simply just to all the addition of $null before `p.P` exists
+              this.tryResolve(params.value);
             } else {
               this.status = 'resolved';
-              this.val = params.val;
+              this.value = params.value;
             }
             
           } else if (O.contains(params, 'custom')) {  // Allow the user to arbitrarily call resolve or reject
@@ -144,8 +144,8 @@ var package = new PACK.pack.Package({ name: 'p',
           } else if (O.contains(params, 'err')) {
             
             this.status = 'rejected';
-            this.val = params.err;
-            if (!U.isInstance(this.val, Error)) throw new Error('Non-error val: "' + this.val + '"');
+            this.value = params.err;
+            if (!U.isInstance(this.value, Error)) throw new Error('Non-error value: "' + this.value + '"');
             
           }
           
@@ -169,22 +169,22 @@ var package = new PACK.pack.Package({ name: 'p',
             
             // If there are pending arguments, need to use an args-style promise
             // If there are no pending arguments, use a simple array of values
-            var val = pending
+            var value = pending
               ? new P({ args: args.map(function(a) { return a.value; }) })
               : args.map(function(a) { return a.value; });
             
           } else {
             
             // Exactly 1 argument was provided.
-            var val = arguments[0];
+            var value = arguments[0];
             
           }
           
           // PART 2: Ensure that we are either working with an unresolved promise, or a simple value
-          var valueData = getValueData(val);
+          var valueData = getValueData(value);
           if (valueData.type === 'rejected') {
             
-            return this.reject(valueData.val);
+            return this.reject(valueData.value);
             
           } else if (valueData.type === 'resolved') {
             
@@ -210,7 +210,7 @@ var package = new PACK.pack.Package({ name: 'p',
           // Get the value taking `this.multi` and `this.func` into account
           try {
             
-            this.val = this.func
+            this.value = this.func
               ? (multi ? this.func.apply(null, arguments) : this.func(arguments[0]))
               : (multi ? U.toArray(arguments) : arguments[0]);
             
@@ -224,8 +224,8 @@ var package = new PACK.pack.Package({ name: 'p',
           this.status = 'resolved';
           for (var i = 0, len = this.children.length; i < len; i++) {
             var child = this.children[i];
-            if (child.multi)  child.tryResolve.apply(child, this.val);
-            else              child.tryResolve(this.val);
+            if (child.multi)  child.tryResolve.apply(child, this.value);
+            else              child.tryResolve(this.value);
           }
           this.children = []; // Release memory
           
@@ -238,7 +238,7 @@ var package = new PACK.pack.Package({ name: 'p',
           if (this.status === 'resolved')
             throw new Error('Cannot reject; status is already "resolved"')
           else if (this.status === 'rejected')
-            throw this.val;
+            throw this.value;
           
           if (this.recoveryFunc) {
             
@@ -256,7 +256,7 @@ var package = new PACK.pack.Package({ name: 'p',
           }
           
           this.status = 'rejected';
-          this.val = err;
+          this.value = err;
           for (var i = 0, len = this.children.length; i < len; i++) {
             var child = this.children[i];
             child.reject(err);
@@ -300,7 +300,7 @@ var package = new PACK.pack.Package({ name: 'p',
     O.update(p, {
       $: promisify,
       P: P,
-      $null: new P({ val: null }),
+      $null: new P({ value: null }),
       log: function() {
         
         var args = U.toArray(arguments);
