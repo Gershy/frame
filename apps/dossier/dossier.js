@@ -20,34 +20,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
       
     };
     
-    ds.defaultModObj = function(session, channelerParams, editor, doss, params /* data, doSync */) {
-      
-      var data = U.param(params, 'data');
-      var doSync = U.param(params, 'doSync');
-      
-      editor.$transaction.then(function() { doss.worry('invalidated'); }).done();
-      
-      return new P({ all: O.map(data, function(childData, childName) {
-        
-        if (!O.contains(doss.children, childName)) throw new Error('Invalid child name for mod: Dossier(' + doss.getAddress() + ') -> ' + childName);
-        var child = doss.children[childName];
-        
-        // TODO: Really the Obj should do the sync for its entire tree with a single request.
-        // Awkward to implemet that here? But if not implemented here then children need to sync on their own.
-        // Which may not even work.
-        return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: doSync });
-        
-      })});
-      
-    };
-    
-    ds.defaultModArr = function(session, channelerParams, editor, doss, params /* data */) {
-      
-      console.log('Not implemented haha');
-      return p.$null;
-      
-    };
-    
     /* Outline - define what a Dossier structure looks like */
     ds.Outline = U.makeClass({ name: 'Outline', mixins: [ tr.TreeNode ],
       resolvers: {
@@ -118,7 +90,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           this.defaultValue = U.param(params, 'defaultValue', null);
           
         },
-        
         getDefaultClass: function() { return ds.DossierStr; }
         
       };}
@@ -186,14 +157,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         },
         setTemplate: function(template, nameFunc) {
-          
           this.template = template;
           this.template.par = this;
-          
-          this.nameFunc = nameFunc || null;
-          
+          if (nameFunc) this.nameFunc = nameFunc;
           return template;
-          
+        },
+        setNameFunc: function(nameFunc) {
+          this.nameFunc = nameFunc;
         },
         addTemplate: function(arr /* template, nameFunc */) {
           
@@ -208,7 +178,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         
       };}
     });
-    ds.Ref = U.makeClass({ name: 'Ref', superclass: ds.Outline,
+    ds.Ref = U.makeClass({ name: 'Ref', superclass: ds.Val,
       methods: function(sc, c) { return {
         
         init: function(params /* name, dossClass, format */) {
@@ -219,11 +189,37 @@ var package = new PACK.pack.Package({ name: 'dossier',
           if (U.isObj(this.format, String)) this.format = this.format.split('.');
           
         },
-        
         getDefaultClass: function() { return ds.DossierRef; }
         
       };}
     });
+    
+    ds.parseOutline = function(name, data) {
+      
+      if (!name) name = '~root';
+      
+      if (U.isObj(data, Object)) {
+        
+        
+        
+      } else if (U.isObj(data, Array)) {
+        
+        if (name.substr(name.length - 3) === 'Set') {
+          var childName = name.substr(name.length - 3);
+        } else {
+          var childName = 'item';
+        }
+        
+        var arr = new ds.Arr({ name: name });
+        arr.setTemplate(ds.parseOutline(childName, data[0]), data[1] || null);
+        
+      } else {
+        
+        throw new Error('Invalid outline data: ' + U.typeOf(data));
+        
+      }
+      
+    };
     
     /* Editor - make changes to Dossier structures */
     ds.Editor = U.makeClass({ name: 'Editor',
@@ -278,14 +274,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           }
           
-          /*else if (!outline.dynamic) { // Note: The requested name can (and will) be different from the Outline name if the Outline is dynamic
-            
-            if (name !== outline.name) throw new Error('Tried to rename non-dynamic doss "' + outline.name + '" to "' + name + '"');
-            
-          }*/
-          
           // Step 1: Initialize the doss
-          
           var DossCls = outline.dossClass;
           var doss = new DossCls(O.update({ outline: outline }, outline.p, { name: outline.name }));
           
@@ -325,9 +314,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
               this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
             
           }
-          
-          //// Step 5: Start the doss
-          //this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttdoss ::: ' + doss.outline.getAddress());
           
           doss.par = null; // Ensure that `par` is not initialized by any means other than an atomic
           
@@ -487,13 +473,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             }
             
             return pass.$recurseStage(type, stageNum + 1).then(function(recNextResults) {
-              
-              /*
-              var oldAtm = pass.atpomics;
-              pass.atpomics = recNextResults.undoAtomics;
-              var trnDesc = pass.getTransactionDetails();
-              pass.atpomics = oldAtm;
-              */
               
               // Add the recursive call's atomics to the previous call's atomics
               recNextResults.undoAtomics = recResults.undoAtomics.concat(recNextResults.undoAtomics);
@@ -693,10 +672,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
         
         init: function(params /* outline */) {
           
-          // Note: "name" is a required, but ignored, parameter. It is required
-          // by `TreeNode.prototype.init`, but will be overwritten immediately
-          // afterwards.
-          
           sc.init.call(this, params);
           
           this.name = ds.getTempName(); // Here's where `this.name` is overwritten
@@ -848,13 +823,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           /// =DOC}
           
           var $func = this.getAbility(name);
-          if (!$func) return new P({ err: new Error('Dossier(' + this.getAddress() + ') doesn\'t support ability "' + name + '"') });
+          if (!$func) return new P({ err: new Error(this.identity() + ' doesn\'t support ability "' + name + '"') });
           return $func(session, channelerParams, editor, this, params);
           
         },
         $useAbility: function(name, params, session, channelerParams) {
-          
-          console.log('Dossier(' + this.getAddress() + ') DO ' + name);
           
           var editor = new ds.Editor();
           
@@ -867,12 +840,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           /// =SERVER}
           
           return $stage
-            .fail(function(err) { console.log('COULDN\'T STAGE', err.stack); })
-            .then(editor.$transact.bind(editor))
+            .then(editor.$transact.bind(editor));
           
         },
         dereference: function() {
-          throw new Error('Cannot dereference "' + this.constructor.title + '"');
+          throw new Error('Cannot dereference "' + this.identity() + '"');
         },
         
         // Internal value
@@ -907,10 +879,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // instead of "setValue" - but this includes the functionality of causing "invalidated"
           // worries the moment "setValue" is called. We don't want this; instead we want the
           // ability activated by "setValue" to be responsible for calling "invalidated".
-          
-          throw new Error('not implemented');
-          
-          this.$useAbility('mod', { data: val }).done()
+          this.$useAbility('mod', { data: val }).done();
           
         },
         
@@ -926,6 +895,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           this.started = false;
         },
         
+        identity: function() {
+          return this.constructor.title + '(' + (this.hasResolvedName() ? this.getAddress() : ('!' + this.outline.getAddress())) + ')';
+        },
         valueOf: function() {
           return this.getAddress();
         }
@@ -1005,7 +977,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.children;
         },
         setInternalValue0: function(val) {
-          if (!U.isObj(val, Object)) throw new Error('Invalid value for `' + this.constructor.title + '`: ' + U.typeOf(val));
+          if (val === null) val = {};
+          if (!U.isObj(val, Object)) throw new Error('Invalid value for `' + this.identity + '`: ' + U.typeOf(val));
           
           // Validate that all children exist before setting a value on any of them
           for (var k in val) if (!O.contains(this.children, k)) throw new Error('Invalid setInternalValue key: ' + this.getAddress() + ' -> ' + k);
@@ -1040,6 +1013,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         },
         
+        getValue: function() {
+          return O.clone(this.children); // TODO: do we really need to clone?
+        },
         getJson: function() {
           var ret = {};
           for (var k in this.children) ret[k] = this.children[k].getJson();
@@ -1058,6 +1034,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           if (!name) throw new Error('DossierObj needs `name` for `getChildOutline`');
           return O.contains(this.outline.children, name) ? this.outline.children[name] : null;
         }
+        
       };}
     });
     ds.DossierArr = U.makeClass({ name: 'DossierArr', superclass: ds.DossierSet,
@@ -1126,6 +1103,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
       methods: function(sc) { return {
         init: function(params /* outline, value */) {
           sc.init.call(this, params);
+          
           this.value = null;
           this.setInternalValue(null);
         },
@@ -1135,11 +1113,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.value == value;
         },
         
+        sanitizeValue: function(value) {
+          return value === null ? this.outline.defaultValue : value;
+        },
         getInternalValue0: function() {
           return this.value;
         },
         setInternalValue0: function(value) {
-          this.value = value;
+          this.value = this.sanitizeValue(value);
         },
         
         getJson: function() {
@@ -1150,31 +1131,38 @@ var package = new PACK.pack.Package({ name: 'dossier',
     });
     ds.DossierStr = U.makeClass({ name: 'DossierStr', superclass: ds.DossierVal,
       methods: function(sc) { return {
-        setInternalValue0: function(val) {
-          sc.setInternalValue0.call(this, val === null ? '' : val.toString());
+        sanitizeValue: function(value) {
+          value = sc.sanitizeValue.call(this, value);
+          return value === null ? '' : value.toString();
         }
       };}
     });
     ds.DossierInt = U.makeClass({ name: 'DossierInt', superclass: ds.DossierVal,
       methods: function(sc) { return {
-        setInternalValue0: function(value) {
-          // Accept the value "null"
+        sanitizeValue: function(value) {
+          
+          value = sc.sanitizeValue.call(this, value);
+          
           if (value === null) value = 0;
+          value = parseInt(value, 10);
+          if (isNaN(value)) throw new Error(this.identity() + ' receive non-numeric value: "' + value + '"');
           
-          // Accept any value which isn't NaN after `parseInt`
-          value = parseInt(value);
-          if (isNaN(value)) throw new Error(this.getAddress() + ' received non-numeric value: "' + value + '"');
+          return value;
           
-          sc.setInternalValue0.call(this, value);
         }
       };}
     });
     ds.DossierBln = U.makeClass({ name: 'DossierBln', superclass: ds.DossierVal,
       methods: function(sc) { return {
-        setInternalValue0: function(value) {
+        sanitizeValue: function(value) {
+          
+          // Accepts `true`, `false`, and `null` (which resolves to `false`)
+          
+          value = sc.sanitizeValue.call(this, value);
           if (value === null) value = false;
           if (value !== true && value !== false) throw new Error('Received non-boolean value: "' + value + '"');
-          sc.setInternalValue0.call(this, value);
+          return value;
+          
         }
       };}
     });
@@ -1188,7 +1176,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           if (!outline.format) throw new Error('Cannot init ' + this.constructor.title + ' with Outline missing "format" value');
           sc.init.call(this, params);
         },
-        setInternalValue0: function(value) {
+        sanitizeValue: function(value) {
+          
+          value = sc.sanitizeValue.call(this, value);
           
           var format = this.outline.format;
           
@@ -1260,7 +1250,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           }
           
-          return sc.setInternalValue0.call(this, arrVal);
+          return arrVal;
+          
+          // return sc.setInternalValue0.call(this, arrVal);
           
         },
         getInternalValue0: function() {
@@ -1312,7 +1304,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         $getDoss: function() {
           
-          var $dossData = new P({ val: { versionName: 'empty state', doss: null } });
+          var $dossData = new P({ value: { versionName: 'empty state', doss: null } });
           
           this.versions.forEach(function(ver) {
             

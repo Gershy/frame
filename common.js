@@ -509,7 +509,7 @@ global.U = {
     
     var conflictLists = {};
     var whitePrototypeProps = [];
-    var blackPrototypeProps = [ 'constructor' ];
+    var blackPrototypeProps = [ 'constructor', 'as' ];
     for (var i = 0; i < mixins.length; i++) {
       
       var mixin = mixins[i];
@@ -523,8 +523,8 @@ global.U = {
         if (props.hasOwnProperty(blackPrototypeProps[k])) throw new Error('Provided reserved prototype property: "' + blackPrototypeProps[k] + '"');
       
       for (var k in props) {
-        if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k))
-          conflictLists[k] = [];
+        
+        if (!conflictLists[k] || !conflictLists.propertyIsEnumerable(k)) conflictLists[k] = [];
         
         conflictLists[k].push({
           name: mixin.name,
@@ -613,21 +613,35 @@ global.U = {
       
     }
     
-    // Ensure that only subclasses can leave out the "init" property
+    // Ensure that only subclasses are exempted from providing an "init" function
     if (superclass === Object && !cls.prototype.hasOwnProperty('init'))
       throw new Error('Missing `init` initializer for base-class "' + name + '"');
     
     // Ensure that `constructor` points to the class
     cls.prototype.constructor = cls;
     
+    // Attach the `as` function to the root of the heirarchy
+    if (superclass === Object) cls.prototype.as = function(/* ... */) {
+      
+      var args = U.toArray(arguments);
+      var funcName = args[0];
+      args[0] = this;
+      if (!this[funcName]) throw new Error('Invalid `as`: "' + funcName + '"');
+      var bind = this[funcName].bind;
+      return bind.apply(bind, args); // `args` is the list of params to the bind: `this` followed by the actual params
+      
+    };
+    
     // Update statik properties
     cls.toString = function() { return heirName; };
     cls.title = name;
+    cls.name = name;
     cls.heirName = heirName;
     cls.par = superclass;
     for (var k in statik) cls[k] = statik[k];
     
     return cls;
+    
   },
   
   // Randomness utility

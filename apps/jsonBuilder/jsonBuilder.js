@@ -1,35 +1,31 @@
 // TODO: Outline and View definition is incredibly ugly.
 // The best solution is probably XML parsing (consider high impact on client-side?)
 
+// TODO: Don't need start/stop for Dossiers, but how about a final "validate" atomic?
+// E.g. without recurseObj, it's possible for DossierObjs to wind up missing some
+// children defined in their Outline. The implementation should avoid this, but
+// Dossiers should validate to FORCE the implementation to behave well
+
+// TODO: Distinguish between locally and globally invalidated? E.g. if a purely-client-side value changes,
+// the View layout is invalidated and needs to recalculated BUT globally no invalidation has occurred.
+// Local invalidations are wired into the local View.
+// Global invalidations update the server. HOW BOUT DAT?
+
 /*
 
-- Formalize syncing
-  - View needs to initialize empty, and load when the Dossier syncs
-  - Use Dossier instead of DossierInformer
-  - The loading is prolly sketchy right now
-  - Weird to have Outlines with default abilities, maybe Actionizer can handle this
-    - Default ability for Array 'mod' not implemented
-- Formalize Activities
 - Ensure that there are no more per-frame updates
+- Formalize Activities
 - Formalize an entire application (e.g. it consists of Actionizer, Channeler+Channels, Outline, Versioner, etc.)
 
 ************************************************
 - Go write something amazing (Lapse? Blindspot?)
 ************************************************
 
-- "Hovering" Dossiers
+- "Hovering" Dossiers (although tricky - since Dossiers are Informers they have to persist when they have usages)
 - Persistence
 - Reduce file sizes
 
 */
-
-/// {CLIENT=
-var old = console.error.bind(console);
-console.error = function(err) {
-  old(err.message);
-  //old(err.stack);
-};
-/// =CLIENT}
 
 var package = new PACK.pack.Package({ name: 'jsonBuilder',
   /// {SERVER=
@@ -113,13 +109,13 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           editor.$transaction.then(function() {
             
             /// {CLIENT=
-            // The client side requests syncs
+            // The client side issues a sync command
             var command = 'sync';
             var params = {};
             /// =CLIENT}
             
             /// {SERVER=
-            // The server side issues mods
+            // The server side issues a mod command in response
             var command = 'mod';
             var params = { doSync: false, data: doss.getJson() };
             /// =SERVER}
@@ -140,7 +136,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           
         };
         
-        this.mod = this.makeAbility('mod', true, function(editor, doss, data) {
+        this.modVal = this.makeAbility('mod', true, function(editor, doss, data) {
           
           // TODO: It's not nearly this easy as the currentl uncommented code!
           // console.log('Mod not implemented ;D');
@@ -151,8 +147,37 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           
         });
         
+        this.modObj = this.makeAbility('mod', true, function(editor, doss, data, session, channelerParams) {
+          
+          return new P({ all: O.map(doss.outline.children, function(childOutline, childName) {
+            
+            var childData = data.hasOwnProperty(childName) ? data[childName] : null;
+            
+            var child = O.contains(doss.children, childName)
+              ? doss.children[childName]
+              : editor.add({ par: doss, name: childName, data: null });
+            
+            return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
+            
+          })});
+          
+        });
+        
+        this.modArr = this.makeAbility('mod', true, function(editor, doss, data, session, channelerParams) {
+          
+          return new P({ all: O.map(data, function(childData, childName) {
+            
+            // We don't want to recurse on objects. This is because objects will
+            // add their children through their own 'mod' ability - and
+            // `recurseObj` will generate all children, even if `data` is null
+            var child = editor.add({ par: doss, data: null, recurseObj: false });
+            return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
+            
+          })});
+          
+        });
+        
       },
-      
       makeAbility: function(name, invalidates, editsFunc) {
         
         /// {DOC=
@@ -180,9 +205,13 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           
           // Perform whatever actions this ability ought to carry out
           var data = U.param(params, 'data');
-          var $result = new P({ run: editsFunc.bind(null, editor, doss, data) });
           
-          return $result.then(function() { // After `act` has run, prepare post-transaction to sync changes
+          // The transaction may alter the Dossier's address! Get the address beforehand.
+          var address = doss.getAddress();
+          
+          var $result = new P({ run: editsFunc.bind(null, editor, doss, data, session, channelerParams) });
+          
+          return $result.then(function() { // After `editsFunc` has run, prepare post-transaction to sync changes
             
             // When the editor transacts, sync any sessions as is necessary. This doesn't block $staging.
             editor.$transaction
@@ -190,6 +219,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 
                 // Send worries if invalidated
                 if (invalidates) doss.worry('invalidated');
+                
+                if (!U.param(params, 'doSync', false)) return;
                 
                 // Determine which sessions need to be informed, and then inform them!
                 
@@ -207,10 +238,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 /// {CLIENT=
                 // Resolves a list containing either one or zero sessions. If `doSync` is true, will sync
                 // the server session (the only session of which a client session is aware).
-                var doSync = U.param(params, 'doSync');
-                var sessionsToInform = doSync ? { server: null } : {}; // The only session a client can inform is the server session
-                var commandParams = { data: data };
-                
+                var sessionsToInform = { server: null }; // The only session a client can inform is the server session
+                var commandParams = { data: data, doSync: true }; // The server should sync any other clients
                 //if (doSync) console.log('Syncing server...');
                 /// =CLIENT}
                 
@@ -220,7 +249,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                     session: sessionToInform,
                     channelerParams: sessionToInform === session ? channelerParams : null,
                     data: {
-                      address: doss.getAddress(),
+                      address: address,
                       command: name,
                       params: commandParams
                     }
@@ -237,10 +266,40 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         };
         
         
+      },
+      recurse: function(outline) {
+        
+        if (U.isInstance(outline, ds.Val)) {
+          
+          O.update(outline.abilities, {
+            sync: this.sync,
+            mod: this.modVal
+          });
+          
+        } else if (U.isInstance(outline, ds.Obj)) {
+          
+          O.update(outline.abilities, {
+            sync: this.sync,
+            mod: this.modObj
+          });
+          
+          for (var k in outline.children) this.recurse(outline.children[k]);
+          
+        } else if (U.isInstance(outline, ds.Arr)) {
+          
+          O.update(outline.abilities, {
+            sync: this.sync,
+            mod: this.modArr
+          });
+          
+          this.recurse(outline.template);
+          
+        }
+        
       }
       
     };}});
-    var actionizer = new Actionizer/*2*/({ channeler: channeler });
+    var actionizer = new Actionizer({ channeler: channeler });
     
     // ==== Initialize outline
     var Val = ds.Val, Obj = ds.Obj, Arr = ds.Arr, Ref = ds.Ref;
@@ -271,18 +330,132 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       
       ]);*/
     
-    var outline = new Obj({ name: 'jsonBuilder', abilities: { sync: actionizer.sync }});
+    /* TODO: Another idea? Although it doesn't allow for defining abilities on Obj or Arr...
+    var outline = ds.parseOutline('jsonBuilder', {
+      
+      typeSet: {
+        stringSet: [
+          {
+            value: {
+              cls: ds.DossierStr,
+              abilities: {}
+            }
+          },
+          null
+        ],
+        objectSet: [
+          {
+            pairSet: [
+              {
+                key: {
+                  cls: ds.DossierStr,
+                  abilities: {}
+                },
+                val: {
+                  cls: ds.DossierRef,
+                  format: '~root.itemSet.$id',
+                  abilities: {}
+                }
+              }
+            ]
+          },
+          null
+        ],
+        arraySet: [
+          {
+            indexSet: [
+              {
+                index: {
+                  cls: ds.DossierRef,
+                  format: '~root.itemSet.$id',
+                  abilities: {}
+                }
+              },
+              null
+            ]
+          },
+          null
+        ]
+      },
+      
+      itemSet: [
+        {
+          cls: ds.DossierRef,
+          format: '~root.typeSet.$type.$id',
+          abilities: {}
+        },
+        null
+      ],
+      
+      render: {
+        cls: ds.DossierRef,
+        format: '~root.itemSet.$id',
+        abilities: {
+        }
+      }
+      
+    });
+    */
+    
+    var outline = new Obj({ name: 'jsonBuilder' });
     
     var typeSet = outline.addChild(new Obj({ name: 'typeSet' }));
     
     // String type
     var stringSet = typeSet.addChild(new Arr({ name: 'stringSet' }));
-    var string = stringSet.setTemplate(new Obj({ name: 'string' }), null);
+    var string = stringSet.setTemplate(new Obj({ name: 'string', abilities: {
+      jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data) {
+        
+        editor.rem({ child: doss });
+        
+      })
+    }}));
     string.addChild(new Val({ name: 'value', defaultValue: '' }));
     
     // Object type
     var objectSet = typeSet.addChild(new Arr({ name: 'objectSet' }));
-    var object = objectSet.setTemplate(new Obj({ name: 'object' }));
+    var object = objectSet.setTemplate(new Obj({ name: 'object', abilities: {
+      addObj: actionizer.makeAbility('addObj', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.objectSet'), data: { pairSet: {} } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newPair = editor.add({ par: doss.getChild('pairSet'), data: { key: 'str', val: newItem } });
+        
+      }),
+      addArr: actionizer.makeAbility('addArr', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.arraySet'), data: { indexSet: {} } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newPair = editor.add({ par: doss.getChild('pairSet'), data: { key: 'obj', val: newItem } });
+        
+      }),
+      addStr: actionizer.makeAbility('addStr', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.stringSet'), data: { value: 'str' } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newPair = editor.add({ par: doss.getChild('pairSet'), data: { key: 'arr', val: newItem } });
+        
+      }),
+      jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+        
+        editor.rem({ child: doss });
+        
+        var pairSet = doss.getChild('pairSet');
+        return new P({ all: O.map(pairSet.children, function(pair) {
+          return pair.getChild('@val').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+        })});
+        
+      }),
+      jsonRemChild: actionizer.makeAbility('jsonRemChild', true, function(editor, doss, data, session, channelerParams) {
+        
+        var childName = U.param(data, 'childName');
+        var child = doss.getChild([ 'pairSet', childName, '@val' ]);
+        editor.rem({ child: doss.getChild([ 'pairSet', childName ]) });
+        
+        return child.$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+        
+      })
+    }}));
     var pairSet = object.addChild(new Arr({ name: 'pairSet' }));
     var pair = pairSet.setTemplate(new Obj({ name: 'pair' }));
     pair.addChild(new Val({ name: 'key' }));
@@ -293,7 +466,48 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     
     // Array type
     var arraySet = typeSet.addChild(new Arr({ name: 'arraySet' }));
-    var array = arraySet.setTemplate(new Obj({ name: 'array' }));
+    var array = arraySet.setTemplate(new Obj({ name: 'array', abilities: {
+      addObj: actionizer.makeAbility('addObj', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.objectSet'), data: { pairSet: {} } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newIndex = editor.add({ par: doss.getChild('indexSet'), data: newItem });
+        
+      }),
+      addArr: actionizer.makeAbility('addArr', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.arraySet'), data: { indexSet: {} } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newIndex = editor.add({ par: doss.getChild('indexSet'), data: newItem });
+        
+      }),
+      addStr: actionizer.makeAbility('addStr', true, function(editor, doss, data) {
+        
+        var newObj = editor.add({ par: doss.getChild('~root.typeSet.stringSet'), data: { value: 'str' } });
+        var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
+        var newIndex = editor.add({ par: doss.getChild('indexSet'), data: newItem });
+        
+      }),
+      jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+        
+        editor.rem({ child: doss });
+        
+        var indexSet = doss.getChild('indexSet');
+        return new P({ all: O.map(indexSet.children, function(index) {
+          return index.getChild('@').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+        })});
+        
+      }),
+      jsonRemChild: actionizer.makeAbility('jsonRemChild', true, function(editor, doss, data, session, channelerParams) {
+        
+        var childName = U.param(data, 'childName');
+        var child = doss.getChild([ 'indexSet', childName, '@' ]);
+        editor.rem({ child: doss.getChild([ 'indexSet', childName ]) });
+        
+        return child.$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+        
+      })
+    }}));
     var indexSet = array.addChild(new Arr({ name: 'indexSet' }));
     var index = indexSet.setTemplate(new Ref({ name: 'index', format: '~root.itemSet.$id' }));
     /// {CLIENT=
@@ -301,9 +515,18 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     /// =CLIENT}
     
     var itemSet = outline.addChild(new Arr({ name: 'itemSet' }));
-    itemSet.setTemplate(new Ref({ name: 'item', format: '~root.typeSet.$type.$id' }));
+    itemSet.setTemplate(new Ref({ name: 'item', format: '~root.typeSet.$type.$id', abilities: {
+      jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+        
+        editor.rem({ child: doss });
+        return doss.getChild('@').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+        
+      })
+    }}));
     
-    var render = outline.addChild(new Ref({ name: 'render', format: '~root.itemSet.$id', abilities: { mod: actionizer.mod } }));
+    var render = outline.addChild(new Ref({ name: 'render', format: '~root.itemSet.$id' }));
+    
+    actionizer.recurse(outline); // Apply all actions to all members of the outline
     
     // TODO: The following the should be implemented via abilities
     var remItem = function(editor, item) {
@@ -414,13 +637,10 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
       
       var renderer = function(name, itemRef) {
         
-        console.log(itemRef.constructor.title + '(' + itemRef.getAddress() + ')');
-        
         var childInfo = new nf.CalculationInformer({
           dependencies: [ itemRef ],
           calc: function() {
             
-            console.log('RECALC CHILDINFO');
             var item = itemRef.dereference();
             var ret = {};
             if (item) ret[item.name] = item;
@@ -429,17 +649,19 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
           }
         });
         
-        return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: [ 'renderer' ], genChildView: function(name, info) {
+        return new uf.DynamicSetView({ name: name, childInfo: childInfo, classList: [ 'renderer' ], genChildView: function(name, item) {
           
-          var setType = info.value ? info.value[0] : null;
+          var setType = item.value ? item.value[0] : null;
           
           if (setType === 'stringSet') {
             
-            var view = new uf.TextEditView({ name: name, info: info.getChild('@.value') })
+            var view = new uf.TextEditView({ name: name, info: item.getChild('@.value') })
             
           } else if (setType === 'objectSet') {
             
-            var foldedInf = new ds.DossierInformer({ doss: info.getChild('@.folded') });
+            var object = item.getChild('@');
+            var foldedInf = object.getChild('folded');
+            
             var toggleFold = new uf.ActionDecorator({ action: foldedInf.modValue.bind(foldedInf, function(f) { return !f; }) });
             var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
@@ -453,30 +675,25 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
               
               new uf.TextView({ name: 'lb', info: '{', decorators: [ toggleFold ] }),
               
-              new uf.DynamicSetView({ name: 'pairSet', childInfo: info.getChild('@.pairSet'), genChildView: function(name, info) {
+              new uf.DynamicSetView({ name: 'pairSet', childInfo: item.getChild('@.pairSet'), genChildView: function(name, pair) {
                 
                 return new uf.SetView({ name: name, cssClasses: [ 'pair' ], children: [
                   
-                  new uf.TextEditView({ name: 'key', info: info.getChild('key') }),
+                  new uf.TextEditView({ name: 'key', info: pair.getChild('key') }),
                   
                   new uf.TextView({ name: 'sep', info: ':' }),
                   
-                  renderer('val', info.getChild('val')),
+                  renderer('val', pair.getChild('val')),
                   
                   // Pair controls
                   new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
                     
                     new uf.ActionDecorator({ $action: function() {
                       
-                      var pair = info;
-                      var item = pair.getChild('@val');
-                      var type = item.getChild('@');
+                      return object.$useAbility('jsonRemChild', { data: { childName: pair.name }, doSync: true });
                       
-                      var editor = new ds.Editor();
-                      editor.rem({ child: pair });
-                      remItem(editor, item);
-                      
-                      return editor.$transact();
+                      //console.log('REMMING:', item.getAddress());
+                      //return pair.getChild('@val').$useAbility('jsonRem', { data: null, doSync: true });
                       
                     }})
                     
@@ -493,33 +710,21 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newString = editor.add({ par: rootDoss.getChild('typeSet.stringSet'), data: { value: 'val' } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newString });
-                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'str', val: newItem } });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addStr', { data: null, doSync: true });
                     
                   }})
                 ]}),
                 new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newObject = editor.add({ par: rootDoss.getChild('typeSet.objectSet'), data: { pairSet: {} } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newObject });
-                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'obj', val: newItem } });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addObj', { data: null, doSync: true });
                     
                   }})
                 ]}),
                 new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newArray = editor.add({ par: rootDoss.getChild('typeSet.arraySet'), data: { indexSet: {} } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newArray });
-                    var newPair = editor.add({ par: info.getChild('@.pairSet'), data: { key: 'arr', val: newItem } });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addArr', { data: null, doSync: true });
                     
                   }})
                 ]})
@@ -530,7 +735,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
             
           } else if (setType === 'arraySet') {
             
-            var foldedInf = new ds.DossierInformer({ doss: info.getChild('@.folded') });
+            var array = item.getChild('@');
+            var foldedInf = array.getChild('folded');
             var toggleFold = new uf.ActionDecorator({ action: foldedInf.modValue.bind(foldedInf, function(f) { return !f; }) });
             var applyFold = new uf.ClassDecorator({
               list: [ 'open', 'closed' ],
@@ -544,25 +750,18 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
               
               new uf.TextView({ name: 'lb', info: '[', decorators: [ toggleFold ] }),
               
-              new uf.DynamicSetView({ name: 'indexSet', childInfo: info.getChild('@.indexSet'), genChildView: function(name, info) {
+              new uf.DynamicSetView({ name: 'indexSet', childInfo: item.getChild('@.indexSet'), genChildView: function(name, index) {
                 
                 return new uf.SetView({ name: name, cssClasses: [ 'index' ], children: [
                   
-                  renderer('val', info),
+                  renderer('val', index),
                   
                   // Index controls
                   new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
                     
                     new uf.ActionDecorator({ $action: function() {
                       
-                      var index = info;
-                      var item = index.getChild('@');
-                      
-                      var editor = new ds.Editor();
-                      editor.rem({ child: index });
-                      remItem(editor, item);
-                      
-                      return editor.$transact();
+                      return array.$useAbility('jsonRemChild', { data: { childName: index.name }, doSync: true });
                       
                     }})
                     
@@ -579,33 +778,21 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newString = editor.add({ par: rootDoss.getChild('typeSet.stringSet'), data: { value: 'val' } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newString });
-                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addStr', { data: null, doSync: true });
                     
                   }})
                 ]}),
                 new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newObject = editor.add({ par: rootDoss.getChild('typeSet.objectSet'), data: { pairSet: {} } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newObject });
-                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addObj', { data: null, doSync: true });
                     
                   }})
                 ]}),
                 new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
                   new uf.ActionDecorator({ $action: function() {
                     
-                    var editor = new ds.Editor();
-                    var newArray = editor.add({ par: rootDoss.getChild('typeSet.arraySet'), data: { indexSet: {} } });
-                    var newItem = editor.add({ par: rootDoss.getChild('itemSet'), data: newArray });
-                    var newIndex = editor.add({ par: info.getChild('@.indexSet'), data: newItem });
-                    return editor.$transact();
+                    return item.getChild('@').$useAbility('addArr', { data: null, doSync: true });
                     
                   }})
                 ]})
@@ -657,17 +844,10 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     /// =CLIENT}
     
     editor.$transact()
-      .then(function() { console.log('TRANSACTED'); return channeler.$start(); }) // Start the channeler once `rootDoss` is ready
+      .then(channeler.$start.bind(channeler))
       /// {CLIENT=
+      .then(rootDoss.$useAbility.bind(rootDoss, 'sync'))
       .then(function() {
-        
-        return rootDoss.$useAbility('sync') 
-          .then(function() { console.log('DONE SYNC'); });
-        
-      })
-      .then(function() {
-        
-        console.log('HEEE:', rootDoss.getJson());
         
         window.doss = rootDoss;
         viewFunc().start();
