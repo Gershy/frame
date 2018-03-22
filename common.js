@@ -144,19 +144,6 @@ Error.stackTraceLimit = Infinity;
         return rem;
       }
     },
-  },
-  { target: Function.prototype,
-    props: {
-      use: function() {
-        
-        var pass = this;
-        var args = U.toArray(arguments);
-        return function() {
-          return pass.apply(null, args);
-        };
-        
-      }
-    }
   }
 ].forEach(function(obj) {
   var trg = obj.target;
@@ -624,11 +611,22 @@ global.U = {
     if (superclass === Object) cls.prototype.as = function(/* ... */) {
       
       var args = U.toArray(arguments);
+      
+      var that = this;
+      var funcName = args.shift();
+      var func = this[funcName];
+      return function() {
+        return func.apply(that, args);
+      };
+      
+      /*
+      var args = U.toArray(arguments);
       var funcName = args[0];
       args[0] = this;
       if (!this[funcName]) throw new Error('Invalid `as`: "' + funcName + '"');
       var bind = this[funcName].bind;
       return bind.apply(bind, args); // `args` is the list of params to the bind: `this` followed by the actual params
+      */
       
     };
     

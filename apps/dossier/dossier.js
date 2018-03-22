@@ -873,13 +873,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
         getValue: function() {
           return this.getJson();
         },
-        setValue: function(val) {
+        setValue: function(val, doSync) {
           
           // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
           // instead of "setValue" - but this includes the functionality of causing "invalidated"
           // worries the moment "setValue" is called. We don't want this; instead we want the
           // ability activated by "setValue" to be responsible for calling "invalidated".
-          this.$useAbility('mod', { data: val }).done();
+          this.$useAbility('mod', { data: val, doSync: doSync || false }).done();
           
         },
         

@@ -78,68 +78,6 @@ var package = new PACK.pack.Package({ name: 'userify',
       
     };
     
-    /* DomInformer - An Informer which updates based on DOM events (uses MutationObserver) */
-    uf.DomInformer = U.makeClass({ name: 'DomInformer', superclass: nf.AbstractValueInformer,
-      methods: function(sc, c) { return {
-        
-        init: function(params /* domElement, props, mutationConfig */) {
-          
-          // NOTE: It's important that DomInformers don't cause worries which make changes
-          // which again alert the DomInformer. That results in LAG...
-          
-          sc.init.call(this, params);
-          
-          this.domElement = U.param(params, 'domElement');
-          this.props = U.param(params, 'props');
-          this.mutationConfig = U.param(params, 'mutationConfig', {
-            childList: true,
-            attributes: false,
-            characterData: false,
-            subtree: true
-            
-            /*
-            attributeValue: null,
-            characterDataOldValue: null,
-            attributeFilter: null // [ 'class', 'href' ... ]
-            */
-            
-          });
-          
-          this.observer = null;
-          
-          this.onMutate(); // Apply default value
-          
-        },
-        onMutate: function(mutations) {
-          
-          var p = this.props;
-          var val = {};
-          for (var i = 0, len = p.length; i < len; i++) val[p[i]] = this.domElement[p[i]];
-          this.setValue(val);
-          
-        },
-        
-        isStarted: function() {
-          return !!this.observer;
-        },
-        start: function() {
-          
-          sc.start.call(this);
-          this.observer = new MutationObserver(this.onMutate.bind(this));
-          this.observer.observe(this.domElement, this.mutationConfig);
-          
-        },
-        stop: function() {
-          
-          this.observer.disconnect();
-          this.observer = null;
-          sc.stop.call(this);
-          
-        }
-        
-      };}
-    });
-    
     /* Decorator */
     uf.Decorator = U.makeClass({ name: 'Decorator',
       methods: function(sc, c) { return {
@@ -317,6 +255,9 @@ var package = new PACK.pack.Package({ name: 'userify',
         start: function(view) {
           
           sc.start.call(this, view);
+          
+          if (view['~' + this.id + '.click'])
+            throw new Error('View ' + view.name + ' already has handler!!! :(');
           
           view.domRoot.setAttribute('tabindex', 0);
           view['~' + this.id + '.click'] = this.doAction.bind(this, view);
@@ -761,7 +702,8 @@ var package = new PACK.pack.Package({ name: 'userify',
         }
       },
       methods: function(sc, c) { return {
-        init: function(params /* name, cssId, framesPerTick, cssClasses, decorators */) {
+        
+        init: function(params /* name, cssId, cssClasses, decorators */) {
           if (!uf.NAME_REGEX.test(this.name)) throw new Error('Illegal View name: "' + this.name + '"');
           
           // `this.cssId` allows html id generation to begin from such a value, instead of including the entire heirarchy chain
@@ -769,10 +711,9 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           this.cssClasses = U.param(params, 'cssClasses', []);
           this.decorators = U.param(params, 'decorators', []);
-          this.framesPerTick = U.param(params, 'framesPerTick', 1);
-          this.frameCount = this.framesPerTick; // `frameCount` starting full ensures 1st tick not skipped
           
           this.domRoot = null;
+          this.started = false;
         },
         getNamedChild: function(addr) { return null; },
         
@@ -791,29 +732,33 @@ var package = new PACK.pack.Package({ name: 'userify',
         createDomRoot: function() {
           return document.createElement('div');
         },
-        update: function(millis) {
+        
+        getAllInformers: function() {
           
-          // Calling `update` ensures that `domRoot` is initialized
-          // if (this.domRoot === null) this.start();
+          return {
+          };
           
-          if (this.framesPerTick) {
-            
-            if (++this.frameCount >= this.framesPerTick) {
-              
-              this.tick(millis * this.framesPerTick);
-              this.frameCount = 0;
-              
-            }
-          
-          }
-          
-          return PACK.p.$null;
-          
-        },
-        tick: function(millis) {
         },
         
         start: function() {
+          
+          // TODO: Would be nice to simply ensure that `start` is never called on
+          // Views which are already started. At the time this seemed tricky;
+          // DynamicSetView regularly tried to start already-started Views
+          if (this.started) return;
+          this.started = true;
+          this.start0();
+          
+        },
+        stop: function() {
+          
+          if (!this.started) return;
+          this.started = false;
+          this.stop0();
+          
+        },
+        
+        start0: function() {
           
           this.initDomRoot();
           
@@ -827,25 +772,50 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           if (this.par) this.par.provideContainer(this).appendChild(this.domRoot);
           
+          // Now `this.domRoot` is fully initialized!
+          
+          // Add worries for all informers
+          var infs = this.getAllInformers();
+          var worryFuncs = [];
+          for (var infTerm in infs) {
+            var funcName = 'on' + infTerm[0].toUpperCase() + infTerm.substr(1) + 'Change';
+            this['~inf.' + infTerm] = this[funcName].bind(this);
+            infs[infTerm].addWorry('invalidated', this['~inf.' + infTerm]);
+            worryFuncs.push(this['~inf.' + infTerm]);
+          }
+          
+          // After all worries are attached simulate them all invalidating to obtain a nice initial state
+          A.each(worryFuncs, function(f) { f(); }); 
+          
+          // Apply all decorators
           for (var i = 0, len = this.decorators.length; i < len; i++) {
             this.decorators[i].start(this);  // Make any initial changes
             this.decorators[i].update(this); // Perform the first update immediately
           }
           
         },
-        stop: function() {
+        stop0: function() {
           
+          // Remove all decorators
           for (var i = 0, len = this.decorators.length; i < len; i++) this.decorators[i].stop(this);
+          
+          // Remove all worries
+          var infs = this.getAllInformers();
+          for (var infTerm in infs) {
+            infs[infTerm].remWorry('invalidated', this['~inf.' + infTerm]);
+            delete this['~inf.' + infTerm];
+          }
+          
           if (this.domRoot && this.domRoot.parentNode) this.domRoot.parentNode.removeChild(this.domRoot);
           this.domRoot = null;
           
         }
-      
+        
       };}
     });
     uf.HtmlView = U.makeClass({ name: 'HtmlView', superclass: uf.View,
       methods: function(sc, c) { return {
-        init: function(params /* name, cssId, framesPerTick, cssClasses, decorators, html */) {
+        init: function(params /* name, cssId, cssClasses, decorators, html */) {
           sc.init.call(this, params);
           this.html = U.param(params, 'html');
         },
@@ -853,12 +823,12 @@ var package = new PACK.pack.Package({ name: 'userify',
           var ret = sc.createDomRoot.call(this);
           ret.innerHTML = this.html;
           return ret;
-        },
-        tick: function() {}
+        }
       };}
     });
     uf.TextView = U.makeClass({ name: 'TextView', superclass: uf.View,
       methods: function(sc, c) { return {
+        
         init: function(params /* name, info */) {
           sc.init.call(this, params);
           this.info = uf.pafam(params, 'info');
@@ -869,61 +839,63 @@ var package = new PACK.pack.Package({ name: 'userify',
           ret.classList.add('text');
           return ret;
         },
-        tick: function(millis) {
-          var val = this.info.getValue();
-          uf.domSetText(this.domRoot, val);
-          //uf.domSetText(this.domRoot, this.info.getValue());
+        
+        onTextChange: function() {
+          var text = this.info.getValue();
+          if (text === null) text = '';
+          text = text.toString();
+          uf.domSetText(this.domRoot, text);
         },
         
-        start: function() {
-          sc.start.call(this);
-        },
-        stop: function() {
-          sc.stop.call(this);
-          //this.info.stop();
+        getAllInformers: function() {
+          return O.update(sc.getAllInformers.call(this), {
+            text: this.info
+          });
         }
+        
       };}
     });
     uf.InteractiveView = U.makeClass({ name: 'InteractiveView', superclass: uf.View,
       methods: function(sc, c) { return {
-        init: function(params /* name, enabledData */) {
+        
+        init: function(params /* name, enabledInfo */) {
           sc.init.call(this, params);
-          this.enabledData = uf.pafam(params, 'enabledData', true);
+          this.enabledInfo = uf.pafam(params, 'enabledInfo', true);
         },
         
-        tick: function(millis) {
-          if (this.enabledData.getValue())
-            this.domRoot.classList.remove('disabled');
-          else
-            this.domRoot.classList.add('disabled');
+        onEnabledChange: function() {
+          var action = this.enabledInfo.getValue() ? 'remove' : 'add';
+          this.domRoot.classList[action]('disabled');
         },
+        
+        getAllInformers: function() {
+          return O.update(sc.getAllInformers.call(this), {
+            enabled: this.enabledInfo
+          });
+        }
+        
       };}
     });
     uf.TextEditView = U.makeClass({ name: 'TextEditView', superclass: uf.InteractiveView,
       methods: function(sc, c) { return {
+        
         init: function(params /* name, multiline, info, placeholderInfo, enabledData */) {
           sc.init.call(this, params);
           this.multiline = U.param(params, 'multiline', false);
           this.info = uf.pafam(params, 'info', '');
           this.placeholderInfo = uf.pafam(params, 'placeholderInfo', '');
+          this.syncOnInput = U.param(params, 'syncOnInput');
         },
         
         createDomRoot: function() {
+          
           var ret = document.createElement('div');
           ret.classList.add('input');
           ret.classList.add(this.multiline ? 'multiline' : 'inline');
           
           var input = document.createElement(this.multiline ? 'textarea' : 'input');
           input.classList.add('interactive');
-          input.oninput = function(e) {
-            
-            this.info.setValue(input.value);
-            
-            /*var editor = new ds.Editor();
-            editor.mod({ doss: this.info, data: input.value });
-            editor.$transact().done();*/
-            
-          }.bind(this);
+          input.oninput = function(e) { this.info.setValue(input.value, this.syncOnInput); }.bind(this); // TODO: Have to ensure that the string is being set in the DOM before being set in the Informer - otherwise LOOPS when typing
           ret.appendChild(input);
           
           var placeholder = document.createElement('div');
@@ -940,43 +912,60 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
           ret.appendChild(anim);
           
+          // Set up listeners to apply the "focus" class
+          uf.domAddListener(input, 'onfocus', function() {
+            if (!ret.classList.contains('focus')) {
+              ret.classList.add('focus');
+              for (var i = 0, len = anim.childNodes.length; i < len; i++) uf.domRestartAnimation(anim.childNodes[i]);
+            }
+          });
+          
+          uf.domAddListener(input, 'onblur', function() {
+            ret.classList.remove('focus');
+          });
+          
           return ret;
-        },
-        tick: function(millis) {
-          
-          sc.tick.call(this, millis);
-          
-          var input = this.domRoot.childNodes[0];
-          var inputText = this.info.getValue();
-          if (inputText === null) inputText = ''; // Work with `null` value as if it were the empty string
-          
-          // Update text items
-          uf.domSetText(this.domRoot.childNodes[1], this.placeholderInfo.getValue());
-          uf.domSetValue(input, inputText);
-          
-          // Update the "_empty" class
-          if (inputText.toString().length)
-            this.domRoot.classList.remove('empty');
-          else
-            this.domRoot.classList.add('empty');
-          
-          // Update the "_focus" class
-          if (document.activeElement === input && !this.domRoot.classList.contains('focus')) {
-            this.domRoot.classList.add('focus');
-            var animSet = this.domRoot.childNodes[2].childNodes;
-            for (var i = 0, len = animSet.length; i < len; i++) uf.domRestartAnimation(animSet[i]);
-          } else if (document.activeElement !== input) {
-            this.domRoot.classList.remove('focus');
-          }
           
         },
+        
+        onTextChange: function() {
+          
+          var inputElem = this.domRoot.childNodes[0];
+          var inputVal = this.info.getValue();
+          if (inputVal === null) inputVal = '';
+          inputVal = inputVal.toString(); // Ensure it's a string
+          uf.domSetValue(inputElem, inputVal);
+          
+          if (inputVal.length)  this.domRoot.classList.remove('empty');
+          else                  this.domRoot.classList.add('empty');
+          
+        },
+        onPlaceholderChange: function() {
+          
+          var placeholderElem = this.domRoot.childNodes[1];
+          uf.domSetText(placeholderElem, this.placeholderInfo.getValue());
+          
+        },
+        
+        getAllInformers: function() {
+          
+          return O.update(sc.getAllInformers.call(this), {
+            text: this.info,
+            placeholder: this.placeholderInfo
+          });
+          
+        }
+        
       };}
     });
+    
+    /* // TODO: CanvasView; move to its own package??
+    
     uf.CanvasView = U.makeClass({ name: 'CanvasView', superclass: uf.View,
       description: 'Generates a canvas and paint handler for ' +
         'arbitrary graphics',
       methods: function(sc, c) { return {
-        init: function(params /* name, options { centered }, drawFunc(graphicsContext, millis) */) {
+        init: function(params /* name, options { centered }, drawFunc(graphicsContext, millis) * /) {
           
           sc.init.call(this, params);
           
@@ -993,7 +982,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           return canvas;
         },
-        tick: function(millis) {
+        update: function() {
           var canvas = this.domRoot;
           var bounds = canvas.parentNode.getBoundingClientRect();
           var bw = Math.round(bounds.width);
@@ -1008,11 +997,12 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           this.context.save();
           if (this.options.centered) { this.context.translate(bw >> 1, bh >> 1); }
-          this.drawFunc(this.context, millis)
+          this.drawFunc(this.context)
           this.context.restore();
         }
       };}
     });
+    */
     
     /* SET VIEW */
     uf.AbstractSetView = U.makeClass({ name: 'AbstractSetView', superclass: uf.View,
@@ -1037,6 +1027,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           child.par = this;
           this.children[child.name] = child;
+          if (this.started) child.start();
           
           return child;
           
@@ -1070,13 +1061,13 @@ var package = new PACK.pack.Package({ name: 'userify',
           throw new Error('not implemented');
         },
         
-        start: function() {
-          sc.start.call(this);
+        start0: function() {
+          sc.start0.call(this);
           for (var k in this.children) this.children[k].start();
         },
-        stop: function() {
+        stop0: function() {
           for (var k in this.children) this.children[k].stop();
-          sc.stop.call(this);
+          sc.stop0.call(this);
         }
         
       };}
@@ -1085,6 +1076,7 @@ var package = new PACK.pack.Package({ name: 'userify',
       description: 'The simplest implementation of AbstractSetView. ' +
         'Updates all child views.',
       methods: function(sc, c) { return {
+        
         init: function(params /* name, children, numWrappers */) {
           sc.init.call(this, params);
           this.numWrappers = U.param(params, 'numWrappers', 0);
@@ -1096,7 +1088,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           for (var i = 0, len = this.numWrappers; i < len; i++) {
             ptr.appendChild(document.createElement('div'));
             ptr = ptr.childNodes[0];
-            ptr.classList.add('wrap');
+            ptr.classList.add('wrapper');
+            ptr.classList.add('wrapper' + i);
           }
           return ret;
         },
@@ -1104,14 +1097,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           var ret = this.domRoot;
           for (var i = 0, len = this.numWrappers; i < len; i++) ret = ret.childNodes[0];
           return ret;
-        },
-        update: function(millis) {
-          var children = this.children;
-          
-          sc.update.call(this, millis);
-          for (var k in this.children) this.children[k].update(millis);
-        },
-        tick: function(millis) {
         }
         
       };}
@@ -1119,49 +1104,30 @@ var package = new PACK.pack.Package({ name: 'userify',
     uf.RootView = U.makeClass({ name: 'RootView', superclass: uf.SetView,
       description: '',
       methods: function(sc, c) { return {
-        init: function(params /* updateFunc */) {
-          sc.init.call(this, params);
-          this.updateFunc = U.param(params, 'updateFunc', null);
-          this.updateTimingInfo = nf.toInfo(0);
-          this.running = false;
-          this.updateMs = 1000 / 60; // 60fps
-        },
-        update: function(millis) {
-          if (this.updateFunc) this.updateFunc();
-          sc.update.call(this, millis);
-        },
-        animationLoop: function() {
-          
-          // Once called this method will keep on calling itself
-          
-          if (!this.running) return;
-          
-          var time0 = +new Date();
-          this.update(this.updateMs);
-          this.updateTimingInfo.setValue(new Date() - time0);
-          requestAnimationFrame(this.animationLoop.bind(this));
-          
-        },
-        start: function() {
+        
+        start0: function() {
           
           this.domRoot = this.createDomRoot();
           document.body.appendChild(this.domRoot);
+          sc.start0.call(this);
           
-          sc.start.call(this);
-          
-          this.running = true;
-          requestAnimationFrame(this.animationLoop.bind(this));
+          this.update(); // Immediately update once
           
         },
-        stop: function() {
-          sc.stop.call(this);
-          this.running = false;
+        stop0: function() {
+          
+          if (this.domRoot) document.body.removeChild(this.domRoot);
+          sc.stop0.call(this);
+          
         }
+        
       };}
     });
     uf.ChoiceView = U.makeClass({ name: 'ChoiceView', superclass: uf.AbstractSetView,
       methods: function(sc, c) { return {
+        
         init: function(params /* name, choiceInfo, transitionTime, children */) {
+          
           sc.init.call(this, params);
           
           // Info returning the name of one of the children
@@ -1172,16 +1138,15 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           // Property to keep track of the currently active child
           this.currentChild = null;
+          
         },
         
         provideContainer: function() {
           return this.domRoot;
         },
-        update: function(millis) {
-          sc.update.call(this, millis);
-          if (this.currentChild) this.currentChild.update(millis);
-        },
-        tick: function(millis) {
+        
+        onChoiceChange: function() {
+          
           var choice = this.choiceInfo.getValue();
           
           if (choice === null) {
@@ -1214,13 +1179,26 @@ var package = new PACK.pack.Package({ name: 'userify',
             if (this.currentChild) this.domRoot.classList.add('choose-' + this.currentChild.name);
             
           }
+          
+        },
+        
+        getAllInformers: function() {
+          
+          return O.update(sc.getAllInformers.call(this), {
+            choice: this.choiceInfo
+          });
+          
         }
+        
       };}
     });
+    
+    /* TODO: Probably makes more sense to compose these with Views+Decorators
+    
     uf.TextHideView = U.makeClass({ name: 'TextHideView', superclass: uf.ChoiceView,
       description: 'A text field that is hidden when its text is empty',
       methods: function(sc, c) { return {
-        init: function(params /* name, info */) {
+        init: function(params /* name, info * /) {
           var info = uf.pafam(params, 'info');
           sc.init.call(this, O.update(params, {
             choiceInfo: nf.toInfo(function() { return info.getValue() ? 'text' : null; }),
@@ -1229,13 +1207,18 @@ var package = new PACK.pack.Package({ name: 'userify',
         }
       };}
     });
+    
     uf.DynamicTextEditView = U.makeClass({ name: 'DynamicTextEditView', superclass: uf.ChoiceView,
       description: 'A text field which is conditionally editable',
       methods: function(sc, c) { return {
-        init: function(params /* name, editableData, info, inputViewParams */) {
+        init: function(params /* name, editableData, info, inputViewParams * /) {
+          
           var editableData = uf.pafam(params, 'editableData');
           this.info = uf.pafam(params, 'info');
           var inputViewParams = U.param(params, 'inputViewParams', {});
+          
+          
+          
           sc.init.call(this, O.update(params, {
             choiceInfo: nf.toInfo(function() { return editableData.getValue() ? 'edit' : 'display'; }),
             children: [
@@ -1243,9 +1226,13 @@ var package = new PACK.pack.Package({ name: 'userify',
               new uf.TextView({ name: 'display', info: this.info })
             ]
           }));
+          
         }
       };}
     });
+    
+    */
+    
     uf.DynamicSetView = U.makeClass({ name: 'DynamicSetView', superclass: uf.SetView,
       description: 'A SetView whose children are based on Info. ' +
         'Modifications to the Info instantly modify the children of ' +
@@ -1261,17 +1248,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
           this.comparator = U.param(params, 'comparator', null); // TODO: implement!
           
-          this.onChildrenInvalidated = null;
-          
         },
         
-        tick: function(millis) {
+        onChildrenChange: function(cd) {
           
-          this.updateChildren();
-          
-        },
-        
-        updateChildren: function(cd) {
           /*
           Fully compares `this.children` to `this.childInfo.getValue()`
           Adds/removes any elements in `this.children` based on their
@@ -1295,14 +1275,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
           
           // Remove all children as necessary
-          for (var k in rem) {
-            
-            // TODO: remChild stops the child. addChild doesn't start the child.
-            // That's an annoying lack of symmetry.
-            var child = this.remChild(k);
-            // if (this.isStarted()) child.stop();
-          
-          }
+          for (var k in rem) this.remChild(k);
           
           // Add all children as necessary
           for (var k in add) {
@@ -1314,8 +1287,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             add[k] = this.addChild(child);
             if (!add[k]) throw new Error('DynamicSetView `addChild` failed');
             
-            if (this.isStarted()) add[k].start();
-            
           }
           
           return { rem: rem, add: add };
@@ -1323,6 +1294,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         },
         
         renameChild: function(view, newName) {
+          
           if (newName === view.name) return;
           
           if (O.contains(this.children, newName)) throw new Error('A child is already named "' + newName + '"; can\'t rename');
@@ -1343,21 +1315,17 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
           
           view.name = newName;
+          
         },
         
-        isStarted: function() {
-          return !!this.onChildrenInvalidated;
-        },
-        start: function() {
+        getAllInformers: function() {
           
-          sc.start.call(this);
-          
-          // TODO: Child-info may be passing its value through Worry parameters exactly where that `null` is...
-          this.onChildrenInvalidated = this.updateChildren.bind(this, null);
-          this.childInfo.addWorry('invalidated', this.onChildrenInvalidated);
+          return O.update(sc.getAllInformers.call(this), {
+            children: this.childInfo // TODO: `onChildrenChange` has a `cd` param; what is being passed from here?
+          });
           
         },
-        stop: function() {
+        stop0: function() {
           
           /*
           Here we update as if `this.childInfo` returned an empty set.
@@ -1374,19 +1342,15 @@ var package = new PACK.pack.Package({ name: 'userify',
           based on the new submission.
           
           This problem is now solved by always removing all cached elements by calling
-          `updateChildren` with an empty set. This makes it impossible for a `DynamicSetView` to
+          `onChildrenChange` with an empty set. This makes it impossible for a `DynamicSetView` to
           maintain an invalid value by missing a more recent one.
           
           TODO: A further consideration: a `hasInfoChanged` parameter, allowing the
           `DynamicSetView` to detect changes on its children and call `genChildView` as required.
           */
           
-          this.updateChildren({});
-          
-          this.childInfo.remWorry('invalidated', this.onChildrenInvalidated);
-          this.onChildrenInvalidated = null;
-          
-          sc.stop.call(this);
+          this.onChildrenChange({});
+          sc.stop0.call(this);
           
         }
       
