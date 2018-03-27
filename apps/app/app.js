@@ -12,6 +12,7 @@ var package = new PACK.pack.Package({ name: 'app',
         this.setupChanneler = U.param(params, 'setupChanneler');
         this.setupActionizer = U.param(params, 'setupActionizer');
         this.setupOutline = U.param(params, 'setupOutline');
+        this.setupDoss = U.param(params, 'setupDoss', function(doss) {});
         this.genOutlineData = U.param(params, 'genOutlineData');
         
         this.activities = [];
@@ -55,6 +56,7 @@ var package = new PACK.pack.Package({ name: 'app',
         return editor.$transact()
           .then(function() { channeler.handler = doss; }) // Set `doss` as the request handler
           .then(channeler.as('$start'))                   // Start the channeler
+          .then(this.setupDoss.bind(null, doss))
           /// {CLIENT=
           .then(function() {                              // Generate the view
             

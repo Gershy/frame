@@ -92,7 +92,10 @@ var package = new PACK.pack.Package({ name: 'userify',
           // OR is the real solution to avoid many invalidations??
           
           var updateView = view['~' + this.id + '.update'] = this.update.bind(this, view);
-          A.each(this.getAllInformers(), function(inf) { inf.addWorry('invalidated', updateView); });
+          A.each(this.getAllInformers(), function(inf) {
+            inf.addWorry('invalidated', updateView);
+            updateView(inf.getValue()); // Initially update!
+          });
           
         },
         stop: function(view) {
@@ -125,15 +128,24 @@ var package = new PACK.pack.Package({ name: 'userify',
         },
         update: function(view) {
           
-          var nextClass = this.informer.getValue();
+          var nextClasses = this.informer.getValue();
+          if (nextClasses !== null && !U.isObj(nextClasses, Array)) nextClasses = [ nextClasses ];
+          
           var classList = view.domRoot.classList;
-          if (nextClass === null || !classList.contains(nextClass)) {
+          classList.remove.apply(classList, this.list); 
+          
+          if (!nextClasses) return;
+          
+          for (var i = 0, len = nextClasses.length; i < len; i++)
+            classList.add(nextClasses[i]);
+          
+          
+          /*if (nextClass === null || !classList.contains(nextClass)) {
             
             // Remove all classes, then apply current one
-            classList.remove.apply(classList, this.list); 
             if (nextClass !== null) classList.add(nextClass);
             
-          }
+          }*/
           
         },
         start: function(view) {
@@ -549,7 +561,7 @@ var package = new PACK.pack.Package({ name: 'userify',
         createClassDecorator: function(view) {
           return new uf.ClassDecorator({
             list: [ 'dragHover' ],
-            info: function(view) { return this.info.getValue() === view ? 'dragHover' : null; }.bind(this, view)
+            informer: function(view) { return this.info.getValue() === view ? 'dragHover' : null; }.bind(this, view)
           })
         },
         start: function(view) {
@@ -776,16 +788,20 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           // Add worries for all informers
           var infs = this.getAllInformers();
-          var worryFuncs = [];
+          
           for (var infTerm in infs) {
+            
             var funcName = 'on' + infTerm[0].toUpperCase() + infTerm.substr(1) + 'Change';
             this['~inf.' + infTerm] = this[funcName].bind(this);
             infs[infTerm].addWorry('invalidated', this['~inf.' + infTerm]);
-            worryFuncs.push(this['~inf.' + infTerm]);
+            
+            if (this.name === 'p1Pieces') console.log('INF:', infs[infTerm]);
+            if (this.name === 'p1Pieces') console.log(infTerm + ' -> ' + funcName);
+            
           }
           
           // After all worries are attached simulate them all invalidating to obtain a nice initial state
-          A.each(worryFuncs, function(f) { f(); }); 
+          for (var infTerm in infs) this['~inf.' + infTerm](infs[infTerm].getValue());
           
           // Apply all decorators
           for (var i = 0, len = this.decorators.length; i < len; i++) {
@@ -1061,9 +1077,13 @@ var package = new PACK.pack.Package({ name: 'userify',
           throw new Error('not implemented');
         },
         
+        autoStartChildren: function() {
+          return true;
+        },
         start0: function() {
           sc.start0.call(this);
-          for (var k in this.children) this.children[k].start();
+          if (this.autoStartChildren())
+            for (var k in this.children) this.children[k].start();
         },
         stop0: function() {
           for (var k in this.children) this.children[k].stop();
@@ -1081,7 +1101,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           sc.init.call(this, params);
           this.numWrappers = U.param(params, 'numWrappers', 0);
         },
-        
         createDomRoot: function() {
           var ret = sc.createDomRoot.call(this);
           var ptr = ret;
@@ -1144,7 +1163,6 @@ var package = new PACK.pack.Package({ name: 'userify',
         provideContainer: function() {
           return this.domRoot;
         },
-        
         onChoiceChange: function() {
           
           var choice = this.choiceInfo.getValue();
@@ -1176,19 +1194,22 @@ var package = new PACK.pack.Package({ name: 'userify',
             }
             
             this.currentChild = nextChild;
-            if (this.currentChild) this.domRoot.classList.add('choose-' + this.currentChild.name);
+            if (this.currentChild) {
+              this.domRoot.classList.add('choose-' + this.currentChild.name);
+              this.currentChild.start();
+            }
             
           }
           
         },
-        
         getAllInformers: function() {
           
           return O.update(sc.getAllInformers.call(this), {
             choice: this.choiceInfo
           });
           
-        }
+        },
+        autoStartChildren: function() { return false; }
         
       };}
     });
@@ -1241,12 +1262,18 @@ var package = new PACK.pack.Package({ name: 'userify',
       methods: function(sc, c) { return {
         
         init: function(params /* name, childInfo, genChildView, comparator */) {
+          
           if (O.contains(params, 'children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
           
           sc.init.call(this, params);
           this.childInfo = uf.pafam(params, 'childInfo');
           this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
           this.comparator = U.param(params, 'comparator', null); // TODO: implement!
+          
+          if (this.name === 'p1Pieces') this.childInfo.addWorry('invalidated', function() {
+            console.log('AHA!!!!');
+          });
+          
           
         },
         
@@ -1263,6 +1290,8 @@ var package = new PACK.pack.Package({ name: 'userify',
           var add = {};  // Initially mark no children for addition
           
           if (!cd) cd = this.childInfo.getValue();
+          
+          var orig = Object.keys(this.children).length;
           
           for (var k in cd) {
             
