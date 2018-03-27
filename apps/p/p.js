@@ -280,19 +280,27 @@ var package = new PACK.pack.Package({ name: 'p',
           return child;
         },
         done: function() {
+          
+          var dbgErr = new Error();
+          
           if (U.isServer()) {
             
             new P({ recoveryFunc: function(err) {
+              //dbgErr.message = err.message;
+              //process.nextTick(function() { throw dbgErr; });
               process.nextTick(function() { throw err; });
             }}).tryResolve(this);
             
           } else {
             
             new P({ recoveryFunc: function(err) {
+              //dbgErr.message = err.message;
+              //setTimeout(function() { throw dbgErr; });
               setTimeout(function() { throw err; });
             }}).tryResolve(this);
             
           }
+          
         }
       };}
     });

@@ -58,8 +58,11 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           return new P({ all: O.map(doss.outline.children, function(childOutline, childName) {
             
             var childData = data.hasOwnProperty(childName) ? data[childName] : null;
+            var alreadyHasChild = O.contains(doss.children, childName);
             
-            var child = O.contains(doss.children, childName)
+            if (alreadyHasChild && childData === null) return p.$null;
+            
+            var child = alreadyHasChild
               ? doss.children[childName]
               : editor.add({ par: doss, name: childName, data: null });
             
@@ -138,14 +141,26 @@ var package = new PACK.pack.Package({ name: 'actionizer',
                 /// =CLIENT}
                 
                 /// {SERVER=
-                // If `session` is set, it means that this modification was spurred on by that session.
-                // That session does not need to be informed of the change, as it's the source of the change.
-                // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
-                var sessionsToInform = O.clone(channeler.sessionSet);
-                if (session !== null) delete sessionsToInform[session.ip];
-                var commandParams = { data: data, doSync: false };
+                var sessionsToInform = U.param(params, 'sessionsToInform', null);
                 
-                //console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
+                if (sessionsToInform) { // Check if an explicit list of sessions to inform was provided
+                  
+                  if (U.isObj(sessionsToInform, Array))
+                    sessionsToInform = A.toObj(sessionsToInform, function(session) { return session.ip; });
+                  
+                } else {
+                  
+                  // If `session` is set, it means that this modification was spurred on by that session.
+                  // That session does not need to be informed of the change, as it's the source of the change.
+                  // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
+                  
+                  var sessionsToInform = O.clone(channeler.sessionSet);
+                  if (session !== null) delete sessionsToInform[session.ip];
+                
+                }
+                
+                var commandParams = { data: data, doSync: false };
+                console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
                 /// =SERVER}
                 
                 return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
@@ -169,7 +184,6 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           });
           
         };
-        
         
       },
       recurse: function(outline) {

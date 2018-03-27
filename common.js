@@ -615,6 +615,7 @@ global.U = {
       var that = this;
       var funcName = args.shift();
       var func = this[funcName];
+      if (!func) throw new Error('Invalid func name: "' + funcName + '"');
       return function() {
         return func.apply(that, args);
       };

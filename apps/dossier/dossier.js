@@ -688,6 +688,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.name.substr(0, 5) !== 'TEMP(';
         },
         updateName: function(name, force) {
+          
           name = name.toString();
           
           if (!force && !ds.NAME_REGEX.test(name)) throw new Error('Illegal Dossier name: "' + name + '" for ' + this.outline.getAddress());
@@ -711,8 +712,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
               // Re-adding with the original name NEEDS to succeed - otherwise there's no
               // way to return to the original state
               try { par.addChild(this); } catch(fatalErr) {
-                console.log('FATAL MFRF due to:', fatalErr.stack);
-                throw new Error('FATAL MFRF');
+                fatalErr.message = 'FATAL MFRF due to: ', fatalErr.message;
+                throw fatalErr;
               }
               
               // Reverting to the original state has succeeded, throw a non-fatal error
@@ -723,6 +724,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           }
           
           return this;
+          
         },
         
         // Heirarchy
@@ -783,6 +785,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var commandParams = U.param(params, 'params', {});
             var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
             
+            if (commandParams === null) throw new Error('Command ' + commandDescription + ': NO PARAMS');
+            
             commandDescription += '(' + U.debugObj(commandParams) + ')';
             
             return pass.$stageAbility(command, session, channelerParams, editor, commandParams);
@@ -791,7 +795,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             .then(function(abilityStaged) { return editor.$transact(); });
           
         },
-        $giveCommand: function(params /* session, data, channelerParams */) { // Dossier
+        $giveCommand: function(params /* session, channelerParams, data */) { // Dossier
           // TODO: In request-heavy environments it may be worth keeping a reference to the Channeler
           return this.outline.getRoot().channeler.$giveCommand(params);
         },
@@ -822,6 +826,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           }
           /// =DOC}
           
+          if (!params) return new P({ err: new Error('No params supplied for ' + this.identity() + '.' + name) });
+          
           var $func = this.getAbility(name);
           if (!$func) return new P({ err: new Error(this.identity() + ' doesn\'t support ability "' + name + '"') });
           return $func(session, channelerParams, editor, this, params);
@@ -836,11 +842,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
           /// =CLIENT}
           
           /// {SERVER=
-          var $stage = this.$stageAbility(name, session, channelerParams, editor, params);
+          var $stage = this.$stageAbility(name, session || null, channelerParams || {}, editor, params);
           /// =SERVER}
           
-          return $stage
-            .then(editor.$transact.bind(editor));
+          return $stage.then(editor.$transact.bind(editor));
           
         },
         dereference: function() {
@@ -1275,7 +1280,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           for (var i = 0; i < format.length; i++)
             ret.push(format[i][0] === '$' ? vals[valInd++] : format[i]);
           
-          // TODO: This should return an `Array` instead of `String`
           return ret;
           
         },
@@ -1284,6 +1288,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         getJson: function() {
           return this.value ? this.getRefAddress().join('.') : null;
+        },
+        getValue: function() {
+          return this.value;
         }
         
       };}

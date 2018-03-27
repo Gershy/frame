@@ -278,7 +278,8 @@ new PACK.pack.Package({ name: 'server',
               var command = U.param(commandData, 'command');
               commandDescription = address.join('.') + '.' + command;
               
-              var params = U.param(commandData, 'params', {});
+              var commandParams = U.param(commandData, 'params', {});
+              if (!commandParams) throw new Error('Couldn\'t perform command: ' + commandDescription + '; NO PARAMS');
               
               var child = pass.getChild(address);
               //if (!child) { dbgErr.message = 'Invalid address: "' + address.join('.') + '"'; throw dbgErr; }
@@ -286,7 +287,7 @@ new PACK.pack.Package({ name: 'server',
               
               // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
               // `$heedCommand` is called with the same signature:
-              return child.$heedCommand({ session: session, command: command, params: params, channelerParams: channelerParams })
+              return child.$heedCommand({ session: session, command: command, params: commandParams, channelerParams: channelerParams })
               
             }).then(function() {
               
@@ -341,8 +342,6 @@ new PACK.pack.Package({ name: 'server',
                   commandResponse.data = commandResponse.data.replace('{{title}}', title);
                   
                   var htmlHeaderElems = [];
-                  
-                  console.log('APPNAME:', appName, 'PACK:', PACK[appName]);
                   
                   if (O.contains(PACK[appName], 'resources')) {
                     var r = PACK[appName].resources;
