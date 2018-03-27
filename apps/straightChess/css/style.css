@@ -3,6 +3,7 @@
   left: 0; top: 0;
   width: 100%; height: 100%;
   text-align: center;
+  background-color: rgba(4, 3, 6, 1);
 }
 #root-readyUp:before {
   content: '';
@@ -51,7 +52,7 @@
   width: 100%; height: 50px; line-height: 50px;
   font-size: 22px;
   text-align: center;
-  color: rgba(0, 0, 0, 0.8);
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .board {
@@ -117,6 +118,7 @@
   text-align: center; white-space: nowrap;
   border-radius: 100%;
   font-size: 7vw;
+  background-size: contain;
   
   transition: left 1s ease-out, bottom 1s ease-out, transform 1s ease-in-out, color 0.2s linear, background-color 0.2s linear, text-shadow 0.2s linear;
 }
@@ -137,8 +139,14 @@
   display: inline-block;
   width: 0; height: 100%;
   vertical-align: middle;
+  
+ 
+}
+.pieces.p1Pieces > .piece {
+  filter: invert(100%);
 }
 .pieces > .piece > .avatar {
+  display: none !important;
   position: relative;
   display: inline-block;
   vertical-align: middle;
@@ -150,6 +158,13 @@
 .pieces > .piece.rook > .avatar { font-size: 85%; }
 .pieces > .piece.queen > .avatar,
 .pieces > .piece.king > .avatar { font-size: 100%; }
+
+.pieces > .piece.pawn { background-image: url(/apps/straightChess/img/pawn.png); }
+.pieces > .piece.knight { background-image: url(/apps/straightChess/img/knight.png); }
+.pieces > .piece.bishop { background-image: url(/apps/straightChess/img/bishop.png); }
+.pieces > .piece.rook { background-image: url(/apps/straightChess/img/rook.png); }
+.pieces > .piece.queen { background-image: url(/apps/straightChess/img/queen.png); }
+.pieces > .piece.king { background-image: url(/apps/straightChess/img/king.png); }
 
 .pieces.p1Pieces > .piece {
   color: rgba(255, 255, 255, 1);
@@ -168,6 +183,13 @@
 .pieces.p2Pieces > .piece.selected {
   text-shadow: 0 0 3px rgba(0, 0, 0, 1);
   background-color: rgba(0, 0, 0, 0.4);
+}
+
+.pieces > .piece.recovering {
+  background-color: rgba(255, 100, 100, 0.2);
+}
+.pieces > .piece.recovering:hover {
+  background-color: rgba(255, 100, 100, 0.8);
 }
 
 .board > .wrapper > .moves {

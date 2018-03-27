@@ -160,7 +160,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
                 }
                 
                 var commandParams = { data: data, doSync: false };
-                console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
+                //console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
                 /// =SERVER}
                 
                 return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
