@@ -173,28 +173,14 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         outline.addAbility('ready', actionizer.makeAbility('ready', false, function(editor, doss, data, session, channelerParams) {
           
           /// {SERVER=
-          if (whiteSession === session || blackSession === session) return;
+          if (whiteSession === session)       { var playerColour = 'white'; }
+          else if (blackSession === session)  { var playerColour = 'black'; }
+          else if (whiteSession === null)     { whiteSession = session; var playerColour = 'white'; }
+          else if (blackSession === null)     { blackSession = session; var playerColour = 'black'; }
+          else                                { console.log('Session ' + session.ip + ' can GO SCREW HIM/HERSELF'); return; }
           
-          if (whiteSession === null) {
-            
-            whiteSession = session;
-            console.log('WHITE:', session.ip);
-            var playerColour = 'white';
-            
-          } else if (blackSession === null) {
-            
-            blackSession = session;
-            console.log('BLACK:', session.ip);
-            var playerColour = 'black';
-            
-          } else {
-            
-            console.log('BAD??');
-            return;
-            
-          }
+          console.log('ASSIGNING ' + playerColour.toUpperCase() + ' TO: ' + session.ip);
           
-          console.log('ASSIGNING:', session.ip);
           var params = {
             data: { 
               playerColour: playerColour,
@@ -307,6 +293,13 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           if (p1Cap) editor.rem({ child: p1Cap });
           if (p2Cap) editor.rem({ child: p2Cap });
           
+          var p1Win = p1Cap && (p1Cap.getValue('type') === 'king');
+          var p2Win = p2Cap && (p2Cap.getValue('type') === 'king');
+          
+          if (p1Win && p2Win) editor.mod({ doss: doss.getChild('~root.outcome'), data: 'draw' });
+          else if (p1Win)     editor.mod({ doss: doss.getChild('~root.outcome'), data: 'white' });
+          else if (p2Win)     editor.mod({ doss: doss.getChild('~root.outcome'), data: 'black' });
+          
           // Set intentions back to null
           editor.mod({ doss: doss.getChild('playerSet.player1.intention'), data: { piece: null }});
           editor.mod({ doss: doss.getChild('playerSet.player2.intention'), data: { piece: null }});
@@ -337,6 +330,8 @@ var package = new PACK.pack.Package({ name: 'straightChess',
             doss.getChild('playerSet.player1.intention').worry('invalidated');
             doss.getChild('playerSet.player2.intention').worry('invalidated');
             
+            if (p1Win || p2Win) doss.getChild('~root.outcome').worry('invalidated');
+            
             /// {CLIENT=
             doss.getChild('player.moveSet').worry('invalidated');
             doss.getChild('player.selected').worry('invalidated');
@@ -347,6 +342,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         }));
         
         var turnCount = outline.addChild(new Val({ name: 'turnCount', dossClass: ds.DossierInt }));
+        var outcome = outline.addChild(new Val({ name: 'outcome', defaultValue: 'undecided' }));
         
         /// {CLIENT=
         var player = outline.addChild(new Obj({ name: 'player' }));
@@ -450,6 +446,8 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         
         /// {CLIENT=
         return {
+          turnCount: 0,
+          outcome: 'undecided',
           player: {
             ready: false,
             owned: null,
@@ -746,7 +744,9 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           new uf.ChoiceView({ name: 'readyUp',
             choiceInfo: new nf.CalculationInformer({ 
               dependencies: [ doss.getChild('player.ready') ],
-              calc: function(ready) { return ready ? 'game' : 'confirm' }
+              calc: function(ready) {
+                return ready ? 'game' : 'confirm';
+              }
             }),
             children: [
           
@@ -780,7 +780,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
                       return new uf.View({ name: 'tile' + n, cssClasses: [ 'tile', light ? 'light' : 'dark' ] });
                       
                     })}),
-                    new uf.DynamicSetView({ name: 'p1Pieces', cssClasses: [ 'pieces' ],
+                    new uf.DynamicSetView({ name: 'p1Pieces', transitionTime: 1500, cssClasses: [ 'pieces' ],
                       decorators: [
                         new uf.ClassDecorator({
                           list: [ 'owned', 'enemy' ],
@@ -793,17 +793,17 @@ var package = new PACK.pack.Package({ name: 'straightChess',
                           })
                         })
                       ],
-                      childInfo: 
-                      new nf.CalculationInformer({
+                      childInfo: doss.getChild('playerSet.player1.pieceSet'),
+                      /*new nf.CalculationInformer({
                         dependencies: [ doss.getChild('playerSet.player1.pieceSet') ],
                         calc: function(pieceData) {
                           return doss.getChild('playerSet.player1.pieceSet').getValue();
                         }
-                      }),
+                      }),*/
                       
                       genChildView: renderPiece
                     }),
-                    new uf.DynamicSetView({ name: 'p2Pieces', cssClasses: [ 'pieces' ],
+                    new uf.DynamicSetView({ name: 'p2Pieces', transitionTime: 1500, cssClasses: [ 'pieces' ],
                       decorators: [
                         new uf.ClassDecorator({
                           list: [ 'owned', 'enemy' ],
@@ -869,6 +869,15 @@ var package = new PACK.pack.Package({ name: 'straightChess',
                   }),
                   children: [
                     new uf.TextView({ name: 'waiting', info: 'Waiting for opponent...' })
+                  ]
+                }),
+                new uf.ChoiceView({ name: 'conclusion',
+                  choiceInfo: doss.getChild('outcome'),
+                  children: [
+                    new uf.TextView({ name: 'undecided', info: 'no winner yet' }),
+                    new uf.TextView({ name: 'draw', info: 'draw!' }),
+                    new uf.TextView({ name: 'white', info: 'white wins!' }),
+                    new uf.TextView({ name: 'black', info: 'black wins!' })
                   ]
                 })
               ]})

@@ -71,17 +71,44 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           })});
           
         });
-        this.modArr = this.makeAbility('mod', true, function(editor, doss, data, session, channelerParams) {
+        this.modArr = this.makeAbility('mod', false, function(editor, doss, data, session, channelerParams) {
           
-          return new P({ all: O.map(data, function(childData, childName) {
+          var add = {};
+          var mod = {};
+          var rem = O.clone(doss.children);
+          
+          for (var childName in data) {
+            delete rem[childName];
+            if (O.contains(doss.children, childName)) {
+              mod[childName] = data[childName];
+            } else {
+              add[childName] = data[childName];
+            }
+          }
+          
+          if (!O.isEmpty(rem) || !O.isEmpty(add))
+            editor.$transaction.then(doss.as('worry', 'invalidated')); // TODO: Easy to include delta here...
+          
+          return new P({ all: [
             
-            // We don't want to recurse on objects. This is because objects will
-            // add their children through their own 'mod' ability - and
-            // `recurseObj` will generate all children, even if `data` is null
-            var child = editor.add({ par: doss, data: null, recurseObj: false });
-            return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
+            // Rem
+            new P({ all: O.map(rem, function(child, childName) {
+              editor.rem({ child: child });
+              return p.$null;
+            })}),
             
-          })});
+            // Mod
+            new P({ all: O.map(mod, function(childData, childName) {
+              return doss.children[childName].$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
+            })}),
+            
+            // Add
+            new P({ all: O.map(add, function(childData, childName) {
+              var child = editor.add({ par: doss, data: null, name: childName, recurseObj: false });
+              return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
+            })})
+            
+          ]});
           
         });
         

@@ -795,9 +795,6 @@ var package = new PACK.pack.Package({ name: 'userify',
             this['~inf.' + infTerm] = this[funcName].bind(this);
             infs[infTerm].addWorry('invalidated', this['~inf.' + infTerm]);
             
-            if (this.name === 'p1Pieces') console.log('INF:', infs[infTerm]);
-            if (this.name === 'p1Pieces') console.log(infTerm + ' -> ' + funcName);
-            
           }
           
           // After all worries are attached simulate them all invalidating to obtain a nice initial state
@@ -1193,6 +1190,7 @@ var package = new PACK.pack.Package({ name: 'userify',
               
             }
             
+            console.log('OK...', nextChild);
             this.currentChild = nextChild;
             if (this.currentChild) {
               this.domRoot.classList.add('choose-' + this.currentChild.name);
@@ -1261,19 +1259,16 @@ var package = new PACK.pack.Package({ name: 'userify',
         'raw info that the child was built from.',
       methods: function(sc, c) { return {
         
-        init: function(params /* name, childInfo, genChildView, comparator */) {
+        init: function(params /* name, childInfo, genChildView, transitionTime */) {
           
           if (O.contains(params, 'children')) throw new Error('Cannot initialize DynamicSetView with `children` param');
+          
+          // TODO: "comparator" for ordering children dynamically
           
           sc.init.call(this, params);
           this.childInfo = uf.pafam(params, 'childInfo');
           this.genChildView = U.param(params, 'genChildView'), // function(name, initialRawData, info) { /* generates a View */ };
-          this.comparator = U.param(params, 'comparator', null); // TODO: implement!
-          
-          if (this.name === 'p1Pieces') this.childInfo.addWorry('invalidated', function() {
-            console.log('AHA!!!!');
-          });
-          
+          this.transitionTime = U.param(params, 'transitionTime', 0);
           
         },
         
@@ -1304,7 +1299,16 @@ var package = new PACK.pack.Package({ name: 'userify',
           }
           
           // Remove all children as necessary
-          for (var k in rem) this.remChild(k);
+          for (var k in rem) {
+            
+            if (this.transitionTime) {
+              this.children[k].domRoot.classList.add('dynamicRemove');
+              setTimeout(this.remChild.bind(this, k), this.transitionTime);
+            } else {
+              this.remChild(k);
+            }
+            
+          }
           
           // Add all children as necessary
           for (var k in add) {
@@ -1378,7 +1382,9 @@ var package = new PACK.pack.Package({ name: 'userify',
           `DynamicSetView` to detect changes on its children and call `genChildView` as required.
           */
           
-          this.onChildrenChange({});
+          var kids = O.clone(this.children);
+          for (var k in kids) this.remChild(k);
+          // for (var k in this.children) this.remChild(this.children[k]);
           sc.stop0.call(this);
           
         }
