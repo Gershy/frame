@@ -1018,7 +1018,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
         },
         
-        getValue: function() {
+        getValue: function(addr) {
+          if (addr) return this.getChild(addr).getValue()
           return O.clone(this.children); // TODO: do we really need to clone?
         },
         getJson: function() {
