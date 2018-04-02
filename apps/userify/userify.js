@@ -235,7 +235,7 @@ var package = new PACK.pack.Package({ name: 'userify',
     uf.ActionDecorator = U.makeClass({ name: 'ActionDecorator', superclass: uf.Decorator,
       description: 'Perform an asynchronous action on interaction',
       methods: function(sc, c) { return {
-        init: function(params /* $action */) {
+        init: function(params /* $action, action */) {
           sc.init.call(this, params);
           
           var $action = U.param(params, '$action', null);
@@ -256,7 +256,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           var pass = this;
           this.loadingInfo.setValue(true);
-          this.$action(event).then(function() {
+          this.$action(event, view).then(function() {
             pass.loadingInfo.setValue(false);
           }).done();
           
@@ -908,7 +908,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           var input = document.createElement(this.multiline ? 'textarea' : 'input');
           input.classList.add('interactive');
-          input.oninput = function(e) { this.info.setValue(input.value, this.syncOnInput); }.bind(this); // TODO: Have to ensure that the string is being set in the DOM before being set in the Informer - otherwise LOOPS when typing
+          input.oninput = function(e) { this.info.setValue(input.value, this.syncOnInput ? 'quick' : 'none'); }.bind(this); // TODO: Have to ensure that the string is being set in the DOM before being set in the Informer - otherwise LOOPS when typing
           ret.appendChild(input);
           
           var placeholder = document.createElement('div');
@@ -971,51 +971,6 @@ var package = new PACK.pack.Package({ name: 'userify',
         
       };}
     });
-    
-    /* // TODO: CanvasView; move to its own package??
-    
-    uf.CanvasView = U.makeClass({ name: 'CanvasView', superclass: uf.View,
-      description: 'Generates a canvas and paint handler for ' +
-        'arbitrary graphics',
-      methods: function(sc, c) { return {
-        init: function(params /* name, options { centered }, drawFunc(graphicsContext, millis) * /) {
-          
-          sc.init.call(this, params);
-          
-          this.drawFunc = U.param(params, 'drawFunc');
-          this.options = O.update({ centered: false }, U.param(params, 'options', {}));
-          
-          this.context = null;
-          
-        },
-        
-        createDomRoot: function() {
-          var canvas = document.createElement('canvas');
-          this.context = canvas.getContext('2d');
-          
-          return canvas;
-        },
-        update: function() {
-          var canvas = this.domRoot;
-          var bounds = canvas.parentNode.getBoundingClientRect();
-          var bw = Math.round(bounds.width);
-          var bh = Math.round(bounds.height);
-          
-          if (canvas.width !== bw || canvas.height !== bh) {
-            canvas.width = bw;
-            canvas.height = bh;
-          }
-          
-          this.context.clearRect(0, 0, canvas.width, canvas.height)
-          
-          this.context.save();
-          if (this.options.centered) { this.context.translate(bw >> 1, bh >> 1); }
-          this.drawFunc(this.context)
-          this.context.restore();
-        }
-      };}
-    });
-    */
     
     /* SET VIEW */
     uf.AbstractSetView = U.makeClass({ name: 'AbstractSetView', superclass: uf.View,
@@ -1190,7 +1145,6 @@ var package = new PACK.pack.Package({ name: 'userify',
               
             }
             
-            console.log('OK...', nextChild);
             this.currentChild = nextChild;
             if (this.currentChild) {
               this.domRoot.classList.add('choose-' + this.currentChild.name);
@@ -1285,8 +1239,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           var add = {};  // Initially mark no children for addition
           
           if (!cd) cd = this.childInfo.getValue();
-          
-          var orig = Object.keys(this.children).length;
           
           for (var k in cd) {
             

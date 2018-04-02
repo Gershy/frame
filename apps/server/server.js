@@ -8,6 +8,8 @@ var testWebsocketFallback = false;
 if (testWebsocketFallback) WebSocket = null;
 /// =CLIENT}
 
+var CNT = 0;
+
 new PACK.pack.Package({ name: 'server',
   /// {SERVER=
   dependencies: [ 'p', 'tree', 'frame' ],
@@ -109,8 +111,8 @@ new PACK.pack.Package({ name: 'server',
           this.appName = U.param(params, 'appName');
           this.handler = U.param(params, 'handler', null);
           this.errorHandler = {
-            $heedCommand: function(params /* session, channelerParams, command, params */){
-              console.log('ERRORHANDLER:', params.params);
+            $heedCommand: function(params /* session, channelerParams, command, data */){
+              console.log('ERRORHANDLER:', params.data);
               return p.$null;
             }
           };
@@ -156,6 +158,7 @@ new PACK.pack.Package({ name: 'server',
           
           this.channels[channel.name] = channel;
           channel.channeler = this;
+          channel.par = this;
           
           var pass = this;
           channel.$ready.then(function() {
@@ -199,16 +202,16 @@ new PACK.pack.Package({ name: 'server',
           
           var channel = channelName ? U.param(this.channels, channelName) : this.favouriteChannel;
           
-          if (params.data === null) return;
+          if (params.data === null) return; // This occurs upon fizzling
           
-          if (U.isInstance(params.data, Error)) {
+          if (U.isInstance(params.data, Error)) { // Errors become commands to the error handler
             var err = params.data;
             params.data = {
               address: '~error',
               command: 'mod',
-              data: { doSync: false, value: err.message }
+              params: { data: err.message, doSync: false }
             };
-          }
+          } else { var err = null; }
           
           /// {CLIENT=
           if (!params.data || !params.data.address) throw new Error('Missing address');
@@ -219,6 +222,7 @@ new PACK.pack.Package({ name: 'server',
             console.log(params);
             throw new Error('Missing address');
           }
+          
           /// =SERVER}
           
           // Use the channel to give the command (with the appropriate params)
@@ -273,17 +277,16 @@ new PACK.pack.Package({ name: 'server',
               
               var address = U.param(commandData, 'address');
               if (U.isObj(address, String)) address = address.split('.');
-              commandDescription = address.join('.') + '.<NO_COMMAND>';
               
               var command = U.param(commandData, 'command');
-              commandDescription = address.join('.') + '.' + command;
+              
+              var child = pass.getChild(address);
+              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              
+              commandDescription = (address.join('.') || child.getAddress()) + '.' + command;
               
               var commandParams = U.param(commandData, 'params', {});
               if (!commandParams) throw new Error('Couldn\'t perform command: ' + commandDescription + '; NO PARAMS');
-              
-              var child = pass.getChild(address);
-              //if (!child) { dbgErr.message = 'Invalid address: "' + address.join('.') + '"'; throw dbgErr; }
-              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
               
               // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
               // `$heedCommand` is called with the same signature:
@@ -291,7 +294,8 @@ new PACK.pack.Package({ name: 'server',
               
             }).then(function() {
               
-              console.log('Command success: ' + commandDescription);
+              if (commandDescription !== pass.name + '.getFile')
+                console.log('Command success: ' + commandDescription);
               
             }).fail(function(err) {
               
@@ -679,6 +683,7 @@ new PACK.pack.Package({ name: 'server',
           // Note that promise fulfillment in this case means that the server
           // has decided to send the command, NOT that the command has been
           // received by the client.
+          
           
           // Get the session data
           var session = U.param(params, 'session');

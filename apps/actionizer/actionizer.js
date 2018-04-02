@@ -9,6 +9,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         
         var channeler = this.channeler = U.param(params, 'channeler');
         
+        // All types
         this.sync = function(session, channelerParams, editor, doss, params /* */) {
           
           // Note that the server side never gives a "sync" command; the server is the source of truth,
@@ -25,7 +26,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             /// {SERVER=
             // The server side issues a mod command in response
             var command = 'mod';
-            var params = { doSync: false, data: doss.getJson() };
+            var params = { data: doss.getJson(), sync: 'quick' };
             /// =SERVER}
             
             return channeler.$giveCommand({
@@ -43,91 +44,118 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           return p.$null;
           
         };
-        this.modVal = this.makeAbility('mod', true, function(editor, doss, data) {
+        
+        // Val
+        this.modVal = this.makeAbility('mod', function(doss, data, stager) {
           
-          // TODO: It's not nearly this easy as the currentl uncommented code!
-          // console.log('Mod not implemented ;D');
-          // Modifying an object results in many removed, added, and modified children.
-          // Verification needs to happen for everything in the tree of changes.
-          
+          var editor = stager.editor;
           editor.mod({ doss: doss, data: data });
-          
-        });
-        this.modObj = this.makeAbility('mod', true, function(editor, doss, data, session, channelerParams) {
-          
-          return new P({ all: O.map(doss.outline.children, function(childOutline, childName) {
-            
-            var childData = data.hasOwnProperty(childName) ? data[childName] : null;
-            var alreadyHasChild = O.contains(doss.children, childName);
-            
-            if (alreadyHasChild && childData === null) return p.$null;
-            
-            var child = alreadyHasChild
-              ? doss.children[childName]
-              : editor.add({ par: doss, name: childName, data: null });
-            
-            return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
-            
-          })});
-          
-        });
-        this.modArr = this.makeAbility('mod', false, function(editor, doss, data, session, channelerParams) {
-          
-          var add = {};
-          var mod = {};
-          var rem = O.clone(doss.children);
-          
-          for (var childName in data) {
-            delete rem[childName];
-            if (O.contains(doss.children, childName)) {
-              mod[childName] = data[childName];
-            } else {
-              add[childName] = data[childName];
-            }
-          }
-          
-          if (!O.isEmpty(rem) || !O.isEmpty(add))
-            editor.$transaction.then(doss.as('worry', 'invalidated')); // TODO: Easy to include delta here...
-          
-          return new P({ all: [
-            
-            // Rem
-            new P({ all: O.map(rem, function(child, childName) {
-              editor.rem({ child: child });
-              return p.$null;
-            })}),
-            
-            // Mod
-            new P({ all: O.map(mod, function(childData, childName) {
-              return doss.children[childName].$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
-            })}),
-            
-            // Add
-            new P({ all: O.map(add, function(childData, childName) {
-              var child = editor.add({ par: doss, data: null, name: childName, recurseObj: false });
-              return child.$stageAbility('mod', session, channelerParams, editor, { data: childData, doSync: false });
-            })})
-            
-          ]});
+          editor.$transaction.then(doss.as('worry', 'invalidated')).done();
           
         });
         
+        // Obj
+        this.modObj = this.makeAbility('mod', function(doss, data, stager) {
+          
+          var editor = stager.editor;
+          var outlineChildren = doss.outline.children;
+          
+          for (var childName in outlineChildren) {
+            
+            var child = O.contains(doss.children, childName)
+              ? doss.children[childName]
+              : editor.add({ par: doss, name: childName, data: null });
+            
+            // Only stage 'mod' if data was provided for the child
+            if (data.hasOwnProperty(childName))
+              stager(child, 'mod', { data: data[childName] });
+            
+          }
+          
+        });
+        
+        // Arr
+        this.modArr = this.makeAbility('mod', function(doss, data, stager) {
+          
+          var editor = stager.editor;
+          
+          var add = {};                     // childName -> childData
+          var mod = {};                     // childName -> childData
+          var rem = O.clone(doss.children); // childName -> childInstance
+          
+          for (var k in data) {
+            var name = k;
+            delete rem[name];
+            (O.contains(doss.children, name) ? mod : add)[name] = data[name]; // Fancy!
+          }
+          
+          // Invalidate for rems and adds - mods invalidate the child, not the parent Arr
+          if (!O.isEmpty(rem) || !O.isEmpty(add))
+            editor.$transaction.then(doss.as('worry', 'invalidated')); // TODO: Easy to include delta here...
+          
+          for (var k in rem) {
+            editor.rem({ child: rem[k] });
+            editor.$transaction.then(rem[k].as('worry', 'invalidated')); // Invalidate removed children
+          }
+          for (var k in mod) stager(doss.children[k], 'mod', { data: mod[k] });
+          for (var k in add) {
+            var child = editor.add({ par: doss, data: null, name: k, recurseObj: false });
+            stager(child, 'mod', { data: add[k] });
+          }
+          
+        });
+        this.addArr = this.makeAbility('add', function(doss, data, stager) {
+          
+          var editor = stager.editor;
+          
+          // Adding a child will certainly invalidate
+          editor.$transaction.then(doss.as('worry', 'invalidated'));
+          
+          // Add `data` to `doss`
+          return editor.add({ par: doss, data: data });
+          
+        });
+        this.remArr = this.makeAbility('rem', function(doss, data, stager) {
+          
+          var editor = stager.editor;
+          
+          // Removing a child will certainly invalidate
+          editor.$transaction.then(doss.as('worry', 'invalidated'));
+          
+          // Get the child; convert String to child instance if necessary
+          var child = data;
+          if (U.isObj(child, String)) child = doss.children[child];
+          
+          // Remove with `editor`
+          editor.rem({ child: child });
+          
+        });
+        
+        // TODO: What happens when a Ref is synced, but the Ref target isn't available?
+        // Probably need to sync Refs differently or something...
+        
       },
-      makeAbility: function(name, invalidates, editsFunc) {
+      makeAbility: function(name, editsFunc) {
         
         /// {DOC=
         { desc: 'Makes a syncing ability, allowing the writer to worry only about the edits ' +
             'without needing to take anything else into account',
           params: {
             name: { desc: 'The unique name of the ability' },
-            invalidates: { desc: 'Indicates whether this ability invalidates the Dossier' },
-            editsFunc: { signature: function(editor, doss, data){},
+            editsFunc: { signature: function(doss, data, stager){},
               desc: 'A function which calls edit methods on `editor`. This method is allowed ' +
                 'to return a promise',
               params: {
-                editor: { desc: 'The editor' },
                 doss: { desc: 'The Dossier instance which may be needed for some edits' },
-                data: { desc: 'Arbitrary parameters for the ability' }
+                data: { desc: 'Arbitrary parameters for the ability' },
+                stager: { signature: function(doss, abilityName, params){},
+                  desc: 'Convenient shorthand function for further calling Dossier abilities',
+                  params: {
+                    doss: { desc: 'The Dossier on which to call the ability' },
+                    abilityName: { desc: 'The name of the ability to call' },
+                    params: { desc: 'Arbitrary params to the ability' }
+                  }
+                }
               }
             }
           }
@@ -136,79 +164,116 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         
         var channeler = this.channeler;
         
-        return function(session, channelerParams, editor, doss, params /* doSync, data */) {
+        return function(session, channelerParams, editor, doss, params /* sync, sessions, data */) {
           
           // Perform whatever actions this ability ought to carry out
           var data = U.param(params, 'data');
           
-          // The transaction may alter the Dossier's address! Get the current address early.
-          var address = doss.getAddress();
+          // The transaction may alter the Dossier's address!
+          var origAddress = doss.hasResolvedName() ? doss.getAddress() : null;
           
-          var $result = new P({ run: editsFunc.bind(null, editor, doss, data, session, channelerParams) });
+          var sync = U.param(params, 'sync', 'none');
+          /// {SERVER=
+          if (sync === 'ensure') sync = 'quick'; // The server never needs clients to confirm a sync
+          /// =SERVER}
           
-          return $result.then(function() { // After `editsFunc` has run, prepare post-transaction to sync changes
+          if (!A.contains([ 'none', 'quick', 'confirm' ], sync)) throw new Error('Invalid "sync" value: "' + sync + '"');
+          
+          // Set up the `stager`...
+          var stagings = [];
+          var stager = function(doss, abilityName, params) {
+            stagings.push(doss.$stageAbility(abilityName, session, channelerParams, editor, params));
+          };
+          stager.editor = editor;
+          stager.session = session;
+          stager.channelerParams = channelerParams;
+          stager.use = function(doss, abilityName, data) {
             
-            // When the editor transacts, sync any sessions as is necessary. This doesn't block $staging.
-            editor.$transaction
-              .then(function() {
-                
-                // Send worries if invalidated
-                if (invalidates) doss.worry('invalidated');
-                
-                if (!U.param(params, 'doSync', false)) return;
-                
-                // Determine which sessions need to be informed, and then inform them!
-                
-                /// {CLIENT=
-                // Resolves a list containing either one or zero sessions. If `doSync` is true, will sync
-                // the server session (the only session of which a client session is aware).
-                var sessionsToInform = { server: null }; // The only session a client can inform is the server session
-                var commandParams = { data: data, doSync: true }; // The server should sync any other clients
-                //if (doSync) console.log('Syncing server...');
-                /// =CLIENT}
-                
-                /// {SERVER=
-                var sessionsToInform = U.param(params, 'sessionsToInform', null);
-                
-                if (sessionsToInform) { // Check if an explicit list of sessions to inform was provided
-                  
-                  if (U.isObj(sessionsToInform, Array))
-                    sessionsToInform = A.toObj(sessionsToInform, function(session) { return session.ip; });
-                  
-                } else {
-                  
-                  // If `session` is set, it means that this modification was spurred on by that session.
-                  // That session does not need to be informed of the change, as it's the source of the change.
-                  // Resolves a list of sessions; either ALL sessions, or all sessions excluding the source.
-                  
-                  var sessionsToInform = O.clone(channeler.sessionSet);
-                  if (session !== null) delete sessionsToInform[session.ip];
-                
-                }
-                
-                var commandParams = { data: data, doSync: false };
-                //console.log('Server syncing: [ ' + Object.keys(sessionsToInform).join(', ') + ' ]');
-                /// =SERVER}
-                
-                return new P({ all: O.map(sessionsToInform, function(sessionToInform) {
-                  
-                  return channeler.$giveCommand({
-                    session: sessionToInform,
-                    channelerParams: sessionToInform === session ? channelerParams : null,
-                    data: {
-                      address: address,
-                      command: name,
-                      params: commandParams
-                    }
-                  });
-                  
-                })});
-                
-              })
-              .fail(console.error.bind(console))
-              .done();
+            /// {SERVER=
+            var params = {
+              data: data,
+              sessions: [ session ],
+              sync: 'quick'
+            };
+            /// =SERVER}
+            
+            /// {CLIENT=
+            var params = {
+              data: data,
+              sync: 'quick'
+            };
+            /// =CLIENT}
+            
+            doss.$useAbility(abilityName, params, stager.session, {}).done();
+            
+          };
+          
+          // Run the `editsFunc` with `stager`
+          var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) }).then(function() {
+            
+            // `editsFunc` probably called `stager` thereby populating `stagings`
+            return new P({ all: stagings });
             
           });
+          
+          if (sync !== 'none') {
+            
+            var $doSync = function() {
+              
+              // We only use the address AFTER the transaction when the original address
+              // wasn't fully resolved
+              var address = origAddress ? origAddress : doss.getAddress();
+              
+              /// {CLIENT=
+              var sessions = { server: { ip: location.hostname } };
+              var commandParams = { data: data, sync: 'quick' }; // The server should sync other clients
+              /// =CLIENT}
+              
+              /// {SERVER=
+              var sessions = U.param(params, 'sessions', null);
+              if (!sessions)  { // If syncing without any explicit sessions, default to informing all sessions but the source
+                sessions = O.clone(channeler.sessionSet);
+                if (session !== null) delete sessions[session.ip];
+              }
+              if (U.isObj(sessions, Array)) sessions = A.toObj(sessions, function(s) { return s.ip; });
+              var commandParams = { data: data, sync: 'none' }; // Clients should not sync the server back
+              /// =SERVER}
+              
+              return new P({ all: O.map(sessions, function(sessionToInform) {
+                
+                return channeler.$giveCommand({
+                  session: sessionToInform,
+                  channelerParams: sessionToInform === session ? channelerParams : null,
+                  data: {
+                    address: address,
+                    command: name,
+                    params: commandParams
+                  }
+                });
+                
+              })});
+              
+            }
+            
+            if (sync === 'confirm') {
+              
+              // TODO: $doSync() resolves that the command was sent, but not that it completed successfully...
+              // TODO: Maybe $staged should be a function so it doesn't begin to immediately stage?
+              // Refuse to resolve the staging until the sync is complete
+              return $doSync().then(function() { return $staged; });
+              
+            } else {
+              
+              $doSync().done();
+              return $staged;
+              
+            }
+            
+          } else {
+            
+            return $staged;
+            
+          }
           
         };
         
@@ -235,7 +300,9 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           O.update(outline.abilities, {
             sync: this.sync,
-            mod: this.modArr
+            mod: this.modArr,
+            rem: this.remArr,
+            add: this.addArr
           });
           
           this.recurse(outline.template);
