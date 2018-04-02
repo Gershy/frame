@@ -161,7 +161,7 @@ var package = new PACK.pack.Package({ name: 'lapse',
           
           console.log('CREATING:', data);
           
-          var editor = stager.editor();
+          var editor = stager.editor;
           var world = editor.add({ par: doss, data: data });
           editor.$transaction.then(doss.as('worry', 'invalidated'));
           
