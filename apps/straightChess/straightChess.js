@@ -5,9 +5,9 @@ var package = new PACK.pack.Package({ name: 'straightChess',
   /// {CLIENT=
   dependencies: [ 'app', 'dossier', 'informer', 'p', 'server', 'userify' ],
   /// =CLIENT}
-  buildFunc: function(sc) {
+  buildFunc: function(straightChess) {
     
-    sc.resources = {
+    straightChess.resources = {
       css: [
         'apps/straightChess/css/style.css',
         'apps/userify/css/substance.css'
@@ -15,7 +15,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     };
     
   },
-  runAfter: function(sc, app, ds, nf, p, sv, uf) {
+  runAfter: function(straightChess, app, ds, nf, p, sv, uf) {
     
     var P = p.P;
     var App = app.App;
@@ -51,7 +51,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     };
     var checkTile = function(board, col, row) {
       if (col < 0 || col > 7 || row < 0 || row > 7) return 'OOB'; // Out of bounds
-      return board[col][row];
+      return board[col][row] || null;
     };
     var movesForPc = function(doss, col, row) {
       
@@ -98,10 +98,12 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           var col0 = col + offsets[i][0];
           var row0 = row + offsets[i][1];
           
-          if (col0 < 0 || col0 > 7 || row0 < 0 || row0 > 7) continue;
+          var chk = checkTile(board, col0, row0);
+          
+          if (chk === 'OOB') continue;
           
           // If the move tile is empty, or occupied by the enemy, it's a valid move
-          if (!board[col0][row0] || board[col0][row0].player !== pc.player)
+          if (!chk || chk.player !== pc.player)
             moves.push({ col: col0, row: row0 });
           
         }
@@ -156,7 +158,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     new App({ name: 'straightChess',
       
       setupChanneler: function(channeler) {
-        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
+        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: '192.168.1.148', port: 80, numToBank: 1 }));
         //channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
       },
       setupActionizer: function(actionizer) {
@@ -170,7 +172,9 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         
         var Val = ds.Val, Obj = ds.Obj, Arr = ds.Arr, Ref = ds.Ref;
         
-        outline.addAbility('ready', actionizer.makeAbility('ready', false, function(editor, doss, data, session, channelerParams) {
+        outline.addAbility('ready', actionizer.makeAbility('ready', function(doss, data, stager) {
+          
+          var session = stager.session;
           
           /// {SERVER=
           if (whiteSession === session)       { var playerColour = 'white'; }
@@ -181,21 +185,15 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           
           console.log('ASSIGNING ' + playerColour.toUpperCase() + ' TO: ' + session.ip);
           
-          var params = {
-            data: { 
-              playerColour: playerColour,
-            },
-            doSync: true,
-            sessionsToInform: [ session ]
-          };
-          
-          return doss.$stageAbility('assign', session, channelerParams, editor, params);
-          
-          //doss.$useAbility('assign', params, session, channelerParams).done();
+          stager(doss, 'assign', {
+            data: { playerColour: playerColour },
+            sync: 'quick',
+            sessions: [ session ]
+          });
           /// =SERVER}
           
         }));
-        outline.addAbility('assign', actionizer.makeAbility('assign', false, function(editor, doss, data) {
+        outline.addAbility('assign', actionizer.makeAbility('assign', function(doss, data, stager) {
           
           /// {CLIENT=
           var playerColour = U.param(data, 'playerColour');
@@ -213,27 +211,22 @@ var package = new PACK.pack.Package({ name: 'straightChess',
             
           } else {
             
-            console.log('BAD PLAYER COLOUR');
+            console.log('BAD PLAYER COLOUR??', playerColour);
             return;
             
           }
           
-          editor.mod({ doss: doss.getChild('~root.player.ready'), data: true });
-          editor.mod({ doss: doss.getChild('~root.player.owned'), data: owned });
-          editor.mod({ doss: doss.getChild('~root.player.enemy'), data: enemy });
-          
-          editor.$transaction.then(function() {
-            
-            doss.getChild('~root.player.ready').worry('invalidated');
-            doss.getChild('~root.player.owned').worry('invalidated');
-            doss.getChild('~root.player.enemy').worry('invalidated');
-            
-          });
-          
+          stager(doss.getChild('~root.player.ready'), 'mod', { data: true });
+          stager(doss.getChild('~root.player.owned'), 'mod', { data: owned });
+          stager(doss.getChild('~root.player.enemy'), 'mod', { data: enemy });
           /// =CLIENT}
           
         }));
-        outline.addAbility('move', actionizer.makeAbility('move', false, function(editor, doss, data, session, channelerParams) {
+        outline.addAbility('move', actionizer.makeAbility('move', function(doss, data, stager) {
+          
+          // No `stager` calls in here sync... because this ability is meant to
+          // originate with the server, and simultaneously execute on all clients
+          // simultaneously
           
           var p1Mov = doss.getChild(data.p1.piece);
           var p1Cap = null;
@@ -249,95 +242,61 @@ var package = new PACK.pack.Package({ name: 'straightChess',
             
           } else {
             
-            // Detect targetted pieces
-            var p1Pcs = doss.getChild('playerSet.player1.pieceSet');
-            for (var k in p1Pcs.children) {
-              var pc = p1Pcs.children[k];
-              var col = pc.getChild('col').getValue();
-              var row = pc.getChild('row').getValue();
-              
-              if (col === data.p2.col && row === data.p2.row) { p2Cap = pc; break; }
-            }
-            
+            // Detect the piece capture by player 1
             var p2Pcs = doss.getChild('playerSet.player2.pieceSet');
             for (var k in p2Pcs.children) {
               var pc = p2Pcs.children[k];
               var col = pc.getChild('col').getValue();
               var row = pc.getChild('row').getValue();
-              
               if (col === data.p1.col && row === data.p1.row) { p1Cap = pc; break; }
             }
             
-            // Can't capture the moving piece(s)
-            if (p2Cap === p1Mov) p2Cap = null;
-            if (p1Cap === p2Mov) p1Cap = null;
+            // Detect the piece captured by player 2
+            var p1Pcs = doss.getChild('playerSet.player1.pieceSet');
+            for (var k in p1Pcs.children) {
+              var pc = p1Pcs.children[k];
+              var col = pc.getChild('col').getValue();
+              var row = pc.getChild('row').getValue();
+              if (col === data.p2.col && row === data.p2.row) { p2Cap = pc; break; }
+            }
             
+            // If the pieces tried to capture each other, no capture occurs
+            if (p1Cap === p2Mov) p1Cap = null;
+            if (p2Cap === p1Mov) p2Cap = null;
             
           }
           
-          // Increase the turn count
-          var turn = doss.getChild('turnCount').getValue();
-          editor.mod({ doss: doss.getChild('turnCount'), data: turn + 1 });
-          
-          // Move pieces
-          editor.mod({
-            doss: p1Mov,
-            data: { col: data.p1.col, row: data.p1.row, cooldown: turn + 2 }
-          });
-          editor.mod({
-            doss: p2Mov,
-            data: { col: data.p2.col, row: data.p2.row, cooldown: turn + 2 }
-          });
-          
-          // Remove captured pieces
-          if (p1Cap) editor.rem({ child: p1Cap });
-          if (p2Cap) editor.rem({ child: p2Cap });
-          
+          // Calculate whether a conclusion has occurred
           var p1Win = p1Cap && (p1Cap.getValue('type') === 'king');
           var p2Win = p2Cap && (p2Cap.getValue('type') === 'king');
           
-          if (p1Win && p2Win) editor.mod({ doss: doss.getChild('~root.outcome'), data: 'draw' });
-          else if (p1Win)     editor.mod({ doss: doss.getChild('~root.outcome'), data: 'white' });
-          else if (p2Win)     editor.mod({ doss: doss.getChild('~root.outcome'), data: 'black' });
+          // Increase the turn count
+          var turn = doss.getChild('turnCount').getValue();
+          stager(doss.getChild('turnCount'), 'mod', { data: turn + 1 });
+          
+          // Move pieces
+          stager(p1Mov, 'mod', { data: { col: data.p1.col, row: data.p1.row, cooldown: turn + 2 } });
+          stager(p2Mov, 'mod', { data: { col: data.p2.col, row: data.p2.row, cooldown: turn + 2 } });
+          
+          // Remove captured pieces
+          if (p1Cap) stager(p1Cap.par, 'rem', { data: p1Cap });
+          if (p2Cap) stager(p2Cap.par, 'rem', { data: p2Cap });
           
           // Set intentions back to null
-          editor.mod({ doss: doss.getChild('playerSet.player1.intention'), data: { piece: null }});
-          editor.mod({ doss: doss.getChild('playerSet.player2.intention'), data: { piece: null }});
+          stager(doss.getChild('playerSet.player1.intention'), 'mod', { data: { piece: null } });
+          stager(doss.getChild('playerSet.player2.intention'), 'mod', { data: { piece: null } });
           
           /// {CLIENT=
-          var moveSet = doss.getChild('player.moveSet');
-          for (var k in moveSet.children) editor.rem({ child: moveSet.children[k] });
-          editor.mod({ doss: doss.getChild('player.selected'), data: null });
+          // Set moveset back to empty
+          stager(doss.getChild('player.moveSet'), 'mod', { data: {} });
+          
+          // Set selection back to `null`
+          stager(doss.getChild('player.selected'), 'mod', { data: {} });
           /// =CLIENT}
           
-          editor.$transaction.then(function() {
-            
-            doss.getChild('turnCount').worry('invalidated');
-            
-            p1Mov.worry('invalidated');
-            p1Mov.getChild('cooldown').worry('invalidated');
-            p1Mov.getChild('col').worry('invalidated');
-            p1Mov.getChild('row').worry('invalidated');
-            
-            p2Mov.worry('invalidated');
-            p2Mov.getChild('cooldown').worry('invalidated');
-            p2Mov.getChild('col').worry('invalidated');
-            p2Mov.getChild('row').worry('invalidated');
-            
-            if (p2Cap) doss.getChild('playerSet.player1.pieceSet').worry('invalidated');
-            if (p1Cap) doss.getChild('playerSet.player2.pieceSet').worry('invalidated');
-            
-            doss.getChild('playerSet.player1.intention').worry('invalidated');
-            doss.getChild('playerSet.player2.intention').worry('invalidated');
-            
-            if (p1Win || p2Win) doss.getChild('~root.outcome').worry('invalidated');
-            
-            /// {CLIENT=
-            doss.getChild('player.moveSet').worry('invalidated');
-            doss.getChild('player.selected').worry('invalidated');
-            /// =CLIENT}
-            
-          });
+          // Set outcome if required
+          if (p1Win || p2Win)
+            stager(doss.getChild('outcome'), 'mod', { data: (p1Win && p2Win) ? 'draw' : (p1Win ? 'white' : 'black') });
           
         }));
         
@@ -353,7 +312,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         
         var moveSet = player.addChild(new Arr({ name: 'moveSet' }));
         moveSet.setNameFunc(function(doss) {
-          return 'col' + doss.getChild('col').getValue() + 'row' + doss.getChild('row').getValue();
+          return 'col' + doss.getValue('col') + 'row' + doss.getValue('row');
         });
         var move = moveSet.setTemplate(new Obj({ name: 'move' }));
         move.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
@@ -364,45 +323,51 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         var player1 = playerSet.addChild(new Obj({ name: 'player1' }));
         var player2 = playerSet.addChild(new Obj({ name: 'player2' }));
         
-        var piece = new Obj({ name: 'piece', abilities: {
-          /// {CLIENT=
-          select: actionizer.makeAbility('select', false, function(editor, doss, data) {
+        var piece = new Obj({ name: 'piece' });
+        /// {CLIENT=
+        piece.addAbility('select', actionizer.makeAbility('select', function(doss, data, stager) {
+          
+          //var selected = doss.getChild('~root.player.selected');
+          //var moves = doss.getChild('~root.player.moveSet');
+          
+          var cooldown = doss.getChild('cooldown').getValue();
+          var turnCount = doss.getChild('~root.turnCount').getValue();
+          
+          if (cooldown <= turnCount) {
+          
+            var col = doss.getChild('col').getValue();
+            var row = doss.getChild('row').getValue();
             
-            var selected = doss.getChild('~root.player.selected');
-            var moves = doss.getChild('~root.player.moveSet');
-            
-            // Clear any existing moves
-            for (var k in moves.children) editor.rem({ child: moves.children[k] });
-            
-            var cooldown = doss.getChild('cooldown').getValue();
-            var turnCount = doss.getChild('~root.turnCount').getValue();
-            
-            if (cooldown <= turnCount) {
-            
-              var col = doss.getChild('col').getValue();
-              var row = doss.getChild('row').getValue();
-              var movesData = movesForPc(doss.getChild('~root'), col, row);
-              
-              // Add on available moves
-              for (var i = 0, len = movesData.length; i < len; i++) editor.add({ par: moves, data: movesData[i] });
-              
-              // Update selected reference
-              editor.mod({ doss: selected, data: doss });
-              
-            } else {
-              
-              editor.mod({ doss: selected, data: null });
-              
-            }
-            
-            editor.$transaction.then(function() {
-              moves.worry('invalidated');
-              selected.worry('invalidated');
+            // TODO: So much work for the implementor! :(
+            // It's needed because ~root.player.moveSet has a nameFunc. That nameFunc
+            // can only work with an instance of Dossier, otherwise `actionizer.modArr`
+            // will get confused about which children (being modded) it already has.
+            // And there will probably be errors because `actionizer.modArr` passes an
+            // explicit name to `Editor.prototype.add`, which will certainly conflict
+            // with the name produced by `nameFunc` if the following logic isn't
+            // implemented.
+            // 
+            // Basically we're repeating ourselves: exactly this logic
+            // has already been written for Dosser(~root.playerSet.moveSet).nameFunc,
+            // except there it needs to work with a Dossier and here it needs to work
+            // with raw data.
+            var moves = A.toObj(movesForPc(doss.getChild('~root'), col, row), function(data) {
+              return 'col' + data.col + 'row' + data.row;
             });
+            var selected = doss;
             
-          })
-          /// =CLIENT}
-        }});
+          } else {
+            
+            var moves = {};
+            var selected = null;
+            
+          }
+          
+          stager(doss.getChild('~root.player.moveSet'), 'mod', { data: moves });
+          stager(doss.getChild('~root.player.selected'), 'mod', { data: selected });
+          
+        }));
+        /// =CLIENT}
         piece.addChild(new Val({ name: 'type' }));
         piece.addChild(new Val({ name: 'cooldown', dossClass: ds.DossierInt }));
         piece.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
@@ -417,11 +382,6 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         p1Intention.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
         p1Intention.addChild(new Val({ name: 'row', dossClass: ds.DossierInt }));
         
-        var p1PrevMove = player1.addChild(new Obj({ name: 'prevMove' }));
-        p1PrevMove.addChild(new Ref({ name: 'piece', format: '~root.playerSet.player1.pieceSet.$id' }));
-        p1PrevMove.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
-        p1PrevMove.addChild(new Val({ name: 'row', dossClass: ds.DossierInt }));
-        
         // P2
         var p2PieceSet = player2.addChild(new Arr({ name: 'pieceSet' }))
         p2PieceSet.setTemplate(piece);
@@ -430,11 +390,6 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         p2Intention.addChild(new Ref({ name: 'piece', format: '~root.playerSet.player2.pieceSet.$id' }));
         p2Intention.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
         p2Intention.addChild(new Val({ name: 'row', dossClass: ds.DossierInt }));
-        
-        var p2PrevMove = player2.addChild(new Obj({ name: 'prevMove' }));
-        p2PrevMove.addChild(new Ref({ name: 'piece', format: '~root.playerSet.player2.pieceSet.$id' }));
-        p2PrevMove.addChild(new Val({ name: 'col', dossClass: ds.DossierInt }));
-        p2PrevMove.addChild(new Val({ name: 'row', dossClass: ds.DossierInt }));
         
         outline.addChild(new Val({ name: 'startTime', dossClass: ds.DossierInt }));
         outline.addChild(new Val({ name: 'turnTime', dossClass: ds.DossierInt, defaultValue: (1000 * 10) })); // 10 seconds
@@ -456,7 +411,6 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           playerSet: {
             player1: {
               pieceSet: {
-                
               }
             },
             player2: {
@@ -650,15 +604,12 @@ var package = new PACK.pack.Package({ name: 'straightChess',
       setupDoss: function(doss) {
         
         /// {SERVER=
-        var p1Intent = false;
-        var p2Intent = false;
-        
         new nf.CalculationInformer({
           dependencies: [
-            doss.getChild('playerSet.player1.intention'),
-            doss.getChild('playerSet.player2.intention')
+            doss.getChild('playerSet.player1.intention.piece'),
+            doss.getChild('playerSet.player2.intention.piece')
           ],
-          calc: function(p1Intent, p2Intent) {
+          calc: function() {
             
             var p1Intent = doss.getChild('playerSet.player1.intention');
             var p2Intent = doss.getChild('playerSet.player2.intention');
@@ -669,11 +620,8 @@ var package = new PACK.pack.Package({ name: 'straightChess',
             if (p1Pc && p2Pc) {
               
               doss.$useAbility('move', {
-                data: {
-                  p1: p1Intent.getJson(),
-                  p2: p2Intent.getJson()
-                },
-                doSync: true
+                data: { p1: p1Intent.getJson(), p2: p2Intent.getJson() },
+                sync: 'quick'
               }, null, {}).done();
               
             }
@@ -730,7 +678,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
             }
           });
           var clickDec = new uf.ActionDecorator({
-            $action: piece.as('$useAbility', 'select', { data: null, doSync: false })
+            $action: piece.as('$useAbility', 'select', { data: null, sync: 'none' })
           });
           
           return new uf.SetView({ name: name, cssClasses: [ 'piece' ], decorators: [ classTypeDec, classSelDec, classCooldownDec, positionDec, clickDec ], children: [
@@ -752,7 +700,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           
               new uf.SetView({ name: 'confirm', children: [
                 new uf.TextView({ name: 'button', info: 'enter', decorators: [
-                  new uf.ActionDecorator({ $action: doss.as('$useAbility', 'ready', { data: null, doSync: true }) })
+                  new uf.ActionDecorator({ $action: doss.as('$useAbility', 'ready', { data: null, sync: 'quick' }) })
                 ]})
               ]}),
               new uf.SetView({ name: 'game', children: [
@@ -847,7 +795,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
                                   col: col,
                                   row: row
                                 },
-                                doSync: true
+                                sync: 'quick'
                               })
                             })
                           ]

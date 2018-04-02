@@ -163,10 +163,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         // String type
         var stringSet = typeSet.addChild(new Arr({ name: 'stringSet' }));
         var string = stringSet.setTemplate(new Obj({ name: 'string', abilities: {
-          jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data) {
-            
-            editor.rem({ child: doss });
-            
+          jsonRem: actionizer.makeAbility('jsonRem', function(doss, data, stager) {
+            stager(doss.par, 'rem', { data: doss });
           })
         }}));
         string.addChild(new Val({ name: 'value', defaultValue: '' }));
@@ -174,48 +172,69 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         // Object type
         var objectSet = typeSet.addChild(new Arr({ name: 'objectSet' }));
         var object = objectSet.setTemplate(new Obj({ name: 'object', abilities: {
-          jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+          jsonRem: actionizer.makeAbility('jsonRem', function(doss, data, stager) {
             
-            editor.rem({ child: doss });
-            
-            var pairSet = doss.getChild('pairSet');
-            return new P({ all: O.map(pairSet.children, function(pair) {
-              return pair.getChild('@val').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
-            })});
+            stager(doss.par, 'rem', { data: doss });
+            var pairs = doss.getChild('pairSet').children;
+            for (var k in pairs) stager(pairs[k].getChild('@val'), 'jsonRem', { data: null });
             
           })
         }}));
         var pairSet = object.addChild(new Arr({ name: 'pairSet', abilities: {
-          addObj: actionizer.makeAbility('addObj', true, function(editor, doss, data) {
+          addObj: actionizer.makeAbility('addObj', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.objectSet'), data: { pairSet: {} } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newPair = editor.add({ par: doss, data: { key: 'obj', val: newItem } });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.objectSet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          addArr: actionizer.makeAbility('addArr', true, function(editor, doss, data) {
+          addArr: actionizer.makeAbility('addArr', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.arraySet'), data: { indexSet: {} } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newPair = editor.add({ par: doss, data: { key: 'arr', val: newItem } });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.arraySet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          addStr: actionizer.makeAbility('addStr', true, function(editor, doss, data) {
+          addStr: actionizer.makeAbility('addStr', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.stringSet'), data: { value: 'str' } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newPair = editor.add({ par: doss, data: { key: 'str', val: newItem } });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.stringSet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          jsonRemChild: actionizer.makeAbility('jsonRemChild', true, function(editor, doss, data, session, channelerParams) {
+          jsonRemChild: actionizer.makeAbility('jsonRemChild', function(doss, data, stager) {
             
             var childName = U.param(data, 'childName');
             
-            var pair = doss.getChild(childName);
+            var pair = doss.children[childName];
             var item = pair.getChild('@val');
             
-            editor.rem({ child: pair });
-            return item.$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+            stager(doss, 'rem', { data: pair });
+            stager(item, 'jsonRem', { data: null });
             
           })
         }}));
@@ -229,48 +248,69 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         // Array type
         var arraySet = typeSet.addChild(new Arr({ name: 'arraySet' }));
         var array = arraySet.setTemplate(new Obj({ name: 'array', abilities: {
-          jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+          jsonRem: actionizer.makeAbility('jsonRem', function(doss, data, stager) {
             
-            editor.rem({ child: doss });
-            
-            var indexSet = doss.getChild('indexSet');
-            return new P({ all: O.map(indexSet.children, function(index) {
-              return index.getChild('@').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
-            })});
+            stager(doss, 'rem', { data: doss });
+            var indexes = doss.getChild('indexSet').children;
+            for (var k in indexes) stager(indexes[k].getChild('@'), 'jsonRem', { data: null });
             
           })
         }}));
         var indexSet = array.addChild(new Arr({ name: 'indexSet', abilities: {
-          addObj: actionizer.makeAbility('addObj', true, function(editor, doss, data) {
+          addObj: actionizer.makeAbility('addObj', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.objectSet'), data: { pairSet: {} } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newIndex = editor.add({ par: doss, data: newItem });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.objectSet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          addArr: actionizer.makeAbility('addArr', true, function(editor, doss, data) {
+          addArr: actionizer.makeAbility('addArr', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.arraySet'), data: { indexSet: {} } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newIndex = editor.add({ par: doss, data: newItem });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.arraySet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          addStr: actionizer.makeAbility('addStr', true, function(editor, doss, data) {
+          addStr: actionizer.makeAbility('addStr', function(doss, data, stager) {
+            
+            var editor = stager.editor;
             
             var newObj = editor.add({ par: doss.getChild('~root.typeSet.stringSet'), data: { value: 'str' } });
             var newItem = editor.add({ par: doss.getChild('~root.itemSet'), data: newObj });
             var newIndex = editor.add({ par: doss, data: newItem });
             
+            editor.$transaction.then(function() {
+              doss.getChild('~root.typeSet.stringSet').worry('invalidated');
+              doss.getChild('~root.itemSet').worry('invalidated');
+              doss.worry('invalidated');
+            }).done();
+            
           }),
-          jsonRemChild: actionizer.makeAbility('jsonRemChild', true, function(editor, doss, data, session, channelerParams) {
+          jsonRemChild: actionizer.makeAbility('jsonRemChild', function(doss, data, stager) {
             
             var childName = U.param(data, 'childName');
             
-            var index = doss.getChild(childName);
+            var index = doss.children[childName];
             var item = index.getChild('@');
             
-            editor.rem({ child: index });
-            return item.$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+            stager(doss, 'rem', { data: index });
+            stager(item, 'jsonRem', { data: null });
             
           })
         }}));
@@ -281,10 +321,10 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         
         var itemSet = outline.addChild(new Arr({ name: 'itemSet' }));
         itemSet.setTemplate(new Ref({ name: 'item', format: '~root.typeSet.$type.$id', abilities: {
-          jsonRem: actionizer.makeAbility('jsonRem', true, function(editor, doss, data, session, channelerParams) {
+          jsonRem: actionizer.makeAbility('jsonRem', function(doss, data, stager) {
             
-            editor.rem({ child: doss });
-            return doss.getChild('@').$stageAbility('jsonRem', session, channelerParams, editor, { data: null, doSync: false });
+            stager(doss.par, 'rem', { data: doss });
+            stager(doss.getChild('@'), 'jsonRem', { data: null });
             
           })
         }}));
@@ -392,7 +432,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                     
                     // Pair controls
                     new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
-                      new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'jsonRemChild', { data: { childName: pair.name }, doSync: true }) })
+                      new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'jsonRemChild', { data: { childName: pair.name }, sync: 'quick' }) })
                     ]})
                     
                   ]})
@@ -404,13 +444,13 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 new uf.SetView({ name: 'controls', children: [
                   
                   new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addStr', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addStr', { data: null, sync: 'quick' }) })
                   ]}),
                   new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addObj', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addObj', { data: null, sync: 'quick' }) })
                   ]}),
                   new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addArr', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: pairSet.as('$useAbility', 'addArr', { data: null, sync: 'quick' }) })
                   ]})
                   
                 ]})
@@ -443,7 +483,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                     
                     // Index controls
                     new uf.TextView({ name: 'delete', info: 'X', cssClasses: [ 'control' ], decorators: [
-                      new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'jsonRemChild', { data: { childName: index.name }, doSync: true }) })
+                      new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'jsonRemChild', { data: { childName: index.name }, sync: 'quick' }) })
                     ]})
                     
                   ]});
@@ -454,13 +494,13 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
                 
                 new uf.SetView({ name: 'controls', children: [
                   new uf.TextView({ name: 'addString', info: '+STR', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addStr', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addStr', { data: null, sync: 'quick' }) })
                   ]}),
                   new uf.TextView({ name: 'addObject', info: '+OBJ', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addObj', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addObj', { data: null, sync: 'quick' }) })
                   ]}),
                   new uf.TextView({ name: 'addArray', info: '+ARR', cssClasses: [ 'control' ], decorators: [
-                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addArr', { data: null, doSync: true }) })
+                    new uf.ActionDecorator({ $action: indexSet.as('$useAbility', 'addArr', { data: null, sync: 'quick' }) })
                   ]})
                 ]})
                 

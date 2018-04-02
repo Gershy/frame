@@ -18,12 +18,7 @@ new PACK.pack.Package({ name: 'worry',
         },
         addWorry: function(type, func, key0) {
           
-          if (!func) {
-            console.log('TYPE:', type);
-            console.log('FUNC:', func);
-            console.log('KEY0:', key0);
-            throw new Error('Invalid "func" param');
-          }
+          if (!func) throw new Error('Invalid "func" param');
           
           O.prepare(this, 'concerns');
           O.prepare(this.concerns, type);
@@ -48,6 +43,8 @@ new PACK.pack.Package({ name: 'worry',
           }
           
           this.concerns[type][key] = func;
+          
+          return func;
           
         },
         remWorry: function(type, func) {

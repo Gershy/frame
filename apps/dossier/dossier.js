@@ -159,7 +159,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         setTemplate: function(template, nameFunc) {
           this.template = template;
           this.template.par = this;
-          if (nameFunc) this.nameFunc = nameFunc;
+          if (nameFunc) this.setNameFunc(nameFunc);
           return template;
         },
         setNameFunc: function(nameFunc) {
@@ -772,7 +772,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         
         // Commands
-        $heedCommand: function(params /* session, command, params, channelerParams */) { // Dossier
+        $heedCommand: function(params /* session, command, params, channelerParams */) {
           
           var commandDescription = this.getAddress() + '.' + params.command;
           
@@ -795,7 +795,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             .then(function(abilityStaged) { return editor.$transact(); });
           
         },
-        $giveCommand: function(params /* session, channelerParams, data */) { // Dossier
+        $giveCommand: function(params /* session, channelerParams, data */) {
           // TODO: In request-heavy environments it may be worth keeping a reference to the Channeler
           return this.outline.getRoot().channeler.$giveCommand(params);
         },
@@ -878,13 +878,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
         getValue: function() {
           return this.getJson();
         },
-        setValue: function(val, doSync) {
+        setValue: function(val, sync) {
           
           // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
           // instead of "setValue" - but this includes the functionality of causing "invalidated"
           // worries the moment "setValue" is called. We don't want this; instead we want the
           // ability activated by "setValue" to be responsible for calling "invalidated".
-          this.$useAbility('mod', { data: val, doSync: doSync || false }).done();
+          this.$useAbility('mod', { data: val, sync: sync || 'none' }).done();
           
         },
         
@@ -1172,15 +1172,61 @@ var package = new PACK.pack.Package({ name: 'dossier',
         }
       };}
     });
+    ds.DossierJsn = U.makeClass({ name: 'DossierJsn', superclass: ds.DossierVal,
+      methods: function(sc) { return {
+        sanitizeValue: function(value) {
+          
+          // Accepts String, Integer, Object
+          
+          value = sc.sanitizeValue.call(this, value);
+          return value;
+          
+        }
+      };}
+    });
     
     /* DossierRef */
     ds.DossierRef = U.makeClass({ name: 'DossierRef', superclass: ds.DossierVal,
       methods: function(sc) { return {
         
         init: function(params) {
-          var outline = U.param(params, 'outline');
-          if (!outline.format) throw new Error('Cannot init ' + this.constructor.title + ' with Outline missing "format" value');
+          
           sc.init.call(this, params);
+          this.wait = null; // { doss, func }
+          
+        },
+        setValue: function(value, sync) {
+          
+          if (this.wait) {
+            console.log('Resetting `wait');
+            this.wait.doss.remWorry('invalidated', this.wait.func);
+            this.wait = null;
+          }
+          
+          // DossierRef does something much more complicated if its value doesn't exist!!
+          value = this.sanitizeValue(this, value);
+          
+          // Null values can always be set immediately
+          if (value === null) return sc.setValue.call(this, value, sync);
+          
+          var addr = this.getRefAddress.call({ outline: this.outline, value: value });
+          var child = this.getChild(addr);
+          
+          // Values referencing existant Dossiers can always be set immediately
+          if (child) return sc.setValue.call(this, value, sync);
+          
+          // Here's the hard part: a nonexistant child has been referenced
+          var closestChild = this.approachChild(addr).child;
+          
+          // No value is set; no ability is called! Keep getting closer and closer
+          // children (detecting new children through "invalidated") until we
+          // finally get to the target child
+          var pass = this;
+          this.wait = {
+            doss: closestChild,
+            func: closestChild.addWorry('invalidated', pass.setValue.bind(pass, value, sync))
+          };
+          
         },
         sanitizeValue: function(value) {
           
@@ -1195,6 +1241,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           } else if (U.isObj(value, Array)) {
             
             // TODO: `Array` format is ambiguous: is it a "."-split address?? Or is it the actual value??
+            // Currently considering it to be the actual value.
             var arrVal = value;
             
           } else if (U.isObj(value, String)) {
@@ -1245,7 +1292,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             for (var i = 0; i < arrVal.length; i++) {
               if (!U.isObj(arrVal[i], String) && !U.isObj(arrVal[i], Number)) {
                 throw new Error(
-                  this.constructor.title + '(' + this.getAddress() + ') rejects value value - ' +
+                  this.constructor.title + '(' + this.getAddress() + ') rejects value - ' +
                   'value contains invalid type: ' + U.typeOf(arrVal[i])
                 );
               }
@@ -1257,8 +1304,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           }
           
           return arrVal;
-          
-          // return sc.setInternalValue0.call(this, arrVal);
           
         },
         getInternalValue0: function() {
@@ -1292,6 +1337,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         getValue: function() {
           return this.value;
+        },
+        
+        stop: function() {
+          
+          if (this.wait) {
+            this.wait.doss.remWorry('invalidated', this.wait.func);
+            this.wait = null;
+          }
+          
+          sc.stop.call(this);
+          
         }
         
       };}

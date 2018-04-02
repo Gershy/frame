@@ -31,7 +31,7 @@ var package = new PACK.pack.Package({ name: 'app',
         /// =CLIENT}
         
         // Generate a Channeler
-        var channeler = new sv.Channeler({ name: this.name, appName: this.name });
+        var channeler = new sv.Channeler({ name: 'channeler', appName: this.name });
         this.setupChanneler(channeler);
         this.activities.push(channeler);
         
@@ -69,7 +69,7 @@ var package = new PACK.pack.Package({ name: 'app',
             window.view = view;
             
           })
-          .then(doss.as('$useAbility', 'sync')) ;         // Sync `doss` to the server
+          .then(doss.as('$useAbility', 'sync'));          // Sync `doss` to the server
           /// =CLIENT}
         
       },

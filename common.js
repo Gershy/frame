@@ -898,8 +898,7 @@ global.U = {
   
 };
 
-U.runId = U.randId();
-console.log('====== NEW RUN: ' + U.runId + ' ======');
+console.log('==== ' + U.randId() + ' ====');
 
 // Shorthand access to value manipulation
 global.A = U.arr;
