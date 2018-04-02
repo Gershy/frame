@@ -774,9 +774,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         // Commands
         $heedCommand: function(params /* session, command, params, channelerParams */) {
           
-          var commandDescription = this.getAddress() + '.' + params.command;
-          
-          var editor = new ds.Editor();
+          //var editor = new ds.Editor();
           var pass = this;
           return new P({ run: function() {
             
@@ -785,14 +783,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
             var commandParams = U.param(params, 'params', {});
             var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
             
-            if (commandParams === null) throw new Error('Command ' + commandDescription + ': NO PARAMS');
+            if (commandParams === null) throw new Error('Params were null for ' + pass.identity() + '.' + command + '()');
             
-            commandDescription += '(' + U.debugObj(commandParams) + ')';
+            return pass.$useAbility(command, commandParams, session, channelerParams);
             
-            return pass.$stageAbility(command, session, channelerParams, editor, commandParams);
-            
-          }})
-            .then(function(abilityStaged) { return editor.$transact(); });
+          }});
           
         },
         $giveCommand: function(params /* session, channelerParams, data */) {
@@ -804,7 +799,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         getAbility: function(name) {
           return O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
         },
-        $stageAbility: function(name, session, channelerParams, editor, params) {
+        $stageAbility: function(name, params, stager) {
           
           /// {DOC=
           { desc: 'Stages a named ability. This means `editor` is prepared ' +
@@ -830,22 +825,31 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           var $func = this.getAbility(name);
           if (!$func) return new P({ err: new Error(this.identity() + ' doesn\'t support ability "' + name + '"') });
-          return $func(session, channelerParams, editor, this, params);
+          return $func(this, params, stager);
           
         },
         $useAbility: function(name, params, session, channelerParams) {
           
+          // Initialize an editor to carry out the ability...
           var editor = new ds.Editor();
           
-          /// {CLIENT=
-          var $stage = this.$stageAbility(name, null, null, editor, params || {});
-          /// =CLIENT}
+          // Set up the `stager`...
+          var stagings = [];
+          var stager = function(doss, abilityName, params) {
+            stagings.push(doss.$stageAbility(abilityName, params, stager));
+          };
+          O.update(stager, { editor: editor, session: session || null, channelerParams: channelerParams || {} });
+          stager.use = function(doss, abilityName, data) {
+            var params = { data: data, sync: 'quick' };
+            /// {SERVER=
+            params.sessions = [ session ],
+            /// =SERVER}
+            doss.$useAbility(abilityName, params, stager.session, {}).done();
+          };
           
-          /// {SERVER=
-          var $stage = this.$stageAbility(name, session || null, channelerParams || {}, editor, params);
-          /// =SERVER}
-          
-          return $stage.then(editor.$transact.bind(editor));
+          return this.$stageAbility(name, params, stager)
+            .then(function() { return new P({ all: stagings }); })
+            .then(editor.$transact.bind(editor));
           
         },
         dereference: function() {

@@ -69,7 +69,7 @@ var package = new PACK.pack.Package({ name: 'app',
             window.view = view;
             
           })
-          .then(doss.as('$useAbility', 'sync'));          // Sync `doss` to the server
+          .then(doss.as('$useAbility', 'sync', {}));          // Sync `doss` to the server
           /// =CLIENT}
         
       },

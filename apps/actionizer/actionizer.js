@@ -10,12 +10,12 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         var channeler = this.channeler = U.param(params, 'channeler');
         
         // All types
-        this.sync = function(session, channelerParams, editor, doss, params /* */) {
+        this.sync = function(doss, params, /* */ stager) {
           
           // Note that the server side never gives a "sync" command; the server is the source of truth,
           // it doesn't rely on any outside sources to synchronize it.
           // Attach a sync action to occur when the `editor` is done (but don't wait to fulfill $staged!)
-          editor.$transaction.then(function() {
+          stager.editor.$transaction.then(function() {
             
             /// {CLIENT=
             // The client side issues a sync command
@@ -30,8 +30,8 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             /// =SERVER}
             
             return channeler.$giveCommand({
-              session: session,
-              channelerParams: channelerParams,
+              session: stager.session,
+              channelerParams: stager.channelerParams,
               data: {
                 address: doss.getAddress(),
                 command: command,
@@ -164,7 +164,11 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         
         var channeler = this.channeler;
         
-        return function(session, channelerParams, editor, doss, params /* sync, sessions, data */) {
+        return function(doss, params /* sync, sessions, data */, stager) {
+          
+          var editor = stager.editor;
+          var session = stager.session;
+          var channelerParams = stager.channelerParams;
           
           // Perform whatever actions this ability ought to carry out
           var data = U.param(params, 'data');
@@ -179,42 +183,8 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           if (!A.contains([ 'none', 'quick', 'confirm' ], sync)) throw new Error('Invalid "sync" value: "' + sync + '"');
           
-          // Set up the `stager`...
-          var stagings = [];
-          var stager = function(doss, abilityName, params) {
-            stagings.push(doss.$stageAbility(abilityName, session, channelerParams, editor, params));
-          };
-          stager.editor = editor;
-          stager.session = session;
-          stager.channelerParams = channelerParams;
-          stager.use = function(doss, abilityName, data) {
-            
-            /// {SERVER=
-            var params = {
-              data: data,
-              sessions: [ session ],
-              sync: 'quick'
-            };
-            /// =SERVER}
-            
-            /// {CLIENT=
-            var params = {
-              data: data,
-              sync: 'quick'
-            };
-            /// =CLIENT}
-            
-            doss.$useAbility(abilityName, params, stager.session, {}).done();
-            
-          };
-          
           // Run the `editsFunc` with `stager`
-          var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) }).then(function() {
-            
-            // `editsFunc` probably called `stager` thereby populating `stagings`
-            return new P({ all: stagings });
-            
-          });
+          var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) });
           
           if (sync !== 'none') {
             
