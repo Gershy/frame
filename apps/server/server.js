@@ -294,14 +294,13 @@ new PACK.pack.Package({ name: 'server',
               
             }).then(function() {
               
-              if (commandDescription !== pass.name + '.getFile')
-                console.log('Command success: ' + commandDescription);
+              if (commandDescription !== pass.name + '.getFile') console.log('Command success: ' + commandDescription);
               
             }).fail(function(err) {
               
-              dbgErr.message = err.message;
-              console.log('Command failure: ' + commandDescription);
+              //dbgErr.message = err.message;
               //console.error(dbgErr);
+              console.log('Command failure: ' + commandDescription);
               console.error(err);
               return pass.$commandFailed(session, channelerParams, err);
               
@@ -691,21 +690,27 @@ new PACK.pack.Package({ name: 'server',
           var channelParams = U.param(params, 'channelParams', {});
           
           // Get the Response instance
-          var res = U.param(channelParams, 'res', null);  // Attempt one: use a provided Response object
-          if (!res) res = sessionData.polls.shift();      // Attempt two: use a queued Response object
+          //var res = U.param(channelParams, 'res', null);
+          //if (!res) res = sessionData.polls.shift();
           
+          // Attempt one: use a provided Response object
+          var res = U.param(channelParams, 'res', null);
           if (res) {
-            
-            // We have a Response instance! Use `commandResponse` to respond with it.
+            if (!U.isInstance(data, sv.CommandResponse)) console.log('SENDINGG TO ' + session.ip + ':', data);
             this.sendResponse(res, data);
-            
-          } else {
-            
-            // No Response instance found. Need to queue `commandResponse` until we can send it.
-            sessionData.pending.push(data);
-            
+            return p.$null;
           }
           
+          // Attempt two: use a queued Response object
+          var res = sessionData.polls.shift();
+          if (res) {
+            if (!U.isInstance(data, sv.CommandResponse)) console.log('SENDINGG TO ' + session.ip + ':', data);
+            this.sendResponse(res, data);
+            return p.$null;
+          }
+          
+          // Attempt three: bank the data to be sent when more polls become available
+          sessionData.pending.push(data);
           return p.$null;
           
           /// =SERVER}
@@ -1224,7 +1229,9 @@ new PACK.pack.Package({ name: 'server',
         },
         endResponse: function(res) {
           
+          try {
           var data = this.contentType === 'text/json' ? U.thingToString(this.data) : this.data;
+        } catch(err) { console.log(this.data); throw err; }
           res.writeHead(this.httpCode ? this.httpCode : 200, {
             'Content-Type': this.contentType,
             'Content-Length': Buffer.byteLength(data, this.encoding)

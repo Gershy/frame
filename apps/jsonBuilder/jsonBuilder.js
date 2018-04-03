@@ -6,12 +6,6 @@
 // children defined in their Outline. The implementation should avoid this, but
 // Dossiers should validate to FORCE the implementation to behave well
 
-// TODO: Distinguish between locally and globally invalidated? E.g. if a purely-client-side value changes,
-// the View layout is invalidated and needs to recalculated BUT globally no invalidation has occurred.
-// Local invalidations are wired into the local View
-// Global invalidations update the server
-// HOW BOUT DAT?
-
 // TODO: Informers should be able to prevent invalidation when the value being set is already
 // the value being held
 
@@ -53,8 +47,8 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
     new App({ name: 'jsonBuilder',
       
       setupChanneler: function(channeler) {
-        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
-        channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
+        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, host: '192.168.1.148', numToBank: 1 }));
+        // channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
       },
       setupActionizer: function(actionizer) {
         // TODO: Nothing for now...
@@ -164,6 +158,7 @@ var package = new PACK.pack.Package({ name: 'jsonBuilder',
         var stringSet = typeSet.addChild(new Arr({ name: 'stringSet' }));
         var string = stringSet.setTemplate(new Obj({ name: 'string', abilities: {
           jsonRem: actionizer.makeAbility('jsonRem', function(doss, data, stager) {
+            doss.par.stageAbility('rem', { data: doss }, stager);
             stager(doss.par, 'rem', { data: doss });
           })
         }}));

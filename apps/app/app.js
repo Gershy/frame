@@ -12,13 +12,13 @@ var package = new PACK.pack.Package({ name: 'app',
         this.setupChanneler = U.param(params, 'setupChanneler');
         this.setupActionizer = U.param(params, 'setupActionizer');
         this.setupOutline = U.param(params, 'setupOutline');
-        this.setupDoss = U.param(params, 'setupDoss', function(doss) {});
         this.genOutlineData = U.param(params, 'genOutlineData');
+        this.setupDoss = U.param(params, 'setupDoss', function(doss) {});
         
         this.activities = [];
         
         /// {CLIENT=
-        this.genView = U.param(params, 'genView');
+        this.genView = U.param(params, 'genView', null);
         /// =CLIENT}
         
       },
@@ -56,14 +56,15 @@ var package = new PACK.pack.Package({ name: 'app',
         return editor.$transact()
           .then(function() { channeler.handler = doss; }) // Set `doss` as the request handler
           .then(channeler.as('$start'))                   // Start the channeler
-          .then(this.setupDoss.bind(null, doss))
+          .then(this.setupDoss.bind(null, doss));
+          /*
           /// {CLIENT=
           .then(function() {                              // Generate the view
             
             var view = pass.genView(doss);
             view.start();
             
-            pass.activities.push(view);
+            // pass.activities.push(view); // TODO: No need to stop the view... it's just the DOM...
             
             window.doss = doss;
             window.view = view;
@@ -71,6 +72,7 @@ var package = new PACK.pack.Package({ name: 'app',
           })
           .then(doss.as('$useAbility', 'sync', {}));          // Sync `doss` to the server
           /// =CLIENT}
+          */
         
       },
       $end: function() {

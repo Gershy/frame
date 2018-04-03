@@ -10,7 +10,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         var channeler = this.channeler = U.param(params, 'channeler');
         
         // All types
-        this.sync = function(doss, params, /* */ stager) {
+        this.sync = function(doss, params, /* */ stager) { // TODO: Could probably be implemented with `makeAbility`
           
           // Note that the server side never gives a "sync" command; the server is the source of truth,
           // it doesn't rely on any outside sources to synchronize it.
@@ -31,7 +31,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             
             return channeler.$giveCommand({
               session: stager.session,
-              channelerParams: stager.channelerParams,
+              channelerParams: stager.consumeChannelerParams(),
               data: {
                 address: doss.getAddress(),
                 command: command,
@@ -41,9 +41,13 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             
           }).done();
           
-          return p.$null;
-          
         };
+        this.display = this.makeAbility('display', function(doss, data, stager) {
+          
+          console.log('DISPLAY:');
+          console.log(JSON.stringify(doss.getJson(), null, 2));
+          
+        });
         
         // Val
         this.modVal = this.makeAbility('mod', function(doss, data, stager) {
@@ -100,7 +104,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           for (var k in mod) stager(doss.children[k], 'mod', { data: mod[k] });
           for (var k in add) {
             var child = editor.add({ par: doss, data: null, name: k, recurseObj: false });
-            stager(child, 'mod', { data: add[k] });
+            stager(child, 'mod', { data: add[k]});
           }
           
         });
@@ -113,6 +117,23 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           // Add `data` to `doss`
           return editor.add({ par: doss, data: data });
+          
+        });
+        this.addsArr = this.makeAbility('adds', function(doss, data, stager) {
+          
+          if (O.isEmpty(data)) return;
+          
+          var editor = stager.editor;
+          var added = {};
+          
+          for (var k in data) {
+            added[k] = editor.add({ par: doss, data: null, name: k, recurseObj: false });
+            stager(added[k], 'mod', { data: add[k] });
+          }
+          
+          editor.$transaction.then(doss.as('worry', 'invalidated'));
+          
+          return added;
           
         });
         this.remArr = this.makeAbility('rem', function(doss, data, stager) {
@@ -128,11 +149,134 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           // Remove with `editor`
           editor.rem({ child: child });
+          editor.$transaction.then(child.as('worry', 'invalidated'));
           
         });
         
-        // TODO: What happens when a Ref is synced, but the Ref target isn't available?
-        // Probably need to sync Refs differently or something...
+        // Ref
+        this.modRef = this.makeAbility('mod', function(doss, data, stager) {
+          
+          var editor = stager.editor;
+          editor.mod({ doss: doss, data: data });
+          
+          /*
+          setValue: function(value, sync) {
+            
+            if (this.wait) {
+              console.log('Resetting `wait');
+              this.wait.doss.remWorry('invalidated', this.wait.func);
+              this.wait = null;
+            }
+            
+            // DossierRef does something much more complicated if its value doesn't exist!!
+            value = this.sanitizeValue(this, value);
+            
+            // Null values can always be set immediately
+            if (value === null) return sc.setValue.call(this, value, sync);
+            
+            var addr = this.getRefAddress.call({ outline: this.outline, value: value });
+            var child = this.getChild(addr);
+            
+            // Values referencing existant Dossiers can always be set immediately
+            if (child) return sc.setValue.call(this, value, sync);
+            
+            // Here's the hard part: a nonexistant child has been referenced
+            var closestChild = this.approachChild(addr).child;
+            
+            // No value is set; no ability is called! Keep getting closer and closer
+            // children (detecting new children through "invalidated") until we
+            // finally get to the target child
+            var pass = this;
+            this.wait = {
+              doss: closestChild,
+              func: closestChild.addWorry('invalidated', pass.setValue.bind(pass, value, sync))
+            };
+            
+          }
+          */
+          
+          editor.$transaction.then(function() {
+            
+            // The following is complicated! We only want to fire an `invalidated`
+            // event on `doss` once its reference is crystallized. If it can't
+            // fully dereference, we approach through the Dossier tree as far as
+            // possible, and worry about the furthest-possible Dossier reached.
+            // When this worry activates, we try the process again.
+            
+            // Assumes that the furthest-possible Dossier is a DossierArr, and will
+            // trigger worries when it has children added (and when the possibility
+            // of crystallizing the reference is renewed).
+            
+            // Handles removal of the furthest-possible Dossier, as removals trigger
+            // invalidations.
+            
+            // It wouldn't be so complicated if adding worries were a resourceless
+            // operation. Unfortunately we need to make sure that if an
+            // uncrystallized reference is suddenly no longer needed (e.g. it's
+            // removed or it suddenly refers to something else), our worry at the
+            // tip of the approach is cleaned up.
+            
+            // So: We worry at the tip (TipWorry) and at the DossierRef (CleanupWorry)
+            // - If CleanupWorry, we clean up TipWorry
+            // - TipWorry, we update TipWorry to be set at the new tip
+            // - If TipWorry and the reference crystallizes, clean up CleanupWorry
+            //   (yes... clean up the clean up), and TipWorry
+            
+            // TODO: What if the DossierRef is deep in a Dossier tree which becomes
+            // fully removed? This will not cause an invalidation worry at
+            // DossierRef. The solution may be to invalidate the full tree?
+            
+            var closest = null;
+            var tryValue = null;
+            var removeClosestWorry = function() {
+              if (closest) {
+                closest.remWorry('invalidated', tryValue);
+                closest = null;
+              }
+            };
+            
+            tryValue = function() {
+              
+              // console.log('Crystallizing ' + doss.identity() + '...');
+              
+              removeClosestWorry();
+              
+              var targetAddr = doss.getRefAddress();
+              var approach = doss.approachChild(targetAddr);
+              
+              if (!approach.remaining.length) {
+                
+                // The reference is crystallized!
+                
+                // console.log('Approached fully!');
+                
+                if (!doss.isRooted()) return; // Crystallization happened too late - `doss` has been unrooted :(
+                
+                // console.log('Crystallized!');
+                
+                doss.remWorry('invalidated', removeClosestWorry);
+                doss.worry('invalidated');
+                return;
+                
+              }
+              
+              // console.log('Approached; missed by ' + approach.remaining.length);
+              
+              var closest = approach.child;
+              closest.addWorry('invalidated', tryValue);
+              
+            };
+            
+            // Ensure that our worries on `closest` are cleaned up if `doss`
+            // becomes unrooted or changes before it becomes crystallized
+            doss.addWorry('invalidated', removeClosestWorry);
+            
+            tryValue();
+            
+          });
+          //editor.$transaction.then(doss.as('worry', 'invalidated')).done();
+          
+        });
         
       },
       makeAbility: function(name, editsFunc) {
@@ -168,7 +312,6 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           var editor = stager.editor;
           var session = stager.session;
-          var channelerParams = stager.channelerParams;
           
           // Perform whatever actions this ability ought to carry out
           var data = U.param(params, 'data');
@@ -184,7 +327,9 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           if (!A.contains([ 'none', 'quick', 'confirm' ], sync)) throw new Error('Invalid "sync" value: "' + sync + '"');
           
           // Run the `editsFunc` with `stager`
-          var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) });
+          var ret = editsFunc(doss, data, stager);
+          
+          // var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) });
           
           if (sync !== 'none') {
             
@@ -200,20 +345,60 @@ var package = new PACK.pack.Package({ name: 'actionizer',
               /// =CLIENT}
               
               /// {SERVER=
-              var sessions = U.param(params, 'sessions', null);
-              if (!sessions)  { // If syncing without any explicit sessions, default to informing all sessions but the source
+              
+              // POSSIBLE `sessions` VALUES:
+              // - NULL or STRING("peers"): Resolves to all sessions excepting the
+              //    initiating session. To be used when the same ability is being
+              //    carried out on both sides, so the only machines uninformed are
+              //    all the clients besides the one which initiated this ability
+              //
+              // - ARRAY: An array containing Session instances. Precisely these
+              //    sessions will be informed
+              //
+              // - STRING("all"): All sessions which the channeler is aware of will
+              //    be informed
+              //
+              // - OBJECT({ <ip>: Session }): An Object of session ips mapped to
+              //    full Session instances
+              
+              // Scrub out any necessary data
+              var scrub = U.param(params, 'scrub', []);
+              for (var i = 0, len = scrub.length; i < len; i++) delete data[scrub[i]];
+              
+              var sessions = U.param(params, 'sessions', 'peers');
+              
+              if (sessions === null) throw new Error('Got null "sessions" param');
+              
+              if (sessions === 'peers')  { // If syncing without any explicit sessions, default to informing all sessions but the source
+                
                 sessions = O.clone(channeler.sessionSet);
                 if (session !== null) delete sessions[session.ip];
+                
+              } else if (sessions === 'all') {
+                
+                sessions = channeler.sessionSet;
+                
               }
+              
               if (U.isObj(sessions, Array)) sessions = A.toObj(sessions, function(s) { return s.ip; });
+              if (O.isEmpty(sessions)) return p.$null; // If no sessions to sync, we're done!
+              
               var commandParams = { data: data, sync: 'none' }; // Clients should not sync the server back
+              
+              if (false)
+                console.log('SENDING TO:', O.toArr(sessions, function(s) { return s.ip; }).join(', '), JSON.stringify({
+                  address: address,
+                  command: name,
+                  params: commandParams
+                }, null, 2));
+              
               /// =SERVER}
               
               return new P({ all: O.map(sessions, function(sessionToInform) {
                 
                 return channeler.$giveCommand({
                   session: sessionToInform,
-                  channelerParams: sessionToInform === session ? channelerParams : null,
+                  channelerParams: sessionToInform === session ? stager.consumeChannelerParams() : null,
                   data: {
                     address: address,
                     command: name,
@@ -223,27 +408,26 @@ var package = new PACK.pack.Package({ name: 'actionizer',
                 
               })});
               
-            }
+            };
             
             if (sync === 'confirm') {
               
               // TODO: $doSync() resolves that the command was sent, but not that it completed successfully...
-              // TODO: Maybe $staged should be a function so it doesn't begin to immediately stage?
               // Refuse to resolve the staging until the sync is complete
-              return $doSync().then(function() { return $staged; });
+              stager.addBlocker($doSync()); // Do the sync, force the stager to wait
               
             } else {
               
-              $doSync().done();
-              return $staged;
+              // Do the sync once it's confirmed to have worked on our side
+              editor.$transaction.then($doSync).done();
+              
+              // $doSync().done(); // Do the sync without waiting
               
             }
             
-          } else {
-            
-            return $staged;
-            
           }
+          
+          return ret;
           
         };
         
@@ -254,13 +438,15 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           O.update(outline.abilities, {
             sync: this.sync,
-            mod: this.modVal
+            display: this.display,
+            mod: U.isInstance(outline, ds.Ref) ? this.modRef : this.modVal
           });
           
         } else if (U.isInstance(outline, ds.Obj)) {
           
           O.update(outline.abilities, {
             sync: this.sync,
+            display: this.display,
             mod: this.modObj
           });
           
@@ -270,6 +456,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           
           O.update(outline.abilities, {
             sync: this.sync,
+            display: this.display,
             mod: this.modArr,
             rem: this.remArr,
             add: this.addArr
