@@ -8,7 +8,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
     
     var P = p.P;
     
-    ds.NAME_REGEX = /^[a-zA-Z0-9<][a-zA-Z0-9-_<,>]*$/;
+    ds.NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-_]*$/;
     ds.NEXT_TEMP = 0;
     ds.getTempName = function() {
       
@@ -267,7 +267,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
             name = '~root';
             forceName = true;
             
-          } else {
+          } else { // Potentially validate the name
             
             if (outline.par.childNameMustMatch() && name !== outline.name)
               throw new Error('For outline "' + outline.getAddress() + '", cannot name doss "' + name + '"; its name must match.');
@@ -392,17 +392,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             if (!recResults.errors.length) return recResults;
             
-            /*
-            // Atomic batch could not be completed!
-            console.log('Stage failed due to ' + recResults.errors.length + ' error(s):');
-            //for (var i = 0; i < recResults.errors.length; i++) {
-            //  console.log((i + 1) + ': ' + recResults.errors[i].stack);
-            //}
-            console.log(recResults.errors.toObj(function(v, n) { return n; }, function(err) {
-              return err.stack.split('\n').map(function(ln) { return ln.trim(); });
-            }));
-            */
-            
             return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
               
               if (undoResults.errors.length) {
@@ -416,11 +405,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
                 throw new Error('FATAL MFRF (data may be corrupted)');
               }
               
-              throw new Error(
+              throw new Error('Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n');
+              
+              /*throw new Error(
                 'Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n' +
                 A.map(recResults.remainingAtomics, function(r) { return r.desc; }).join('\n') + '\n====ERRORS====\n' +
                 A.map(recResults.errors, function(err) { return err.message; }).join('\n')
-              );
+              );*/
               
             });
             
@@ -575,7 +566,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var ret = {
             func: atomic,
             args: args,
-            desc: desc
+            desc: desc,
+            err: new Error('meaningful')
           };
           
           return more ? O.update(ret, more) : ret;
@@ -799,7 +791,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         getAbility: function(name) {
           return O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
         },
-        $stageAbility: function(name, params, stager) {
+        stageAbility: function(name, params, stager) {
           
           /// {DOC=
           { desc: 'Stages a named ability. This means `editor` is prepared ' +
@@ -812,20 +804,17 @@ var package = new PACK.pack.Package({ name: 'dossier',
               editor: { desc: 'The editor to be prepared' },
               params: { desc: 'Any ability-specific params' }
             },
-            returns: {
-              $promise: {
-                resolve: 'All necessary actions are staged to the `editor`',
-                reject: 'Any error'
-              }
-            }
+            returns: { desc: 'The result of the ability' }
           }
           /// =DOC}
           
-          if (!params) return new P({ err: new Error('No params supplied for ' + this.identity() + '.' + name) });
+          if (!stager) throw new Error('No `stager` supplied for ' + this.identity() + '.' + name);
+          if (!params) throw new Error('No `params` supplied for ' + this.identity() + '.' + name);
           
-          var $func = this.getAbility(name);
-          if (!$func) return new P({ err: new Error(this.identity() + ' doesn\'t support ability "' + name + '"') });
-          return $func(this, params, stager);
+          var func = this.getAbility(name);
+          if (!func) throw new Error(this.identity() + ' doesn\'t support ability "' + name + '"');
+          
+          return func(this, params, stager);
           
         },
         $useAbility: function(name, params, session, channelerParams) {
@@ -834,22 +823,34 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var editor = new ds.Editor();
           
           // Set up the `stager`...
-          var stagings = [];
-          var stager = function(doss, abilityName, params) {
-            stagings.push(doss.$stageAbility(abilityName, params, stager));
+          var blockers = [];
+          var stager = function(doss, ablName, params) {
+            return doss.stageAbility(ablName, params, stager);
           };
-          O.update(stager, { editor: editor, session: session || null, channelerParams: channelerParams || {} });
-          stager.use = function(doss, abilityName, data) {
+          O.update(stager, { editor: editor, session: session || { ip: 'server' } });
+          stager.addBlocker = blockers.push.bind(blockers);
+          stager.$use = function(doss, abilityName, data) {
             var params = { data: data, sync: 'quick' };
             /// {SERVER=
-            params.sessions = [ session ],
+            params.sessions = [ session ];
             /// =SERVER}
-            doss.$useAbility(abilityName, params, stager.session, {}).done();
+            return doss.$useAbility(abilityName, params, stager.session, {});
+          };
+          stager.consumeChannelerParams = function() {
+            // `channelerParams` is only returned on the first call. After that,
+            // empty channeler params are returned.
+            var ret = channelerParams;
+            channelerParams = null;
+            return ret || {};
           };
           
-          return this.$stageAbility(name, params, stager)
-            .then(function() { return new P({ all: stagings }); })
-            .then(editor.$transact.bind(editor));
+          this.stageAbility(name, params, stager);
+          
+          // If no `blockers` were added, transact immediately
+          if (!blockers.length) return editor.$transact();
+          
+          // Otherwise only transact after all `blockers` have resolved
+          return new P({ all: blockers }).then(editor.$transact.bind(editor));
           
         },
         dereference: function() {
@@ -1064,7 +1065,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
         // Child methods
         addChild: function(child) {
           child = sc.addChild.call(this, child);
-          while (O.contains(this.children, this.nextInd)) this.nextInd++; // A hole has just been filled. Ensure the next index is available
+          if (!this.outline.nameFunc)
+            while (O.contains(this.children, this.nextInd)) this.nextInd++; // A hole has just been filled. Ensure the next index is available
           return child;
         },
         remChild: function(child) {
@@ -1075,7 +1077,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           // 1) Fill holes whenever there is an opportunity
           // 2) Always immediately cascade to fill holes
           // Implementing #1: there is definitely a hole at the child's name (since it has been removed), so set the next index to be there
-          if (!isNaN(child.name)) this.nextInd = Math.min(this.nextInd, parseInt(child.name, 10));
+          if (!this.outline.nameFunc && !isNaN(child.name))
+            this.nextInd = Math.min(this.nextInd, parseInt(child.name, 10));
           
           return child;
         },
@@ -1197,39 +1200,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           sc.init.call(this, params);
           this.wait = null; // { doss, func }
-          
-        },
-        setValue: function(value, sync) {
-          
-          if (this.wait) {
-            console.log('Resetting `wait');
-            this.wait.doss.remWorry('invalidated', this.wait.func);
-            this.wait = null;
-          }
-          
-          // DossierRef does something much more complicated if its value doesn't exist!!
-          value = this.sanitizeValue(this, value);
-          
-          // Null values can always be set immediately
-          if (value === null) return sc.setValue.call(this, value, sync);
-          
-          var addr = this.getRefAddress.call({ outline: this.outline, value: value });
-          var child = this.getChild(addr);
-          
-          // Values referencing existant Dossiers can always be set immediately
-          if (child) return sc.setValue.call(this, value, sync);
-          
-          // Here's the hard part: a nonexistant child has been referenced
-          var closestChild = this.approachChild(addr).child;
-          
-          // No value is set; no ability is called! Keep getting closer and closer
-          // children (detecting new children through "invalidated") until we
-          // finally get to the target child
-          var pass = this;
-          this.wait = {
-            doss: closestChild,
-            func: closestChild.addWorry('invalidated', pass.setValue.bind(pass, value, sync))
-          };
           
         },
         sanitizeValue: function(value) {

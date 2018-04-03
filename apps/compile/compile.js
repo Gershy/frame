@@ -267,7 +267,18 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function(cm) {
       },
       shapeError: function(err, variant) {
         
-        if (!U.isInstance(err, Error)) return { msg: 'NOT AN ERROR', err: err };
+        if (!U.isInstance(err, Error)) {
+          
+          if (err.stack && err.constructor && err.constructor.name && err.message) {
+            
+          } else {
+            
+            return { msg: 'NOT AN ERROR', err: err };
+            
+          }
+          
+          
+        }
         
         var errorType = err.constructor.name;
         var errorText = errorType + ': ' + err.message;

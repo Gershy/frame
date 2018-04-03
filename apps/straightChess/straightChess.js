@@ -158,7 +158,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     new App({ name: 'straightChess',
       
       setupChanneler: function(channeler) {
-        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: '192.168.1.148', port: 80, numToBank: 1 }));
+        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, /*host: '192.168.1.148',*/ port: 80, numToBank: 1 }));
         //channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
       },
       setupActionizer: function(actionizer) {
@@ -279,8 +279,8 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           stager(p2Mov, 'mod', { data: { col: data.p2.col, row: data.p2.row, cooldown: turn + 2 } });
           
           // Remove captured pieces
-          if (p1Cap) stager(p1Cap.par, 'rem', { data: p1Cap });
-          if (p2Cap) stager(p2Cap.par, 'rem', { data: p2Cap });
+          if (p1Cap)  stager(p1Cap.par, 'rem', { data: p1Cap });
+          if (p2Cap)  stager(p2Cap.par, 'rem', { data: p2Cap });
           
           // Set intentions back to null
           stager(doss.getChild('playerSet.player1.intention'), 'mod', { data: { piece: null } });
@@ -291,12 +291,14 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           stager(doss.getChild('player.moveSet'), 'mod', { data: {} });
           
           // Set selection back to `null`
-          stager(doss.getChild('player.selected'), 'mod', { data: {} });
+          stager(doss.getChild('player.selected'), 'mod', { data: null });
           /// =CLIENT}
           
           // Set outcome if required
           if (p1Win || p2Win)
-            stager(doss.getChild('outcome'), 'mod', { data: (p1Win && p2Win) ? 'draw' : (p1Win ? 'white' : 'black') });
+            stager(doss.getChild('outcome'), 'mod', {
+              data: (p1Win && p2Win) ? 'draw' : (p1Win ? 'white' : 'black')
+            });
           
         }));
         
@@ -630,10 +632,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
         }).start();
         /// =SERVER}
         
-      },
-      /// {CLIENT=
-      genView: function(doss) {
-        
+        /// {CLIENT=
         var renderPiece = function(name, piece) {
           
           var type = piece.getChild('type');
@@ -686,8 +685,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           ]});
           
         };
-        
-        return new uf.RootView({ name: 'root', children: [
+        var view = new uf.RootView({ name: 'root', children: [
           
           new uf.ChoiceView({ name: 'readyUp',
             choiceInfo: new nf.CalculationInformer({ 
@@ -834,9 +832,15 @@ var package = new PACK.pack.Package({ name: 'straightChess',
           })
           
         ]});
+        view.start();
+        
+        window.doss = doss;
+        window.view = view;
+        
+        doss.$useAbility('sync', {}).done();
+        /// =CLIENT}
         
       }
-      /// =CLIENT}
       
     }).$run().done();
     

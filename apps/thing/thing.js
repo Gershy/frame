@@ -22,14 +22,14 @@ var package = new PACK.pack.Package({ name: 'thing',
     new App({ name: 'thing',
       
       setupChanneler: function(channeler) {
-        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: '192.168.0.32', port: 80, numToBank: 1 }));
+        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, host: '192.168.1.148', port: 80, numToBank: 1 }));
         //channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
       },
       setupActionizer: function(actionizer) {
       },
       setupOutline: function(thing, actionizer) {
         
-        var text = thing.addChild(new ds.Val({ name: 'text', dossClass: ds.DossierStr }));
+        thing.addChild(new ds.Val({ name: 'text' }));
         actionizer.recurse(thing);
         
       },
@@ -37,7 +37,7 @@ var package = new PACK.pack.Package({ name: 'thing',
         
         /// {SERVER=
         return {
-          text: 'hihihihi'
+          text: 'hihihi'
         };
         /// =SERVER}
         
@@ -53,12 +53,8 @@ var package = new PACK.pack.Package({ name: 'thing',
       /// {CLIENT=
       genView: function(thing) {
         
-        thing.getChild('text');
-        
         return new uf.RootView({ name: 'root', children: [
-          
           new uf.TextEditView({ name: 'text', info: thing.getChild('text'), syncOnInput: true })
-          
         ]});
         
       }

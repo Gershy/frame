@@ -132,7 +132,11 @@ new PACK.pack.Package({ name: 'frame',
     var logErr = console.error;
     console.error = function() {
       arguments[0] = fr.compiler.shapeError(arguments[0], 'server');
+      //console.log('<<<< ' + (new Error('trace').stack.split('\n')[4]).trim() + ' >>>>');
       return logErr.apply(console, arguments);
+    };
+    console.shapeError = function(err) {
+      fr.compiler.shapeError(err, 'server');
     };
     
     // Set this new `console.error` as the uncaught exception handler

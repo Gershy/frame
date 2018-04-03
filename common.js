@@ -305,13 +305,17 @@ global.U = {
       for (var i = 0, len = names.length; i < len; i++) ret[names[i]] = obj[names[i]];
       return ret;
     },
-    toArray: function(obj, it) {
+    toArr: function(obj, it) {
       var ret = [];
         
-      if (it)
-        for (var k in obj) ret.push(it(obj[k], k, obj));
-      else
+      if (it) {
+        for (var k in obj) {
+          var val = it(obj[k], k, obj);
+          if (val !== U.SKIP) ret.push(val);
+        }
+      } else {
         for (var k in obj) ret.push(obj[k]);
+      }
       
       return ret;
     },
@@ -686,9 +690,13 @@ global.U = {
       for (var i = 0; i < item.length; i++)
         arr.push(U.straighten0(item[i], items));
       
-    } else {
+    } else if (U.isPrimitive(item)) {
       
       items.push({ orig: item, calc: item });
+      
+    } else {
+      
+      throw new Error('Can\'t straighten ' + U.typeOf(item));
       
     }
         

@@ -10,6 +10,7 @@ body {
   position: absolute;
   left: 0; top: 0;
   z-index: 1;
+  background-color: rgba(255, 255, 255, 1);
 }
 #root-overlay {
   position: absolute;
@@ -18,13 +19,6 @@ body {
   z-index: 2;
   text-align: center;
   color: rgba(255, 255, 255, 1);
-}
-#root-overlay:before {
-  content: '';
-  position: relative;
-  display: inline-block;
-  width: 0; height: 100%;
-  vertical-align: middle;
 }
 
 .form > .input > .interactive {
@@ -45,29 +39,93 @@ body {
   background-color: rgba(50, 70, 80, 1);
 }
 
-#root-overlay > .login > .title {
+/* === Titled */
+.titled {
+  position: relative;
+}
+.titled > .title {
+  position: absolute;
+  left: 0; top: 0; width: 100%; height: 40px; line-height: 40px;
+  font-size: 30px;
+  z-index: 3;
+  background-color: rgba(0, 0, 0, 1);
+}
+.titled > .content {
+  position: absolute;
+  box-sizing: border-box;
+  padding-top: 40px;
+  left: 0; top: 0; width: 100%; height: 100%;
+  z-index: 2;
+}
+
+/* === ChoiceView */
+.chooser > .choice {
+  opacity: 1;
+  transition: opacity 550ms linear;
+  z-index: 1;
+}
+.chooser > .choice.choiceRemoved {
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+}
+
+/* === Filler */
+.filler { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+
+.overlay > .choice {
+  background-color: rgba(0, 0, 0, 1);
+}
+
+/* Login screen */
+.overlay > .login { background-color: rgba(0, 0, 0, 1); }
+.overlay > .login:before { content: ''; position: relative; display: inline-block; width: 0; height: 100%; vertical-align: middle; }
+.overlay > .login > .wrapper > .title {
   font-size: 30px;
   text-transform: uppercase;
 }
-#root-overlay > .login {
-  position: relative;
-  display: inline-block;
-  vertical-align: middle;
-}
+.overlay > .login > .wrapper { position: relative; display: inline-block; vertical-align: middle; }
 
-#root-overlay > .lobby {
-  position: absolute; width: 100%; height: 100%; left: 0; top: 0;
-}
-#root-overlay > .lobby > .title {
-  display: block;
-  width: 100%; height: 40px; line-height: 40px;
-  font-size: 30px;
-}
-#root-overlay > .lobby > .doCreate {
+.overlay > .lobby { background-color: rgba(17, 0, 20, 1); }
+.overlay > .lobby > .doCreate {
   position: absolute;
   width: 80px; height: 40px; line-height: 40px; padding: 0 10px;
   background-color: rgba(0, 255, 255, 0.2);
   text-align: center;
   right: 0; top: 0;
   cursor: pointer;
+  z-index: 10;
+}
+
+.overlay > .lobby > .contents > .createWorld {
+  background-color: rgba(40, 0, 70, 1);
+}
+
+.overlay > .world {
+  transition: opacity 500ms linear;
+}
+.overlay > .world.show { opacity: 1; }
+.overlay > .world.hide { opacity: 0; pointer-events: none; }
+
+.overlay > .world > .respawn {
+  
+}
+.overlay > .world > .respawn > .map {
+  position: absolute;
+  width: 80%; height: 80%;
+  left: 10%; top: 10%;
+  background-color: rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 0 0 8px rgba(255, 255, 255, 0.5);
+  z-index: 1;
+}
+.overlay > .world > .respawn > .go {
+  position: absolute;
+  width: 80%; height: 80%;
+  left: 10%; top: 10%;
+  z-index: 2;
+  cursor: pointer;
+  font-size: 0;
+}
+.overlay > .world > .respawn > .go:hover {
+  background-color: rgba(0, 255, 255, 0.2);
 }
