@@ -398,8 +398,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
               
-              if (!undoResults.errors.length)
-                throw new Error('Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n');
+              if (!undoResults.errors.length) {
+                console.log('UNRESOLVABLE:');
+                for (var i = 0, len = recResults.remainingAtomics.length; i < len; i++)
+                  console.log(recResults.remainingAtomics[i].desc + ': ' + recResults.errors[i].message);
+                throw new Error('Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s)');
+              }
               
               /*throw new Error(
                 'Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n' +

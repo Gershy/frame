@@ -9,7 +9,7 @@ body {
 #root-canvas {
   position: absolute;
   left: 0; top: 0;
-  z-index: 1;
+  z-index: 1; /* under the overlay */
   box-shadow: inset 0 0 4px 2px rgba(255, 0, 0, 0.75); /* Indicate unfocused */
 }
 #root-canvas:focus {
@@ -19,12 +19,16 @@ body {
   position: absolute;
   width: 100%; height: 100%;
   left: 0; top: 0;
-  z-index: 2;
+  z-index: 2; /* over the canvas */
   text-align: center;
   color: rgba(255, 255, 255, 1);
   pointer-events: none;
 }
 
+/* === Utility */
+.filler { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+
+/* ==== Reusable */
 .form > .input > .interactive {
   text-align: center;
   background-color: rgba(50, 50, 50, 1);
@@ -43,27 +47,38 @@ body {
   background-color: rgba(50, 70, 80, 1);
 }
 
-/* === Titled */
 .titled {
   position: relative;
+  box-sizing: border-box;
+  padding-top: 40px; 
+  left: 0; top: 0; width: 100%; height: 100%;
 }
 .titled > .title {
   position: absolute;
   left: 0; top: 0; width: 100%; height: 40px; line-height: 40px;
   font-size: 30px;
-  z-index: 3;
+  z-index: 2; /* over the content */
   background-color: rgba(0, 0, 0, 1);
 }
 .titled > .content {
-  position: absolute;
-  box-sizing: border-box;
-  padding-top: 40px;
-  left: 0; top: 0; width: 100%; height: 100%;
-  z-index: 2;
+  position: relative;
+  width: 100%; height: 100%;
+  z-index: 1; /* under the title */
 }
 
-/* === ChoiceView */
+.data { position: relative; display: inline-block; text-align: left; }
+.data > .title {
+  display: block;
+  font-size: 60%;
+}
+.data > .value {
+  display: block;
+  font-size: 100%;
+}
+
+/* === Dossier-specific */
 .chooser > .choice {
+  position: absolute;
   opacity: 1;
   transition: opacity 550ms linear;
   z-index: 1;
@@ -74,9 +89,9 @@ body {
   z-index: 2;
 }
 
-/* === Filler */
-.filler { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-
+/* ===================== */
+/* ======== APP ======== */
+/* ===================== */
 .overlay > .choice {
   background-color: rgba(0, 0, 0, 1);
   pointer-events: all;
@@ -92,18 +107,47 @@ body {
 .overlay > .login > .wrapper { position: relative; display: inline-block; vertical-align: middle; }
 
 .overlay > .lobby { background-color: rgba(17, 0, 20, 1); }
-.overlay > .lobby > .doCreate {
+.overlay > .lobby > .toggleCreating {
   position: absolute;
   width: 80px; height: 40px; line-height: 40px; padding: 0 10px;
   background-color: rgba(0, 255, 255, 0.2);
   text-align: center;
   right: 0; top: 0;
   cursor: pointer;
-  z-index: 10;
+  z-index: 3; /* over title and content */
 }
-
-.overlay > .lobby > .contents > .createWorld {
-  background-color: rgba(40, 0, 70, 1);
+.overlay > .lobby > .options > .worldCreate {
+  background-color: rgba(0, 0, 0, 1);
+}
+.overlay > .lobby > .options > .worldListing {
+  background-color: rgba(0, 0, 0, 1);
+}
+.overlay > .lobby > .options > .worldListing > .world {
+  position: relative;
+  background-color: rgba(255, 255, 255, 0.2);
+  width: 330px; height: 60px; padding: 10px 80px 10px 10px; margin-top: 10px;
+  left: 50%; margin-left: -210px;
+  white-space: nowrap;
+}
+.overlay > .lobby > .options > .worldListing > .world:before { content: ''; position: relative; display: inline-block; width: 0; height: 100%; vertical-align: middle; }
+.overlay > .lobby > .options > .worldListing > .world > .name {
+  vertical-align: middle;
+  width: 150px;
+}
+.overlay > .lobby > .options > .worldListing > .world > .mode {
+  vertical-align: middle;
+  min-width: 150px;
+}
+.overlay > .lobby > .options > .worldListing > .world > .enter {
+  position: absolute;
+  width: 60px; height: 60px; line-height: 60px;
+  right: 10px; top: 10px;
+  background-color: rgba(0, 255, 255, 0.3);
+  cursor: pointer;
+  transition: background-color 200ms linear;
+}
+.overlay > .lobby > .options > .worldListing > .world > .enter:hover {
+  background-color: rgba(0, 255, 255, 0.8);
 }
 
 .overlay > .world {

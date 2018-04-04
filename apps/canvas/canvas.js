@@ -120,6 +120,9 @@ var package = new PACK.pack.Package({ name: 'canvas',
           if (this.options.trackKeys) {
             
             canvas.addEventListener('keydown', function(e) {
+              // Don't absorb the refresh command! That's annoying
+              if (e.ctrlKey && e.keyCode === 82) return;
+              
               e.preventDefault();
               e.stopPropagation();
               
