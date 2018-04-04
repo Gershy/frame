@@ -111,8 +111,8 @@ new PACK.pack.Package({ name: 'server',
           this.appName = U.param(params, 'appName');
           this.handler = U.param(params, 'handler', null);
           this.errorHandler = {
-            $heedCommand: function(params /* session, channelerParams, command, data */){
-              console.log('ERRORHANDLER:', params.data);
+            $heedCommand: function(params /* session, channelerParams, command, params */){
+              console.log('ERRORHANDLER:', params.params || params.data, (params.params && params.data) ? 'WTFFF' : '');
               return p.$null;
             }
           };
@@ -174,7 +174,7 @@ new PACK.pack.Package({ name: 'server',
         getNamedChild: function(name) {
           
           if (name === '~root') { return this.handler; }
-          if (name === '~error') { return this.errorHandler; }
+          if (name === '~error') { console.error(new Error('hahaha')); return this.errorHandler; }
           if (O.contains(this.channels, name)) return this.channels[name];
           return null;
           
@@ -205,12 +205,14 @@ new PACK.pack.Package({ name: 'server',
           if (params.data === null) return; // This occurs upon fizzling
           
           if (U.isInstance(params.data, Error)) { // Errors become commands to the error handler
+            
             var err = params.data;
             params.data = {
               address: '~error',
               command: 'mod',
-              params: { data: err.message, doSync: false }
+              params: { data: err.message, sync: 'none' }
             };
+            
           } else { var err = null; }
           
           /// {CLIENT=
@@ -308,8 +310,8 @@ new PACK.pack.Package({ name: 'server',
               
             }).then(function() {
               
-              // if (!S.startsWith(commandDescription, pass.name + '.getFile'))
-              //   console.log('Command success: (' + (session ? session.ip : 'SELF') + ') ' + commandDescription);
+              if (false && !S.startsWith(commandDescription, pass.name + '.getFile'))
+                console.log('Command success: (' + (session ? session.ip : 'SELF') + ') ' + commandDescription);
               
             }).fail(function(err) {
               
@@ -921,6 +923,11 @@ new PACK.pack.Package({ name: 'server',
               
             }
             
+            if (address[0] === '~error') {
+              console.log(queryParams);
+              throw new Error('Can\'t target ~error on server');
+            }
+            
             return {
               address: address, // Array
               command: command, // String
@@ -985,7 +992,10 @@ new PACK.pack.Package({ name: 'server',
           var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(commandParams) + ')');
           var trgUrl = this.channeler.ipSpoof ? '?spoof=' + this.channeler.ipSpoof : '';
           
-          if (address.join('.') === '~root' && command === 'mod') throw new Error('Bad :(');
+          if (address.join('.') === '~root' && command === 'mod') throw new Error('Bad ~root :(');
+          if (address.join('.').substr(0, 6) === '~error') throw new Error('Bad ~error :(');
+          
+          if (false) console.log('HTTP:', address.join('.') + '.' + command + '(' + JSON.stringify(commandParams, null, 2) + ')');
           
           var pass = this;
           return new P({ custom: function(resolve, reject) {

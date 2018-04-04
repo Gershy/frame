@@ -324,7 +324,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           if (sync === 'ensure') sync = 'quick'; // The server never needs clients to confirm a sync
           /// =SERVER}
           
-          if (!A.contains([ 'none', 'quick', 'confirm' ], sync)) throw new Error('Invalid "sync" value: "' + sync + '"');
+          if (!A.contains([ 'none', 'quick', 'ensure' ], sync)) throw new Error('Invalid "sync" value: "' + sync + '"');
           
           // Run the `editsFunc` with `stager`
           var ret = editsFunc(doss, data, stager);
@@ -338,8 +338,9 @@ var package = new PACK.pack.Package({ name: 'actionizer',
               var address = origAddress ? origAddress : doss.getAddress();
               
               /// {CLIENT=
+              var propagate = U.param(params, 'propagate', true);
               var sessions = { server: { ip: location.hostname } };
-              var commandParams = { data: data, sync: 'quick' }; // The server should sync other clients
+              var commandParams = { data: data, sync: propagate ? 'quick' : 'none' }; // The server should sync other clients
               /// =CLIENT}
               
               /// {SERVER=
@@ -419,7 +420,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
               
             };
             
-            if (sync === 'confirm') {
+            if (sync === 'ensure') {
               
               throw new Error('confirm-type syncing not implemented');
               
