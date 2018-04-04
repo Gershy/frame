@@ -288,13 +288,28 @@ new PACK.pack.Package({ name: 'server',
               var commandParams = U.param(commandData, 'params', {});
               if (!commandParams) throw new Error('Couldn\'t perform command: ' + commandDescription + '; NO PARAMS');
               
+              if (U.isObj(commandParams, Object)) {
+                
+                var dat = commandParams.data || {};
+                var prms = Object.keys(dat).join(', ');
+                prms = prms.length ? '([ ' + prms  + ' ])' : '()';
+                commandDescription += prms;
+                
+              } else {
+                
+                commandDescription += '(' + U.typeOf(commandParams) + ')';
+                
+              }
+              //commandDescription += '(' + JSON.stringify(commandParams, null, 2) + ')';
+              
               // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
               // `$heedCommand` is called with the same signature:
               return child.$heedCommand({ session: session, command: command, params: commandParams, channelerParams: channelerParams })
               
             }).then(function() {
               
-              if (commandDescription !== pass.name + '.getFile') console.log('Command success: ' + commandDescription);
+              // if (!S.startsWith(commandDescription, pass.name + '.getFile'))
+              //   console.log('Command success: (' + (session ? session.ip : 'SELF') + ') ' + commandDescription);
               
             }).fail(function(err) {
               
@@ -696,7 +711,6 @@ new PACK.pack.Package({ name: 'server',
           // Attempt one: use a provided Response object
           var res = U.param(channelParams, 'res', null);
           if (res) {
-            if (!U.isInstance(data, sv.CommandResponse)) console.log('SENDINGG TO ' + session.ip + ':', data);
             this.sendResponse(res, data);
             return p.$null;
           }
@@ -704,7 +718,6 @@ new PACK.pack.Package({ name: 'server',
           // Attempt two: use a queued Response object
           var res = sessionData.polls.shift();
           if (res) {
-            if (!U.isInstance(data, sv.CommandResponse)) console.log('SENDINGG TO ' + session.ip + ':', data);
             this.sendResponse(res, data);
             return p.$null;
           }
@@ -965,12 +978,14 @@ new PACK.pack.Package({ name: 'server',
           var address = U.param(params, 'address');
           if (U.isObj(address, String)) address = address.split('.');
           
-          var reqParams = U.param(params, 'params', {});
+          var commandParams = U.param(params, 'params', {});
           var ref = U.param(params, 'ref', null);
           
           // TODODBG: Localized error and spoofing should be debug features
-          var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(reqParams) + ')');
+          var dbgErr = new Error('DBGXHR: ' + address.join('.') + '.' + command + '(' + U.debugObj(commandParams) + ')');
           var trgUrl = this.channeler.ipSpoof ? '?spoof=' + this.channeler.ipSpoof : '';
+          
+          if (address.join('.') === '~root' && command === 'mod') throw new Error('Bad :(');
           
           var pass = this;
           return new P({ custom: function(resolve, reject) {
@@ -1007,7 +1022,7 @@ new PACK.pack.Package({ name: 'server',
             
             xhr.open('POST', trgUrl, true);
             xhr.setRequestHeader('Content-Type', 'application/json');
-            xhr.send(U.thingToString({ address: address, command: command, params: reqParams }));
+            xhr.send(U.thingToString({ address: address, command: command, params: commandParams }));
             
           }}).then(function(command) {
             
@@ -1041,7 +1056,9 @@ new PACK.pack.Package({ name: 'server',
           /// {SERVER=
           this.server = require('http').createServer(this.serverFunc.bind(this));
           this.server.listen(this.port, this.host, 511, this.$ready.resolve.bind(this.$ready));
-          return this.$ready;
+          return this.$ready.then(function() {
+            console.log(this.name + ' listening at ' + this.host + ':' + this.port);
+          }.bind(this));
           /// =SERVER}
           
           /// {CLIENT=
@@ -1118,19 +1135,6 @@ new PACK.pack.Package({ name: 'server',
             channelerParams: {}, // For now ChannelSocket doesn't use any channelParams
             $commandData: $commandData
           });
-          
-        },
-        $heedCommand: function(params /* session, channelerParams, command, params */) { // ChannelSocket
-          
-          /// {SERVER=
-          var session = params.session;
-          var command = params.command;
-          var reqParams = params.params;
-          /// =SERVER}
-          /// {CLIENT=
-          /// =CLIENT}
-          
-          return sc.$heedCommand.call(this, params);
           
         },
         

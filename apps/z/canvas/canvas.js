@@ -104,6 +104,7 @@ var package = new PACK.pack.Package({ name: 'canvas',
 						this.dataUpdateIntervalRef = setInterval(function() {
 							pass.dataUpdate({ seconds: spf, mouse: pass.mouse, keys: pass.keys });
 						}, mpf);
+            
 					},
 					loop: function() {
 						// Basing the graphics loop continuation off the data update

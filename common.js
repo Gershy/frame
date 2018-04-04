@@ -696,7 +696,13 @@ global.U = {
       
     } else {
       
-      throw new Error('Can\'t straighten ' + U.typeOf(item));
+      try {
+        
+        var val = item.getAddress();
+        if (!U.isObj(val, String)) throw new Error('bad');
+        items.push({ orig: item, calc: val });
+        
+      } catch(err) { throw new Error('Can\'t straighten ' + U.typeOf(item)); }
       
     }
         

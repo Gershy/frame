@@ -5,6 +5,34 @@
 // If recreating a DIFFICULT TO DEBUG SITUATION, rename ~root.player.quickName to
 // ~root.player.quckName (a type), and try creating a world... have fun with that one
 
+// TODO: Allow multiple commands to be packed into a single request. More compression via
+// `U.thingToString`, plus efficiency over most protocols. Consider big updates, like the
+// per-frame world update...
+
+/*
+- Joining existing worlds
+- Being a combatant
+  - Abstract keys, instead of purpose-naming, just name key1, key2, key3, etc.
+    - Keys have different meaning depending on the role
+  - Move through velocity
+  - Looking at a point
+  - Has a rotation
+  - Movement: F/B/L/R instead of L/R/D/U
+  - Visuals
+  - Actions
+    - Projectiles (just firing + rendering, no physics yet)
+- Terrain
+  - Probably static initially
+- Physics
+  - Grouping
+    - Square-tiled? Treelike grouping areas?
+  - Smallscale collision
+    - No passing through terrain
+    - Projectile collision
+      - Dynamic penetration through terrain?
+      - Projectile effects at target
+*/
+
 var package = new PACK.pack.Package({ name: 'lapse',
   /// {SERVER=
   dependencies: [ 'app', 'dossier', 'informer', 'p', 'server' ],
@@ -43,16 +71,27 @@ var package = new PACK.pack.Package({ name: 'lapse',
         
         var accessAccount = function(lapse, username, password) {
           
-          var account = lapse.getChild([ 'accountSet', username ]);
-          
-          if (!account) return 'nonexistant';
-          if (account.getValue('password') !== password) return 'unauthorized';
+          /// {CLIENT=
+          var account = lapse.getChild('me.@account');
+          if (!account) throw new Error('No account available');
+          if (account.name !== username) throw new Error('Invalid "username"');
+          return account;
+          /// =CLIENT}
           
           /// {SERVER=
+          if (!lapse.isRoot()) throw new Error('Need root object');
+          if (!U.isObj(username, String)) throw new Error('Invalid "username"');
+          if (!U.isObj(password, String)) throw new Error('Invalid "password"');
+          
+          var account = lapse.getChild([ 'accountSet', username ]);
+          
+          if (!account) return null;
+          if (account.getValue('password') !== password) throw new Error('Unauthorized');
+          
           // TODO: Reset a timeout to deactivate the current Player associated with the Account
-          /// =SERVER}
           
           return account;
+          /// =SERVER}
           
         };
         
@@ -89,11 +128,36 @@ var package = new PACK.pack.Package({ name: 'lapse',
           /// =SERVER}
           
         }));
+        /// {SERVER=
+        lapse.addUtility('update', function(lapse, timeMult) {
+          
+          /*
+          // We want to know which sessions need to be updated for each world
+          var playersPerWorld = {};
+          var players = lapse.getChild('playerSet').children;
+          for (var k in players) {
+            var world = players[k].getChild('@world');
+            if (!world) continue;
+            if (!O.contains(playersPerWorld, world.name)) playersPerWorld[world.name] = [];
+            playersPerWorld[world.name].push(players[k]);
+          }
+          */
+          
+          var worlds = lapse.getChild('worldSet').children;
+          O.each(worlds, function(world) { return world.useUtility('update', timeMult); });
+          /*for (var worldName in worlds) {
+            //console.log('Updating world "' + worldName + '" with ' + playersPerWorld[worldName].length + ' player(s)');
+            worlds[worldName].useUtility('update', timeMult, playersPerWorld[worldName]);
+          }*/
+          
+        });
+        /// =SERVER}
         
         /// {CLIENT=
         // >> Me
         var me = lapse.addChild(new Obj({ name: 'me' }));
         me.addChild(new Val({ name: 'wantsOverlay', dossClass: ds.DossierBln, defaultValue: false }));
+        me.addChild(new Val({ name: 'creatingWorld', dossClass: ds.DossierBln, defaultValue: false }));
         me.addChild(new Ref({ name: 'account', format: '~root.accountSet.$account' }));
         me.addChild(new Ref({ name: 'combatant', format: '~root.worldSet.$world.combatantSet.$combatant' }));
         me.addChild(new Ref({ name: 'world', format: '~root.worldSet.$world' }));
@@ -127,6 +191,9 @@ var package = new PACK.pack.Package({ name: 'lapse',
         /// =SERVER}
         player.addChild(new Val({ name: 'joinTime', dossClass: ds.DossierInt }));
         player.addChild(new Ref({ name: 'world', format: '~root.worldSet.$world' }));
+        player.addChild(new Ref({ name: 'combatant', format: '~root.worldSet.$world.combatantSet.$combatant' }));
+        player.addChild(new Val({ name: 'keyInput', dossClass: ds.DossierJsn, defaultValue: { l: false, r: false, d: false, u: false } }));
+        player.addChild(new Val({ name: 'mouseInput', dossClass: ds.DossierJsn, defaultValue: { pt: { x: 0, y: 0 }, buttons: [ false, false, false ] } }));
         
         // >> RoleTypeSet
         var roleTypeSet = lapse.addChild(new Obj({ name: 'roleTypeSet' }));
@@ -145,31 +212,55 @@ var package = new PACK.pack.Package({ name: 'lapse',
         // >> RoleTypeSet / Captain
         var captain = roleTypeSet.addChild(new Obj({ name: 'captain' }));
         captain.addChild(new Val({ name: 'description' }));
+        captain.addChild(new Val({ name: 'maximumHp', defaultValue: 100 }));
         
         // >> RoleTypeSet / Captain / InstanceSet
         var instanceSet = captain.addChild(new Arr({ name: 'instanceSet' }));
         
         // >> RoleTypeSet / Captain / InstanceSet / Instance
         var instance = instanceSet.setTemplate(new Obj({ name: 'instance' }));
-        instance.addChild(new Val({ name: 'maximumHp', dossClass: ds.DossierInt }));
         instance.addChild(new Val({ name: 'currentHp', dossClass: ds.DossierInt }));
-        instance.addChild(new Val({ name: 'locX', dossClass: ds.DossierInt }));
-        instance.addChild(new Val({ name: 'locY', dossClass: ds.DossierInt }));
+        instance.addChild(new Val({ name: 'x', dossClass: ds.DossierInt }));
+        instance.addChild(new Val({ name: 'y', dossClass: ds.DossierInt }));
         instance.addChild(new Val({ name: 'rot', dossClass: ds.DossierInt }));
         
         // >> RoleTypeSet / Grunt
         var grunt = roleTypeSet.addChild(new Obj({ name: 'grunt' }));
         grunt.addChild(new Val({ name: 'description' }));
+        grunt.addChild(new Val({ name: 'maximumHp', defaultValue: 100 }));
         
         // >> RoleTypeSet / Grunt / InstanceSet
         var instanceSet = grunt.addChild(new Arr({ name: 'instanceSet' }));
         
         // >> RoleTypeSet / Grunt / InstanceSet / Instance
         var instance = instanceSet.setTemplate(new Obj({ name: 'instance' }));
-        instance.addChild(new Val({ name: 'maximumHp', dossClass: ds.DossierInt }));
+        /// {SERVER=
+        instance.addUtility('update', function(grunt, timeMult, player, sessions) {
+          
+          var keyInput = player.getValue('keyInput');
+          
+          var loc = { x: grunt.getValue('x'), y: grunt.getValue('y') };
+          
+          if (keyInput.l || keyInput.r || keyInput.d || keyInput.u) {
+            
+            if (keyInput.l) loc.x -= (500 * timeMult);
+            if (keyInput.r) loc.x += (500 * timeMult);
+            if (keyInput.d) loc.y -= (500 * timeMult);
+            if (keyInput.u) loc.y += (500 * timeMult);
+            
+            grunt.$useAbility('mod', {
+              data: loc,
+              sync: 'quick',
+              sessions: sessions
+            }).done();
+            
+          }
+          
+        });
+        /// =SERVER}
         instance.addChild(new Val({ name: 'currentHp', dossClass: ds.DossierInt }));
-        instance.addChild(new Val({ name: 'locX', dossClass: ds.DossierInt }));
-        instance.addChild(new Val({ name: 'locY', dossClass: ds.DossierInt }));
+        instance.addChild(new Val({ name: 'x', dossClass: ds.DossierInt }));
+        instance.addChild(new Val({ name: 'y', dossClass: ds.DossierInt }));
         instance.addChild(new Val({ name: 'rot', dossClass: ds.DossierInt }));
         
         // >> WorldSet
@@ -183,7 +274,7 @@ var package = new PACK.pack.Package({ name: 'lapse',
           var lapse = worldSet.getChild('~root');
           
           var accountData = U.param(data, 'accountData');
-          var account = lapse.getChild([ 'accountSet', accountData.username ]);
+          var account = accessAccount(lapse, accountData.username, accountData.password);
           if (!account) throw new Error('Invalid username: ' + accountData.username);
           
           // Create + sync world
@@ -191,6 +282,7 @@ var package = new PACK.pack.Package({ name: 'lapse',
           var world = stager(worldSet, 'add', {
             data: {
               quickName: worldData.quickName,
+              account: account,
               name: worldData.name,
               mode: worldData.mode
             },
@@ -198,13 +290,67 @@ var package = new PACK.pack.Package({ name: 'lapse',
             sessions: 'all'
           });
           
+          // Automatically join the world upon creation
+          stager(world, 'join', { data: { lapse: lapse, accountData: accountData }});
+          /// =SERVER}
+          
+        }));
+        
+        // >> WorldSet / World
+        var world = worldSet.setTemplate(new Obj({ name: 'world' }));
+        world.addAbility('respawn', actionizer.makeAbility('respawn', function(world, data, stager) {
+          
+          var accountData = U.param(data, 'accountData');
+          var account = world.getChild([ '~root', 'accountSet', accountData.username]);
+          
+          var player = account.getChild('@player');
+          if (!player) throw new Error('No player exists');
+          
+          // TODO: Validate password, that player exists, etc.
+          
+          // TODO: What if the gruntInstance's name (it's based on a counter) goes out of sync with client??
+          var gruntInstance = stager(world.getChild('~root.roleTypeSet.grunt.instanceSet'), 'add', {
+            data: {
+              maximumHp: 10,
+              currentHp: 10,
+              x: 0,
+              y: 0,
+              rot: 0
+            }
+          });
+          var combatant = stager(world.getChild('combatantSet'), 'add', {
+            data: {
+              player: player,
+              roleInstance: gruntInstance
+            }
+          });
+          
+          stager(account.getChild('@player.combatant'), 'mod', { data: combatant });
+          
+          /// {CLIENT=
+          stager(world.getChild('~root.me.combatant'), 'mod', { data: combatant });
+          /// =CLIENT}
+          
+        }));
+        world.addAbility('join', actionizer.makeAbility('join', function(world, data, stager) {
+          
+          /// {SERVER=
+          // Note that in the case where worldSet.create() calls world.join(), `world` may
+          // be unrooted. In that case, `data.lapse` must be available.
+          var lapse = O.contains(data, 'lapse') ? data.lapse : world.getChild('~root');
+          
+          var accountData = U.param(data, 'accountData');
+          var account = accessAccount(lapse, accountData.username, accountData.password);
+          if (!account) throw new Error('Invalid username: ' + accountData.username);
+          
           // TODO: Validate that no player already exists on `account`
           var player = stager(lapse.getChild('playerSet'), 'add', {
             data: {
               username: account.getValue('username'),
               ip: stager.session.ip,
-              joinTime: +new Date(),
-              world: [ worldData.quickName ]
+              joinTime: U.timeMs(),
+              world: world,
+              combatant: null
             },
             scrub: [ 'ip' ],
             sync: 'quick',
@@ -212,49 +358,26 @@ var package = new PACK.pack.Package({ name: 'lapse',
           });
           
           // Update the client's Account reference to the client's Player
-          stager(account.getChild('player'), 'mod', { data: [ account.getValue('username') ], sync: 'quick', sessions: [ stager.session ] });
-          
+          stager(account.getChild('player'), 'mod', {
+            data: player,
+            sync: 'quick',
+            sessions: [ stager.session ]
+          });
           /// =SERVER}
           
         }));
-        worldSet.addAbility('join', actionizer.makeAbility('join', function(doss, data, stager) {
+        /// {SERVER=
+        world.addUtility('update', function(world, timeMult) {
           
-          // TODO: Separate 'create' from 'join' and call 'join' from 'create'
+          var sessions = {}; // A.map(players, function(player) { return player.getValue('ip'); });
           
-        }));
-        
-        // >> WorldSet / World
-        var world = worldSet.setTemplate(new Obj({ name: 'world' }));
-        world.addAbility('respawn', actionizer.makeAbility('respawn', function(doss, data, stager) {
+          var combatants = world.getChild('combatantSet').children;
+          O.each(combatants, function(combatant) { return combatant.useUtility('update', timeMult, sessions); });
           
-          var accountData = U.param(data, 'accountData');
-          var account = doss.getChild([ '~root', 'accountSet', accountData.username]);
-          
-          // TODO: Validate password, that player exists, etc.
-          
-          // TODO: What if the gruntInstance's name (it's based on a counter) goes out of sync with client??
-          var gruntInstance = stager(doss.getChild('~root.roleTypeSet.grunt.instanceSet'), 'add', {
-            data: {
-              maximumHp: 10,
-              currentHp: 10,
-              locX: 0,
-              locY: 0,
-              rot: 0
-            }
-          });
-          var combatant = stager(doss.getChild('combatantSet'), 'add', {
-            data: {
-              account: account,
-              roleInstance: gruntInstance
-            }
-          });
-          
-          /// {CLIENT=
-          stager(doss.getChild('~root.me.combatant'), 'mod', { data: combatant });
-          /// =CLIENT}
-          
-        }));
+        });
+        /// =SERVER}
         world.addChild(new Val({ name: 'quickName' }));
+        world.addChild(new Ref({ name: 'account', format: '~root.accountSet.$account' }));
         world.addChild(new Val({ name: 'name' }));
         world.addChild(new Val({ name: 'mode', defaultValue: 'standard' }));
         
@@ -269,10 +392,37 @@ var package = new PACK.pack.Package({ name: 'lapse',
         
         // >> WorldSet / World / CombatantSet / Combatant
         var combatant = combatantSet.setTemplate(new Obj({ name: 'combatant' }));
-        combatant.addChild(new Ref({ name: 'account', format: '~root.accountSet.$account' }));
+        /// {SERVER=
+        combatant.addUtility('update', function(combatant, timeMult, sessions) {
+          
+          var player = combatant.getChild('@player');
+          var ip = player.getValue('ip');
+          if (ip) sessions[ip] = ip;
+          
+          var roleInstance = combatant.getChild('@roleInstance');
+          if (roleInstance) roleInstance.useUtility('update', timeMult, player, sessions);
+          
+        });
+        /// =SERVER}
+        combatant.addChild(new Ref({ name: 'player', format: '~root.playerSet.$player' }));
         combatant.addChild(new Ref({ name: 'roleInstance', format: '~root.roleTypeSet.$type.instanceSet.$instance' }));
         
         actionizer.recurse(lapse);
+        
+        /// {CLIENT=
+        lapse.getChild('worldSet.world.combatantSet.combatant').addUtility('draw', function(combatant, graphics) {
+          
+          combatant.getChild('@roleInstance').useUtility('draw', graphics);
+          
+        });
+        lapse.getChild('roleTypeSet.grunt.instanceSet.instance').addUtility('draw', function(grunt, graphics) {
+          
+          graphics.push({ stroke: '2px solid #000000', fill: '#ff0000' });
+          graphics.circle({ x: grunt.getValue('x'), y: grunt.getValue('y') }, 20);
+          graphics.pop();
+          
+        });
+        /// =CLIENT}
         
       },
       genOutlineData: function() {
@@ -296,6 +446,14 @@ var package = new PACK.pack.Package({ name: 'lapse',
         
       },
       setupDoss: function(lapse) {
+        
+        /// {SERVER=
+        var update = function(timeMult) {
+          lapse.useUtility('update', timeMult);
+        };
+        var delayMs = 50;
+        setInterval(update.bind(null, delayMs / 1000), delayMs); // `delayMs / 1000` gives a multiplier for (units/second)
+        /// =SERVER}
         
         /// {CLIENT=
         var credInfo = new nf.CalculationInformer({
@@ -338,7 +496,57 @@ var package = new PACK.pack.Package({ name: 'lapse',
           //return new uf.SetView({ name: name, cssClasses: [ 'form' ], children: children });
           
         };
+        
         var creatingWorld = new nf.ValueInformer({ value: false });
+        var canvas = new cv.CanvasView({ name: 'canvas', options: { centered: true, trackKeys: true, trackMouse: true },
+          setupControls: function() {
+            
+          },
+          drawFunc: function(graphics, millis) {
+            
+            var world = lapse.getChild('me.@world');
+            if (!world) return;
+            
+            var combatants = world.getChild('combatantSet').children;
+            for (var k in combatants) combatants[k].useUtility('draw', graphics);
+            
+          }
+        });
+        
+        // Input
+        canvas.keyInformer.addWorry('invalidated', function(val) {
+          
+          var player = lapse.getChild('me.@account.@player');
+          if (!player) return;
+          
+          player.getChild('keyInput').$useAbility('mod', {
+            data: {
+              l: O.contains(val, 65),
+              r: O.contains(val, 68),
+              d: O.contains(val, 83),
+              u: O.contains(val, 87)
+            },
+            sync: 'quick'
+          });
+          
+        });
+        canvas.mouseInformer.addWorry('invalidated', function(val) {
+          
+          var player = lapse.getChild('me.@account.@player');
+          if (!player) return;
+          
+          var pt = val.pt;
+          var buttons = val.buttons;
+          
+          player.getChild('mouseInput').$useAbility('mod', {
+            data: {
+              pt: pt,
+              buttons: buttons
+            },
+            sync: 'quick'
+          });
+          
+        });
         
         var view = new uf.RootView({ name: 'root', children: [
           
@@ -357,8 +565,10 @@ var package = new PACK.pack.Package({ name: 'lapse',
                 new uf.SetView({ name: 'form', cssClasses: [ 'content' ],
                   children: genFormChildren([ 'username', 'password' ], function(data) {
                     
+                    var account = lapse.getChild('me.account');
+                    
                     return new P({ all: [
-                      lapse.getChild('me.account').$useAbility('mod', { data: [ data.username ] }),
+                      account.$useAbility('mod', { data: account.genValue(data.username) }),
                       lapse.$useAbility('login', { data: data, sync: 'quick' })
                     ]});
                     
@@ -371,17 +581,17 @@ var package = new PACK.pack.Package({ name: 'lapse',
                 
                 new uf.TextView({ name: 'doCreate',
                   info: new nf.CalculationInformer({
-                    dependencies: [ creatingWorld ],
+                    dependencies: [ lapse.getChild('me.creatingWorld') ],
                     calc: function(isCreatingWorld) { return isCreatingWorld ? 'Back' : 'Create' }
                   }),
                   decorators: [
-                    new uf.ActionDecorator({ action: creatingWorld.as('modValue', function(v) { return !v; }) })
+                    new uf.ActionDecorator({ action: lapse.getChild('me.creatingWorld').as('modValue', function(v) { return !v; }) })
                   ]
                 }),
                 
                 new uf.ChoiceView({ name: 'content', cssClasses: [ 'chooser' ], transitionTime: 550,
                   choiceInfo: new nf.CalculationInformer({
-                    dependencies: [ creatingWorld ],
+                    dependencies: [ lapse.getChild('me.creatingWorld') ],
                     calc: function(isCreatingWorld) { return isCreatingWorld ? 'createWorld' : 'worldSet'; }
                   }),
                   children: [
@@ -395,8 +605,7 @@ var package = new PACK.pack.Package({ name: 'lapse',
                             new uf.ActionDecorator({ action: function() { console.log('ENTER:', world.getValue('name')); } })
                           ]})
                         ]})
-                      },
-                      emptyView: new uf.TextView({ name: 'empty', info: '... no worlds...' })
+                      }
                     }),
                     new uf.SetView({ name: 'createWorld', cssClasses: [ 'choice', 'titled' ], children: [
                       new uf.TextView({ name: 'title', info: 'Create' }),
@@ -443,8 +652,10 @@ var package = new PACK.pack.Package({ name: 'lapse',
                   dependencies: [ lapse.getChild('me.combatant') ],
                   calc: function(combatant) {
                     
-                    console.log('COMBATANT FOR OVERLAY:', combatant);
-                    return 'respawn';
+                    if (!combatant) return 'respawn';
+                    
+                    canvas.requestFocus();
+                    return 'hud';
                     
                   }
                 }),
@@ -468,21 +679,18 @@ var package = new PACK.pack.Package({ name: 'lapse',
                       }})
                     ]})
                     
+                  ]}),
+                  new uf.SetView({ name: 'hud', cssClasses: [ 'filler' ], children: [
+                    new uf.SetView({ name: 'vitals', children: [
+                      
+                    ]})
                   ]})
-                
+                  
                 ]
               })
             ]
           }),
-          
-          new cv.CanvasView({ name: 'canvas', options: { centered: true },
-            setupControls: function() {
-              
-            },
-            drawFunc: function(ctx, millis) {
-            
-            }
-          })
+          canvas
           
         ]});
         view.start();

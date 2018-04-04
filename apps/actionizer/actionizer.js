@@ -26,7 +26,7 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             /// {SERVER=
             // The server side issues a mod command in response
             var command = 'mod';
-            var params = { data: doss.getJson(), sync: 'quick' };
+            var params = { data: doss.getJson(), sync: 'none' };
             /// =SERVER}
             
             return channeler.$giveCommand({
@@ -329,8 +329,6 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           // Run the `editsFunc` with `stager`
           var ret = editsFunc(doss, data, stager);
           
-          // var $staged = new P({ run: editsFunc.bind(null, doss, data, stager) });
-          
           if (sync !== 'none') {
             
             var $doSync = function() {
@@ -378,9 +376,20 @@ var package = new PACK.pack.Package({ name: 'actionizer',
                 
                 sessions = channeler.sessionSet;
                 
+              } else {
+                
+                if (U.isObj(sessions, Array)) sessions = A.toObj(sessions, function(s) { return U.isObj(s, String) ? s : s.ip; });
+                
+                for (var k in sessions) {
+                  var sesh = sessions[k];
+                  if (U.isObj(sesh, String)) {
+                    if (!O.contains(channeler.sessionSet, sesh)) throw new Error('String ip doesn\'t correspond to any session: "' + sesh + '"');
+                    sessions[k] = channeler.sessionSet[sesh];
+                  }
+                }
+                
               }
               
-              if (U.isObj(sessions, Array)) sessions = A.toObj(sessions, function(s) { return s.ip; });
               if (O.isEmpty(sessions)) return p.$null; // If no sessions to sync, we're done!
               
               var commandParams = { data: data, sync: 'none' }; // Clients should not sync the server back
@@ -412,16 +421,15 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             
             if (sync === 'confirm') {
               
-              // TODO: $doSync() resolves that the command was sent, but not that it completed successfully...
-              // Refuse to resolve the staging until the sync is complete
-              stager.addBlocker($doSync()); // Do the sync, force the stager to wait
+              throw new Error('confirm-type syncing not implemented');
+              
+              // Force the call to `editor.$transact` to delay until it is confirmed
+              // that the operation worked on the other side
               
             } else {
               
               // Do the sync once it's confirmed to have worked on our side
               editor.$transaction.then($doSync).done();
-              
-              // $doSync().done(); // Do the sync without waiting
               
             }
             
