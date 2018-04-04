@@ -1,6 +1,6 @@
 var package = new PACK.pack.Package({ name: 'straightChess',
   /// {SERVER=
-  dependencies: [ 'app', 'dossier', 'informer', 'p', 'server' ],
+  dependencies: [ 'app', 'dossier', 'informer', 'p', 'server', 'frame' ],
   /// =SERVER}
   /// {CLIENT=
   dependencies: [ 'app', 'dossier', 'informer', 'p', 'server', 'userify' ],
@@ -15,7 +15,14 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     };
     
   },
-  runAfter: function(straightChess, app, ds, nf, p, sv, uf) {
+  runAfter: function(straightChess, app, ds, nf, p, sv, last) {
+    
+    /// {CLIENT=
+    var uf = last;
+    /// =CLIENT}
+    /// {SERVER=
+    var fr = last;
+    /// =SERVER}
     
     var P = p.P;
     var App = app.App;
@@ -158,7 +165,7 @@ var package = new PACK.pack.Package({ name: 'straightChess',
     new App({ name: 'straightChess',
       
       setupChanneler: function(channeler) {
-        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, /*host: '192.168.1.148',*/ port: 80, numToBank: 1 }));
+        channeler.addChannel(new sv.ChannelHttp({ name: 'http', priority: 0, port: 80, numToBank: 1 }));
         //channeler.addChannel(new sv.ChannelSocket({ name: 'sokt', priority: 1, port: 81 }));
       },
       setupActionizer: function(actionizer) {

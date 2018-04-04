@@ -30,15 +30,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
       },
       methods: function(sc, c) { return {
         
-        init: function(params /* name, dossClass, abilities, decorate */) {
+        init: function(params /* name, dossClass, abilities, utilities */) {
           
           this.dossClass = U.param(params, 'dossClass', this.getDefaultClass());
           // if (!U.isObj(this.dossClass, String)) this.dossClass = this.dossClass.title; // TODO: This requires class names to be globally unique
           
           this.abilities = U.param(params, 'abilities', {});
-          
-          var decorate = U.param(params, 'decorate', null);
-          if (decorate) decorate(this);
+          this.utilities = U.param(params, 'utilities', {});
           
         },
         
@@ -73,6 +71,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability Outline(' + this.getAddress() + ').' + name);
           this.abilities[name] = $func;
           
+          
+        },
+        addUtility: function(name, func) {
+          
+          if (O.contains(this.utilities, name)) throw new Error('Tried to overwrite utility Outline(' + this.getAddress() + ').' + name);
+          this.utilities[name] = func;
           
         },
         getNamedChild: function(name) {
@@ -394,24 +398,24 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
             return pass.$recurseAtomics('undo(' + transactionName + ')', 0, 0, recResults.undoAtomics).then(function(undoResults) {
               
-              if (undoResults.errors.length) {
-                // Undo batch could not be completed!
-                console.log('Undo failed (this is REAL BAD) due to ' + undoResults.errors.length + ' error(s):\n');
-                for (var i = 0, len = undoResults.errors.length; i < len; i++) {
-                  console.log('FATAL #' + (i + 1) + ':');
-                  console.error(undoResults.errors[i]);
-                  console.log('');
-                }
-                throw new Error('FATAL MFRF (data may be corrupted)');
-              }
-              
-              throw new Error('Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n');
+              if (!undoResults.errors.length)
+                throw new Error('Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n');
               
               /*throw new Error(
                 'Rollback was performed to ' + recResults.remainingAtomics.length + ' unresolvable operation(s):\n' +
                 A.map(recResults.remainingAtomics, function(r) { return r.desc; }).join('\n') + '\n====ERRORS====\n' +
                 A.map(recResults.errors, function(err) { return err.message; }).join('\n')
               );*/
+              
+              // Undo batch could not be completed!
+              console.log('Undo failed (this is REAL BAD) due to ' + undoResults.errors.length + ' error(s):\n');
+              for (var i = 0, len = undoResults.errors.length; i < len; i++) {
+                console.log('FATAL #' + (i + 1) + ':');
+                console.error(undoResults.errors[i]);
+                console.log('');
+              }
+              throw new Error('FATAL MFRF (data may be corrupted)');
+              
               
             });
             
@@ -788,9 +792,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         
         // Abilities
-        getAbility: function(name) {
-          return O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
-        },
         stageAbility: function(name, params, stager) {
           
           /// {DOC=
@@ -811,7 +812,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           if (!stager) throw new Error('No `stager` supplied for ' + this.identity() + '.' + name);
           if (!params) throw new Error('No `params` supplied for ' + this.identity() + '.' + name);
           
-          var func = this.getAbility(name);
+          var func = O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
           if (!func) throw new Error(this.identity() + ' doesn\'t support ability "' + name + '"');
           
           return func(this, params, stager);
@@ -853,6 +854,12 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return new P({ all: blockers }).then(editor.$transact.bind(editor));
           
         },
+        useUtility: function(/* name ... */) {
+          var name = arguments[0];
+          arguments[0] = this;
+          return this.outline.utilities[name].apply(null, arguments);
+        },
+        
         dereference: function() {
           throw new Error('Cannot dereference "' + this.identity() + '"');
         },
@@ -1024,7 +1031,10 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         
         getValue: function(addr) {
-          if (addr) return this.getChild(addr).getValue()
+          if (addr) {
+            var child = this.getChild(addr);
+            return child ? child.getValue() : null;
+          }
           return O.clone(this.children); // TODO: do we really need to clone?
         },
         getJson: function() {
@@ -1279,6 +1289,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           return arrVal;
           
+        },
+        genValue: function(/* ... formatParams ... */) {
+          return this.sanitizeValue(U.toArray(arguments));
         },
         getInternalValue0: function() {
           return this.value ? this.getRefAddress() : null;
