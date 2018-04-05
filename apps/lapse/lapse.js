@@ -372,7 +372,7 @@ var package = new PACK.pack.Package({ name: 'lapse',
         
         return;
         
-        worldSet.addAbility('create', 'global', true, actionizer.makeAbility('create', function(worldSet, data, stager) {
+        worldSet.addAbility('create', 'public', true, actionizer.makeAbility('create', function(worldSet, data, stager) {
           
           var lapse = worldSet.getChild('~root');
           

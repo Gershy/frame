@@ -2,10 +2,48 @@
 // version can serve as the superclass some day?
 
 var package = new PACK.pack.Package({ name: 'actionizer',
-  dependencies: [ 'p', 'dossier' ],
-  buildFunc: function(az, p, ds) {
+  dependencies: [ 'p', 'informer', 'dossier' ],
+  buildFunc: function(az, p, nf, ds) {
     
     var P = p.P;
+    
+    az.DossierInformer = U.makeClass({ name: 'DossierInformer', superclass: nf.Informer, methods: function(sc, c) { return {
+      
+      init: function(params /* actionizer, doss, ablName */) {
+        sc.init.call(this, params);
+        this.actionizer = U.param(params, 'actionizer');
+        this.abilityName = U.param(params, 'abilityName');
+        this.doss = U.param(params, 'doss');
+        this.func = null;
+        
+      },
+      
+      getValue: function() {
+        return this.doss.getInternalValue();
+      },
+      setValue0: function(val) {
+        this.actionizer.$do(this.doss, this.abilityName, val);
+      },
+      
+      isStarted: function() {
+        return !!this.func;
+      },
+      start: function() {
+        
+        sc.start.call(this);
+        var pass = this;
+        this.func = function() { pass.setValue0(doss.getJson()); };
+        this.doss.addWorry('invalidated', this.func);
+        
+      },
+      stop: function() {
+        sc.stop.call(this);
+        this.doss.remWorry('invalidated', this.func);
+      }
+      
+      
+      
+    };}});
     
     az.Actionizer = U.makeClass({ name: 'Actionizer', methods: function(sc, c) { return {
       init: function(params /* channeler */) {
@@ -379,26 +417,31 @@ var package = new PACK.pack.Package({ name: 'actionizer',
       },
       recurse: function(outline) {
         
-        outline.addAbility('sync', 'global', true, this.sync);
-        outline.addAbility('display', 'global', true, this.display);
+        outline.addAbility('sync', 'public', true, this.sync);
+        outline.addAbility('display', 'public', true, this.display);
         
         if (U.isInstance(outline, ds.Val)) {
           
-          outline.addAbility('mod', 'global', true, U.isInstance(outline, ds.Ref) ? this.modRef : this.modVal);
+          outline.addAbility('mod', 'public', true, U.isInstance(outline, ds.Ref) ? this.modRef : this.modVal);
           
         } else if (U.isInstance(outline, ds.Obj)) {
           
-          outline.addAbility('mod', 'global', true, this.modObj);
+          outline.addAbility('mod', 'public', true, this.modObj);
           for (var k in outline.children) this.recurse(outline.children[k]);
           
         } else if (U.isInstance(outline, ds.Arr)) {
           
-          outline.addAbility('mod', 'global', true, this.modArr);
-          outline.addAbility('rem', 'global', true, this.remArr);
-          outline.addAbility('add', 'global', true, this.addArr);
+          outline.addAbility('mod', 'public', true, this.modArr);
+          outline.addAbility('rem', 'public', true, this.remArr);
+          outline.addAbility('add', 'public', true, this.addArr);
           this.recurse(outline.template);
           
         }
+        
+      },
+      enliven: function(doss, abilityName) {
+        
+        return new az.DossierInformer({ actionizer: this, doss: doss, abilityName: abilityName });
         
       },
       

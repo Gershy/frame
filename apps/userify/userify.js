@@ -897,7 +897,6 @@ var package = new PACK.pack.Package({ name: 'userify',
           this.multiline = U.param(params, 'multiline', false);
           this.info = uf.pafam(params, 'info', '');
           this.placeholderInfo = uf.pafam(params, 'placeholderInfo', '');
-          this.syncOnInput = U.param(params, 'syncOnInput');
         },
         
         createDomRoot: function() {
@@ -908,7 +907,7 @@ var package = new PACK.pack.Package({ name: 'userify',
           
           var input = document.createElement(this.multiline ? 'textarea' : 'input');
           input.classList.add('interactive');
-          input.oninput = function(e) { this.info.setValue(input.value, this.syncOnInput ? 'quick' : 'none'); }.bind(this); // TODO: Have to ensure that the string is being set in the DOM before being set in the Informer - otherwise LOOPS when typing
+          input.oninput = function(e) { this.info.setValue(input.value); }.bind(this); // TODO: Have to ensure that the string is being set in the DOM before being set in the Informer - otherwise LOOPS when typing
           ret.appendChild(input);
           
           var placeholder = document.createElement('div');
