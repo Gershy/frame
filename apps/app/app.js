@@ -12,8 +12,9 @@ var package = new PACK.pack.Package({ name: 'app',
         this.setupChanneler = U.param(params, 'setupChanneler');
         this.setupActionizer = U.param(params, 'setupActionizer');
         this.setupOutline = U.param(params, 'setupOutline');
+        this.setupActions = U.param(params, 'setupActions');
         this.genOutlineData = U.param(params, 'genOutlineData');
-        this.setupDoss = U.param(params, 'setupDoss', function(doss) {});
+        this.run = U.param(params, 'run', function(doss) {});
         
         this.activities = [];
         
@@ -22,7 +23,7 @@ var package = new PACK.pack.Package({ name: 'app',
         /// =CLIENT}
         
       },
-      $run: function() {
+      $start: function() {
         
         var pass = this;
         
@@ -40,39 +41,23 @@ var package = new PACK.pack.Package({ name: 'app',
         this.setupActionizer(actionizer);
         
         // Generate an Outline and it's corresponding initial data
-        var outline = new ds.Obj({ name: this.name, abilities: {
-          output: actionizer.makeAbility('output', false, function(editor, doss, data) {
-            var data = JSON.stringify(doss.getJson(), null, 2).replace(/"/g, '\'');
-            console.log('OUTPUT:\n', data);
-          })
-        }});
-        this.setupOutline(outline, actionizer);
+        var outline = new ds.Obj({ name: this.name });
+        this.setupOutline(outline);
+        this.setupActions(outline, actionizer);
         
         var outlineData = this.genOutlineData();
         
         var editor = new ds.Editor();
         var doss = editor.add({ outline: outline, data: outlineData });
+        actionizer.rootDoss = doss;
         
         return editor.$transact()
-          .then(function() { channeler.handler = doss; }) // Set `doss` as the request handler
-          .then(channeler.as('$start'))                   // Start the channeler
-          .then(this.setupDoss.bind(null, doss));
-          /*
-          /// {CLIENT=
-          .then(function() {                              // Generate the view
-            
-            var view = pass.genView(doss);
-            view.start();
-            
-            // pass.activities.push(view); // TODO: No need to stop the view... it's just the DOM...
-            
-            window.doss = doss;
-            window.view = view;
-            
+          .then(function() {                            // Set `actionizer` as the request handler
+            channeler.handler = actionizer;
+            channeler.directToHandler = true;
           })
-          .then(doss.as('$useAbility', 'sync', {}));          // Sync `doss` to the server
-          /// =CLIENT}
-          */
+          .then(channeler.as('$start'))                 // Start the channeler
+          .then(this.run.bind(null, doss, actionizer));
         
       },
       $end: function() {

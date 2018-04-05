@@ -110,6 +110,7 @@ new PACK.pack.Package({ name: 'server',
           this.assetVersion = U.param(params, 'assetVersion', U.charId(parseInt(Math.random() * 1000), 3));
           this.appName = U.param(params, 'appName');
           this.handler = U.param(params, 'handler', null);
+          this.directToHandler = U.param(params, 'directToHandler', false);
           this.errorHandler = {
             $heedCommand: function(params /* session, channelerParams, command, params */){
               console.log('ERRORHANDLER:', params.params || params.data, (params.params && params.data) ? 'WTFFF' : '');
@@ -121,10 +122,13 @@ new PACK.pack.Package({ name: 'server',
           this.favouriteChannel = null; // TODO: There's no such thing as a single favourite channel. There's a favourite channel per Session
           
           /// {SERVER=
+          // TODO: Some day, with p2p client connections, the `sessionSet` Object can be present both client- and server-side
           this.sessionSet = {};
           /// =SERVER}
           
           /// {CLIENT=
+          this.serverSession = new sv.Session({ ip: '127.0.0.1', channeler: this });
+          
           // TODODBG: Allow spoofing via url params
           var urlParams = U.parseUrl(window.location.href).params;
           this.ipSpoof = U.param(urlParams, 'spoof', null);
@@ -174,7 +178,7 @@ new PACK.pack.Package({ name: 'server',
         getNamedChild: function(name) {
           
           if (name === '~root') { return this.handler; }
-          if (name === '~error') { console.error(new Error('hahaha')); return this.errorHandler; }
+          if (name === '~error') { return this.errorHandler; }
           if (O.contains(this.channels, name)) return this.channels[name];
           return null;
           
@@ -243,7 +247,6 @@ new PACK.pack.Package({ name: 'server',
           if (params === null) return p.$null; // `null` is received from fizzling
           
           var pass = this;
-          var commandDescription = '<NO_DESCRIPTION>';
           
           var dbgErr = new Error();
           
@@ -255,7 +258,7 @@ new PACK.pack.Package({ name: 'server',
             var session = U.param(params, 'session');
             /// =SERVER}
             /// {CLIENT=
-            var session = null;
+            var session = pass.serverSession; // The client only ever deals with a single session
             /// =CLIENT}
             
             // Get any available channeler params
@@ -282,42 +285,47 @@ new PACK.pack.Package({ name: 'server',
               
               var command = U.param(commandData, 'command');
               
-              var child = pass.getChild(address);
-              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
-              
-              commandDescription = (address.join('.') || child.getAddress()) + '.' + command;
-              
               var commandParams = U.param(commandData, 'params', {});
-              if (!commandParams) throw new Error('Couldn\'t perform command: ' + commandDescription + '; NO PARAMS');
+              if (!commandParams) throw new Error('Couldn\'t perform command: ' + (address.join('.') || 'ROOT') + '.' + command + '(); NO PARAMS');
               
-              if (U.isObj(commandParams, Object)) {
-                
-                var dat = commandParams.data || {};
-                var prms = Object.keys(dat).join(', ');
-                prms = prms.length ? '([ ' + prms  + ' ])' : '()';
-                commandDescription += prms;
-                
+              if (pass.directToHandler && address[0] === '~root') {
+              
+                var child = pass.handler;
+                var heedParams = { session: session, channelerParams: channelerParams, address: address, command: command, params: commandParams };
+              
               } else {
                 
-                commandDescription += '(' + U.typeOf(commandParams) + ')';
+                var child = pass.getChild(address);
+                var heedParams = { session: session, channelerParams: channelerParams, command: command, params: commandParams };
                 
               }
-              //commandDescription += '(' + JSON.stringify(commandParams, null, 2) + ')';
               
-              // `child` may either be the Channeler, a Channel, or any part of the Channeler's handler. Regardless,
-              // `$heedCommand` is called with the same signature:
-              return child.$heedCommand({ session: session, command: command, params: commandParams, channelerParams: channelerParams })
+              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              
+              return child.$heedCommand(heedParams).then(function() { // Do success output
+                
+                var doOutput = (child === pass || U.isInstance(child, sv.Channel)) ? child.shouldDoOutput(command) : true;
+                
+                if (!doOutput) return;
+                
+                if (U.isObj(commandParams, Object)) {
+                  var paramOutput = Object.keys(commandParams).join(', ');
+                  if (paramOutput) paramOutput = paramOutput ? '{ ' + paramOutput + ' }' : '{}';
+                } else {
+                  var paramOutput = U.typeOf(commandParams);
+                }
+                
+                // paramOutput = '(' + JSON.stringify(commandParams, null, 2) + ')';
+                
+                console.log('Command success: (' + session.ip + ') ' + address.join('.') + '.' + command + '(' + paramOutput + ')');
+                
+              });
               
             }).then(function() {
               
-              if (false && !S.startsWith(commandDescription, pass.name + '.getFile'))
-                console.log('Command success: (' + (session ? session.ip : 'SELF') + ') ' + commandDescription);
               
             }).fail(function(err) {
               
-              //dbgErr.message = err.message;
-              //console.error(dbgErr);
-              console.log('Command failure: ' + commandDescription);
               console.error(err);
               return pass.$commandFailed(session, channelerParams, err);
               
@@ -514,6 +522,10 @@ new PACK.pack.Package({ name: 'server',
           
         },
         
+        shouldDoOutput: function(command) {
+          return command !== 'getFile';
+        },
+        
         $start: function() {
           
           var pass = this;
@@ -644,6 +656,10 @@ new PACK.pack.Package({ name: 'server',
         },
         
         finalizeCommand: function(session, channelParams) {
+        },
+        
+        shouldDoOutput: function(command) {
+          return true;
         },
         
         $start: function() { return new P({ err: new Error('not implemented') }); },
@@ -1061,6 +1077,10 @@ new PACK.pack.Package({ name: 'server',
         },
         /// =CLIENT}
         
+        shouldDoOutput: function(command) {
+          return command !== 'bankPoll';
+        },
+        
         $start: function() {
           
           /// {SERVER=
@@ -1213,7 +1233,7 @@ new PACK.pack.Package({ name: 'server',
       };}
     });
     
-    /// {SERVER=
+    /* Session - keep track of data related to a particular remote machine */
     sv.Session = U.makeClass({ name: 'Session',
       description: 'Representation of a Session',
       methods: function(sc) { return {
@@ -1226,6 +1246,8 @@ new PACK.pack.Package({ name: 'server',
       }},
       statik: { NEXT_ID: 0 }
     });
+    
+    /// {SERVER=
     sv.CommandResponse = U.makeClass({ name: 'CommandResponse',
       description: 'Handles the sending of commands to the other side via HTTP',
       methods: function(sc) { return {

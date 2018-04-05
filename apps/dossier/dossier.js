@@ -30,49 +30,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
       },
       methods: function(sc, c) { return {
         
-        init: function(params /* name, dossClass, abilities, utilities */) {
+        init: function(params /* name, dossClass, utilities */) {
           
           this.dossClass = U.param(params, 'dossClass', this.getDefaultClass());
           // if (!U.isObj(this.dossClass, String)) this.dossClass = this.dossClass.title; // TODO: This requires class names to be globally unique
           
-          this.abilities = U.param(params, 'abilities', {});
+          this.metadata = U.param(params, 'metadata', {});
           this.utilities = U.param(params, 'utilities', {});
           
         },
         
         getDefaultClass: function() { throw new Error('not implemented'); },
         childNameMustMatch: function() { return true; },
-        addAbility: function(name, $func) {
-          
-          /// {DOC=
-          { desc: 'Adds a new ability to this Dossier under the name `name`',
-            params: {
-              name: { desc: 'The unique name of the ability' },
-              $func: { signature: function(session, channelerParams, editor, doss, params){},
-                desc: 'A function which stages all changes on `doss`, based on the ability, to the editor',
-                params: {
-                  session: { desc: 'The session performing the ability' },
-                  channelerParams: { desc: 'Any channelerParams for the ability if available' },
-                  editor: { desc: 'The editor which will be used to perform this ability' },
-                  doss: { desc: 'The `Dossier` which this ability concerns' },
-                  params: { desc: 'Any ability-specific params' }
-                },
-                returns: {
-                  $promise: {
-                    resolve: 'All necessary atoms are staged to the `editor`',
-                    reject: 'Any error'
-                  }
-                }
-              }
-            }
-          }
-          /// =DOC}
-          
-          if (O.contains(this.abilities, name)) throw new Error('Tried to overwrite ability Outline(' + this.getAddress() + ').' + name);
-          this.abilities[name] = $func;
-          
-          
-        },
         addUtility: function(name, func) {
           
           if (O.contains(this.utilities, name)) throw new Error('Tried to overwrite utility Outline(' + this.getAddress() + ').' + name);
@@ -103,12 +72,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         
         init: function(params /* name, dossClass, abilities, children */) {
           
-          var abilities = U.param(params, 'abilities', {});
-          params.abilities = abilities;
-          if (!O.contains(abilities, 'mod')) abilities.mod = ds.defaultModObj;
-          
           sc.init.call(this, params);
-          
           this.children = {};
           
         },
@@ -142,12 +106,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
         
         init: function(params /* name, dossClass, template, nameFunc */) {
           
-          var abilities = U.param(params, 'abilities', {});
-          params.abilities = abilities;
-          if (!O.contains(abilities, 'mod')) abilities.mod = ds.defaultModArr;
-          
           sc.init.call(this, params);
-          
           this.template = null;
           this.nameFunc = null;
           
@@ -315,7 +274,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           } else if (U.isInstance(doss, ds.DossierVal)) {
             
             if (data !== null)
-              this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
+              this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.identity() + ' -> ' + U.typeOf(data));
             
           }
           
@@ -338,7 +297,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           var doss = U.param(params, 'doss');
           var data = U.param(params, 'data');
-          this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.name + ' -> ' + U.typeOf(data));
+          this.$addAtomic(c.atomicModData, [ doss, data ], 'moddata ::: ' + doss.identity() + ' -> ' + U.typeOf(data));
           
         },
         
@@ -392,6 +351,13 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var transactionName = 'trn<' + this.id + '/' + this.count + '>';
           this.count++;
           
+          if (this.count > 1) throw new Error('Tried to reuse an Editor');
+          
+          if (!this.atomics.length) {
+            pass.$transaction.resolve(null);
+            return { errors: [], undoAtomics: [], remainingAtomics: [], attemptArr: [] };
+          }
+          
           return this.$recurseStage(transactionName, 0).then(function(recResults) {
             
             if (!recResults.errors.length) return recResults;
@@ -428,7 +394,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
             pass.$transaction.resolve(null);
             pass.atomics = [];
             pass.$transaction = new P({});
-            
             return recResults;
             
           }).fail(function(err) {
@@ -676,7 +641,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           this.name = ds.getTempName(); // Here's where `this.name` is overwritten
           this.outline = U.param(params, 'outline');
-          this.abilities = {}; // TODO: Consider storing these on the outline instead
           
           this.par = null; // The `Dossier` initializes with no parent
           this.started = false;
@@ -796,68 +760,6 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         
         // Abilities
-        stageAbility: function(name, params, stager) {
-          
-          /// {DOC=
-          { desc: 'Stages a named ability. This means `editor` is prepared ' +
-              'with the necessary actions to carry out the ability. No changes ' +
-              'actually occur until `editor.$transact` is called',
-            params: {
-              name: { desc: 'The name of the ability to stage' },
-              session: { desc: 'The session using the ability' },
-              channelerParams: { desc: 'Any available params for the Channeler' },
-              editor: { desc: 'The editor to be prepared' },
-              params: { desc: 'Any ability-specific params' }
-            },
-            returns: { desc: 'The result of the ability' }
-          }
-          /// =DOC}
-          
-          if (!stager) throw new Error('No `stager` supplied for ' + this.identity() + '.' + name);
-          if (!params) throw new Error('No `params` supplied for ' + this.identity() + '.' + name);
-          
-          var func = O.contains(this.outline.abilities, name) ? this.outline.abilities[name] : null;
-          if (!func) throw new Error(this.identity() + ' doesn\'t support ability "' + name + '"');
-          
-          return func(this, params, stager);
-          
-        },
-        $useAbility: function(name, params, session, channelerParams) {
-          
-          // Initialize an editor to carry out the ability...
-          var editor = new ds.Editor();
-          
-          // Set up the `stager`...
-          var blockers = [];
-          var stager = function(doss, ablName, params) {
-            return doss.stageAbility(ablName, params, stager);
-          };
-          O.update(stager, { editor: editor, session: session || { ip: 'server' } });
-          stager.addBlocker = blockers.push.bind(blockers);
-          stager.$use = function(doss, abilityName, data) {
-            var params = { data: data, sync: 'quick' };
-            /// {SERVER=
-            params.sessions = [ session ];
-            /// =SERVER}
-            return doss.$useAbility(abilityName, params, stager.session, {});
-          };
-          stager.consumeChannelerParams = function() {
-            // `channelerParams` is only returned on the first call. After that,
-            // empty channeler params are returned.
-            var ret = channelerParams;
-            channelerParams = null;
-            return ret || {};
-          };
-          
-          this.stageAbility(name, params, stager);
-          
-          // If no `blockers` were added, transact immediately
-          if (!blockers.length) return editor.$transact();
-          
-          // Otherwise only transact after all `blockers` have resolved
-          return new P({ all: blockers }).then(editor.$transact.bind(editor));
-          
-        },
         useUtility: function(/* name ... */) {
           var name = arguments[0];
           arguments[0] = this;
@@ -895,6 +797,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.getJson();
         },
         setValue: function(val, sync) {
+          
+          // TODO:::::
+          throw new Error('Doesn\'t work in new Actionizer-handler style!!');
           
           // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
           // instead of "setValue" - but this includes the functionality of causing "invalidated"

@@ -1,3 +1,6 @@
+// TODO: This package defines specifically a DossierActionizer. Perhaps an abstract
+// version can serve as the superclass some day?
+
 var package = new PACK.pack.Package({ name: 'actionizer',
   dependencies: [ 'p', 'dossier' ],
   buildFunc: function(az, p, ds) {
@@ -8,58 +11,30 @@ var package = new PACK.pack.Package({ name: 'actionizer',
       init: function(params /* channeler */) {
         
         var channeler = this.channeler = U.param(params, 'channeler');
+        this.rootDoss = U.param(params, 'rootDoss', null);
+        this.ablTree = {};
         
         // All types
-        this.sync = function(doss, params, /* */ stager) { // TODO: Could probably be implemented with `makeAbility`
-          
-          // Note that the server side never gives a "sync" command; the server is the source of truth,
-          // it doesn't rely on any outside sources to synchronize it.
-          // Attach a sync action to occur when the `editor` is done (but don't wait to fulfill $staged!)
-          stager.editor.$transaction.then(function() {
-            
-            /// {CLIENT=
-            // The client side issues a sync command
-            var command = 'sync';
-            var params = {};
-            /// =CLIENT}
-            
-            /// {SERVER=
-            // The server side issues a mod command in response
-            var command = 'mod';
-            var params = { data: doss.getJson(), sync: 'none' };
-            /// =SERVER}
-            
-            return channeler.$giveCommand({
-              session: stager.session,
-              channelerParams: stager.consumeChannelerParams(),
-              data: {
-                address: doss.getAddress(),
-                command: command,
-                params: params
-              }
-            });
-            
-          }).done();
-          
-        };
-        this.display = this.makeAbility('display', function(doss, data, stager) {
+        this.display = function(doss, data, stager) {
           
           console.log('DISPLAY:');
           console.log(JSON.stringify(doss.getJson(), null, 2));
           
-        });
+        };
         
         // Val
-        this.modVal = this.makeAbility('mod', function(doss, data, stager) {
+        this.modVal = function(doss, data, stager) {
+          
+          console.log('DATA FOR ' + doss.identity() + ': ' + data);
           
           var editor = stager.editor;
           editor.mod({ doss: doss, data: data });
           editor.$transaction.then(doss.as('worry', 'invalidated')).done();
           
-        });
+        };
         
         // Obj
-        this.modObj = this.makeAbility('mod', function(doss, data, stager) {
+        this.modObj = function(doss, data, stager) {
           
           var editor = stager.editor;
           var outlineChildren = doss.outline.children;
@@ -71,15 +46,14 @@ var package = new PACK.pack.Package({ name: 'actionizer',
               : editor.add({ par: doss, name: childName, data: null });
             
             // Only stage 'mod' if data was provided for the child
-            if (data.hasOwnProperty(childName))
-              stager(child, 'mod', { data: data[childName] });
+            if (data.hasOwnProperty(childName)) stager(child, 'mod', data[childName]);
             
           }
           
-        });
+        };
         
         // Arr
-        this.modArr = this.makeAbility('mod', function(doss, data, stager) {
+        this.modArr = function(doss, data, stager) {
           
           var editor = stager.editor;
           
@@ -101,14 +75,16 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             editor.rem({ child: rem[k] });
             editor.$transaction.then(rem[k].as('worry', 'invalidated')); // Invalidate removed children
           }
-          for (var k in mod) stager(doss.children[k], 'mod', { data: mod[k] });
+          for (var k in mod) {
+            stager(doss.children[k], 'mod', mod[k]);
+          }
           for (var k in add) {
             var child = editor.add({ par: doss, data: null, name: k, recurseObj: false });
-            stager(child, 'mod', { data: add[k]});
+            stager(child, 'mod', add[k]);
           }
           
-        });
-        this.addArr = this.makeAbility('add', function(doss, data, stager) {
+        };
+        this.addArr = function(doss, data, stager) {
           
           var editor = stager.editor;
           
@@ -116,27 +92,12 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           editor.$transaction.then(doss.as('worry', 'invalidated'));
           
           // Add `data` to `doss`
-          return editor.add({ par: doss, data: data });
+          var child = editor.add({ par: doss, data: null, recurseObj: false });
+          stager(child, 'mod', data);
+          return child;
           
-        });
-        this.addsArr = this.makeAbility('adds', function(doss, data, stager) {
-          
-          if (O.isEmpty(data)) return;
-          
-          var editor = stager.editor;
-          var added = {};
-          
-          for (var k in data) {
-            added[k] = editor.add({ par: doss, data: null, name: k, recurseObj: false });
-            stager(added[k], 'mod', { data: add[k] });
-          }
-          
-          editor.$transaction.then(doss.as('worry', 'invalidated'));
-          
-          return added;
-          
-        });
-        this.remArr = this.makeAbility('rem', function(doss, data, stager) {
+        };
+        this.remArr = function(doss, data, stager) {
           
           var editor = stager.editor;
           
@@ -151,49 +112,13 @@ var package = new PACK.pack.Package({ name: 'actionizer',
           editor.rem({ child: child });
           editor.$transaction.then(child.as('worry', 'invalidated'));
           
-        });
+        };
         
         // Ref
-        this.modRef = this.makeAbility('mod', function(doss, data, stager) {
+        this.modRef = function(doss, data, stager) {
           
           var editor = stager.editor;
           editor.mod({ doss: doss, data: data });
-          
-          /*
-          setValue: function(value, sync) {
-            
-            if (this.wait) {
-              console.log('Resetting `wait');
-              this.wait.doss.remWorry('invalidated', this.wait.func);
-              this.wait = null;
-            }
-            
-            // DossierRef does something much more complicated if its value doesn't exist!!
-            value = this.sanitizeValue(this, value);
-            
-            // Null values can always be set immediately
-            if (value === null) return sc.setValue.call(this, value, sync);
-            
-            var addr = this.getRefAddress.call({ outline: this.outline, value: value });
-            var child = this.getChild(addr);
-            
-            // Values referencing existant Dossiers can always be set immediately
-            if (child) return sc.setValue.call(this, value, sync);
-            
-            // Here's the hard part: a nonexistant child has been referenced
-            var closestChild = this.approachChild(addr).child;
-            
-            // No value is set; no ability is called! Keep getting closer and closer
-            // children (detecting new children through "invalidated") until we
-            // finally get to the target child
-            var pass = this;
-            this.wait = {
-              doss: closestChild,
-              func: closestChild.addWorry('invalidated', pass.setValue.bind(pass, value, sync))
-            };
-            
-          }
-          */
           
           editor.$transaction.then(function() {
             
@@ -237,22 +162,14 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             
             tryValue = function() {
               
-              // console.log('Crystallizing ' + doss.identity() + '...');
-              
               removeClosestWorry();
               
               var targetAddr = doss.getRefAddress();
               var approach = doss.approachChild(targetAddr);
               
-              if (!approach.remaining.length) {
-                
-                // The reference is crystallized!
-                
-                // console.log('Approached fully!');
+              if (!approach.remaining.length) { // The reference is crystallized!
                 
                 if (!doss.isRooted()) return; // Crystallization happened too late - `doss` has been unrooted :(
-                
-                // console.log('Crystallized!');
                 
                 doss.remWorry('invalidated', removeClosestWorry);
                 doss.worry('invalidated');
@@ -274,41 +191,15 @@ var package = new PACK.pack.Package({ name: 'actionizer',
             tryValue();
             
           });
-          //editor.$transaction.then(doss.as('worry', 'invalidated')).done();
           
-        });
+        };
         
       },
-      makeAbility: function(name, editsFunc) {
-        
-        /// {DOC=
-        { desc: 'Makes a syncing ability, allowing the writer to worry only about the edits ' +
-            'without needing to take anything else into account',
-          params: {
-            name: { desc: 'The unique name of the ability' },
-            editsFunc: { signature: function(doss, data, stager){},
-              desc: 'A function which calls edit methods on `editor`. This method is allowed ' +
-                'to return a promise',
-              params: {
-                doss: { desc: 'The Dossier instance which may be needed for some edits' },
-                data: { desc: 'Arbitrary parameters for the ability' },
-                stager: { signature: function(doss, abilityName, params){},
-                  desc: 'Convenient shorthand function for further calling Dossier abilities',
-                  params: {
-                    doss: { desc: 'The Dossier on which to call the ability' },
-                    abilityName: { desc: 'The name of the ability to call' },
-                    params: { desc: 'Arbitrary params to the ability' }
-                  }
-                }
-              }
-            }
-          }
-        }
-        /// =DOC}
+      /*makeAbility: function(name, editsFunc) {
         
         var channeler = this.channeler;
         
-        return function(doss, params /* sync, sessions, data */, stager) {
+        return function(doss, params /* sync, sessions, data * /, stager) {
           
           var editor = stager.editor;
           var session = stager.session;
@@ -441,41 +332,259 @@ var package = new PACK.pack.Package({ name: 'actionizer',
         };
         
       },
+      */
+      addAbility: function(outline, name, machineScope, clientCanValidate, func) {
+        
+        /*
+        syncData.session is either the commanding Session, or `null` representing "self"
+        syncData.channelerParams is same as usual
+        syncData.machineScope is either 'private', 'entrusted', or 'public', OR
+          an Array or Object (of Sessions or ips) indicating the specific sessions
+          which need to get the sync. Should possibly also have the option of being
+          a function returning Object or Array - for dynamic WorryGroups (groups worried about the value being modified by the ability)
+        syncData.clientCanValidate is a Boolean. If `true` the same operation is carried
+          out simultaneously both client- and server-side. This is possible because
+          each can validate (the server can ALWAYS validate, and we've explicitly
+          labelled the client as being capable in this case). If `false` the client
+          will wait for the server to perform the action, and will only perform the
+          action itself if the server successfully performed it. If the server
+          succeeded, any value resulting from the server's ability will become
+          available for the client-side's attempt at running the same ability.
+
+        CAREFUL: THIS IS A BIG CHANGE, MAY HAVE TO REVERT. PLEEEEASE DO NOT MAKE CHANGES OUTSIDE OF
+        CONVERTING TO THIS NEW "syncData" FORMAT!!
+        */
+        
+        if (O.contains(outline.metadata, name)) throw new Error('Tried to overwrite metadata: Outline(' + this.getAddress() + ').' + name);
+        
+        if (!U.isObj(clientCanValidate, Boolean)) throw new Error('Invalid clientCanValidate value: "' + clientCanValidate + '"');
+        
+        /// {CLIENT=
+        if (machineScope !== 'private' && machineScope !== 'entrusted' && machineScope !== 'public')
+          throw new Error('Invalid machineScope value: "' + machineScope + '"');
+        /// =CLIENT}
+        
+        /// {SERVER=
+        if (machineScope !== 'private' && machineScope !== 'entrusted' && machineScope !== 'public' && !U.isObj(machineScope, Function))
+          throw new Error('Invalid machineScope value: "' + machineScope + '"');
+        /// =SERVER}
+        
+        outline.metadata[name] = {
+          name: name,
+          machineScope: machineScope,
+          clientCanValidate: clientCanValidate,
+          func: func
+        };
+      
+      },
       recurse: function(outline) {
+        
+        outline.addAbility('sync', 'global', true, this.sync);
+        outline.addAbility('display', 'global', true, this.display);
         
         if (U.isInstance(outline, ds.Val)) {
           
-          O.update(outline.abilities, {
-            sync: this.sync,
-            display: this.display,
-            mod: U.isInstance(outline, ds.Ref) ? this.modRef : this.modVal
-          });
+          outline.addAbility('mod', 'global', true, U.isInstance(outline, ds.Ref) ? this.modRef : this.modVal);
           
         } else if (U.isInstance(outline, ds.Obj)) {
           
-          O.update(outline.abilities, {
-            sync: this.sync,
-            display: this.display,
-            mod: this.modObj
-          });
-          
+          outline.addAbility('mod', 'global', true, this.modObj);
           for (var k in outline.children) this.recurse(outline.children[k]);
           
         } else if (U.isInstance(outline, ds.Arr)) {
           
-          O.update(outline.abilities, {
-            sync: this.sync,
-            display: this.display,
-            mod: this.modArr,
-            rem: this.remArr,
-            add: this.addArr
-          });
-          
+          outline.addAbility('mod', 'global', true, this.modArr);
+          outline.addAbility('rem', 'global', true, this.remArr);
+          outline.addAbility('add', 'global', true, this.addArr);
           this.recurse(outline.template);
           
         }
         
+      },
+      
+      $do: function(srcDoss, srcAbilityData, srcData) {
+        
+        var pass = this;
+        
+        // Note 2 extra params unlisted in the signature: `session` and `channelerParams`
+        var srcSession = (arguments.length > 3) ? arguments[3] : null;
+        var channelerParams = (arguments.length > 4) ? arguments[4] : null;
+        
+        // Make sure we work with a Dossier instance
+        if (U.isObj(srcDoss, String)) srcDoss = this.rootDoss.getChild(srcDoss);
+        if (!srcDoss) throw new Error('Couldn\'t get Dossier instance');
+        
+        // Make sure we work with an ability-data instance
+        if (U.isObj(srcAbilityData, String)) srcAbilityData = srcDoss.outline.metadata[srcAbilityData];
+        if (!srcAbilityData) throw new Error('Couldn\'t get ability-data');
+        
+        /// {SERVER=
+        if (srcAbilityData.machineScope === 'entrusted' && !srcSession)
+          throw new Error('Self-initiated an entrusted ability');
+        /// =SERVER}
+        
+        // Set up the `stager`...
+        var stager = function(doss, abilityData, data) {
+          
+          // Make sure we work with an ability data instance
+          if (U.isObj(abilityData, String)) console.log('ABILITY: ' + doss.identity() + '.' + abilityData);
+          if (U.isObj(abilityData, String)) abilityData = doss.outline.metadata[abilityData];
+          if (!abilityData) throw new Error('Couldn\'t get ability-data');
+          
+          if (srcAbilityData.machineScope !== abilityData.machineScope)
+            throw new Error('Ability with scope "' + srcAbilityData.machineScope + '" tried to stage an ability with scope "' + abilityData.machineScope + '"');
+          
+          return abilityData.func(doss, data, stager);
+          
+        };
+        var editor = stager.editor = new ds.Editor();
+        stager.session = srcSession;
+        stager.consumeChannelerParams = function() {
+          // `channelerParams` is only returned on the first call
+          var ret = channelerParams;
+          channelerParams = null;
+          return ret || {};
+        };
+        stager.$use = function(doss, abilityData, data) {
+          return pass.$do(doss, abilityData, data, srcSession, {}); // TODO: Session should probably be null here...
+        };
+        
+        // Abilities may alter the Dossier's address! Get the address before anything is staged
+        var origAddress = srcDoss.hasResolvedName() ? srcDoss.getAddress() : null;
+        var channeler = this.channeler;
+        
+        var $sync = function() {
+          
+          // Determine `sessions`: the set of all Sessions which need to be synced
+          
+          /// {CLIENT=
+          // Syncs NO sessions if the scope is private, otherwise syncs the server
+          var sessions = srcAbilityData.machineScope !== 'private' ? [ channeler.serverSession ] : [];
+          /// =CLIENT}
+          
+          /// {SERVER=
+          var scope = srcAbilityData.machineScope;
+          if (scope === 'private') {
+            
+            // A private ability on the server NEVER concerns any clients
+            var sessions = [];
+            
+          } else if (scope === 'entrusted') {
+            
+            // Entrusted actions are ALWAYS initiated by the client. We'd
+            // love to never do any syncing of entrusted data, but we need
+            // to if the client isn't able to independently validate
+            var sessions = srcAbilityData.clientCanValidate ? [] : [ srcSession ];
+            
+            // TODO: REMOVE THIS EVENTUALLY!!! It's here because entrusted
+            // abilities aren't implemented yet. ONCE ENTRUSTED ABILITIES
+            // WORK PLS REMOVE
+            var sessions = [];
+            
+            
+          } else if (scope === 'public') {
+            
+            // Public scope concerns all clients. The only occasion on which
+            // a client isn't informed, is that it initiated the action and
+            // was able to validate for itself.
+            
+            // Begin with all sessions...
+            var sessions = O.clone(channeler.sessionSet);
+            
+            // If this action was initiated by a session and that session
+            // could validate on its own, it doesn't need any syncing from
+            // the server
+            if (session && srcAbilityData.clientCanValidate) delete sessions[srcSession.ip];
+            
+          } else {
+            
+            // The scope changes over time! Calculate sessions manually
+            var sessions = scope(srcDoss);
+            
+          }
+          /// =SERVER}
+          
+          // Convert Array to Object
+          if (U.isObj(sessions, Array)) sessions = A.toObj(sessions, function(s) { return U.isObj(s, String) ? s : s.ip; });
+            
+          // Convert String to actual Session instance
+          sessions = O.map(sessions, function(sesh) {
+            
+            if (!U.isObj(sesh, String)) return sesh;
+            
+              // TODO: A little funky that the client-side references channeler.sessionSet
+            if (!O.contains(channeler.sessionSet, sesh)) throw new Error('String ip doesn\'t correspond to any session: "' + sesh + '"');
+            return channeler.sessionSet[sesh];
+            
+          });
+          
+          if (O.isEmpty(sessions)) return p.$null; // If no sessions to sync, we're done!
+          
+          // The only case where we prefer the address AFTER the transaction,
+          // is the case where the address wasn't resolved beforehand
+          var address = origAddress ? origAddress : srcDoss.getAddress();
+          var command = srcAbilityData.name;
+          
+          if (false)
+            console.log('SENDING TO:', Object.keys(sessions).join(', '), JSON.stringify({
+              address: address,
+              command: command,
+              params: srcData
+            }, null, 2));
+          
+          return new P({ all: O.map(sessions, function(session) {
+            
+            return channeler.$giveCommand({
+              session: session,
+              channelerParams: session === srcSession ? stager.consumeChannelerParams() : null,
+              data: {
+                address: address,
+                command: command,
+                params: srcData
+              }
+            });
+            
+          })});
+          
+        };
+        
+        var confirmRemoteSuccess = U.isServer() ? false : (!srcAbilityData.clientCanValidate);
+        if (confirmRemoteSuccess) {
+          
+          console.log('syncing with confirmRemoteSuccess not implemented yet...');
+          var $remoteSuccess = new P({ value: null }); // $sync should come first here
+          
+          return $remoteSuccess
+            .then(stager.bind(null, srcDoss, srcAbilityData, srcData))
+            .then(editor.$transact.bind(editor))
+            .then($sync); // No $sync should happen at the end - we've confirmed it already happened!
+          
+        } else {
+          
+          var ret = stager(srcDoss, srcAbilityData, srcData);
+          return editor.$transact().then(function() {
+            $sync().done();
+            return ret;
+          });
+          
+        }
+        
+      },
+      
+      $heedCommand: function(params /* session, channelerParams, address, command, params }; */) {
+        
+        var data = params.params; // Consider this value "data", NOT "params"
+        
+        var doss = this.rootDoss.getChild(params.address);
+        if (!doss) throw new Error('Invalid address: ', params.address.join('.'));
+        
+        var outline = doss.outline;
+        if (!O.contains(outline.metadata, params.command)) throw new Error('Unsupported ability: ' + params.address.join('.') + '.' + params.command);
+        
+        return this.$do(doss, outline.metadata[params.command], data, params.session, params.channelerParams);
+        
       }
+      
     };}});
     
   }
