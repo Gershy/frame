@@ -8,13 +8,20 @@ new PACK.pack.Package({ name: 'tree',
           this.par = U.param(params, 'par', null);
         },
         getAncestry: function() {
+          
           var ret = [];
           var ptr = this;
           while(ptr !== null) { ret.push(ptr); ptr = ptr.par; }
           return ret;
+          
         },
         getNameChain: function() {
-          return this.getAncestry().reverse().map(function(doss) { return doss.name.toString(); });
+          
+          var ret = [];
+          var list = this.getAncestry();
+          for (var i = list.length - 1; i >= 0; i--) ret.push(list[i].name.toString());
+          return ret;
+          
         },
         getAddress: function() {
           return this.getNameChain().join('.');

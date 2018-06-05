@@ -12,23 +12,25 @@ var CNT = 0;
 
 new PACK.pack.Package({ name: 'server',
   /// {SERVER=
-  dependencies: [ 'p', 'tree', 'frame' ],
+  dependencies: [ 'p', 'tree', 'worry', 'frame' ],
   /// =SERVER}
   /// {CLIENT=
-  dependencies: [ 'p', 'tree' ],
+  dependencies: [ 'p', 'tree', 'worry' ],
   /// =CLIENT}
   buildFunc: function(sv /* ... */) {
     
     /// {SERVER=
     var p = arguments[1];
     var tr = arguments[2];
-    var fr = arguments[3];
+    var wr = arguments[3];
+    var fr = arguments[4];
     var fs = require('fs');
     var path = require('path');
     /// =SERVER}
     /// {CLIENT=
     var p = arguments[1];
     var tr = arguments[2];
+    var wr = arguments[3];
     /// =CLIENT}
     
     var P = p.P;
@@ -93,7 +95,7 @@ new PACK.pack.Package({ name: 'server',
     };
     
     /* Channeler - manage multiple channels */
-    sv.Channeler = U.makeClass({ name: 'Channeler', mixins: [ tr.TreeNode ],
+    sv.Channeler = U.makeClass({ name: 'Channeler', mixins: [ tr.TreeNode, wr.Worry ],
       description: 'Entry point for remote communications. Manipulates a number ' +
         'of channels to provide protocol-agnostic communication with the other ' +
         'side',
@@ -101,6 +103,14 @@ new PACK.pack.Package({ name: 'server',
         init: function(initConflicts, params) {
           initConflicts.TreeNode.call(this, params);
           initConflicts.Channeler.call(this, params);
+        },
+        start: function(startConflicts, params) {
+          startConflicts.Worry.call(this, params);
+          startConflicts.Channeler.call(this, params);
+        },
+        stop: function(stopConflicts, params) {
+          stopConflicts.Worry.call(this, params);
+          stopConflicts.Channeler.call(this, params);
         }
       },
       methods: function(sc) { return {
@@ -134,6 +144,8 @@ new PACK.pack.Package({ name: 'server',
           this.ipSpoof = U.param(urlParams, 'spoof', null);
           /// =CLIENT}
           
+          this.outputs = {};
+          
         },
         
         /// {SERVER=
@@ -145,8 +157,11 @@ new PACK.pack.Package({ name: 'server',
         addSession: function(session) {
           
           // TODO: Session timeout
-          this.sessionSet[session.ip] = session;
-          console.log('Persisted session: ' + session.ip);
+          if (!O.contains(this.sessionSet, session.ip)) {
+            this.sessionSet[session.ip] = session;
+            this.worry('sessionAdded', session);
+            console.log('Persisted session: ' + session.ip);
+          }
           
         },
         remSession: function(ip) {
@@ -300,7 +315,7 @@ new PACK.pack.Package({ name: 'server',
                 
               }
               
-              if (!child) throw new Error('Invalid address: "' + address.join('.') + '"');
+              if (!child) throw new Error('Invalid address: "' + address.join('.') + '" for command "' + command + '"');
               
               return child.$heedCommand(heedParams).then(function() { // Do success output
                 
@@ -315,9 +330,36 @@ new PACK.pack.Package({ name: 'server',
                   var paramOutput = U.typeOf(commandParams);
                 }
                 
-                // paramOutput = '(' + JSON.stringify(commandParams, null, 2) + ')';
+                var output = '(' + session.ip + ') ' + address.join('.') + '.' + command + '(' + paramOutput + ')';
+                var hash = output.substr(0, 25) + output.substr(output.length - 30, 25);
                 
-                console.log('Command success: (' + session.ip + ') ' + address.join('.') + '.' + command + '(' + paramOutput + ')');
+                if (O.contains(pass.outputs, hash)) {
+                  
+                  var outputData = pass.outputs[hash];
+                  clearTimeout(outputData.timeout);
+                  var num = outputData.num + 1;
+                  
+                } else {
+                  
+                  var num = 1;
+                  
+                }
+                
+                pass.outputs[hash] = {
+                  
+                  output: output,
+                  num: num,
+                  timeout: setTimeout(function(hash) {
+                    
+                    var outputData = pass.outputs[hash];
+                    delete pass.outputs[hash];
+                    console.log('(' + outputData.num + ') ' + outputData.output);
+                    
+                  }.bind(pass, hash), 750)
+                  
+                };
+                
+                //console.log('Command success: (' + session.ip + ') ' + address.join('.') + '.' + command + '(' + paramOutput + ')');
                 
               });
               
@@ -382,7 +424,7 @@ new PACK.pack.Package({ name: 'server',
                     : '';
                   commandResponse.data = commandResponse.data.replace(/(\s*){{resources}}/, htmlHeaderStr);
                   
-                  // TODO: A bit meaningless to simply persist a session if it request an html page
+                  // TODO: A bit simplistic to persist a session if it requests an html page
                   pass.addSession(session);
                   
                   return commandResponse;
@@ -526,7 +568,7 @@ new PACK.pack.Package({ name: 'server',
           return command !== 'getFile';
         },
         
-        $start: function() {
+        start: function() {
           
           var pass = this;
           var successChannels = {};
@@ -538,11 +580,12 @@ new PACK.pack.Package({ name: 'server',
                 successChannels[channel.name] = channel;
               })
               .fail(function() {
-                console.log('Warning: Channel "' + channel.name + '" unsupported.');
+                console.log('Warning: couldn\'t establish Channel "' + channel.name + '"');
               });
             
           })})
-            .then(function() { pass.channels = successChannels; });
+            .then(function() { pass.channels = successChannels; })
+            .done();
           
         },
         stop: function() {
@@ -584,12 +627,21 @@ new PACK.pack.Package({ name: 'server',
           
         },
         
+        getNamespace: function() {
+          return 'channel.' + this.name;
+        },
         genDefaultSessionData: function() {
           return {};
         },
         useSessionData: function(session) {
-          if (!O.contains(session.channelData, this.name)) session.channelData[this.name] = this.genDefaultSessionData();
-          return session.channelData[this.name];
+          
+          var data = session.getData(this.getNamespace());
+          if (!data) {
+            data = this.genDefaultSessionData();
+            session.setData(this.getNamespace(), data);
+          }
+          return data;
+          
         },
         
         // TODO: `$giveCommand` uses "data" but `$heedCommand` uses "params" - inconsistent?
@@ -961,7 +1013,7 @@ new PACK.pack.Package({ name: 'server',
           };
           
           // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
-          var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].replace(/[^0-9a-f.]/g, '');
+          var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].trim(); // .replace(/[^0-9a-f.]/g, '');
           
           try {
             
@@ -1241,8 +1293,15 @@ new PACK.pack.Package({ name: 'server',
           this.ip = U.param(params, 'ip');
           this.channeler = U.param(params, 'channeler');
           this.id = U.id(sv.Session.NEXT_ID++);
-          this.channelData = {};
+          this.data = {};
         },
+        getData: function(namespace) {
+          return O.contains(this.data, namespace) ? this.data[namespace] : null;
+        },
+        setData: function(namespace, data) {
+          this.data[namespace] = data;
+          return data;
+        }
       }},
       statik: { NEXT_ID: 0 }
     });

@@ -10,7 +10,7 @@ var package = new PACK.pack.Package({ name: 'app',
         
         this.name = U.param(params, 'name');
         this.setupChanneler = U.param(params, 'setupChanneler');
-        this.setupActionizer = U.param(params, 'setupActionizer');
+        this.setupActionizer = U.param(params, 'setupActionizer', null);
         this.setupOutline = U.param(params, 'setupOutline');
         this.setupActions = U.param(params, 'setupActions');
         this.genOutlineData = U.param(params, 'genOutlineData');
@@ -38,11 +38,12 @@ var package = new PACK.pack.Package({ name: 'app',
         
         // Generate an Actionizer
         var actionizer = new az.Actionizer({ channeler: channeler });
-        this.setupActionizer(actionizer);
+        (this.setupActionizer || function() {})(actionizer);
         
         // Generate an Outline and it's corresponding initial data
         var outline = new ds.Obj({ name: this.name });
-        this.setupOutline(outline);
+        outline.start();
+        this.setupOutline(outline, actionizer, channeler);
         this.setupActions(outline, actionizer);
         
         var outlineData = this.genOutlineData();
@@ -51,13 +52,17 @@ var package = new PACK.pack.Package({ name: 'app',
         var doss = editor.add({ outline: outline, data: outlineData });
         actionizer.rootDoss = doss;
         
+        var $act = function(doss, ability, data) {
+          return actionizer.$do.bind(actionizer, doss, ability, data);
+        };
+        
         return editor.$transact()
           .then(function() {                            // Set `actionizer` as the request handler
             channeler.handler = actionizer;
             channeler.directToHandler = true;
           })
-          .then(channeler.as('$start'))                 // Start the channeler
-          .then(this.run.bind(null, doss, actionizer));
+          .then(channeler.as('start'))                  // Start the channeler
+          .then(this.run.bind(null, doss, actionizer, $act));
         
       },
       $end: function() {

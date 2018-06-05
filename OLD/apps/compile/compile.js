@@ -152,8 +152,6 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function(cm) {
         var fileName = path.join(appDir, appName + '.js');
         var contents = fs.readFileSync(fileName).toString();
         
-        var ret = {};
-        
         return O.map(this.directives, function(directive, variant) {
           
           var cmpFullPath = path.join(appDir, compiledPrefix + variant + '-' + appName + '.js');
@@ -166,8 +164,6 @@ new PACK.pack.Package({ name: 'compile', buildFunc: function(cm) {
           };
           
         }.bind(this));
-        
-        return ret;
         
       },
       
