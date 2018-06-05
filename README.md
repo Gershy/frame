@@ -1,1 +1,0 @@
-Superspeed javascript development framework

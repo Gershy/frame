@@ -49,13 +49,12 @@ new PACK.pack.Package({ name: 'worry',
         },
         remWorry: function(type, func) {
           
-          if (!O.contains(this.concerns, type)) return;
+          if (!O.contains(this.concerns, type)) throw new Error('Can\'t remove worry; no type "' + type + '"');
           
           if (!U.isObj(func, Function)) {
             
             // `func` is a serial value
             var key = func;
-            delete this.concerns[type][key];
             
           } else {
             
@@ -69,6 +68,7 @@ new PACK.pack.Package({ name: 'worry',
             
           }
           
+          if (!O.contains(this.concerns[type], key)) throw new Error('Can\'t remove worry type "' + type + '"; key "' + key + '"');
           delete this.concerns[type][key];
           if (O.isEmpty(this.concerns[type])) delete this.concerns[type];
           

@@ -37,6 +37,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           this.metadata = U.param(params, 'metadata', {});
           this.utilities = U.param(params, 'utilities', {});
+          this.startDoss = null;
+          this.stopDoss = null;
           
         },
         
@@ -48,8 +50,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
           this.utilities[name] = func;
           
         },
+        addDecorator: function(startFunc, stopFunc) {
+          this.startDoss = startFunc || null;
+          this.stopDoss = stopFunc || null;
+        },
         getNamedChild: function(name) {
           return null;
+        },
+        start: function() {
+        },
+        stop: function() {
         }
         
       };}
@@ -97,6 +107,14 @@ var package = new PACK.pack.Package({ name: 'dossier',
           A.each(children, this.addChild.bind(this));
           return this;
           
+        },
+        start: function() {
+          sc.start.call(this);
+          for (var k in this.children) this.children[k].start();
+        },
+        stop: function() {
+          sc.stop.call(this);
+          for (var k in this.children) this.children[k].stop();
         }
         
       };}
@@ -137,19 +155,25 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           return this;
           
+        },
+        start: function() {
+          sc.start.call(this);
+          this.template.start();
+        },
+        stop: function() {
+          sc.stop.call(this);
+          this.template.stop();
         }
-        
       };}
     });
     ds.Ref = U.makeClass({ name: 'Ref', superclass: ds.Val,
       methods: function(sc, c) { return {
         
-        init: function(params /* name, dossClass, format */) {
+        init: function(params /* name, dossClass, target */) {
           
           sc.init.call(this, params);
-          
-          this.format = U.param(params, 'format');
-          if (U.isObj(this.format, String)) this.format = this.format.split('.');
+          if (params.format) throw new Error('Deprecated "format" param');
+          this.target = U.param(params, 'target', null);
           
         },
         getDefaultClass: function() { return ds.DossierRef; }
@@ -251,7 +275,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           else      this.$addAtomic(c.atomicSetNameCalculated, [ doss ], 'clcname ::: ' + doss.name);
           
           // Step 3: Add to parent
-          if (par) this.$addAtomic(c.atomicAddChild, [ par, doss ], 'addchld ::: ' + par.name + ' -> ' + doss.name);
+          if (par)  this.$addAtomic(c.atomicAddChild, [ par, doss ], 'addchld ::: ' + par.name + ' -> ' + doss.name);
           
           // Step 4: Add the data (which can result in recursive `this.$addAtomic` calls)
           if (U.isInstance(doss, ds.DossierSet)) {
@@ -278,6 +302,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           }
           
+          // Step 5: Start the doss
+          this.$addAtomic(c.atomicStartDoss, [ doss ], 'sttchld ::: ' + (par ? par.name : 'ROOT') + ' -> ' + doss.name);
+          
           doss.par = null; // Ensure that `par` is not initialized by any means other than an atomic
           
           return doss;
@@ -289,7 +316,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           var par = U.param(params, 'par', child.par);
           if (!U.isInstance(child, ds.Dossier)) throw new Error('"child" param for rem must be Dossier');
           
-          // this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
+          this.$addAtomic(c.atomicStopDoss, [ child ], 'stpdoss ::: ' + child.outline.getAddress());
           this.$addAtomic(c.atomicRemChild, [ par, child ], 'remdoss ::: ' + child.outline.getAddress());
           
         },
@@ -355,7 +382,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           if (!this.atomics.length) {
             pass.$transaction.resolve(null);
-            return { errors: [], undoAtomics: [], remainingAtomics: [], attemptArr: [] };
+            return new P({ value: { errors: [], undoAtomics: [], remainingAtomics: [], attemptArr: [] } });
           }
           
           return this.$recurseStage(transactionName, 0).then(function(recResults) {
@@ -735,39 +762,11 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.getRoot().isRoot();
         },
         
-        // Commands
-        $heedCommand: function(params /* session, command, params, channelerParams */) {
-          
-          //var editor = new ds.Editor();
-          var pass = this;
-          return new P({ run: function() {
-            
-            var session = U.param(params, 'session');
-            var command = U.param(params, 'command');
-            var commandParams = U.param(params, 'params', {});
-            var channelerParams = U.param(params, 'channelerParams', {}); // Passed on to the session handler; hints how to notify the remote side
-            
-            if (commandParams === null) throw new Error('Params were null for ' + pass.identity() + '.' + command + '()');
-            
-            return pass.$useAbility(command, commandParams, session, channelerParams);
-            
-          }});
-          
-        },
-        $giveCommand: function(params /* session, channelerParams, data */) {
-          // TODO: In request-heavy environments it may be worth keeping a reference to the Channeler
-          return this.outline.getRoot().channeler.$giveCommand(params);
-        },
-        
-        // Abilities
+        // Utilities
         useUtility: function(/* name ... */) {
           var name = arguments[0];
           arguments[0] = this;
           return this.outline.utilities[name].apply(null, arguments);
-        },
-        
-        dereference: function() {
-          throw new Error('Cannot dereference "' + this.identity() + '"');
         },
         
         // Internal value
@@ -788,6 +787,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
         setInternalValue0: function(value) {
           throw new Error('not implemented');
         },
+        dereference: function() {
+          throw new Error('Cannot dereference "' + this.identity() + '"');
+        },
         
         // Value
         getJson: function() {
@@ -798,14 +800,16 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         setValue: function(val, sync) {
           
+          // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
+          // instead of "setValue" - but this includes the functionality of causing "invalidated"
+          // worries the moment "setValue" is called. 
+          
           // TODO:::::
           throw new Error('Doesn\'t work in new Actionizer-handler style!!');
           
-          // Dossier inherits from Informer, meaning it has the option of overriding "setValue0"
-          // instead of "setValue" - but this includes the functionality of causing "invalidated"
-          // worries the moment "setValue" is called. We don't want this; instead we want the
-          // ability activated by "setValue" to be responsible for calling "invalidated".
-          this.$useAbility('mod', { data: val, sync: sync || 'none' }).done();
+          // if (!this.outline.requestSetValue) throw new Error(this.identity() + ' can\'t set value');
+          // this.outline.requestSetValue(this, val)
+          // actionizer.$do(this, 'mod', val); // TODO: But no access to `actionizer`...
           
         },
         
@@ -813,10 +817,18 @@ var package = new PACK.pack.Package({ name: 'dossier',
           return this.started;
         },
         start: function() {
-          this.started = true;
+          if (this.started) throw new Error('Double-started doss');
+          
+          if (this.outline.startDoss) this.outline.startDoss(this);
+          
           sc.start.call(this);
+          this.started = true;
         },
         stop: function() {
+          if (!this.started) throw new Error('Double-stopped doss');
+          
+          if (this.outline.stopDoss) this.outline.stopDoss(this);
+          
           sc.stop.call(this);
           this.started = false;
         },
@@ -1005,7 +1017,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
           
           // TODO: If `getChildName` is called many times for a bunch of Dossiers, but
           // none of those Dossiers are actually added during the process, these those
-          // Dossiers will all get the exact same name: `this.nextInd`.
+          // Dossiers will all get the exact same name: `this.nextInd` (because it isn't
+          // incremented until the Dossier is actually added)
           
           // QUESTION: Is there a guarantee that after `getChildName(doss)` is called,
           // `doss` is added before `getChildName(anyOtherDoss)` is called??
@@ -1123,9 +1136,42 @@ var package = new PACK.pack.Package({ name: 'dossier',
         },
         sanitizeValue: function(value) {
           
-          value = sc.sanitizeValue.call(this, value);
+          // Will resolve `value` to either `null`, or an address String
           
-          var format = this.outline.format;
+          var origValue = value = sc.sanitizeValue.call(this, value);
+          
+          if (value === null) return null;
+          
+          if (U.isObj(value, Array)) {
+            
+            value = value.join('.');
+            
+          } else if (U.isInstance(value, ds.Dossier)) {
+            
+            if (!value.hasResolvedName()) throw new Error('Can\'t reference unresolved Dossier');
+            value = value.getAddress();
+            
+          }
+          
+          // At this point we should have resolved an address String
+          if (!U.isObj(value, String)) throw new Error(this.constructor.title + ' accepts `null`, `Array`, `String`, and `Dossier`; got ' + U.typeOf(value));
+          
+          // Try to resolve relative references to absolute
+          if (value.substr(0, 5) !== '~root') {
+            var doss = this.getChild(value);
+            if (doss) value = doss.getAddress();
+          }
+          
+          // Now test to make sure the value corresponds to the correct outline
+          var outlineAddr = value.split('.');
+          if (outlineAddr[0] === '~root') outlineAddr = outlineAddr.slice(1);
+          
+          if (this.outline.getRoot().getChild(outlineAddr) !== this.outline.target)
+            throw new Error(this.constructor.title + ' value "' + value + '" (' + U.typeOf(origValue) + ') didn\'t correspond to target outline: "' + this.outline.target.getAddress() + '"');
+          
+          return value;
+          
+          /*var format = this.outline.format;
           
           if (value === null) {
             
@@ -1196,11 +1242,8 @@ var package = new PACK.pack.Package({ name: 'dossier',
             
           }
           
-          return arrVal;
+          return arrVal;*/
           
-        },
-        genValue: function(/* ... formatParams ... */) {
-          return this.sanitizeValue(U.toArray(arguments));
         },
         getInternalValue0: function() {
           return this.value ? this.getRefAddress() : null;
@@ -1213,7 +1256,9 @@ var package = new PACK.pack.Package({ name: 'dossier',
         
         getRefAddress: function() {
           
-          var format = this.outline.format;
+          return this.value;
+          
+          /*var format = this.outline.format;
           
           // If `this.value` is null resolve it to an empty array
           var vals = this.value || [];
@@ -1222,7 +1267,7 @@ var package = new PACK.pack.Package({ name: 'dossier',
           for (var i = 0; i < format.length; i++)
             ret.push(format[i][0] === '$' ? vals[valInd++] : format[i]);
           
-          return ret;
+          return ret;*/
           
         },
         dereference: function() {

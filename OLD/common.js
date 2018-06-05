@@ -171,6 +171,17 @@ global.U = {
   SKIP: { SKIP: true }, // directive to exclude an item during iteration
   
   isServer: typeof window === 'undefined' ? function() { return true; } : function() { return false; },
+  as: function(/* funcName, ... params ... */) {
+    
+    var args = U.toArray(arguments);
+    var funcName = args[0];
+    args = args.slice(1);
+    
+    return function(obj) {
+      return obj[funcName].apply(obj, args);
+    };
+    
+  },
   
   // Parameter utility
   param: function(params, name, def) {
@@ -1042,7 +1053,7 @@ global.PACK.pack = {
           }
           
         }
-      },
+      }
     };}
   })
 };
