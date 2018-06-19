@@ -1,11 +1,4 @@
-'use strict';
-
-// Normalization: stack trace limit, capture object prototype
 Error.stackTraceLimit = Infinity;
-let names = Object.getOwnPropertyNames(Object.prototype);
-const OBJECT_PROTO = {};
-for (let i = 0; i < names.length; i++) { OBJECT_PROTO[names[i]] = Object.prototype[names[i]]; }
-OBJECT_PROTO.constructor = Object.prototype.constructor;
 
 // Method schemas
 const makeClassSchema = {
@@ -21,6 +14,9 @@ const makeClassSchema = {
   }
 };
 
+// Methods for quick reference
+const hasOwnProperty = Object.prototype.hasOwnProperty;
+
 // Globals
 global.TWIGS = {};
 global.U = {
@@ -33,14 +29,7 @@ global.U = {
   isNull: val => val === null,
   isExistent: val => (typeof val !== 'undefined') && (val !== null),
   isType: (val, cls) => {
-    try {
-      
-      // Need a special check for `Object` since we've destroyed its prototype
-      if (cls === Object && !val.constructor && val instanceof Object) return true;
-      
-      return val.constructor === cls;
-      
-    } catch (err) {}
+    try { return val.constructor === cls; } catch (err) {}
     return false;
   },
   isInstance: function(obj, cls) {
@@ -50,10 +39,10 @@ global.U = {
   isInspiredBy: function(obj, insp) {
     
     if (obj.constructor) obj = obj.constructor;
-    if (!obj.inspirations) throw new Error('Object in question isn\'t inspired');
+    if (obj === insp) return true;
     
-    for (var k in obj.inspirations) if (insp === obj.inspirations[k]) return true;
-    for (var k in obj.inspirations) if (U.isInspiredBy(obj.inspirations[k], insp)) return true;
+    let insps = O.has(obj, 'inspirations') ? obj.inspirations : {};
+    for (var k in insps) if (U.isInspiredBy(insps[k], insp)) return true;
     
     return false;
     
@@ -63,42 +52,19 @@ global.U = {
     if (U.isNull(obj)) return '<NULL>';
     if (U.isUndefined(obj)) return '<UNDEFINED>';
     
-    try { return '<{' + v.constructor.name + '}>'; } catch (e) {}
+    try { return `<${obj.constructor.name}>`; } catch (e) {}
     
     return '<UNKNOWN>';
-    
-  },
-  
-  addProto: () => {
-    for (let k in OBJECT_PROTO) Object.prototype[k] = OBJECT_PROTO[k];
-  },
-  remProto: () => {
-    for (let k in OBJECT_PROTO) delete Object.prototype[k];
-  },
-  withProto: f => {
-    
-    // TODO: Right now large blocks of code will potentially be executed with
-    // `U.withProto(() => require(/* ... */))` since the entire required file
-    // will be run with a prototype in place.
-    
-    // If we can find `Object.prototype.constructor`, there's already a prototype in place
-    if (Object.prototype.constructor) return f();
-    
-    U.addProto();
-    let ret = f();
-    U.remProto();
-    
-    return ret;
     
   },
   
   // Util
   id: (n, len=8) => {
     let hex = n.toString(16);
-    while (hex.length < len) hex = '0' + hex;
-    return hex;
+    return S.startPad(hex, '0', len);
   },
   charId: function(n, len=8) {
+    
     /*
     Returns an id comprised entirely of characters starting from lowercase "a".
     There will be no integer characters. For values of "n" greater than 26
@@ -109,29 +75,102 @@ global.U = {
     
     for (let i = 0; i < hex.length; i++) {
       let c = hex[i];
-      letters += (c >= '0' && c <= '9') 
-        ? String.fromCharCode('a'.charCodeAt(0) + parseInt(c))
-        : String.fromCharCode(c.charCodeAt(0) + 10);
+      letters += String.fromCharCode((c >= '0' && c <= '9') ? ('a'.charCodeAt(0) + parseInt(c)) : (c.charCodeAt(0) + 10))
     }
     
     return letters;
+    
   },
   output: (...args) => {
-    U.withProto(() => console.log(...args));
+    console.log(...args);
   },
   debugObj: val => {
     
     let mem = [];
     return JSON.stringify(val, (k, v) => {
       
-      if (!U.isJson(v)) v = U.typeOf(v) + ': ' + v;
+      let Cls = null;
+      try { Cls = v.constructor; } catch(err) {}
+      
+      if (!A.has([ Object, Array, String, Number, Boolean, null ], Cls)) v = U.typeOf(v) + ': ' + v;
       if (~mem.indexOf(v)) return '-- circular --';
-      if (!U.isPrimitive(v)) mem.push(v);
+      if (!A.has([ String, Number, Boolean, null ], Cls)) mem.push(v);
       return v;
       
     }, 2);
     
   },
+  timeMs: () => +new Date(),
+  
+  // Serialization
+  straighten: item => {
+    
+    let arr = [];
+    U.straighten0(item, arr);
+    return A.map(arr, item => item.calc);
+    
+  },
+  straighten0: (item, items) => {
+    
+    // This is O(n^2) :(
+    for (let i = 0, len = items.length; i < len; i++) if (items[i].orig === item) return i;
+    
+    if (U.isType(item, Object)) {
+      
+      let obj = {};
+      items.push({ orig: item, calc: obj });
+      for (let k in item) obj[k] = U.straighten0(item[k], items);
+        
+    } else if (U.isType(item, Array)) {
+      
+      let arr = [];
+      items.push({ orig: item, calc: arr });
+      for (let i = 0; i < item.length; i++) arr.push(U.straighten0(item[i], items));
+      
+    } else if (item === null || U.isType(item, String) || U.isType(item, Number) || U.isType(item, Boolean)) {
+      
+      items.push({ orig: item, calc: item });
+      
+    }
+    
+    return items.length - 1;
+    
+  },
+  unstraighten: items => {
+    
+    let unbuilt = { UNBUILT: true };
+    let builtItems = [];
+    for (let i = 0, len = items.length; i < len; i++) builtItems.push(unbuilt);
+    return U.unstraighten0(items, 0, builtItems, unbuilt, 0);
+    
+  },
+  unstraighten0: (items, ind, builtItems, unbuilt) => {
+    
+    if (builtItems[ind] !== unbuilt) return builtItems[ind];
+    
+    let item = items[ind];
+    let value = null;
+    
+    if (U.isType(item, Object)) {
+      
+      let obj = builtItems[ind] = {};
+      for (let k in item) obj[k] = U.unstraighten0(items, item[k], builtItems, unbuilt);
+      return obj;
+      
+    } else if (U.isType(item, Array)) {
+      
+      let arr = builtItems[ind] = [];
+      for (let i = 0, len = item.length; i < len; i++) arr.push(U.unstraighten0(items, item[i], builtItems, unbuilt));
+      return arr;
+      
+    }
+    
+    builtItems[ind] = item;
+    return item;
+    
+  },
+  thingToString: thing => JSON.stringify(U.straighten(thing)),
+  stringToThing: string => string[0] === '!' ? JSON.parse(string.substr(1)) : U.unstraighten(JSON.parse(string)),
   
   // Params
   pval: (val, schema=null, path=[], err=new Error()) => {
@@ -139,20 +178,20 @@ global.U = {
     if (schema === null) return;
     
     if (!U.isType(schema, Object)) { err.message = 'Schema must be Object (' + path.join('.') + ')'; throw err; }
-    if (!schema.type) { err.message = 'Schema must contain "type" (' + path.join('.') + ')'; throw err; }
+    if (!O.has(schema,  'type')) { err.message = 'Schema must contain "type" (' + path.join('.') + ')'; throw err; }
     
     if (schema.type === 'obj') {
       
       if (!U.isType(val, Object)) { err.message = 'Schema requires Object (' + path.join('.') + ')'; throw err; }
       
-      let required = schema.required || [];
-      let optional = schema.optional || [];
+      let required = O.has(schema, 'required') ? schema.required : [];
+      let optional = O.has(schema, 'optional') ? schema.optional : [];
       
-      for (let k in val) if (!(k in required) && !(k in optional)) { err.message = 'Invalid object key: "' + k + '" (' + path.join('.') + ')'; throw err; }
+      for (let k in val) if (!O.has(required, k) && !O.has(optional, k)) { err.message = 'Invalid object key: "' + k + '" (' + path.join('.') + ')'; throw err; }
       
       let ret = {};
       for (let k in required) {
-        if (!(k in val)) { err.message = 'Missing required key: "' + k + '" (' + path.join('.') + ')'; throw err; }
+        if (!O.has(val, k)) { err.message = 'Missing required key: "' + k + '" (' + path.join('.') + ')'; throw err; }
         ret[k] = U.pval(val[k], required[k], path.concat([ k ]), err);
       }
       for (let k in optional) {
@@ -174,7 +213,7 @@ global.U = {
       if (!U.isType(val, Array)) { err.message = 'Schema requires Array (' + path.join('.') + ')'; throw err; }
       
       let ret = [];
-      if (schema.schema)
+      if (O.has(schema, 'schema'))
         for (let i = 0, len = val.length; i < len; i++) ret.push(U.pval(val[i], schema.schema, path.concat([ i ]), err));
       else
         ret = val;
@@ -209,7 +248,7 @@ global.U = {
   },
   
   // Class utility
-  makeClass: ({ name, inspiration={ Object }, methods, statik={}, description='' }) => {
+  makeClass: ({ name, inspiration={}, methods, statik={}, description='' }) => {
     
     let params = U.pval({ name, inspiration, methods, statik, description }, makeClassSchema);
     
@@ -229,16 +268,18 @@ global.U = {
     if (U.isType(methods, Function)) methods = methods(inspiration, Cls);
     if (!U.isType(methods, Object)) throw new Error('Didn\'t resolve "methods" to Object');
     
-    if (methods.constructor) throw new Error('Invalid "constructor" key');
+    if (O.has(methods, 'constructor')) throw new Error('Invalid "constructor" key');
     
     let methodsByName = {};
     O.each(inspiration, (insp, inspName) => {
       
       O.each(insp, (method, methodName) => {
         
+        // `insp` is likely a prototype, in which case it will contain a
+        // "constructor" property which doesn't interest us
         if (methodName === 'constructor') return;
         
-        if (!methodsByName[methodName]) methodsByName[methodName] = [];
+        if (!O.has(methodsByName, methodName)) methodsByName[methodName] = [];
         methodsByName[methodName].push(method);
         
       });
@@ -246,7 +287,6 @@ global.U = {
     });
     
     O.include(methodsByName, O.map(methods, m => [ m ]));
-    
     if (!methodsByName.init) throw new Error('No "init" method available');
     
     for (let methodName in methodsByName) {
@@ -272,7 +312,28 @@ global.O = {
     for (let k in obj) ret[k] = obj[k];
     return ret;
   },
-  has: (obj, k) => OBJECT_PROTO.hasOwnProperty.call(obj, k),
+  has: (obj, k) => hasOwnProperty.call(obj, k),
+  map: (obj, it) => {
+    
+    let ret = {};
+    for (let k in obj) {
+      let v = it(obj[k], k);
+      if (v !== U.SKIP) ret[k] = v;
+    }
+    return ret;
+    
+  },
+  each: (obj, it) => { for (let k in obj) it(obj[k], k); },
+  toArr: (obj, it=null) => {
+    
+    let ret = [];
+    for (let k in obj) {
+      let val = it ? it(obj[k], k) : obj[k];
+      if (val !== U.SKIP) ret.push(val);
+    }
+    return ret;
+    
+  },
   walk: (obj, ...keys) => {
     for (let i = 0, len = keys.length; i < len; i++) {
       let k = keys[i];
@@ -281,31 +342,21 @@ global.O = {
     }
     return obj;
   },
-  each: (obj, it) => { for (let k in obj) it(obj[k], k); },
-  map: (obj, it) => {
-    let ret = {};
-    for (let k in obj) {
-      let v = it(obj[k], k);
-      if (v !== U.SKIP) ret[k] = v;
-    }
-    return ret;
-  },
-  toArr: (obj, it=null) => {
-    let ret = [];
-    for (let k in obj) {
-      let val = it ? it(obj[k], k) : obj[k];
-      if (val !== U.SKIP) ret.push(val);
-    }
-    return ret;
-  },
   include: (obj, ...objs) => {
+    
     for (let i = 0, len = objs.length; i < len; i++) {
       let obj2 = objs[i];
       for (let k in obj2) obj[k] = obj2[k];
     }
     return obj;
+    
   },
-  isEmpty: obj => { for (let k in obj) return false; return true; }
+  isEmpty: obj => {
+    
+    for (let k in obj) return false;
+    return true;
+    
+  }
   
 };
 global.A = {
@@ -314,12 +365,14 @@ global.A = {
   clone: arr => [].concat(arr),
   has: (arr, v) => arr.indexOf(v) !== -1,
   map: (arr, it) => {
+    
     let ret = [];
     for (let i = 0, len = arr.length; i < len; i++) {
       let v = it(arr[i], i);
       if (v !== U.SKIP) ret.push(v);
     }
     return ret;
+    
   },
   each: (arr, it) => { for (let i = 0, len = arr.length; i < len; i++) it(arr[i], i); },
   toObj: (arr, itKey=null, itVal=null) => {
@@ -335,6 +388,16 @@ global.A = {
     let ret = [];
     for (let i = arr.length - 1; i >= 0; i--) ret.push(arr[i]);
     return ret;
+  },
+  join: (arr, delim) => arr.join(delim),
+  include: (arr1, arr2) => arr1.concat(arr2),
+  any: (arr, it) => { 
+    for (var i = 0, len = arr.length; i < len; i++) if (it(arr[i], i)) return true;
+    return false;
+  },
+  all: (arr, it) => { 
+    for (var i = 0, len = arr.length; i < len; i++) if (!it(arr[i], i)) return false;
+    return true;
   }
   
 };
@@ -346,13 +409,11 @@ global.S = {
   endsWith: (str, suffix) => suffix === str.substr(str.length - suffix.length, suffix.length),
   startPad: (str, pad, len) => { while (str.length < len) str = pad + str; return str; },
   endPad: (str, pad, len) => { while (str.length < len) str = str + pad; return str; },
-  indent: (str, pad) => {
-    return A.map(str.split('\n'), pc => pad + pc).join('\n');
-  }
+  indent: (str, pad) => { return A.map(str.split('\n'), pc => pad + pc).join('\n'); },
+  indexOf: (str, substr) => str.indexOf(substr),
+  split: (str, delim) => str.split(delim)
   
 };
-
-U.remProto();
 
 // Provides a stable start/stop paradigm
 const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
@@ -369,8 +430,25 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
     
     if (this.isUp()) throw new Error('Tried to double-up');
     
-    let actions = this.tmpActions = this.getTmpActions();
-    for (let i = 0, len = actions.length; i < len; i++) actions[i].up.call(this);
+    let actions = this.getTmpActions();
+    
+    for (let i = 0, len = actions.length; i < len; i++) {
+      
+      try {
+        
+        actions[i].up.call(this);
+        
+      } catch(err) {
+        
+        for (let j = i - 1; j >= 0; j--) actions[i].dn.call(this);
+        err.message = 'Couldn\'t go up: ' + err.message;
+        throw err;
+        
+      }
+      
+    }
+    
+    this.tmpActions = actions;
     
   },
   dn: function() {
@@ -378,7 +456,23 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
     if (this.isDn()) throw new Error('Tried to double-db');
     
     let actions = this.tmpActions;
-    for (let i = actions.length - 1; i >= 0; i--) actions[i].dn(this);
+    
+    for (let i = actions.length - 1; i >= 0; i--) {
+      
+      try {
+        
+        actions[i].dn(this);
+        
+      } catch(err) {
+        
+        for (let j = i + 1, len = actions.length; j < len; j++) actions[i].up.call(this);
+        err.message = 'Couldn\'t go dn: ' + err.message;
+        throw err;
+        
+      }
+      
+    }
+    
     this.tmpActions = null;
     
   }
@@ -401,7 +495,7 @@ const TreeNode = U.makeClass({ name: 'TreeNode', methods: (insp, Cls) => ({
     
     let ret = [];
     let ptr = this;
-    while(ptr !== null) { ret.push(ptr); ptr = ptr.par; }
+    while (ptr !== null) { ret.push(ptr); ptr = ptr.par; }
     return ret;
     
   },
@@ -446,40 +540,40 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
     
     insp.Temporary.init.call(this);
     
-    this.concerns = {};
+    this.holders = {};
     this.nextId = 0;
-    this.concernKey = '~wbl.' + U.WOBBLY_ID++;
+    this.holdKey = '~wbl.' + U.WOBBLY_ID++;
     this.usages = 0;
     
   },
-  
   getTmpActions: function() {
+    
     return [
       {
         up: function() {},
         dn: function() {
-          O.each(this.concerns, c => { delete c[this.concernKey]; });
-          this.concerns = {};
+          O.each(this.holders, c => { delete c[this.holdKey]; });
+          this.holders = {};
           this.nextId = 0;
         }
       }
     ];
+    
   },
-  
-  addConcern: function(func, key=null) {
+  hold: function(func, key=null) {
     
     if (key === null) {
       key = this.nextId++;
-      func[this.concernKey] = key;
+      func[this.holdKey] = key;
     }
     
-    this.concerns[key] = func;
+    this.holders[key] = func;
     
     this.usages++;
     if (this.isDn()) this.up();
     
   },
-  remConcern: function(key) {
+  drop: function(key) {
     
     if (this.usages <= 0) throw new Error('Negative usages');
     
@@ -487,30 +581,26 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
     
     if (U.isType(key, Function)) {
       func = key;
-      if (!O.has(func, this.concernKey)) throw new Error('Missing concernKey');
-      key = func[this.concernKey];
+      if (!O.has(func, this.holdKey)) throw new Error('Missing holdKey');
+      key = func[this.holdKey];
     }
     
-    if (!this.concerns[key]) throw new Error('Concern doesn\'t exist');
+    if (!O.has(this.holders, key)) throw new Error('Holder doesn\'t exist');
     
-    delete this.concerns[key];
-    if (func) delete func[this.concernKey];
+    delete this.holders[key];
+    if (func) delete func[this.holdKey];
     
     this.usages--;
     if (!this.usages) this.dn();
     
   },
-  
   setValue: function(val) { throw new Error('not implemented'); },
   getValue: function() { throw new Error('not implemented'); },
-  modValue: function(f) {
-    this.setValue(f(this.getValue()));
-  },
-  
+  modValue: function(f) { this.setValue(f(this.getValue())); },
   wobble: function(delta=null) {
     
     let val = this.getValue();
-    O.each(this.concerns, c => c(val, delta));
+    O.each(this.holders, c => c(val, delta));
     
   }
   
@@ -538,12 +628,11 @@ const WobblyResult = U.makeClass({ name: 'WobblyResult', inspiration: { Wobbly }
     
     insp.Wobbly.init.call(this, params);
     
-    if (!params.wobblies) throw new Error('Missing "wobblies" param');
-    if (!params.calc) throw new Error('Missing "calc" param');
+    if (!O.has(params, 'wobblies')) throw new Error('Missing "wobblies" param');
+    if (!O.has(params, 'calc')) throw new Error('Missing "calc" param');
     
     this.wobblies = params.wobblies;
     this.calc = params.calc;
-    
     this.value = this.calcValue();
     
   },
@@ -559,12 +648,12 @@ const WobblyResult = U.makeClass({ name: 'WobblyResult', inspiration: { Wobbly }
         up: function() {
           
           let func = () => { this.value = this.calcValue(); this.wobble(this.value); };
-          A.each(this.wobblies, w => w.addConcern(func, this.concernKey));
+          A.each(this.wobblies, w => w.hold(func, this.holdKey));
           
         },
         dn: function() {
           
-          A.each(this.wobblies, w => w.remConcern(this.concernKey));
+          A.each(this.wobblies, w => w.drop(this.holdKey));
           
         }
       }
