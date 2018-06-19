@@ -1,27 +1,121 @@
 O.include(U, {
-  makeTwig: ({ name, abbreviation=name.substr(0, 3), make, twigs={ client: [] } }) => {
+  makeTwig: ({ name, abbreviation=name.substr(0, 3), make, twigs=[] }) => {
     
-    U.remProto(); // TODO: Ugly!!
-    
-    if (TWIGS[name]) throw new Error(`Tried to overwrite twig "${name}"`);
+    if (O.has(TWIGS, name)) throw new Error(`Tried to overwrite twig "${name}"`);
     if (abbreviation.length !== 3) throw new Error(`Abbreviation "${abbreviation}" should be length 3`);
     
-    let twig = {};
+    let material = {};
     return TWIGS[name] = {
       
       name: name,
       abbreviation: abbreviation,
-      content: twig,
+      material: material,
       promise: (async () => {
         
-        await Promise.all(O.toArr(twigs, (t, n) => n));
+        // Allow all twigs to become ready
+        await Promise.all(A.map(twigs, twigName => TWIGS[twigName].promise));
         
-        let makeParams = [ twig ].concat(A.map(twigs, (twig, twigName) => TWIGS[twigName].content));
-        make.apply(null, makeParams);
+        // Run our `make` function, providing all listed twigs
+        let makeParams = [ material ].concat(A.map(twigs, twigName => TWIGS[twigName].material));
+        make(...makeParams);
         
       })()
       
     };
     
-  }
+  },
+  Compiler: U.makeClass({ name: 'Compiler', methods: (insp, Cls) => ({
+    
+    init: function({ offsetData }) {
+      
+      this.offsetData = offsetData;
+      
+    },
+    
+    // TODO: HEEERE! Make the mapLineToSource and formatError work!!
+    mapLineToFile: function(lineInd) {
+      
+      let last = null;
+      for (var fileName in this.offsetData) {
+        
+        if (this.offsetData[fileName].lineOffset > lineInd) {
+          if (last === null) U.output('UGH, line ' + lineInd);
+          return last;
+        }
+        last = fileName;
+        
+      }
+      return last;
+      
+    },
+    mapLineToSource: function(file, lineInd) {
+      
+      let offsetData = this.offsetData[file];
+      let offsets = offsetData.offsets;
+      
+      let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
+      let nextOffset = 0; // The index of the next offset chunk which may take effect
+      for (let i = 0; i < lineInd; i++) {
+        
+        // Find all the offsets which exist for the source line
+        // For each offset, increment the line in the source file
+        // Lines in the source file are always AHEAD of lines in
+        // the compiled files.
+        while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
+          srcLineInd += offsets[nextOffset].offset;
+          nextOffset++;
+        }
+        
+        srcLineInd++;
+        
+      }
+      
+      return srcLineInd - offsetData.lineOffset;
+      
+    },
+    formatError: function(err) {
+      
+      let msg = err.message;
+      let type = err.constructor.name;
+      let stack = err.stack;
+      
+      let traceBeginSearch = msg.trim() ? `${type}: ${msg}\n` : `${type}\n`;
+      let traceInd = stack.indexOf(traceBeginSearch);
+      let trace = (traceInd >= 0 ? stack.substr(traceInd + traceBeginSearch.length) : stack).trim();
+      
+      let lines = A.map(S.split(trace, '\n'), line => {
+        
+        // Note: Some lines look like
+        //    "method@http://localhost/?arg1=val1&arg2=val2:847:22"
+        // while others are more streamlined:
+        //    "@http://localhost/?arg1=val1&arg2=val2:847:22"
+        
+        let match = line.match(/:([0-9]+):([0-9]+)/);
+        if (!match) {
+          U.output('Couldn\'t process trace line: ' + line);
+          return U.SKIP;
+        }
+        
+        let lineInd = parseInt(match[1], 10);
+        let charInd = parseInt(match[2], 10);
+        
+        let file = this.mapLineToFile(lineInd);
+        if (!file) U.output('Fucked up for ' + line);
+        let srcLineInd = this.mapLineToSource(file, lineInd);
+        
+        return S.endPad(file, ' ', 32) + ' -- ' + S.endPad(srcLineInd.toString(), ' ', 10) + '|';
+        
+      });
+      
+      let content = lines.join('\n');
+      if (!content.trim().length) content = 'Couldn\'t format error:\n' + trace;
+      
+      return '/----------------\n' +
+        S.indent(traceBeginSearch.trim(), ' | ') + '\n' +
+        '\\----------------\n' +
+        content;
+      
+    }
+    
+  })})
 });

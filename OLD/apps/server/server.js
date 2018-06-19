@@ -53,6 +53,7 @@ new PACK.pack.Package({ name: 'server',
     };
     
     sv.$readFile = function(filepath) {
+      
       // Find a static file, return it as an `CommandResponse`
       
       var ext = path.extname(filepath);
@@ -243,7 +244,6 @@ new PACK.pack.Package({ name: 'server',
             console.log(params);
             throw new Error('Missing address');
           }
-          
           /// =SERVER}
           
           // Use the channel to give the command (with the appropriate params)
@@ -289,7 +289,7 @@ new PACK.pack.Package({ name: 'server',
               
             } else {
               
-              var $commandData = new P({ value: params});
+              var $commandData = new P({ value: params });
               
             }
             
@@ -1013,7 +1013,7 @@ new PACK.pack.Package({ name: 'server',
           };
           
           // Prefer the "x-forwarded-for" header over `connection.remoteAddress`
-          var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].trim(); // .replace(/[^0-9a-f.]/g, '');
+          var ip = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].trim();
           
           try {
             
@@ -1324,9 +1324,8 @@ new PACK.pack.Package({ name: 'server',
         },
         endResponse: function(res) {
           
-          try {
           var data = this.contentType === 'text/json' ? U.thingToString(this.data) : this.data;
-        } catch(err) { console.log(this.data); throw err; }
+          
           res.writeHead(this.httpCode ? this.httpCode : 200, {
             'Content-Type': this.contentType,
             'Content-Length': Buffer.byteLength(data, this.encoding)

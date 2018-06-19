@@ -1,36 +1,30 @@
-'use strict';
-
 U.makeTwig({ name: 'clearing', twigs: [], make: clearing => {
   
   const DeploymentBinding = U.makeClass({ name: 'DeploymentBinding', methods: (insp, Cls) => ({
     
-    init: function({ args }={}) {
+    init: function({ args, host=null, port=null }={}) {
       
-      if (!args.hut) throw new Error('Missing "hut" argument');
+      if (!O.has(args, 'hut')) throw new Error('Missing "hut" argument');
       if (!O.has(args, 'debugMode')) throw new Error('Missing "debugMode" argument');
       
       this.args = args;
       this.debugMode = this.args.debugMode;
       this.hut = this.args.hut;
-      this.host = this.args.host || null;
-      this.port = this.args.port || null;
-      
-      /// {SERVER=
-      this.fileSystemRoot = path.join(__dirname, 'twig', this.args.hut);
-      /// =SERVER}
+      this.host = O.has(args, 'host') ? args.host : host;
+      this.port = O.has(args, 'port') ? args.port : port;
       
     }
     
   })});
   
   /// {SERVER==========
-  const path = U.withProto(() => require('path'));
+  const path = require('path');
   const StandardBinding = U.makeClass({ name: 'StandardBinding', inspiration: { DeploymentBinding }, methods: (insp, Cls) => ({
     
     init: function(params={}) {
       
-      insp.DeploymentBinding.init.call(this, params);
-      this.fileSystemRoot = path.join(__dirname, this.hut);
+      insp.DeploymentBinding.init.call(this, { ...params, host: '127.0.0.1', port: 80 });
+      this.fileSystemRoot = path.join(__dirname, 'twig', this.hut);
       
     }
     
@@ -57,6 +51,12 @@ U.makeTwig({ name: 'clearing', twigs: [], make: clearing => {
   const BrowserBinding = U.makeClass({ name: 'BrowserBinding', inspiration: { DeploymentBinding }, methods: (insp, Cls) => ({
     
     init: function(params={}) {
+      
+      insp.DeploymentBinding.init.call(this, {
+        ...params,
+        host: window.location.hostname,
+        port: parseInt(window.location.port || 80) // TODO: incompatible with https
+      });
       
     }
     
@@ -90,11 +90,14 @@ U.makeTwig({ name: 'clearing', twigs: [], make: clearing => {
   };
   let args = O.include({
     debugMode: true,
-    deployment: 'standard',
+    deployment: 'standard'
   }, parseArgs(process.argv.slice(2).join(' ')));
   
   if (!deployments[args.deployment]) throw new Error(`Unsupported deployment: "${deployment}"`);
   let DeploymentBindingCls = deployments[args.deployment];
-  clearing.deployment = DeploymentBindingCls({ args });
+  
+  O.include(clearing, {
+    deployment: DeploymentBindingCls({ args })
+  });
   
 }});

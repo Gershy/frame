@@ -19,17 +19,20 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     
     init: function({ name, recCls=null }) {
       
-      if (!recCls) throw new Error('Missing "recCls"');
+      if (!recCls) throw new Error('Missing "recCls" param');
       
       insp.TreeNode.init.call(this, { name });
       this.utilities = {};
       this.recCls = recCls;
       
     },
+    genRecordParams: function() {
+      return { outline: this };
+    },
     requireChildNameMatch: function() { return true; },
     addUtility: function(name, utility) {
       
-      if (this.utilities[name]) throw new Error('Tried to overwrite utility "' + name + '"');
+      if (O.has(this.utilities, name)) throw new Error('Tried to overwrite utility "' + name + '"');
       this.utilities[name] = utility;
       
     }
@@ -53,7 +56,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       this.children = {};
       
     },
-    addChild: function(outline) {
+    add: function(outline) {
       
       if (outline.par) throw new Error('Outline(' + outline.getAddress() + ') already has a parent');
       if (this.children[outline.name]) throw new Error('Tried to overwrite ' + this.getAddress('str') + ' -> ' + outline.name);
@@ -133,11 +136,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       
     },
     
-    hasResolvedName: function() {
-      
-      return !S.startsWith(this.name, 'TEMP((');
-      
-    },
+    hasResolvedName: function() { return !S.startsWith(this.name, 'TEMP(('); },
     updateName: function(name) {
       
       name = name.toString();
@@ -174,6 +173,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     
     getChildrenDescriptor: function() { return 'none'; },
     getNamedChild: function(name) {
+      
       let numDerefs = 0;
       while (name[numDerefs] === '@') numDerefs++;
       if (numDerefs) name = name.substr(numDerefs);
@@ -181,9 +181,9 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       let child = this.getNamedChild0(name);
       for (let i = 0; (i < numDerefs) && child; i++) child = child.dereference();
       return child;
+      
     },
     getNamedChild0: function(name) {
-      
       
       if (U.isType(name, String)) {
         
@@ -226,6 +226,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     },
     
     useUtility: function(name, ...args) {
+      if (!O.has(this.outline.utilities, name)) throw new Error('Couldn\'t find utility "' + name + '"');
       return this.outline.utilities[name].apply(this, args);
     },
     
@@ -235,9 +236,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     describe: function() {
       return this.constructor.name + '(' + (this.hasResolvedName() ? this.getAddress('str') : ('!' + this.outline.getAddress('str'))) + ')';
     },
-    valueOf: function() {
-      return this.describe();
-    }
+    valueOf: function() { return this.describe(); }
     
   })});
   
@@ -257,17 +256,12 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       
       if (this === child.par) return;
       
-      if (child.par) throw new Error('Attempted to add ' + child.describe() + ' (already has parent)');
-      if (this.children[child.name]) throw new Error('Tried to overwrite ' + this.describe() + ' -> ' + child.name);
+      if (child.par) throw new Error('Attempted to add child with parent: ' + child.describe());
+      if (O.has(this.children, child.name)) throw new Error('Tried to overwrite ' + this.describe() + ' -> ' + child.name);
       
       child.par = this;
       this.children[child.name] = child;
       this.length++;
-      
-      /*this.wobble({
-        add: [ child ],
-        rem: []
-      });*/
       
       return child;
       
@@ -277,52 +271,41 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       if (U.isType(child, String)) {
         
         let name = child;
+        if (!O.has(this.children, name)) throw new Error(`No child named "${name}" found`);
         child = this.children[name];
-        if (!child) throw new Error('No child named "' + name + '" found');
         
       }
       
-      if (!child || child.par !== this) throw new Error('Can\'t remove ' + child.describe());
+      if (!child) throw new Error('Can\'t remove null child');
+      if (child.par !== this) throw new Error('Can\'t remove child with a different parent');
       
       delete this.children[child.name];
       this.length--;
       child.par = null;
       
-      /*this.wobble({
-        add: [],
-        rem: [ child ]
-      });
-      */
-      
       return child;
       
     },
     getNamedChild0: function(name) {
-      if (U.isType(name, String) && this.children[name]) return this.children[name];
+      if (U.isType(name, String) && O.has(this.children, name)) return this.children[name];
       return insp.Record.getNamedChild0.call(this, name);
     },
     
     getChildName: function(child) { throw new Error('not implemented'); },
     getChildOutline: function(name) { throw new Error('not implemented'); },
     
-    map: function(f) {
-      return O.map(this.children, f);
-    },
+    map: function(f) { return O.map(this.children, f); },
     
     setValue: function(val) {
       
       if (!val) return;
       
-      for (var k in val) if (!this.children[k]) throw new Error('Tried to set value on nonexistent child: ' + this.describe() + ' -> ' + k);
+      for (var k in val) if (!O.has(this.children, k)) throw new Error(`Tried to set value on nonexistent child: ${this.describe()} -> ${k}`);
       for (var k in val) this.children[k].setValue(val[k]);
       
     },
-    getValue: function() {
-      return this.children;
-    },
-    getJson: function() {
-      return this.map(child => child.getJson());
-    }
+    getValue: function() { return this.children; },
+    getJson: function() { return this.map(child => child.getJson()); }
     
   })});
   const RecordObj = U.makeClass({ name: 'RecordObj', inspiration: { RecordSet }, methods: (insp, Cls) => ({
@@ -330,7 +313,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     getChildrenDescriptor: function() { return 'static'; },
     getChildOutline: function(name) {
       if (!name) throw new Error('Missing "name" param');
-      if (!this.outline.children[name]) throw new Error('Invalid "name" param: ' + name);
+      if (!O.has(this.outline.children, name)) throw new Error('Invalid "name" param: ' + name);
       return this.outline.children[name];
     }
     
@@ -347,7 +330,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     addChild: function(child) {
       
       child = insp.RecordSet.addChild.call(this, child);
-      while (this.children[this.nextInd]) this.nextInd++;
+      while (O.has(this.children, this.nextInd)) this.nextInd++;
       return child;
       
     },
@@ -370,9 +353,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       return name;
       
     },
-    getChildOutline: function(rec) {
-      return this.outline.template;
-    }
+    getChildOutline: function(rec) { return this.outline.template; }
     
   })});
   
@@ -388,24 +369,27 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       
     },
     
-    sanitizeValue: function(value) {
-      return value === null ? this.outline.defaultValue : value;
-    },
-    getValue: function() {
-      return this.value;
-    },
-    setValue: function(value) {
-      
-      this.value = this.sanitizeValue(value);
-      // this.wobble();
-      
-    }
+    sanitizeValue: function(value) { return value === null ? this.outline.defaultValue : value; },
+    getValue: function() { return this.value; },
+    setValue: function(value) { this.value = this.sanitizeValue(value); }
     
   })});
-  const RecordStr = U.makeClass({ name: 'RecordSer', inspiration: { RecordVal }, methods: (insp, Cls) => ({
+  const RecordStr = U.makeClass({ name: 'RecordStr', inspiration: { RecordVal }, methods: (insp, Cls) => ({
     sanitizeValue: function(value) {
+      
       value = insp.RecordVal.sanitizeValue.call(this, value);
       return value === null ? '' : value.toString();
+      
+    }
+  })});
+  const RecordInt = U.makeClass({ name: 'RecordInt', inspiration: { RecordVal }, methods: (insp, Cls) => ({
+    sanitizeValue: function(value) {
+      
+      value = insp.RecordVal.sanitizeValue.call(this, value);
+      let intVal = parseInt(value, 10);
+      if (isNaN(intVal)) throw new Error(`Invalid value for ${this.constructor.name}: ${intVal}`);
+      return intVal;
+      
     }
   })});
   
@@ -416,8 +400,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       
       // Will resolve `value` to either `null`, or an address Array
       
-      let origValue = value = insp.RecordRef.sanitizeValue.call(this, value);
-      
+      let origValue = value = insp.RecordVal.sanitizeValue.call(this, value);
       if (value === null) return null;
       
       let rec = null;
@@ -437,79 +420,6 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       // TODO: Missing any validation based on `this.outline.target`!
       
       return rec.getAddress();
-      
-      /*var format = this.outline.format;
-      
-      if (value === null) {
-        
-        var arrVal = null;
-        
-      } else if (U.isObj(value, Array)) {
-        
-        // TODO: `Array` format is ambiguous: is it a "."-split address?? Or is it the actual value??
-        // Currently considering it to be the actual value.
-        var arrVal = value;
-        
-      } else if (U.isObj(value, String)) {
-        
-        var pcs = value.split('.');
-        if (pcs.length !== format.length) throw new Error('String value "' + value + '" does not match format "' + format.join('.') + '"');
-        var arrVal = pcs.map(function(v, i) { return format[i][0] === '$' ? v : U.SKIP; });
-        
-      } else if (U.isInstance(value, ds.Dossier)) {
-        
-        if (!value.hasResolvedName()) throw new Error('Can\'t reference Dossier without resolved name');
-        
-        var vals = [];
-        var addr = value.getNameChain();
-        for (var endOff = 1, len = Math.min(format.length, addr.length); endOff <= len; endOff++) {
-          var tmp = format[format.length - endOff];
-          var val = addr[addr.length - endOff];
-          
-          if (tmp[0] === '$')       vals.push(val);   // Add to `vals` for each variable component in `format`
-          else if (tmp[0] === '~')  break;            // We're iterating from end to start; variables cannot occur before tilde-prefixed values
-          else if (tmp !== val)     throw new Error(  // Non-variable components of the supplied address must match the corresponding format component
-              '`DossierRef` "' + this.getAddress() + '" was supplied value "' + addr.join('.') + '", ' +
-              'but this doesn\'t match the format "' + format.join('.') + '"'
-            );
-        }
-        
-        var arrVal = U.arr.reverse(vals);
-        
-      } else {
-        
-        throw new Error('`DosserRef.prototype.setInternalValue` accepts `null`, `Array`, `String` and `Dossier` but received ' + U.typeOf(value));
-        
-      }
-      
-      if (arrVal !== null) {
-        
-        // Validate that the value has the correct number of parameters
-        if (arrVal.length !== A.count(format, function(pc) { return pc[0] === '$'; })) {
-          
-          throw new Error(
-            this.constructor.title + '(' + this.getAddress() + ') rejects value [ ' + arrVal.join(', ') + ' ] - ' +
-            'incorrect number of parameters for format: "' + format.join('.') + '"'
-          );
-          
-        }
-        
-        // Verify that all parameters are either Strings or Numbers
-        for (var i = 0; i < arrVal.length; i++) {
-          if (!U.isObj(arrVal[i], String) && !U.isObj(arrVal[i], Number)) {
-            throw new Error(
-              this.constructor.title + '(' + this.getAddress() + ') rejects value - ' +
-              'value contains invalid type: ' + U.typeOf(arrVal[i])
-            );
-          }
-        }
-        
-        // TODO: Verify that the `Array` is of the right length, and dereferences
-        // to an existing value?? May make the values check irrelevant.
-        
-      }
-      
-      return arrVal;*/
       
     },
     
@@ -540,9 +450,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       return ptr.getChild(this.getRefAddress());
       
     },
-    getJson: function() {
-      return this.value ? this.getRefAddress().join('.') : null;
-    }
+    getJson: function() { return this.value ? this.getRefAddress().join('.') : null; }
     
   })});
   
@@ -550,8 +458,10 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
   const Editor = U.makeClass({ name: 'Editor', methods: (insp, Cls) => ({
     
     init: function() {
+      
       this.ops = [];
       this.wobbles = [];
+      
     },
     create: function({ err=new Error(), outline=null, name=null, data=null, par=null }) {
       
@@ -559,7 +469,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       if (!outline && par) outline = par.getChildOutline();
       
       const RecordCls = outline.recCls;
-      let rec = new RecordCls({ outline });
+      let rec = new RecordCls(outline.genRecordParams());
       
       this.build({ err, rec, data });
       
@@ -583,7 +493,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     },
     build: function({ err=new Error(), rec, data=null }) {
       
-      // TODO: This "mod" action is only good upon creation. It can't actually
+      // TODO: This "build" action is only good upon creation. It can't actually
       // "modify" anything:
       
       // For "static"-type children there's never an attempt to modify existing
@@ -604,7 +514,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         
         // With static children, items in `data` should correspond to the known static children
         if (!data) data = {};
-        if (!U.isType(data, Object)) throw new Error('Expected Object');
+        if (!U.isType(data, Object)) { err.message = 'Expected Object'; throw err; }
         
         let staticChildren = outline.children;
         for (var k in staticChildren) {
@@ -618,7 +528,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         
         // With dynamic children, each item in `data` defines a new child dynamically
         if (!data) data = {};
-        if (!U.isType(data, Object)) throw new Error('Expected Object');
+        if (!U.isType(data, Object)) { err.message = 'Expected Object'; throw err; }
         
         let dynamicTemplate = outline.template;
         let children = [];
@@ -666,9 +576,6 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     },
     
     addOp: function({ err, type, ...params }) {
-      
-      // if (type === 'setDn') U.output('TYPE:', params.rec.constructor.name);
-      if (type === 'setDn' && !params.rec) { U.output(params); throw new Error('HERE! ' + U.typeOf(params)); }
       
       this.ops.push({ err: COMPILER.formatError(err), type, params });
       
@@ -801,53 +708,9 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     
   })});
   
-  let outline = Obj({ name: 'root' });
-  outline.addChild(Val({ name: 'val1', defaultValue: 'val111' }));
-  outline.addChild(Val({ name: 'val2', defaultValue: 'val222' }));
-  
-  let arr = outline.addChild(Arr({ name: 'arr' }));
-  let tmp = arr.setTemplate(Obj({ name: 'tmp' }), tmp => tmp.getChild('hi').getValue());
-  tmp.addChild(Val({ name: 'hi' }));
-  tmp.addChild(Val({ name: 'hello' }));
-  
-  let editor = Editor();
-  let rec = editor.create({ outline: outline, data: {
-    
-    val2: 'wheee',
-    arr: {
-      ey: {
-        hi: 'ey',
-        hello: 'whee'
-      },
-      oy: {
-        hi: 'oy',
-        hello: 'whee'
-      },
-      woy: {
-        hi: 'woyyyy',
-        hello: 'whee'
-      },
-    }
-    
-  }});
-  editor.run();
-  
-  rec.getChild('arr').addConcern((v, delta) => U.output('CONCERN:', delta));
-  
-  editor.rem({ child: rec.getChild('arr.woyyyy') });
-  editor.run();
-  
-  editor.create({ par: rec.getChild('arr'), data: {
-    hi: 'deedooo',
-    hello: 'hukahukahukahukahukahukahukahukahukahukahukahuka'
-  }});
-  editor.run();
-  
-  U.output(rec.getJson());
-  
   O.include(record, {
-    Val, Obj, Arr, Ref,
-    RecordObj, RecordArr, RecordStr, RecordRef,
+    Outline, Val, Obj, Arr, Ref,
+    Record, RecordObj, RecordArr, RecordVal, RecordStr, RecordInt, RecordRef,
     Editor
   });
   
