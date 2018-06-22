@@ -59,7 +59,7 @@ O.include(U, {
       let twigFileDir = path.join(this.twigDir, twigName);
       
       let fileName = path.join(twigFileDir, `${twigName}.js`);
-      let contents = fs.readFileSync(fileName).toString();
+      let contents = fs.readFileSync(fileName).toString('utf8').trim(); // TODO: It doesn't make a big difference but this should be async
       
       this.fileVariants[twigName] = {};
       
@@ -143,7 +143,7 @@ O.include(U, {
         
         // Filter out blank lines. Filter out all block delimiters, and the contents of any 'remove' blocks.
         let keepLine = true;
-        // if (!lines[i].trim().length) keepLine = false; // TODO: Remove empty lines?
+        if (!lines[i].trim().length) keepLine = false; // TODO: Remove empty lines?
         if (currentBlock && i === currentBlock.start) keepLine = false; // Remove block start definition
         if (currentBlock && i === currentBlock.end) keepLine = false;   // Remove block end definition
         if (currentBlock && variantDef[currentBlock.type] === 'remove') keepLine = false; // Remove remove-type blocks
@@ -175,8 +175,6 @@ O.include(U, {
         
       }
       
-      // U.output(`---- FILTERED (${variant}):\n\n` + filteredLines.join('\n'));
-      
       return {
         offsets: offsets,
         content: filteredLines.join('\n')
@@ -186,11 +184,6 @@ O.include(U, {
     getVariantData: function(twigName, variant) {
       if (!this.fileVariants[twigName]) this.compile(twigName);
       return this.fileVariants[twigName][variant];
-    },
-    getVariantDataByFile: function(filename, variant) {
-      for (var k in this.fileVariants)
-        if (this.fileVariants[k][variant].fullPath === filename) return this.fileVariants[k][variant];
-      return null;
     },
     run: async function(twigName, variant='server') {
       

@@ -240,6 +240,10 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     
   })});
   
+  /// {SERVER=
+  // DANGGG
+  /// =SERVER}
+  
   // RecordSet
   const RecordSet = U.makeClass({ name: 'RecordSet', inspiration: { Record }, methods: (insp, Cls) => ({
     
@@ -426,17 +430,6 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     getRefAddress: function() {
       
       return this.value;
-      
-      /*var format = this.outline.format;
-      
-      // If `this.value` is null resolve it to an empty array
-      var vals = this.value || [];
-      var ret = [];
-      var valInd = 0;
-      for (var i = 0; i < format.length; i++)
-        ret.push(format[i][0] === '$' ? vals[valInd++] : format[i]);
-      
-      return ret;*/
       
     },
     dereference: function() {

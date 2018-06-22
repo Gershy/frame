@@ -1,4 +1,8 @@
 /// {SERVER=
+/// =SERVER}
+// TODO: I hate the multiline ` ... ` strings
+
+/// {SERVER=
 let http = require('http');
 let path = require('path');
 let fs = require('fs');
@@ -7,6 +11,11 @@ let readFile = async (type, ...cmps) => {
   return await new Promise((rsv, rjc) => {
     return fs.readFile(path.join(...cmps), type, (err, content) => err ? rjc(err) : rsv(content));
   });
+};
+let deflateContents = contents => {
+  let lines = S.split(contents.trim(), '\n');
+  lines = A.map(lines, line => line.trim() ? line : U.SKIP);
+  return A.join(lines, '\n');
 };
 /// =SERVER}
 
@@ -268,62 +277,76 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         let twig = TWIGS[hutName];
         await twig.promise;
         
-        let fileDataList = await Promise.all(A.map(twig.twigList, async (twigName) => {
+        let [ [ essentialsContent, clientEssentialsContent ], fileDataList ] = await Promise.all([
           
-          let variantData = COMPILER.getVariantData(twigName, 'client');
-          return {
-            twigName,
-            name: `twig/${twigName}/${twigName}.cmp`,
-            content: await readFile('utf8', variantData.fullPath),
-            offsets: variantData.offsets
-          };
+          // Load the clearing
+          Promise.all([
+            readFile('utf8', __dirname, '..', '..', 'clearing', 'essentials.js'),
+            readFile('utf8', __dirname, '..', '..', 'clearing', 'clientEssentials.js')
+          ]),
           
-        }));
-        
-        let [ essentials, clientEssentials ] = await Promise.all([
-          readFile('utf8', __dirname, '..', '..', 'clearing', 'essentials.js'),
-          readFile('utf8', __dirname, '..', '..', 'clearing', 'clientEssentials.js')
+          // Load all twigs
+          Promise.all(A.map(twig.twigList, async (twigName) => {
+            
+            let variantData = COMPILER.getVariantData(twigName, 'client');
+            let content = await readFile('utf8', variantData.fullPath);
+            
+            return {
+              name: `twig/${twigName}/${twigName}.cmp`,
+              twigName,
+              content: content.trim(),
+              offsets: variantData.offsets
+            };
+            
+          }))
+          
         ]);
         
-        fileDataList = A.include([
-          { name: 'clearing/init.js', offsets: [], content: A.join([
-            '\'use strict\';',
-            'global.process = {',
-            '  argv: [',
-            '    \'browser: \' + (navigator.userAgent || \'unknownUserAgent\'),',
-            '    \'hut.js\',',
-            '    \'--hut ${hutName}\',',
-            '    \'--host \' + window.location.hostname,',
-            '    \'--port \' + (window.location.port || 80) // TODO: Account for https',
-            '  ]',
-            '};'
-          ], '\n')},
-          { name: 'clearing/essentials.js', content: essentials, offsets: [] },
-          { name: 'clearing/clientEssentials.js', content: clientEssentials, offsets: [] },
-          { name: 'clearing/environment.js', offsets: [], content: A.join([
-            'let { Compiler } = U;',
-            'let compiler = global.COMPILER = Compiler({ offsetData: global.COMPILER_DATA });',
-            'window.addEventListener(\'error\', event => {',
-            '  U.output(\'---- UNCAUGHT\');',
-            '  U.output(compiler.formatError(event.error));',
-            '  event.preventDefault();',
-            '});',
-            'window.addEventListener(\'unhandledrejection\', event => {',
-            '  U.output(\'---- UNHANDLED\');',
-            '  U.output(compiler.formatError(event.reason));',
-            '  event.preventDefault();',
-            '});'
-          ], '\n')}
-        ], A.reverse(fileDataList));
+        let initContents = `
+global.process = {
+  argv: [
+    'browser: ' + (navigator.userAgent || 'unknownUserAgent'),
+    'hut.js',
+    '--hut ${hutName}',
+    '--host ' + window.location.hostname,
+    '--port ' + (window.location.port || '80') // TODO: Account for https
+  ]
+};`;
         
-        let lineOffset = 15; // A simple manual count of how many lines occur before the first js
+        let environmentContents = `
+let { Compiler } = U;
+let compiler = global.COMPILER = Compiler({ offsetData: global.COMPILER_DATA });
+window.addEventListener('error', event => {
+  U.output('---- UNCAUGHT');
+  U.output(compiler.formatError(event.error));
+  event.preventDefault();
+});
+window.addEventListener('unhandledrejection', event => {
+  U.output('---- UNHANDLED');
+  U.output(compiler.formatError(event.reason));
+  event.preventDefault();
+});
+//throw new Error('hey');`;
+        
+        fileDataList = [
+          
+          { name: 'clearing/init.js', offsets: [], content: deflateContents(initContents) },
+          { name: 'clearing/essentials.js', content: deflateContents(essentialsContent), offsets: [] },
+          { name: 'clearing/clientEssentials.js', content: deflateContents(clientEssentialsContent), offsets: [] },
+          { name: 'clearing/environment.js', offsets: [], content: deflateContents(environmentContents) },
+          
+          ...A.reverse(fileDataList) // Reverse order ensures dependencies always precede dependees
+          
+        ];
+        
+        let lineOffset = 14; // A simple manual count of how many lines occur before the first js
         let compilerData = {};
         let compoundJs = [];
         
         // Reversing allows dependencies to always come before dependees
         A.each(fileDataList, fileData => {
           
-          let content = fileData.content + '\n';
+          let content = fileData.content;
           compoundJs.push(content);
           
           compilerData[fileData.name] = {
@@ -341,22 +364,19 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         let html = (`
 <!DOCTYPE html>
 <html>
-
 <head>
-
 <title>${hutName}</title>
 <meta charset="utf-8"/>
 <meta name="description" content="hut">
 <meta name="keywords" content="hut ${this.name}">
 <meta name="viewport" content="width=device-width"/>
 <link rel="icon" type="image/x-icon" href="?message=giveIcon&time=${+new Date()}"/>
-
 <script type="text/javascript">
-global = window;
+'use strict';
+window.global = window;
 global.COMPILER_DATA = ${JSON.stringify(compilerData)};
 ${compoundJs}
 </script>
-
 <style type="text/css">
 body, html {
   position: fixed;
@@ -369,9 +389,7 @@ body, html {
 body { background-color: #e0e4e8; }
 </style>
 </head>
-
 <body></body>
-
 </html>
         `).trim();
         
