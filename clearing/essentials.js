@@ -81,9 +81,7 @@ global.U = {
     return letters;
     
   },
-  output: (...args) => {
-    console.log(...args);
-  },
+  output: (...args) => console.log(...args),
   debugObj: val => {
     
     let mem = [];

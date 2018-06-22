@@ -31,17 +31,12 @@ O.include(U, {
       this.offsetData = offsetData;
       
     },
-    
-    // TODO: HEEERE! Make the mapLineToSource and formatError work!!
     mapLineToFile: function(lineInd) {
       
       let last = null;
       for (var fileName in this.offsetData) {
         
-        if (this.offsetData[fileName].lineOffset > lineInd) {
-          if (last === null) U.output('UGH, line ' + lineInd);
-          return last;
-        }
+        if (this.offsetData[fileName].lineOffset > lineInd) return last;
         last = fileName;
         
       }
@@ -52,6 +47,8 @@ O.include(U, {
       
       let offsetData = this.offsetData[file];
       let offsets = offsetData.offsets;
+      
+      lineInd -= (offsetData.lineOffset - 1);
       
       let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
       let nextOffset = 0; // The index of the next offset chunk which may take effect
@@ -70,7 +67,7 @@ O.include(U, {
         
       }
       
-      return srcLineInd - offsetData.lineOffset;
+      return srcLineInd;
       
     },
     formatError: function(err) {
@@ -100,7 +97,6 @@ O.include(U, {
         let charInd = parseInt(match[2], 10);
         
         let file = this.mapLineToFile(lineInd);
-        if (!file) U.output('Fucked up for ' + line);
         let srcLineInd = this.mapLineToSource(file, lineInd);
         
         return S.endPad(file, ' ', 32) + ' -- ' + S.endPad(srcLineInd.toString(), ' ', 10) + '|';

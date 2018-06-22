@@ -7,7 +7,7 @@
 [X]     - Mixins and Classes (the same!)
 [X]     - Function argument validation          Declarative (or ES7-style?)
 [X]   - Compilation
-[ ]     - Client-side line mapping
+[/]     - Client-side line mapping
 [X]   - Environment fitting                     Extensible list of supported environments
 [ ]     - Automatic localNetwork ip detection
 [ ]   - Package definition                      TRIVIAL TO COMBINE PACKAGES (twigs)
