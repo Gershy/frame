@@ -8,8 +8,6 @@ var testWebsocketFallback = false;
 if (testWebsocketFallback) WebSocket = null;
 /// =CLIENT}
 
-var CNT = 0;
-
 new PACK.pack.Package({ name: 'server',
   /// {SERVER=
   dependencies: [ 'p', 'tree', 'worry', 'frame' ],
