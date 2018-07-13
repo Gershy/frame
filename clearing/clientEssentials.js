@@ -35,15 +35,16 @@ O.include(U, {
       
       let last = null;
       for (var fileName in this.offsetData) {
-        
-        if (this.offsetData[fileName].lineOffset > lineInd) return last;
+        // TODO: Weird error where `last` is still `null` at this point. For now, use `fileName` if `last === null`
+        if (this.offsetData[fileName].lineOffset > lineInd) return last || fileName;
         last = fileName;
-        
       }
       return last;
       
     },
     mapLineToSource: function(file, lineInd) {
+      
+      if (!O.has(this.offsetData, file)) throw new Error(`Invalid file: ${file}`);
       
       let offsetData = this.offsetData[file];
       let offsets = offsetData.offsets;
@@ -70,7 +71,7 @@ O.include(U, {
       return srcLineInd;
       
     },
-    formatError: function(err) {
+    customFormatError: function(err) {
       
       let msg = err.message;
       let type = err.constructor.name;
@@ -97,6 +98,8 @@ O.include(U, {
         let charInd = parseInt(match[2], 10);
         
         let file = this.mapLineToFile(lineInd);
+        if (!file) throw new Error(`Couldn\'t get file from lineInd ${lineInd}`);
+        
         let srcLineInd = this.mapLineToSource(file, lineInd);
         
         return S.endPad(file, ' ', 32) + ' -- ' + S.endPad(srcLineInd.toString(), ' ', 10) + '|';
@@ -110,6 +113,19 @@ O.include(U, {
         S.indent(traceBeginSearch.trim(), ' | ') + '\n' +
         '\\----------------\n' +
         content;
+      
+    },
+    formatError: function(err) {
+      
+      try {
+        
+        return this.customFormatError(err);
+        
+      } catch(err) {
+        
+        return 'Couldn\'t format: ' + err.stack;
+        
+      }
       
     }
     

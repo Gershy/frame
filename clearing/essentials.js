@@ -1,3 +1,6 @@
+// TODO: Could consider using `Object.defineProperty` to make some
+// control properties non-enumerable (e.g. `wobblyInstance.numUsages`)
+
 Error.stackTraceLimit = Infinity;
 
 // Method schemas
@@ -113,6 +116,8 @@ global.U = {
     // This is O(n^2) :(
     for (let i = 0, len = items.length; i < len; i++) if (items[i].orig === item) return i;
     
+    let ind = items.length;
+    
     if (U.isType(item, Object)) {
       
       let obj = {};
@@ -131,9 +136,10 @@ global.U = {
       
     }
     
-    return items.length - 1;
+    return ind;
     
   },
+  
   unstraighten: items => {
     
     let unbuilt = { UNBUILT: true };
@@ -350,10 +356,16 @@ global.O = {
     
   },
   isEmpty: obj => {
-    
     for (let k in obj) return false;
     return true;
-    
+  },
+  firstVal: obj => {
+    for (let k in obj) return obj[k];
+    return null;
+  },
+  firstKey: obj => {
+    for (let k in obj) return k;
+    return null;
   }
   
 };
@@ -388,7 +400,7 @@ global.A = {
     return ret;
   },
   join: (arr, delim) => arr.join(delim),
-  include: (arr1, arr2) => arr1.concat(arr2),
+  include: (...arrs) => arrs[0].concat(...arrs.slice(1)),
   any: (arr, it) => { 
     for (var i = 0, len = arr.length; i < len; i++) if (it(arr[i], i)) return true;
     return false;
@@ -489,21 +501,36 @@ const TreeNode = U.makeClass({ name: 'TreeNode', methods: (insp, Cls) => ({
     this.par = par;
     
   },
-  getNodeChain: function() {
+  getAncestry: function() {
     
     let ret = [];
     let ptr = this;
-    while (ptr !== null) { ret.push(ptr); ptr = ptr.par; }
+    while (ptr) { ret.push(ptr); ptr = ptr.par; }
     return ret;
+    
+  },
+  ancestryContains: function(trg) {
+    
+    let ptr = this;
+    while (ptr) { if (ptr === trg) return true; ptr = ptr.trg; }
+    return false;
+    
+  },
+  getAncestryDepth: function() {
+    
+    let cnt = 0;
+    let ptr = this.par;
+    while (ptr) { cnt++; ptr = ptr.par; }
+    return cnt;
     
   },
   getAddress: function(type='arr') {
     
-    let nodeChain = this.getNodeChain();
-    let chain = [];
-    for (let i = chain.length - 1; i >= 0; i--) chain.push(chain[i].name.toString());
+    let ancestry = this.getAncestry();
+    let address = [];
+    for (let i = ancestry.length - 2; i >= 0; i--) address.push(ancestry[i].name.toString());
     
-    return (type === 'str') ? chain.join('.') : chain;
+    return (type === 'str') ? address.join('.') : address;
     
   },
   getRoot: function() {
@@ -526,7 +553,10 @@ const TreeNode = U.makeClass({ name: 'TreeNode', methods: (insp, Cls) => ({
     return ptr;
     
   },
-  getNamedChild: function(name) { throw new Error('not implemented'); }
+  getNamedChild: function(name) { throw new Error('not implemented'); },
+  describe: function() {
+    return this.constructor.name + '(' + this.getAddress('str') + ')';
+  }
   
 })});
 
@@ -541,7 +571,7 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
     this.holders = {};
     this.nextId = 0;
     this.holdKey = '~wbl.' + U.WOBBLY_ID++;
-    this.usages = 0;
+    this.numUsages = 0;
     
   },
   getTmpActions: function() {
@@ -567,13 +597,13 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
     
     this.holders[key] = func;
     
-    this.usages++;
+    this.numUsages++;
     if (this.isDn()) this.up();
     
   },
   drop: function(key) {
     
-    if (this.usages <= 0) throw new Error('Negative usages');
+    if (this.numUsages <= 0) throw new Error('Negative numUsages');
     
     let func = null;
     
@@ -588,8 +618,8 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
     delete this.holders[key];
     if (func) delete func[this.holdKey];
     
-    this.usages--;
-    if (!this.usages) this.dn();
+    this.numUsages--;
+    if (!this.numUsages) this.dn();
     
   },
   setValue: function(val) { throw new Error('not implemented'); },
@@ -597,8 +627,7 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
   modValue: function(f) { this.setValue(f(this.getValue())); },
   wobble: function(delta=null) {
     
-    let val = this.getValue();
-    O.each(this.holders, c => c(val, delta));
+    O.each(this.holders, c => c(delta, this.getValue()));
     
   }
   

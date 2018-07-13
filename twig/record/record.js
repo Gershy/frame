@@ -1,4 +1,4 @@
-U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => {
+U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   
   const { TreeNode, Wobbly } = U;
   const RECORD_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-_]*$/;
@@ -6,7 +6,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
   let NEXT_TEMP = 0;
   let getTempName = () => {
     
-    // Returns globally unique identifiers which don't qualify as valid Record names
+    // Returns globally unique identifiers which aren't valid Record names
     
     let id = U.id(NEXT_TEMP++, 8);
     if (id === 'ffffffff') throw new Error('EXHAUSTED IDS'); // Checking for this is almost silly
@@ -59,7 +59,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     add: function(outline) {
       
       if (outline.par) throw new Error('Outline(' + outline.getAddress() + ') already has a parent');
-      if (this.children[outline.name]) throw new Error('Tried to overwrite ' + this.getAddress('str') + ' -> ' + outline.name);
+      if (this.children[outline.name]) throw new Error(`Tried to overwrite ${this.describe()} -> ${outline.name}`);
       
       this.children[outline.name] = outline;
       this.children[outline.name].par = this;
@@ -69,18 +69,20 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     },
     getNamedChild: function(name) {
       
-      return this.children[name] || null;
+      return O.has(this.children, name) ? this.children[name] : null;
       
     }
     
   })});
   const Arr = U.makeClass({ name: 'Arr', inspiration: { Outline }, methods: (insp, Cls) => ({
     
-    init: function({ name, recCls=RecordArr }) {
+    init: function({ name, recCls=RecordArr, template=null, genName=null }) {
+      
+      if (!template && genName) throw new Error('Can\'t provide "genName" without "template"');
       
       insp.Outline.init.call(this, { name, recCls });
-      this.template = null;
-      this.genName = null;
+      this.template = template;
+      this.genName = genName;
       
     },
     requireChildNameMatch: function() { return false; },
@@ -240,10 +242,6 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
     
   })});
   
-  /// {SERVER=
-  // DANGGG
-  /// =SERVER}
-  
   // RecordSet
   const RecordSet = U.makeClass({ name: 'RecordSet', inspiration: { Record }, methods: (insp, Cls) => ({
     
@@ -261,7 +259,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       if (this === child.par) return;
       
       if (child.par) throw new Error('Attempted to add child with parent: ' + child.describe());
-      if (O.has(this.children, child.name)) throw new Error('Tried to overwrite ' + this.describe() + ' -> ' + child.name);
+      if (O.has(this.children, child.name)) throw new Error(`Tried to overwrite ${this.describe()} -> ${child.name}`);
       
       child.par = this;
       this.children[child.name] = child;
@@ -314,11 +312,15 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
   })});
   const RecordObj = U.makeClass({ name: 'RecordObj', inspiration: { RecordSet }, methods: (insp, Cls) => ({
     
-    getChildrenDescriptor: function() { return 'static'; },
+    getChildrenDescriptor: function() { return 'constant'; },
     getChildOutline: function(name) {
       if (!name) throw new Error('Missing "name" param');
-      if (!O.has(this.outline.children, name)) throw new Error('Invalid "name" param: ' + name);
+      if (!O.has(this.outline.children, name)) throw new Error(`Invalid name ${name} not valid for ${this.describe()}`);
       return this.outline.children[name];
+    },
+    getChildName: function(rec) {
+      if (rec.outline.par !== this.outline) throw new Error('Can\'t get child name for ' + rec.describe() + ' - it isn\'t our child');
+      return rec.outline.name;
     }
     
   })});
@@ -357,7 +359,7 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       return name;
       
     },
-    getChildOutline: function(rec) { return this.outline.template; }
+    getChildOutline: function(name) { return this.outline.template; }
     
   })});
   
@@ -456,115 +458,214 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
       this.wobbles = [];
       
     },
-    create: function({ err=new Error(), outline=null, name=null, data=null, par=null }) {
+    
+    shape: function({ err=new Error(), rec=null, outline=null, par=null, name=null, data=null }) {
       
-      if (!outline && !par) throw new Error('Need either "outline" or "par"');
-      if (!outline && par) outline = par.getChildOutline();
+      /*
+      Types: Obj, Arr, Val (childrenDesc === 'constant' | 'dynamic' | 'none')
+      Ops: create, modDelta, modExact
       
-      const RecordCls = outline.recCls;
-      let rec = new RecordCls(outline.genRecordParams());
+      Note: create always has optional "mod" params
       
-      this.build({ err, rec, data });
+      How to know if recursive mod* ops from earlier mod* ops are delta/exact??
+      Maybe only a single mod* function which accepts a "mode" param
       
-      if (!name && !outline.par) name = outline.name;
+      Obj -
+        create    - Creates the Obj and recursively creates all its (known) properties
+        modDelta  - An Object of properties specifies values for recursive mods of Obj properties
+        modExact  - Same as modDelta, although implies that *all* properties are being updated
       
-      if (name) this.addOp({ err, type: 'setNameSimple', rec, name });
-      else      this.addOp({ err, type: 'setNameCalculated', rec });
+      Arr -
+        create    - Creates the Arr, empty
+        modDelta  - "create", "remove", and "update" properties
+                    - "create" is a recursive list of params to "create" children recursively
+                    - "remove" is a list of child names
+                    - "update" is similar to create, with the implication that all the children
+                      in it already exist
+        modExact  - A list of recursive child mod params. Any children excluded will be removed
       
-      if (par)  {
-        this.wobbles.push({
-          rec: par,
-          data: { add: [ rec ], rem: [] }
-        });
-        this.add({ par, child: rec });
+      Val -
+        create    - Creates the Val using the specified initial value
+        modDelta  - Not supported
+        modExact  - Simply sets the new value
+      */
+      
+      if (rec && outline) throw new Error('If providing "rec" shouldn\'t provide "outline"');
+      if (rec && par) throw new Error('If providing "rec" shouldn\'t provide "par"');
+      if (outline && par) throw new Error('If providing "outline" shouldn\'t provide "par"');
+      if (!rec && !outline && !par) throw new Error('Need to provide one of "rec", "outline", and "par"');
+      if (name && !par) throw new Error('Don\'t provide "name" without providing "par"');
+      
+      // We can get `outline` since we have `rec` or `par`
+      if (!outline) outline = rec ? rec.outline : par.getChildOutline(name);
+      
+      // For the root outline, ensure `name` has a value
+      if (!outline.par) name = rec ? rec.name : outline.name;
+      
+      // We can ensure we have `rec`, since we have `outline`
+      let creatingNew = !rec;
+      if (creatingNew) {
+        const RecordCls = outline.recCls;
+        rec = new RecordCls(outline.genRecordParams());
       }
       
-      this.addOp({ err, type: 'setUp', rec });
+      let type = U.isType(data, Object) ? data.type : 'exact';
+      if (type !== 'exact' && type !== 'delta') throw new Error(`Invalid type: ${type}`);
+      
+      // U.output('REC ' + rec.describe() + ' resulted in: ' + rec.getChildrenDescriptor() + ', ' + type);
+      
+      let shapeFunc = ({
+        constant: {
+          exact: () => {
+            
+            if (data === null) data = { children: {} };
+            
+            // With constant children, items in `data` should correspond to the known constant children
+            if (!O.has(data, 'children')) { err.message = 'Shaping (constant, exact) requires a "children" property'; throw err; }
+            
+            let childrenData = data.children;
+            if (!U.isType(childrenData, Object)) { err.message = 'Expected Object'; throw err; }
+            
+            let outlineChildren = outline.children;
+            
+            // Because this is "exact", we loop through ALL outline children
+            for (var k in outlineChildren)
+              this.shape({ err, par: rec, name: k, data: O.has(childrenData, k) ? childrenData[k] : null });
+            
+          },
+          delta: () => {
+            
+            if (data === null) data = { children: {} };
+            
+            // With constant children, items in `data` should correspond to the known constant children
+            if (!O.has(data, 'children')) { err.message = 'Shaping (constant, delta) requires a "children" property'; throw err; }
+            
+            let childrenData = data.children;
+            if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
+            
+            let outlineChildren = outline.children;
+            
+            // Because this is "delta", we only affect any children which were mentioned
+            // If `k` doesn't correspond to the Outline structure, an error will rightfully be thrown later, by `getChildOutline`
+            for (var k in childrenData)
+              this.shape({ err, par: rec, name: k, data: childrenData[k] });
+            
+          }
+        },
+        dynamic: {
+          exact: () => {
+            
+            if (data === null) data = { children: {} };
+            
+            if (!O.has(data, 'children')) { err.message = 'Shaping (dynamic, exact) requires a "children" property'; throw err; }
+            
+            let delta = { add: [], rem: [] };
+            
+            let childrenData = data.children;
+            if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
+            
+            let needsDelete = O.clone(rec.children);
+            
+            // Mod/add any existing/new children
+            for (var k in childrenData) {
+              
+              if (O.has(rec.children, k)) {
+                
+                delete needsDelete[k]; // Unmark this child for deletion
+                this.shape({ err, rec: rec.children[k], data: childrenData[k] });
+                
+              } else {
+                
+                let newChild = this.shape({ err, par: rec, data: childrenData[k] });
+                delta.add.push(newChild);
+                
+              }
+              
+            }
+            
+            // Remove any children not unmarked (a.k.a "marked"!) for deletion
+            for (var k in needsDelete) {
+              this.addOp({ err, type: 'remChild', par: rec, child: needsDelete[k] });
+              delta.rem.push(k);
+            }
+            
+            if (delta.add.length || delta.rem.length) this.wobbles.push({ rec, data: delta });
+            
+          },
+          delta: () => {
+            
+            if (data === null) data = {};
+            
+            let delta = { add: [], rem: [] };
+            let addData = O.has(data, 'add') ? data.add : {};
+            let remData = O.has(data, 'rem') ? data.rem : {};
+            
+            // Mod/add any existing/new children
+            for (var k in addData) {
+              if (O.has(rec.children, k)) {
+                this.shape({ err, rec: rec.children[k], data: addData[k] });
+              } else {
+                let newChild = this.shape({ err, par: rec, data: addData[k] });
+                delta.add.push(newChild);
+              }
+            }
+            
+            // Rem appropriate children
+            for (var k in remData) {
+              this.addOp({ err, type: 'remChild', par: rec, child: k });
+              delta.rem.push(k);
+            }
+            
+            if (delta.add.length || delta.rem.length) this.wobbles.push({ rec, data: delta });
+            
+          }
+        },
+        none: {
+          exact: () => {
+            this.addOp({ err, type: 'setValue', rec: rec, value: data });
+            this.wobbles.push({ rec, data });
+          },
+          delta: () => {
+            throw new Error('not implemented');
+          }
+        }
+      })[rec.getChildrenDescriptor()][type];
+      
+      if (!shapeFunc) throw new Error('Invalid shape func: ' + rec.getChildrenDescriptor() + ' / ' + data.type);
+      
+      shapeFunc();
+      
+      // Check if we can do any immediate initialization using a constant parent
+      
+      if (par && par.getChildrenDescriptor() === 'constant') {
+        
+        // Constant parents allow name and parent-child relationship to be immediately initialized
+        
+        if (!name) throw new Error('Missing name for a constant child');
+        
+        rec.updateName(name);
+        par.addChild(rec);
+        
+      } else {
+        
+        // Without a constant parent, things are trickier
+        
+        if (name) this.addOp({ err, type: 'setNameSimple', rec, name });
+        else      this.addOp({ err, type: 'setNameCalculated', rec });
+        
+        if (par) {
+          
+          this.addOp({ err, type: 'addChild', par, child: rec });
+          // this.wobbles.push({ rec: par, data: { add: [ rec ], rem: [] } });
+          
+        }
+        
+      }
+      
+      // Only set `rec` up if it's new!
+      if (creatingNew) this.addOp({ err, type: 'setUp', rec });
       
       return rec;
-      
-    },
-    build: function({ err=new Error(), rec, data=null }) {
-      
-      // TODO: This "build" action is only good upon creation. It can't actually
-      // "modify" anything:
-      
-      // For "static"-type children there's never an attempt to modify existing
-      // children
-      
-      // For "dynamic"-type children there's never an attempt to delete children
-      // which are no longer listed
-      
-      let outline = rec.outline;
-      let childrenDesc = rec.getChildrenDescriptor();
-      
-      if (childrenDesc === 'none') {
-        
-        // Without children, `data` refers to a value
-        this.mod({ err, rec, value: data });
-        
-      } else if (childrenDesc === 'static') {
-        
-        // With static children, items in `data` should correspond to the known static children
-        if (!data) data = {};
-        if (!U.isType(data, Object)) { err.message = 'Expected Object'; throw err; }
-        
-        let staticChildren = outline.children;
-        for (var k in staticChildren) {
-          
-          let child = this.create({ err, outline: staticChildren[k], name: k, data: data[k] || null });
-          this.add({ err, par: rec, child: child });
-          
-        }
-        
-      } else if (childrenDesc === 'dynamic') {
-        
-        // With dynamic children, each item in `data` defines a new child dynamically
-        if (!data) data = {};
-        if (!U.isType(data, Object)) { err.message = 'Expected Object'; throw err; }
-        
-        let dynamicTemplate = outline.template;
-        let children = [];
-        for (var k in data) {
-          
-          let child = this.create({ err, outline: dynamicTemplate, data: data[k] });
-          this.add({ err, par: rec, child });
-          children.push(child);
-          
-        }
-        
-        this.wobbles.push({
-          rec: rec,
-          data: { add: children, rem: [] }
-        });
-        
-      }
-      
-    },
-    add: function({ err=new Error(), par, child }) {
-      
-      this.addOp({ err, type: 'addChild', par, child });
-      
-    },
-    rem: function({ err=new Error(), par, child }) {
-      
-      if (!par) par = child.par;
-      
-      this.wobbles.push({
-        rec: par,
-        data: { add: [], rem: [ child ] }
-      });
-      this.addOp({ err, type: 'setDn', rec: child });
-      this.addOp({ err, type: 'remChild', par, child });
-      
-    },
-    mod: function({ err=new Error(), rec, value }) {
-      
-      this.wobbles.push({
-        rec: rec,
-        data: null // no delta available
-      });
-      this.addOp({ err, type: 'setValue', rec, value });
       
     },
     
@@ -580,7 +681,6 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         let { rec, name } = op.params;
         let origName = rec.name;
         rec.updateName(name);
-        
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
       } else if (op.type === 'setNameCalculated') {
@@ -588,14 +688,12 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         let { rec } = op.params;
         let origName = rec.name;
         rec.updateName(rec.par.getChildName(rec));
-        
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
       } else if (op.type === 'setUp') {
         
         let { rec } = op.params;
         rec.up();
-        
         return { type: 'setDn', params: { rec } };
         
       } else if (op.type === 'setDn') {
@@ -608,14 +706,12 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         
         let { par, child } = op.params;
         par.addChild(child);
-        
         return { type: 'remChild', params: { par, child } };
         
       } else if (op.type === 'remChild') {
         
         let { par, child } = op.params;
         par.remChild(child);
-        
         return { type: 'addChild', params: { par, child } };
         
       } else if (op.type === 'setValue') {
@@ -667,17 +763,16 @@ U.makeTwig({ name: 'record', twigs: [ 'clearing' ], make: (record, clearing) => 
         
       }
       
-      if (remainingOps.length && !undoOnFailure) {
-        throw new Error('Fatal MFRF: couldn\'t undo an unsuccessful edit');
-      }
+      // The operation didn't complete, AND this was an undo operation. That's real bad.
+      if (remainingOps.length && !undoOnFailure) throw new Error('Fatal MFRF: couldn\'t undo an unsuccessful edit');
       
       if (remainingOps.length) {
         
-        errs[0].message = 'Transaction failed (#1:) ' + errs[0].message;
-        throw errs[0];
+        // errs[0].message = 'Transaction failed (#1:) ' + errs[0].message;
+        // throw errs[0];
         
         U.output('FAILURE', A.map(errs, err => COMPILER.formatError(err))[0]);
-        this.attemptOps(allUndoOps, false); // Make sure we don't try to undo the undo
+        this.attemptOps(allUndoOps, false); // Signal that this attempt can't be undone (it would be undoing an undo)
         throw new Error('Transaction failed');
         
       }

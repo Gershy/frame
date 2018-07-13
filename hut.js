@@ -1,5 +1,12 @@
 /*
 
+// TODO: Some Temporary operations need to be async, e.g. PassageHttp initializing
+// an http server. Can't switch to full async, because that will require editor.run
+// to be async (completely unacceptable; introduces race conditions).
+// Consider a separate TemporaryAsync class, where the syncronous "up" command
+// ENSURES that an asynchronous "asyncUp" command cannot fail. Then "up" calls
+// "asyncUp", and doesn't wait for it.
+
 ==== ROADMAP
 
 [X]   - Standard setup + utility library
@@ -7,22 +14,27 @@
 [X]     - Mixins and Classes (the same!)
 [X]     - Function argument validation          Declarative (or ES7-style?)
 [X]   - Compilation
-[/]     - Client-side line mapping
+[X]     - Client-side line mapping
 [X]   - Environment fitting                     Extensible list of supported environments
 [ ]     - Automatic localNetwork ip detection
 [ ]   - Package definition                      TRIVIAL TO COMBINE PACKAGES (twigs)
-[ ]     - Dependency resolution                 Works with promises
+[X]     - Dependency resolution                 Works with promises
 [X]       - Server-side (easy)
-[ ]       - Client-side                         Generate dependency tree all at once
-[.]     - Package tests
+[X]       - Client-side                         Generate dependency tree all at once
 [X]   - Data definition                         Better atomicity than current Editor
-[ ]   - Data access                             Read and write both async, in preparation for persistence
-[ ]     - Persistence
+[ ]   - Data operations                         Read and write both async, in preparation for persistence
+[/]     - Persistence
+[X]       - Http                                Long-polling
+[ ]       - Sokt
 [ ]   - Network communication                   Defined as a twig - all network data (e.g. active sessions) available in Dossier-like format. Ordered operations. Confirmation for some actions.
 [ ]   - Client-side with a server-side session
 [ ]   - Debug IP spoofing
 [ ]   - HTTPS
 [ ]   - Certificate (try self-signed??)
+[ ]   - Run as cluster
+[ ]     - Task-specific nodes
+[ ]       - A single node for all data operations (synchronous infallability)
+[ ]   - Package tests
 
 
 ==== IMPROVEMENTS
