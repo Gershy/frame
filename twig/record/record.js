@@ -1,3 +1,14 @@
+// TODO: changing an Arr via "delta" uses Objects, but the wobble produced
+// uses Arrays
+// The "delta" needs to use Objects since the key may refer to an existing
+// child.
+// It's tricky for the wobble to return an Object, since the keys available
+// at the time the wobble data is generated don't reliably correspond to
+// to the actual names the generated Records may have. The key isn't even
+// provided as "name" to the `shape` call. The resulting record name may be
+// calculated arbitrarily, and not even known to the interfacer providing
+// the "delta" data.
+
 U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   
   const { TreeNode, Wobbly } = U;
@@ -139,7 +150,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     },
     
     hasResolvedName: function() { return !S.startsWith(this.name, 'TEMP(('); },
-    updateName: function(name) {
+    changeName: function(name) {
       
       name = name.toString();
       if (name === this.name) return;
@@ -352,7 +363,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       if (rec.par !== this) throw new Error('Can\'t get child name for ' + rec.describe() + ' - it isn\'t our child');
       
       let genName = this.outline.genName;
-      let name = genName ? genName(rec) : this.nextInd.toString(); // TODO: `this.nextInd` isn't incremented!! What happens if the same integer name is returned for multiple Records??
+      let name = genName ? genName(rec) : this.nextInd.toString(); // TODO: (really tricky??) `this.nextInd` isn't incremented!! What happens if the same integer name is returned for multiple Records??
       
       if (!U.isType(name, String)) throw new Error('Invalid genName from ' + this.describe() + ' produce name of type ' + U.typeOf(name));
       
@@ -459,36 +470,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       
     },
     
-    shape: function({ err=new Error(), rec=null, outline=null, par=null, name=null, data=null }) {
-      
-      /*
-      Types: Obj, Arr, Val (childrenDesc === 'constant' | 'dynamic' | 'none')
-      Ops: create, modDelta, modExact
-      
-      Note: create always has optional "mod" params
-      
-      How to know if recursive mod* ops from earlier mod* ops are delta/exact??
-      Maybe only a single mod* function which accepts a "mode" param
-      
-      Obj -
-        create    - Creates the Obj and recursively creates all its (known) properties
-        modDelta  - An Object of properties specifies values for recursive mods of Obj properties
-        modExact  - Same as modDelta, although implies that *all* properties are being updated
-      
-      Arr -
-        create    - Creates the Arr, empty
-        modDelta  - "create", "remove", and "update" properties
-                    - "create" is a recursive list of params to "create" children recursively
-                    - "remove" is a list of child names
-                    - "update" is similar to create, with the implication that all the children
-                      in it already exist
-        modExact  - A list of recursive child mod params. Any children excluded will be removed
-      
-      Val -
-        create    - Creates the Val using the specified initial value
-        modDelta  - Not supported
-        modExact  - Simply sets the new value
-      */
+    shape: function({ err=new Error(), rec=null, outline=null, par=null, name=null, data=null, assumeType=null }) {
       
       if (rec && outline) throw new Error('If providing "rec" shouldn\'t provide "outline"');
       if (rec && par) throw new Error('If providing "rec" shouldn\'t provide "par"');
@@ -509,7 +491,10 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         rec = new RecordCls(outline.genRecordParams());
       }
       
-      let type = U.isType(data, Object) ? data.type : 'exact';
+      // If `data` isn't an Object, we're certainly working with "exact" (because
+      // "delta" isn't supported for RecordVal and the like).
+      // Otherwise, we either assume the type or learn it from `data.type`.
+      let type = U.isType(data, Object) ? (assumeType || data.type) : 'exact';
       if (type !== 'exact' && type !== 'delta') throw new Error(`Invalid type: ${type}`);
       
       // U.output('REC ' + rec.describe() + ' resulted in: ' + rec.getChildrenDescriptor() + ', ' + type);
@@ -518,52 +503,85 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         constant: {
           exact: () => {
             
-            if (data === null) data = { children: {} };
+            let childrenData = null;
             
-            // With constant children, items in `data` should correspond to the known constant children
-            if (!O.has(data, 'children')) { err.message = 'Shaping (constant, exact) requires a "children" property'; throw err; }
+            if (data === null) {
+              childrenData = {};
+            } else if (assumeType) {
+              // A type is assumed! `data` is directly the `childrenData`
+              childrenData = data;
+            } else {
+              // A type is given! `data` contains the `childrenData`
+              if (!O.has(data, 'children')) { err.message = 'Shaping (constant, exact) requires a "children" property'; throw err; }
+              childrenData = data.children;
+            }
             
-            let childrenData = data.children;
-            if (!U.isType(childrenData, Object)) { err.message = 'Expected Object'; throw err; }
-            
-            let outlineChildren = outline.children;
-            
-            // Because this is "exact", we loop through ALL outline children
-            for (var k in outlineChildren)
-              this.shape({ err, par: rec, name: k, data: O.has(childrenData, k) ? childrenData[k] : null });
-            
-          },
-          delta: () => {
-            
-            if (data === null) data = { children: {} };
-            
-            // With constant children, items in `data` should correspond to the known constant children
-            if (!O.has(data, 'children')) { err.message = 'Shaping (constant, delta) requires a "children" property'; throw err; }
-            
-            let childrenData = data.children;
             if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
             
             let outlineChildren = outline.children;
             
+            // Because this is "exact", we loop through ALL outline children
+            for (var k in outlineChildren) {
+              
+              this.shape({ err, assumeType, data: O.has(childrenData, k) ? childrenData[k] : null,
+              ...(
+                O.has(rec.children, k)
+                  ? { rec: rec.children[k] }
+                  : { par: rec, name: k }
+              )});
+              
+            }
+            
+          },
+          delta: () => {
+            
+            let childrenData = null;
+            
+            if (data === null) {
+              childrenData = {};
+            } else if (assumeType) {
+              // A type is assumed! `data` is directly the `childrenData`
+              childrenData = data;
+            } else {
+              // A type is given! `data` contains the `childrenData`
+              if (!O.has(data, 'children')) { err.message = 'Shaping (constant, delta) requires a "children" property'; throw err; }
+              childrenData = data.children;
+            }
+            
+            if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
+            
             // Because this is "delta", we only affect any children which were mentioned
             // If `k` doesn't correspond to the Outline structure, an error will rightfully be thrown later, by `getChildOutline`
-            for (var k in childrenData)
-              this.shape({ err, par: rec, name: k, data: childrenData[k] });
+            for (var k in childrenData) {
+              
+              this.shape({ err, assumeType, data: childrenData[k],
+              ...(
+                O.has(rec.children, k)
+                  ? { rec: rec.children[k] }
+                  : { par: rec, name: k }
+              )});
+              
+            }
             
           }
         },
         dynamic: {
           exact: () => {
             
-            if (data === null) data = { children: {} };
+            let childrenData = null;
             
-            if (!O.has(data, 'children')) { err.message = 'Shaping (dynamic, exact) requires a "children" property'; throw err; }
+            if (data === null) {
+              childrenData = {};
+            } else if (assumeType) {
+              childrenData = data;
+            } else {
+              if (!O.has(data, 'children')) { err.message = 'Shaping (dynamic, exact) requires a "children" property'; throw err; }
+              childrenData = data.children;
+            }
             
-            let delta = { add: [], rem: [] };
-            
-            let childrenData = data.children;
             if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
             
+            let delta = { add: [], rem: [] };
             let needsDelete = O.clone(rec.children);
             
             // Mod/add any existing/new children
@@ -572,11 +590,11 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
               if (O.has(rec.children, k)) {
                 
                 delete needsDelete[k]; // Unmark this child for deletion
-                this.shape({ err, rec: rec.children[k], data: childrenData[k] });
+                this.shape({ err, rec: rec.children[k], data: childrenData[k], assumeType });
                 
               } else {
                 
-                let newChild = this.shape({ err, par: rec, data: childrenData[k] });
+                let newChild = this.shape({ err, par: rec, data: childrenData[k], assumeType });
                 delta.add.push(newChild);
                 
               }
@@ -594,18 +612,27 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
           },
           delta: () => {
             
-            if (data === null) data = {};
+            let addData = {};
+            let remData = {};
+                        
+            if (data === null) {
+              // Do nothing
+            } else {
+              if (O.has(data, 'add')) addData = data.add;
+              if (O.has(data, 'rem')) remData = data.rem;
+            }
+            
+            if (!U.isType(addData, Object)) { err.message = `Expected "add" as Object (got ${U.typeOf(addData)})`; throw err; }
+            if (!U.isType(remData, Object)) { err.message = `Expected "rem" as Object (got ${U.typeOf(remData)})`; throw err; }
             
             let delta = { add: [], rem: [] };
-            let addData = O.has(data, 'add') ? data.add : {};
-            let remData = O.has(data, 'rem') ? data.rem : {};
             
             // Mod/add any existing/new children
             for (var k in addData) {
               if (O.has(rec.children, k)) {
-                this.shape({ err, rec: rec.children[k], data: addData[k] });
+                this.shape({ err, rec: rec.children[k], data: addData[k], assumeType });
               } else {
-                let newChild = this.shape({ err, par: rec, data: addData[k] });
+                let newChild = this.shape({ err, par: rec, data: addData[k], assumeType });
                 delta.add.push(newChild);
               }
             }
@@ -643,7 +670,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         
         if (!name) throw new Error('Missing name for a constant child');
         
-        rec.updateName(name);
+        rec.changeName(name);
         par.addChild(rec);
         
       } else {
@@ -680,14 +707,14 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         
         let { rec, name } = op.params;
         let origName = rec.name;
-        rec.updateName(name);
+        rec.changeName(name);
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
       } else if (op.type === 'setNameCalculated') {
         
         let { rec } = op.params;
         let origName = rec.name;
-        rec.updateName(rec.par.getChildName(rec));
+        rec.changeName(rec.par.getChildName(rec));
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
       } else if (op.type === 'setUp') {
