@@ -1,20 +1,44 @@
 /*
 
-FUNDAMENTAL USABILITY ISSUES FOR APIS:
-Would like to name the public methods to be used as the client by the
-most concise possible name to avoid requiring verbosity from the client.
-But internally, it makes much more sense to further qualify the names
-of client methods, and describe the fundamental operations with the most
-precise names.
-E.g. consider client/server paradigm:
+TODO:
+[]  FUCK WALKERS. Work with hill / valley huts instead. Simple flat list of
+    connections with a "type" option for each
+[]  This "hutSet" should be OUTSIDE Hinterland's public subtree
+[]  Now some operations may depend less on CLIENT / SERVER, and more on
+    whether the hut which initiated the operation is upward or downward.
+[]  Account / login behaviour, in its own GODDAM file. Steppe huts need to
+    be able to be aware of each other, syncing from their upwards hut.
+[]  Chess2 matchmaking system. Have a lobby holding max 1 person; whenever
+    an opponent is present pair em up and make em fight
+[]  Get the rest of Chess2 done!!
 
-Internally:
-clientData.update should mean IMMEDIATELY update data
-clientData.initUpdateRequest should mean the client requests the server
-to update
 
-Externally:
-The client will get annoyed having to type out "initUpdateRequest".
+NETWORK MODEL
+A hut is an instance of this app running on a physical machine. Therefore
+it is possible to talk about "this hut".
+Uphill huts have full control over this hut.
+Downhill huts are fully controlled by this hut.
+
+- It doesn't make sense to "login" to a downhill hut. Login can only happen upwards
+- Huts don't need to know / communicate about other uphill / downhill huts
+- Huts still MAY decide to reflect data concerning other huts publicly
+- E.g. "logged in users" is synced by an uphill hut with a custom "userSet" Record
+  which updates to reflect all downhill huts, and tells all downhill huts about
+  each other.
+- Network models can be more complex than just a bunch of huts downhill to a
+  particular single hut (although this is the typical browser->server model)
+- This could make CLIENT/SERVER nondescriptive, since huts may be able to be both.
+  CLIENT/SERVER more indicate whether the hut installation is CAPABLE of being
+  vallied/hilly respectively
+  
+"WALKER"
+There are 3 different kinds of walkers, between server/client/hut.
+There are "srcWalkers", who have full control over our own state
+There are "trgWalkers", over whose state we have full control
+Both of these lists of walkers are private; essentially, we don't
+want to allow any trgWalkers to know about either src OR trgWalkers
+The only kind of "public" walkers whose presence should be known
+among all walkers are PERSONAS.
 
 ACCESS CONSIDERATIONS:
 
@@ -75,18 +99,14 @@ let modifyRec = (walker, aspect, data) => {
 Changing client-only data should process entirely on the client-side
 Changing any other type of data should probably happen in lockstep with the server
   - Although it would be nice if the client could immediately witness the change client-side!
-    - This is complex though; needs to roll back if the server-side fails
-
-Ordered operations are needed to keep everything in lockstep
-A simple incrementing "op-number" integer requires all clients to have the exact same state
-Consider an incrementing "op-number" per client? Initializes to 0 when the current full
-state is received; increments when a client's state updates
+    - This is complex though; needs to rollback if the server-side fails
 
 */
 
 // TODO: I hate the multiline ` ... ` strings
 
 /// {SERVER=
+let aliveMs = U.timeMs();
 let http = require('http');
 let path = require('path');
 let fs = require('fs');
@@ -248,7 +268,8 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       walker.add(Val({ name: 'ip' }));          // ip (in compact 8-digit hex format)
       walker.add(Val({ name: 'joinMs' }));      // time joined
       walker.add(Val({ name: 'activityMs' }));  // time of last activity
-      walker.add(Ref({ name: 'persona', target: [ this, 'personas', '$persona' ] }));
+      walker.add(Val({ name: 'personaMoniker' }));
+      // walker.add(Ref({ name: 'persona', target: [ this, 'personas', '$persona' ] }));
       
       let passages = walker.add(Arr({ name: 'passages' }));
       let passage = passages.setTemplate(Obj({ name: 'passage' }), passage => passage.getChild('name').getValue());
@@ -256,7 +277,28 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       passage.add(Val({ name: 'health' }));
       
       let personas = this.add(Arr({ name: 'personas' }));
-      let persona = personas.setTemplate(Obj({ name: 'persona' }));
+      let persona = personas.setTemplate(Obj({ name: 'persona' }), persona => persona.getChild('moniker').value);
+      persona.add(Val({ name: 'moniker' }));
+      
+      // HEEERE: HOW IT OUGHT TO BE SOON:
+      if (true) return;
+      
+      // Holds data which must be objective between all vallied huts
+      this.objective = this.add(Obj({ name: 'objective' }));
+      
+      // Keep track of known huts
+      let otlHutSet = this.add(Arr({ name: 'hutSet' }));
+      let otlHut = hutSet.setTemplate(Obj({ name: 'hut', recCls: Hut }), hut => hut.getChild('ip').getValue()); // TODO: write the Hut class (it needs to store PassageData)
+      otlHut.add(Val({ name: 'ip' }));          // In compact hex format
+      otlHut.add(Val({ name: 'type' }));        // "valley" | "steppe"? | "hill"
+      otlHut.add(Val({ name: 'joinMs' }));
+      otlHut.add(Val({ name: 'activityMs' }));
+      
+      // For each hut, keep track of all connecting passages
+      let otlPassages = otlHut.add(Arr({ name: 'passages' }));
+      let otlPassage = otlPassages.setTemplate(Obj({ name: 'passage' }), passage => passage.getChild('name').getValue());
+      passage.add(Val({ name: 'name' }));
+      passage.add(Val({ name: 'health' }));
       
     }
     
@@ -285,6 +327,15 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       this.assetVersion = assetVersion || U.charId(parseInt(Math.random() * 1000), 3);
       this.passages = {};
       this.walkerDataAccessFunc = walkerDataAccessFunc || (() => ACCESS.FULL);
+      
+      /// {SERVER=
+      this.updateFuncs = {};
+      this.nextFrameId = 0;
+      /// =SERVER} {CLIENT=
+      this.frameId = null;
+      this.frameNum = 0; // Number of the server state we currently match
+      this.pendingFrames = {};
+      /// =CLIENT}
       
     },
     getTmpActions: function() {
@@ -352,52 +403,14 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       
     },
     
-    getWalkerDataAccess: function (walker, rec) {
-      
-      // Simply ensures that `rec` is inside `this`, outside any Walker, and meets
-      // the hut-specific requirements of `this.walkerDataAccessFunc`.
-      // Returns walker's data access ability over `rec` (`rec` and its full subtree)
-      // Returns { 0: 'none', 1: 'read', 2: 'write' }
-      
-      let parentWalker = null;
-      let parentHinterlands = null;
-      let ptr = rec;
-      while (ptr) {
-        if (U.isInspiredBy(ptr, Walker)) return ACCESS.NONE;
-        if (ptr === this) parentHinterlands = ptr;
-        ptr = ptr.par;
-      }
-      
-      if (!parentHinterlands) return ACCESS.NONE;
-      
-      return this.walkerDataAccessFunc(walker, rec);
-      
-      /*
-      // Walkers can't necessarily edit their entire own subtree
-      // - There may be some fields they aren't allowed to edit
-      // - Are there fields they may not be allowed to read??
-      // Walkers can't necessarily be denied another walker's entire subtree
-      
-      // Check fine-grained permissions; e.g. "Is `rec` a user's password field??"
-      
-      // e.g. protect any server-only data:
-      if (A.any(rec.getAncestry(), par => par.outline === serverOnlyOutline)) return 'none';
-      
-      return 'full';
-      */
-      
-    },
-    
-    applyUpdate: function(rec, data) {
-      
-      // Precondition for `rec` to be within `this` hinterland's subtree
-      
-      let editor = Editor();
-      editor.shape({ rec, data });
-      editor.run();
-      
+    addUpdateFunc: function(name, func) {
+      if (O.has(this.updateFuncs, name)) throw new Error(`Tried to overwrite updateFunc "${name}"`);
+      this.updateFuncs[name] = func;
     },
     update: async function(rec, data) {
+      
+      // TODO: Update multiple Records at once? An array of { rec, data }
+      // entries instead of just rec, data params
       
       // Updates the state of the Hinterlands.
       // Precondition for `rec` to be within `this` hinterland's subtree
@@ -411,7 +424,9 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       // - Tries to perform the update
       // - If the update succeeds, tells all clients to update
       
-      this.applyUpdate(rec, data);
+      let editor = Editor();
+      editor.shape({ rec, data });
+      editor.run();
       
       O.each(this.getChild('walkers').children, walker => {
         
@@ -422,6 +437,8 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         this.journey({ walker, journey: JourneyJson({
           message: 'update',
           details: {
+            frameId: walker.frameId,
+            frameNum: walker.frameNum++,
             root: relAddress,
             data: data
           }
@@ -448,6 +465,44 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       
       /// =CLIENT}
       
+    },
+    updateFunc: function(name, ...params) {
+      
+      /// {SERVER=
+      
+      if (!O.has(this.updateFuncs, name)) throw new Error(`Couldn't find updateFunc "${name}"`);
+      this.updateFuncs[name](null, ...params);
+      
+      /// =SERVER} {CLIENT=
+      
+      this.journey({ walker: null, journey: JourneyJson({
+        message: 'updateFunc',
+        details: { name, params }
+      })});
+      
+      /// =CLIENT}
+      
+    },
+    
+    getChildSafe: function(addr) {
+      
+      if (!U.isType(addr, Array)) throw new Error(`Invalid "addr" param (expected Array, get ${U.typeOf(addr)})`);
+      
+      let rec = this;
+      for (var i = addr.length - 1; rec && i >= 0; i--) rec = O.has(rec.children, addr[i]) ? rec.children[addr[i]] : null;
+      return rec;
+      
+    },
+    catchUp: async function(rec, data) {
+      /// {SERVER=
+      
+      // do nothing
+      
+      /// =SERVER} {CLIENT=
+      
+      await this.journey({ journey: JourneyJson({ message: 'catchUp' }) });
+      
+      /// =CLIENT}
     },
     
     beginEncounter: async function(encounter) {
@@ -482,40 +537,115 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         
         return await this.passages[name].encounter(encounter.copy(message, details0));
         
-      } else if (encounter.message === 'update') {
-        
-        let details = encounter.details;
-        
-        if (!O.has(details, 'root')) throw new Error('Missing "root" param');
-        
-        let root = details.root;
-        if (!U.isType(root, Array)) throw new Error(`Invalid "root" param (required Array; got ${U.typeOf(root)})`);
-        
-        let data = details.data;
-        
-        let rec = this;
-        for (var i = root.length - 1; rec && i >= 0; i--) {
-          rec = O.has(rec.children, root[i]) ? rec.children[root[i]] : null;
-        }
-        
-        if (!rec) throw new Error(`Invalid "root" param: ${root.join('.')}`);
+      } else if (encounter.message === 'catchUp') {
         
         /// {SERVER=
         
-        // TODO: `rec` will certainly be in the Hinterland subtree, but
-        // it's still necessary for the implementation to validate that
-        // no user data is being affected. Maybe this is desirable though.
+        if (!encounter.walker) throw new Error('Can\'t call "catchUp" without `encounter.walker');
         
-        // When the server is told to update, it checks permissions and
-        // then calls `applyUpdate` only via `update`
-        let access  = this.walkerDataAccessFunc(encounter.walker, rec);
-        if (access < ACCESS.FULL) throw new Error(`Unauthorized; ${walker.describe()} can't modify ${rec.describe()}`);
-        return await this.update(rec, data);
+        let clientFullState = this.getJson(); // TODO: Need to hide any values the client isn't allowed to READ
+        
+        // Don't reveal any details about walkers
+        // TODO: It may make sense for "walkers" to exist outside the Hinterlands subtree
+        // OR for Hinterlands to have a "public" / "expose" subtree, and "walkers" could
+        // be outside that.
+        clientFullState.walkers = {
+          server: {
+            ip: 'serverIp',
+            joinMs: aliveMs,
+            activityMs: aliveMs,
+            persona: null
+          }
+        };
+        
+        // Reset the walker's server-side frame tracking
+        encounter.walker.frameId = this.nextFrameId++;
+        encounter.walker.frameNum = 0;
+        
+        // Send the client's full state along with a new frame id
+        this.journey({ walker: encounter.walker, journey: JourneyJson({
+          message: 'catchUp',
+          details: {
+            newFrameId: encounter.walker.frameId,
+            state: clientFullState
+          }
+        })});
+        
+        return;
         
         /// =SERVER} {CLIENT=
         
-        // When the client is told to update, it immediately does so
-        this.applyUpdate(rec, data);
+        let details = encounter.details;
+        let { state, newFrameId } = details;
+        
+        let editor = Editor();
+        editor.shape({ rec: this, data: state, assumeType: 'exact' });
+        
+        this.frameId = newFrameId;
+        this.frameNum = 0;
+        this.pendingFrames = {};
+        
+        return;
+        
+        /// =CLIENT}
+        
+      } else if (encounter.message === 'update') {
+        
+        let details = encounter.details;
+        if (!O.has(details, 'root')) throw new Error('Missing "root" param');
+        
+        let { root, data } = details;
+        if (!U.isType(root, Array)) throw new Error(`Invalid "root" param (expected Array; got ${U.typeOf(root)})`);
+        
+        /// {SERVER=
+        
+        // Safely get the addressed child
+        let rec = this.getChildSafe(root);
+        if (!rec) throw new Error(`Invalid "root" param: ${root.join('.')}`);
+        
+        // Ensure access conditions are met
+        let access  = this.walkerDataAccessFunc(encounter.walker, rec);
+        if (access < ACCESS.FULL) throw new Error(`Unauthorized; ${walker.describe()} can't modify ${rec.describe()}`);
+        
+        // Do the update
+        return await this.update({ rec, data });
+        
+        /// =SERVER} {CLIENT=
+        
+        let { frameId, frameNum } = details;
+        
+        if (frameId !== this.frameId) {
+          U.output(`Discarding an update to an invalid frameId (we have frameId ${this.frameId}; received ${frameId})`);
+          return;
+        }
+        
+        this.pendingFrames[frameNum] = { root, data };
+        if (!O.has(this.pendingFrames, this.frameNum)) U.output(`Can\'t process any frames; waiting for frameId ${this.frameNum}`);
+        while (O.has(this.pendingFrames, this.frameNum)) {
+          
+          try {
+            
+            U.output(`Advancing from frame ${this.frameNum} -> ${this.frameNum + 1}`);
+            let { root, data } = this.pendingFrames[this.frameNum];
+            let rec = this.getChildSafe(root);
+            if (!rec) throw new Error(`Bad address: ${root.join('.')}`);
+            
+            let editor = Editor();
+            editor.shape({ rec, data });
+            editor.run();
+            
+          } catch(err) {
+            
+            // TODO: The best way to recover may be to drop everything and "catchUp"
+            U.output(COMPILER.formatError(err));
+            throw new Error('How to recover? The server told us to do something invalid');
+            
+          }
+          
+          this.frameNum++;
+          
+        }
+        
         return;
         
         /// =CLIENT}
@@ -664,6 +794,17 @@ body { background-color: #e0e4e8; }
           buffer: await readFile('binary', __dirname, '..', '..', 'clearing', 'favicon.ico')
         })});
         
+      } else if (encounter.message === 'updateFunc') {
+        
+        let details = encounter.details;
+        let { name, params=[] } = details;
+        
+        if (!O.has(this.updateFuncs, name)) throw new Error(`Couldn't find updateFunc "${name}"`);
+        
+        U.output(this.updateFuncs[name]);
+        
+        return this.updateFuncs[name](encounter.walker, ...params);
+        
       }
       
       /// =SERVER} {CLIENT=
@@ -704,11 +845,17 @@ body { background-color: #e0e4e8; }
       insp.RecordObj.init.call(this, { outline });
       this.passageWalkerData = {};
       
+      /// {SERVER=
+      this.frameId = null;
+      this.frameNum = 0;
+      /// =SERVER}
+      
     },
     getPassageWalkerData: function(passage) {
       
       if (!O.has(this.passageWalkerData, passage.name))
         this.passageWalkerData[passage.name] = passage.genDefaultPassageWalkerData(this);
+      
       return this.passageWalkerData[passage.name];
       
     }
