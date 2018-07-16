@@ -198,7 +198,6 @@ O.include(U, {
         
       }
       
-      
       return variantData.twig;
       
     },

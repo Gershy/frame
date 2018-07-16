@@ -9,6 +9,10 @@
 // calculated arbitrarily, and not even known to the interfacer providing
 // the "delta" data.
 
+// TODO: currently too tricky to sync complex Editor batches!! The issue is
+// actual Record instances being a part of the data which needs to be sent
+// over the wire.
+
 U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   
   const { TreeNode, Wobbly } = U;
@@ -33,7 +37,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       if (!recCls) throw new Error('Missing "recCls" param');
       
       insp.TreeNode.init.call(this, { name });
-      this.utilities = {};
+      this.actions = {};
       this.recCls = recCls;
       
     },
@@ -41,21 +45,25 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       return { outline: this };
     },
     requireChildNameMatch: function() { return true; },
-    addUtility: function(name, utility) {
+    action: function(name, action) {
       
-      if (O.has(this.utilities, name)) throw new Error('Tried to overwrite utility "' + name + '"');
-      this.utilities[name] = utility;
+      if (O.has(this.actions, name)) throw new Error('Tried to overwrite action "' + name + '"');
+      this.actions[name] = action;
       
     }
     
   })});
   const Val = U.makeClass({ name: 'Val', inspiration: { Outline }, methods: (insp, Cls) => ({
     
-    init: function({ name, recCls=RecordStr, defaultValue=null }) {
+    init: function({ name, recCls=RecordStr, defaultValue=null, validate=null }) {
       
       insp.Outline.init.call(this, { name, recCls });
       this.defaultValue = defaultValue;
+      this.validate = validate;
       
+    },
+    setValidator: function(validator) {
+      this.validate = validator;
     }
     
   })});
@@ -119,6 +127,8 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     }
     
   })});
+  
+  /*
   const Ref = U.makeClass({ name: 'Ref', inspiration: { Val }, methods: (insp, Cls) => ({
     
     init: function({ name, recCls=RecordRef, target=null }) {
@@ -135,6 +145,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     }
     
   })});
+  */
   
   // Record
   const Record = U.makeClass({ name: 'Record', inspiration: { TreeNode, Wobbly }, methods: (insp, Cls) => ({
@@ -238,9 +249,9 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       
     },
     
-    useUtility: function(name, ...args) {
-      if (!O.has(this.outline.utilities, name)) throw new Error('Couldn\'t find utility "' + name + '"');
-      return this.outline.utilities[name].apply(this, args);
+    act: function(name, ...args) {
+      if (!O.has(this.outline.actions, name)) throw new Error('Couldn\'t find action "' + name + '"');
+      return this.outline.actions[name].apply(this, args);
     },
     
     dereference: function() { throw new Error('not implemented'); },
@@ -388,7 +399,11 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     
     sanitizeValue: function(value) { return value === null ? this.outline.defaultValue : value; },
     getValue: function() { return this.value; },
-    setValue: function(value) { this.value = this.sanitizeValue(value); }
+    setValue: function(value) {
+      let val = this.sanitizeValue(value);
+      if (this.outline.validate) this.outline.validate(val);
+      this.value = val;
+    }
     
   })});
   const RecordStr = U.makeClass({ name: 'RecordStr', inspiration: { RecordVal }, methods: (insp, Cls) => ({
@@ -410,6 +425,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     }
   })});
   
+  /*
   // RecordRef
   const RecordRef = U.makeClass({ name: 'RecordRef', inspiration: { RecordVal }, methods: (insp, Cls) => ({
     
@@ -459,6 +475,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     getJson: function() { return this.value ? this.getRefAddress().join('.') : null; }
     
   })});
+  */
   
   // Editor
   const Editor = U.makeClass({ name: 'Editor', methods: (insp, Cls) => ({
@@ -496,8 +513,6 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       // Otherwise, we either assume the type or learn it from `data.type`.
       let type = U.isType(data, Object) ? (assumeType || data.type) : 'exact';
       if (type !== 'exact' && type !== 'delta') throw new Error(`Invalid type: ${type}`);
-      
-      // U.output('REC ' + rec.describe() + ' resulted in: ' + rec.getChildrenDescriptor() + ', ' + type);
       
       let shapeFunc = ({
         constant: {
@@ -662,8 +677,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       
       shapeFunc();
       
-      // Check if we can do any immediate initialization using a constant parent
-      
+      // Try to do immediate initialization with a constant parent
       if (par && par.getChildrenDescriptor() === 'constant') {
         
         // Constant parents allow name and parent-child relationship to be immediately initialized
@@ -680,16 +694,11 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         if (name) this.addOp({ err, type: 'setNameSimple', rec, name });
         else      this.addOp({ err, type: 'setNameCalculated', rec });
         
-        if (par) {
-          
-          this.addOp({ err, type: 'addChild', par, child: rec });
-          // this.wobbles.push({ rec: par, data: { add: [ rec ], rem: [] } });
-          
-        }
+        if (par)  this.addOp({ err, type: 'addChild', par, child: rec });
         
       }
       
-      // Only set `rec` up if it's new!
+      // Only setUp `rec` if it's new!
       if (creatingNew) this.addOp({ err, type: 'setUp', rec });
       
       return rec;
@@ -824,8 +833,8 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   })});
   
   O.include(record, {
-    Outline, Val, Obj, Arr, Ref,
-    Record, RecordObj, RecordArr, RecordVal, RecordStr, RecordInt, RecordRef,
+    Outline, Val, Obj, Arr, // Ref,
+    Record, RecordObj, RecordArr, RecordVal, RecordStr, RecordInt, // RecordRef,
     Editor
   });
   

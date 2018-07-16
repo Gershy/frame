@@ -62,6 +62,18 @@ global.U = {
   },
   
   // Util
+  compactIp: ipVerbose => {
+    
+    let pcs = A.map(S.split(ipVerbose, '.'), pc => parseInt(pc, 10));
+    
+    // TODO: What about ipv6?
+    if (pcs.length !== 4 || A.any(pcs, pc => isNaN(pc) || pc < 0 || pc > 255)) throw new Error('Unexpected ip format: ' + ipVerbose);
+    return A.join(A.map(pcs, pc => {
+      let hex = parseInt(pc, 10).toString(16);
+      return hex.length === 1 ? '0' + hex : hex;
+    }), '');
+    
+  },
   id: (n, len=8) => {
     let hex = n.toString(16);
     return S.startPad(hex, '0', len);
@@ -328,6 +340,11 @@ global.O = {
     
   },
   each: (obj, it) => { for (let k in obj) it(obj[k], k); },
+  find: (obj, it) => {
+    for (let k in obj) if (it(obj[k], k))
+      return obj[k];
+    return null;
+  },
   toArr: (obj, it=null) => {
     
     let ret = [];
@@ -385,6 +402,11 @@ global.A = {
     
   },
   each: (arr, it) => { for (let i = 0, len = arr.length; i < len; i++) it(arr[i], i); },
+  find: (arr, it) => {
+    for (let i = 0, len = arr.length; i < len; i++)
+      if (it(arr[i], i)) return arr[i];
+    return null;
+  },
   toObj: (arr, itKey=null, itVal=null) => {
     let ret = {};
     for (let i = 0, len = arr.length; i < len; i++) {
@@ -421,7 +443,8 @@ global.S = {
   endPad: (str, pad, len) => { while (str.length < len) str = str + pad; return str; },
   indent: (str, pad) => { return A.map(str.split('\n'), pc => pad + pc).join('\n'); },
   indexOf: (str, substr) => str.indexOf(substr),
-  split: (str, delim) => str.split(delim)
+  split: (str, delim) => str.split(delim),
+  trim: (str) => str.trim()
   
 };
 

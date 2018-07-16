@@ -52,8 +52,6 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
       
       let parRealization = par ? par.realization : document.body;
       
-      U.output(!!par, parRealization);
-      
       parRealization.removeChild(child.realization);
       
     },
@@ -182,7 +180,7 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
       
     getTmpActions: function() {
       
-      // Children go dn before parent goes down; children go up after parent goes up
+      // Children go dn before parent goes down
       return A.include(
         [{
           up: function() {},
@@ -190,7 +188,7 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
         }],
         insp.Real.getTmpActions.call(this),
         [{
-          up: function() { this.rec.drop(this.onRecWobble); },
+          up: function() { this.rec.hold(this.onRecWobble); },
           dn: function() { this.rec.drop(this.onRecWobble); }
         }]
       );

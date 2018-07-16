@@ -7,11 +7,13 @@ U.makeTwig({ name: 'clearing', twigs: [], make: clearing => {
       if (!O.has(args, 'hut')) throw new Error('Missing "hut" argument');
       if (!O.has(args, 'debugMode')) throw new Error('Missing "debugMode" argument');
       
+      
       this.args = args;
       this.debugMode = this.args.debugMode;
       this.hut = this.args.hut;
       this.host = O.has(args, 'host') ? args.host : host;
       this.port = O.has(args, 'port') ? args.port : port;
+      this.ip = U.compactIp(this.host);
       
     }
     
@@ -54,7 +56,7 @@ U.makeTwig({ name: 'clearing', twigs: [], make: clearing => {
       
       insp.DeploymentBinding.init.call(this, {
         ...params,
-        host: window.location.hostname,
+        host: window.location.hostname, // TODO: Really, this should be the browser's local address
         port: parseInt(window.location.port || 80) // TODO: incompatible with https
       });
       
