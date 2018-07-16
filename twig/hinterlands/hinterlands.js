@@ -1,105 +1,35 @@
 /*
 
 TODO:
-[]  FUCK WALKERS. Work with hill / valley huts instead. Simple flat list of
+[X] FUCK WALKERS. Work with hill / valley huts instead. Simple flat list of
     connections with a "type" option for each
-[]  This "hutSet" should be OUTSIDE Hinterland's public subtree
-[]  Now some operations may depend less on CLIENT / SERVER, and more on
+[X] This "hutSet" should be OUTSIDE Hinterland's public subtree
+[X] Now some operations may depend less on CLIENT / SERVER, and more on
     whether the hut which initiated the operation is upward or downward.
-[]  Account / login behaviour, in its own GODDAM file. Steppe huts need to
-    be able to be aware of each other, syncing from their upwards hut.
-[]  Chess2 matchmaking system. Have a lobby holding max 1 person; whenever
+[X] Get updateFuncs working
+[X] Account / login behaviour, in its own GODDAM file. Steppe huts need to
+    be able to be aware of each other, syncing from a common hill hut.
+[ ] Chess2 matchmaking system. Have a lobby holding max 1 person; whenever
     an opponent is present pair em up and make em fight
-[]  Get the rest of Chess2 done!!
+[ ] Get the rest of Chess2 done!!
 
+MORE DECLARATIVE UPDATE ACTIONS
+think about data updates and func updates similarly! They both use frameId and
+frameNum, they should both have access to "srcHut".
 
-NETWORK MODEL
-A hut is an instance of this app running on a physical machine. Therefore
-it is possible to talk about "this hut".
-Uphill huts have full control over this hut.
-Downhill huts are fully controlled by this hut.
+let srcHut = ...
+let updateType = ...    // 'data'         'func'
+let details = { ... }   // { 
 
-- It doesn't make sense to "login" to a downhill hut. Login can only happen upwards
-- Huts don't need to know / communicate about other uphill / downhill huts
-- Huts still MAY decide to reflect data concerning other huts publicly
-- E.g. "logged in users" is synced by an uphill hut with a custom "userSet" Record
-  which updates to reflect all downhill huts, and tells all downhill huts about
-  each other.
-- Network models can be more complex than just a bunch of huts downhill to a
-  particular single hut (although this is the typical browser->server model)
-- This could make CLIENT/SERVER nondescriptive, since huts may be able to be both.
-  CLIENT/SERVER more indicate whether the hut installation is CAPABLE of being
-  vallied/hilly respectively
+{
+  { name: 'update', details: { root, data } } => {
+    
+    let editor = Editor();
+    
   
-"WALKER"
-There are 3 different kinds of walkers, between server/client/hut.
-There are "srcWalkers", who have full control over our own state
-There are "trgWalkers", over whose state we have full control
-Both of these lists of walkers are private; essentially, we don't
-want to allow any trgWalkers to know about either src OR trgWalkers
-The only kind of "public" walkers whose presence should be known
-among all walkers are PERSONAS.
+  }
 
-ACCESS CONSIDERATIONS:
-
-==== Permissions
-- Some data is client-only (e.g. "alreadyPlayedClickSound")
-  - There shouldn't be many of these fields; they are settings which are forgotten on refresh
-- Some data is server-only
-- Some data isn't available to any client
-- Some data is only available to a subset of clients
-- Any data may be unavailable, read-only, or available to clients (are there any write-only use-cases?)
-
-==== Consider
-Server-side-only data could be outside the hinterlands' subtree. Same for Client-side-only data.
-The disadvantage is that references to remote Records will have to use paths relative to the
-Hinterlands.
-
-let getWalkerDataAccess = (walker, rec) => {
-
-  // Returns walker's data access ability over `rec` (`rec` and its full subtree)
-  // Returns 'none' | 'read' | 'full'
-  
-  // Check fine-grained permissions; e.g. "Is `rec` a user's password field??"
-  
-  // e.g. protect any server-only data:
-  if (A.any(rec.getAncestry(), par => par.outline === serverOnlyOutline)) return 'none';
-  
-  return 'full';
-  
-};
-let canWalkerRead = (walker, rec) => A.contains([ 'read', 'full' ], getWalkerDataAccess(walker, rec));
-let canWalkerWrite = (walker, rec) => getWalkerDataAccess(walker, rec) === 'full';
-
-// When a value changes:
-
-let modifyRec = (walker, aspect, data) => {
-  
-  let hinterlands = getInstanceOfHinterlands(); // NOTE: `aspect` is the path to the desired Record relative to `hinterlands`
-  
-  let rec = hinterlands.getChild(aspect); // Need to ensure that `getChild` can only DESCEND into the subtree (e.g. disallow "~par")
-  if (!rec) throw new Error('Invalid aspect');
-  
-  /// {SERVER=
-  if (!canWalkerWrite(walker, rec)) throw new Error('No edit permissions');
-  /// =SERVER}
-  
-  let editor = Editor();
-  editor.shape({ rec, data });
-  editor.run();
-  
-  /// {SERVER=
-  let allWalkers = getObjectContainingAllWalkers();
-  let informWalkers = O.map(allWalkers, walker => canWalkerRead(walker, rec) ? walker : U.SKIP);
-  O.each(informWalkers, walker => doRemoteModifyRec(walker, aspect, data));
-  /// =SERVER}
-  
-};
-
-Changing client-only data should process entirely on the client-side
-Changing any other type of data should probably happen in lockstep with the server
-  - Although it would be nice if the client could immediately witness the change client-side!
-    - This is complex though; needs to rollback if the server-side fails
+}
 
 */
 
@@ -134,9 +64,9 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
     
     init: function({ passage, passageData={}, ip, message, details={} }) {
       
-      // An Encounter happens when we meet a Walker, on a Passage, who has
-      // a brief Message for us, and optionally further Details for that
-      // message.
+      // An Encounter happens between us and another Hut, via a Passage.
+      // There will be a brief "message" for us, and optionally further
+      // "details" for that message.
       
       if (!message) throw new Error('Missing "message" param');
       
@@ -146,7 +76,7 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       this.ip = ip;
       this.message = message;
       this.details = details;
-      this.walker = null;
+      this.hut = null;
       
     },
     copy: function(message=null, details=null) {
@@ -159,7 +89,7 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         details: details || this.details
       });
       
-      enc.walker = this.walker;
+      enc.hut = this.hut;
       
       return enc;
       
@@ -261,45 +191,29 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       
       insp.Obj.init.call(this, { name, recCls });
       this.deployment = deployment;
-      
-      // Include some preset outlining
-      let walkers = this.add(Arr({ name: 'walkers' }));
-      let walker = walkers.setTemplate(Obj({ name: 'walker', recCls: Walker }), walker => walker.getChild('ip').getValue());
-      walker.add(Val({ name: 'ip' }));          // ip (in compact 8-digit hex format)
-      walker.add(Val({ name: 'joinMs' }));      // time joined
-      walker.add(Val({ name: 'activityMs' }));  // time of last activity
-      walker.add(Val({ name: 'personaMoniker' }));
-      // walker.add(Ref({ name: 'persona', target: [ this, 'personas', '$persona' ] }));
-      
-      let passages = walker.add(Arr({ name: 'passages' }));
-      let passage = passages.setTemplate(Obj({ name: 'passage' }), passage => passage.getChild('name').getValue());
-      passage.add(Val({ name: 'name' }));
-      passage.add(Val({ name: 'health' }));
-      
-      let personas = this.add(Arr({ name: 'personas' }));
-      let persona = personas.setTemplate(Obj({ name: 'persona' }), persona => persona.getChild('moniker').value);
-      persona.add(Val({ name: 'moniker' }));
-      
-      // HEEERE: HOW IT OUGHT TO BE SOON:
-      if (true) return;
+      this.updateFuncs = {};
       
       // Holds data which must be objective between all vallied huts
       this.objective = this.add(Obj({ name: 'objective' }));
       
       // Keep track of known huts
       let otlHutSet = this.add(Arr({ name: 'hutSet' }));
-      let otlHut = hutSet.setTemplate(Obj({ name: 'hut', recCls: Hut }), hut => hut.getChild('ip').getValue()); // TODO: write the Hut class (it needs to store PassageData)
+      let otlHut = otlHutSet.setTemplate(Obj({ name: 'hut', recCls: Hut }), hut => hut.getChild('ip').getValue());
       otlHut.add(Val({ name: 'ip' }));          // In compact hex format
-      otlHut.add(Val({ name: 'type' }));        // "valley" | "steppe"? | "hill"
+      otlHut.add(Val({ name: 'acclivity' }));   // valley || hill
       otlHut.add(Val({ name: 'joinMs' }));
       otlHut.add(Val({ name: 'activityMs' }));
       
       // For each hut, keep track of all connecting passages
       let otlPassages = otlHut.add(Arr({ name: 'passages' }));
       let otlPassage = otlPassages.setTemplate(Obj({ name: 'passage' }), passage => passage.getChild('name').getValue());
-      passage.add(Val({ name: 'name' }));
-      passage.add(Val({ name: 'health' }));
+      otlPassage.add(Val({ name: 'name' }));
+      otlPassage.add(Val({ name: 'health' }));
       
+    },
+    addUpdateFunc: function(name, func) {
+      if (O.has(this.updateFuncs, name)) throw new Error(`Tried to overwrite updateFunc "${name}"`);
+      this.updateFuncs[name] = func;
     }
     
   })});
@@ -321,26 +235,48 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
     
     // An area travelled via many Passages
     
-    init: function({ outline, assetVersion=null, walkerDataAccessFunc }) {
+    init: function({ outline, assetVersion=null }) {
       
       insp.RecordObj.init.call(this, { outline });
       this.assetVersion = assetVersion || U.charId(parseInt(Math.random() * 1000), 3);
       this.passages = {};
-      this.walkerDataAccessFunc = walkerDataAccessFunc || (() => ACCESS.FULL);
+      this.srcHillHut = null; // Tells if there is a hut above us
       
       /// {SERVER=
-      this.updateFuncs = {};
-      this.nextFrameId = 0;
+      
+      this.nextFrameId = 0; // The frameId to give the next client requiring a frameId
+      this.hutDataAccessFunc = () => ACCESS.FULL;
+      
       /// =SERVER} {CLIENT=
+      
+      this.onHutSetWobble = (delta) => {
+        A.each(delta.rem, hut => {
+          if (hut.getChild('acclivity').value !== 'hill') return;
+          if (hut === this.srcHillHut) this.srcHillHut = null;
+          O.each(this.passages, passage => passage.shutForHillHut(hut));
+        });
+        A.each(delta.add, hut => {
+          if (hut.getChild('acclivity').value !== 'hill') return;
+          if (!this.srcHillHut) this.srcHillHut = hut;
+          O.each(this.passages, passage => passage.openForHillHut(hut));
+        });
+      };
       this.frameId = null;
       this.frameNum = 0; // Number of the server state we currently match
       this.pendingFrames = {};
+      
       /// =CLIENT}
       
     },
     getTmpActions: function() {
       
       return insp.RecordObj.getTmpActions.call(this).concat([
+        /// {CLIENT=
+        {
+          up: function() { this.getChild('hutSet').hold(this.onHutSetWobble); },
+          dn: function() { this.getChild('hutSet').drop(this.onHutSetWobble); }
+        },
+        /// =CLIENT}
         {
           up: function() { U.output('Ain\'t it breezy out here in the Hinterlands?'); },
           dn: function() { U.output('Now we\'re somewhere the roads don\'t go.'); }
@@ -351,17 +287,19 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
     normalizeEncounter: function(encounter) {
       
       /*
-      Between the waker and the passage the categories of data are:
+      Between two huts the categories of data are:
       
-      1) Walker data: Arbitrary data on the walker
-      2) Passage transit data: Extra data generated by the Passage to manage the network
-      3) Passage-walker data: Persistent data for use by the Passage
+      1)  Hut data: Arbitrary data on the remote hut
+      2)  Passage transit data: Extra data generated by the Passage to manage the
+          current request
+      3)  Passage-hut data: Persistent data for use by the Passage regarding our
+          connection with this particular hut
       
       Implementation:
       
-      1) Stored on the Record tree under a Walker
+      1) Stored on the Record tree under the hutSet
       2) Stored at `anEncounterInstance.passageData`
-      3) Stored at `aWalkerInstance.passageWalkerData[aPassageInstance.name]`
+      3) Stored at `aHutInstance.passageHutData[aPassageInstance.name]`
       */
       
       // Ensure that `this` is the Hinterlands for `encounter`
@@ -370,24 +308,27 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       let editor = Editor();
       let timeMs = U.timeMs();
       let passage = encounter.passage; // `encounter.passage` is initialized earlier (by the Passage)
-      let walkers = this.getChild('walkers');
+      let hutSet = this.getChild('hutSet');
       
-      // Get/create the Walker
-      let walker = walkers.getChild(encounter.ip) || editor.shape({
-        par: walkers,
+      // Get/create the hut (it's reaching out to us, so it must be in the valley)
+      let hut = hutSet.getChild(encounter.ip) || editor.shape({
+        par: hutSet,
         data: { type: 'exact', children: {
           ip: encounter.ip,
+          acclivity: 'valley',
           joinMs: timeMs,
           persona: null
         }}
       });
       
       // Update the time of last activity
-      editor.shape({ rec: walker.getChild('activityMs'), data: timeMs });
+      editor.shape({ rec: hut.getChild('activityMs'), data: timeMs });
       
       // Get/create the Passage
-      let walkerPassage = walker.getChild([ 'passages', passage.name ]) || editor.shape({
-        rec: walker.getChild('passages'),
+      // TODO: Update passage health??
+      let passages = hut.getChild('passages');
+      let hutPassage = passages.getChild(passage.name) || editor.shape({
+        rec: passages,
         data: { type: 'delta', add: {
           0: { type: 'exact', children: {
             name: passage.name,
@@ -398,113 +339,19 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       
       editor.run();
       
-      // Attach the walker to the encounter
-      encounter.walker = walker;
+      // Attach the hut to the encounter
+      encounter.hut = hut;
       
     },
     
-    addUpdateFunc: function(name, func) {
-      if (O.has(this.updateFuncs, name)) throw new Error(`Tried to overwrite updateFunc "${name}"`);
-      this.updateFuncs[name] = func;
+    /// {CLIENT=
+    updateFrameId: function(newId) {
+      U.output('BROWSER FRAME ID:', newId);
+      this.frameId = newId;
+      this.frameNum = 0;
+      this.pendingFrames = {};
     },
-    update: async function(rec, data) {
-      
-      // TODO: Update multiple Records at once? An array of { rec, data }
-      // entries instead of just rec, data params
-      
-      // Updates the state of the Hinterlands.
-      // Precondition for `rec` to be within `this` hinterland's subtree
-      
-      // `relAddress` will be the list of names to walk from `this` to `rec`
-      let relAddress = rec.getAddress().slice(this.getAncestryDepth());
-      
-      /// {SERVER=
-      
-      // When `Hinterlands.prototype.update` is called server-side it:
-      // - Tries to perform the update
-      // - If the update succeeds, tells all clients to update
-      
-      let editor = Editor();
-      editor.shape({ rec, data });
-      editor.run();
-      
-      O.each(this.getChild('walkers').children, walker => {
-        
-        // TODO: Broadcast "update" to `walker`!
-        // Note that a serial "update-op" integer will need to be included
-        if (this.walkerDataAccessFunc(walker, rec) === ACCESS.NONE) return;
-        
-        this.journey({ walker, journey: JourneyJson({
-          message: 'update',
-          details: {
-            frameId: walker.frameId,
-            frameNum: walker.frameNum++,
-            root: relAddress,
-            data: data
-          }
-        })});
-        
-      });
-      
-      /// =SERVER} {CLIENT=
-      
-      // When `Hinterlands.prototype.update` is called client-side,
-      // regarding server-side data, it:
-      // - Tells the server to try updating
-      // - Will receive a directive to update once the server has succeeded
-      
-      // TODO: Would be nice if there was an available "serverWalker" to be
-      // provided as the "walker" here
-      this.journey({ walker: null, journey: JourneyJson({
-        message: 'update',
-        details: {
-          root: relAddress,
-          data: data
-        }
-      })});
-      
-      /// =CLIENT}
-      
-    },
-    updateFunc: function(name, ...params) {
-      
-      /// {SERVER=
-      
-      if (!O.has(this.updateFuncs, name)) throw new Error(`Couldn't find updateFunc "${name}"`);
-      this.updateFuncs[name](null, ...params);
-      
-      /// =SERVER} {CLIENT=
-      
-      this.journey({ walker: null, journey: JourneyJson({
-        message: 'updateFunc',
-        details: { name, params }
-      })});
-      
-      /// =CLIENT}
-      
-    },
-    
-    getChildSafe: function(addr) {
-      
-      if (!U.isType(addr, Array)) throw new Error(`Invalid "addr" param (expected Array, get ${U.typeOf(addr)})`);
-      
-      let rec = this;
-      for (var i = addr.length - 1; rec && i >= 0; i--) rec = O.has(rec.children, addr[i]) ? rec.children[addr[i]] : null;
-      return rec;
-      
-    },
-    catchUp: async function(rec, data) {
-      /// {SERVER=
-      
-      // do nothing
-      
-      /// =SERVER} {CLIENT=
-      
-      await this.journey({ journey: JourneyJson({ message: 'catchUp' }) });
-      
-      /// =CLIENT}
-    },
-    
+    /// =CLIENT}
     beginEncounter: async function(encounter) {
       
       this.normalizeEncounter(encounter);
@@ -520,7 +367,127 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
     },
     encounter: async function(encounter) {
       
-      U.output('Encounter: ', encounter.walker.getChild('ip').value, encounter.message, encounter.details);
+      let hut = encounter.hut;
+      let hutAcclivity = hut.getChild('acclivity').value;
+      let hutIp = hut.getChild('ip').value;
+      U.output(`${hutIp} ${(hutAcclivity === 'hill') ? '<<' : '>>'} ${encounter.message}`, encounter.details);
+      
+      /// {SERVER=
+      if (hutAcclivity === 'valley') return await this.encounterValleyHut(encounter);
+      /// =SERVER} {CLIENT=
+      if (hutAcclivity === 'hill') return await this.encounterHillHut(encounter);
+      /// =CLIENT}
+      
+      throw new Error(`Unable to encounter ${hutAcclivity} hut`);
+      
+    },
+    applyUpdateAndBroadcastDownwards: function(rec, data) {
+      
+      let relAddress = rec.getAddress().slice(this.getAncestryDepth() + 1); // `+1` accounts for dereferencing "objective"
+      
+      let editor = Editor();
+      editor.shape({ rec, data });
+      editor.run();
+      
+      /// {SERVER=
+      O.each(this.getChild('hutSet').children, hut => {
+        
+        // Don't broadcast upwards
+        if (hut.getChild('acclivity').getValue() === 'hill') return;
+        
+        // Don't broadcast to huts without read permission
+        if (this.hutDataAccessFunc(hut, rec) < ACCESS.READ) return;
+        
+        // Deliver the update command downwards
+        this.journey({ hut, journey: JourneyJson({
+          message: 'update',
+          details: {
+            frameId: hut.frameId,
+            frameNum: hut.frameNum++,
+            root: relAddress,
+            data
+          }
+        })});
+        
+      });
+      /// =SERVER}
+      
+    },
+    applyUpdateFuncAndBroadcastDownwards: function(name, srcHut, params={}) {
+      
+      if (!O.has(this.outline.updateFuncs, name)) throw new Error(`Couldn't find updateFunc "${name}"`);
+      this.outline.updateFuncs[name](this, srcHut, params);
+      
+      /// {SERVER=
+      O.each(this.getChild('hutSet').children, hut => {
+        
+        // Don't broadcast upwards
+        if (hut.getChild('acclivity').getValue() === 'hill') return;
+        
+        this.journey({ hut, journey: JourneyJson({
+          message: 'updateFunc',
+          details: {
+            frameId: hut.frameId,
+            frameNum: hut.frameNum++,
+            name,
+            params
+          }
+        })});
+        
+      });
+      /// =SERVER}
+      
+    },
+    update: function(rec, data) {
+      
+      // If we have a `srcHillHut`, update upwards towards it!
+      let isUpwardsUpdate = !!this.srcHillHut;
+      
+      /// {SERVER=
+      if (!isUpwardsUpdate) return this.applyUpdateAndBroadcastDownwards(rec, data);
+      /// =SERVER} {CLIENT=
+      if (isUpwardsUpdate) {
+        
+        let relAddress = rec.getAddress().slice(this.getAncestryDepth() + 1); // `+1` accounts for dereferencing "objective"
+        
+        return this.journey({ hut: this.srcHillHut, journey: JourneyJson({
+          message: 'pleaseUpdate',
+          details: {
+            root: relAddress,
+            data: data
+          }
+        })});
+        
+      }
+      /// =CLIENT}
+      
+      throw new Error(`Unable to update ${isUpwardsUpdate ? 'upwards' : 'downwards'}`);
+      
+    },
+    updateFunc: function(name, params={}) {
+      
+      // If we have a `srcHillHut`, update upwards towards it!
+      let isUpwardsUpdate = !!this.srcHillHut;
+      
+      /// {SERVER=
+      if (!isUpwardsUpdate) return this.applyUpdateFuncAndBroadcastDownwards(name, null, params);
+      /// =SERVER} {CLIENT=
+      if (isUpwardsUpdate) {
+        
+        return this.journey({ hut: this.srcHillHut, journey: JourneyJson({
+          message: 'pleaseUpdateFunc',
+          details: { name, params }
+        })});
+        
+      }
+      /// =CLIENT}
+      
+      throw new Error(`Unable to updateFunc ${isUpwardsUpdate ? 'upwards' : 'downwards'}`);
+      
+    },
+    
+    /// {SERVER=
+    encounterValleyHut: async function(encounter) {
       
       if (encounter.message === 'passageMessage') {
         
@@ -537,124 +504,27 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         
         return await this.passages[name].encounter(encounter.copy(message, details0));
         
-      } else if (encounter.message === 'catchUp') {
+      } else if (encounter.message === 'pleaseCatchUp') {
         
-        /// {SERVER=
+        // TODO: Sanitize this somewhat?? Maybe hutDataAccessFunc protects
+        // some fields... (this will be tricky)
+        let objectiveState = this.getChild('objective').getJson();
         
-        if (!encounter.walker) throw new Error('Can\'t call "catchUp" without `encounter.walker');
-        
-        let clientFullState = this.getJson(); // TODO: Need to hide any values the client isn't allowed to READ
-        
-        // Don't reveal any details about walkers
-        // TODO: It may make sense for "walkers" to exist outside the Hinterlands subtree
-        // OR for Hinterlands to have a "public" / "expose" subtree, and "walkers" could
-        // be outside that.
-        clientFullState.walkers = {
-          server: {
-            ip: 'serverIp',
-            joinMs: aliveMs,
-            activityMs: aliveMs,
-            persona: null
-          }
-        };
-        
-        // Reset the walker's server-side frame tracking
-        encounter.walker.frameId = this.nextFrameId++;
-        encounter.walker.frameNum = 0;
+        // Reset the hut's server-side frame tracking
+        encounter.hut.updateFrameId(this.nextFrameId++);
         
         // Send the client's full state along with a new frame id
-        this.journey({ walker: encounter.walker, journey: JourneyJson({
+        this.journey({ hut: encounter.hut, journey: JourneyJson({
           message: 'catchUp',
           details: {
-            newFrameId: encounter.walker.frameId,
-            state: clientFullState
+            newFrameId: encounter.hut.frameId,
+            state: objectiveState
           }
         })});
         
         return;
         
-        /// =SERVER} {CLIENT=
-        
-        let details = encounter.details;
-        let { state, newFrameId } = details;
-        
-        let editor = Editor();
-        editor.shape({ rec: this, data: state, assumeType: 'exact' });
-        
-        this.frameId = newFrameId;
-        this.frameNum = 0;
-        this.pendingFrames = {};
-        
-        return;
-        
-        /// =CLIENT}
-        
-      } else if (encounter.message === 'update') {
-        
-        let details = encounter.details;
-        if (!O.has(details, 'root')) throw new Error('Missing "root" param');
-        
-        let { root, data } = details;
-        if (!U.isType(root, Array)) throw new Error(`Invalid "root" param (expected Array; got ${U.typeOf(root)})`);
-        
-        /// {SERVER=
-        
-        // Safely get the addressed child
-        let rec = this.getChildSafe(root);
-        if (!rec) throw new Error(`Invalid "root" param: ${root.join('.')}`);
-        
-        // Ensure access conditions are met
-        let access  = this.walkerDataAccessFunc(encounter.walker, rec);
-        if (access < ACCESS.FULL) throw new Error(`Unauthorized; ${walker.describe()} can't modify ${rec.describe()}`);
-        
-        // Do the update
-        return await this.update({ rec, data });
-        
-        /// =SERVER} {CLIENT=
-        
-        let { frameId, frameNum } = details;
-        
-        if (frameId !== this.frameId) {
-          U.output(`Discarding an update to an invalid frameId (we have frameId ${this.frameId}; received ${frameId})`);
-          return;
-        }
-        
-        this.pendingFrames[frameNum] = { root, data };
-        if (!O.has(this.pendingFrames, this.frameNum)) U.output(`Can\'t process any frames; waiting for frameId ${this.frameNum}`);
-        while (O.has(this.pendingFrames, this.frameNum)) {
-          
-          try {
-            
-            U.output(`Advancing from frame ${this.frameNum} -> ${this.frameNum + 1}`);
-            let { root, data } = this.pendingFrames[this.frameNum];
-            let rec = this.getChildSafe(root);
-            if (!rec) throw new Error(`Bad address: ${root.join('.')}`);
-            
-            let editor = Editor();
-            editor.shape({ rec, data });
-            editor.run();
-            
-          } catch(err) {
-            
-            // TODO: The best way to recover may be to drop everything and "catchUp"
-            U.output(COMPILER.formatError(err));
-            throw new Error('How to recover? The server told us to do something invalid');
-            
-          }
-          
-          this.frameNum++;
-          
-        }
-        
-        return;
-        
-        /// =CLIENT}
-        
-      }
-      
-      /// {SERVER=
-      
-      if (encounter.message === 'greetings') {
+      } else if (encounter.message === 'greetings') {
         
         let hutName = this.outline.deployment.hut;
         
@@ -686,18 +556,21 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
           
         ]);
         
-        let initContents = `
+        // Setup any node objects required by setup, but absent in browser
+        let initContents = S.trim(`
 global.process = {
   argv: [
     'browser: ' + (navigator.userAgent || 'unknownUserAgent'),
     'hut.js',
     '--hut ${hutName}',
-    '--host ' + window.location.hostname,
+    //'--host ' + window.location.hostname,
+    '--host 127.0.0.1',
     '--port ' + (window.location.port || '80') // TODO: Account for https
   ]
-};`;
+};`);
         
-        let environmentContents = `
+        // Setup the hut environment
+        let environmentContents = S.trim(`
 let { Compiler } = U;
 let compiler = global.COMPILER = Compiler({ offsetData: global.COMPILER_DATA });
 window.addEventListener('error', event => {
@@ -715,7 +588,7 @@ window.addEventListener('unhandledrejection', event => {
   U.output(compiler.formatError(event.reason));
   event.preventDefault();
 });
-//throw new Error('hey');`;
+//throw new Error('hey');`);
         
         fileDataList = [
           
@@ -728,11 +601,11 @@ window.addEventListener('unhandledrejection', event => {
           
         ];
         
-        let lineOffset = 14; // A simple manual count of how many lines occur before the first js
+        let lineOffset = 17; // A simple manual count of how many lines occur before the first js
         let compilerData = {};
         let compoundJs = [];
         
-        // Reversing allows dependencies to always come before dependees
+        // Reversing allows dependencies to always preceed dependees
         A.each(fileDataList, fileData => {
           
           let content = fileData.content;
@@ -750,7 +623,9 @@ window.addEventListener('unhandledrejection', event => {
         
         compoundJs = A.join(compoundJs, '\n');
         
-        let html = (`
+        if (encounter.hut.frameId === null) encounter.hut.updateFrameId(this.nextFrameId++);
+        
+        let html = S.trim(`
 <!DOCTYPE html>
 <html>
 <head>
@@ -763,8 +638,37 @@ window.addEventListener('unhandledrejection', event => {
 <script type="text/javascript">
 'use strict';
 window.global = window;
+global.INITIAL_FRAME_ID = ${encounter.hut.frameId};
+global.INITIAL_HUT_SET_DATA = ${JSON.stringify({
+  [ this.outline.deployment.ip ]: {
+    ip: this.outline.deployment.ip,
+    acclivity: 'hill',
+    joinMs: U.timeMs(),
+    activeMs: U.timeMs()
+  }
+})};
+global.INITIAL_CATCH_UP_DATA = ${JSON.stringify(this.getChild('objective').getJson())};
 global.COMPILER_DATA = ${JSON.stringify(compilerData)};
 ${compoundJs}
+/*
+U.makeTwig({ name: 'run', twigs: [ 'clearing', 'hinterlands', '${hutName}' ], make: (run, clearing, hinterlands, main) => {
+  // Set up hinterlands
+  let otlLands = OutlineHinterlands({ name: 'lands', deployment: clearing.deployment });
+  // Set up passages
+  let otlPassages = otlLands.add(Obj({ name: 'passages' }));
+  otlPassages.add(OutlinePassage({ name: 'http', recCls: PassageHttp, hinterlands: otlLands }));
+  // otlPassages.add(OutlinePassage({ name: 'sokt', recCls: PassageSokt, hinterlands: otlLands }));
+  // Set up the main app
+  main.install(otlLands);
+  let editor = Editor();
+  let lands = global.lands = editor.shape({ assumeType: 'exact', outline: otlLands, data: {
+    hutSet: global.INITIAL_HUT_SET_DATA,
+    objective: global.INITIAL_CATCH_UP_DATA
+  }});
+  editor.run();
+  lands.updateFrameId(global.INITIAL_FRAME_ID);
+}});
+*/
 </script>
 <style type="text/css">
 body, html {
@@ -780,7 +684,10 @@ body { background-color: #e0e4e8; }
 </head>
 <body></body>
 </html>
-        `).trim();
+        `);
+        
+        U.output('HTML:', html.substr(0, 400));
+        U.output('CLIENTFRAMEID:', encounter.hut.frameId);
         
         return this.journey({ encounter, journey: JourneyBuff({
           type: 'html',
@@ -794,56 +701,215 @@ body { background-color: #e0e4e8; }
           buffer: await readFile('binary', __dirname, '..', '..', 'clearing', 'favicon.ico')
         })});
         
-      } else if (encounter.message === 'updateFunc') {
+      } else if (encounter.message === 'pleaseUpdate') {
         
         let details = encounter.details;
-        let { name, params=[] } = details;
+        if (!O.has(details, 'root')) throw new Error('Missing "root" param');
+        if (!O.has(details, 'data')) throw new Error('Missing "data" param');
         
-        if (!O.has(this.updateFuncs, name)) throw new Error(`Couldn't find updateFunc "${name}"`);
+        let { root, data } = details;
+        if (!U.isType(root, Array)) throw new Error(`Invalid "root" param (expected Array; got ${U.typeOf(root)})`);
         
-        U.output(this.updateFuncs[name]);
+        if (this.srcHillHut) {
+          
+          // Continue upwards
+          let srcHutName = O.has(details, 'srcHutName') ? details.srcHutName : encounter.hut.getChild('ip').value;
+          this.journey({ hut: this.srcHillHut, journey: JourneyJson({
+            message: 'pleaseUpdate',
+            details: { srcHutName, root, data }
+          })});
+          
+        } else {
+          
+          // Safely get the addressed child
+          let rec = this.getObjectiveChild(root);
+          if (!rec) throw new Error(`Invalid "root" param: ${root.join('.')}`);
+          
+          // Ensure access conditions are met
+          let access  = this.hutDataAccessFunc(encounter.hut, rec);
+          if (access < ACCESS.FULL) throw new Error(`Unauthorized; ${encounter.hut.describe()} can't modify ${rec.describe()}`);
+          
+          // Do the update
+          await this.update(rec, data);
+          
+        }
         
-        return this.updateFuncs[name](encounter.walker, ...params);
+        return;
+        
+      } else if (encounter.message === 'pleaseUpdateFunc') {
+        
+        let details = encounter.details;
+        let { name, params } = details;
+        if (!U.isType(name, String)) throw new Error(`Invalid "name" param (expected String, got ${U.typeOf(name)})`);
+        if (!U.isType(params, Object)) throw new Error(`Invalid "params" param (expected Object, got ${U.typeOf(params)})`);
+        
+        if (this.srcHillHut) {
+          
+          let srcHutName = O.has(details, 'srcHutName') ? details.srcHutName : encounter.hut.getChild('ip').value;
+          this.journey({ hut: this.srcHillHut, journey: JourneyJson({
+            message: 'pleaseUpdateFunc',
+            details: { srcHutName, name, params }
+          })});
+          
+        } else {
+          
+          let srcHut = O.has(details, 'srcHutName')
+            ? this.getChild([ 'hutSet', details.srcHutName ])
+            : encounter.hut;
+          
+          this.applyUpdateFuncAndBroadcastDownwards(name, srcHut, params);
+          
+        }
+        
+        return;
         
       }
       
-      /// =SERVER} {CLIENT=
-      
-      // Client responses
-      
-      /// =CLIENT}
-      
-      throw new Error(`Couldn't process encounter: ${encounter.describe()}`);
+      throw new Error(`Couldn't process valley encounter: ${encounter.describe()}`);
       
     },
-    journey: function({ walker=null, encounter=null, journey }) {
+    /// =SERVER} {CLIENT=
+    encounterHillHut: async function(encounter) {
+      
+      if (encounter.message === 'passageMessage') {
+        
+        let details = encounter.details;
+        
+        if (!O.has(details, 'name')) throw new Error('Missing "name" param');
+        if (!O.has(details, 'message')) throw new Error('Missing "message" param');
+        
+        let name = details.name;
+        if (!O.has(this.passages, name)) throw new Error(`Invalid passage name: "${name}"`);
+        
+        let message = details.message;
+        let details0 = O.has(details, 'details') ? details.details : {};
+        
+        return await this.passages[name].encounter(encounter.copy(message, details0));
+        
+      } else if (encounter.message === 'catchUp') {
+        
+        // TODO: What if a "catchUp" is quickly followed by an "update" (in
+        // the new frame), and the "update" arrives first?? It will be
+        // discarded since its "frameId" is wrong. Then, the very first
+        // frameNum will never be received after the "catchUp" applies, since
+        // the necessary frameNum has already been discarded.
+        
+        let details = encounter.details;
+        let { state, newFrameId } = details;
+        
+        let editor = Editor();
+        editor.shape({ rec: this.getChild('objective'), data: state, assumeType: 'exact' });
+        editor.run();
+        
+        this.updateFrameId(newFrameId);
+        
+        return;
+        
+      } else if (encounter.message === 'update' || encounter.message === 'updateFunc') {
+        
+        let type = (encounter.message === 'update') ? 'data' : 'func';
+        
+        let { details } = encounter;
+        let { frameId, frameNum } = details;
+        if (frameId !== this.frameId) {
+          U.output(`Discarding an update to an invalid frameId (we have frameId ${this.frameId}; received ${frameId})`);
+          return;
+        }
+        
+        let srcHut = O.has(details, 'srcHutName')
+          ? this.getChild([ 'hutSet', details.srcHutName ])
+          : null;
+        
+        if (type === 'data') {
+          if (!O.has(details, 'root')) throw new Error('Missing "root" param');
+          if (!U.isType(details.root, Array)) throw new Error(`Invalid "root" param (expected Array; got ${U.typeOf(details.root)})`);
+          if (!O.has(details,' data')) throw new Error('Missing "data" param');
+          if (!U.isType(details.data, Object)) throw new Error(`Invalid "data" param (expected Object; got ${U.typeOf(details.data)})`);
+        } else if (type === 'func') {
+          if (!O.has(details, 'name')) throw new Error('Missing "name" param');
+          if (!U.isType(details.name, String)) throw new Error(`Invalid "name" param (expected String; got ${U.typeOf(details.name)})`);
+          if (!O.has(details, 'params')) throw new Error('Missing "params" param');
+          if (!U.isType(details.params, Object)) throw new Error(`Invalid "params" param (expected Object; got ${U.typeOf(details.params)})`);
+        }
+        
+        this.pendingFrames[frameNum] = { srcHut, type, details };
+        
+        if (!O.has(this.pendingFrames, this.frameNum)) U.output(`Can\'t process any frames yet; waiting on frame ${this.frameNum}`);
+        while (O.has(this.pendingFrames, this.frameNum)) {
+          
+          try {
+            
+            U.output(`Advancing from frame ${this.frameNum} -> ${this.frameNum + 1}`);
+            
+            let { type, details } = this.pendingFrames[this.frameNum];
+            if (type === 'data') {
+              let { srcHut, root, data } = details;
+              let rec = this.getObjectiveChild(root);
+              if (!rec) throw new Error(`Bad address: ${root.join('.')}`);
+              this.applyUpdateAndBroadcastDownwards(rec, data);
+            } else if (type === 'func') {
+              let { srcHut, name, params } = details;
+              this.applyUpdateFuncAndBroadcastDownwards(name, srcHut, params);
+            }
+            
+          } catch(err) {
+            
+            // TODO: The best way to recover may be to drop everything and "catchUp"
+            U.output(COMPILER.formatError(err));
+            throw new Error('How to recover? The server told us to do something invalid');
+            
+          }
+          
+          this.frameNum++;
+          
+        }
+        
+        return;
+        
+      }
+      
+      throw new Error(`Couldn't process hill encounter: ${encounter.describe()}`);
+      
+    },
+    catchUp: async function() {
+      
+      if (!this.srcHillHut) throw new Error('Can\'t catch up; no hill hut!');
+      await this.journey({ hut: this.srcHillHut, journey: JourneyJson({ message: 'pleaseCatchUp' }) });
+      
+    },
+    /// =CLIENT}
+    
+    getObjectiveChild: function(addr) {
+      
+      if (!U.isType(addr, Array)) throw new Error(`Invalid "addr" param (expected Array, get ${U.typeOf(addr)})`);
+      
+      let rec = this.getChild('objective');
+      for (var i = addr.length - 1; rec && i >= 0; i--) rec = O.has(rec.children, addr[i]) ? rec.children[addr[i]] : null;
+      return rec;
+      
+    },
+    journey: function({ hut=null, encounter=null, journey }) {
       
       if (!journey) throw new Error('Missing "journey" param');
+      if (!hut && !encounter) throw new Error('Need to provide 1 of "hut" and "encounter"');
+      if (!hut && !encounter.hut) throw new Error('Couldn\'t get a value for "hut"')
       
-      /// {SERVER=
-      if (!walker && !encounter) throw new Error('Need to provide 1 of "walker" and "encounter"');
-      if (!walker && !encounter.walker) throw new Error('Couldn\'t get a value for "walker"')
-      /// =SERVER}
+      if (!hut && encounter) hut = encounter.hut;
       
-      // TODO: On client side, if no walker is specified it should default
-      // to the Walker instance for the server
-      
-      if (!walker && encounter) walker = encounter.walker;
-      
-      if (U.isInspiredBy(journey, JourneyWarn)) U.output('JourneyWarn:', COMPILER.formatError(journey.error));
+      if (U.isInspiredBy(journey, JourneyWarn)) U.output('Broadcasting error response due to encounter error:\n' + COMPILER.formatError(journey.error));
       
       let passage = encounter ? encounter.passage : O.firstVal(this.passages);
-      return passage.journey({ walker, encounter, journey });
+      return passage.journey({ hut, encounter, journey });
       
     }
     
   })});
-  const Walker = U.makeClass({ name: 'Walker', inspiration: { RecordObj }, methods: (insp, Cls) => ({
+  const Hut = U.makeClass({ name: 'Hut', inspiration: { RecordObj }, methods: (insp, Cls) => ({
     
     init: function({ outline }) {
       
       insp.RecordObj.init.call(this, { outline });
-      this.passageWalkerData = {};
+      this.passageHutData = {};
       
       /// {SERVER=
       this.frameId = null;
@@ -851,12 +917,19 @@ body { background-color: #e0e4e8; }
       /// =SERVER}
       
     },
-    getPassageWalkerData: function(passage) {
+    /// {SERVER=
+    updateFrameId: function(newId) {
+      U.output(`HUT ${this.getChild('ip').value} FRAME ID: ${newId}`);
+      this.frameId = newId;
+      this.frameNum = 0;
+    },
+    /// =SERVER}
+    getPassageHutData: function(passage) {
       
-      if (!O.has(this.passageWalkerData, passage.name))
-        this.passageWalkerData[passage.name] = passage.genDefaultPassageWalkerData(this);
+      if (!O.has(this.passageHutData, passage.name))
+        this.passageHutData[passage.name] = passage.genDefaultPassageHutData(this);
       
-      return this.passageWalkerData[passage.name];
+      return this.passageHutData[passage.name];
       
     }
     
@@ -932,13 +1005,21 @@ body { background-color: #e0e4e8; }
     },
     openPassage: async function() { throw new Error('not implemented'); },
     shutPassage: async function() { throw new Error('not implemented'); },
-    genDefaultPassageWalkerData: function(walker) {
+    /// {SERVER=
+    openForValleyHut: async function(valleyHut) { throw new Error('not implemented'); },
+    shutForValleyHut: async function(valleyHut) { throw new Error('not implemented'); },
+    /// =SERVER} {CLIENT=
+    openForHillHut: async function(hillHut) { throw new Error('not implemented'); },
+    shutForHillHut: async function(hillHut) { throw new Error('not implemented'); },
+    /// =CLIENT}
+    
+    genDefaultPassageHutData: function(hut) {
       return {};
     },
     
     finalizeEncounter: function(encounter) { throw new Error('not implemented'); },
     
-    journey: function({ walker, encounter=null, journey }) { throw new Error('not implemented'); }
+    journey: function({ hut, encounter=null, journey }) { throw new Error('not implemented'); }
     
   })});
   const PassageHttp = U.makeClass({ name: 'PassageHttp', inspiration: { Passage }, methods: (insp, Cls) => ({
@@ -949,10 +1030,8 @@ body { background-color: #e0e4e8; }
       this.server = null;
       
       /// {CLIENT=
-      
       // Note that `numPendingRequests` can at times exceed `maxPendingRequests`;
       // e.g. if polls are fully banked and another request is explicitly begun.
-      
       this.maxPendingRequests = O.has(params, 'maxPendingRequests') ? params.maxPendingRequests : 2;
       this.numPendingRequests = 0;
       /// =CLIENT}
@@ -969,24 +1048,6 @@ body { background-color: #e0e4e8; }
       
       /// =SERVER} {CLIENT=
       
-      // Initially release any stale polls, and bank new ones
-      let addr = this.getAddress('arr');
-      this.journey({ encounter: null, journey: JourneyJson({
-        message: 'passageMessage',
-        details: {
-          name: this.name,
-          message: 'releasePolls'
-        }
-      })});
-      while (this.numPendingRequests < this.maxPendingRequests)
-        this.journey({ encounter: null, journey: JourneyJson({
-          message: 'passageMessage',
-          details: {
-            name: this.name,
-            message: 'bankPoll'
-          }
-        })})
-      
       /// =CLIENT}
       
       U.output(`Http passage open: "${this.name}" (${host}:${port})`);
@@ -1001,12 +1062,39 @@ body { background-color: #e0e4e8; }
       /// =CLIENT}
       
     },
-    genDefaultPassageWalkerData: function(walker) {
+    genDefaultPassageHutData: function(hut) {
       return {
         pendingJourneys: [],
         bankedEncounters: []
       };
     },
+    
+    /// {CLIENT=
+    openForHillHut: async function(hillHut) {
+      
+      // Initially release any stale polls, and bank new ones
+      let addr = this.getAddress('arr');
+      this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
+        message: 'passageMessage',
+        details: {
+          name: this.name,
+          message: 'releasePolls'
+        }
+      })});
+      while (this.numPendingRequests < this.maxPendingRequests)
+        this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
+          message: 'passageMessage',
+          details: {
+            name: this.name,
+            message: 'bankPoll'
+          }
+        })});
+      
+    },
+    shutForHillHut: async function(hillHut) {
+      
+    },
+    /// =CLIENT}
     
     parseEncounterData: async function(httpReq, protocol='http') {
       
@@ -1015,14 +1103,7 @@ body { background-color: #e0e4e8; }
       
       // Get the ip in verbose form, and a compact `ip` value consisting of 8 hex digits
       let ipVerbose = (httpReq.headers['x-forwarded-for'] || httpReq.connection.remoteAddress).split(',')[0].trim();
-      let pcs = A.map(S.split(ipVerbose, '.'), pc => parseInt(pc, 10));
-      
-      // TODO: What about ipv6?
-      if (pcs.length !== 4 || A.any(pcs, pc => isNaN(pc) || pc < 0 || pc > 255)) throw new Error('Unexpected ip format: ' + ipVerbose);
-      let ip = A.join(A.map(pcs, pc => {
-        let hex = parseInt(pc, 10).toString(16);
-        return hex.length === 1 ? '0' + hex : hex;
-      }), '');
+      let ip = U.compactIp(ipVerbose);
       
       // Get the url value
       let url = httpReq.url;
@@ -1136,32 +1217,26 @@ body { background-color: #e0e4e8; }
       
     },
     
-    finalizeEncounter: function(encounter) {
-      /// {SERVER=
-      if (encounter.passageData.available) this.launchJourney(encounter, JourneyNull());
-      /// =SERVER}
-    },
-    
     encounter: async function(encounter) {
       
       /// {SERVER=
       if (encounter.message === 'releasePolls') {
         
-        let passageWalkerData = encounter.walker.getPassageWalkerData(this);
-        A.each(passageWalkerData.bankedEncounters, encounter => {
+        let passageHutData = encounter.hut.getPassageHutData(this);
+        A.each(passageHutData.bankedEncounters, encounter => {
           this.launchJourney(encounter, JourneyNull());
         });
-        passageWalkerData.bankedEncounters = [];
+        passageHutData.bankedEncounters = [];
         
       } else if (encounter.message === 'bankPoll') {
         
         if (encounter.passage !== this) throw new Error('Invalid encounter');
-        let passageWalkerData = encounter.walker.getPassageWalkerData(this);
-        let pendingJourney = passageWalkerData.pendingJourneys.shift();
+        let passageHutData = encounter.hut.getPassageHutData(this);
+        let pendingJourney = passageHutData.pendingJourneys.shift();
         if (pendingJourney) {
           this.launchJourney(encounter, pendingJourney);
         } else {
-          passageWalkerData.bankedEncounters.push(encounter);
+          passageHutData.bankedEncounters.push(encounter);
           encounter.passageData.available = false;
         }
         
@@ -1169,109 +1244,41 @@ body { background-color: #e0e4e8; }
       /// =SERVER}
       
     },
-    journey: function({ walker, encounter=null, journey }) {
+    journey: function({ hut, encounter=null, journey }) {
       
-      // TODO: use a Journey referenceId to indicate completion??
-      // - Note that some Journeys are not so well defined as to have
-      //   a moment of completion; these are usually client->server
-      //   requests which don't need a response
-      // - In cases like these, the Journey could be considered
-      //   completed immediately?
-      // - This may require Journey-specific knowledge
+      if (!hut) throw new Error('Missing "hut" param');
+      if (encounter && encounter.hut !== hut) throw new Error('Encounter doesn\'t line up with Hut');
       
-      // TODO: Ordered Journeys!!
-      
-      if (encounter && encounter.walker !== walker) throw new Error('Encounter doesn\'t line up with Walker');
+      let isDownwardsJourney = hut.getChild('acclivity').value === 'valley';
       
       /// {SERVER=
-      
-      // See if we can respond using the `encounter`
-      if (encounter && encounter.passage === this && encounter.passageData.available)
-        return this.launchJourney(encounter, journey);
-      
-      // Get the passage-walker data...
-      let passageWalkerData = walker.getPassageWalkerData(this);
-      
-      // Try to use a banked encounter to launch the journey
-      if (passageWalkerData.bankedEncounters.length)
-        return this.launchJourney(passageWalkerData.bankedEncounters.shift(), journey);
-      
-      // No way to launch the journey at this time; need to bank it
-      passageWalkerData.pendingJourneys.push(journey);
-      
+      if (isDownwardsJourney) return this.journeyDownwards({ hut, encounter, journey });
       /// =SERVER} {CLIENT=
-      
-      this.numPendingRequests++;
-      
-      let xhr = new XMLHttpRequest();
-      
-      (async () => {
-        
-        try {
-        
-          let response = await new Promise((rsv, rjc) => {
-            
-            xhr.onreadystatechange = () => {
-              if (xhr.readyState !== 4) return;
-              if (xhr.status === 0) rsv(null); // TODO: This may silence cross-domain errors (indicated by `xhr.status === 0`)
-              try {
-                let payload = U.stringToThing(xhr.responseText);
-                if (xhr.status !== 200) {
-                  if (U.isType(payload, Object) && O.has(payload, 'message') && payload.message === 'warning') {
-                    throw new Error(`Known http error: ${payload.details.errorDescription}`);
-                  } else {
-                    throw new Error(`UNKNOWN http error: ${'\n'}${JSON.stringify(payload, null, 2)}`);
-                  }
-                }
-                return rsv(payload);
-              } catch(err) { rjc(err); }
-            };
-            
-          });
-          
-          // Note that `!response` responses are ignored; they represent http-specific poll releasing
-          // Otherwise `response` values are constructed into Encounters, and occur
-          if (response)
-            await this.hinterlands.beginEncounter(Encounter({
-              passage: this,
-              passageData: {},
-              ip: this.hinterlands.outline.deployment.host, // TODO: This is the hostname, not the IP
-              message: response.message,
-              details: response.details
-            }));
-          
-        } catch(err) {
-          
-          U.output('Error receiving HTTP:', COMPILER.formatError(err));
-          
-        } finally {
-          
-          this.numPendingRequests--;
-          
-          // Bank a new poll
-          if (this.numPendingRequests < this.maxPendingRequests)
-            this.journey({ encounter: null, journey: JourneyJson({
-              message: 'passageMessage',
-              details: {
-                name: this.name,
-                message: 'bankPoll'
-              }
-            })});
-          
-        }
-        
-      })();
-      
-      let xhrUrl = ''; // TODO: If spoofing params are needed here
-      xhr.open('POST', xhrUrl, true);
-      xhr.setRequestHeader('Content-Type', journey.getContentType());
-      xhr.send(journey.getSerializedContent());
-      
+      if (!isDownwardsJourney) return this.journeyUpwards({ hut, encounter, journey });
       /// =CLIENT}
+      
+      throw new Error(`Unable to journey ${isDownwardsJourney ? 'downwards' : 'upwards'}`);
       
     },
     
     /// {SERVER=
+    journeyDownwards: function({ hut, encounter=null, journey }) {
+      
+      // See if we can respond using the immediately available `encounter`
+      if (encounter && encounter.passage === this && encounter.passageData.available)
+        return this.launchJourney(encounter, journey);
+      
+      // Get the passage-hut data...
+      let passageHutData = hut.getPassageHutData(this);
+      
+      // Try to use a banked encounter to launch the journey
+      if (passageHutData.bankedEncounters.length)
+        return this.launchJourney(passageHutData.bankedEncounters.shift(), journey);
+      
+      // No way to launch the journey at this time; need to bank it
+      passageHutData.pendingJourneys.push(journey);
+      
+    },
     launchJourney: function(encounter, journey) {
       
       if (encounter.passage !== this) throw new Error('Invalid "encounter" param (not owned by this passage)');
@@ -1292,8 +1299,79 @@ body { background-color: #e0e4e8; }
       
       encounter.passageData.available = false;
       
+    },
+    /// =SERVER} {CLIENT=
+    journeyUpwards: function({ hut, encounter=null, journey }) {
+      
+      this.numPendingRequests++;
+      
+      let xhr = new XMLHttpRequest();
+      
+      (async () => {
+        
+        try {
+        
+          let response = await new Promise((rsv, rjc) => {
+            xhr.onreadystatechange = () => {
+              if (xhr.readyState !== 4) return;
+              if (xhr.status === 0) rsv(null); // TODO: This may silence cross-domain errors (indicated by `xhr.status === 0`)
+              try {
+                let payload = U.stringToThing(xhr.responseText);
+                if (xhr.status === 200) return rsv(payload);
+                if (U.isType(payload, Object) && O.has(payload, 'message') && payload.message === 'warning')
+                  throw new Error(`Known http error: ${payload.details.errorDescription}`);
+                throw new Error(`UNKNOWN http error: ${'\n'}${JSON.stringify(payload, null, 2)}`);
+              } catch(err) { rjc(err); }
+            };
+          });
+          
+          // Note that `!response` responses are ignored; they represent http-specific poll releasing
+          // Otherwise `response` values are constructed into Encounters, and occur
+          if (response)
+            await this.hinterlands.beginEncounter(Encounter({
+              passage: this,
+              passageData: {},
+              ip: this.hinterlands.outline.deployment.ip, // TODO: This is the hostname, not the IP
+              message: response.message,
+              details: response.details
+            }));
+          
+        } catch(err) {
+          
+          U.output('Error receiving HTTP:', COMPILER.formatError(err));
+          
+        } finally {
+          
+          this.numPendingRequests--;
+          
+          // Bank a new poll if we have room to do so
+          if (this.numPendingRequests < this.maxPendingRequests)
+            this.journey({ hut, encounter: null, journey: JourneyJson({
+              message: 'passageMessage',
+              details: {
+                name: this.name,
+                message: 'bankPoll'
+              }
+            })});
+          
+        }
+        
+      })();
+      
+      let xhrUrl = ''; // TODO: If spoofing params are needed here
+      xhr.open('POST', xhrUrl, true);
+      xhr.setRequestHeader('Content-Type', journey.getContentType());
+      xhr.send(journey.getSerializedContent());
+      
+    },
+    /// =CLIENT}
+    
+    finalizeEncounter: function(encounter) {
+      /// {SERVER=
+      // TODO: This isn't enough! Need to check if the encounter is upwards or downwards!
+      if (encounter.passageData.available) this.launchJourney(encounter, JourneyNull());
+      /// =SERVER}
     }
-    /// =SERVER}
     
   })});
   const PassageSokt = U.makeClass({ name: 'PassageSokt', inspiration: { Passage }, methods: (insp, Cls) => ({
@@ -1313,7 +1391,7 @@ body { background-color: #e0e4e8; }
     Encounter,
     Journey, JourneyWarn, JourneyJson, JourneyBuff, JourneyNull,
     OutlineHinterlands, OutlinePassage,
-    Hinterlands, Walker, Passage, PassageHttp, PassageSokt
+    Hinterlands, Hut, Passage, PassageHttp, PassageSokt
   });
   
 }});
