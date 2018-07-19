@@ -14,7 +14,10 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
       this.ready = this.genReadyPromise();
       
     },
-    genReadyPromise: async function() { throw new Error('not implemented'); }
+    genReadyPromise: async function() { throw new Error('not implemented'); },
+    genFashion: function(props) {
+      throw new Error('not implemented... YET ;D ;D ;D ;D');
+    }
     
   })});
   const ClassicHtmlRealizer = U.makeClass({ name: 'ClassicHtmlRealizer', inspiration: { Realizer }, methods: (insp, Cls) => ({
@@ -67,25 +70,20 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
   
   const Real = U.makeClass({ name: 'Real', inspiration: { TreeNode, Temporary }, methods: (insp, Cls) => ({
     
-    init: function({ name, realizer }) {
-      
+    init: function({ name, realizer=null }) {
       insp.TreeNode.init.call(this, { name });
       this.realizer = realizer;
       this.realization = null;
-      
+      this.fashions = [];
+    },
+    addFashion: function(wobbly) {
+      this.fashions.push(wobbly);
     },
     getRealizer: function() {
-      
-      let ptr = this;
-      while (ptr) {
-        if (ptr.realizer) return ptr.realizer;
-        ptr = ptr.par;
-      }
-      return null;
-      
+      if (!this.realizer) this.realizer = this.par.getRealizer();
+      return this.realizer;
     },
     getTmpActions: function() {
-      
       return [
         {
           up: function() {
@@ -99,9 +97,16 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
             realizer.release(this);
             this.realization = null;
           }
+        },
+        {
+          up: function() {
+            throw new Error('not implemented; add all fashions!!');
+          },
+          dn: function() {
+            throw new Error('not implemented; rem all fashions!!');
+          }
         }
       ]
-      
     }
     
   })});
@@ -147,10 +152,10 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
   })});
   const RealArr = U.makeClass({ name: 'RealArr', inspiration: { Real }, methods: (insp, Cls) => ({
     
-    init: function({ name, realizer, rec }) {
+    init: function({ name, realizer, wobbly }) {
       
       insp.Real.init.call(this, { name, realizer });
-      this.rec = rec;
+      this.wobbly = wobbly;
       this.template = null;
       this.children = {};
       
@@ -188,8 +193,8 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
         }],
         insp.Real.getTmpActions.call(this),
         [{
-          up: function() { this.rec.hold(this.onRecWobble); },
-          dn: function() { this.rec.drop(this.onRecWobble); }
+          up: function() { this.wobbly.hold(this.onRecWobble); },
+          dn: function() { this.wobbly.drop(this.onRecWobble); }
         }]
       );
       
@@ -200,10 +205,10 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
       return A.include(insp.Real.getTmpActions.call(this), [
         {
           up: function() {
-            this.rec.hold(this.onRecWobble);
+            this.wobbly.hold(this.onRecWobble);
           },
           dn: function() {
-            this.rec.drop(this.onRecWobble);
+            this.wobbly.drop(this.onRecWobble);
           }
         }
       ]);
@@ -216,15 +221,15 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
   })});
   const RealStr = U.makeClass({ name: 'RealStr', inspiration: { Real }, methods: (insp, Cls) => ({
     
-    init: function({ name, realizer, rec }) {
+    init: function({ name, realizer, wobbly }) {
       
-      if (!rec) throw new Error('Missing "rec" param');
+      if (!wobbly) throw new Error('Missing "wobbly" param');
       
       insp.Real.init.call(this, { name, realizer });
-      this.rec = rec;
+      this.wobbly = wobbly;
       
       this.onRecWobble = (delta) => {
-        this.getRealizer().setText(this, this.rec.value);
+        this.getRealizer().setText(this, this.wobbly.getValue());
       };
       
     },
@@ -233,11 +238,11 @@ U.makeTwig({ name: 'real', twigs: [], make: (real) => {
       return A.include(insp.Real.getTmpActions.call(this), [
         {
           up: function() {
-            this.getRealizer().setText(this, this.rec.value);
-            this.rec.hold(this.onRecWobble);
+            this.getRealizer().setText(this, this.wobbly.getValue());
+            this.wobbly.hold(this.onRecWobble);
           },
           dn: function() {
-            this.rec.drop(this.onRecWobble);
+            this.wobbly.drop(this.onRecWobble);
           }
         }
       ]);

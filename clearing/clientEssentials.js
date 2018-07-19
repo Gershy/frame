@@ -16,7 +16,7 @@ O.include(U, {
         await Promise.all(A.map(twigs, twigName => TWIGS[twigName].promise));
         
         // Run our `make` function, providing all listed twigs
-        let makeParams = [ material ].concat(A.map(twigs, twigName => TWIGS[twigName].material));
+        let makeParams = A.include([ material ], A.map(twigs, twigName => TWIGS[twigName].material));
         make(...makeParams);
         
       })()
@@ -126,6 +126,15 @@ O.include(U, {
         return 'Couldn\'t format: ' + err.stack;
         
       }
+      
+    },
+    run: async function(twigName, variant='client') {
+      
+      if (!O.has(TWIGS, twigName)) throw new Error(`Invalid "twigName" param: ${twigName}`);
+      let twig = TWIGS[twigName];
+      
+      await twig.promise;
+      return twig.material;
       
     }
     

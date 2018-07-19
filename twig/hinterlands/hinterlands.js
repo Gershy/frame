@@ -53,7 +53,7 @@ let deflateContents = contents => {
 };
 /// =SERVER}
 
-U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinterlands, clearing, record) => {
+U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, record) => {
   
   const { Val, Obj, Arr, Ref, RecordVal, RecordObj, RecordArr, Editor } = record;
   
@@ -198,7 +198,7 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
       
       // Keep track of known huts
       let otlHutSet = this.add(Arr({ name: 'hutSet' }));
-      let otlHut = otlHutSet.setTemplate(Obj({ name: 'hut', recCls: Hut }), hut => hut.getChild('ip').getValue());
+      let otlHut = otlHutSet.setTemplate(Obj({ name: 'hut', recCls: Hut }), hut => hut.getChild('ip').value);
       otlHut.add(Val({ name: 'ip' }));          // In compact hex format
       otlHut.add(Val({ name: 'acclivity' }));   // valley || hill
       otlHut.add(Val({ name: 'joinMs' }));
@@ -346,7 +346,6 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
     
     /// {CLIENT=
     updateFrameId: function(newId) {
-      U.output('BROWSER FRAME ID:', newId);
       this.frameId = newId;
       this.frameNum = 0;
       this.pendingFrames = {};
@@ -526,7 +525,7 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
         
       } else if (encounter.message === 'greetings') {
         
-        let hutName = this.outline.deployment.hut;
+        let hutName = this.outline.deployment.plan;
         
         let twig = TWIGS[hutName];
         await twig.promise;
@@ -540,7 +539,7 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'clearing', 'record' ], make: (hinter
           ]),
           
           // Load all twigs
-          Promise.all(A.map(twig.twigList, async (twigName) => {
+          Promise.all(A.map(A.include([ 'clearing' ], twig.twigList), async (twigName) => {
             
             let variantData = COMPILER.getVariantData(twigName, 'client');
             let content = await readFile('utf8', variantData.fullPath);
@@ -562,8 +561,7 @@ global.process = {
   argv: [
     'browser: ' + (navigator.userAgent || 'unknownUserAgent'),
     'hut.js',
-    '--hut ${hutName}',
-    //'--host ' + window.location.hostname,
+    '--plan ${hutName}',
     '--host 127.0.0.1',
     '--port ' + (window.location.port || '80') // TODO: Account for https
   ]
@@ -574,11 +572,6 @@ global.process = {
 let { Compiler } = U;
 let compiler = global.COMPILER = Compiler({ offsetData: global.COMPILER_DATA });
 window.addEventListener('error', event => {
-  U.output('---- UNCAUGHT');
-  U.output(compiler.formatError(event.error));
-  event.preventDefault();
-});
-window.addEventListener('uncaughtexception', event => {
   U.output('---- UNCAUGHT');
   U.output(compiler.formatError(event.error));
   event.preventDefault();
@@ -650,25 +643,7 @@ global.INITIAL_HUT_SET_DATA = ${JSON.stringify({
 global.INITIAL_CATCH_UP_DATA = ${JSON.stringify(this.getChild('objective').getJson())};
 global.COMPILER_DATA = ${JSON.stringify(compilerData)};
 ${compoundJs}
-/*
-U.makeTwig({ name: 'run', twigs: [ 'clearing', 'hinterlands', '${hutName}' ], make: (run, clearing, hinterlands, main) => {
-  // Set up hinterlands
-  let otlLands = OutlineHinterlands({ name: 'lands', deployment: clearing.deployment });
-  // Set up passages
-  let otlPassages = otlLands.add(Obj({ name: 'passages' }));
-  otlPassages.add(OutlinePassage({ name: 'http', recCls: PassageHttp, hinterlands: otlLands }));
-  // otlPassages.add(OutlinePassage({ name: 'sokt', recCls: PassageSokt, hinterlands: otlLands }));
-  // Set up the main app
-  main.install(otlLands);
-  let editor = Editor();
-  let lands = global.lands = editor.shape({ assumeType: 'exact', outline: otlLands, data: {
-    hutSet: global.INITIAL_HUT_SET_DATA,
-    objective: global.INITIAL_CATCH_UP_DATA
-  }});
-  editor.run();
-  lands.updateFrameId(global.INITIAL_FRAME_ID);
-}});
-*/
+(async () => await compiler.run('clearing'))();
 </script>
 <style type="text/css">
 body, html {
@@ -685,9 +660,6 @@ body { background-color: #e0e4e8; }
 <body></body>
 </html>
         `);
-        
-        U.output('HTML:', html.substr(0, 400));
-        U.output('CLIENTFRAMEID:', encounter.hut.frameId);
         
         return this.journey({ encounter, journey: JourneyBuff({
           type: 'html',
@@ -919,7 +891,6 @@ body { background-color: #e0e4e8; }
     },
     /// {SERVER=
     updateFrameId: function(newId) {
-      U.output(`HUT ${this.getChild('ip').value} FRAME ID: ${newId}`);
       this.frameId = newId;
       this.frameNum = 0;
     },
@@ -1321,7 +1292,9 @@ body { background-color: #e0e4e8; }
                 if (U.isType(payload, Object) && O.has(payload, 'message') && payload.message === 'warning')
                   throw new Error(`Known http error: ${payload.details.errorDescription}`);
                 throw new Error(`UNKNOWN http error: ${'\n'}${JSON.stringify(payload, null, 2)}`);
-              } catch(err) { rjc(err); }
+              } catch(err) {
+                rjc(err);
+              }
             };
           });
           

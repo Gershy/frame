@@ -1,12 +1,5 @@
 /*
 
-// TODO: Some Temporary operations need to be async, e.g. PassageHttp initializing
-// an http server. Can't switch to full async, because that will require editor.run
-// to be async (completely unacceptable; introduces race conditions).
-// Consider a separate TemporaryAsync class, where the syncronous "up" command
-// ENSURES that an asynchronous "asyncUp" command cannot fail. Then "up" calls
-// "asyncUp", and doesn't wait for it.
-
 ==== ROADMAP
 
 [X]   - Standard setup + utility library
@@ -98,8 +91,4 @@ process.on('unhandledRejection', err => {
   process.exit(1);
 });
 
-(async () => {
-  let clearing = await compiler.run('clearing');
-  let deployment = clearing.deployment;
-  await compiler.run(deployment.hut);
-})();
+(async () => await compiler.run('clearing'))();
