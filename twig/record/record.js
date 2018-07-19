@@ -15,7 +15,7 @@
 
 U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   
-  const { TreeNode, Wobbly } = U;
+  const { TreeNode, Wobbly, WobblyResult } = U;
   const RECORD_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-_]*$/;
   
   let NEXT_TEMP = 0;
@@ -38,6 +38,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       
       insp.TreeNode.init.call(this, { name });
       this.actions = {};
+      this.relators = {};
       this.recCls = recCls;
       
     },
@@ -45,10 +46,19 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       return { outline: this };
     },
     requireChildNameMatch: function() { return true; },
-    action: function(name, action) {
+    addAction: function(name, action) {
       
       if (O.has(this.actions, name)) throw new Error('Tried to overwrite action "' + name + '"');
       this.actions[name] = action;
+      
+    },
+    addRelator: function(name, getRecsFunc, doRelationFunc) {
+      
+      if (O.has(this.relators, name)) throw new Error(`Tried to overwrite relator ${name}`);
+      this.relators[name] = {
+        getRecs: getRecsFunc,
+        doRelation: doRelationFunc
+      };
       
     }
     
@@ -107,45 +117,24 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     requireChildNameMatch: function() { return false; },
     getNamedChild: function(name) {
       
-      if (this.template && this.template.name === name) return this.template;
+      if (!this.template) throw new Error(`${this.describe()} has no template`);
+      if (this.template && name === this.template.name) return this.template;
+      U.output(`${this.describe()} tried ${name}`);
       return null;
       
     },
     setTemplate: function(outline, genName=null) {
       
-      // TODO: Couldn't it be nice for multiple Arrs to reference the same template?
-      // That's illegal due to `outline.par` validation
-      
       if (this.template) throw new Error('Tried to overwrite template');
-      if (outline.par) throw new Error('Outline already has parent');
       
       this.template = outline;
-      this.template.par = this;
+      // this.template.par = this;
       if (genName) this.genName = genName;
       return this.template
       
     }
     
   })});
-  
-  /*
-  const Ref = U.makeClass({ name: 'Ref', inspiration: { Val }, methods: (insp, Cls) => ({
-    
-    init: function({ name, recCls=RecordRef, target=null }) {
-      
-      insp.Val.init.call(this, { name, recCls });
-      this.target = target;
-      
-    },
-    setTarget: function(target) {
-      
-      this.target = target;
-      return target;
-      
-    }
-    
-  })});
-  */
   
   // Record
   const Record = U.makeClass({ name: 'Record', inspiration: { TreeNode, Wobbly }, methods: (insp, Cls) => ({
@@ -157,6 +146,42 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       insp.TreeNode.init.call(this, { name: getTempName() });
       insp.Wobbly.init.call(this);
       this.outline = outline;
+      this.related = {};
+      
+    },
+    
+    getTmpActions: function() {
+      
+      return A.include(insp.Wobbly.getTmpActions.call(this), [
+        {
+          up: function() {
+            
+            O.each(this.outline.relators, (relator, relatorName) => {
+              
+              let wobbly = WobblyResult({
+                wobblies: relator.getRecs(this),
+                calc: (...args) => relator.doRelation(this, ...args)
+              });
+              wobbly.up();
+              this.related[relatorName] = wobbly;
+              
+            });
+            
+          },
+          dn: function() {
+            
+            O.each(this.outline.relators, (relator, relatorName) => {
+              
+              let wobbly = O.has(this.related, relatorName) ? this.related[relatorName] : null;
+              if (!wobbly) return;
+              wobbly.dn();
+              delete this.related[relatorName];
+              
+            });
+            
+          }
+        }
+      ]);
       
     },
     
@@ -197,17 +222,6 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     
     getChildrenDescriptor: function() { return 'none'; },
     getNamedChild: function(name) {
-      
-      let numDerefs = 0;
-      while (name[numDerefs] === '@') numDerefs++;
-      if (numDerefs) name = name.substr(numDerefs);
-      
-      let child = this.getNamedChild0(name);
-      for (let i = 0; (i < numDerefs) && child; i++) child = child.dereference();
-      return child;
-      
-    },
-    getNamedChild0: function(name) {
       
       if (U.isType(name, String)) {
         
@@ -253,8 +267,14 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       if (!O.has(this.outline.actions, name)) throw new Error('Couldn\'t find action "' + name + '"');
       return this.outline.actions[name].apply(this, args);
     },
+    getRef: function(name) {
+      
+      if (!O.has(this.related, name)) throw new Error(`No reference named "${name}"`);
+      return this.related[name].getValue();
+      
+    },
     
-    dereference: function() { throw new Error('not implemented'); },
+    // dereference: function() { throw new Error('not implemented'); },
     getJson: function() { return this.getValue(); },
     
     describe: function() {
@@ -310,9 +330,9 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       return child;
       
     },
-    getNamedChild0: function(name) {
+    getNamedChild: function(name) {
       if (U.isType(name, String) && O.has(this.children, name)) return this.children[name];
-      return insp.Record.getNamedChild0.call(this, name);
+      return insp.Record.getNamedChild.call(this, name);
     },
     
     getChildName: function(child) { throw new Error('not implemented'); },
@@ -371,12 +391,12 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     },
     getChildName: function(rec) {
       
-      if (rec.par !== this) throw new Error('Can\'t get child name for ' + rec.describe() + ' - it isn\'t our child');
+      if (rec.par !== this) throw new Error(`Can't get child name for ${rec.describe()} - it isn't our child`);
       
       let genName = this.outline.genName;
       let name = genName ? genName(rec) : this.nextInd.toString(); // TODO: (really tricky??) `this.nextInd` isn't incremented!! What happens if the same integer name is returned for multiple Records??
       
-      if (!U.isType(name, String)) throw new Error('Invalid genName from ' + this.describe() + ' produce name of type ' + U.typeOf(name));
+      if (!U.isType(name, String)) throw new Error(`Invalid genName from ${this.describe()} produce name of type ${U.typeOf(name)}`);
       
       return name;
       
@@ -425,58 +445,6 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     }
   })});
   
-  /*
-  // RecordRef
-  const RecordRef = U.makeClass({ name: 'RecordRef', inspiration: { RecordVal }, methods: (insp, Cls) => ({
-    
-    sanitizeValue: function(value) {
-      
-      // Will resolve `value` to either `null`, or an address Array
-      
-      let origValue = value = insp.RecordVal.sanitizeValue.call(this, value);
-      if (value === null) return null;
-      
-      let rec = null;
-      
-      if (U.isInspiredBy(value, Record)) {
-        
-        rec = value;
-        
-      } else {
-        
-        rec = this.getChild(value);
-        if (!rec) throw new Error('Invalid address for ' + this.describe() + ': ' + value);
-        
-      }
-      
-      // TODO: Always produces an absolute address, but really should never!
-      // TODO: Missing any validation based on `this.outline.target`!
-      
-      return rec.getAddress();
-      
-    },
-    
-    getRefAddress: function() {
-      
-      return this.value;
-      
-    },
-    dereference: function() {
-      
-      // TODO: Shouldn't need to walk all the way to the root!
-      
-      if (!this.value) return null;
-      
-      let ptr = this;
-      while (ptr.par) ptr = ptr.par;
-      return ptr.getChild(this.getRefAddress());
-      
-    },
-    getJson: function() { return this.value ? this.getRefAddress().join('.') : null; }
-    
-  })});
-  */
-  
   // Editor
   const Editor = U.makeClass({ name: 'Editor', methods: (insp, Cls) => ({
     
@@ -493,13 +461,10 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       if (rec && par) throw new Error('If providing "rec" shouldn\'t provide "par"');
       if (outline && par) throw new Error('If providing "outline" shouldn\'t provide "par"');
       if (!rec && !outline && !par) throw new Error('Need to provide one of "rec", "outline", and "par"');
-      if (name && !par) throw new Error('Don\'t provide "name" without providing "par"');
+      if (name && !par && !outline) throw new Error('Don\'t provide "name" unless providing "par" or "outline"');
       
       // We can get `outline` since we have `rec` or `par`
       if (!outline) outline = rec ? rec.outline : par.getChildOutline(name);
-      
-      // For the root outline, ensure `name` has a value
-      if (!outline.par) name = rec ? rec.name : outline.name;
       
       // We can ensure we have `rec`, since we have `outline`
       let creatingNew = !rec;
@@ -672,7 +637,6 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
           }
         }
       })[rec.getChildrenDescriptor()][type];
-      
       if (!shapeFunc) throw new Error('Invalid shape func: ' + rec.getChildrenDescriptor() + ' / ' + data.type);
       
       shapeFunc();
@@ -712,45 +676,47 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     },
     execOp: function(op) {
       
-      if (op.type === 'setNameSimple') {
+      let { type } = op;
+      
+      if (type === 'setNameSimple') {
         
         let { rec, name } = op.params;
         let origName = rec.name;
         rec.changeName(name);
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
-      } else if (op.type === 'setNameCalculated') {
+      } else if (type === 'setNameCalculated') {
         
         let { rec } = op.params;
         let origName = rec.name;
         rec.changeName(rec.par.getChildName(rec));
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
-      } else if (op.type === 'setUp') {
+      } else if (type === 'setUp') {
         
         let { rec } = op.params;
         rec.up();
         return { type: 'setDn', params: { rec } };
         
-      } else if (op.type === 'setDn') {
+      } else if (type === 'setDn') {
         
         let { rec } = op.params;
         rec.dn();
         return { type: 'setUp', params: { rec } };
         
-      } else if (op.type === 'addChild') {
+      } else if (type === 'addChild') {
         
         let { par, child } = op.params;
         par.addChild(child);
         return { type: 'remChild', params: { par, child } };
         
-      } else if (op.type === 'remChild') {
+      } else if (type === 'remChild') {
         
         let { par, child } = op.params;
         par.remChild(child);
         return { type: 'addChild', params: { par, child } };
         
-      } else if (op.type === 'setValue') {
+      } else if (type === 'setValue') {
         
         let { rec, value } = op.params;
         let origValue = rec.getValue();
@@ -760,14 +726,14 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         
       }
       
-      throw new Error('Unknown op: ' + op.type);
+      throw new Error(`Unknown op: ${type}`);
       
     },
     
     attemptOps: function(ops, undoOnFailure=true) {
       
       let allUndoOps = [];
-      let remainingOps = null;
+      let remainingOps = [];
       let errs = [];
       
       while (ops.length) {
@@ -800,14 +766,14 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       }
       
       // The operation didn't complete, AND this was an undo operation. That's real bad.
-      if (remainingOps.length && !undoOnFailure) throw new Error('Fatal MFRF: couldn\'t undo an unsuccessful edit');
+      // if (remainingOps.length && !undoOnFailure) throw new Error('Fatal MFRF: couldn\'t undo an unsuccessful edit');
       
       if (remainingOps.length) {
         
         // errs[0].message = 'Transaction failed (#1:) ' + errs[0].message;
         // throw errs[0];
         
-        U.output('FAILURE', A.map(errs, err => COMPILER.formatError(err))[0]);
+        U.output('FAILURE (' + errs.length + ')', A.map(errs, err => COMPILER.formatError(err))[0]);
         this.attemptOps(allUndoOps, false); // Signal that this attempt can't be undone (it would be undoing an undo)
         throw new Error('Transaction failed');
         

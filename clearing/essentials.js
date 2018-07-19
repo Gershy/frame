@@ -1,5 +1,9 @@
 // TODO: Could consider using `Object.defineProperty` to make some
 // control properties non-enumerable (e.g. `wobblyInstance.numUsages`)
+// TODO: "include" is used inconsistently. For Objects, it modifies the
+// first parameter. For Arrays, it produces an entirely new Array.
+// Should differentiate between "include" and "combine".
+
 
 Error.stackTraceLimit = Infinity;
 
@@ -186,7 +190,11 @@ global.U = {
     
   },
   thingToString: thing => JSON.stringify(U.straighten(thing)),
-  stringToThing: string => string[0] === '!' ? JSON.parse(string.substr(1)) : U.unstraighten(JSON.parse(string)),
+  stringToThing: string => {
+    if (string[0] === '!')      return JSON.parse(string.substr(1));
+    else if (string[0] !== '[') return string;
+    else                        return U.unstraighten(JSON.parse(string));
+  },
   
   // Params
   pval: (val, schema=null, path=[], err=new Error()) => {
@@ -474,7 +482,7 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
       } catch(err) {
         
         for (let j = i - 1; j >= 0; j--) actions[i].dn.call(this);
-        err.message = 'Couldn\'t go up: ' + err.message;
+        err.message = `Couldn't go up: ${err.message}`;
         throw err;
         
       }
@@ -494,12 +502,12 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
       
       try {
         
-        actions[i].dn(this);
+        actions[i].dn.call(this);
         
       } catch(err) {
         
         for (let j = i + 1, len = actions.length; j < len; j++) actions[i].up.call(this);
-        err.message = 'Couldn\'t go dn: ' + err.message;
+        err.message = `Couldn't go dn: ${err.message}`;
         throw err;
         
       }
@@ -657,10 +665,10 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
 })});
 const WobblyValue = U.makeClass({ name: 'WobblyValue', inspiration: { Wobbly }, methods: (insp, Cls) => ({
   
-  init: function(params /* value */) {
+  init: function(value=null) {
     
-    insp.Wobbly.init.call(this, params);
-    this.value = O.has(params, 'value') ? params.value : null;
+    insp.Wobbly.init.call(this, {});
+    this.value = value;
     
   },
   setValue: function(value) {
@@ -697,7 +705,10 @@ const WobblyResult = U.makeClass({ name: 'WobblyResult', inspiration: { Wobbly }
       {
         up: function() {
           
-          let func = () => { this.value = this.calcValue(); this.wobble(this.value); };
+          let func = () => {
+            this.value = this.calcValue();
+            this.wobble(this.value);
+          };
           A.each(this.wobblies, w => w.hold(func, this.holdKey));
           
         },

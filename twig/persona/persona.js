@@ -1,4 +1,4 @@
-U.makeTwig({ name: 'persona', twigs: [ 'clearing', 'record', 'hinterlands', 'real' ], make: (persona, clearing, record, hinterlands, real) => {
+U.makeTwig({ name: 'persona', twigs: [ 'record', 'hinterlands', 'real' ], make: (persona, record, hinterlands, real) => {
   
   let { Obj, Arr, Val, RecordObj, Editor } = record;
   
@@ -8,7 +8,7 @@ U.makeTwig({ name: 'persona', twigs: [ 'clearing', 'record', 'hinterlands', 'rea
     }
   })});
   
-  let install = (otlLands) => {
+  let outline = (otlLands) => {
     
     let otlObjective = otlLands.getChild('objective');
     
@@ -20,10 +20,20 @@ U.makeTwig({ name: 'persona', twigs: [ 'clearing', 'record', 'hinterlands', 'rea
     // Attach values to associate personas with huts
     let otlHut = otlLands.getChild('hutSet.hut');
     otlHut.add(Val({ name: 'personaMoniker', defaultValue: null }));
-    otlHut.action('getPersona', hut => {
-      let moniker = hut.getChild('moniker').value;
+    otlHut.addRelator('persona', hut => [ hut.getChild('personaMoniker') ], (hut, moniker) => {
+      
       if (!moniker) return null;
-      return hut.getChild([ 'objective', 'personaSet', moniker ]);
+      
+      return hut.getPar(otlLands).getChild([ 'objective', 'personaSet', moniker ]);
+      
+      let lands = hut.getPar(otlLands);
+      let personaSet = lands.getChild('objective.personaSet');
+      let persona = personaSet.getChild([ moniker ]);
+      
+      U.output(`HUT ${hut.describe()} UPDATED PERSONA REF: ${persona.describe()} FOR MONIKER "${moniker}"`);
+      
+      return persona;
+      
     });
     
     otlLands.addUpdateFunc('loginTemp', (lands, srcHut, { moniker }) => {
@@ -49,11 +59,15 @@ U.makeTwig({ name: 'persona', twigs: [ 'clearing', 'record', 'hinterlands', 'rea
       
     });
     
+    return {
+      otlPersonaSet, otlPersona
+    };
+    
   };
   
   O.include(persona, {
     OutlinePersona,
-    install
+    outline
   });
   
 }});
