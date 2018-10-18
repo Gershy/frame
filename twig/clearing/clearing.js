@@ -1,5 +1,13 @@
 U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make: (clearing, record, hinterlands, real) => {
   
+  /// {SERVER=
+  const path = require('path');
+  /// =SERVER}
+  
+  let { Val, Obj, Arr, Editor } = record;
+  let { OutlineHinterlands, OutlinePassage, PassageHttp, PassageSokt } = hinterlands;
+  let { ClassicHtmlRealizer, Real, RealObj, RealArr, RealStr } = real;
+  
   const DeploymentBinding = U.makeClass({ name: 'DeploymentBinding', methods: (insp, Cls) => ({
     
     init: function({ args, host=null, port=null }={}) {
@@ -16,23 +24,24 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
       
     },
     
-    getMountainHutSetData: function() { throw new Error('not implemented'); },
+    getHillHutSetData: function() { throw new Error('not implemented'); },
     getObjectiveData: function() { throw new Error('not implemented'); },
     getInitialFrameId: function() { throw new Error('not implemented'); },
-    getRealizer: function() { throw new Error('not implemented'); },
+    
+    /// {SERVER=
+    getServerSupportedRealizers: function() { throw new Error('not implemented'); },
+    /// =SERVER}
+    getOwnRealizers: function() { throw new Error('not implemented'); },
     
     deploy: async function() {
       
       let twig = await COMPILER.run(this.plan);
       
-      let { Val, Obj, Arr, Editor } = record;
-      let { OutlineHinterlands, OutlinePassage, PassageHttp, PassageSokt } = hinterlands;
-      let { ClassicHtmlRealizer, Real, RealObj, RealArr, RealStr } = real;
-      
       // Hinterlands outlining
       let otlLands = OutlineHinterlands({ name: 'lands', deployment: this });
       let otlObjective = otlLands.getChild('objective');
       
+      // TODO: Passages should be attached by implementation...
       // Passages outlining
       let otlPassages = otlLands.add(Obj({ name: 'passages' }));
       otlPassages.add(OutlinePassage({ name: 'http', recCls: PassageHttp, hinterlands: otlLands }));
@@ -41,33 +50,49 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
       // Plan-specific outlining
       twig.outline(otlLands);
       
+      // Initialize the hut with hill-hut set and initial data
       let editor = Editor();
       let lands = global.lands = editor.shape({ outline: otlLands, assumeType: 'exact', name: 'lands', data: {
-        hutSet: this.getMountainHutSetData(),
+        hutSet: this.getHillHutSetData(),
         objective: this.getObjectiveData()
       }});
       editor.run();
       
+      // Get the initial frame id we've been given by our server
       let initialFrameId = this.getInitialFrameId();
       if (initialFrameId !== null) lands.updateFrameId(initialFrameId);
       
-      let realizer = this.getRealizer();
-      if (realizer) {
+      /// {SERVER=
+      A.each(this.getServerSupportedRealizers(), clientRealizer => {
         
-        let realLands = RealObj({ name: 'lands', realizer });
-        twig.realize(lands, realLands);
+        twig.setupRealizer(clientRealizer);
+        clientRealizer.prepareClientSupport(otlLands, lands);
         
-        await realizer.ready;
+      });
+      /// =SERVER}
+      
+      await Promise.all(A.map(this.getOwnRealizers(), async ownRealizer => {
+        
+        twig.setupRealizer(ownRealizer);
+        
+        let realLands = RealObj({ name: 'lands', realizer: ownRealizer });
+        
+        twig.realizer(lands, ownRealizer, realLands);
+        
+        await ownRealizer.ready;
+        
         realLands.up();
         
-      }
+        // ownRealizer.addChild({ child: realLands });
+        
+      }));
       
     }
     
   })});
   
   /// {SERVER==========
-  const path = require('path');
+  
   const StandardBinding = U.makeClass({ name: 'StandardBinding', inspiration: { DeploymentBinding }, methods: (insp, Cls) => ({
     
     init: function(params={}) {
@@ -77,7 +102,7 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
       
     },
     
-    getMountainHutSetData: function() {
+    getHillHutSetData: function() {
       return null;
     },
     getObjectiveData: function() {
@@ -88,8 +113,14 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
     getInitialFrameId: function() {
       return null;
     },
-    getRealizer: function() {
-      return null; // TODO: possibility for graphical console or GUI here!
+    getOwnRealizer: function() {
+      return null;
+    },
+    getServerSupportedRealizers: function() {
+      return [ ClassicHtmlRealizer() ];
+    },
+    getOwnRealizers: function() {
+      return [];
     }
     
   })});
@@ -111,7 +142,9 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
     }
     
   })});
+  
   /// =SERVER} {CLIENT=
+  
   const BrowserBinding = U.makeClass({ name: 'BrowserBinding', inspiration: { DeploymentBinding }, methods: (insp, Cls) => ({
     
     init: function(params={}) {
@@ -124,7 +157,7 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
       
     },
     
-    getMountainHutSetData: function() {
+    getHillHutSetData: function() {
       return global.INITIAL_HUT_SET_DATA;
     },
     getObjectiveData: function() {
@@ -133,18 +166,28 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
     getInitialFrameId: function() {
       return global.INITIAL_FRAME_ID;
     },
-    getRealizer: function() {
-      return new real.ClassicHtmlRealizer();
+    getOwnRealizers: function() {
+      return [ ClassicHtmlRealizer() ];
     }
     
   })});
+  const AndroidBinding = U.makeClass({ name: 'AndroidBinding', inspiration: { DeploymentBinding }, methods: (insp, Cls) => ({
+    
+    init: function(params={}) {
+      
+      insp.DeploymentBinding.init.call(this, params)
+      
+    }
+    
+  })});
+  
   /// ==========CLIENT}
   
   let deploymentEnvironmentMapping = {
     /// {SERVER==========
     standard: StandardBinding,
     heroku: HerokuBinding,
-    openshift: OpenshiftBinding
+    openshift: OpenshiftBinding,
     /// =SERVER} {CLIENT=
     standard: BrowserBinding
     /// ==========CLIENT}
@@ -169,7 +212,7 @@ U.makeTwig({ name: 'clearing', twigs: [ 'record', 'hinterlands', 'real' ], make:
     ...parseArgs(process.argv.slice(2).join(' '))
   };
   
-  if (!deploymentEnvironmentMapping[args.deployment]) throw new Error(`Unsupported deployment: "${deployment}"`);
+  if (!O.has(deploymentEnvironmentMapping, args.deployment)) throw new Error(`Unsupported deployment: "${args.deployment}"`);
   let DeploymentBindingCls = deploymentEnvironmentMapping[args.deployment];
   
   let deployment = DeploymentBindingCls({ args });

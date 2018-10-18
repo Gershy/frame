@@ -117,6 +117,8 @@ O.include(U, {
     },
     formatError: function(err) {
       
+      // return err.stack;
+      
       try {
         
         return this.customFormatError(err);

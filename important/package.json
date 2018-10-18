@@ -1,0 +1,17 @@
+{
+  "name": "important",
+  "version": "1.0.0",
+  "description": "IMPORTANT",
+  "main": "server.js",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "important"
+  ],
+  "author": "Gersh",
+  "license": "ISC",
+  "dependencies": {
+    "fs-extra": "^7.0.0"
+  }
+}

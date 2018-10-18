@@ -1,59 +1,22 @@
-/*
-
-TODO:
-[X] FUCK WALKERS. Work with hill / valley huts instead. Simple flat list of
-    connections with a "type" option for each
-[X] This "hutSet" should be OUTSIDE Hinterland's public subtree
-[X] Now some operations may depend less on CLIENT / SERVER, and more on
-    whether the hut which initiated the operation is upward or downward.
-[X] Get updateFuncs working
-[X] Account / login behaviour, in its own GODDAM file. Steppe huts need to
-    be able to be aware of each other, syncing from a common hill hut.
-[ ] Chess2 matchmaking system. Have a lobby holding max 1 person; whenever
-    an opponent is present pair em up and make em fight
-[ ] Get the rest of Chess2 done!!
-
-MORE DECLARATIVE UPDATE ACTIONS
-think about data updates and func updates similarly! They both use frameId and
-frameNum, they should both have access to "srcHut".
-
-let srcHut = ...
-let updateType = ...    // 'data'         'func'
-let details = { ... }   // { 
-
-{
-  { name: 'update', details: { root, data } } => {
-    
-    let editor = Editor();
-    
-  
-  }
-
-}
-
-*/
-
-// TODO: I hate the multiline ` ... ` strings
-
-/// {SERVER=
-let aliveMs = U.timeMs();
-let http = require('http');
-let path = require('path');
-let fs = require('fs');
-let readFile = async (type, ...cmps) => {
-  if (type === 'binary') type = null
-  return await new Promise((rsv, rjc) => {
-    return fs.readFile(path.join(...cmps), type, (err, content) => err ? rjc(err) : rsv(content));
-  });
-};
-let deflateContents = contents => {
-  let lines = S.split(contents.trim(), '\n');
-  lines = A.map(lines, line => line.trim() ? line : U.SKIP);
-  return A.join(lines, '\n');
-};
-/// =SERVER}
-
 U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, record) => {
+  
+  /// {SERVER=
+  let aliveMs = U.timeMs();
+  let http = require('http');
+  let path = require('path');
+  let fs = require('fs');
+  let readFile = async (type, ...cmps) => {
+    if (type === 'binary') type = null
+    return await new Promise((rsv, rjc) => {
+      return fs.readFile(path.join(...cmps), type, (err, content) => err ? rjc(err) : rsv(content));
+    });
+  };
+  let deflateContents = contents => {
+    let lines = S.split(S.trim(contents), '\n');
+    lines = A.map(lines, line => S.trim(line) ? line : U.SKIP);
+    return A.join(lines, '\n');
+  };
+  /// =SERVER}
   
   const { Val, Obj, Arr, Ref, RecordVal, RecordObj, RecordArr, Editor } = record;
   
@@ -70,28 +33,12 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       
       if (!message) throw new Error('Missing "message" param');
       
-      this.hinterlands = null;
       this.passage = passage;
       this.passageData = passageData;
       this.ip = ip;
       this.message = message;
       this.details = details;
-      this.hut = null;
-      
-    },
-    copy: function(message=null, details=null) {
-      
-      let enc = Encounter({
-        passage: this.passage,
-        passageData: this.passageData,
-        ip: this.ip,
-        message: message || this.message,
-        details: details || this.details
-      });
-      
-      enc.hut = this.hut;
-      
-      return enc;
+      this.hut = null; // The hut which initiated the action. May be an upper or lower hut, OR ourself!
       
     },
     describe: function() {
@@ -170,7 +117,8 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       return ({
         generic: 'application/octet-stream',
         html: 'text/html',
-        js: 'application/javascript',
+        css: 'text/css',
+        javascript: 'application/javascript',
         icon: 'image/x-icon'
       })[this.type];
     },
@@ -193,6 +141,10 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       this.deployment = deployment;
       this.updateFuncs = {};
       
+      /// {SERVER=
+      this.publicFiles = {};
+      /// =SERVER}
+      
       // Holds data which must be objective between all vallied huts
       this.objective = this.add(Obj({ name: 'objective' }));
       
@@ -211,6 +163,17 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       otlPassage.add(Val({ name: 'health' }));
       
     },
+    /// {SERVER=
+    addPublicFile: function(filename, type, content) {
+      
+      if (O.has(this.publicFiles, filename)) throw new Error(`Tried to overwrite public file ${filename}`);
+      this.publicFiles[filename] = JourneyBuff({
+        type: type,
+        buffer: content
+      });
+      
+    },
+    /// =SERVER}
     addUpdateFunc: function(name, func) {
       if (O.has(this.updateFuncs, name)) throw new Error(`Tried to overwrite updateFunc "${name}"`);
       this.updateFuncs[name] = func;
@@ -243,12 +206,9 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       this.srcHillHut = null; // Tells if there is a hut above us
       
       /// {SERVER=
-      
       this.nextFrameId = 0; // The frameId to give the next client requiring a frameId
       this.hutDataAccessFunc = () => ACCESS.FULL;
-      
       /// =SERVER} {CLIENT=
-      
       this.onHutSetWobble = (delta) => {
         A.each(delta.rem, hut => {
           if (hut.getChild('acclivity').value !== 'hill') return;
@@ -264,7 +224,6 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       this.frameId = null;
       this.frameNum = 0; // Number of the server state we currently match
       this.pendingFrames = {};
-      
       /// =CLIENT}
       
     },
@@ -285,25 +244,6 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       
     },
     normalizeEncounter: function(encounter) {
-      
-      /*
-      Between two huts the categories of data are:
-      
-      1)  Hut data: Arbitrary data on the remote hut
-      2)  Passage transit data: Extra data generated by the Passage to manage the
-          current request
-      3)  Passage-hut data: Persistent data for use by the Passage regarding our
-          connection with this particular hut
-      
-      Implementation:
-      
-      1) Stored on the Record tree under the hutSet
-      2) Stored at `anEncounterInstance.passageData`
-      3) Stored at `aHutInstance.passageHutData[aPassageInstance.name]`
-      */
-      
-      // Ensure that `this` is the Hinterlands for `encounter`
-      encounter.hinterlands = this;
       
       let editor = Editor();
       let timeMs = U.timeMs();
@@ -328,12 +268,10 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       // TODO: Update passage health??
       let passages = hut.getChild('passages');
       let hutPassage = passages.getChild(passage.name) || editor.shape({
-        rec: passages,
-        data: { type: 'delta', add: {
-          0: { type: 'exact', children: {
-            name: passage.name,
-            health: 0.5
-          }}
+        par: passages,
+        data: { type: 'exact', children: {
+          name: passage.name,
+          health: 0.5
         }}
       });
       
@@ -344,13 +282,6 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       
     },
     
-    /// {CLIENT=
-    updateFrameId: function(newId) {
-      this.frameId = newId;
-      this.frameNum = 0;
-      this.pendingFrames = {};
-    },
-    /// =CLIENT}
     beginEncounter: async function(encounter) {
       
       this.normalizeEncounter(encounter);
@@ -369,7 +300,8 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
       let hut = encounter.hut;
       let hutAcclivity = hut.getChild('acclivity').value;
       let hutIp = hut.getChild('ip').value;
-      U.output(`${hutIp} ${(hutAcclivity === 'hill') ? '<<' : '>>'} ${encounter.message}`, encounter.details);
+      
+      U.output(`${hutIp} ${(hutAcclivity === 'hill') ? '>>' : '<<'} ${encounter.message}`, encounter.details);
       
       /// {SERVER=
       if (hutAcclivity === 'valley') return await this.encounterValleyHut(encounter);
@@ -498,10 +430,9 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
         let name = details.name;
         if (!O.has(this.passages, name)) throw new Error(`Invalid passage name: "${name}"`);
         
-        let message = details.message;
-        let details0 = O.has(details, 'details') ? details.details : {};
-        
-        return await this.passages[name].encounter(encounter.copy(message, details0));
+        encounter.message = details.message;
+        encounter.details = O.has(details, 'details') ? details.details : {};
+        return await this.passages[name].encounter(encounter);
         
       } else if (encounter.message === 'pleaseCatchUp') {
         
@@ -525,11 +456,14 @@ U.makeTwig({ name: 'hinterlands', twigs: [ 'record' ], make: (hinterlands, recor
         
       } else if (encounter.message === 'greetings') {
         
+        // TODO: I hate the multiline ` ... ` strings
+        
         let hutName = this.outline.deployment.plan;
         
         let twig = TWIGS[hutName];
         await twig.promise;
         
+        // Get essentials and any necessary twigs
         let [ [ essentialsContent, clientEssentialsContent ], fileDataList ] = await Promise.all([
           
           // Load the clearing
@@ -565,7 +499,8 @@ global.process = {
     '--host 127.0.0.1',
     '--port ' + (window.location.port || '80') // TODO: Account for https
   ]
-};`);
+};
+        `);
         
         // Setup the hut environment
         let environmentContents = S.trim(`
@@ -581,7 +516,7 @@ window.addEventListener('unhandledrejection', event => {
   U.output(compiler.formatError(event.reason));
   event.preventDefault();
 });
-//throw new Error('hey');`);
+        `);
         
         fileDataList = [
           
@@ -594,11 +529,10 @@ window.addEventListener('unhandledrejection', event => {
           
         ];
         
-        let lineOffset = 17; // A simple manual count of how many lines occur before the first js
+        let lineOffset = 14; // A simple manual count of how many lines occur before the first js
         let compilerData = {};
         let compoundJs = [];
         
-        // Reversing allows dependencies to always preceed dependees
         A.each(fileDataList, fileData => {
           
           let content = fileData.content;
@@ -616,8 +550,6 @@ window.addEventListener('unhandledrejection', event => {
         
         compoundJs = A.join(compoundJs, '\n');
         
-        if (encounter.hut.frameId === null) encounter.hut.updateFrameId(this.nextFrameId++);
-        
         let html = S.trim(`
 <!DOCTYPE html>
 <html>
@@ -628,9 +560,33 @@ window.addEventListener('unhandledrejection', event => {
 <meta name="keywords" content="hut ${this.name}">
 <meta name="viewport" content="width=device-width"/>
 <link rel="icon" type="image/x-icon" href="favicon.ico"/>
+<script type="text/javascript">window.global = window;</script>
+<script type="text/javascript">global.COMPILER_DATA = ${JSON.stringify(compilerData)};</script>
+<script type="text/javascript" src="values.js"></script>
 <script type="text/javascript">
 'use strict';
-window.global = window;
+${compoundJs}
+(async () => await compiler.run('clearing'))();
+</script>
+<style type="text/css">
+body { background-color: #e0e4e8; }
+</style>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body></body>
+</html>
+        `);
+        
+        return this.journey({ encounter, journey: JourneyBuff({
+          type: 'html',
+          buffer: html
+        })});
+        
+      } else if (encounter.message === 'values.js') {
+        
+        if (encounter.hut.frameId === null) encounter.hut.updateFrameId(this.nextFrameId++);
+        
+        let javascript = S.trim(`
 global.INITIAL_FRAME_ID = ${encounter.hut.frameId};
 global.INITIAL_HUT_SET_DATA = ${JSON.stringify({
   [ this.outline.deployment.ip ]: {
@@ -641,29 +597,11 @@ global.INITIAL_HUT_SET_DATA = ${JSON.stringify({
   }
 })};
 global.INITIAL_CATCH_UP_DATA = ${JSON.stringify(this.getChild('objective').getJson())};
-global.COMPILER_DATA = ${JSON.stringify(compilerData)};
-${compoundJs}
-(async () => await compiler.run('clearing'))();
-</script>
-<style type="text/css">
-body, html {
-  position: fixed;
-  left: 0; top: 0;
-  width: 100%; height: 100%;
-  padding: 0; margin: 0;
-  overflow: hidden;
-  font-family: sans-serif;
-}
-body { background-color: #e0e4e8; }
-</style>
-</head>
-<body></body>
-</html>
         `);
         
         return this.journey({ encounter, journey: JourneyBuff({
-          type: 'html',
-          buffer: html
+          type: 'javascript',
+          buffer: javascript
         })});
         
       } else if (encounter.message === 'favicon.ico') {
@@ -725,9 +663,7 @@ body { background-color: #e0e4e8; }
           
         } else {
           
-          let srcHut = O.has(details, 'srcHutName')
-            ? this.getChild([ 'hutSet', details.srcHutName ])
-            : encounter.hut;
+          let srcHut = O.has(details, 'srcHutName') ? this.getChild([ 'hutSet', details.srcHutName ]) : encounter.hut;
           
           this.applyUpdateFuncAndBroadcastDownwards(name, srcHut, params);
           
@@ -735,12 +671,21 @@ body { background-color: #e0e4e8; }
         
         return;
         
+      } else if (O.has(this.outline.publicFiles, encounter.message)) {
+        
+        return this.journey({ encounter, journey: this.outline.publicFiles[encounter.message] });
+        
       }
       
       throw new Error(`Couldn't process valley encounter: ${encounter.describe()}`);
       
     },
     /// =SERVER} {CLIENT=
+    updateFrameId: function(newId) {
+      this.frameId = newId;
+      this.frameNum = 0;
+      this.pendingFrames = {};
+    },
     encounterHillHut: async function(encounter) {
       
       if (encounter.message === 'passageMessage') {
@@ -1040,33 +985,6 @@ body { background-color: #e0e4e8; }
       };
     },
     
-    /// {CLIENT=
-    openForHillHut: async function(hillHut) {
-      
-      // Initially release any stale polls, and bank new ones
-      let addr = this.getAddress('arr');
-      this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
-        message: 'passageMessage',
-        details: {
-          name: this.name,
-          message: 'releasePolls'
-        }
-      })});
-      while (this.numPendingRequests < this.maxPendingRequests)
-        this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
-          message: 'passageMessage',
-          details: {
-            name: this.name,
-            message: 'bankPoll'
-          }
-        })});
-      
-    },
-    shutForHillHut: async function(hillHut) {
-      
-    },
-    /// =CLIENT}
-    
     parseEncounterData: async function(httpReq, protocol='http') {
       
       // TODO: Need to determine if the IP is trusted
@@ -1161,32 +1079,6 @@ body { background-color: #e0e4e8; }
       return encounterData;
       
     },
-    processRequest: async function(httpReq, httpRes) {
-      
-      try {
-        
-        let encounterData = await this.parseEncounterData(httpReq);
-        let hinterlandsRec = this.getPar(this.outline.hinterlands);
-        
-        await hinterlandsRec.beginEncounter(Encounter({
-          passage: this,
-          passageData: { httpReq, httpRes, available: true },
-          ip: encounterData.ip,
-          message: encounterData.message,
-          details: encounterData.details
-        }));
-        
-      } catch(err) {
-        
-        err.message = 'Http misinterpretation: ' + err.message;
-        U.output(COMPILER.formatError(err));
-        
-        httpRes.statusCode = 400;
-        httpRes.end('Http error', 'utf8');
-        
-      }
-      
-    },
     
     encounter: async function(encounter) {
       
@@ -1233,6 +1125,32 @@ body { background-color: #e0e4e8; }
     },
     
     /// {SERVER=
+    processRequest: async function(httpReq, httpRes) {
+      
+      try {
+        
+        let encounterData = await this.parseEncounterData(httpReq);
+        let hinterlandsRec = this.getPar(this.outline.hinterlands);
+        
+        await hinterlandsRec.beginEncounter(Encounter({
+          passage: this,
+          passageData: { httpReq, httpRes, available: true },
+          ip: encounterData.ip,
+          message: encounterData.message,
+          details: encounterData.details
+        }));
+        
+      } catch(err) {
+        
+        err.message = 'Request error; doing error response via http:\n ' + err.message;
+        U.output(COMPILER.formatError(err));
+        
+        httpRes.statusCode = 400;
+        httpRes.end('Http error', 'utf8');
+        
+      }
+      
+    },
     journeyDownwards: function({ hut, encounter=null, journey }) {
       
       // See if we can respond using the immediately available `encounter`
@@ -1272,6 +1190,30 @@ body { background-color: #e0e4e8; }
       
     },
     /// =SERVER} {CLIENT=
+    openForHillHut: async function(hillHut) {
+      
+      // Initially release any stale polls, and bank new ones
+      let addr = this.getAddress('arr');
+      this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
+        message: 'passageMessage',
+        details: {
+          name: this.name,
+          message: 'releasePolls'
+        }
+      })});
+      while (this.numPendingRequests < this.maxPendingRequests)
+        this.journey({ hut: hillHut, encounter: null, journey: JourneyJson({
+          message: 'passageMessage',
+          details: {
+            name: this.name,
+            message: 'bankPoll'
+          }
+        })});
+      
+    },
+    shutForHillHut: async function(hillHut) {
+      
+    },
     journeyUpwards: function({ hut, encounter=null, journey }) {
       
       this.numPendingRequests++;
