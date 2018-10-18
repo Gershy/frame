@@ -4,7 +4,6 @@
 // first parameter. For Arrays, it produces an entirely new Array.
 // Should differentiate between "include" and "combine".
 
-
 Error.stackTraceLimit = Infinity;
 
 // Method schemas
@@ -276,9 +275,10 @@ global.U = {
     
     let params = U.pval({ name, inspiration, methods, statik, description }, makeClassSchema);
     
-    let Cls = function(p={}) {
-      if (!this || this.constructor !== Cls) return new Cls(p);
-      this.init(p);
+    let Cls = function(...p) {
+      if (!p.length) p.push({});
+      if (!this || this.constructor !== Cls) return new Cls(...p);
+      this.init(...p);
     };
     Object.defineProperty(Cls, 'name', { value: name });
     
@@ -348,6 +348,12 @@ global.O = {
     
   },
   each: (obj, it) => { for (let k in obj) it(obj[k], k); },
+  reduce: (obj, val, it) => {
+    for (let k in obj) {
+      val = it(obj[k], val);
+    }
+    return val;
+  },
   find: (obj, it) => {
     for (let k in obj) if (it(obj[k], k))
       return obj[k];
@@ -397,6 +403,11 @@ global.O = {
 global.A = {
   
   is: v => U.isType(v, Array),
+  cast: v => {
+    let ret = [];
+    for (let i = 0; i < v.length; i++) ret.push(v[i]);
+    return ret;
+  },
   clone: arr => [].concat(arr),
   has: (arr, v) => arr.indexOf(v) !== -1,
   map: (arr, it) => {
@@ -410,6 +421,12 @@ global.A = {
     
   },
   each: (arr, it) => { for (let i = 0, len = arr.length; i < len; i++) it(arr[i], i); },
+  reduce: (arr, val, it) => {
+    for (let i = 0, len = arr.length; i < len; i++) {
+      val = it(arr[i], val);
+    }
+    return val;
+  },
   find: (arr, it) => {
     for (let i = 0, len = arr.length; i < len; i++)
       if (it(arr[i], i)) return arr[i];
@@ -431,6 +448,7 @@ global.A = {
   },
   join: (arr, delim) => arr.join(delim),
   include: (...arrs) => arrs[0].concat(...arrs.slice(1)),
+  isEmpty: arr => arr.length === 0,
   any: (arr, it) => { 
     for (var i = 0, len = arr.length; i < len; i++) if (it(arr[i], i)) return true;
     return false;
@@ -456,6 +474,13 @@ global.S = {
   
 };
 
+const Unique = U.makeClass({ name: 'Unique', methods: (insp, Cls) => ({
+  init: function() {
+    this.uid = `UID(${Unique.NEXT_ID++})`;
+  }
+})});
+Unique.NEXT_ID = 0;
+
 // Provides a stable start/stop paradigm
 const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
   
@@ -464,7 +489,7 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
     this.tmpActions = null;
     
   },
-  getTmpActions: function() { throw new Error('not implemented'); },
+  getTmpActions: function() { throw new Error(`not implemented (${U.typeOf(this)})`); },
   isDn: function() { return !this.tmpActions; },
   isUp: function() { return !!this.tmpActions; },
   up: function() {
@@ -475,6 +500,13 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
     
     for (let i = 0, len = actions.length; i < len; i++) {
       
+      // actions[i].up.call(this);
+      
+      // TODO: HEEERE
+      // not running when these up/dn-cleanup-try-structures are uncommented
+      // Potentially need a second, transactional sense of up/dn - e.g. a Record
+      // has initialized into a valid state due to a transaction, as opposed
+      // to simply having had "up" called on it.
       try {
         
         actions[i].up.call(this);
@@ -494,11 +526,13 @@ const Temporary = U.makeClass({ name: 'Temporary', methods: (insp, Cls) => ({
   },
   dn: function() {
     
-    if (this.isDn()) throw new Error('Tried to double-db');
+    if (this.isDn()) throw new Error('Tried to double-dn');
     
     let actions = this.tmpActions;
     
     for (let i = actions.length - 1; i >= 0; i--) {
+      
+      // actions[i].dn.call(this);
       
       try {
         
@@ -614,6 +648,7 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
           O.each(this.holders, c => { delete c[this.holdKey]; });
           this.holders = {};
           this.nextId = 0;
+          this.numUsages = 0;
         }
       }
     ];
@@ -625,6 +660,8 @@ const Wobbly = U.makeClass({ name: 'Wobbly', inspiration: { Temporary }, methods
       key = this.nextId++;
       func[this.holdKey] = key;
     }
+    
+    if (O.has(this.holders, key)) throw new Error('Duplicate hold key');
     
     this.holders[key] = func;
     
@@ -682,15 +719,15 @@ const WobblyValue = U.makeClass({ name: 'WobblyValue', inspiration: { Wobbly }, 
 })});
 const WobblyResult = U.makeClass({ name: 'WobblyResult', inspiration: { Wobbly }, methods: (insp, Cls) => ({
   
-  init: function(params /* wobblies, calc */) {
+  init: function(wobblies, calc) {
     
-    insp.Wobbly.init.call(this, params);
+    insp.Wobbly.init.call(this, {});
     
-    if (!O.has(params, 'wobblies')) throw new Error('Missing "wobblies" param');
-    if (!O.has(params, 'calc')) throw new Error('Missing "calc" param');
+    // if (!O.has(params, 'wobblies')) throw new Error('Missing "wobblies" param');
+    // if (!O.has(params, 'calc')) throw new Error('Missing "calc" param');
     
-    this.wobblies = params.wobblies;
-    this.calc = params.calc;
+    this.wobblies = wobblies;
+    this.calc = calc;
     this.value = this.calcValue();
     
   },

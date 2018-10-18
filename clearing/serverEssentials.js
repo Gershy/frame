@@ -83,6 +83,12 @@ O.include(U, {
     },
     compileFile: function(content, variant, variantDef) {
       
+      let doInsertUseStrict = variantDef.insertUseStrict;
+      
+      // TODO: Think about this more later
+      let headerLines = [];
+      if (doInsertUseStrict) headerLines.push('use strict;');
+      
       let lines = content.split('\n');
       
       let blocks = [];
@@ -143,7 +149,9 @@ O.include(U, {
         
         // Filter out blank lines. Filter out all block delimiters, and the contents of any 'remove' blocks.
         let keepLine = true;
-        if (!lines[i].trim().length) keepLine = false; // TODO: Remove empty lines?
+        let trimmedLine = S.trim(lines[i]);
+        if (!trimmedLine) keepLine = false; // Remove empty lines
+        if (S.startsWith(trimmedLine, '//')) keepLine = false; // Remove single-line quotes
         if (currentBlock && i === currentBlock.start) keepLine = false; // Remove block start definition
         if (currentBlock && i === currentBlock.end) keepLine = false;   // Remove block end definition
         if (currentBlock && variantDef[currentBlock.type] === 'remove') keepLine = false; // Remove remove-type blocks

@@ -1,16 +1,5 @@
-// TODO: changing an Arr via "delta" uses Objects, but the wobble produced
-// uses Arrays
-// The "delta" needs to use Objects since the key may refer to an existing
-// child.
-// It's tricky for the wobble to return an Object, since the keys available
-// at the time the wobble data is generated don't reliably correspond to
-// to the actual names the generated Records may have. The key isn't even
-// provided as "name" to the `shape` call. The resulting record name may be
-// calculated arbitrarily, and not even known to the interfacer providing
-// the "delta" data.
-
 // TODO: currently too tricky to sync complex Editor batches!! The issue is
-// actual Record instances being a part of the data which needs to be sent
+// actual RAM-held Record instances being a part of the data to be sent
 // over the wire.
 
 U.makeTwig({ name: 'record', twigs: [], make: (record) => {
@@ -21,7 +10,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
   let NEXT_TEMP = 0;
   let getTempName = () => {
     
-    // Returns globally unique identifiers which aren't valid Record names
+    // Returns globally unique identifiers which are NOT valid Record names
     
     let id = U.id(NEXT_TEMP++, 8);
     if (id === 'ffffffff') throw new Error('EXHAUSTED IDS'); // Checking for this is almost silly
@@ -156,24 +145,22 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         {
           up: function() {
             
-            O.each(this.outline.relators, (relator, relatorName) => {
+            /*O.each(this.outline.relators, (relator, relatorName) => {
               
-              let wobbly = WobblyResult({
-                wobblies: relator.getRecs(this),
-                calc: (...args) => relator.doRelation(this, ...args)
-              });
+              let wobbly = WobblyResult(relator.getRecs(this), (...args) => relator.doRelation(this, ...args));
               wobbly.up();
               this.related[relatorName] = wobbly;
               
-            });
+            });*/
             
           },
           dn: function() {
             
             O.each(this.outline.relators, (relator, relatorName) => {
               
-              let wobbly = O.has(this.related, relatorName) ? this.related[relatorName] : null;
-              if (!wobbly) return;
+              if (!O.has(this.related, relatorName)) return;
+              let wobbly = this.related[relatorName];
+              
               wobbly.dn();
               delete this.related[relatorName];
               
@@ -267,14 +254,28 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       if (!O.has(this.outline.actions, name)) throw new Error('Couldn\'t find action "' + name + '"');
       return this.outline.actions[name].apply(this, args);
     },
-    getRef: function(name) {
+    /*getRef: function(name) {
       
       if (!O.has(this.related, name)) throw new Error(`No reference named "${name}"`);
       return this.related[name].getValue();
       
+    },*/
+    getRelated: function(name) {
+      
+      if (!O.has(this.outline.relators, name)) throw new Error(`No reference named "${name}"`);
+      
+      if (!O.has(this.related, name)) {
+        
+        let relator = this.outline.relators[name];
+        this.related[name] = WobblyResult(relator.getRecs(this), (...args) => relator.doRelation(this, ...args));
+        this.related[name].up();
+        
+      }
+      
+      return this.related[name].getValue();
+      
     },
     
-    // dereference: function() { throw new Error('not implemented'); },
     getJson: function() { return this.getValue(); },
     
     describe: function() {
@@ -292,6 +293,19 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       insp.Record.init.call(this, { outline });
       this.children = {};
       this.length = 0;
+      
+    },
+    
+    getTmpActions: function() {
+      
+      // Setting dn a RecordSet sets all its children dn as well
+      
+      return A.include(insp.Record.getTmpActions(), [
+        {
+          up: function() {},
+          dn: function() { O.each(this.children, c => c.dn()); }
+        }
+      ]);
       
     },
     
@@ -327,6 +341,8 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       this.length--;
       child.par = null;
       
+      child.dn();
+      
       return child;
       
     },
@@ -342,10 +358,10 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     
     setValue: function(val) {
       
-      if (!val) return;
+      if (!val) return; // TODO: Necessary?
       
-      for (var k in val) if (!O.has(this.children, k)) throw new Error(`Tried to set value on nonexistent child: ${this.describe()} -> ${k}`);
-      for (var k in val) this.children[k].setValue(val[k]);
+      for (let k in val) if (!O.has(this.children, k)) throw new Error(`Tried to set value on nonexistent child: ${this.describe()} -> ${k}`);
+      for (let k in val) this.children[k].setValue(val[k]);
       
     },
     getValue: function() { return this.children; },
@@ -391,7 +407,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     },
     getChildName: function(rec) {
       
-      if (rec.par !== this) throw new Error(`Can't get child name for ${rec.describe()} - it isn't our child`);
+      if (rec.outline !== this.outline.template) throw new Error(`${this.describe()} can't get child name for ${rec.describe()} - it isn't our child`);
       
       let genName = this.outline.genName;
       let name = genName ? genName(rec) : this.nextInd.toString(); // TODO: (really tricky??) `this.nextInd` isn't incremented!! What happens if the same integer name is returned for multiple Records??
@@ -420,9 +436,16 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
     sanitizeValue: function(value) { return value === null ? this.outline.defaultValue : value; },
     getValue: function() { return this.value; },
     setValue: function(value) {
-      let val = this.sanitizeValue(value);
-      if (this.outline.validate) this.outline.validate(val);
-      this.value = val;
+      
+      // Record-level validation
+      value = this.sanitizeValue(value);
+      
+      // Outline-level validation (custom validation)
+      if (this.outline.validate) this.outline.validate(value); 
+      
+      // New value is valid so store it
+      this.value = value;
+      
     }
     
   })});
@@ -488,7 +511,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             if (data === null) {
               childrenData = {};
             } else if (assumeType) {
-              // A type is assumed! `data` is directly the `childrenData`
+              // A type is assumed! `data` IS the `childrenData`
               childrenData = data;
             } else {
               // A type is given! `data` contains the `childrenData`
@@ -498,17 +521,14 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             
             if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
             
-            let outlineChildren = outline.children;
-            
             // Because this is "exact", we loop through ALL outline children
-            for (var k in outlineChildren) {
+            let outlineChildren = outline.children;
+            for (let k in outlineChildren) {
               
               this.shape({ err, assumeType, data: O.has(childrenData, k) ? childrenData[k] : null,
-              ...(
-                O.has(rec.children, k)
-                  ? { rec: rec.children[k] }
-                  : { par: rec, name: k }
-              )});
+                // Provide the child itself as a param if it exists; otherwise provide the parent and the name
+                ...(O.has(rec.children, k) ? { rec: rec.children[k] } : { par: rec, name: k })
+              });
               
             }
             
@@ -520,7 +540,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             if (data === null) {
               childrenData = {};
             } else if (assumeType) {
-              // A type is assumed! `data` is directly the `childrenData`
+              // A type is assumed! `data` IS the `childrenData`
               childrenData = data;
             } else {
               // A type is given! `data` contains the `childrenData`
@@ -532,14 +552,12 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             
             // Because this is "delta", we only affect any children which were mentioned
             // If `k` doesn't correspond to the Outline structure, an error will rightfully be thrown later, by `getChildOutline`
-            for (var k in childrenData) {
+            for (let k in childrenData) {
               
               this.shape({ err, assumeType, data: childrenData[k],
-              ...(
-                O.has(rec.children, k)
-                  ? { rec: rec.children[k] }
-                  : { par: rec, name: k }
-              )});
+                // Provide the child itself as a param if it exists; otherwise provide the parent and the name
+                ...(O.has(rec.children, k) ? { rec: rec.children[k] } : { par: rec, name: k })
+              });
               
             }
             
@@ -561,11 +579,11 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             
             if (!U.isType(childrenData, Object)) { err.message = `Expected Object (got ${U.typeOf(childrenData)})`; throw err; }
             
-            let delta = { add: [], rem: [] };
+            let delta = { add: [], rem: {} }; // "add" needs to be an array as names may not yet be known
             let needsDelete = O.clone(rec.children);
             
             // Mod/add any existing/new children
-            for (var k in childrenData) {
+            for (let k in childrenData) {
               
               if (O.has(rec.children, k)) {
                 
@@ -582,12 +600,12 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             }
             
             // Remove any children not unmarked (a.k.a "marked"!) for deletion
-            for (var k in needsDelete) {
+            for (let k in needsDelete) {
               this.addOp({ err, type: 'remChild', par: rec, child: needsDelete[k] });
-              delta.rem.push(k);
+              delta.rem[k] = true;
             }
             
-            if (delta.add.length || delta.rem.length) this.wobbles.push({ rec, data: delta });
+            if (!A.isEmpty(delta.add) || !O.isEmpty(delta.rem)) this.wobbles.push({ rec, delta: true, data: delta });
             
           },
           delta: () => {
@@ -605,10 +623,10 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             if (!U.isType(addData, Object)) { err.message = `Expected "add" as Object (got ${U.typeOf(addData)})`; throw err; }
             if (!U.isType(remData, Object)) { err.message = `Expected "rem" as Object (got ${U.typeOf(remData)})`; throw err; }
             
-            let delta = { add: [], rem: [] };
+            let delta = { add: [], rem: {} };
             
             // Mod/add any existing/new children
-            for (var k in addData) {
+            for (let k in addData) {
               if (O.has(rec.children, k)) {
                 this.shape({ err, rec: rec.children[k], data: addData[k], assumeType });
               } else {
@@ -618,19 +636,19 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
             }
             
             // Rem appropriate children
-            for (var k in remData) {
+            for (let k in remData) {
               this.addOp({ err, type: 'remChild', par: rec, child: k });
-              delta.rem.push(k);
+              delta.rem[k] = true;
             }
             
-            if (delta.add.length || delta.rem.length) this.wobbles.push({ rec, data: delta });
+            if (!A.isEmpty(delta.add).length || !O.isEmpty(delta.rem)) this.wobbles.push({ rec, delta: true, data: delta });
             
           }
         },
         none: {
           exact: () => {
             this.addOp({ err, type: 'setValue', rec: rec, value: data });
-            this.wobbles.push({ rec, data });
+            this.wobbles.push({ rec, delta: false, data });
           },
           delta: () => {
             throw new Error('not implemented');
@@ -655,8 +673,11 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         
         // Without a constant parent, things are trickier
         
+        if (!par) par = rec.par;
+        if (!name && !par) throw new Error('Need either "name" or "par"');
+        
         if (name) this.addOp({ err, type: 'setNameSimple', rec, name });
-        else      this.addOp({ err, type: 'setNameCalculated', rec });
+        else      this.addOp({ err, type: 'setNameCalculated', rec, par });
         
         if (par)  this.addOp({ err, type: 'addChild', par, child: rec });
         
@@ -687,9 +708,9 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         
       } else if (type === 'setNameCalculated') {
         
-        let { rec } = op.params;
+        let { rec, par } = op.params;
         let origName = rec.name;
-        rec.changeName(rec.par.getChildName(rec));
+        rec.changeName(par.getChildName(rec));
         return { type: 'setNameSimple', params: { rec, name: origName } };
         
       } else if (type === 'setUp') {
@@ -773,7 +794,7 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
         // errs[0].message = 'Transaction failed (#1:) ' + errs[0].message;
         // throw errs[0];
         
-        U.output('FAILURE (' + errs.length + ')', A.map(errs, err => COMPILER.formatError(err))[0]);
+        U.output('FAILURE (' + errs.length + ')', A.join(A.map(errs, (err, n) => `${n + 1}:${'\n'}${S.indent(COMPILER.formatError(err), '    ')}`), '\n'));
         this.attemptOps(allUndoOps, false); // Signal that this attempt can't be undone (it would be undoing an undo)
         throw new Error('Transaction failed');
         
@@ -791,7 +812,17 @@ U.makeTwig({ name: 'record', twigs: [], make: (record) => {
       this.wobbles = [];
       
       let undoOps = this.attemptOps(ops);
-      A.each(wobbles, w => w.rec.wobble(w.data));
+      A.each(wobbles, w => {
+        
+        // A delta's "add" is an Array since when the wobble was added the key was unknown
+        // Now that we've completed `this.attemptOps` all records should be well-named, so
+        // we can convert to an object using records names as keys!
+        if (w.delta) w.data.add = A.toObj(w.data.add, rec => rec.name);
+        
+        // Do the wobble
+        w.rec.wobble(w.data)
+        
+      });
       return undoOps;
       
     }

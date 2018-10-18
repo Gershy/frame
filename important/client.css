@@ -1,0 +1,267 @@
+@keyframes fadeIn {
+  0% { opacity: 0; } 100% { opacity: 1; }
+}
+
+html, body, #meta, #vision, #mood {
+  position: absolute;
+  margin: 0; padding: 0;
+  left: 0; right: 0;
+  top: 0; bottom: 0;
+}
+html { overflow: hidden; }
+body {
+  background-color: #1c1e27;
+}
+
+#ratio {
+  position: absolute;
+  width: 400px; height: 400px;
+  left: 50%; top: 50%;
+  margin-left: -200px; margin-top: -200px;
+  background-color: #000000;
+  overflow: hidden;
+}
+#mood {
+  /* night vision!!
+  background-image: radial-gradient(rgba(0, 255, 255, 0.2), rgba(0, 0, 0, 1)); */
+  
+  /* injured!
+  background-image: radial-gradient(rgba(255, 0, 0, 0.2), rgba(0, 0, 0, 1)); */
+  
+  /* night!
+  background-image: radial-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 1)); */
+  
+  /* fog!
+  background-image: radial-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 1)); */
+}
+#meta {
+  box-shadow: inset 0 0 0 15px rgba(255, 0, 0, 0.4);
+}
+body:focus #meta {
+  box-shadow: none;
+}
+#vision {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+.world {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 0; height: 0;
+  transform: translate(0px, 0px) rotate(0rad);
+  pointer-events: none;
+}
+
+#meta > .bottom {
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 100%; height: 100px;
+  text-align: center;
+}
+#meta > .bottom > .status, #meta > .bottom > .items {
+  position: relative;
+  display: inline-block;
+  height: 100%;
+  vertical-align: middle;
+}
+#meta > .bottom > .status > .hudItem, #meta > .bottom > .items > .hudItem {
+  position: relative;
+  width: 100px; height: 90%; margin: 5% 10px;
+  background-color: rgba(255, 255, 255, 0.5);
+  vertical-align: middle;
+}
+
+#meta > .bottom > .status > .unitStatus {
+
+}
+#meta > .bottom > .status > .unitStatus > .hp {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background-color: #d02020;
+  opacity: 0.5;
+}
+#meta > .bottom > .status > .unitStatus > .hp > .hpBar {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  background-color: #20d020;
+}
+
+#meta > .bottom > .items > .gun > .reloadSlider {
+  position: absolute;
+  left: 0; top: 0;
+  width: 0%; height: 100%;
+  background-color: rgba(255, 0, 0, 0.5);
+}
+#meta > .bottom > .items > .gun > .reloadSlider.sliding {
+  width: 100%;
+}
+#meta > .bottom > .items > .gun > .bullets {
+  position: relative;
+  width: 100%; height: 30px; line-height: 30px;
+  font-size: 20px;
+  
+}
+#meta > .bottom > .items > .gun > .bullets > .remaining,
+#meta > .bottom > .items > .gun > .bullets > .sep,
+#meta > .bottom > .items > .gun > .bullets > .total {
+  display: inline-block;
+  vertical-align: middle;
+  height: 100%;
+}
+
+#world1 { z-index: 1; } /* Anything underneath the mood (anything not emitting light) */
+#mood   { z-index: 2; } /* The mood; darkens anything that isn't a source of light */
+#world2 { z-index: 3; } /* Over the mood; anything that emits light */
+#vision { z-index: 4; } /* A canvas with black pixels covering unseen areas. Covers everything, including sources of light */
+#meta   { z-index: 5; } /* Finally, meta stuff including GUI. Nothing can cover this. */
+
+.background {
+  position: absolute;
+  width: 10000px;
+  height: 10000px;
+  transform: translate(-5000px, -5000px);
+  background: url("assets/dirtTile.png") repeat center 100%; 
+  opacity: 1;
+  /*background-color: #404040;*/
+  z-index: 0;
+}
+
+.button {
+  position: relative;
+  white-space: nowrap;
+  cursor: pointer;
+  text-align: center;
+}
+.button:before {
+  content: '';
+  display: inline-block;
+  position: relative;
+  width: 0; height: 100%;
+  vertical-align: middle;
+}
+.button > .content {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.overlay {
+  position: absolute;
+}
+
+.overlay.spawn {
+  left: 0; top: 0;
+  width: 60%; height: 60%;
+  left: 20%; top: 20%;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+.overlay.spawn > .button.spawn {
+  position: absolute;
+  width: 50%; height: 30%;
+  left: 25%; bottom: 0;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.2);
+  font-size: 200%;
+}
+
+.entity {
+  position: absolute;
+  background-color: #000000;
+  opacity: 1;
+  z-index: 1;
+}
+.entity.humanoid {
+  border-radius: 100%;
+}
+.entity.humanoid:before {
+  content: "";
+  position: absolute;
+  left: 50%; top: -2px; 
+  width: 4px; margin-left: -2px;
+  height: 6px;
+  background-color: #000000;
+}
+.entity.humanoid.removed {
+  opacity: 0;
+  background-color: #ff0000;
+}
+
+.entity.zombie {
+  box-shadow: 0 0 0 2px rgba(120, 0, 0, 1);
+}
+
+.entity.unit {
+  box-shadow: 0 0 0 2px rgba(0, 60, 255, 1);
+}
+.entity.unit.followed {
+  box-shadow: 0 0 0 2px rgba(100, 120, 255, 1);
+}
+.entity.unit.mainItem-m16:after {
+  content: "";
+  position: absolute;
+  left: 50%; top: -10px; 
+  width: 4px; margin-left: -2px;
+  height: 20px;
+  background-color: #895913;
+}
+.entity.unit.mainItem-mag:after {
+  content: "";
+  position: absolute;
+  left: 50%; top: -10px; 
+  width: 8px; margin-left: -4px;
+  height: 20px;
+  background-color: #895913;
+}
+.entity.unit.mainItem-gatling:after {
+  content: "";
+  position: absolute;
+  left: 50%; top: -16px; 
+  width: 8px; margin-left: -4px;
+  height: 26px;
+  background-color: #895913;
+}
+.entity.unit.mainItem-flamer:after {
+  content: "";
+  position: absolute;
+  left: 50%; top: -16px; 
+  width: 2px; margin-left: -1px;
+  height: 26px;
+  background-color: #895913;
+}
+
+.entity.structure {
+  background-color: #505050;
+}
+.entity.silo {
+  border-radius: 100%;
+  background-color: #2e5832;
+}
+.entity.bullet {
+  background-color: #ffe8c8;
+  width: 4px; left: -2px;
+  z-index: 3;
+  border-radius: 100%; 
+  box-shadow: 0 0 20px 4px rgba(255, 170, 150, 0.7);
+  animation: fadeIn 25ms 1;
+  transition: none; /*transform 50ms ease-in, opacity 100ms linear */;
+}
+.entity.bullet:after {
+  content: "";
+  background-image: linear-gradient(#ffd080, transparent);
+  position: absolute;
+  left: 0; top: 100%;
+  width: 100%; height: 20px;
+}
+.entity.bullet.removed { background-color: rgba(0, 0, 0, 0.5); box-shadow: none; }
+.entity.bullet.removed:after { background-image: linear-gradient(rgba(0, 0, 0, 0.5), transparent); }
+
+.world, #vision, .entity {
+  /* These need to have the same transition to keep them synced up */
+  transition: transform 60ms ease-in-out, opacity 100ms linear;
+}
+.entity.removed {
+  opacity: 0;
+}
