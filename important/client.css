@@ -1,7 +1,3 @@
-@keyframes fadeIn {
-  0% { opacity: 0; } 100% { opacity: 1; }
-}
-
 html, body, #meta, #vision, #mood {
   position: absolute;
   margin: 0; padding: 0;
@@ -13,31 +9,20 @@ body {
   background-color: #1c1e27;
 }
 
-#ratio {
+#ratio, #meta {
   position: absolute;
-  width: 400px; height: 400px;
+  width: 1200px; height: 1200px;
   left: 50%; top: 50%;
-  margin-left: -200px; margin-top: -200px;
-  background-color: #000000;
+  margin-left: -600px; margin-top: -600px;
   overflow: hidden;
 }
-#mood {
-  /* night vision!!
-  background-image: radial-gradient(rgba(0, 255, 255, 0.2), rgba(0, 0, 0, 1)); */
-  
-  /* injured!
-  background-image: radial-gradient(rgba(255, 0, 0, 0.2), rgba(0, 0, 0, 1)); */
-  
-  /* night!
-  background-image: radial-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 1)); */
-  
-  /* fog!
-  background-image: radial-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 1)); */
+#ratio {
+  border-radius: 100%;
+  box-shadow: 0 0 0 15px rgba(255, 0, 0, 0.4);
 }
-#meta {
-  box-shadow: inset 0 0 0 15px rgba(255, 0, 0, 0.4);
-}
-body:focus #meta {
+#ratio { z-index: 1; }
+#meta { z-index: 2; }
+body:focus #ratio {
   box-shadow: none;
 }
 #vision {
@@ -52,6 +37,19 @@ body:focus #meta {
   width: 0; height: 0;
   transform: translate(0px, 0px) rotate(0rad);
   pointer-events: none;
+}
+#mood {
+  /* night vision!!
+  background-image: radial-gradient(rgba(0, 255, 255, 0.2), rgba(0, 0, 0, 1)); */
+  
+  /* injured!
+  background-image: radial-gradient(rgba(255, 0, 0, 0.2), rgba(0, 0, 0, 1)); */
+  
+  /* night!
+  background-image: radial-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 1)); */
+  
+  /* fog!
+  background-image: radial-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 1)); */
 }
 
 #meta > .bottom {
@@ -113,11 +111,10 @@ body:focus #meta {
   height: 100%;
 }
 
-#world1 { z-index: 1; } /* Anything underneath the mood (anything not emitting light) */
-#mood   { z-index: 2; } /* The mood; darkens anything that isn't a source of light */
-#world2 { z-index: 3; } /* Over the mood; anything that emits light */
-#vision { z-index: 4; } /* A canvas with black pixels covering unseen areas. Covers everything, including sources of light */
-#meta   { z-index: 5; } /* Finally, meta stuff including GUI. Nothing can cover this. */
+#ratio > #world1 { z-index: -4; } /* Anything underneath the mood (anything not emitting light) */
+#ratio > #mood   { z-index: -3; } /* The mood; darkens anything that isn't a source of light */
+#ratio > #world2 { z-index: -2; } /* Over the mood; anything that emits light */
+#ratio > #vision { z-index: -1; } /* A canvas with black pixels covering unseen areas. Covers everything, including sources of light */
 
 .background {
   position: absolute;
@@ -239,14 +236,46 @@ body:focus #meta {
   border-radius: 100%;
   background-color: #2e5832;
 }
+
+@keyframes bulletIn {
+  0% { height: 0px; } 100% { height: 200px; }
+}
+.entity.bullet {
+  background-color: transparent;
+  width: 8px; height: 8px; left: -4px; margin-top: -4px;
+  transition: opacity 150ms linear;
+}
+.entity.bullet.removed {
+  opacity: 0;
+}
+.entity.bullet:before {
+  content: "";
+  position: absolute;
+  width: 2px; height: 8px;
+  left: 3px; top: 0;
+  background-color: #ffe8c8;
+  border-radius: 100%;
+  box-shadow: 0 0 10px 2px #ffe8c8;
+}
+.entity.bullet:after {
+  content: "";
+  position: absolute;
+  width: 2px; left: 3px; top: 8px; /* there's 2px of intersection here! */
+  /*outline: 1px solid #ffe8c8;*/
+  background-image: linear-gradient(#ffd080, transparent);
+  animation: bulletIn 400ms 1 linear;
+  height: 200px;
+}
+
+/*
 .entity.bullet {
   background-color: #ffe8c8;
   width: 4px; left: -2px;
   z-index: 3;
   border-radius: 100%; 
   box-shadow: 0 0 20px 4px rgba(255, 170, 150, 0.7);
-  animation: fadeIn 25ms 1;
-  transition: none; /*transform 50ms ease-in, opacity 100ms linear */;
+  animation: fadeIn 100ms 1;
+  transition: none;
 }
 .entity.bullet:after {
   content: "";
@@ -255,12 +284,14 @@ body:focus #meta {
   left: 0; top: 100%;
   width: 100%; height: 20px;
 }
-.entity.bullet.removed { background-color: rgba(0, 0, 0, 0.5); box-shadow: none; }
-.entity.bullet.removed:after { background-image: linear-gradient(rgba(0, 0, 0, 0.5), transparent); }
+*/
+
+.entity.bullet.removed { display: none; /*background-color: rgba(0, 0, 0, 0.5); box-shadow: none; }
+.entity.bullet.removed:after { background-image: linear-gradient(rgba(0, 0, 0, 0.5), transparent);*/ }
 
 .world, #vision, .entity {
   /* These need to have the same transition to keep them synced up */
-  transition: transform 60ms ease-in-out, opacity 100ms linear;
+  transition: none /* transform 60ms ease-in-out, opacity 100ms linear*/;
 }
 .entity.removed {
   opacity: 0;
