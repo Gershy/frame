@@ -2,12 +2,15 @@
 
 // [X]  Bullets shouldn't need to send updates every frame
 // [ ]  Better camera controls
-//      [X]  Shifted ahead further
-// [ ]  Reveals should be on units, and teams are just groupings of units
+//   [X]  Shifted ahead further
+// [X]  Zones (broad collision detection)
+// [X]  Reveals should be on units, and teams are just groupings of units
 // [ ]  Different ways of determining who shares LOS - e.g. a commander unit, or nearby units share, etc.
 // [ ]  Enemies + AI
 // [ ]  Different clients receiving different updates (maybe a global list of updates, as well as a per-client or per-group list?)
 // [ ]  Smarter way of determining which objects have updated
+//   [ ] Less overhead for defining unit changes?? (takes some redundant code at the moment)
+// [ ]  Turning acceleration (allowing fine adjustments to angle while maintaining quicker turns)
 let http = require('http');
 let net = require('net');
 let crypto = require('crypto');
@@ -36,14 +39,13 @@ let config = {
   httpPort: 80,
   soktPort: 81
 };
-let output = console.log.bind(console);
 let UID = 0;
 
 class XY {
   constructor() {}
-  x() { throw new Error('not implemented'); }
-  y() { throw new Error('not implemented'); }
+  xx() { throw new Error('not implemented'); }
   asCarte() { throw new Error('not implemented'); }
+  yy() { throw new Error('not implemented'); }
   asPolar() { throw new Error('not implemented'); }
   toCarte() { throw new Error('not implemented'); }
   toPolar() { throw new Error('not implemented'); }
@@ -66,11 +68,11 @@ class XY {
   ang() { throw new Error('not implemented'); }
   angTo(pt) { throw new Error('not implemented'); }
   rot(ang) { throw new Error('not implemented'); }
-};
+}
 class CarteXY {
   constructor(x=0, y=0) { this.x = x; this.y = y; if (!U.validNum(x) || !U.validNum(y)) throw new Error('NAN!'); }
-  x()         { return this.x; }
-  y()         { return this.y; }
+  xx()         { return this.x; }
+  yy()         { return this.y; }
   asCarte()   { return [ this.x, this.y ]; }
   toCarte()   { return this; }
   asPolar()   { return [ this.ang(), this.mag() ]; }
@@ -82,21 +84,21 @@ class CarteXY {
   dist(pt)    { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ this.x - x, this.y - y ]; return Math.sqrt(dx * dx + dy * dy); }
   magSqr()    { return this.x * this.x + this.y * this.y; }
   mag()       { return Math.sqrt(this.x * this.x + this.y * this.y); }
-  norm()      { let amt = 1 / Math.sqrt(this.x * this.x + this.y * this.y); return isNaN(amt) ? null : new CarteXY(this.x * amt, this.y * amt); }
+  norm()      { let m = Math.sqrt(this.x * this.x + this.y * this.y); if (!m) return null; m = 1 / m; return new CarteXY(this.x * m, this.y * m); }
   eq(pt)      { let [ x, y ] = pt.asCarte(); return this.x === x && this.y === y; }
   perpCW()    { return new CarteXY(this.y, -this.x); }
   perpCCW()   { return new CarteXY(-this.y, this.x); }
   dotProd(pt) { let [ x, y ] = pt.asCarte(); return this.x * x + this.y * y; }
   proj(pt)    { let [ x, y ] = pt.asCarte(); return pt.scale((this.x * x + this.y * y) / pt.mag()); }
-  projLen(pt) { let [ x, y ] = pt.asCarte(); return (this.x * x + this.y * y) / pt.mag(); }
+  projLen(pt) { let [ x, y ] = pt.asCarte(); let mag = pt.mag(); if (!mag) return 0; return (this.x * x + this.y * y) / mag; }
   ang()       { return (this.x || this.y) ? Math.atan2(this.x, this.y) : 0; }
   angTo(pt)   { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ x - this.x, y - this.y ]; return (dx || dy) ? Math.atan2(dx, dy) : 0; }
   rot(ang)    { return new PolarXY(this.ang() + ang, this.mag()); }
-};
+}
 class PolarXY {
   constructor(r=0, m=1) { this.r = r; this.m = m; if (!U.validNum(r) || !U.validNum(m)) throw new Error('NAN!'); }
-  x()         { return Math.sin(this.r) * this.m; }
-  y()         { return Math.cos(this.r) * this.m; }
+  xx()         { return Math.sin(this.r) * this.m; }
+  yy()         { return Math.cos(this.r) * this.m; }
   asCarte()   { return [ Math.sin(this.r) * this.m, Math.cos(this.r) * this.m ]; }
   toCarte()   { return new CarteXY(Math.sin(this.r) * this.m, Math.cos(this.r) * this.m); }
   asPolar()   { return [ this.r, this.m ]; }
@@ -118,7 +120,7 @@ class PolarXY {
   ang()       { return this.r; }
   angTo(pt)   { let d = pt.ang() - this.ang(); while(d > U.ROT_HALF) d -= U.ROT_FULL; while(d < -U.ROT_HALF) d += U.ROT_FULL; return d; /*return pt.ang() - this.ang();*/ }
   rot(ang)    { return new PolarXY(this.r + r, this.m); }
-};
+}
 XY.sum = (xys) => {
   let [ x, y ] = [ 0, 0 ];
   for (let i = 0, len = xys.length; i < len; i++) {
@@ -129,6 +131,84 @@ XY.sum = (xys) => {
   return new CarteXY(x, y);
 };
 
+// ==== GEN
+let makePistol = () => {
+  let pistol = new Gun('pistol', (rot, unit) => {
+    let shootSpd = 900;
+    let lifespanSecs = 4;
+    let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
+    bullet.invWeight = 10 / 1;
+    bullet.strikeDamage = 20;
+    return bullet;
+  });
+  pistol.recoilAng = (Math.PI * 2) / 65;
+  pistol.shootDelaySecs = 0.3;
+  pistol.shotsInClip = 12;
+  pistol.reloadDelaySecs = 1;
+  return pistol;
+};
+let makeM16 = () => {
+  let m16 = new Gun('m16', (rot, unit) => {
+    let shootSpd = 1400;
+    let lifespanSecs = 3;
+    let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
+    bullet.invWeight = 10 / 1;
+    bullet.strikeDamage = 30;
+    return bullet;
+  });
+  m16.recoilAng = (Math.PI * 2) / 80;
+  m16.shootDelaySecs = 0.14;
+  m16.shotsInClip = 30;
+  m16.reloadDelaySecs = 2;
+  return m16;
+};
+let makeMag = () => {
+  let mag = new Gun('mag', (rot, unit) => {
+    let shootSpd = 1500;
+    let lifespanSecs = 3;
+    let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
+    bullet.invWeight = 10 / 2;
+    bullet.strikeDamage = 40;
+    return bullet;
+  });
+  mag.recoilAng = (Math.PI * 2) / 65;
+  mag.shootDelaySecs = 0.09;
+  mag.shotsInClip = 100;
+  mag.reloadDelaySecs = 4;
+  return mag;
+};
+let makeGatling = () => {
+  let gatling = new Gun('gatling', (rot, unit) => {
+    let shootSpd = 2100;
+    let lifespanSecs = 2;
+    let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
+    bullet.invWeight = 10 / 3;
+    bullet.strikeDamage = 10;
+    return bullet;
+  });
+  gatling.recoilAng = (Math.PI * 2) / 52;
+  gatling.shootDelaySecs = 0.01;
+  gatling.shotsInClip = 7500;
+  gatling.reloadDelaySecs = 10;
+  return gatling;
+};
+let makeFlamer = () => {
+  let flamer = new Gun('flamer', (rot, unit) => {
+    let shootSpd = 250;
+    let lifespanSecs = 2;
+    let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
+    bullet.invWeight = 10 / 1;
+    bullet.strikeDamage = 5;
+    return bullet;
+  });
+  flamer.recoilAng = (Math.PI * 2) / 40;
+  flamer.shootDelaySecs = 0.005;
+  flamer.shotsInClip = 1000;
+  flamer.reloadDelaySecs = 1;
+  return flamer;
+};
+
+// ==== BOUND
 class Bound {
   constructor() {
     this.loc = new CarteXY();
@@ -137,10 +217,16 @@ class Bound {
   getAxisAlignedBound() { throw new Error('not implemented'); }
   getAxes(bound2) { throw new Error('not implemented'); }
   projOnAxis(axis) { throw new Error('not implemented'); }
-};
+}
 Bound.getPenetration = (b1, b2) => {
   
-  let axes = [ ...b1.getAxes(b2), ...b2.getAxes(b1) ];
+  let axes1 = b1.getAxes(b2);
+  for (let axis of axes1) if (!axis) throw new Error(`Bound ${b1.constructor.name} produced bad axis`);
+  
+  let axes2 = b2.getAxes(b1);
+  for (let axis of axes2) if (!axis) throw new Error(`Bound ${b2.constructor.name} produced bad axis`);
+  
+  let axes = [ ...axes1, ...axes2 ];
   
   let leastAxis = null;
   let leastPenAmt = U.intUpperBound;
@@ -157,8 +243,6 @@ Bound.getPenetration = (b1, b2) => {
   }
   
   return leastAxis ? [ leastAxis, leastPenAmt ] : null;
-  
-  // return leastAxis ? leastAxis.scale(leastPenAmt) : null;
   
 };
 class ConvexPolygonBound extends Bound {
@@ -186,6 +270,9 @@ class ConvexPolygonBound extends Bound {
     
     let h = this.projOnAxis(new CarteXY(1, 0));
     let v = this.projOnAxis(new CarteXY(0, 1));
+    
+    if (!U.validNum(h[0]) || !U.validNum(h[1])) throw new Error('INVALID NUM');
+    if (!U.validNum(v[0]) || !U.validNum(v[1])) throw new Error('INVALID NUM');
     
     return {
       x0: h[0], x1: h[1],
@@ -217,7 +304,7 @@ class ConvexPolygonBound extends Bound {
   getExtremeties() {
     return this.vertsCW.map(v => v.rot(this.rot).add(this.loc));
   }
-};
+}
 class RectangleBound extends ConvexPolygonBound {
   constructor(w, h, hw=w*0.5, hh=h*0.5) {
     super(
@@ -225,21 +312,22 @@ class RectangleBound extends ConvexPolygonBound {
       [ U.ROT_U, U.ROT_R ]
     );
   }
-};
+}
 class CircleBound extends Bound {
   constructor(r) {
     super();
     this.r = r;
   }
   getAxisAlignedBound() {
-    
-    let { x, y } = this.loc;
+    let [ x, y ] = this.loc.asCarte();
     let r = this.r;
+    
+    if (!U.validNum(x) || !U.validNum(y) || !U.validNum(r)) throw new Error('INVALID NUM');
+    
     return {
       x0: x - r, x1: x + r,
       y0: y - r, y1: y + r
     }
-    
   }
   getAxes(bound2) {
     // If `bound2` has no extremeties, the best we can do is hope the mid->mid vector works
@@ -247,7 +335,7 @@ class CircleBound extends Bound {
     let ret = [];
     for (let i = 0, len = extremeties.length; i < len; i++) {
       let diff = extremeties[i].sub(this.loc).norm();
-      if (diff !== null) ret.push(diff);
+      if (diff) ret.push(diff);
     }
     return ret;
     // return extremeties.map(ex => ex.sub(this.loc).norm());
@@ -259,19 +347,20 @@ class CircleBound extends Bound {
   getExtremeties() {
     return null;
   }
-};
+}
 class LineSegmentBound extends Bound {
   constructor(length) {
     super();
     this.length = length;
+    if (!U.validNum(this.length)) throw new Error(`Invalid length: ${length}`);
   }
   endPt() {
     return this.loc.add(new PolarXY(this.rot, this.length));
   }
   getAxisAlignedBound() {
-    let end = this.loc.add(this.extent);
-    let [ x0, x1 ] = [ this.loc.x, end.x ];
-    let [ y0, y1 ] = [ this.loc.y, end.y ];
+    let [ endX, endY ] = this.endPt().asCarte();
+    let [ x0, x1 ] = [ this.loc.x, endX ];
+    let [ y0, y1 ] = [ this.loc.y, endY ];
     
     if (x1 < x0) [ x0, x1 ] = [ x1, x0 ];
     if (y1 < y0) [ y0, y1 ] = [ y1, y0 ];
@@ -291,9 +380,20 @@ class LineSegmentBound extends Bound {
   getExtremeties() {
     return [ this.loc, this.endPt() ];
   }
-};
+}
 
+// ==== CLIENT
 class Client extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    ip: { scope: 'global',
+      change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.ip
+    },
+    unit: { scope: 'global',
+      change: (inst, unit2) => { inst.unit = unit2; },
+      serial: (inst) => inst.unit ? inst.unit.uid : null
+    }
+  }}
   constructor(ip, sokt) {
     super();
     this.ip = ip;
@@ -302,7 +402,7 @@ class Client extends Entity {
     
     this.p = {
       status: 'starting',
-      buff: new Buffer(0),
+      buff: Buffer.alloc(0),
       curOp: null,
       curFrames: []
     };
@@ -311,7 +411,7 @@ class Client extends Entity {
       let p = this.p;
       let buff = sokt.read();
       
-      if (buff === null) buff = new Buffer(0);
+      if (buff === null) buff = Buffer.alloc(0);
       
       let totalLen = p.buff.length + buff.length; // TODO: deny HUGE buffers!
       p.buff = Buffer.concat([ p.buff, buff ], totalLen);
@@ -325,10 +425,10 @@ class Client extends Entity {
       let headers = {};
       for (let i = 1; i < lines.length; i++) {
         let line = lines[i];
-        let sep = line.indexOf(':');
-        if (sep === -1) throw new Error(`Line doesn't contain header: ${line}`);
-        let k = line.substr(0, sep).trim().toLowerCase();
-        let v = line.substr(sep + 1).trim();
+        let sepInd = line.indexOf(':');
+        if (sepInd === -1) throw new Error(`Line doesn't contain header: ${line}`);
+        let k = line.substr(0, sepInd).trim().toLowerCase();
+        let v = line.substr(sepInd + 1).trim();
         headers[k] = v;
       }
       
@@ -364,8 +464,8 @@ class Client extends Entity {
     
     try {
       this.handshakeReply(packet);
-      this.sokt.emit('working');
       p.status = 'started';
+      this.sokt.emit('working');
       if (p.buff.length) this.receivedData();
     } catch(err) {
       output(`Couldn't do handshake:${'\n'}PACKET:${'\n'}${packet}${'\n'}REASON: ${err.stack}`);
@@ -473,7 +573,7 @@ class Client extends Entity {
       
       output(`Websocket error:${'\n'}${err.stack}`);
       
-      p.buffer = new Buffer(0);
+      p.buffer = Buffer.alloc(0);
       p.curOp = null;
       p.curFrames = null;
       
@@ -483,23 +583,34 @@ class Client extends Entity {
     this.sokt.emit('command', command);
   }
   async send(command) {
-    let data = JSON.stringify(command);
+    if (this.p.status !== 'started') throw new Error(`Can't send data to client with status ${this.p.status}`);
+    let data = null;
+    try {
+      data = JSON.stringify(command);
+    } catch(err) {
+      output(`Error sending: ${err.message}`);
+      output(`Type: ${command.type}`);
+      if (command.type === 'update') {
+        for (let key of [ 'add', 'rem', 'upd']) output(`${key}:`, command.update[key]);
+      }
+      return;
+    }
     let metaBuff = null;
     
     if (data.length < 126) {            // small-size
       
-      metaBuff = new Buffer(2);
+      metaBuff = Buffer.alloc(2);
       metaBuff[1] = data.length;
       
     } else if (data.length < 65536) {   // medium-size
       
-      metaBuff = new Buffer(4);
+      metaBuff = Buffer.alloc(4);
       metaBuff[1] = 126;
       metaBuff.writeUInt16BE(data.length, 2);
       
     } else {                            // large-size
       
-      metaBuff = new Buffer(8);
+      metaBuff = Buffer.alloc(8);
       metaBuff[1] = 127;
       metaBuff.writeUInt32BE(Math.floor(data.length / U.int32), 2);
       metaBuff.writeUInt32BE(data.length % U.int32, 6);
@@ -507,27 +618,34 @@ class Client extends Entity {
     }
     
     metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-    await new Promise(r => this.sokt.write(Buffer.concat([ metaBuff, new Buffer(data) ]), r));
+    await new Promise(r => this.sokt.write(Buffer.concat([ metaBuff, Buffer.from(data) ]), r));
   }
+  start() {}
   update(secs) { /* nothing */ }
   end() {
     this.p.status = 'ended';
     this.sokt.end();
-    super.end();
   }
-  now() {
-    return {
-      ...super.now(),
-      ip: this.ip,
-      unit: this.unit ? this.unit.uid : null
-    }
-  }
-};
+}
 
+// ==== PHYSICAL ENTITY
 class PhysicalEntity extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    rot: { scope: 'global',
+      change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
+      actual: (inst) => inst.bound.rot,
+      serial: (inst) => inst.bound.rot
+    },
+    loc: { scope: 'global',
+      change: (inst, loc2) => { inst.bound.loc = loc2; },
+      actual: (inst) => inst.bound.loc,
+      serial: (inst) => inst.bound.loc.asCarte()
+    }
+  }}
   constructor(bound=new CircleBound(10)) {
     super();
     
+    this.zones = {};
     this.bound = bound;
     
     this.rotVel = 0;
@@ -536,6 +654,10 @@ class PhysicalEntity extends Entity {
     this.invWeight = 1;
   }
   isTangible() {
+    // Entities that are "tangible" can still detect collisions, but don't
+    // need to be separated upon collision. A collision involving an
+    // intangible entity may not have any separation occur, but `collideAll`
+    // will still get called
     return true;
   }
   physicalUpdate(secs) { throw new Error('not implemented'); }
@@ -548,26 +670,36 @@ class PhysicalEntity extends Entity {
   collideAll(collisions) {
     
   }
+  start() {
+    this.world.rootZone.placeEntity(this);
+  }
   update(secs) {
-    let bound = this.bound;
-    if (this.vel.x || this.vel.y) {
-      bound.loc = bound.loc.add(this.vel.scale(secs));
-      this.world.updEntity(this, { loc: bound.loc.asCarte() });
-    }
-    if (this.rotVel) {
-      bound.rot += this.rotVel * secs;
-      this.world.updEntity(this, { rot: bound.rot });
-    }
+    let locChanged = this.modF('loc', loc => (this.vel.x || this.vel.y) ? loc.add(this.vel.scale(secs)) : loc);
+    let rotChanged = this.modF('rot', rot => rot + (this.rotVel * secs))
+    
+    // It's nice to be able to call `update` on some entities before they've
+    // entered the world. Those entities shouldn't be placed into zones
+    // Doing so leads to an invalid state: a zone contains a uid not also
+    // contained in `this.world.entities`; hence the `this.inWorld` check
+    if (this.inWorld && (locChanged || rotChanged)) this.world.rootZone.placeEntity(this);
   }
-  now() {
-    return {
-      ...super.now(),
-      rot: this.bound.rot,
-      loc: this.bound.loc.asCarte()
-    }
+  end() {
+    this.world.rootZone.unplaceEntity(this);
   }
-};
+}
+
+// Structures
 class RectStructure extends PhysicalEntity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    w: { scope: 'global',
+      change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.w
+    },
+    h: { scope: 'global',
+      change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.h
+    }
+  }}
   constructor(w, h, loc, rot) {
     let rectBound = new RectangleBound(w, h);
     rectBound.loc = loc;
@@ -579,15 +711,14 @@ class RectStructure extends PhysicalEntity {
     this.invWeight = 0; // immovable
   }
   update(secs) { /* nothing! */ }
-  now() {
-    return {
-      ...super.now(),
-      w: this.w,
-      h: this.h
-    };
-  }
-};
-class Silo extends PhysicalEntity {
+}
+class SiloStructure extends PhysicalEntity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    r: { scope: 'global',
+      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.r
+    }
+  }}
   constructor(r, loc, rot) {
     let circBound = new CircleBound(r);
     circBound.loc = loc;
@@ -598,25 +729,43 @@ class Silo extends PhysicalEntity {
     this.invWeight = 0; // immovable
   }
   update(secs) { /* nothing! */ }
-  now() {
-    return {
-      ...super.now(),
-      r: this.r
-    };
-  }
-};
+}
+
+// Bullets
 class Bullet extends PhysicalEntity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    // Override `loc` to be LOCAL for bullets!
+    loc: { scope: 'fullOnly', // TODO: MESSY!!
+      change: (inst, loc2) => { inst.bound.loc = loc2; },
+      actual: (inst) => inst.bound.loc,
+      serial: (inst) => inst.bound.loc.asCarte()
+    },
+    unit: { scope: 'global',
+      change: (inst, unit2) => { inst.unit = unit2; },
+      serial: (inst) => inst.unit ? inst.unit.uid : null
+    },
+    maxSize: { scope: 'global',
+      change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
+      serial: (inst) => inst.maxSize
+    },
+    vel: { scope: 'global',
+      change: (inst, vel2) => { inst.vel = vel2 },
+      serial: (inst) => inst.vel.asCarte()
+    }
+  }}
   constructor(rot, unit, shootSpd=1000, lifespanSecs=3) {
     super(new LineSegmentBound(0));
     
-    this.bound.rot = rot;
-    this.vel = (new PolarXY(this.bound.rot, this.shootSpd)).toCarte();
     this.unit = unit;
     
-    this.maxSize = 20;
+    this.maxSize = shootSpd * (1/4);
     this.shootSpd = shootSpd;
     this.invWeight = 10;
     this.strikeDamage = 50;
+    
+    // Vel and rot are locked in from initialization
+    this.bound.rot = rot;
+    this.vel = (new PolarXY(this.bound.rot, this.shootSpd)).toCarte();
     
     this.lifespanSecs = lifespanSecs;
     this.secsLeftToLive = lifespanSecs;
@@ -628,7 +777,6 @@ class Bullet extends PhysicalEntity {
     return entity !== this.unit && !(entity instanceof Bullet);
   }
   collideAll(collisions) {
-    
     let deepestEntity = null;
     let deepestPen = U.intUpperBound; // U.intLowerBound; // TODO: Shallowest?? Wat???
     // let lowestAmt = U.intUpperBound;
@@ -643,40 +791,128 @@ class Bullet extends PhysicalEntity {
     // This method is called because we've collided. Bullets die on impact
     this.world.remEntity(this);
     this.secsLeftToLive = 0;
-    
   }
   strike(entity) {
     
     if (entity instanceof Humanoid) {
-      entity.health -= this.strikeDamage;
-      this.world.updEntity(entity, { health: entity.health });
+      entity.modF('health', health => health - this.strikeDamage);
+      // entity.health -= this.strikeDamage;
+      // this.world.updEntity(entity, { health: entity.health });
     }
     
   }
   update(secs) {
     // This is how far we'll physically translate this frame
     let dist = this.shootSpd * secs;
-    this.distTravelled += dist;
+    this.totalDist += dist;
     
-    let len = Math.min(this.distTravelled, this.maxSize);
-    this.bound.length = -len; // Bullet stretches back to connect to its source until `this.distTravelled > this.maxSize`
+    let len = Math.min(this.totalDist, this.maxSize);
+    this.bound.length = -len; // Bullet stretches back for some time
     
     this.secsLeftToLive -= secs;
     if (this.secsLeftToLive <= 0) this.world.remEntity(this);
     
     super.update(secs);
   }
-  now() {
-    return {
-      ...super.now(),
-      unit: this.unit.uid,
-      length: this.maxSize,
-      vel: this.vel.asCarte()
-    };
+}
+
+// 1 to 1 can have "put" activate "rem" for BOTH members in the relationship
+// 1 to 1 doesn't care about presence in world (uids not needed for linking)
+//   BUT if either has a world, then `updEntity` should get called for both
+let rel1To1 = {
+  humanoidWithClient: {
+    // TODO: Asymmetry: humanoid/client, client/unit
+    put: (humanoid, client) => {
+      if (humanoid.client) rel1To1.humanoidWithClient.rem(humanoid, humanoid.client);
+      if (client.unit) rel1To1.humanoidWithClient.rem(client.unit, client);
+      humanoid.client = client;
+      client.unit = humanoid;
+      rel1To1.humanoidWithClient.upd(humanoid, client);
+    },
+    rem: (humanoid, client) => {
+      humanoid.client = null;
+      client.humanoid = null;
+      rel1To1.humanoidWithClient.upd(humanoid, client);
+    },
+    upd: (humanoid, client) => {
+      let world = humanoid.world || mainItem.world;
+      if (world) {
+        world.updEntity(humanoid, { client: 1 });
+        world.updEntity(client, { unit: 1 });
+      }
+    }
+  },
+  unitWithMainItem: {
+    put: (unit, mainItem) => {
+      if (unit.mainItem) rel1To1.rem(unit, unit.mainItem);
+      if (mainItem.unit) rel1To1.rem(mainItem.unit, mainItem);
+      unit.mainItem = mainItem;
+      mainItem.unit = unit;
+      rel1To1.unitWithMainItem.upd(unit, mainItem);
+    },
+    rem: (unit, mainItem) => {
+      unit.mainItem = null;
+      mainItem.unit = null;
+      rel1To1.unitWithMainItem.upd(unit, mainItem);
+    },
+    upd: (unit, mainItem) => {
+      let world = unit.world || mainItem.world;
+      if (world) {
+        world.updEntity(unit, { mainItem: 1 });
+        world.updEntity(mainItem, { unit: 1 });
+      }
+    }
   }
 };
 
+// M to 1 can only need one "rem" for each "put" (remove the 1 from old M)
+// M to 1 needs the 1 to have a world+uid (for linking). This world should
+//   always be usable for performing `updEntity` for both entities
+let relMTo1 = {
+  formationWithHumanoid: {
+    put: (formation, humanoid) => {
+      if (!humanoid.world) throw new Error('Humanoid needs world');
+      if (humanoid.formation) relMTo1.formationWithHumanoid.rem(humanoid.formation, humanoid);
+      humanoid.formation = formation;
+      formation.units[humanoid.uid] = humanoid;
+      relMTo1.formationWithHumanoid.upd(formation, humanoid);
+    },
+    rem: (formation, humanoid) => {
+      delete formation.units[humanoid.uid];
+      humanoid.formation = null;
+      relMTo1.formationWithHumanoid.upd(formation, humanoid);
+    },
+    upd: (formation, humanoid) => {
+      humanoid.world.updEntity(formation, { units: 1 });
+      humanoid.world.updEntity(humanoid, { formation: 1 });
+    }
+  }
+};
+
+// Humanoids
 class Humanoid extends PhysicalEntity {
+  static genSerialDef() { return { ...super.genSerialDef(), 
+    client: { scope: 'global',
+      change: (inst, client2) => { inst.client = client2; },
+      serial: (inst) => inst.client ? inst.client.uid : null
+    },
+    r: { scope: 'global',
+      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.bound.r
+    },
+    formation: { scope: 'global',
+      change: (inst, formation2) => { throw new Error('Modified relational prop') },
+      serial: (inst) => inst.formation ? inst.formation.uid : null
+    },
+    maxHealth: { scope: 'global',
+      change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
+      serial: (inst) => inst.maxHealth
+    },
+    health: { scope: 'global',
+      change: (inst, health2) => { inst.health = health2 },
+      serial: (inst) => inst.health
+    }
+  }}
   constructor(r) {
     super(new CircleBound(r));
     this.formation = null;
@@ -690,45 +926,47 @@ class Humanoid extends PhysicalEntity {
     
     this.client = null;
   }
-  setClient(client) {
-    if (client.unit) throw new Error('Client already has unit!');
-    if (this.client) throw new Error('Unit already has client!');
-    
-    this.client = client;
-    this.world.updEntity(this, { client: client.uid });
-    
-    client.unit = this;
-    this.world.updEntity(client, { unit: this.uid });
-  }
   update(secs) {
     if (this.health > this.maxHealth) this.health = this.maxHealth;
     if (this.health <= 0) return this.world.remEntity(this);
     super.update(secs);
   }
   end() {
-    if (this.client) this.client.unit = null;
-    if (this.formation) this.formation.remUnit(this);
+    if (this.client) rel1To1.humanoidWithClient.rem(this, this.client);
+    if (this.formation) relMTo1.formationWithHumanoid.rem(this.formation, this);
     super.end();
   }
-  now() {
-    return {
-      ...super.now(),
-      client: this.client ? this.client.uid : null,
-      r: this.bound.r,
-      formation: this.formation ? this.formation.uid : null,
-      maxHealth: this.maxHealth,
-      health: this.health
-    };
-  }
-};
+}
 class Unit extends Humanoid {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    mainItem: { scope: 'global',
+      change: (inst, mainItem2) => { throw new Error('Modified relational prop'); },
+      serial: (inst) => inst.mainItem ? inst.mainItem.uid : null
+    },
+    visionAngle: { scope: 'global',
+      change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
+      serial: (inst) => inst.visionAngle
+    },
+    visionRange: { scope: 'global',
+      change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
+      serial: (inst) => inst.visionRange
+    },
+    visionScale: { scope: 'global',
+      change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
+      serial: (inst) => inst.visionScale
+    },
+    bodyVision: { scope: 'global',
+      change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
+      serial: (inst) => inst.bodyVision
+    }
+  }}
   constructor(r, client) {
     super(r, client);
     
     this.aheadSpd = 200;
     this.backSpd = 150;
     this.strafeSpd = 90;
-    this.rotSpd = (Math.PI * 2) / 2;
+    this.rotSpd = (Math.PI * 2) / 3;
     
     this.recoilAng = (Math.PI * 2) / 120;
     
@@ -738,7 +976,7 @@ class Unit extends Humanoid {
     this.mainVisionAngle = (Math.PI * 2) * 0.15;
     this.mainVisionRange = 600; // Size of the vision-type reveal
     this.mainVisionScale = 1; // 0.3; // Actual zoom level of awareness
-    this.mainBodyVision = 100;
+    this.mainBodyVision = 40;
     this.visionAngle = this.mainVisionAngle;
     this.visionRange = this.mainVisionRange;
     this.visionScale = this.mainVisionScale;
@@ -748,12 +986,6 @@ class Unit extends Humanoid {
     this.mainItem = null;
     
     this.reveals = [];
-  }
-  setMainItem(mainItem) {
-    if (this.mainItem) throw new Error('Unit already has mainItem!');
-    
-    this.mainItem = mainItem;
-    this.world.updEntity(this, { mainItem: mainItem.uid });
   }
   update(secs) {
     // Get current interactions
@@ -770,32 +1002,22 @@ class Unit extends Humanoid {
       this.vel = new CarteXY();
     }
     
-    // Get new vision params
-    let newVisionAngle = !aiming ? (this.mainVisionAngle) : (this.mainVisionAngle * 0.5);
-    let newVisionRange = !aiming ? (this.mainVisionRange) : (this.mainVisionRange * 1.25);
-    let newVisionScale = !aiming ? (this.mainVisionScale) : (this.mainVisionScale * 0.8);
-    let newBodyVision = !aiming ? (this.mainBodyVision) : (this.mainBodyVision * 0);
+    // Update rotational velocity
+    this.rotVel = Math.sign(this.control.r) * this.rotSpd * (aiming ? 0.3 : 1);
     
     // Apply new vision params
-    if (newVisionAngle !== this.visionAngle) { this.visionAngle = newVisionAngle; this.world.updEntity(this, { visionAngle: newVisionAngle}); }
-    if (newVisionRange !== this.visionRange) { this.visionRange = newVisionRange; this.world.updEntity(this, { visionRange: newVisionRange}); }
-    if (newVisionScale !== this.visionScale) { this.visionScale = newVisionScale; this.world.updEntity(this, { visionScale: newVisionScale}); }
-    if (newBodyVision !== this.bodyVision) { this.bodyVision = newBodyVision; this.world.updEntity(this, { bodyVision: newBodyVision}); }
+    this.modF('visionAngle', v => !aiming ? (this.mainVisionAngle) : (this.mainVisionAngle * 0.5));
+    this.modF('visionRange', v => !aiming ? (this.mainVisionRange) : (this.mainVisionRange * 1.25));
+    this.modF('visionScale', v => !aiming ? (this.mainVisionScale) : (this.mainVisionScale * 0.8));
+    this.modF('bodyVision', v => !aiming ? (this.mainBodyVision) : (this.mainBodyVision * 0));
+    
+    if (!this.client) { mainAction = true; }
     
     // Allow item use
     if (this.mainItem) {
       if (mainAction) this.mainItem.activate(secs, this, { use: 'main', steadiness: aiming ? 0.6 : 0 });
       else if (int3) this.mainItem.activate(secs, this, { use: 'reload' });
     }
-    
-    // Update reveals (TODO: Necessary? Can be calculated from vision params)
-    this.reveals = [{
-      type: 'vision',
-      ang: this.visionAngle,
-      len: this.visionRange,
-      r: this.bodyVision
-    }];
-    this.world.updEntity(this, { reveals: this.reveals });
     
     super.update(secs);
   }
@@ -804,21 +1026,17 @@ class Unit extends Humanoid {
     if (this.mainItem) this.world.remEntity(this.mainItem);
     super.end();
   }
-  now() {
-    return {
-      ...super.now(),
-      mainItem: this.mainItem ? this.mainItem.uid : null,
-      visionScale: this.visionScale,
-      reveals: this.reveals
-    };
-  }
-};
+}
 class Npc extends Humanoid {
+  static genSerialDef() { return { ...super.genSerialDef(),
+  }}
   constructor(r, client) {
     super(r, client);
   }
-};
+}
 class Zombie extends Npc {
+  static genSerialDef() { return { ...super.genSerialDef(),
+  }}
   constructor(r) {
     super(r, null);
     this.idea = null;
@@ -993,15 +1211,14 @@ class Zombie extends Npc {
       if (entity.invWeight === 0) [ barrier, barrierAxis ] = [ entity, sepAxis ];
       if (entity instanceof Unit) {
         let dmg = this.bound.r * 0.2;
-        entity.health -= dmg;
+        entity.modF('health', health => health - dmg);
         this.damageDealt += dmg;
-        this.world.updEntity(entity, { health: entity.health });
       }
     }
     
     if (barrier && this.idea) {
       
-      if (this.idea.type === 'pathfind' || Math.random() < 0.5) {
+      if (this.idea.type === 'pathfind' || Math.random() < 0.2) {
         this.idea = this.idea.next;
       } else if (this.idea.dest) { // TODO: check shouldn't be needed, attack null-dests aren't being filled in maybe?
         
@@ -1013,8 +1230,6 @@ class Zombie extends Npc {
           
           let nav1 = barrierAxis.perpCW();
           let nav2 = barrierAxis.perpCCW();
-          
-          // let bestNav = (Math.random() > 0.5) ? nav1 : nav2;
           
           let bestNav = (nav1.dotProd(dir) > nav2.dotProd(dir)) ? nav1 : nav2;
           
@@ -1036,24 +1251,42 @@ class Zombie extends Npc {
     }
     
   }
-};
+}
 
+// Items
 class Item extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    name: { scope: 'global',
+      change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.name
+    }
+  }}
   constructor(name) {
     super();
     this.name = name;
   }
-  update(secs) {
-    throw new Error('not implemented');
-  }
+  start() {}
+  update(secs) { throw new Error('not implemented'); }
+  end() {}
   activate(secs, unit, { use='main' }) {
     throw new Error('not implemented');
   }
-  now() {
-    return { ...super.now(), name: this.name };
-  }
-};
+}
 class Gun extends Item {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    shotsInClip: { scope: 'global',
+      change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.shotsInClip
+    },
+    shotsFired: { scope: 'global',
+      change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
+      serial: (inst) => inst.shotsFired
+    },
+    reloadDelaySecs: { scope: 'global',
+      change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.reloadDelaySecs
+    }
+  }}
   constructor(name, makeBullet=null) {
     super(name);
     this.makeBullet = makeBullet;
@@ -1079,7 +1312,7 @@ class Gun extends Item {
     // If reloading, keep reloading
     if (this.reloadCooldownSecs > 0) {
       this.reloadCooldownSecs -= secs;
-      if (this.reloadCooldownSecs <= 0) this.shotsFired = 0;
+      if (this.reloadCooldownSecs <= 0) this.modF('shotsFired', v => 0);
     }
   }
   activate(secs, unit, { use='main', steadiness=0 }) {
@@ -1089,33 +1322,26 @@ class Gun extends Item {
       
       let rot = unit.bound.rot;
       let denom = 1 / this.shootDelaySecs;
-      let numShotsNow = -(this.shootCooldownSecs / this.shootDelaySecs);
-      let invNumShotsNow = 1 / numShotsNow;
-      let mult = secs / numShotsNow;
-      let countShots = 0;
-      
-      while (this.shootCooldownSecs <= 0 && this.shotsFired < this.shotsInClip) {
-        this.shootCooldownSecs += this.shootDelaySecs;
-        this.shotsFired++;
+      let countShotsNow = 0;
+      while (this.shootCooldownSecs <= 0 && (this.shotsFired + countShotsNow) < this.shotsInClip) {
         
         let ang = rot + (Math.random() - 0.5) * (this.recoilAng - (this.recoilAng * steadiness));
         let bullet = this.world.addEntity(this.makeBullet(ang, unit));
-        let initDist = countShots * bullet.shootSpd * mult; // Accounts for count of shot this frame, bullet speed, and seconds this frame
-        bullet.bound.loc = unit.bound.loc.add(initDist ? new PolarXY(ang, initDist) : new CarteXY(0, 0));
+        bullet.bound.loc = unit.bound.loc;
         
         // Split the `secs` we have to work with into properly weighted pieces
-        bullet.update(secs * -this.shootCooldownSecs * denom);
+        bullet.update(secs * -(this.shootCooldownSecs * denom));
         
-        countShots++;
+        this.shootCooldownSecs += this.shootDelaySecs;
+        countShotsNow++;
       }
       
-      if (countShots) update.updEntities[this.uid] = this;
+      this.modF('shotsFired', shotsFired => shotsFired + countShotsNow);
       
     } else if (use === 'reload') {
       
       if (this.shotsFired >= this.shotsInClip || this.shotsFired === 0) return;
-      this.shotsFired = this.shotsInClip;
-      this.world.updEntity(this, { shotsFired: this.shotsFired });
+      this.modF('shotsFired', v => this.shotsInClip); // Mark all bullets as fired
       
     } else {
       
@@ -1124,16 +1350,154 @@ class Gun extends Item {
     }
     
   }
-  now() {
-    return {
-      ...super.now(),
-      shotsInClip: this.shotsInClip,
-      shotsFired: this.shotsFired,
-      reloadDelaySecs: this.reloadDelaySecs
-    };
-  }
-};
+}
 
+// Formations
+class UnitFormation extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+    units: { scope: 'global',
+      change: (inst, units2) => { throw new Error('Modified relational prop'); },
+      serial: (inst) => inst.units.map(u => 1) // Just the keys are of interest
+    }
+  }}
+  constructor() {
+    super();
+    this.units = {};
+  }
+  start() {}
+  update(secs) {
+  }
+  end() {
+    for (let [ uid, entity ] of Object.entries(this.units)) {
+      relMTo1.formationWithHumanoid.rem(this, entity);
+    }
+  }
+}
+
+// Managers
+class ClientManager extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+  }}
+  constructor(formation) {
+    super();
+    this.formation = formation;
+    
+    let soktServer = net.createServer(sokt => {
+      let ip = sokt.remoteAddress;
+      output(`SOKT: ${ip}`);
+      let client = new Client(ip, sokt);
+      this.incomingClient(client);
+    });
+    
+    this.ready = Promise.all([
+      new Promise(r => soktServer.listen(config.soktPort, config.hostname, r))
+    ]);
+  }
+  incomingClient(client) {
+    client.sokt.on('working', () => {
+      // Listen for client commands
+      client.sokt.on('command', command => this.onClientCommand(client, command))
+      
+      this.world.addClient(client); // Only add the client after we know it's working!
+      
+      // TODO: Reloading when a client-unit already exists breaks! (can't even spawn!)
+      // See if there's already a unit for this client
+      for (let [ uid, entity ] of Object.entries(this.world.entities)) {
+        if (entity instanceof Unit && entity.client && entity.client.ip === client.ip) {
+          this.world.remEntity(entity.client); // Clean up the old client
+          rel1To1.humanoidWithClient.put(entity, client);
+          break;
+        }
+      }
+    });
+    client.sokt.on('close', () => {
+      this.world.remClient(client);
+    });
+    client.sokt.on('error', err => {
+      output(`SOKT ${client.ip} ERROR: ${err.stack}`);
+      this.world.remClient(client);
+    });
+  }
+  onClientCommand(client, command) {
+    
+    let clientCommands = ({
+      spawn: (client, command) => {
+        if (client.unit) return;
+        output(`SPAWNING: ${client.ip}`);
+        
+        let weapon = this.world.addEntity(makeGatling());
+        let unit = this.world.addEntity(new Unit(8));
+        unit.bound.loc = new CarteXY(0, 425);
+        unit.bound.rot = U.ROT_D;
+        
+        // unit.mainVisionRange = 900;
+        // unit.mainVisionScale = 0.5;
+        // unit.mainVisionAngle = 0.001; // Math.PI * 0.5;
+        // unit.mainBodyVision = 5000;
+        
+        rel1To1.unitWithMainItem.put(unit, weapon);
+        
+        rel1To1.humanoidWithClient.put(unit, client);
+        
+        relMTo1.formationWithHumanoid.put(this.formation, unit);
+        
+      },
+      control: (client, command) => {
+        if (!client.unit) return;
+        client.unit.control = command.control;
+      }
+    });
+    
+    if (!clientCommands.hasOwnProperty(command.type)) return output(`Unexpected command: ${command.type}`);
+    clientCommands[command.type](client, command);
+  }
+  start() {}
+  update(secs) {}
+  end() {}
+}
+class ZombieManager extends Entity {
+  static genSerialDef() { return { ...super.genSerialDef(),
+  }}
+  constructor(secsPerSpawn=30, formation) {
+    super();
+    this.secsPerSpawn = secsPerSpawn;
+    this.formation = formation;
+    this.spawnCounter = 0;
+  }
+  start() {}
+  update(secs) {
+    
+    if (!this.secsPerSpawn) { this.spawnCounter = 0; return; }
+    
+    this.spawnCounter += secs;
+    if (this.spawnCounter > this.secsPerSpawn) {
+      this.spawnCounter = 0;
+      let size = Math.round(Math.random() * Math.random() * Math.random() * Math.random() * 30);
+      let zombie = this.world.addEntity(new Zombie(10 + size));
+      zombie.aheadSpd = 200 / Math.max(2, size);
+      zombie.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 700);
+      zombie.bound.rot = Math.random() * U.ROT_FULL;
+      zombie.health = 30 + (zombie.bound.r * zombie.bound.r * zombie.bound.r * 0.15);
+      zombie.maxHealth = zombie.health;
+      
+      if (Math.random() < 0.6) {
+        
+        let unit = this.world.addEntity(new Unit(8));
+        unit.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 300);
+        unit.bound.rot = Math.random() * U.ROT_FULL;
+        
+        rel1To1.unitWithMainItem.put(unit, this.world.addEntity(makePistol()));
+        
+        relMTo1.formationWithHumanoid.put(this.formation, unit);
+        
+      }
+    }
+    
+  }
+  end() {}
+}
+
+// Enforcers
 class PhysicsEnforcer {
   constructor(rootZone) {
     this.rootZone = rootZone;
@@ -1142,36 +1506,45 @@ class PhysicsEnforcer {
     this.calcEntityTiles(entity, true);
   }
   enforce(secs) {
-    
     let { entities } = this.world;
     
-    let entityEntries = Object.entries(entities);
-    
-    // Stupid broad separation
     let checks = {};
-    for (let i = 1, len = entityEntries.length; i < len; i++) {
-      
-      if (!(entityEntries[i][1] instanceof PhysicalEntity)) continue;
-      
-      for (let j = 0; j < i; j++) {
-        
-        if (!(entityEntries[j][1] instanceof PhysicalEntity)) continue;
-        
-        let [ entity1, entity2 ] = [ entityEntries[i][1], entityEntries[j][1] ];
-        if (!entity1.invWeight && !entity2.invWeight) continue;
-        if (!entity1.canCollide(entity2) || !entity2.canCollide(entity1)) continue;
-        checks[U.duoKey(entity1.uid, entity2.uid)] = [ entity1, entity2 ];
-      }
-    }
-    checks = Object.values(checks);
+    
+    // // Stupid broad separation
+    // let entityEntries = Object.entries(entities);
+    // for (let i = 1, len = entityEntries.length; i < len; i++) {
+    //   
+    //   if (!(entityEntries[i][1] instanceof PhysicalEntity)) continue;
+    //   
+    //   for (let j = 0; j < i; j++) {
+    //     
+    //     if (!(entityEntries[j][1] instanceof PhysicalEntity)) continue;
+    //     
+    //     let [ entity1, entity2 ] = [ entityEntries[i][1], entityEntries[j][1] ];
+    //     
+    //     if (!entity1.invWeight && !entity2.invWeight) continue;
+    //     if (!entity1.canCollide(entity2) || !entity2.canCollide(entity1)) continue;
+    //     checks[U.duoKey(entity1.uid, entity2.uid)] = [ entity1, entity2 ];
+    //     
+    //   }
+    // }
     
     // Broad separation...
-    // let checks = this.rootZone.getChecks()
+    let allZones = this.rootZone.getFlatJurisdiction();
+    for (let zone of allZones) {
+      let zEnts = Object.values(zone.entities);
+      for (let i = 1; i < zEnts.length; i++) { for (let j = 0; j < i; j++) {
+        let [ e1, e2 ] = [ zEnts[i], zEnts[j] ];
+        if (!e1.invWeight && !e2.invWeight) continue; // No check if both are immovable
+        if (!e1.canCollide(e2) || !e2.canCollide(e1)) continue;
+        checks[U.duoKey(e1.uid, e2.uid)] = [ e1, e2 ];
+      }}
+    }
     
     // Narrow separation... (between pairs of entities calculated in broad phase)
     let collisions = {};
     let separations = [];
-    for (let [ entity1, entity2 ] of checks) {
+    for (let [ entity1, entity2 ] of Object.values(checks)) {
       
       let penResult = Bound.getPenetration(entity1.bound, entity2.bound);
       if (!penResult) continue;
@@ -1205,227 +1578,79 @@ class PhysicsEnforcer {
     for (let [ uid, coll ] of Object.entries(collisions)) entities[uid].collideAll(coll);
     
     for (let { light, heavy, sepAxis, sepAmt } of separations) {
-      light.bound.loc = light.bound.loc.add(sepAxis.scale(sepAmt));
-      this.world.updEntity(light, { loc: light.bound.loc.asCarte() });
+      light.modF('loc', loc => loc.add(sepAxis.scale(sepAmt)));
+      this.rootZone.placeEntity(light); // TODO: Could this happen in the serialDef?
     }
     
-  }
-};
-class UnitFormation extends Entity {
-  constructor() {
-    super();
-    this.units = {};
-  }
-  addUnit(unit) {
-    this.units[unit.uid] = unit;
-    unit.formation = this;
-  }
-  remUnit(unit) {
-    delete this.units[unit.uid];
-    unit.formation = null;
-    this.world.updEntity(this, { units: this.units });
-  }
-  update(secs) {
-  }
-  end() {
-    for (let [ uid, entity ] of Object.entries(this.units)) {
-      entity.formation = null;
-      this.world.updEntity(entity, { formation: null });
-    }
-    super.end();
-  }
-  now() {
-    return {
-      ...super.now(),
-      units: this.units.map(u => 1)
-    };
   }
 }
-class ClientManager extends Entity {
-  constructor(formation) {
-    super();
-    this.formation = formation;
-    
-    let soktServer = net.createServer(sokt => {
-      let ip = sokt.remoteAddress;
-      output(`SOKT: ${ip}`);
-      let client = this.world.addClient(new Client(ip, sokt));
-      this.incomingClient(client);
-    });
-    
-    this.ready = Promise.all([
-      new Promise(r => soktServer.listen(config.soktPort, config.hostname, r))
-    ]);
-    
-  }
-  incomingClient(client) {
-    client.sokt.on('working', () => {
-      // Listen for client commands
-      client.sokt.on('command', command => this.onClientCommand(client, command))
-      
-      // See if there's already a unit for this client
-      for (let [ uid, entity ] of Object.entries(this.world.entities)) {
-        if (entity instanceof Unit && entity.client && entity.client.ip === ip) {
-          this.world.remEntity(entity.client);
-          entity.client = client;
-          client.unit = entity;
-          this.world.updEntity(entity, { client: client.uid });
-          this.world.updEntity(client, { unit: entity.uid });
-          break;
-        }
-      }
-    });
-    client.sokt.on('close', () => {
-      this.world.remEntity(client);
-    });
-    client.sokt.on('error', err => {
-      output(`SOKT ${client.ip} ERROR: ${err.stack}`);
-      this.world.remEntity(client);
-    });
-  }
-  onClientCommand(client, command) {
-    
-    let makeM16 = () => {
-      let m16 = new Gun('m16', (rot, unit) => {
-        let shootSpd = 1000;
-        let lifespanSecs = 3;
-        let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
-        bullet.invWeight = 10 / 1;
-        bullet.strikeDamage = 30;
-        return bullet;
-      });
-      m16.recoilAng = (Math.PI * 2) / 80;
-      m16.shootDelaySecs = 0.14;
-      m16.shotsInClip = 30;
-      m16.reloadDelaySecs = 2;
-      return m16;
-    };
-    let makeMag = () => {
-      let mag = new Gun('mag', (rot, unit) => {
-        let shootSpd = 1200;
-        let lifespanSecs = 3;
-        let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
-        bullet.invWeight = 10 / 2;
-        bullet.strikeDamage = 40;
-        return bullet;
-      });
-      mag.recoilAng = (Math.PI * 2) / 65;
-      mag.shootDelaySecs = 0.09;
-      mag.shotsInClip = 100;
-      mag.reloadDelaySecs = 4;
-      return mag;
-    };
-    let makeGatling = () => {
-      let gatling = new Gun('gatling', (rot, unit) => {
-        let shootSpd = 1600;
-        let lifespanSecs = 2;
-        let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
-        bullet.invWeight = 10 / 3;
-        bullet.strikeDamage = 10;
-        return bullet;
-      });
-      gatling.recoilAng = (Math.PI * 2) / 52;
-      gatling.shootDelaySecs = 0.01;
-      gatling.shotsInClip = 750;
-      gatling.reloadDelaySecs = 10;
-      return gatling;
-    };
-    let makeFlamer = () => {
-      let flamer = new Gun('flamer', (rot, unit) => {
-        let shootSpd = 250;
-        let lifespanSecs = 2;
-        let bullet = new Bullet(rot, unit, shootSpd, lifespanSecs);
-        bullet.invWeight = 10 / 1;
-        bullet.strikeDamage = 5;
-        return bullet;
-      });
-      flamer.recoilAng = (Math.PI * 2) / 40;
-      flamer.shootDelaySecs = 0.005;
-      flamer.shotsInClip = 1000;
-      flamer.reloadDelaySecs = 1;
-      return flamer;
-    };
-    
-    let clientCommands = ({
-      spawn: (client, command) => {
-        if (client.unit) return;
-        output(`SPAWNING: ${client.ip}`);
-        
-        let weapon = this.world.addEntity(makeGatling());
-        let unit = this.world.addEntity(new Unit(8));
-        unit.bound.loc = new CarteXY(0, 425);
-        unit.bound.rot = U.ROT_D;
-        unit.setClient(client);
-        unit.setMainItem(weapon);
-        this.formation.addUnit(unit);
-      },
-      control: (client, command) => {
-        if (!client.unit) return;
-        client.unit.control = command.control;
-      }
-    });
-    
-    if (!clientCommands.hasOwnProperty(command.type)) return output(`Unexpected command: ${command.type}`);
-    clientCommands[command.type](client, command);
-  }
-  start() {}
-  update(secs) {}
-  end() {}
-};
-class ZombieManager extends Entity {
-  constructor(secsPerSpawn=3) {
-    super();
-    this.secsPerSpawn = secsPerSpawn;
-    this.spawnCounter = 0;
-  }
-  update(secs) {
-    
-    this.spawnCounter += secs;
-    if (this.spawnCounter > this.secsPerSpawn) {
-      this.spawnCounter = 0;
-      let size = Math.round(Math.random() * Math.random() * Math.random() * Math.random() * 30);
-      let zombie = new Zombie(10 + size);
-      zombie.aheadSpd = 200 / Math.max(2, size);
-      zombie.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 400);
-      zombie.bound.rot = Math.random() * U.ROT_FULL;
-      this.world.addEntity(zombie);
-      
-      // if (Math.random() < 0.7) {
-      //   
-      //   let u = new Unit(8, null);
-      //   u.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 1000);
-      //   u.bound.rot = U.ROT_CCW1 / 2;
-      //   
-      //   this.world.addEntity(u);
-      //   
-      // }
-      
-    }
-    
-  }
-};
 
+let ZONE_UID = 0;
 class Zone {
-  constructor() {
+  constructor(name) {
+    this.name = name;
+    this.uid = ZONE_UID++;
     this.parentZone = null;
+    this.entities = {};
+    this.jurisdictionCount = 0; // Count of ALL entities in this zone
   }
+  addEntity(entity) {
+    if (entity.zone) entity.zone.remEntity(entity);
+    entity.zones[this.uid] = this;
+    this.entities[entity.uid] = entity;
+    this.childAdd(this, entity);
+    return entity;
+  }
+  remEntity(entity) {
+    delete entity.zones[this.uid];
+    delete this.entities[entity.uid];
+    this.childRem(this, entity);
+    return entity;
+  }
+  childAdd(child, entity) { this.jurisdictionCount++; if (this.parentZone) this.parentZone.childAdd(this, entity); }
+  childRem(child, entity) { this.jurisdictionCount--; if (this.parentZone) this.parentZone.childRem(this, entity); }
   getFlatJurisdiction() {
     // Returns an Array of every Zone, including `this`, under our jurisdiction
     throw new Error('not implemented');
   }
-  getBestZone(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyEncloses=false) {
-    // Returns `null` if outside this Zone, or the finest-grained Zone in this
-    // Zone's jurisdiction which encloses the bound
+  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+    // Returns `null` if outside this Zone, or the finest-grained Zones in this
+    // Zone's jurisdiction which fully enclose the bound
     throw new Error('not implemented');
   }
-};
+  placeEntity(entity) {
+    let exitedZones = { ...entity.zones }; // Initially mark all zones as exited
+    for (let zone of this.getBestZones(entity.bound)) {
+      if (!zone.entities.hasOwnProperty(entity.uid)) zone.addEntity(entity);
+      delete exitedZones[zone.uid]; // Unmark this zone as exited
+    }
+    for (let exitedZone of Object.values(exitedZones)) exitedZone.remEntity(entity);
+  }
+  unplaceEntity(entity) {
+    for (let exitedZone of Object.values(entity.zones)) exitedZone.remEntity(entity);
+  }
+}
 class SquareZone extends Zone {
-  constructor(offset, e) {
-    super();
+  constructor(name, offset, e) {
+    super(name);
     this.offset = offset.toCarte();
     this.he = e * 0.5; // "e" is "extent"; "he" is "half-extent"
   }
-  enclosesRect({ x0, x1, y0, y1 }) {
+  containsRect({ x0, x1, y0, y1 }) {
+    let rhw = (x1 - x0) * 0.5; // rect-half-width
+    let rhh = (y1 - y0) * 0.5; // rect-half-height
+    let rx = x0 + rhw; // rect center x
+    let ry = y0 + rhh; // rect center y
+    
+    let { x, y } = this.offset; // Definitely a CarteXY
+    let he = this.he;
+    
+    let tw = rhw + he; // Total x clearance distance
+    let th = rhh + he; // Total y clearance distance
+    
+    return (Math.abs(rx - x) < tw) && (Math.abs(ry - y) < th);
+    
+    /*
     let { x, y } = this.offset; // Definitely a CarteXY
     let he = this.he;
     return true &&
@@ -1433,110 +1658,123 @@ class SquareZone extends Zone {
       (x1 < x + he) &&
       (y0 > y - he) &&
       (y1 < y + he);
+    */
   }
   getFlatJurisdiction() {
     return [ this ];
   }
-  getBestZone(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyEncloses=false) {
-    return (thisDefinitelyEncloses || this.enclosesRect(aaBound)) ? this : null;
+  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+    return (thisDefinitelyContains || this.containsRect(aaBound)) ? [ this ] : [];
   }
-};
+}
 class TiledZone extends SquareZone {
-  constructor(offset, e, numTilesAcross=4, makeSquareZone=null) {
-    super(offset, e);
+  constructor(name, offset, e, numTilesAcross=4, makeSquareZone=null) {
+    super(name, offset, e);
     this.numTilesAcross = numTilesAcross;
     this.tileW = (this.he * 2) / this.numTilesAcross;
     this.invTileW = 1 / this.tileW;
-    this.tiles = {};
-    this.makeSquareZone = makeSquareZone || 
-      ((offset, e) => new SquareZone(offset, e));
-    
+    this.tiles = {}; // List of individual tiles
+    this.tileExts = {}; // List of rectangular selections of tiles
+    this.makeSquareZone = makeSquareZone || ((name, off, e) => new SquareZone(name, off, e));
   }
   xyToTileCoords(x, y) {
-    x -= this.offset.x - this.he;
-    y -= this.offset.y - this.he;
     return [
-      Math.floor(x * this.invTileW),
-      Math.floor(y * this.invTileW)
+      Math.floor((x - (this.offset.xx() - this.he)) * this.invTileW),
+      Math.floor((y - (this.offset.yy() - this.he)) * this.invTileW)
     ];
   }
   getFlatJurisdiction() {
-    return [
-      ...super.getFlatJurisdiction(),
-      ...Object.values(this.tiles).map(t => t.getFlatJurisdiction())
-    ];
-  }
-  getBestZone(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyEncloses=false) {
+    return super.getFlatJurisdiction().concat(...Object.values(this.tiles).map(t => t.getFlatJurisdiction()));
     
+    // return [
+    //   ...super.getFlatJurisdiction(),
+    //   ...Object.values(this.tiles).map(t => t.getFlatJurisdiction())
+    // ];
+  }
+  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
     let { x0, y0, x1, y1 } = aaBound;
     let [ cx1, cy1 ] = this.xyToTileCoords(x0, y0);
     let [ cx2, cy2 ] = this.xyToTileCoords(x1, y1);
     
-    // May need to check that `bound` is inside of us
-    if (!thisDefinitelyEncloses) {
-      if (cx1 < 0 || cy1 < 0 || cx2 > this.numTilesAcross || cy2 > this.numTilesAcross)
-        return null;
-    }
+    // Bound the tile coords between 0 (inc) and `this.numTilesAcross` (exc)
+    if (cx1 < 0) cx1 = 0;
+    if (cy1 < 0) cy1 = 0;
+    if (cx2 >= this.numTilesAcross) cx2 = this.numTilesAcross - 1;
+    if (cy2 >= this.numTilesAcross) cy2 = this.numTilesAcross - 1;
     
-    // If the bound isn't enclosed in a tile, can't do any better than `this`
-    if (cx1 !== cx2 || cy1 !== cy2) return this;
+    let childZones = [];
+    for (let x = cx1; x <= cx2; x++) { for (let y = cy1; y <= cy2; y++) {
+      let key = `${x},${y}`;
+      if (!this.tiles.has(key)) {
+        let tile = this.makeSquareZone(key, new CarteXY((cx1 + 0.5) * this.tileW, (cx2 + 0.5) * this.tileW), this.tileW);
+        this.tiles[key] = tile;
+        tile.parentZone = this;
+      }
+      childZones.push(this.tiles[key].getBestZones(bound, aaBound, true));
+    }}
     
-    // Generate tiles on the fly
-    let key = `${cx1},${cy1}`;
-    if (!this.tiles.hasOwnProperty(key)) {
-      let tile = this.makeSquareZone(new CarteXY((cx1 + 0.5) * this.tileW, (cx2 + 0.5) * this.tileW), this.tileW);
-      this.tiles[key] = tile;
-      tile.parentZone = this;
-    }
-    
-    return this.tiles[key].getBestZone(bound, aaBound, true);
+    return [].concat(...childZones);
   }
-};
+  childRem(child, entity) {
+    // If `child` is empty, and `child` is a direct tile child of ours, free it up!
+    if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) { delete this.tiles[child.name]; /*console.log('REMOVED', child.name);*/ }
+    super.childRem(child, entity);
+  }
+}
 
 class ZombWorld extends World {
-  constructor({ clientManager, framesPerSec=40 }={}) {
+  constructor({ framesPerSec=60, rootZone=null }={}) { // TODO: 60fps isn't a bit ambitious?
     super();
-    this.clientManager = clientManager;
-    this.uid = 0;
-    this.rootZone = null;
+    this.nextUid = 0;
+    this.rootZone = rootZone;
     this.enforcers = [];
     
     // The update loop
-    let secsPerFrame = 1 / framesPerSec;
+    this.secsPerFrame = 1 / framesPerSec;
+    this.millisPerFrame = this.secsPerFrame * 1000;
+    
     let smoothMs = new SmoothingVal(0, 0.1);
     
-    // TODO: Need to get this interval right. It's using values which should now
-    // be in `this`. E.g. `entities` -> `this.entities`
-    // Should handle enforcers and the root zone
-    // Should probably have a cleaner way of handling cascading adds/rems/upds
-    // Should eventually allow different clients to receive different updates
-    setInterval(() => {
-      
+    let initialTime = +new Date();
+    
+    this.updateInterval = new Interval(() => {
       let time = +new Date();
-      
-      this.entities.forEach(ent => ent.update(secsPerFrame));
-      this.enforcers.forEach(enf => enf.enforce(secsPerFrame));
-      
-      let tickResult = this.doTickResolution();
-      let catchUp = U.empty(this.uninitializedClients) ? null : { add: this.entities.map(ent => ent.now()) };
-      
-      for (let [ uid, client ] of Object.entries(this.clients)) {
-        let updateData = this.uninitializedClients.hasOwnProperty(uid) ? catchUp : tickResult;
-        // console.log(`Client ${client.ip} gets ${JSON.stringify(updateData, null, 2)}`);
-        if (updateData && !U.empty(updateData)) client.send({ type: 'update', update: updateData });
-      }
-      
-      // Mark all clients as initialized
-      this.uninitializedClients = {};
-      
-      process.stdout.write(`\rProcessed in ${Math.round(smoothMs.update())}ms / ${Math.round(secsPerFrame * 1000)}ms${' '.repeat(10)}\r`);
-      
-    }, secsPerFrame * 1000);
+      this.update(this.secsPerFrame);
+      process.stdout.write(`\rProcessed in ${Math.round(smoothMs.update(new Date() - time))}ms / ${Math.round(this.millisPerFrame)}ms (${(Math.floor((new Date() - initialTime) * 0.01) / 10).toFixed(1)}s) ${' '.repeat(10)}\r`);
+    });
     
   }
-  setRootZone(zone) {
-    this.rootZone = zone;
-    return zone;
+  startUpdateInterval() {
+    this.updateInterval.start(this.millisPerFrame);
+  }
+  stopUpdateInterval() {
+    this.updateInterval.stop();
+  }
+  update(secs) {
+    this.entities.forEach(ent => ent.update(secs));
+    this.enforcers.forEach(enf => enf.enforce(secs));
+    
+    let tickResult = this.doTickResolution();
+    
+    // Serialize "add", "rem", and "upd"
+    if (U.empty(tickResult.add))  delete tickResult.add;
+    else                          tickResult.add = tickResult.add.map(ent => ent.serializeFull());
+    if (U.empty(tickResult.rem))  delete tickResult.rem;
+    else                          tickResult.rem = tickResult.rem.map(ent => 1);
+    if (U.empty(tickResult.upd))  delete tickResult.upd;
+    else                          tickResult.upd = tickResult.upd.map((fieldMap, uid) => /*this.entities[uid] &&*/ this.entities[uid].serializePart(fieldMap));
+    
+    // Generate the "catchup" structure if needed
+    let catchUp = U.empty(this.uninitializedClients) ? null : { add: this.entities.map(ent => ent.serializeFull()) };
+    
+    for (let [ uid, client ] of Object.entries(this.clients)) {
+      // Decide if this client needs the latest update, or the full catchup data
+      let updateData = this.uninitializedClients.hasOwnProperty(uid) ? catchUp : tickResult;
+      if (updateData && !U.empty(updateData)) client.send({ type: 'update', update: updateData });
+    }
+    
+    // Mark all clients as initialized
+    this.uninitializedClients = {};
   }
   addEnforcer(enf) {
     this.enforcers.push(enf);
@@ -1544,13 +1782,17 @@ class ZombWorld extends World {
     return enf;
   }
   getNextUid() {
-    return this.uid++;
+    return this.nextUid++;
   }
-};
+}
 
 (async () => {
   
-  let world = new ZombWorld();
+  // NUM TILES ACROSS: 30: 13s, 100: 16s, 200: 18s, 300: 10s, 250: 11s, 150: 20s,
+  // 175: 17s, 125: 17s, 160: 20s
+  let rootZone = new TiledZone('root', new CarteXY(0, 0), 10000, 150); 
+  // let rootZone = new SquareZone('root', new CarteXY(0, 0), 100000);
+  let world = new ZombWorld({ rootZone });
   
   // ==== Unit formation
   let testFormation = world.addEntity(new UnitFormation());
@@ -1559,7 +1801,8 @@ class ZombWorld extends World {
   let clientManager = world.addEntity(new ClientManager(testFormation));
   
   // ==== Zombie manager
-  let zombieManager = world.addEntity(new ZombieManager());
+  let secsPerSpawn = 10;
+  let zombieManager = world.addEntity(new ZombieManager(secsPerSpawn, testFormation));
   
   // ==== Static geometry
   // Tuning-fork bunker kinda thing
@@ -1573,24 +1816,19 @@ class ZombWorld extends World {
   world.addEntity(new RectStructure(150, 150, new CarteXY(-130, +350), U.ROT_CW1 / 4));
   world.addEntity(new RectStructure(150, 150, new CarteXY(+130, +350), U.ROT_CCW1 / 4));
   
-  // Big silo
-  world.addEntity(new Silo(150, new CarteXY(0, +600), U.ROT_U));
+  // Big SiloStructure
+  world.addEntity(new SiloStructure(150, new CarteXY(0, +600), U.ROT_U));
   
   // Test units
-  let testUnit1 = new Unit(8, null);
+  let testUnit1 = world.addEntity(new Unit(8, null));
   testUnit1.bound.loc = new CarteXY(-130, +445);
   testUnit1.bound.rot = U.ROT_CCW1 / 2;
-  testFormation.addUnit(testUnit1); // In the formation
-  world.addEntity(testUnit1);
+  relMTo1.formationWithHumanoid.put(testFormation, testUnit1);
   
-  let testUnit2 = new Unit(8, null);
+  let testUnit2 = world.addEntity(new Unit(8, null));
   testUnit2.bound.loc = new CarteXY(+130, +445);
   testUnit2.bound.rot = U.ROT_CW1 / 2;
-  testFormation.addUnit(testUnit2); // In the formation
-  world.addEntity(testUnit2);
-  
-  // Tiled root zone
-  let rootZone = world.setRootZone(new TiledZone(new CarteXY(0, 0), 10000, 10));
+  relMTo1.formationWithHumanoid.put(testFormation, testUnit2);
   
   // Enforce physical entity separation
   let physicsEnforcer = world.addEnforcer(new PhysicsEnforcer(rootZone));
@@ -1687,121 +1925,8 @@ class ZombWorld extends World {
     new Promise(r => httpServer.listen(config.httpPort, config.hostname, r))
   ]);
   
+  world.startUpdateInterval();
+  
   output(`Ready: ${JSON.stringify(config, null, 2)}`);
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  // TODO: DEPRECATED! (although some of the http server should probably remain here?)
-  // let clients = {};
-  // let entities = {};
-  // for (let initialEntity of initialEntities) entities[initialEntity.uid] = initialEntity;
-  // 
-  // // The update loop
-  // let framesPerSec = 40;
-  // let secsPerFrame = 1 / framesPerSec;
-  // let smoothMs = 0;
-  // setInterval(() => {
-  //   
-  //   let time = +new Date();
-  //   
-  //   let update = {
-  //     addClients: {},
-  //     updClients: {},
-  //     remClients: {},
-  //     addEntities: {},
-  //     updEntities: {},
-  //     remEntities: {}
-  //   };
-  //   
-  //   // Update all entities (while collecting physical entities for physics update)
-  //   let physEntities = {};
-  //   for (let [ uid, entity ] of Object.entries(entities)) {
-  //     entity.update(secsPerFrame, update, clients, entities);
-  //     if (entity instanceof PhysicalEntity) physEntities[uid] = entity;
-  //   }
-  //   
-  //   // Apply physics update after all other updates
-  //   physicsEnforcer.applyCollisions(physEntities, update);
-  //   
-  //   // ==== Update clients
-  //   let { addClients, updClients, remClients } = update;
-  //   for (let ip in addClients) {
-  //     clients[ip] = addClients[ip];
-  //     addClients[ip] = addClients[ip].now();
-  //   }
-  //   for (let ip in updClients) {
-  //     updClients[ip] = updClients[ip].now();
-  //   }
-  //   for (let ip in remClients) {
-  //     delete clients[ip];
-  //     remClients[ip] = 1;
-  //   }
-  //   
-  //   // ==== Update entities
-  //   let { addEntities, updEntities, remEntities } = update;
-  //   for (let uid in addEntities) {
-  //     entities[uid] = addEntities[uid];
-  //     addEntities[uid] = addEntities[uid].now();
-  //   }
-  //   
-  //   // Remove entities first (removals may cause updates! e.g. setting references to null)
-  //   let cascadedRems = update.remEntities;
-  //   while (!U.empty(cascadedRems)) {
-  //     let rems = cascadedRems;
-  //     cascadedRems = {};
-  //     for (let uid in rems) {
-  //       entities[uid].onRemove({ remEntities: cascadedRems, updEntities: update.updEntities }, clients, entities);
-  //       delete entities[uid];
-  //       update.remEntities[uid] = 1;
-  //     }
-  //   }
-  //   
-  //   // Convert all updated entities to "now" format
-  //   for (let uid in updEntities) {
-  //     updEntities[uid] = updEntities[uid].now();
-  //   }
-  //   
-  //   // ==== Broadcast frame
-  //   // Remove any empty update properties
-  //   for (let k in update) if (U.empty(update[k])) delete update[k];
-  //   
-  //   // Generate the full catchUp structure if there are new clients
-  //   let catchUp = U.empty(addClients) ? null : { addClients: clients.map(c => c.now()), addEntities: entities.map(e => e.now()) };
-  //   
-  //   // Inform all clients of all updates. Old clients get deltas; new clients are caught up fully
-  //   for (let [ ip, client ] of Object.entries(clients)) {
-  //     let isNewClient = addClients.hasOwnProperty(ip);
-  //     let data = isNewClient ? catchUp : update;
-  //     if (!U.empty(data)) client.send({ type: 'update', update: data });
-  //   }
-  //   
-  //   smoothMs = (0.85 * smoothMs) + (0.15 * (new Date() - time));
-  //   process.stdout.write(`\rProcessed in ${Math.round(smoothMs)}ms / ${Math.round(secsPerFrame * 1000)}ms${' '.repeat(10)}\r`);
-  //   
-  // }, secsPerFrame * 1000);
-  // 
-  // 
-  // let soktServer = net.createServer(sokt => {
-  //   
-  //   let ip = sokt.remoteAddress;
-  //   output(`SOKT: ${ip}`);
-  //   clientManager.incomingClient(new Client(ip, sokt));
-  //   
-  // });
-  // 
-  // // Listen for requests
-  // await Promise.all([
-  //   new Promise(r => httpServer.listen(config.httpPort, config.hostname, r)),
-  //   new Promise(r => soktServer.listen(config.soktPort, config.hostname, 511, r))
-  // ]);
-  // 
-  // output(`Ready: ${JSON.stringify(config, null, 2)}`);
   
 })();
