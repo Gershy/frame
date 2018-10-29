@@ -149,15 +149,23 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
                 
                 g.path(revealStyle, () => {
                   let { ang, len, r } = reveal;
-                  let ccw = Math.PI * 0.5;
-                  let ang1 = ang * -0.50 - ccw;
-                  let ang2 = ang * -0.25 - ccw;
-                  let [ sin1, cos1, sin2, cos2 ] = [ Math.sin(ang1), Math.cos(ang1), Math.sin(ang2), Math.cos(ang2) ];
-                  let [ ax, ay ] = [ cos1 * r, sin1 * r ]; // arc-x, arc-y
-                  let [ cx1, cy1, cx2, cy2 ] = [ cos1 * len, sin1 * len, cos2 * len, sin2 * len ]; // cone-x, cone-y
-                  g.arcTo(-ax, ay, 0, 0, ax, ay, false);      // Circle around unit
-                  g.lineTo(cx1, cy1);                         // Right edge of vision cone
-                  g.curveTo(-cx1, cy1, cx2, cy2, -cx2, cy2);  // Curved periphery of vision cone (shape is implicitly closed)
+                  let isCircle = len <= r || !ang;
+                  
+                  if (isCircle) {
+                    g.circ(0, 0, r, revealStyle)
+                  } else {
+                    let ccw = Math.PI * 0.5;
+                    let ang1 = ang * -0.50 - ccw;
+                    let ang2 = ang * -0.25 - ccw;
+                    let [ sin1, cos1, sin2, cos2 ] = [ Math.sin(ang1), Math.cos(ang1), Math.sin(ang2), Math.cos(ang2) ];
+                    let [ ax, ay ] = [ cos1 * r, sin1 * r ]; // arc-x, arc-y
+                    let [ lx, ly ] = [ cos1 * len, sin1 * len ]; // long-x, long-y
+                    let [ cx1, cy1, cx2, cy2 ] = [ cos1 * len, sin1 * len, cos2 * len, sin2 * len ]; // cone-x, cone-y
+                    g.arcTo(-ax, ay, 0, 0, ax, ay, false);      // Circle around unit
+                    g.lineTo(cx1, cy1);                         // Right edge of vision cone
+                    g.arcTo(lx, ly, 0, 0, -lx, ly, false);
+                    //g.curveTo(-cx1, cy1, cx2, cy2, -cx2, cy2);  // Curved periphery of vision cone (shape is implicitly closed)
+                  }
                 });
                 
               }
@@ -821,11 +829,11 @@ let port = parseInt(window.location.port || 80);
   
   // Keep track of our client and unit
   world.entityAdd = entity => {
-    if (entity instanceof Client) {
+    if (U.isInspiredBy(entity, Client)) {
       let client = entity;
       if (client.data.ip === config.clientIp) myClient.update(client);
     }
-    if (entity instanceof Unit) {
+    if (U.isInspiredBy(entity, Unit)) {
       let unit = entity;
       let client = myClient.value;
       if (client && unit.data.client === client.uid) myUnit.update(unit);

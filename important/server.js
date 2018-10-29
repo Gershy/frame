@@ -31,9 +31,10 @@ let UID = 0;
 // ==== 2D MATH
 let XY = U.inspire({ name: 'XY', methods: (insp, Insp) => ({
   init: function() {},
-  xx: function() { throw new Error('not implemented'); },
-  asCarte:  function()    { throw new Error('not implemented'); },
+  xx:       function()    { throw new Error('not implemented'); },
   yy:       function()    { throw new Error('not implemented'); },
+  nonZero:  function()    { throw new Error('not implemented'); },
+  asCarte:  function()    { throw new Error('not implemented'); },
   asPolar:  function()    { throw new Error('not implemented'); },
   toCarte:  function()    { throw new Error('not implemented'); },
   toPolar:  function()    { throw new Error('not implemented'); },
@@ -61,6 +62,7 @@ let CarteXY = U.inspire({ name: 'CarteXY', methods: (insp, Insp) => ({
   init:     function(x=0, y=0) { this.x = x; this.y = y; if (!U.validNum(x) || !U.validNum(y)) throw new Error(`NAN! ${JSON.stringify(x)}, ${y}`); },
   xx:       function()    { return this.x; },
   yy:       function()    { return this.y; },
+  nonZero:  function()    { return this.x || this.y; },
   asCarte:  function()    { return [ this.x, this.y ]; },
   toCarte:  function()    { return this; },
   asPolar:  function()    { return [ this.ang(), this.mag() ]; },
@@ -87,6 +89,7 @@ let PolarXY = U.inspire({ name: 'PolarXY', methods: (insp, Insp) => ({
   init:     function(r=0, m=1) { this.r = r; this.m = m; if (!U.validNum(r) || !U.validNum(m)) throw new Error('NAN!'); },
   xx:       function()    { return Math.sin(this.r) * this.m; },
   yy:       function()    { return Math.cos(this.r) * this.m; },
+  nonZero:  function()    { return this.m; },
   asCarte:  function()    { return [ Math.sin(this.r) * this.m, Math.cos(this.r) * this.m ]; },
   toCarte:  function()    { return new CarteXY(Math.sin(this.r) * this.m, Math.cos(this.r) * this.m); },
   asPolar:  function()    { return [ this.r, this.m ]; },
@@ -370,103 +373,6 @@ let LineSegmentBound = U.inspire({ name: 'LineSegmentBound', inspiration: { Boun
   },
 })});
 
-// ==== RELATION UTIL
-let relate11 = (name, sync, Cls1, link1, Cls2, link2) => {
-  // For 1-to-1, links are pointer names
-  
-  let syncFunc = (inst1, link1, inst2, link2) => {
-    if (sync < C.sync.delta) return;
-    let world = inst1.world || inst2.world;
-    if (!world) return;
-    world.updEntity(inst1, { [link1]: 1 });
-    world.updEntity(inst2, { [link2]: 1 });
-  };
-  
-  let both = [
-    [ Cls1, link1, Cls2, link2 ],
-    [ Cls2, link2, Cls1, link1 ]
-  ];
-  
-  for (let [ Cls1, link1, Cls2, link2 ] of both) {
-    
-    if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-    Cls1.relSchemaDef[link1] = ((link1, link2) => ({ sync,
-      change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
-        put: (inst1, inst2) => {
-          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-          if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
-          inst1[link1] = inst2;
-          inst2[link2] = inst1;
-          syncFunc(inst1, link1, inst2, link2);
-        },
-        rem: (inst1, inst2) => {
-          if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
-          inst1[link1] = null;
-          inst2[link2] = null;
-          syncFunc(inst1, link1, inst2, link2);
-        }
-      })[act](inst1, inst2),
-      serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
-      actual: (inst1) => inst1[link1]
-    }))(link1, link2);
-    
-  }
-  
-};
-let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
-  
-  // For 1-to-M, the 1 links with a pointer and the M links back with a map
-  // Cls1 is the singular instance - ClsM links to many instances of Cls1
-  
-  let syncFunc = (inst1, instM) => {
-    if (sync < C.sync.delta) return;
-    let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
-    world.updEntity(inst1, { [link1]: 1 });
-    world.updEntity(instM, { [linkM]: 1 });
-  };
-    
-  if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-  Cls1.relSchemaDef[link1] = { sync,
-    change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
-      put: (inst1, instM) => {
-        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-        inst1[link1] = instM;
-        instM[linkM][inst1.uid] = inst1;
-        syncFunc(inst1, instM);
-      },
-      rem: (inst1, instM) => {
-        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
-        inst1[link1] = null;
-        delete instM[linkM][inst1.uid];
-        syncFunc(inst1, instM);
-      }
-    })[act](inst1, instM),
-    serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
-    actual: (inst1) => inst1[link1]
-  };
-  
-  if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
-  ClsM.relSchemaDef[linkM] = { sync,
-    change: (instM, p, act=p.act, inst1=p[link1]) => ({
-      put: (instM, inst1) => {
-        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-        inst1[link1] = instM;
-        instM[linkM][inst1.uid] = inst1;
-        syncFunc(inst1, instM);
-      },
-      rem: (instM, inst1) => {
-        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
-        inst1[link1] = null;
-        delete instM[linkM][inst1.uid];
-        syncFunc(inst1, instM);
-      }
-    })[act](instM, inst1),
-    serial: (instM) => instM[linkM].map(ent => 1), // Only the keys are important
-    actual: (instM) => instM[linkM]
-  };
-    
-};
-
 // ==== CLIENT
 let Client = U.inspire({ name: 'Client', inspiration: { Entity }, methods: (insp, Insp) => ({
   init: function(ip, sokt) {
@@ -744,7 +650,7 @@ let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { Entity }, 
     this.world.rootZone.placeEntity(this);
   },
   update: function(secs) {
-    let locChanged = this.modF('loc', loc => (this.vel.x || this.vel.y) ? loc.add(this.vel.scale(secs)) : loc);
+    let locChanged = this.modF('loc', loc => this.vel.nonZero() ? loc.add(this.vel.scale(secs)) : loc);
     let rotChanged = this.modF('rot', rot => rot + (this.rotVel * secs))
     
     // It's nice to be able to call `update` on some entities before they've
@@ -836,7 +742,7 @@ let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods
   },
   isTangible: function() { return false; /* decollision doesn't occur against bullets */ },
   canCollide: function(entity) {
-    return this.secsLeftToLive > 0 && entity !== this.unit && !(entity instanceof Bullet);
+    return this.secsLeftToLive > 0 && entity !== this.unit && !U.isInspiredBy(entity, Bullet);
   },
   collideAll: function(collisions) {
     let deepestEntity = null;
@@ -856,10 +762,8 @@ let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods
   },
   strike: function(entity) {
     
-    if (entity instanceof Actor) {
+    if (U.isInspiredBy(entity, Actor)) {
       entity.modF('health', health => health - this.strikeDamage);
-      // entity.health -= this.strikeDamage;
-      // this.world.updEntity(entity, { health: entity.health });
     }
     
   },
@@ -1025,17 +929,11 @@ Unit.genSerialDef = () => ({
   }
 });
 
-let Npc = U.inspire({ name: 'Npc', inspiration: { Actor }, methods: (insp, Insp) => ({
+let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp, Insp) => ({
+  $genSerialDef: () => {},
+  
   init: function(r) {
     insp.Actor.init.call(this, r);
-  }
-})});
-Npc.genSerialDef = () => ({
-});
-
-let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, Insp) => ({
-  init: function(r) {
-    insp.Npc.init.call(this, r);
     
     this.idea = null;
     
@@ -1056,7 +954,7 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
     
     this.damageDealt = 0;
   },
-  canCollide: function(entity) { return !(entity instanceof Zombie); },
+  canCollide: function(entity) { return !U.isInspiredBy(entity, Zombie); },
   update: function(secs) {
     
     let { entities } = this.world;
@@ -1068,16 +966,17 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
     let entityEntries = Object.entries(entities);
     let [ uid, randEnt ] = entityEntries[Math.floor(Math.random() * entityEntries.length)];
     
-    if (randEnt instanceof Unit) {
-      if (!this.target || this.dist(randEnt) < this.dist(this.target) || Math.random() < 1 / Math.max(this.dist(randEnt), 3)) this.target = randEnt;
-    } else if (randEnt instanceof Zombie && randEnt !== this) {
+    if (U.isInspiredBy(randEnt, Unit)) {
+      if (!this.target || this.dist(randEnt) < this.dist(this.target) || Math.random() < 0.01) this.target = randEnt;
+    } else if (U.isInspiredBy(randEnt, Zombie) && randEnt !== this) {
       if (!this.idol || randEnt.progress > this.idol.progress) this.idol = randEnt;
+      if (!this.target && randEnt.target) this.target = randEnt.target;
       let dist = this.dist(randEnt);
       this.loneliness = (this.loneliness * 0.75) + (Math.min(dist, 1000) * (0.25 / 1000));
       this.perceivedCompany = XY.sum([
         this.perceivedCompany.scale(0.4),
-        randEnt.bound.loc.scale(0.2),
-        (randEnt.perceivedCompany ? randEnt.perceivedCompany : randEnt.bound.loc).scale(0.4)
+        randEnt.bound.loc.scale(0.3),
+        (randEnt.perceivedCompany ? randEnt.perceivedCompany : randEnt.bound.loc).scale(0.3)
       ]);
     }
     
@@ -1128,20 +1027,6 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
           
         }
         
-        // let doStalk = Math.random() < 0.7;
-        // let offsetDist = doStalk
-        //   ? (50 + Math.random() * 150)
-        //   : (Math.random() * this.bound.r);
-        // 
-        // let offset = new PolarXY(Math.random() * U.ROT_FULL, offsetDist)
-        // this.idea = {
-        //   type: 'attack',
-        //   target: this.target,
-        //   offset: offset,
-        //   dest: null,
-        //   next: null
-        // };
-        
       } else if (this.idol && Math.random() < (1 - (Math.min(this.dist(this.idol), 1000) / 1000)) * 0.8) {
         this.idea = {
           type: 'follow',
@@ -1184,10 +1069,12 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
       } else {
         
         // Far from destination! Facing right way?
-        let neededAng = new PolarXY(this.bound.rot, 1).angTo(this.idea.dest.sub(this.bound.loc));
+        let neededAng = new PolarXY(this.bound.rot).angTo(this.idea.dest.sub(this.bound.loc));
         if (Math.abs(neededAng < this.rotSpd * secs)) {
           // Almost exactly facing the right way! Full speed ahead!
-          this.bound.rot += neededAng;
+          // this.modF('rot', r => r + neededAng);
+          // this.bound.rot += neededAng;
+          this.rotVel = neededAng / secs;
           this.vel = new PolarXY(this.bound.rot, this.aheadSpd);
         } else {
           // Need to turn!
@@ -1198,7 +1085,7 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
       
     }
     
-    insp.Npc.update.call(this, secs);
+    insp.Actor.update.call(this, secs);
     
   },
   collideAll: function(collisions) {
@@ -1207,10 +1094,19 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
     
     for (let { entity, sepAxis, sepAmt } of Object.values(collisions)) {
       if (entity.invWeight === 0) [ barrier, barrierAxis ] = [ entity, sepAxis ];
-      if (entity instanceof Unit) {
+      if (U.isInspiredBy(entity, Unit)) {
         let dmg = this.bound.r * 0.2;
         entity.modF('health', health => health - dmg);
         this.damageDealt += dmg;
+        
+        this.target = entity;
+        this.idea = {
+          type: 'attack',
+          target: this.target,
+          offset: new CarteXY(0, 0),
+          dest: null,
+          next: this.idea
+        };
       }
     }
     
@@ -1250,11 +1146,16 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, I
     
   }
 })});
-Zombie.genSerialDef = () => ({
-});
 
 // Items
 let Item = U.inspire({ name: 'Item', inspiration: { Entity }, methods: (insp, Insp) => ({
+  $genSerialDef: () => ({
+    name: { sync: C.sync.delta,
+      change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.name
+    }
+  }),
+  
   init: function(name) {
     insp.Entity.init.call(this);
     this.name = name;
@@ -1267,14 +1168,23 @@ let Item = U.inspire({ name: 'Item', inspiration: { Entity }, methods: (insp, In
     throw new Error('not implemented');
   }
 })});
-Item.genSerialDef = () => ({
-  name: { sync: C.sync.delta,
-    change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.name
-  }
-});
 
 let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) => ({
+  $genSerialDef: () => ({
+    shotsInClip: { sync: C.sync.delta,
+      change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.shotsInClip
+    },
+    shotsFired: { sync: C.sync.delta,
+      change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
+      serial: (inst) => inst.shotsFired
+    },
+    reloadDelaySecs: { sync: C.sync.delta,
+      change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.reloadDelaySecs
+    }
+  }),
+  
   init: function(name, makeBullet=null) {
     insp.Item.init.call(this, name);
     this.makeBullet = makeBullet;
@@ -1334,20 +1244,6 @@ let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) 
     }
   }
 })});
-Gun.genSerialDef = () => ({
-  shotsInClip: { sync: C.sync.delta,
-    change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.shotsInClip
-  },
-  shotsFired: { sync: C.sync.delta,
-    change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
-    serial: (inst) => inst.shotsFired
-  },
-  reloadDelaySecs: { sync: C.sync.delta,
-    change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.reloadDelaySecs
-  }
-});
 
 // Formations
 let Formation = U.inspire({ name: 'Formation', inspiration: { Entity }, methods: (insp, Insp) => ({
@@ -1367,6 +1263,8 @@ Formation.genSerialDef = () => ({
 
 // Managers
 let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, methods: (insp, Insp) => ({
+  $genSerialDef: () => ({}),
+  
   init: function(formation) {
     insp.Entity.init.call(this);
     this.formation = formation;
@@ -1393,7 +1291,7 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
       // See if there's already a unit for this client
       let prevUnit = null;
       for (let [ uid, entity ] of Object.entries(this.world.entities)) {
-        if (entity instanceof Unit && entity.client && entity.client.ip === client.ip) { prevUnit = entity; break; }
+        if (U.isInspiredBy(entity, Unit) && entity.client && entity.client.ip === client.ip) { prevUnit = entity; break; }
       }
       
       if (prevUnit) {
@@ -1422,10 +1320,10 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
         unit.bound.loc = new CarteXY(0, 425);
         unit.bound.rot = U.ROT_D;
         
-        // unit.mainVisionRange = 900;
+        // unit.mainVisionRange = 400;
         // unit.mainVisionScale = 0.5;
-        // unit.mainVisionAngle = 0.001; // Math.PI * 0.5;
-        // unit.mainBodyVision = 5000;
+        // unit.mainVisionAngle = Math.PI * 0.2;
+        // unit.mainBodyVision = 100;
         
         unit.mod('mainItem', { act: 'put', mainItem });
         unit.mod('client', { act: 'put', client });
@@ -1444,9 +1342,6 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
   update: function(secs) {},
   end: function() {}
 })});
-ClientManager.genSerialDef = () => ({
-  
-});
 
 let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, methods: (insp, Insp) => ({
   init: function(secsPerSpawn=30, formation) {
@@ -1493,10 +1388,9 @@ let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, 
 ZombieManager.genSerialDef = () => ({
 });
 
-// Relations (TODO: C.sync constants only coincidentally work here, since `C.sync.none === 0 == false`)
-relate11('actorWithClient', C.sync.delta, Actor, 'client', Client, 'actor');
-relate1M('actorInFormation', C.sync.delta, Actor, 'formation', Formation, 'actors');
-relate11('unitWithMainItem', C.sync.delta, Unit, 'mainItem', Client, 'unit');
+Entity.relate11('actorWithClient', C.sync.delta, Actor, 'client', Client, 'actor');
+Entity.relate1M('actorInFormation', C.sync.delta, Actor, 'formation', Formation, 'actors');
+Entity.relate11('unitWithMainItem', C.sync.delta, Unit, 'mainItem', Client, 'unit');
 
 // Enforcers
 let PhysicsEnforcer = U.inspire({ name: 'PhysicsEnforcer', methods: (insp, Insp) => ({
@@ -1692,7 +1586,7 @@ let TiledZone = U.inspire({ name: 'TiledZone', inspiration: { SquareZone }, meth
   },
   childRem: function(child, entity) {
     // If `child` is empty, and `child` is a direct tile child of ours, free it up!
-    if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) { delete this.tiles[child.name]; /*console.log('REMOVED', child.name);*/ }
+    if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) delete this.tiles[child.name];
     insp.SquareZone.childRem.call(this, child, entity);
   },
 })});
@@ -1761,7 +1655,33 @@ let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: 
   },
 })});
 
-let secsPerZombieSpawn = 1000;
+let secsPerZombieSpawn = 2;
+let genBuildings = () => {
+  let tileSize = 300;
+  let tilePad = 20;
+  let hNumAcross = 5;
+  
+  let ret = [];
+  for (let x = -hNumAcross; x < hNumAcross; x++) { for (let y = -hNumAcross; y < hNumAcross; y++) {
+    let cenX = (tileSize + tilePad * 2) * x;
+    let cenY = (tileSize + tilePad * 2) * y;
+    
+    for (let buildingNum = 0; buildingNum < 4; buildingNum++) {
+      
+      let w = 80 + Math.random() * 120;
+      let h = 80 + Math.random() * 120;
+      
+      let offX = (Math.random() - 0.5) * (tileSize - w);
+      let offY = (Math.random() - 0.5) * (tileSize - h);
+      
+      ret.push(new RectStructure(w, h, new CarteXY(cenX + offX, cenY + offY), 0));
+      
+    }
+  }}
+  
+  return ret;
+  
+};
 (async () => {
   
   // NUM TILES ACROSS: 30: 13s, 100: 16s, 200: 18s, 300: 10s, 250: 11s, 150: 20s,
@@ -1780,7 +1700,9 @@ let secsPerZombieSpawn = 1000;
   
   // ==== Static geometry
   // Tuning-fork bunker kinda thing
-  world.addEntity(new RectStructure(180, 300, new CarteXY(0, -170), U.ROT_U));
+  genBuildings().forEach(building => world.addEntity(building));
+  
+  /*world.addEntity(new RectStructure(180, 300, new CarteXY(0, -170), U.ROT_U));
   world.addEntity(new RectStructure(40, 150, new CarteXY(-70, +20), U.ROT_CW1 / 3));
   world.addEntity(new RectStructure(40, 150, new CarteXY(+70, +20), U.ROT_CCW1 / 3));
   world.addEntity(new RectStructure(40, 150, new CarteXY(-36, +150), U.ROT_U));
@@ -1792,6 +1714,7 @@ let secsPerZombieSpawn = 1000;
   
   // Big SiloStructure
   world.addEntity(new SiloStructure(150, new CarteXY(0, +600), U.ROT_U));
+  */
   
   // Test units
   let testUnit1 = world.addEntity(new Unit(8));
