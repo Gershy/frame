@@ -1,16 +1,3 @@
-// 6018 8710 6830 5623
-
-// [X]  Bullets shouldn't need to send updates every frame
-// [ ]  Better camera controls
-//   [X]  Shifted ahead further
-// [X]  Zones (broad collision detection)
-// [X]  Reveals should be on units, and teams are just groupings of units
-// [ ]  Different ways of determining who shares LOS - e.g. a commander unit, or nearby units share, etc.
-// [ ]  Enemies + AI
-// [ ]  Different clients receiving different updates (maybe a global list of updates, as well as a per-client or per-group list?)
-// [ ]  Smarter way of determining which objects have updated
-//   [ ] Less overhead for defining unit changes?? (takes some redundant code at the moment)
-// [ ]  Turning acceleration (allowing fine adjustments to angle while maintaining quicker turns)
 let http = require('http');
 let net = require('net');
 let crypto = require('crypto');
@@ -188,7 +175,7 @@ let makeGatling = () => {
   });
   gatling.recoilAng = (Math.PI * 2) / 52;
   gatling.shootDelaySecs = 0.01;
-  gatling.shotsInClip = 7500;
+  gatling.shotsInClip = 2000;
   gatling.reloadDelaySecs = 10;
   return gatling;
 };
@@ -384,21 +371,21 @@ class LineSegmentBound extends Bound {
 
 // ==== CLIENT
 class Client extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    ip: { scope: 'global',
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    ip: { sync: C.sync.delta,
       change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.ip
     },
-    unit: { scope: 'global',
-      change: (inst, unit2) => { inst.unit = unit2; },
-      serial: (inst) => inst.unit ? inst.unit.uid : null
-    }
+    // actor: { sync: C.sync.delta,
+    //   change: (inst, { act, actor=inst.actor }) => rel1To1.actorWithClient[act](actor, inst),
+    //   serial: (inst) => inst.actor ? inst.actor.uid : null
+    // }
   }}
   constructor(ip, sokt) {
     super();
     this.ip = ip;
     this.sokt = sokt;
-    this.unit = null;
+    this.actor = null;
     
     this.p = {
       status: 'starting',
@@ -629,14 +616,14 @@ class Client extends Entity {
 }
 
 // ==== PHYSICAL ENTITY
-class PhysicalEntity extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    rot: { scope: 'global',
+class SpatialEntity extends Entity {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    rot: { sync: C.sync.delta,
       change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
       actual: (inst) => inst.bound.rot,
       serial: (inst) => inst.bound.rot
     },
-    loc: { scope: 'global',
+    loc: { sync: C.sync.delta,
       change: (inst, loc2) => { inst.bound.loc = loc2; },
       actual: (inst) => inst.bound.loc,
       serial: (inst) => inst.bound.loc.asCarte()
@@ -689,13 +676,13 @@ class PhysicalEntity extends Entity {
 }
 
 // Structures
-class RectStructure extends PhysicalEntity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    w: { scope: 'global',
+class RectStructure extends SpatialEntity {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    w: { sync: C.sync.delta,
       change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.w
     },
-    h: { scope: 'global',
+    h: { sync: C.sync.delta,
       change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.h
     }
@@ -712,9 +699,9 @@ class RectStructure extends PhysicalEntity {
   }
   update(secs) { /* nothing! */ }
 }
-class SiloStructure extends PhysicalEntity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    r: { scope: 'global',
+class SiloStructure extends SpatialEntity {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    r: { sync: C.sync.delta,
       change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.r
     }
@@ -732,23 +719,18 @@ class SiloStructure extends PhysicalEntity {
 }
 
 // Bullets
-class Bullet extends PhysicalEntity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    // Override `loc` to be LOCAL for bullets!
-    loc: { scope: 'fullOnly', // TODO: MESSY!!
-      change: (inst, loc2) => { inst.bound.loc = loc2; },
-      actual: (inst) => inst.bound.loc,
-      serial: (inst) => inst.bound.loc.asCarte()
-    },
-    unit: { scope: 'global',
+class Bullet extends SpatialEntity {
+  static genSerialDef() { let supDef = (super.serialDef || super.genSerialDef()); return { ...supDef,
+    loc: supDef.loc.gain({ sync: C.sync.total }), // Bullet "loc" is deterministic client-side
+    unit: { sync: C.sync.delta,
       change: (inst, unit2) => { inst.unit = unit2; },
       serial: (inst) => inst.unit ? inst.unit.uid : null
     },
-    maxSize: { scope: 'global',
+    maxSize: { sync: C.sync.delta,
       change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
       serial: (inst) => inst.maxSize
     },
-    vel: { scope: 'global',
+    vel: { sync: C.sync.delta,
       change: (inst, vel2) => { inst.vel = vel2 },
       serial: (inst) => inst.vel.asCarte()
     }
@@ -773,8 +755,7 @@ class Bullet extends PhysicalEntity {
   }
   isTangible() { return false; /* decollision doesn't occur against bullets */ }
   canCollide(entity) {
-    if (this.secsLeftToLive <= 0) return false;
-    return entity !== this.unit && !(entity instanceof Bullet);
+    return this.secsLeftToLive > 0 && entity !== this.unit && !(entity instanceof Bullet);
   }
   collideAll(collisions) {
     let deepestEntity = null;
@@ -794,7 +775,7 @@ class Bullet extends PhysicalEntity {
   }
   strike(entity) {
     
-    if (entity instanceof Humanoid) {
+    if (entity instanceof Actor) {
       entity.modF('health', health => health - this.strikeDamage);
       // entity.health -= this.strikeDamage;
       // this.world.updEntity(entity, { health: entity.health });
@@ -816,29 +797,131 @@ class Bullet extends PhysicalEntity {
   }
 }
 
+// For 1-to-1, links are pointer names
+let relate11 = (name, sync, Cls1, link1, Cls2, link2) => {
+  
+  let syncFunc = (inst1, link1, inst2, link2) => {
+    if (sync < C.sync.delta) return;
+    let world = inst1.world || inst2.world;
+    if (!world) return;
+    world.updEntity(inst1, { [link1]: 1 });
+    world.updEntity(inst2, { [link2]: 1 });
+  };
+  
+  let both = [
+    [ Cls1, link1, Cls2, link2 ],
+    [ Cls2, link2, Cls1, link1 ]
+  ];
+  
+  for (let [ Cls1, link1, Cls2, link2 ] of both) {
+    
+    let serialDef = Cls1.has('serialDef') ? Cls1.serialDef : Cls1.genSerialDef();
+    serialDef[link1] = ((link1, link2) => ({ sync,
+      change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
+        put: (inst1, inst2) => {
+          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+          if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
+          inst1[link1] = inst2;
+          inst2[link2] = inst1;
+          syncFunc(inst1, link1, inst2, link2);
+        },
+        rem: (inst1, inst2) => {
+          if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
+          inst1[link1] = null;
+          inst2[link2] = null;
+          syncFunc(inst1, link1, inst2, link2);
+        }
+      })[act](inst1, inst2),
+      serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+      actual: (inst1) => inst1[link1]
+    }))(link1, link2);
+    Cls1.setSerialDef(serialDef);
+    
+  }
+  
+};
+
+// For 1-to-M, the 1 links with a pointer and the M links with a map
+let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
+  
+  // Cls1 is the singular instance - ClsM links to many instances of Cls1
+  
+  let syncFunc = (inst1, instM) => {
+    if (sync < C.sync.delta) return;
+    let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
+    world.updEntity(inst1, { [link1]: 1 });
+    world.updEntity(instM, { [linkM]: 1 });
+  };
+  
+  let serialDef1 = Cls1.has('serialDef') ? Cls1.serialDef : Cls1.genSerialDef();
+  serialDef1[link1] = { sync,
+    change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
+      put: (inst1, instM) => {
+        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        inst1[link1] = instM;
+        instM[linkM][inst1.uid] = inst1;
+        syncFunc(inst1, instM);
+      },
+      rem: (inst1, instM) => {
+        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        inst1[link1] = null;
+        delete instM[linkM][inst1.uid];
+        syncFunc(inst1, instM);
+      }
+    })[act](inst1, instM),
+    serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+    actual: (inst1) => inst1[link1]
+  };
+  Cls1.setSerialDef(serialDef1);
+  
+  let serialDefM = ClsM.has('serialDef') ? ClsM.serialDef : ClsM.genSerialDef();
+  serialDefM[linkM] = { sync,
+    change: (instM, p, act=p.act, inst1=p[link1]) => ({
+      put: (instM, inst1) => {
+        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        inst1[link1] = instM;
+        instM[linkM][inst1.uid] = inst1;
+        syncFunc(inst1, instM);
+      },
+      rem: (instM, inst1) => {
+        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        inst1[link1] = null;
+        delete instM[linkM][inst1.uid];
+        syncFunc(inst1, instM);
+      }
+    })[act](instM, inst1),
+    serial: (instM) => instM[linkM].map(ent => 1), // Only the keys are important
+    actual: (instM) => instM[linkM]
+  };
+  ClsM.setSerialDef(serialDefM);
+  
+};
+
+// TODO: Relations should have an explicit "sync" property. Right now their
+// "upd" method decides whether to perform `world.updEntity`.
+
 // 1 to 1 can have "put" activate "rem" for BOTH members in the relationship
 // 1 to 1 doesn't care about presence in world (uids not needed for linking)
 //   BUT if either has a world, then `updEntity` should get called for both
 let rel1To1 = {
-  humanoidWithClient: {
-    // TODO: Asymmetry: humanoid/client, client/unit
-    put: (humanoid, client) => {
-      if (humanoid.client) rel1To1.humanoidWithClient.rem(humanoid, humanoid.client);
-      if (client.unit) rel1To1.humanoidWithClient.rem(client.unit, client);
-      humanoid.client = client;
-      client.unit = humanoid;
-      rel1To1.humanoidWithClient.upd(humanoid, client);
+  actorWithClient: {
+    put: (actor, client) => {
+      if (actor.client) rel1To1.actorWithClient.rem(actor, actor.client);
+      if (client.actor) rel1To1.actorWithClient.rem(client.actor, client);
+      actor.client = client;
+      client.actor = actor;
+      rel1To1.actorWithClient.upd(actor, client);
     },
-    rem: (humanoid, client) => {
-      humanoid.client = null;
-      client.humanoid = null;
-      rel1To1.humanoidWithClient.upd(humanoid, client);
+    rem: (actor, client) => {
+      actor.client = null;
+      client.actor = null;
+      rel1To1.actorWithClient.upd(actor, client);
     },
-    upd: (humanoid, client) => {
-      let world = humanoid.world || mainItem.world;
+    upd: (actor, client) => {
+      let world = actor.world || mainItem.world;
       if (world) {
-        world.updEntity(humanoid, { client: 1 });
-        world.updEntity(client, { unit: 1 });
+        world.updEntity(actor, { client: 1 });
+        world.updEntity(client, { actor: 1 });
       }
     }
   },
@@ -869,49 +952,49 @@ let rel1To1 = {
 // M to 1 needs the 1 to have a world+uid (for linking). This world should
 //   always be usable for performing `updEntity` for both entities
 let relMTo1 = {
-  formationWithHumanoid: {
-    put: (formation, humanoid) => {
-      if (!humanoid.world) throw new Error('Humanoid needs world');
-      if (humanoid.formation) relMTo1.formationWithHumanoid.rem(humanoid.formation, humanoid);
-      humanoid.formation = formation;
-      formation.units[humanoid.uid] = humanoid;
-      relMTo1.formationWithHumanoid.upd(formation, humanoid);
+  formationWithActor: {
+    put: (formation, actor) => {
+      if (!actor.world) throw new Error('Actor needs world');
+      if (actor.formation) relMTo1.formationWithActor.rem(actor.formation, actor);
+      actor.formation = formation;
+      formation.actors[actor.uid] = actor;
+      relMTo1.formationWithActor.upd(formation, actor);
     },
-    rem: (formation, humanoid) => {
-      delete formation.units[humanoid.uid];
-      humanoid.formation = null;
-      relMTo1.formationWithHumanoid.upd(formation, humanoid);
+    rem: (formation, actor) => {
+      delete formation.actors[actor.uid];
+      actor.formation = null;
+      relMTo1.formationWithActor.upd(formation, actor);
     },
-    upd: (formation, humanoid) => {
-      humanoid.world.updEntity(formation, { units: 1 });
-      humanoid.world.updEntity(humanoid, { formation: 1 });
+    upd: (formation, actor) => {
+      actor.world.updEntity(formation, { actors: 1 });
+      actor.world.updEntity(actor, { formation: 1 });
     }
   }
 };
 
-// Humanoids
-class Humanoid extends PhysicalEntity {
-  static genSerialDef() { return { ...super.genSerialDef(), 
-    client: { scope: 'global',
-      change: (inst, client2) => { inst.client = client2; },
-      serial: (inst) => inst.client ? inst.client.uid : null
-    },
-    r: { scope: 'global',
+// Actors
+class Actor extends SpatialEntity {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()), 
+    r: { sync: C.sync.delta,
       change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.bound.r
     },
-    formation: { scope: 'global',
-      change: (inst, formation2) => { throw new Error('Modified relational prop') },
-      serial: (inst) => inst.formation ? inst.formation.uid : null
-    },
-    maxHealth: { scope: 'global',
+    maxHealth: { sync: C.sync.delta,
       change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
       serial: (inst) => inst.maxHealth
     },
-    health: { scope: 'global',
+    health: { sync: C.sync.delta,
       change: (inst, health2) => { inst.health = health2 },
       serial: (inst) => inst.health
-    }
+    },
+    // client: { sync: C.sync.delta,
+    //   change: (inst, { act, client=inst.client }) => rel1To1.actorWithClient[act](inst, client),
+    //   serial: (inst) => inst.client ? inst.client.uid : null
+    // },
+    // formation: { sync: C.sync.delta,
+    //   change: (inst, { act, formation=inst.formation }) => relMTo1.formationWithActor[act](formation, inst),
+    //   serial: (inst) => inst.formation ? inst.formation.uid : null
+    // }
   }}
   constructor(r) {
     super(new CircleBound(r));
@@ -932,30 +1015,30 @@ class Humanoid extends PhysicalEntity {
     super.update(secs);
   }
   end() {
-    if (this.client) rel1To1.humanoidWithClient.rem(this, this.client);
-    if (this.formation) relMTo1.formationWithHumanoid.rem(this.formation, this);
+    if (this.client) this.mod('client', { act: 'rem' });
+    if (this.formation) this.mod('formation', { act: 'rem' });
     super.end();
   }
 }
-class Unit extends Humanoid {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    mainItem: { scope: 'global',
-      change: (inst, mainItem2) => { throw new Error('Modified relational prop'); },
-      serial: (inst) => inst.mainItem ? inst.mainItem.uid : null
-    },
-    visionAngle: { scope: 'global',
+class Unit extends Actor {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    // mainItem: { sync: C.sync.delta,
+    //   change: (inst, { act, mainItem=inst.mainItem }) => rel1To1.unitWithMainItem[act](inst, mainItem),
+    //   serial: (inst) => inst.mainItem ? inst.mainItem.uid : null
+    // },
+    visionAngle: { sync: C.sync.delta,
       change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
       serial: (inst) => inst.visionAngle
     },
-    visionRange: { scope: 'global',
+    visionRange: { sync: C.sync.delta,
       change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
       serial: (inst) => inst.visionRange
     },
-    visionScale: { scope: 'global',
+    visionScale: { sync: C.sync.delta,
       change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
       serial: (inst) => inst.visionScale
     },
-    bodyVision: { scope: 'global',
+    bodyVision: { sync: C.sync.delta,
       change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
       serial: (inst) => inst.bodyVision
     }
@@ -1027,15 +1110,15 @@ class Unit extends Humanoid {
     super.end();
   }
 }
-class Npc extends Humanoid {
-  static genSerialDef() { return { ...super.genSerialDef(),
+class Npc extends Actor {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
   }}
   constructor(r, client) {
     super(r, client);
   }
 }
 class Zombie extends Npc {
-  static genSerialDef() { return { ...super.genSerialDef(),
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
   }}
   constructor(r) {
     super(r, null);
@@ -1255,8 +1338,8 @@ class Zombie extends Npc {
 
 // Items
 class Item extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    name: { scope: 'global',
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    name: { sync: C.sync.delta,
       change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.name
     }
@@ -1264,6 +1347,7 @@ class Item extends Entity {
   constructor(name) {
     super();
     this.name = name;
+    this.unit = null;
   }
   start() {}
   update(secs) { throw new Error('not implemented'); }
@@ -1273,16 +1357,16 @@ class Item extends Entity {
   }
 }
 class Gun extends Item {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    shotsInClip: { scope: 'global',
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    shotsInClip: { sync: C.sync.delta,
       change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.shotsInClip
     },
-    shotsFired: { scope: 'global',
+    shotsFired: { sync: C.sync.delta,
       change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
       serial: (inst) => inst.shotsFired
     },
-    reloadDelaySecs: { scope: 'global',
+    reloadDelaySecs: { sync: C.sync.delta,
       change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.reloadDelaySecs
     }
@@ -1320,14 +1404,13 @@ class Gun extends Item {
       
       if (this.reloadCooldownSecs > 0) return;
       
-      let rot = unit.bound.rot;
+      let rot = this.unit.bound.rot;
       let denom = 1 / this.shootDelaySecs;
       let countShotsNow = 0;
       while (this.shootCooldownSecs <= 0 && (this.shotsFired + countShotsNow) < this.shotsInClip) {
-        
         let ang = rot + (Math.random() - 0.5) * (this.recoilAng - (this.recoilAng * steadiness));
-        let bullet = this.world.addEntity(this.makeBullet(ang, unit));
-        bullet.bound.loc = unit.bound.loc;
+        let bullet = this.world.addEntity(this.makeBullet(ang, this.unit));
+        bullet.bound.loc = this.unit.bound.loc;
         
         // Split the `secs` we have to work with into properly weighted pieces
         bullet.update(secs * -(this.shootCooldownSecs * denom));
@@ -1341,42 +1424,39 @@ class Gun extends Item {
     } else if (use === 'reload') {
       
       if (this.shotsFired >= this.shotsInClip || this.shotsFired === 0) return;
-      this.modF('shotsFired', v => this.shotsInClip); // Mark all bullets as fired
+      this.mod('shotsFired', this.shotsInClip); // Mark all bullets as fired
       
     } else {
       
       throw new Error('Unknown use: ', use);
       
     }
-    
   }
 }
 
 // Formations
-class UnitFormation extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
-    units: { scope: 'global',
-      change: (inst, units2) => { throw new Error('Modified relational prop'); },
-      serial: (inst) => inst.units.map(u => 1) // Just the keys are of interest
-    }
+class Formation extends Entity {
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
+    // actors: { sync: C.sync.delta,
+    //   change: (inst, { act, actor }) => relMTo1.formationWithActor[act](inst, actor),
+    //   serial: (inst) => inst.actors.map(u => 1) // Just the keys are of interest
+    // }
   }}
   constructor() {
     super();
-    this.units = {};
+    this.actors = {};
   }
   start() {}
   update(secs) {
   }
   end() {
-    for (let [ uid, entity ] of Object.entries(this.units)) {
-      relMTo1.formationWithHumanoid.rem(this, entity);
-    }
+    for (let [ uid, actor ] of Object.entries(this.actors)) actor.mod('formation', { act: 'rem' });
   }
 }
 
 // Managers
 class ClientManager extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
   }}
   constructor(formation) {
     super();
@@ -1402,13 +1482,16 @@ class ClientManager extends Entity {
       
       // TODO: Reloading when a client-unit already exists breaks! (can't even spawn!)
       // See if there's already a unit for this client
+      let prevUnit = null;
       for (let [ uid, entity ] of Object.entries(this.world.entities)) {
-        if (entity instanceof Unit && entity.client && entity.client.ip === client.ip) {
-          this.world.remEntity(entity.client); // Clean up the old client
-          rel1To1.humanoidWithClient.put(entity, client);
-          break;
-        }
+        if (entity instanceof Unit && entity.client && entity.client.ip === client.ip) { prevUnit = entity; break; }
       }
+      
+      if (prevUnit) {
+        this.world.remEntity(prevUnit.client);
+        prevUnit.mod('client', { act: 'put', client });
+      }
+      
     });
     client.sokt.on('close', () => {
       this.world.remClient(client);
@@ -1422,10 +1505,10 @@ class ClientManager extends Entity {
     
     let clientCommands = ({
       spawn: (client, command) => {
-        if (client.unit) return;
+        if (client.actor) return;
         output(`SPAWNING: ${client.ip}`);
         
-        let weapon = this.world.addEntity(makeGatling());
+        let mainItem = this.world.addEntity(makeGatling());
         let unit = this.world.addEntity(new Unit(8));
         unit.bound.loc = new CarteXY(0, 425);
         unit.bound.rot = U.ROT_D;
@@ -1435,16 +1518,13 @@ class ClientManager extends Entity {
         // unit.mainVisionAngle = 0.001; // Math.PI * 0.5;
         // unit.mainBodyVision = 5000;
         
-        rel1To1.unitWithMainItem.put(unit, weapon);
-        
-        rel1To1.humanoidWithClient.put(unit, client);
-        
-        relMTo1.formationWithHumanoid.put(this.formation, unit);
-        
+        unit.mod('mainItem', { act: 'put', mainItem });
+        unit.mod('client', { act: 'put', client });
+        unit.mod('formation', { act: 'put', formation: this.formation });
       },
       control: (client, command) => {
-        if (!client.unit) return;
-        client.unit.control = command.control;
+        if (!client.actor) return;
+        client.actor.control = command.control;
       }
     });
     
@@ -1456,7 +1536,7 @@ class ClientManager extends Entity {
   end() {}
 }
 class ZombieManager extends Entity {
-  static genSerialDef() { return { ...super.genSerialDef(),
+  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
   }}
   constructor(secsPerSpawn=30, formation) {
     super();
@@ -1486,9 +1566,12 @@ class ZombieManager extends Entity {
         unit.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 300);
         unit.bound.rot = Math.random() * U.ROT_FULL;
         
-        rel1To1.unitWithMainItem.put(unit, this.world.addEntity(makePistol()));
+        // Set a main item
+        let mainItem = this.world.addEntity(makePistol());
+        unit.mod('mainItem', { act: 'put', mainItem });
         
-        relMTo1.formationWithHumanoid.put(this.formation, unit);
+        // Set a formation
+        unit.mod('formation', { act: 'put', formation: this.formation });
         
       }
     }
@@ -1497,37 +1580,20 @@ class ZombieManager extends Entity {
   end() {}
 }
 
+// Relations (TODO: C.sync constants only coincidentally work here, since `C.sync.none === 0 == false`)
+relate11('actorWithClient', C.sync.delta, Actor, 'client', Client, 'actor');
+relate1M('actorInFormation', C.sync.delta, Actor, 'formation', Formation, 'actors');
+relate11('unitWithMainItem', C.sync.delta, Unit, 'mainItem', Client, 'unit');
+
 // Enforcers
 class PhysicsEnforcer {
   constructor(rootZone) {
     this.rootZone = rootZone;
   }
-  forgetEntity(entity) {
-    this.calcEntityTiles(entity, true);
-  }
   enforce(secs) {
     let { entities } = this.world;
     
     let checks = {};
-    
-    // // Stupid broad separation
-    // let entityEntries = Object.entries(entities);
-    // for (let i = 1, len = entityEntries.length; i < len; i++) {
-    //   
-    //   if (!(entityEntries[i][1] instanceof PhysicalEntity)) continue;
-    //   
-    //   for (let j = 0; j < i; j++) {
-    //     
-    //     if (!(entityEntries[j][1] instanceof PhysicalEntity)) continue;
-    //     
-    //     let [ entity1, entity2 ] = [ entityEntries[i][1], entityEntries[j][1] ];
-    //     
-    //     if (!entity1.invWeight && !entity2.invWeight) continue;
-    //     if (!entity1.canCollide(entity2) || !entity2.canCollide(entity1)) continue;
-    //     checks[U.duoKey(entity1.uid, entity2.uid)] = [ entity1, entity2 ];
-    //     
-    //   }
-    // }
     
     // Broad separation...
     let allZones = this.rootZone.getFlatJurisdiction();
@@ -1762,7 +1828,7 @@ class ZombWorld extends World {
     if (U.empty(tickResult.rem))  delete tickResult.rem;
     else                          tickResult.rem = tickResult.rem.map(ent => 1);
     if (U.empty(tickResult.upd))  delete tickResult.upd;
-    else                          tickResult.upd = tickResult.upd.map((fieldMap, uid) => /*this.entities[uid] &&*/ this.entities[uid].serializePart(fieldMap));
+    else                          tickResult.upd = tickResult.upd.map((fieldMap, uid) => this.entities[uid].serializePart(fieldMap));
     
     // Generate the "catchup" structure if needed
     let catchUp = U.empty(this.uninitializedClients) ? null : { add: this.entities.map(ent => ent.serializeFull()) };
@@ -1786,23 +1852,22 @@ class ZombWorld extends World {
   }
 }
 
+let secsPerZombieSpawn = 1000;
 (async () => {
   
   // NUM TILES ACROSS: 30: 13s, 100: 16s, 200: 18s, 300: 10s, 250: 11s, 150: 20s,
   // 175: 17s, 125: 17s, 160: 20s
   let rootZone = new TiledZone('root', new CarteXY(0, 0), 10000, 150); 
-  // let rootZone = new SquareZone('root', new CarteXY(0, 0), 100000);
   let world = new ZombWorld({ rootZone });
   
   // ==== Unit formation
-  let testFormation = world.addEntity(new UnitFormation());
+  let testFormation = world.addEntity(new Formation());
   
   // ==== Client manager
   let clientManager = world.addEntity(new ClientManager(testFormation));
   
   // ==== Zombie manager
-  let secsPerSpawn = 10;
-  let zombieManager = world.addEntity(new ZombieManager(secsPerSpawn, testFormation));
+  let zombieManager = world.addEntity(new ZombieManager(secsPerZombieSpawn, testFormation));
   
   // ==== Static geometry
   // Tuning-fork bunker kinda thing
@@ -1823,12 +1888,12 @@ class ZombWorld extends World {
   let testUnit1 = world.addEntity(new Unit(8, null));
   testUnit1.bound.loc = new CarteXY(-130, +445);
   testUnit1.bound.rot = U.ROT_CCW1 / 2;
-  relMTo1.formationWithHumanoid.put(testFormation, testUnit1);
+  testUnit1.mod('formation', { act: 'put', formation: testFormation });
   
   let testUnit2 = world.addEntity(new Unit(8, null));
   testUnit2.bound.loc = new CarteXY(+130, +445);
   testUnit2.bound.rot = U.ROT_CW1 / 2;
-  relMTo1.formationWithHumanoid.put(testFormation, testUnit2);
+  testUnit2.mod('formation', { act: 'put', formation: testFormation });
   
   // Enforce physical entity separation
   let physicsEnforcer = world.addEnforcer(new PhysicsEnforcer(rootZone));

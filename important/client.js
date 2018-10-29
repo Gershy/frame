@@ -113,7 +113,7 @@ class Camera extends LocalEntity {
         };
         
         let formation = this.follow.getFormation();
-        let revealingUnits = formation ? formation.getUnits() : {};
+        let revealingUnits = formation ? formation.getActors() : {};
         revealingUnits[this.follow.uid] = this.follow;
         
         for (let revUnit of Object.values(revealingUnits)) {
@@ -203,7 +203,7 @@ class SpawnScreen extends LocalEntity {
   }
 }
 
-class PhysicalEntity extends ClientEntity {
+class SpatialEntity extends ClientEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
     this.elem = null;
@@ -235,7 +235,7 @@ class PhysicalEntity extends ClientEntity {
     setTimeout(() => this.getWorld().removeChild(elem), 150);
   }
 }
-class RectStructure extends PhysicalEntity {
+class RectStructure extends SpatialEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
   }
@@ -251,7 +251,7 @@ class RectStructure extends PhysicalEntity {
     return ret;
   }
 };
-class SiloStructure extends PhysicalEntity {
+class SiloStructure extends SpatialEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
   }
@@ -268,13 +268,13 @@ class SiloStructure extends PhysicalEntity {
     return ret;
   }
 }
-class Humanoid extends PhysicalEntity {
+class Actor extends SpatialEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
   }
   genElem() {
     let ret = super.genElem();
-    ret.classList.add('humanoid');
+    ret.classList.add('actor');
     
     let { r } = this.data;
     let d = r * 2;
@@ -285,7 +285,7 @@ class Humanoid extends PhysicalEntity {
     return ret;
   }
 }
-class Unit extends Humanoid {
+class Unit extends Actor {
   constructor(world, uid, data) {
     super(world, uid, data);
     this.mainItem = data.mainItem;
@@ -364,7 +364,7 @@ class Unit extends Humanoid {
     this.metaElem = null;
   }
 }
-class Bullet extends PhysicalEntity {
+class Bullet extends SpatialEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
     this.totalTime = 0;
@@ -391,7 +391,7 @@ class Bullet extends PhysicalEntity {
   }
 }
 
-class Zombie extends Humanoid {
+class Zombie extends Actor {
   constructor(world, uid, data) {
     super(world, uid, data);
   }
@@ -492,13 +492,13 @@ class Gun extends Item {
   }
 }
 
-class UnitFormation extends ClientEntity {
+class Formation extends ClientEntity {
   constructor(world, uid, data) {
     super(world, uid, data);
   }
-  getUnits() {
-    return (this.data && this.data.units)
-      ? this.data.units.map((unit, uid) => this.world.entities[uid])
+  getActors() {
+    return (this.data && this.data.actors)
+      ? this.data.actors.map((actor, uid) => this.world.entities[uid])
       : {};
   }
   getReveals() {
@@ -508,7 +508,7 @@ class UnitFormation extends ClientEntity {
       unit: this.world.entities[rev.srcUid],
     }));
   }
-  start() {}
+  start() { console.log('FORMATION:', this.data.actors); }
   update(secs) {
   }
   end() {}
@@ -686,7 +686,7 @@ class ZombWorld extends World {
     if (data.type !== 'update') return console.log('Unexpected remote command:', data.type, data);
     let { add={}, upd={}, rem={} } = data.update;
     
-    console.log('GOT:', data.update);
+    // console.log('GOT:', data.update);
     
     for (let [ uid, entityData ] of Object.entries(add)) {
       if (!this.entityClasses.hasOwnProperty(entityData.type)) throw new Error(`Missing class: ${entityData.type}`);
@@ -800,7 +800,7 @@ let port = parseInt(window.location.port || 80);
     },
     entityClasses: {
       Client,
-      ClientManager, RectStructure, SiloStructure, Unit, Bullet, UnitFormation,
+      ClientManager, RectStructure, SiloStructure, Unit, Bullet, Formation,
       Gun,
       ZombieManager, Zombie
     },

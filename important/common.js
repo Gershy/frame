@@ -1,5 +1,31 @@
+// 6018 8710 6830 5623
+
+// GAMEPLAY:
+// [ ]  Random map generation!!!
+// [ ]  Turning acceleration (allowing fine adjustments to angle while maintaining quicker turns)
+// [ ]  Enemies + AI
+// [ ]  Good reveal mechanics
+//   [X]  Reveals stored on units; formations just group units together
+//   [ ]  Ways to determine which units share vision WITHIN a formation (e.g. 2 units together in a formation, but too far apart)
+//   [ ]  Reveal-sharing determined by certain units (e.g. maybe a Captain unit is necessary to link Grunts)
+// [ ]  Objectives (THIS COUNTS THE MOST!!! WHAT KINDA GAME IS THIS?????)
+
+// TECHNICAL:
+// [ ]  All classes should be defined with U.insp
+// [ ]  Performance seems poor at the moment? Firing a bunch of bullets off into space nearly overloads processing
+// [X]  Bullets shouldn't need to send updates every frame
+// [X]  More camera params
+//   [X]  Zooming
+//   [X]  Shifted ahead further
+// [X]  Zones (broad collision detection)
+// [X]  Smarter update paradigm
+//   [X]  Less effort for defining unit changes?? (takes some redundant code at the moment)
+//   [ ]  Clients shouldn't always receive the global update (a viewbox in the collision space; `collideAll` is the list of visible entities?)
+
 let machine = null;
 try { machine = window ? 'client' : 'server' } catch(err) { machine = 'server'; }
+
+let doWarnings = Math.random() < 0.2;
 
 Object.defineProperty(Object.prototype, 'forEach', {
   value: function(fn) {
@@ -10,15 +36,16 @@ Object.defineProperty(Object.prototype, 'forEach', {
 Object.defineProperty(Object.prototype, 'map', {
   value: function(fn) {
     let ret = {};
-    for (let k in this) ret[k] = fn(this[k], k);
+    for (let k in this) { let v = fn(this[k], k); if (v !== C.skip) ret[k] = v; }
     return ret;
   },
   enumerable: false
 });
-Object.defineProperty(Object.prototype, 'gain', {
-  value: function(obj) {
-    for (let k in obj) this[k] = obj[k];
-    return this;
+Object.defineProperty(Object.prototype, 'toArr', {
+  value: function(it) {
+    let ret = [];
+    for (let k in this) { let v = fn(this[k], k); if (v !== C.skip) ret.push(v); }
+    return ret;
   },
   enumerable: false
 });
@@ -34,6 +61,30 @@ Object.defineProperty(Object.prototype, 'has', {
   value: Object.prototype.hasOwnProperty,
   enumerable: false
 });
+Object.defineProperty(Object.prototype, 'gain', {
+  value: function(obj) {
+    for (let k in obj) this[k] = obj[k];
+    return this;
+  },
+  enumerable: false
+});
+
+Object.defineProperty(Array.prototype, 'toObj', {
+  value: function(it) {
+    let ret = {};
+    for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i]); if (itv !== C.skip) ret[itv[0]] = itv[1]; }
+    return ret;
+  },
+  enumerable: false
+});
+Object.defineProperty(Array.prototype, 'has', {
+  value: function(v) { return this.indexOf(v) >= 0; },
+  enumerable: false
+});
+Object.defineProperty(Array.prototype, 'gain', {
+  value: function(arr2) { this.push(...arr2); },
+  enumerable: false
+});
 
 let U = {
   int32: Math.pow(2, 32),
@@ -41,22 +92,103 @@ let U = {
   intLowerBound: -Math.pow(2, 32),
   empty: obj => { for (let k in obj) return false; return true; },
   duoKey: (v1, v2, delim=',') => v1 < v2 ? `${v1}${delim}${v2}` : `${v2}${delim}${v1}`,
-  combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 })
+  combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 }),
+  inspire: ({ name, inspiration={}, methods, statik={}, description='' }) => {
+    let Insp = function(...p) {
+      if (!p.length) p.push({});
+      if (!this || this.constructor !== Insp) return new Insp(...p);
+      this.init(...p);
+    };
+    Object.defineProperty(Insp, 'name', { value: name });
+    
+    // Ensure that all `inspiration` items are Objects full of methods
+    Insp.inspiration = { ...inspiration }; // Keep a copy of the inspiration on Insp for `isInspiredBy` testing
+    inspiration = inspiration.map(insp => insp.prototype ? insp.prototype : insp); // Resolve Insps as their prototypes
+    Insp.prototype = Object.create(null);
+    
+    // Run `methods` if necessary. Ensure it always resolve to an `Object` without a "constructor" key
+    if (U.isType(methods, Function)) methods = methods(inspiration, Insp);
+    if (!U.isType(methods, Object)) throw new Error('Couldn\'t resolve "methods" to Object');
+    if (methods.has('constructor')) throw new Error('Invalid "constructor" key');
+    
+    let methodsByName = {};
+    inspiration.forEach((insp, inspName) => {
+      insp.forEach((method, methodName) => {
+        // `insp` is likely a prototype and contains a "constructor" property that needs to be skipped
+        if (methodName === 'constructor') return;
+        if (!methodsByName.has(methodName)) methodsByName[methodName] = [];
+        methodsByName[methodName].push(method);
+      });
+    });
+    
+    methodsByName.gain(methods.map(m => [ m ])); // Method names declared for this Insp are guaranteed to be singular
+    if (!methodsByName.has('init')) throw new Error('No "init" method available');
+    
+    methodsByName.forEach((methodsAtName, methodName) => {
+      if (methodsAtName.length > 1) throw new Error(`Multiple method names at "${methodName}"; declare a custom method`);
+      Insp.prototype[methodName] = methodsAtName[0]; // Length will be exactly 1 now
+    });
+    
+    Insp.prototype.constructor = Insp;
+    return Insp;
+  },
+  isType: (val, Cls) => {
+    try { return val.constructor === Cls; } catch (err) {}
+    return false;
+  },
+  isInspiredBy: function(obj, Insp) {
+    if (obj.constructor) obj = obj.constructor;
+    if (obj === Insp) return true;
+    
+    let insp = obj.has('inspiration') ? obj.inspiration : {};
+    for (let k in insp) if (U.isInspiredBy(insp[k], Insp)) return true;
+    return false;
+  },
+  typeOf: function(obj) {
+    if (obj === null) return '<NULL>';
+    if (typeof obj === 'undefined') return '<UNDEFINED>';
+    try { return `<${obj.constructor.name}>`; } catch (e) {}
+    return '<UNKNOWN>';
+  }
 };
-class SmoothingVal {
-  constructor(initial, amt=0.1) {
+let C = {
+  skip: { SKIP: true },
+  sync: {
+    none: 0,    // Never sync
+    total: 1,   // Only sync entire structure
+    delta: 2    // Sync partial structure
+  }
+};
+
+let SmoothingVal = U.inspire({ name: 'SmoothingVal', methods: (insp, Insp) => ({
+  init: function (initial, amt=0.1) {
     this.desired = initial;
     this.current = initial;
     this.amt = amt;
-  }
-  change(v) { this.desired = v; }
-  smooth()  { return this.current; }
-  choppy()  { return this.desired; }
-  update(desired=this.desired) {
+  },
+  change: function(v) { this.desired = v; },
+  smooth: function() { return this.current; },
+  choppy: function() { return this.desired; },
+  update: function(desired=this.desired) {
     this.desired = desired;
-    this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt); return this.current;
+    return this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt);
   }
-};
+})});
+
+// class SmoothingVal {
+//   constructor(initial, amt=0.1) {
+//     this.desired = initial;
+//     this.current = initial;
+//     this.amt = amt;
+//   }
+//   change(v) { this.desired = v; }
+//   smooth()  { return this.current; }
+//   choppy()  { return this.desired; }
+//   update(desired=this.desired) {
+//     this.desired = desired;
+//     this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt); return this.current;
+//   }
+// };
 class Timeout {
   constructor(f) {
     this.f = f;
@@ -230,11 +362,19 @@ class World {
 class Entity {
   static genSerialDef() {
     return {
-      type: { scope: 'global',
+      type: { sync: C.sync.delta,
         change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
         serial: (inst) => inst.constructor.name
       }
     }
+  }
+  static setSerialDef(serialDef) {
+    for (let k in serialDef) {
+      if (!serialDef[k].has('change')) throw new Error(`${this.constructor.name}.serialDef.${k} missing "change"`);
+      if (!serialDef[k].has('serial')) throw new Error(`${this.constructor.name}.serialDef.${k} missing "serial"`);
+      if (doWarnings && !serialDef[k].has('actual')) console.log(`WARNING: ${this.name}.serialDef.${k} missing "actual"`);
+    }
+    this.serialDef = serialDef;
   }
   constructor() {
     this.uid = null;
@@ -243,25 +383,25 @@ class Entity {
     this.zones = {};
   }
   getSerialDef() {
-    if (!this.constructor.has('serialDef')) this.constructor.serialDef = this.constructor.genSerialDef();
+    if (!this.constructor.has('serialDef')) this.constructor.setSerialDef(this.constructor.genSerialDef());
     return this.constructor.serialDef;
   }
-  mod(propName, ...vals) {
+  mod(propName, newVal) {
     let serialDef = this.getSerialDef();
     if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
-    let { change, scope } = serialDef[propName];
-    change(this, ...vals);
-    if (this.world && scope === 'global') this.world.updEntity(this, { [propName]: 1 });
+    let { change, sync } = serialDef[propName];
+    change(this, newVal);
+    if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
   }
   modF(propName, f) {
     let serialDef = this.getSerialDef();
     if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
-    let { change, scope, actual, serial } = serialDef[propName];
+    let { change, sync, actual, serial } = serialDef[propName];
     let val = (actual || serial)(this); // TODO: should "actual" be optional?
     let newVal = f(val);
     if (val === newVal) return false;
     change(this, newVal);
-    if (this.world && scope === 'global') this.world.updEntity(this, { [propName]: 1 });
+    if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
     return true;
   }
   serializePart(fieldMap) {
@@ -270,9 +410,7 @@ class Entity {
   }
   serializeFull() {
     let ret = {};
-    for (let [ prop, { scope, serial } ] of Object.entries(this.getSerialDef())) {
-      if (scope === 'global' || scope === 'fullOnly') ret[prop] = serial(this);
-    }
+    for (let [ k, { sync, serial } ] of Object.entries(this.getSerialDef())) if (sync >= C.sync.total) ret[k] = serial(this);
     return ret;
   }
   setUid(uid) {
@@ -289,8 +427,8 @@ class Entity {
 global.gain({
   // Utility stuff
   output: console.log.bind(console),
+  U, C, SmoothingVal, Wobbly, CalcWob,
   Timeout, Interval,
-  U, SmoothingVal, Wobbly, CalcWob,
   
   // Game stuff
   World, Entity
