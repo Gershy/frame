@@ -11,34 +11,34 @@ let dom = {
   div: () => document.createElement('div')
 };
 
-class ClientEntity extends Entity {
-  constructor(world, uid=null, data={}) {
-    super();
+let ClientEntity = U.inspire({ name: 'ClientEntity', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(world, uid=null, data={}) {
+    insp.Entity.init.call(this);
     this.world = world;
     if (uid !== null) this.setUid(uid);
     this.data = data;
   }
-}
-class Client extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+})});
+let Client = U.inspire({ name: 'Client', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+  },
+  start: function() {
+  },
+  update: function() {
+  },
+  end: function() {
   }
-  start() {
-  }
-  update() {
-  }
-  end() {
-  }
-}
+})});
 
-class LocalEntity extends ClientEntity {
-  constructor(world=null) {
-    super(world, null, null);
+let LocalEntity = U.inspire({ name: 'LocalEntity', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world=null) {
+    insp.ClientEntity.init.call(this, world, null, null);
   }
-}
-class Camera extends LocalEntity {
-  constructor(world) {
-    super(world);
+})});
+let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: (insp, Insp) => ({
+  init: function(world) {
+    insp.LocalEntity.init.call(this, world);
     
     this.follow = null;
     this.running = false;
@@ -49,11 +49,11 @@ class Camera extends LocalEntity {
     this.smoothX = new SmoothingVal(0, smoothing);
     this.smoothY = new SmoothingVal(0, smoothing);
     this.smoothScl = new SmoothingVal(1, smoothing);
-  }
-  start() {
+  },
+  start: function() {
     this.running = true;
-  }
-  update() {
+  },
+  update: function() {
     
     // Need to be running and following
     if (!this.running) return;
@@ -172,17 +172,17 @@ class Camera extends LocalEntity {
       
     });
     
-  }
-  end() {
+  },
+  end: function() {
     this.running = false;
   }
-}
-class SpawnScreen extends LocalEntity {
-  constructor(world, clickedSpawn=()=>{}) {
-    super(world);
+})});
+let SpawnScreen = U.inspire({ name: 'SpawnScreen', inspiration: { LocalEntity }, methods: (insp, Insp) => ({
+  init: function(world, clickedSpawn=()=>{}) {
+    insp.LocalEntity.init.call(this, world);
     this.clickedSpawn = clickedSpawn;
-  }
-  start() {
+  },
+  start: function() {
     this.elem = this.world.elems.meta.appendChild(dom.div());
     this.elem.classList.add('overlay', 'spawn');
     
@@ -193,54 +193,54 @@ class SpawnScreen extends LocalEntity {
     let spawnButtonText = spawnButton.appendChild(dom.div());
     spawnButtonText.classList.add('content');
     spawnButtonText.innerHTML = 'spawn';
-  }
-  update() {
+  },
+  update: function() {
     
-  }
-  end() {
+  },
+  end: function() {
     this.world.elems.meta.removeChild(this.elem);
     this.elem = null;
   }
-}
+})});
 
-class SpatialEntity extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
     this.elem = null;
-  }
-  getWorld() {
+  },
+  getWorld: function() {
     return this.world.elems.world1;
-  }
-  genElem() {
+  },
+  genElem: function() {
     let ret = dom.div();
     ret.classList.add('entity');
     ret._ent = this;
     return ret;
-  }
-  start() {
+  },
+  start: function() {
     this.elem = this.genElem();
     this.update(0);
     // let [ x, y ] = this.data.loc;
     // this.elem.style.transform = `translate(${x}px, ${-y}px) rotate(${this.data.rot}rad)`;
     this.getWorld().appendChild(this.elem);
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     let [ x, y ] = this.data.loc;
     this.elem.style.transform = `translate(${x}px, ${-y}px) rotate(${this.data.rot}rad)`;
-  }
-  end() {
+  },
+  end: function() {
     let elem = this.elem;
     this.elem = null;
     elem.classList.add('removed');
     setTimeout(() => this.getWorld().removeChild(elem), 150);
   }
-}
-class RectStructure extends SpatialEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  genElem() {
-    let ret = super.genElem();
+})});
+let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.SpatialEntity.init.call(this, world, uid, data);
+  },
+  genElem: function() {
+    let ret = insp.SpatialEntity.genElem.call(this);
     ret.classList.add('structure');
     
     let { w, h } = this.data;
@@ -250,13 +250,13 @@ class RectStructure extends SpatialEntity {
     ret.style.top = `-${Math.round(h * 0.5)}px`;
     return ret;
   }
-};
-class SiloStructure extends SpatialEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  genElem() {
-    let ret = super.genElem();
+})});
+let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.SpatialEntity.init.call(this, world, uid, data);
+  },
+  genElem: function() {
+    let ret = insp.SpatialEntity.genElem.call(this);
     ret.classList.add('silo');
     
     let { r } = this.data;
@@ -267,13 +267,13 @@ class SiloStructure extends SpatialEntity {
     ret.style.marginTop = `-${Math.round(r)}px`;
     return ret;
   }
-}
-class Actor extends SpatialEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  genElem() {
-    let ret = super.genElem();
+})});
+let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.SpatialEntity.init.call(this, world, uid, data);
+  },
+  genElem: function() {
+    let ret = insp.SpatialEntity.genElem.call(this);
     ret.classList.add('actor');
     
     let { r } = this.data;
@@ -284,38 +284,38 @@ class Actor extends SpatialEntity {
     ret.style.top = `-${Math.round(r)}px`;
     return ret;
   }
-}
-class Unit extends Actor {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+})});
+let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.Actor.init.call(this, world, uid, data);
     this.mainItem = data.mainItem;
     this.metaElem = null;
     this.owned = false;
-  }
-  getFormation() {
+  },
+  getFormation: function() {
     return (this.data && this.data.formation !== null)
       ? this.world.entities[this.data.formation]
       : null;
-  }
-  genElem() {
-    let ret = super.genElem();
+  },
+  genElem: function() {
+    let ret = insp.Actor.genElem.call(this);
     ret.classList.add('unit');
     return ret;
-  }
-  update() {
+  },
+  update: function() {
     let newMainItem = this.data.mainItem;
     if (newMainItem !== this.mainItem) {
       if (this.mainItem) this.elem.classList.remove(`mainItem-${this.mainItem}`);
       if (newMainItem) this.elem.classList.add(`mainItem-${newMainItem}`);
       this.mainItem = newMainItem;
     }
-    super.update();
-  }
-  end() {
+    insp.Actor.update.call(this);
+  },
+  end: function() {
     if (this.owned) this.endOwned();
-    super.end();
-  }
-  genReveals() {
+    insp.Actor.end.call(this);
+  },
+  genReveals: function() {
     // For now only a single reveal for self-LOS
     return [{
       type: 'vision',
@@ -323,14 +323,14 @@ class Unit extends Actor {
       len: this.data.visionRange,
       r: this.data.bodyVision
     }];
-  }
-  getMainItem() {
+  },
+  getMainItem: function() {
     return this.data.mainItem === null ? null : this.world.entities[this.data.mainItem];
-  }
-  getMetaElemHolder() {
+  },
+  getMetaElemHolder: function() {
     return this.world.elems.meta.getElementsByClassName('status')[0];
-  }
-  startOwned() {
+  },
+  startOwned: function() {
     this.owned = true;
     
     let mainItem = this.getMainItem();
@@ -345,16 +345,16 @@ class Unit extends Actor {
     
     let hpBarElem = hpElem.appendChild(dom.div());
     hpBarElem.classList.add('hpBar');
-  }
-  updateOwned() {
+  },
+  updateOwned: function() {
     let mainItem = this.getMainItem();
     if (mainItem) mainItem.updateOwned();
     
     let hpBar = this.metaElem.getElementsByClassName('hpBar')[0];
     U.updateElemText(hpBar, `${Math.round(this.data.health)} / ${Math.round(this.data.maxHealth)}`);
     hpBar.style.width = `${100 * (this.data.health / this.data.maxHealth)}%`;
-  }
-  endOwned() {
+  },
+  endOwned: function() {
     let mainItem = this.getMainItem();
     if (mainItem) mainItem.endOwned();
     
@@ -363,22 +363,22 @@ class Unit extends Actor {
     this.getMetaElemHolder().removeChild(this.metaElem);
     this.metaElem = null;
   }
-}
-class Bullet extends SpatialEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+})});
+let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.SpatialEntity.init.call(this, world, uid, data);
     this.totalTime = 0;
-  }
-  getWorld() {
+  },
+  getWorld: function() {
     return this.world.elems.world2;
-  }
-  genElem() {
-    let ret = super.genElem();
+  },
+  genElem: function() {
+    let ret = insp.SpatialEntity.genElem.call(this);
     ret.classList.add('bullet');
     let h = Math.round(this.data.length);
     return ret;
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     this.totalTime += secs;
     
     let [ x, y ] = this.data.loc;
@@ -389,37 +389,37 @@ class Bullet extends SpatialEntity {
     
     this.elem.style.transform = `translate(${x}px, ${-y}px) rotate(${this.data.rot}rad)`;
   }
-}
+})});
 
-class Zombie extends Actor {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  genElem() {
-    let ret = super.genElem();
+let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.Actor.init.call(this, world, uid, data);
+  },
+  genElem: function() {
+    let ret = insp.Actor.genElem.call(this);
     ret.classList.add('zombie');
     return ret;
   }
-}
+})});
 
-class Item extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+let Item = U.inspire({ name: 'Item', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
     this.elem = null;
     this.titleElem = null;
     this.owned = false;
-  }
-  start() {
-  }
-  update() {
-  }
-  end() {
+  },
+  start: function() {
+  },
+  update: function() {
+  },
+  end: function() {
     if (this.owned) this.endOwned();
-  }
-  getHolderElem() {
+  },
+  getHolderElem: function() {
     return this.world.elems.meta.getElementsByClassName('items')[0];
-  }
-  startOwned() {
+  },
+  startOwned: function() {
     this.owned = true;
     
     this.elem = this.getHolderElem().appendChild(dom.div());
@@ -427,28 +427,25 @@ class Item extends ClientEntity {
     
     this.titleElem = this.elem.appendChild(dom.div());
     this.titleElem.classList.add('name');
-  }
-  updateOwned() {
+  },
+  updateOwned: function() {
     U.updateElemText(this.titleElem, this.data.name);
-  }
-  endOwned() {
+  },
+  endOwned: function() {
     this.getHolderElem().removeChild(this.elem);
     this.elem = null;
     this.titleElem = null;
     this.owned = false;
   }
-}
-class Gun extends Item {
-  constructor(world, uid, data) {
-    super(world, uid, data);
+})});
+let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.Item.init.call(this, world, uid, data);
     this.bulletsRemainingElem = null;
     this.bulletsTotalElem = null;
-  }
-  end() {
-    super.end();
-  }
-  startOwned() {
-    super.startOwned();
+  },
+  startOwned: function() {
+    insp.Item.startOwned.call(this);
     this.elem.classList.add('gun');
     
     let bulletData = this.elem.appendChild(dom.div());
@@ -467,9 +464,9 @@ class Gun extends Item {
     
     this.bulletsTotalElem = bulletData.appendChild(dom.div());
     this.bulletsTotalElem.classList.add('total');
-  }
-  updateOwned() {
-    super.updateOwned();
+  },
+  updateOwned: function() {
+    insp.Item.updateOwned.call(this);
     let { shotsInClip, shotsFired } = this.data;
     U.updateElemText(this.bulletsRemainingElem, shotsInClip - shotsFired);
     U.updateElemText(this.bulletsTotalElem, shotsInClip);
@@ -484,82 +481,82 @@ class Gun extends Item {
       par.replaceChild(rep, reloadElem);
       par.replaceChild(reloadElem, rep);
     }
-  }
-  endOwned() {
-    super.endOwned();
+  },
+  endOwned: function() {
+    insp.Item.endOwned.call(this);
     this.bulletsRemainingElem = null;
     this.bulletsTotalElem = null;
   }
-}
+})});
 
-class Formation extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  getActors() {
+let Formation = U.inspire({ name: 'Formation', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+  },
+  getActors: function() {
     return (this.data && this.data.actors)
       ? this.data.actors.map((actor, uid) => this.world.entities[uid])
       : {};
-  }
-  getReveals() {
+  },
+  getReveals: function() {
     if (!this.data || !this.data.reveals) return null;
     return this.data.reveals.map(rev => ({
       ...rev,
       unit: this.world.entities[rev.srcUid],
     }));
-  }
-  start() {}
-  update(secs) {
-  }
-  end() {}
-}
-class ClientManager extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  start() {}
-  update(secs) {}
-  end() {}
-}
-class ZombieManager extends ClientEntity {
-  constructor(world, uid, data) {
-    super(world, uid, data);
-  }
-  start() {}
-  update(secs) {}
-  end() {}
-}
+  },
+  start: function() {},
+  update: function(secs) {
+  },
+  end: function() {},
+})});
+let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+  },
+  start: function() {},
+  update: function(secs) {},
+  end: function() {}
+})});
+let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+  },
+  start: function() {},
+  update: function(secs) {},
+  end: function() {}
+})});
 
-class Graphics {
-  constructor(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); }
-  frame(f) { this.ctx.save(); f(); this.ctx.restore(); }
-  rotate(ang) { this.ctx.rotate(ang); }
-  translate(x, y) { this.ctx.translate(x, y); }
-  scale(x, y=x) { this.ctx.scale(x, y); }
-  rect(x, y, w, h, style) {
+let Graphics = U.inspire({ name: 'Graphics', methods: (insp, Insp) => ({
+  init: function(canvas) { this.canvas = canvas; this.ctx = canvas.getContext('2d'); },
+  frame: function(f) { this.ctx.save(); f(); this.ctx.restore(); },
+  rotate: function(ang) { this.ctx.rotate(ang); },
+  translate: function(x, y) { this.ctx.translate(x, y); },
+  scale: function(x, y=x) { this.ctx.scale(x, y); },
+  rect: function(x, y, w, h, style) {
     for (let k in style) this.ctx[k] = style[k];
     if (style.fillStyle) this.ctx.fillRect(x, y, w, h);
     if (style.strokeStyle) this.ctx.strokeRect(x, y, w, h);
-  }
-  circ(x, y, r, style) {
+  },
+  circ: function(x, y, r, style) {
     this.ctx.beginPath();
     this.ctx.arc(x, y, r, Math.PI * 2, 0);
     
     for (let k in style) this.ctx[k] = style[k];
     if (style.fillStyle) this.ctx.fill();
     if (style.strokeStyle) this.ctx.stroke();
-  }
-  path(style, f) {
+  },
+  path: function(style, f) {
     this.ctx.beginPath(); f(); this.ctx.closePath();
     
     for (let k in style) this.ctx[k] = style[k];
     if (style.fillStyle) this.ctx.fill();
     if (style.strokeStyle) this.ctx.stroke();
-  }
-  moveTo(x, y) { this.ctx.moveTo(x, y); }
-  lineTo(x, y) { this.ctx.lineTo(x, y); }
-  curveTo(x1, x2, cx1, cy1, cx2, cy2) { this.ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, x2); }
-  arcTo(x1, y1, x2, y2, x3, y3, ccw=true) {
+  },
+  moveTo: function(x, y) { this.ctx.moveTo(x, y); },
+  lineTo: function(x, y) { this.ctx.lineTo(x, y); },
+  curveTo: function(x1, x2, cx1, cy1, cx2, cy2) { this.ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, x2); },
+  arcTo: function(x1, y1, x2, y2, x3, y3, ccw=true) {
     
     let dx = (x2 - x1);
     let dy = (y2 - y1);
@@ -568,10 +565,10 @@ class Graphics {
     let ang2 = Math.atan2(y3 - y2, x3 - x2);
     this.ctx.arc(x2, y2, r, ang1, ang2, ccw);
     
-  }
-}
-class Pixels {
-  constructor(elem, pixelRatio=0.5, maxPixels=1600*1200) {
+  },
+})});
+let Pixels = U.inspire({ name: 'Pixels', methods: (insp, Insp) => ({
+  init: function(elem, pixelRatio=0.5, maxPixels=1600*1200) {
     
     this.elem = elem;
     this.graphics = new Graphics(elem);
@@ -581,8 +578,8 @@ class Pixels {
     this.lastW = null;
     this.lastH = null;
     
-  }
-  sizeTo(w, h) {
+  },
+  sizeTo: function(w, h) {
     if (w === this.lastW && h === this.lastH) return;
     [ this.lastW, this.lastH ] = [ w, h ];
     
@@ -599,11 +596,11 @@ class Pixels {
     
     [ this.elem.width, this.elem.height ] = [ w, h ];
     this.elem.classList.add('sized');
-  }
-}
-class ZombWorld extends World {
-  constructor({ remote, elems={}, pixels={}, entityClasses={}, input, ratioElem=dom.id('ratio'), hudElem=dom.id('meta') }) {
-    super();
+  },
+})});
+let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: (insp, Insp) => ({
+  init: function({ remote, elems={}, pixels={}, entityClasses={}, input, ratioElem=dom.id('ratio'), hudElem=dom.id('meta') }) {
+    insp.World.init.call(this);
     
     this.nextLocalUid = 0;
     
@@ -641,12 +638,12 @@ class ZombWorld extends World {
     // Provide remote events
     this.entityAdd = () => {};
     this.entityRem = () => {};
-  }
-  getNextUid() {
+  },
+  getNextUid: function() {
     let n = this.nextLocalUid++;
     return `l${n}`;
-  }
-  localUpdate(secs) {
+  },
+  localUpdate: function(secs) {
     // Update ratio element
     let bounds = this.rootElem.getBoundingClientRect();
     let edgeLen = Math.ceil(Math.min(bounds.width, bounds.height));
@@ -680,8 +677,8 @@ class ZombWorld extends World {
     let tickResult = this.doTickResolution();
     tickResult.add.forEach(this.entityAdd);
     tickResult.rem.forEach(this.entityRem);
-  }
-  remoteUpdate(data) {
+  },
+  remoteUpdate: function(data) {
     
     if (data.type !== 'update') return console.log('Unexpected remote command:', data.type, data);
     let { add={}, upd={}, rem={} } = data.update;
@@ -706,11 +703,11 @@ class ZombWorld extends World {
     tickResult.add.forEach(this.entityAdd);
     tickResult.rem.forEach(this.entityRem);
     
-  }
-  remoteSend(data) {
+  },
+  remoteSend: function(data) {
     this.sokt.send(JSON.stringify(data));
   }
-}
+})});
 
 let host = window.location.hostname;
 let port = parseInt(window.location.port || 80);
