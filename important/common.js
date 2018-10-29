@@ -119,7 +119,10 @@ let U = {
       }
     });
     
-    methodsByName.gain(methods.map(m => [ m ])); // Method names declared for this Insp are guaranteed to be singular
+    methods.forEach((method, methodName) => {
+      if (methodName[0] === '$')  Insp[methodName.substr(1)] = method;
+      else                        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
+    });
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
     
     methodsByName.forEach((methodsAtName, methodName) => {
@@ -135,7 +138,7 @@ let U = {
     return false;
   },
   isInspiredBy: function(obj, Insp) {
-    if (obj.constructor) obj = obj.constructor;
+    if (obj.constructor !== Function) obj = obj.constructor; // We want the Insp; it's always a pure Function
     if (obj === Insp) return true;
     
     let insp = obj.has('inspiration') ? obj.inspiration : {};
@@ -145,7 +148,7 @@ let U = {
   typeOf: function(obj) {
     if (obj === null) return '<NULL>';
     if (typeof obj === 'undefined') return '<UNDEFINED>';
-    try { return `<${obj.constructor.name}>`; } catch (e) {}
+    try { return (obj.constructor === Function && obj.name) ? `<Insp(${obj.name})>` : `<insp(${obj.constructor.name})>`; } catch (e) {}
     return '<UNKNOWN>';
   },
 };
@@ -345,6 +348,124 @@ let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
   }
 })});
 let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
+  $fullSerialDef: Insp => {
+    let fullDef = {};
+    
+    // Add on all inspiring defs
+    // TODO: Multiple inheritance can result in some defs being clobbered in this namespace...
+    for (let SupInsp of Object.values(Insp.inspiration)) fullDef.gain(Entity.fullSerialDef(SupInsp));
+    
+    // Add on the Insp's own def
+    if (!Insp.has('genSerialDef')) throw new Error(`Insp ${Insp.name} doesn't support 'genSerialDef'`);
+    fullDef.gain(Insp.genSerialDef(fullDef));
+    
+    // Add on any relational def
+    fullDef.gain(Insp.has('relSchemaDef') ? Insp.relSchemaDef : {});
+    
+    return fullDef;
+  },
+  $genSerialDef: () => ({
+    type: { sync: C.sync.delta,
+      change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.constructor.name
+    }
+  }),
+  $relate11: (name, sync, Cls1, link1, Cls2, link2) => {
+    // For 1-to-1, links are pointer names
+    
+    let syncFunc = (inst1, link1, inst2, link2) => {
+      if (sync < C.sync.delta) return;
+      let world = inst1.world || inst2.world;
+      if (!world) return;
+      world.updEntity(inst1, { [link1]: 1 });
+      world.updEntity(inst2, { [link2]: 1 });
+    };
+    
+    let both = [
+      [ Cls1, link1, Cls2, link2 ],
+      [ Cls2, link2, Cls1, link1 ]
+    ];
+    
+    for (let [ Cls1, link1, Cls2, link2 ] of both) {
+      
+      if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+      Cls1.relSchemaDef[link1] = ((link1, link2) => ({ sync,
+        change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
+          put: (inst1, inst2) => {
+            if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+            if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
+            inst1[link1] = inst2;
+            inst2[link2] = inst1;
+            syncFunc(inst1, link1, inst2, link2);
+          },
+          rem: (inst1, inst2) => {
+            if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
+            inst1[link1] = null;
+            inst2[link2] = null;
+            syncFunc(inst1, link1, inst2, link2);
+          }
+        })[act](inst1, inst2),
+        serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+        actual: (inst1) => inst1[link1]
+      }))(link1, link2);
+      
+    }
+    
+  },
+  $relate1M: (name, sync, Cls1, link1, ClsM, linkM) => {
+    
+    // For 1-to-M, the 1 links with a pointer and the M links back with a map
+    // Cls1 is the singular instance - ClsM links to many instances of Cls1
+    
+    let syncFunc = (inst1, instM) => {
+      if (sync < C.sync.delta) return;
+      let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
+      world.updEntity(inst1, { [link1]: 1 });
+      world.updEntity(instM, { [linkM]: 1 });
+    };
+      
+    if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+    Cls1.relSchemaDef[link1] = { sync,
+      change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
+        put: (inst1, instM) => {
+          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+          inst1[link1] = instM;
+          instM[linkM][inst1.uid] = inst1;
+          syncFunc(inst1, instM);
+        },
+        rem: (inst1, instM) => {
+          if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+          inst1[link1] = null;
+          delete instM[linkM][inst1.uid];
+          syncFunc(inst1, instM);
+        }
+      })[act](inst1, instM),
+      serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+      actual: (inst1) => inst1[link1]
+    };
+    
+    if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
+    ClsM.relSchemaDef[linkM] = { sync,
+      change: (instM, p, act=p.act, inst1=p[link1]) => ({
+        put: (instM, inst1) => {
+          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+          inst1[link1] = instM;
+          instM[linkM][inst1.uid] = inst1;
+          syncFunc(inst1, instM);
+        },
+        rem: (instM, inst1) => {
+          if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+          inst1[link1] = null;
+          delete instM[linkM][inst1.uid];
+          syncFunc(inst1, instM);
+        }
+      })[act](instM, inst1),
+      serial: (instM) => instM[linkM].map(ent => 1), // Only the keys are important
+      actual: (instM) => instM[linkM]
+    };
+      
+  },
+  
   init: function() {
     this.uid = null;
     this.world = null;
@@ -392,28 +513,6 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
   update: function(secs) { throw new Error(`not implemented for ${U.typeOf(this)}`); },
   end: function() { throw new Error(`not implemented for ${U.typeOf(this)}`); }
 })});
-Entity.fullSerialDef = Insp => {
-  let fullDef = {};
-  
-  // Add on all inspiring defs
-  // TODO: Multiple inheritance can result in some defs being clobbered in this namespace...
-  for (let SupInsp of Object.values(Insp.inspiration)) fullDef.gain(Entity.fullSerialDef(SupInsp));
-  
-  // Add on the Insp's own def
-  if (!Insp.has('genSerialDef')) throw new Error(`Insp ${Insp.name} doesn't support 'genSerialDef'`);
-  fullDef.gain(Insp.genSerialDef(fullDef));
-  
-  // Add on any relational def
-  fullDef.gain(Insp.has('relSchemaDef') ? Insp.relSchemaDef : {});
-  
-  return fullDef;
-};
-Entity.genSerialDef = () => ({
-  type: { sync: C.sync.delta,
-    change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.constructor.name
-  }
-});
 
 global.gain({
   // Utility stuff
