@@ -508,7 +508,7 @@ class Formation extends ClientEntity {
       unit: this.world.entities[rev.srcUid],
     }));
   }
-  start() { console.log('FORMATION:', this.data.actors); }
+  start() {}
   update(secs) {
   }
   end() {}

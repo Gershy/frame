@@ -111,12 +111,13 @@ let U = {
     
     let methodsByName = {};
     inspiration.forEach((insp, inspName) => {
-      insp.forEach((method, methodName) => {
+      // Can`t do `insp.forEach`; `insp` may have no prototype
+      for (let [ methodName, method ] of Object.entries(insp)) {
         // `insp` is likely a prototype and contains a "constructor" property that needs to be skipped
-        if (methodName === 'constructor') return;
+        if (methodName === 'constructor') continue;
         if (!methodsByName.has(methodName)) methodsByName[methodName] = [];
         methodsByName[methodName].push(method);
-      });
+      }
     });
     
     methodsByName.gain(methods.map(m => [ m ])); // Method names declared for this Insp are guaranteed to be singular
@@ -172,91 +173,78 @@ let SmoothingVal = U.inspire({ name: 'SmoothingVal', methods: (insp, Insp) => ({
     return this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt);
   }
 })});
-
-// class SmoothingVal {
-//   constructor(initial, amt=0.1) {
-//     this.desired = initial;
-//     this.current = initial;
-//     this.amt = amt;
-//   }
-//   change(v) { this.desired = v; }
-//   smooth()  { return this.current; }
-//   choppy()  { return this.desired; }
-//   update(desired=this.desired) {
-//     this.desired = desired;
-//     this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt); return this.current;
-//   }
-// };
-class Timeout {
-  constructor(f) {
+let Timeout = U.inspire({ name: 'Timeout', methods: (insp, Insp) => ({
+  init: function(f) {
     this.f = f;
     this.ref = null;
-  }
-  start(delay=1000) {
+  },
+  start: function(delay=1000) {
     if (this.ref !== null) throw new Error('Already started');
     this.ref = setTimeout(this.f, delay);
-  }
-  stop() {
+  },
+  stop: function() {
     clearTimeout(this.ref);
     this.ref = null;
   }
-}
-class Interval {
-  constructor(f) {
+})});
+let Interval = U.inspire({ name: 'Interval', methods: (insp, Insp) => ({
+  init: function(f) {
     this.f = f;
     this.ref = null;
-  }
-  start(delay=1000) {
+  },
+  start: function(delay=1000) {
     if (this.ref !== null) throw new Error('Already started');
     this.ref = setInterval(this.f, delay);
-  }
-  stop() {
+  },
+  stop: function() {
     clearInterval(this.ref);
     this.ref = null;
   }
-}
-class Wobbly {
-  constructor(value=null) {
-    this.uid = UID++;
+})});
+
+let WOBBLY_UID = 0;
+let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
+  init: function(value=null) {
+    this.uid = WOBBLY_UID++;
     this.nextInd = 0;
     this.holders = {};
     this.value = value;
-  }
-  hold(func) {
+  },
+  hold: function(func) {
     let ind = this.nextInd++;
     func[`~wob${this.uid}`] = ind;
     this.holders[ind] = func;
     func(this.value);
-  }
-  drop(func) {
+  },
+  drop: function(func) {
     let ind = func[`~wob${this.uid}`];
     delete func[`~wob${this.uid}`];
     delete this.holders[ind];
-  }
-  update(val) {
-    this.value = val;
+  },
+  update: function(value) {
+    this.value = value;
     for (let k in this.holders) this.holders[k](val);
-  }
-  mod(f) {
+  },
+  mod: function(f) {
     this.update(f(this.value));
   }
-};
-class CalcWob extends Wobbly {
-  constructor(wobblies, func) {
-    super();
+})});
+let CalcWob = U.inspire({ name: 'CalcWob', inspiration: { Wobbly }, methods: (insp, Insp) => ({
+  init: function(wobblies, func) {
+    insp.Wobbly.init.call(this);
     this.wobblies = wobblies;
     this.func = func;
     this.watchFunc = () => {
-      let newVal = this.calc();
-      if (newVal !== this.value) this.update(newVal);
+      let value = this.calc();
+      if (value !== this.value) this.update(value);
     };
     this.value = this.calc();
     this.wobblies.forEach(w => w.hold(this.watchFunc));
-  }
-  calc() {
+  },
+  calc: function() {
     return this.func(...this.wobblies.map(w => w.value));
   }
-};
+})});
 
 class World {
   constructor() {
@@ -356,7 +344,7 @@ class World {
     };
     
   }
-};
+}
 class Entity {
   static genSerialDef() {
     return {
@@ -420,7 +408,7 @@ class Entity {
   start() { throw new Error(`not implemented for ${this.constructor.name}`); }
   update(secs) { throw new Error(`not implemented for ${this.constructor.name}`); }
   end() { throw new Error(`not implemented for ${this.constructor.name}`); }
-};
+}
 
 global.gain({
   // Utility stuff
