@@ -1,5 +1,3 @@
-// 6018 8710 6830 5623
-
 // GAMEPLAY:
 // [ ]  Random map generation!!!
 // [ ]  Turning acceleration (allowing fine adjustments to angle while maintaining quicker turns)
