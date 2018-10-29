@@ -841,7 +841,7 @@ let relate11 = (name, sync, Cls1, link1, Cls2, link2) => {
   
 };
 
-// For 1-to-M, the 1 links with a pointer and the M links with a map
+// For 1-to-M, the 1 links with a pointer and the M links back with a map
 let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
   
   // Cls1 is the singular instance - ClsM links to many instances of Cls1
@@ -895,81 +895,6 @@ let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
   };
   ClsM.setSerialDef(serialDefM);
   
-};
-
-// TODO: Relations should have an explicit "sync" property. Right now their
-// "upd" method decides whether to perform `world.updEntity`.
-
-// 1 to 1 can have "put" activate "rem" for BOTH members in the relationship
-// 1 to 1 doesn't care about presence in world (uids not needed for linking)
-//   BUT if either has a world, then `updEntity` should get called for both
-let rel1To1 = {
-  actorWithClient: {
-    put: (actor, client) => {
-      if (actor.client) rel1To1.actorWithClient.rem(actor, actor.client);
-      if (client.actor) rel1To1.actorWithClient.rem(client.actor, client);
-      actor.client = client;
-      client.actor = actor;
-      rel1To1.actorWithClient.upd(actor, client);
-    },
-    rem: (actor, client) => {
-      actor.client = null;
-      client.actor = null;
-      rel1To1.actorWithClient.upd(actor, client);
-    },
-    upd: (actor, client) => {
-      let world = actor.world || mainItem.world;
-      if (world) {
-        world.updEntity(actor, { client: 1 });
-        world.updEntity(client, { actor: 1 });
-      }
-    }
-  },
-  unitWithMainItem: {
-    put: (unit, mainItem) => {
-      if (unit.mainItem) rel1To1.rem(unit, unit.mainItem);
-      if (mainItem.unit) rel1To1.rem(mainItem.unit, mainItem);
-      unit.mainItem = mainItem;
-      mainItem.unit = unit;
-      rel1To1.unitWithMainItem.upd(unit, mainItem);
-    },
-    rem: (unit, mainItem) => {
-      unit.mainItem = null;
-      mainItem.unit = null;
-      rel1To1.unitWithMainItem.upd(unit, mainItem);
-    },
-    upd: (unit, mainItem) => {
-      let world = unit.world || mainItem.world;
-      if (world) {
-        world.updEntity(unit, { mainItem: 1 });
-        world.updEntity(mainItem, { unit: 1 });
-      }
-    }
-  }
-};
-
-// M to 1 can only need one "rem" for each "put" (remove the 1 from old M)
-// M to 1 needs the 1 to have a world+uid (for linking). This world should
-//   always be usable for performing `updEntity` for both entities
-let relMTo1 = {
-  formationWithActor: {
-    put: (formation, actor) => {
-      if (!actor.world) throw new Error('Actor needs world');
-      if (actor.formation) relMTo1.formationWithActor.rem(actor.formation, actor);
-      actor.formation = formation;
-      formation.actors[actor.uid] = actor;
-      relMTo1.formationWithActor.upd(formation, actor);
-    },
-    rem: (formation, actor) => {
-      delete formation.actors[actor.uid];
-      actor.formation = null;
-      relMTo1.formationWithActor.upd(formation, actor);
-    },
-    upd: (formation, actor) => {
-      actor.world.updEntity(formation, { actors: 1 });
-      actor.world.updEntity(actor, { formation: 1 });
-    }
-  }
 };
 
 // Actors
