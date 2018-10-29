@@ -170,10 +170,10 @@ body:focus #ratio {
   opacity: 1;
   z-index: 1;
 }
-.entity.humanoid {
+.entity.actor {
   border-radius: 100%;
 }
-.entity.humanoid:before {
+.entity.actor:before {
   content: "";
   position: absolute;
   left: 50%; top: -2px; 
@@ -181,7 +181,7 @@ body:focus #ratio {
   height: 6px;
   background-color: #000000;
 }
-.entity.humanoid.removed {
+.entity.actor.removed {
   opacity: 0;
   background-color: #ff0000;
 }
