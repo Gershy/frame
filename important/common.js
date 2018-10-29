@@ -93,7 +93,6 @@ let U = {
   combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 }),
   inspire: ({ name, inspiration={}, methods, statik={}, description='' }) => {
     let Insp = function(...p) {
-      if (!p.length) p.push({});
       if (!this || this.constructor !== Insp) return new Insp(...p);
       this.init(...p);
     };
@@ -148,7 +147,7 @@ let U = {
     if (typeof obj === 'undefined') return '<UNDEFINED>';
     try { return `<${obj.constructor.name}>`; } catch (e) {}
     return '<UNKNOWN>';
-  }
+  },
 };
 let C = {
   skip: { SKIP: true },
@@ -156,7 +155,7 @@ let C = {
     none: 0,    // Never sync
     total: 1,   // Only sync entire structure
     delta: 2    // Sync partial structure
-  }
+  },
 };
 
 let SmoothingVal = U.inspire({ name: 'SmoothingVal', methods: (insp, Insp) => ({
@@ -171,7 +170,7 @@ let SmoothingVal = U.inspire({ name: 'SmoothingVal', methods: (insp, Insp) => ({
   update: function(desired=this.desired) {
     this.desired = desired;
     return this.current = (this.current * (1 - this.amt)) + (this.desired * this.amt);
-  }
+  },
 })});
 let Timeout = U.inspire({ name: 'Timeout', methods: (insp, Insp) => ({
   init: function(f) {
@@ -185,7 +184,7 @@ let Timeout = U.inspire({ name: 'Timeout', methods: (insp, Insp) => ({
   stop: function() {
     clearTimeout(this.ref);
     this.ref = null;
-  }
+  },
 })});
 let Interval = U.inspire({ name: 'Interval', methods: (insp, Insp) => ({
   init: function(f) {
@@ -199,7 +198,7 @@ let Interval = U.inspire({ name: 'Interval', methods: (insp, Insp) => ({
   stop: function() {
     clearInterval(this.ref);
     this.ref = null;
-  }
+  },
 })});
 
 let WOBBLY_UID = 0;
@@ -223,11 +222,11 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
   },
   update: function(value) {
     this.value = value;
-    for (let k in this.holders) this.holders[k](val);
+    for (let k in this.holders) this.holders[k](value);
   },
   mod: function(f) {
     this.update(f(this.value));
-  }
+  },
 })});
 let CalcWob = U.inspire({ name: 'CalcWob', inspiration: { Wobbly }, methods: (insp, Insp) => ({
   init: function(wobblies, func) {
@@ -243,11 +242,11 @@ let CalcWob = U.inspire({ name: 'CalcWob', inspiration: { Wobbly }, methods: (in
   },
   calc: function() {
     return this.func(...this.wobblies.map(w => w.value));
-  }
+  },
 })});
 
-class World {
-  constructor() {
+let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
+  init: function() {
     this.clients = {};
     this.uninitializedClients = {};
     
@@ -255,21 +254,21 @@ class World {
     this.addEntities = {};
     this.remEntities = {};
     this.updEntities = {};
-  }
-  getNextUid() { throw new Error('not implemented'); }
-  addClient(client) {
+  },
+  getNextUid: function() { throw new Error('not implemented'); },
+  addClient: function(client) {
     this.addEntity(client);
     this.clients[client.uid] = client; // uid is only available after add
     this.uninitializedClients[client.uid] = client;
     return client;
-  }
-  remClient(client) {
+  },
+  remClient: function(client) {
     this.remEntity(client);
     delete this.clients[client.uid];
     delete this.uninitializedClients[client.uid];
     return client;
-  }
-  addEntity(entity) {
+  },
+  addEntity: function(entity) {
     if (entity.world && entity.world !== this) throw new Error(`Entity belongs to another world`);
     
     // Set uid and world
@@ -281,16 +280,16 @@ class World {
     
     this.addEntities[entity.uid] = entity;
     return entity;
-  }
-  remEntity(entity) {
+  },
+  remEntity: function(entity) {
     if (entity.world !== this) throw new Error(`Entity ${entity.constructor.name} ${entity.world ? 'belongs to another world' : 'has no world'}`);
     if (!entity.inWorld) return;
     this.remEntities[entity.uid] = entity;
     // delete this.updEntities[entity.uid]; // rem overrides upd
     // delete this.addEntities[entity.uid]; // rem overrides add
     return entity;
-  }
-  updEntity(entity, updatedProps) {
+  },
+  updEntity: function(entity, updatedProps) {
     if (U.empty(updatedProps)) return;
     if (!entity.inWorld) return this.addEntity(entity);
     // if (this.addEntities.has(entity.uid)) return; // add overrides upd
@@ -298,8 +297,8 @@ class World {
     if (!this.updEntities.has(entity.uid)) this.updEntities[entity.uid] = {};
     this.updEntities[entity.uid].gain(updatedProps);
     return entity;
-  }
-  doTickResolution() {
+  },
+  doTickResolution: function() {
     
     let sendAddEntities = {};
     let sendRemEntities = {};
@@ -344,42 +343,26 @@ class World {
     };
     
   }
-}
-class Entity {
-  static genSerialDef() {
-    return {
-      type: { sync: C.sync.delta,
-        change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
-        serial: (inst) => inst.constructor.name
-      }
-    }
-  }
-  static setSerialDef(serialDef) {
-    for (let k in serialDef) {
-      if (!serialDef[k].has('change')) throw new Error(`${this.constructor.name}.serialDef.${k} missing "change"`);
-      if (!serialDef[k].has('serial')) throw new Error(`${this.constructor.name}.serialDef.${k} missing "serial"`);
-      if (doWarnings && !serialDef[k].has('actual')) console.log(`WARNING: ${this.name}.serialDef.${k} missing "actual"`);
-    }
-    this.serialDef = serialDef;
-  }
-  constructor() {
+})});
+let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
+  init: function() {
     this.uid = null;
     this.world = null;
     this.inWorld = false;
     this.zones = {};
-  }
-  getSerialDef() {
-    if (!this.constructor.has('serialDef')) this.constructor.setSerialDef(this.constructor.genSerialDef());
+  },
+  getSerialDef: function() {
+    if (!this.constructor.has('serialDef')) this.constructor.serialDef = Entity.fullSerialDef(this.constructor);
     return this.constructor.serialDef;
-  }
-  mod(propName, newVal) {
+  },
+  mod: function(propName, newVal) {
     let serialDef = this.getSerialDef();
     if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
     let { change, sync } = serialDef[propName];
     change(this, newVal);
     if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
-  }
-  modF(propName, f) {
+  },
+  modF: function(propName, f) {
     let serialDef = this.getSerialDef();
     if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
     let { change, sync, actual, serial } = serialDef[propName];
@@ -389,26 +372,48 @@ class Entity {
     change(this, newVal);
     if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
     return true;
-  }
-  serializePart(fieldMap) {
+  },
+  serializePart: function(fieldMap) {
     let serialDef = this.getSerialDef();
     return fieldMap.map((v, k) => serialDef[k].serial(this));
-  }
-  serializeFull() {
+  },
+  serializeFull: function() {
     let ret = {};
     for (let [ k, { sync, serial } ] of Object.entries(this.getSerialDef())) if (sync >= C.sync.total) ret[k] = serial(this);
     return ret;
-  }
-  setUid(uid) {
+  },
+  setUid: function(uid) {
     if (this.uid !== null) throw new Error(`Can't set new uid for ${this.uid}`);
     let cnst = (() => { try { return uid.constructor } catch(err) { return null; } })();
     if (cnst !== String && (cnst !== Number || uid !== uid)) throw new Error(`Invalid uid: ${uid}`);
     this.uid = uid;
+  },
+  start: function() { throw new Error(`not implemented for ${U.typeOf(this)}`); },
+  update: function(secs) { throw new Error(`not implemented for ${U.typeOf(this)}`); },
+  end: function() { throw new Error(`not implemented for ${U.typeOf(this)}`); }
+})});
+Entity.fullSerialDef = Insp => {
+  let fullDef = {};
+  
+  // Add on all inspiring defs
+  // TODO: Multiple inheritance can result in some defs being clobbered in this namespace...
+  for (let SupInsp of Object.values(Insp.inspiration)) fullDef.gain(Entity.fullSerialDef(SupInsp));
+  
+  // Add on the Insp's own def
+  if (!Insp.has('genSerialDef')) throw new Error(`Insp ${Insp.name} doesn't support 'genSerialDef'`);
+  fullDef.gain(Insp.genSerialDef(fullDef));
+  
+  // Add on any relational def
+  fullDef.gain(Insp.has('relSchemaDef') ? Insp.relSchemaDef : {});
+  
+  return fullDef;
+};
+Entity.genSerialDef = () => ({
+  type: { sync: C.sync.delta,
+    change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.constructor.name
   }
-  start() { throw new Error(`not implemented for ${this.constructor.name}`); }
-  update(secs) { throw new Error(`not implemented for ${this.constructor.name}`); }
-  end() { throw new Error(`not implemented for ${this.constructor.name}`); }
-}
+});
 
 global.gain({
   // Utility stuff

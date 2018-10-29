@@ -28,86 +28,87 @@ let config = {
 };
 let UID = 0;
 
-class XY {
-  constructor() {}
-  xx() { throw new Error('not implemented'); }
-  asCarte() { throw new Error('not implemented'); }
-  yy() { throw new Error('not implemented'); }
-  asPolar() { throw new Error('not implemented'); }
-  toCarte() { throw new Error('not implemented'); }
-  toPolar() { throw new Error('not implemented'); }
-  toCarte() { throw new Error('not implemented'); }
-  toPolar() { throw new Error('not implemented'); }
-  add(pt) { throw new Error('not implemented'); }
-  sub(pt) { throw new Error('not implemented'); }
-  scale(mag) { throw new Error('not implemented'); }
-  distSqr(pt) { throw new Error('not implemented'); }
-  dist(pt) { throw new Error('not implemented'); }
-  magSqr() { throw new Error('not implemented'); }
-  mag() { throw new Error('not implemented'); }
-  norm() { throw new Error('not implemented'); }
-  eq(pt) { throw new Error('not implemented'); }
-  perpCW() { throw new Error('not implemented'); }
-  perpCCW() { throw new Error('not implemented'); }
-  dotProd(pt) { throw new Error('not implemented'); }
-  proj(pt) { throw new Error('not implemented'); }
-  projLen(pt) { throw new Error('not implemented'); }
-  ang() { throw new Error('not implemented'); }
-  angTo(pt) { throw new Error('not implemented'); }
-  rot(ang) { throw new Error('not implemented'); }
-}
-class CarteXY {
-  constructor(x=0, y=0) { this.x = x; this.y = y; if (!U.validNum(x) || !U.validNum(y)) throw new Error('NAN!'); }
-  xx()         { return this.x; }
-  yy()         { return this.y; }
-  asCarte()   { return [ this.x, this.y ]; }
-  toCarte()   { return this; }
-  asPolar()   { return [ this.ang(), this.mag() ]; }
-  toPolar()   { return new PolarXY(this.ang(), this.mag()); }
-  add(pt)     { let [ x, y ] = pt.asCarte(); return new CarteXY(this.x + x, this.y + y); }
-  sub(pt)     { let [ x, y ] = pt.asCarte(); return new CarteXY(this.x - x, this.y - y); }
-  scale(amt)  { return new CarteXY(this.x * amt, this.y * amt); }
-  distSqr(pt) { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ this.x - x, this.y - y ]; return dx * dx + dy * dy; }
-  dist(pt)    { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ this.x - x, this.y - y ]; return Math.sqrt(dx * dx + dy * dy); }
-  magSqr()    { return this.x * this.x + this.y * this.y; }
-  mag()       { return Math.sqrt(this.x * this.x + this.y * this.y); }
-  norm()      { let m = Math.sqrt(this.x * this.x + this.y * this.y); if (!m) return null; m = 1 / m; return new CarteXY(this.x * m, this.y * m); }
-  eq(pt)      { let [ x, y ] = pt.asCarte(); return this.x === x && this.y === y; }
-  perpCW()    { return new CarteXY(this.y, -this.x); }
-  perpCCW()   { return new CarteXY(-this.y, this.x); }
-  dotProd(pt) { let [ x, y ] = pt.asCarte(); return this.x * x + this.y * y; }
-  proj(pt)    { let [ x, y ] = pt.asCarte(); return pt.scale((this.x * x + this.y * y) / pt.mag()); }
-  projLen(pt) { let [ x, y ] = pt.asCarte(); let mag = pt.mag(); if (!mag) return 0; return (this.x * x + this.y * y) / mag; }
-  ang()       { return (this.x || this.y) ? Math.atan2(this.x, this.y) : 0; }
-  angTo(pt)   { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ x - this.x, y - this.y ]; return (dx || dy) ? Math.atan2(dx, dy) : 0; }
-  rot(ang)    { return new PolarXY(this.ang() + ang, this.mag()); }
-}
-class PolarXY {
-  constructor(r=0, m=1) { this.r = r; this.m = m; if (!U.validNum(r) || !U.validNum(m)) throw new Error('NAN!'); }
-  xx()         { return Math.sin(this.r) * this.m; }
-  yy()         { return Math.cos(this.r) * this.m; }
-  asCarte()   { return [ Math.sin(this.r) * this.m, Math.cos(this.r) * this.m ]; }
-  toCarte()   { return new CarteXY(Math.sin(this.r) * this.m, Math.cos(this.r) * this.m); }
-  asPolar()   { return [ this.r, this.m ]; }
-  toPolar()   { return this; }
-  add(pt)     { return pt.add(this.toCarte()); } // No smooth way to add polar coords
-  sub(pt)     { return pt.sub(this.toCarte()); } // No smooth way to add polar coords
-  scale(amt)  { return new PolarXY(this.r, this.m * amt); }
-  distSqr(pt) { let [ r, m ] = pt.asPolar(); m = (this.m * this.m) + (m * m) - (2 * this.m * m * Math.cos(r - this.r)); return m; }
-  dist(pt)    { let [ r, m ] = pt.asPolar(); m = (this.m * this.m) + (m * m) - (2 * this.m * m * Math.cos(r - this.r)); return Math.sqrt(m); }
-  magSqr()    { return this.m * this.m; }
-  mag()       { return this.m; }
-  norm()      { return new PolarXY(this.r, 1); }
-  eq(pt)      { return pt.eq(this.toCarte()); }
-  perpCW()    { return new PolarXY(this.r + U.ROT_CW1, this.m); }
-  perpCCW()   { return new PolarXY(this.r + U.ROT_CCW1, this.m); }
-  dotProd(pt) { return pt.dotProd(this.toCarte()); }
-  proj(pt)    { return this.toCarte().proj(pt); }
-  projLen(pt) { return this.toCarte().projLen(pt); }
-  ang()       { return this.r; }
-  angTo(pt)   { let d = pt.ang() - this.ang(); while(d > U.ROT_HALF) d -= U.ROT_FULL; while(d < -U.ROT_HALF) d += U.ROT_FULL; return d; /*return pt.ang() - this.ang();*/ }
-  rot(ang)    { return new PolarXY(this.r + r, this.m); }
-}
+// ==== 2D MATH
+let XY = U.inspire({ name: 'XY', methods: (insp, Insp) => ({
+  init: function() {},
+  xx: function() { throw new Error('not implemented'); },
+  asCarte:  function()    { throw new Error('not implemented'); },
+  yy:       function()    { throw new Error('not implemented'); },
+  asPolar:  function()    { throw new Error('not implemented'); },
+  toCarte:  function()    { throw new Error('not implemented'); },
+  toPolar:  function()    { throw new Error('not implemented'); },
+  toCarte:  function()    { throw new Error('not implemented'); },
+  toPolar:  function()    { throw new Error('not implemented'); },
+  add:      function(pt)  { throw new Error('not implemented'); },
+  sub:      function(pt)  { throw new Error('not implemented'); },
+  scale:    function(mag) { throw new Error('not implemented'); },
+  distSqr:  function(pt)  { throw new Error('not implemented'); },
+  dist:     function(pt)  { throw new Error('not implemented'); },
+  magSqr:   function()    { throw new Error('not implemented'); },
+  mag:      function()    { throw new Error('not implemented'); },
+  norm:     function()    { throw new Error('not implemented'); },
+  eq:       function(pt)  { throw new Error('not implemented'); },
+  perpCW:   function()    { throw new Error('not implemented'); },
+  perpCCW:  function()    { throw new Error('not implemented'); },
+  dotProd:  function(pt)  { throw new Error('not implemented'); },
+  proj:     function(pt)  { throw new Error('not implemented'); },
+  projLen:  function(pt)  { throw new Error('not implemented'); },
+  ang:      function()    { throw new Error('not implemented'); },
+  angTo:    function(pt)  { throw new Error('not implemented'); },
+  rot:      function(ang) { throw new Error('not implemented'); },
+})});
+let CarteXY = U.inspire({ name: 'CarteXY', methods: (insp, Insp) => ({
+  init:     function(x=0, y=0) { this.x = x; this.y = y; if (!U.validNum(x) || !U.validNum(y)) throw new Error(`NAN! ${JSON.stringify(x)}, ${y}`); },
+  xx:       function()    { return this.x; },
+  yy:       function()    { return this.y; },
+  asCarte:  function()    { return [ this.x, this.y ]; },
+  toCarte:  function()    { return this; },
+  asPolar:  function()    { return [ this.ang(), this.mag() ]; },
+  toPolar:  function()    { return new PolarXY(this.ang(), this.mag()); },
+  add:      function(pt)  { let [ x, y ] = pt.asCarte(); return new CarteXY(this.x + x, this.y + y); },
+  sub:      function(pt)  { let [ x, y ] = pt.asCarte(); return new CarteXY(this.x - x, this.y - y); },
+  scale:    function(amt) { return new CarteXY(this.x * amt, this.y * amt); },
+  distSqr:  function(pt)  { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ this.x - x, this.y - y ]; return dx * dx + dy * dy; },
+  dist:     function(pt)  { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ this.x - x, this.y - y ]; return Math.sqrt(dx * dx + dy * dy); },
+  magSqr:   function()    { return this.x * this.x + this.y * this.y; },
+  mag:      function()    { return Math.sqrt(this.x * this.x + this.y * this.y); },
+  norm:     function()    { let m = Math.sqrt(this.x * this.x + this.y * this.y); if (!m) return null; m = 1 / m; return new CarteXY(this.x * m, this.y * m); },
+  eq:       function(pt)  { let [ x, y ] = pt.asCarte(); return this.x === x && this.y === y; },
+  perpCW:   function()    { return new CarteXY(this.y, -this.x); },
+  perpCCW:  function()    { return new CarteXY(-this.y, this.x); },
+  dotProd:  function(pt)  { let [ x, y ] = pt.asCarte(); return this.x * x + this.y * y; },
+  proj:     function(pt)  { let [ x, y ] = pt.asCarte(); return pt.scale((this.x * x + this.y * y) / pt.mag()); },
+  projLen:  function(pt)  { let [ x, y ] = pt.asCarte(); let mag = pt.mag(); if (!mag) return 0; return (this.x * x + this.y * y) / mag; },
+  ang:      function()    { return (this.x || this.y) ? Math.atan2(this.x, this.y) : 0; },
+  angTo:    function(pt)  { let [ x, y ] = pt.asCarte(); let [ dx, dy ] = [ x - this.x, y - this.y ]; return (dx || dy) ? Math.atan2(dx, dy) : 0; },
+  rot:      function(ang) { return new PolarXY(this.ang() + ang, this.mag()); },
+})});
+let PolarXY = U.inspire({ name: 'PolarXY', methods: (insp, Insp) => ({
+  init:     function(r=0, m=1) { this.r = r; this.m = m; if (!U.validNum(r) || !U.validNum(m)) throw new Error('NAN!'); },
+  xx:       function()    { return Math.sin(this.r) * this.m; },
+  yy:       function()    { return Math.cos(this.r) * this.m; },
+  asCarte:  function()    { return [ Math.sin(this.r) * this.m, Math.cos(this.r) * this.m ]; },
+  toCarte:  function()    { return new CarteXY(Math.sin(this.r) * this.m, Math.cos(this.r) * this.m); },
+  asPolar:  function()    { return [ this.r, this.m ]; },
+  toPolar:  function()    { return this; },
+  add:      function(pt)  { return pt.add(this.toCarte()); }, // No smooth way to add polar coords
+  sub:      function(pt)  { return pt.sub(this.toCarte()); }, // No smooth way to add polar coords
+  scale:    function(amt) { return new PolarXY(this.r, this.m * amt); },
+  distSqr:  function(pt)  { let [ r, m ] = pt.asPolar(); m = (this.m * this.m) + (m * m) - (2 * this.m * m * Math.cos(r - this.r)); return m; },
+  dist:     function(pt)  { let [ r, m ] = pt.asPolar(); m = (this.m * this.m) + (m * m) - (2 * this.m * m * Math.cos(r - this.r)); return Math.sqrt(m); },
+  magSqr:   function()    { return this.m * this.m; },
+  mag:      function()    { return this.m; },
+  norm:     function()    { return new PolarXY(this.r, 1); },
+  eq:       function(pt)  { return pt.eq(this.toCarte()); },
+  perpCW:   function()    { return new PolarXY(this.r + U.ROT_CW1, this.m); },
+  perpCCW:  function()    { return new PolarXY(this.r + U.ROT_CCW1, this.m); },
+  dotProd:  function(pt)  { return pt.dotProd(this.toCarte()); },
+  proj:     function(pt)  { return this.toCarte().proj(pt); },
+  projLen:  function(pt)  { return this.toCarte().projLen(pt); },
+  ang:      function()    { return this.r; },
+  angTo:    function(pt)  { let d = pt.ang() - this.ang(); while(d > U.ROT_HALF) d -= U.ROT_FULL; while(d < -U.ROT_HALF) d += U.ROT_FULL; return d; /*return pt.ang() - this.ang();*/ },
+  rot:      function(ang) { return new PolarXY(this.r + r, this.m); },
+})});
 XY.sum = (xys) => {
   let [ x, y ] = [ 0, 0 ];
   for (let i = 0, len = xys.length; i < len; i++) {
@@ -196,15 +197,15 @@ let makeFlamer = () => {
 };
 
 // ==== BOUND
-class Bound {
-  constructor() {
+let Bound = U.inspire({ name: 'Bound', methods: (insp, Insp) => ({
+  init: function() {
     this.loc = new CarteXY();
     this.rot = 0;
-  }
-  getAxisAlignedBound() { throw new Error('not implemented'); }
-  getAxes(bound2) { throw new Error('not implemented'); }
-  projOnAxis(axis) { throw new Error('not implemented'); }
-}
+  },
+  getAxisAlignedBound: function() { throw new Error('not implemented'); },
+  getAxes: function(bound2) { throw new Error('not implemented'); },
+  projOnAxis: function(axis) { throw new Error('not implemented'); },
+})});
 Bound.getPenetration = (b1, b2) => {
   
   let axes1 = b1.getAxes(b2);
@@ -232,9 +233,9 @@ Bound.getPenetration = (b1, b2) => {
   return leastAxis ? [ leastAxis, leastPenAmt ] : null;
   
 };
-class ConvexPolygonBound extends Bound {
-  constructor(vertsCW, angs=null) {
-    super();
+let ConvexPolygonBound = U.inspire({ name: 'ConvexPolygonBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+  init: function(vertsCW, angs=null) {
+    insp.Bound.init.call(this);
     this.vertsCW = vertsCW;
     this.angs = angs;
     if (!this.angs) {
@@ -243,8 +244,8 @@ class ConvexPolygonBound extends Bound {
         this.angs.push(v1.angTo(v2) - U.ROT_CCW1);
       });
     }
-  }
-  eachSeg(f) {
+  },
+  eachSeg: function(f) {
     let ret = [];
     let len = this.vertsCW.length;
     let last = this.vertsCW[len - 1];
@@ -252,8 +253,8 @@ class ConvexPolygonBound extends Bound {
       f(last, this.vertsCW[i]);
       last = this.vertsCW[i];
     }
-  }
-  getAxisAlignedBound() {
+  },
+  getAxisAlignedBound: function() {
     
     let h = this.projOnAxis(new CarteXY(1, 0));
     let v = this.projOnAxis(new CarteXY(0, 1));
@@ -266,11 +267,11 @@ class ConvexPolygonBound extends Bound {
       y0: v[0], y1: v[1]
     };
     
-  }
-  getAxes(bound2) {
+  },
+  getAxes: function(bound2) {
     return this.angs.map(ang => new PolarXY(ang + this.rot));
-  }
-  projOnAxis(axis) {
+  },
+  projOnAxis: function(axis) {
     let min = U.intUpperBound;
     let max = U.intLowerBound;
     for (let i = 0, len = this.vertsCW.length; i < len; i++) {
@@ -287,25 +288,25 @@ class ConvexPolygonBound extends Bound {
       if (projLen > max) max = projLen;
     }
     return [ min, max ];
-  }
-  getExtremeties() {
+  },
+  getExtremeties: function() {
     return this.vertsCW.map(v => v.rot(this.rot).add(this.loc));
-  }
-}
-class RectangleBound extends ConvexPolygonBound {
-  constructor(w, h, hw=w*0.5, hh=h*0.5) {
-    super(
+  },
+})});
+let RectangleBound = U.inspire({ name: 'RectangleBound', inspiration: { ConvexPolygonBound }, methods: (insp, Insp) => ({
+  init: function(w, h, hw=w*0.5, hh=h*0.5) {
+    insp.ConvexPolygonBound.init.call(this, 
       [ new CarteXY(-hw, -hh), new CarteXY(hw, -hh), new CarteXY(hw, hh), new CarteXY(-hw, hh) ],
       [ U.ROT_U, U.ROT_R ]
     );
-  }
-}
-class CircleBound extends Bound {
-  constructor(r) {
-    super();
+  },
+})});
+let CircleBound = U.inspire({ name: 'CircleBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+  init: function(r) {
+    insp.Bound.init.call(this);
     this.r = r;
-  }
-  getAxisAlignedBound() {
+  },
+  getAxisAlignedBound: function() {
     let [ x, y ] = this.loc.asCarte();
     let r = this.r;
     
@@ -315,8 +316,8 @@ class CircleBound extends Bound {
       x0: x - r, x1: x + r,
       y0: y - r, y1: y + r
     }
-  }
-  getAxes(bound2) {
+  },
+  getAxes: function(bound2) {
     // If `bound2` has no extremeties, the best we can do is hope the mid->mid vector works
     let extremeties = bound2.getExtremeties() || [ bound2.loc ];
     let ret = [];
@@ -326,25 +327,25 @@ class CircleBound extends Bound {
     }
     return ret;
     // return extremeties.map(ex => ex.sub(this.loc).norm());
-  }
-  projOnAxis(axis) {
+  },
+  projOnAxis: function(axis) {
     let p = this.loc.projLen(axis);
     return [ p - this.r, p + this.r ];
-  }
-  getExtremeties() {
+  },
+  getExtremeties: function() {
     return null;
-  }
-}
-class LineSegmentBound extends Bound {
-  constructor(length) {
-    super();
+  },
+})});
+let LineSegmentBound = U.inspire({ name: 'LineSegmentBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+  init: function(length) {
+    insp.Bound.init.call(this);
     this.length = length;
     if (!U.validNum(this.length)) throw new Error(`Invalid length: ${length}`);
-  }
-  endPt() {
+  },
+  endPt: function() {
     return this.loc.add(new PolarXY(this.rot, this.length));
-  }
-  getAxisAlignedBound() {
+  },
+  getAxisAlignedBound: function() {
     let [ endX, endY ] = this.endPt().asCarte();
     let [ x0, x1 ] = [ this.loc.x, endX ];
     let [ y0, y1 ] = [ this.loc.y, endY ];
@@ -353,36 +354,123 @@ class LineSegmentBound extends Bound {
     if (y1 < y0) [ y0, y1 ] = [ y1, y0 ];
     
     return { x0, x1, y0, y1 };
-  }
-  getAxes(bound2) {
+  },
+  getAxes: function(bound2) {
     return [
       new PolarXY(this.rot),
       new PolarXY(this.rot + U.ROT_CW1)
     ];
-  }
-  projOnAxis(axis) {
+  },
+  projOnAxis: function(axis) {
     let [ proj1, proj2 ] = [ this.loc.projLen(axis), this.endPt().projLen(axis) ];
     return proj1 < proj2 ? [ proj1, proj2 ] : [ proj2, proj1 ];
-  }
-  getExtremeties() {
+  },
+  getExtremeties: function() {
     return [ this.loc, this.endPt() ];
+  },
+})});
+
+// ==== RELATION UTIL
+let relate11 = (name, sync, Cls1, link1, Cls2, link2) => {
+  // For 1-to-1, links are pointer names
+  
+  let syncFunc = (inst1, link1, inst2, link2) => {
+    if (sync < C.sync.delta) return;
+    let world = inst1.world || inst2.world;
+    if (!world) return;
+    world.updEntity(inst1, { [link1]: 1 });
+    world.updEntity(inst2, { [link2]: 1 });
+  };
+  
+  let both = [
+    [ Cls1, link1, Cls2, link2 ],
+    [ Cls2, link2, Cls1, link1 ]
+  ];
+  
+  for (let [ Cls1, link1, Cls2, link2 ] of both) {
+    
+    if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+    Cls1.relSchemaDef[link1] = ((link1, link2) => ({ sync,
+      change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
+        put: (inst1, inst2) => {
+          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+          if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
+          inst1[link1] = inst2;
+          inst2[link2] = inst1;
+          syncFunc(inst1, link1, inst2, link2);
+        },
+        rem: (inst1, inst2) => {
+          if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
+          inst1[link1] = null;
+          inst2[link2] = null;
+          syncFunc(inst1, link1, inst2, link2);
+        }
+      })[act](inst1, inst2),
+      serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+      actual: (inst1) => inst1[link1]
+    }))(link1, link2);
+    
   }
-}
+  
+};
+let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
+  
+  // For 1-to-M, the 1 links with a pointer and the M links back with a map
+  // Cls1 is the singular instance - ClsM links to many instances of Cls1
+  
+  let syncFunc = (inst1, instM) => {
+    if (sync < C.sync.delta) return;
+    let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
+    world.updEntity(inst1, { [link1]: 1 });
+    world.updEntity(instM, { [linkM]: 1 });
+  };
+    
+  if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+  Cls1.relSchemaDef[link1] = { sync,
+    change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
+      put: (inst1, instM) => {
+        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        inst1[link1] = instM;
+        instM[linkM][inst1.uid] = inst1;
+        syncFunc(inst1, instM);
+      },
+      rem: (inst1, instM) => {
+        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        inst1[link1] = null;
+        delete instM[linkM][inst1.uid];
+        syncFunc(inst1, instM);
+      }
+    })[act](inst1, instM),
+    serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
+    actual: (inst1) => inst1[link1]
+  };
+  
+  if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
+  ClsM.relSchemaDef[linkM] = { sync,
+    change: (instM, p, act=p.act, inst1=p[link1]) => ({
+      put: (instM, inst1) => {
+        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        inst1[link1] = instM;
+        instM[linkM][inst1.uid] = inst1;
+        syncFunc(inst1, instM);
+      },
+      rem: (instM, inst1) => {
+        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        inst1[link1] = null;
+        delete instM[linkM][inst1.uid];
+        syncFunc(inst1, instM);
+      }
+    })[act](instM, inst1),
+    serial: (instM) => instM[linkM].map(ent => 1), // Only the keys are important
+    actual: (instM) => instM[linkM]
+  };
+    
+};
 
 // ==== CLIENT
-class Client extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    ip: { sync: C.sync.delta,
-      change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.ip
-    },
-    // actor: { sync: C.sync.delta,
-    //   change: (inst, { act, actor=inst.actor }) => rel1To1.actorWithClient[act](actor, inst),
-    //   serial: (inst) => inst.actor ? inst.actor.uid : null
-    // }
-  }}
-  constructor(ip, sokt) {
-    super();
+let Client = U.inspire({ name: 'Client', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(ip, sokt) {
+    insp.Entity.init.call(this);
     this.ip = ip;
     this.sokt = sokt;
     this.actor = null;
@@ -404,8 +492,8 @@ class Client extends Entity {
       p.buff = Buffer.concat([ p.buff, buff ], totalLen);
       this[p.status !== 'starting' ? 'receivedData' : 'receivedHandshakeData']();
     });
-  }
-  handshakeReply(packet) {
+  },
+  handshakeReply: function(packet) {
     try {
       let lines = packet.split('\r\n');
       // Parse headers:
@@ -433,8 +521,8 @@ class Client extends Entity {
       this.sokt.end(`HTTP/1.1 400 ${err.message} \r\n\r\n`);
       throw err;
     }
-  }
-  receivedHandshakeData() {
+  },
+  receivedHandshakeData: function() {
     
     let p = this.p;
     let buff = p.buff;
@@ -458,8 +546,8 @@ class Client extends Entity {
       output(`Couldn't do handshake:${'\n'}PACKET:${'\n'}${packet}${'\n'}REASON: ${err.stack}`);
       if (p.buff.length) this.receivedHandshakeData();
     }
-  }
-  receivedData() {
+  },
+  receivedData: function() {
     let p = this.p;
     let { buff, curOp } = p;
     
@@ -565,11 +653,11 @@ class Client extends Entity {
       p.curFrames = null;
       
     } 
-  }
-  receive(command) {
+  },
+  receive: function(command) {
     this.sokt.emit('command', command);
-  }
-  async send(command) {
+  },
+  send: async function(command) {
     if (this.p.status !== 'started') throw new Error(`Can't send data to client with status ${this.p.status}`);
     let data = null;
     try {
@@ -606,31 +694,26 @@ class Client extends Entity {
     
     metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
     await new Promise(r => this.sokt.write(Buffer.concat([ metaBuff, Buffer.from(data) ]), r));
-  }
-  start() {}
-  update(secs) { /* nothing */ }
-  end() {
+  },
+  start: function() {},
+  update: function(secs) { /* nothing */ },
+  end: function() {
     this.p.status = 'ended';
     this.sokt.end();
+  },
+})});
+Client.genSerialDef = () => ({
+  ip: { sync: C.sync.delta,
+    change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.ip,
+    actual: (inst) => inst.ip
   }
-}
+});
 
 // ==== PHYSICAL ENTITY
-class SpatialEntity extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    rot: { sync: C.sync.delta,
-      change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
-      actual: (inst) => inst.bound.rot,
-      serial: (inst) => inst.bound.rot
-    },
-    loc: { sync: C.sync.delta,
-      change: (inst, loc2) => { inst.bound.loc = loc2; },
-      actual: (inst) => inst.bound.loc,
-      serial: (inst) => inst.bound.loc.asCarte()
-    }
-  }}
-  constructor(bound=new CircleBound(10)) {
-    super();
+let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(bound=new CircleBound(10)) {
+    insp.Entity.init.call(this);
     
     this.zones = {};
     this.bound = bound;
@@ -639,28 +722,28 @@ class SpatialEntity extends Entity {
     this.vel = new CarteXY();
     this.acl = new CarteXY();
     this.invWeight = 1;
-  }
-  isTangible() {
+  },
+  isTangible: function() {
     // Entities that are "tangible" can still detect collisions, but don't
     // need to be separated upon collision. A collision involving an
     // intangible entity may not have any separation occur, but `collideAll`
     // will still get called
     return true;
-  }
-  physicalUpdate(secs) { throw new Error('not implemented'); }
-  dist(phys2) {
+  },
+  physicalUpdate: function(secs) { throw new Error('not implemented'); },
+  dist: function(phys2) {
     return this.bound.loc.dist(phys2.bound.loc);
-  }
-  canCollide(entity) {
+  },
+  canCollide: function(entity) {
     return true;
-  }
-  collideAll(collisions) {
+  },
+  collideAll: function(collisions) {
     
-  }
-  start() {
+  },
+  start: function() {
     this.world.rootZone.placeEntity(this);
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     let locChanged = this.modF('loc', loc => (this.vel.x || this.vel.y) ? loc.add(this.vel.scale(secs)) : loc);
     let rotChanged = this.modF('rot', rot => rot + (this.rotVel * secs))
     
@@ -669,74 +752,72 @@ class SpatialEntity extends Entity {
     // Doing so leads to an invalid state: a zone contains a uid not also
     // contained in `this.world.entities`; hence the `this.inWorld` check
     if (this.inWorld && (locChanged || rotChanged)) this.world.rootZone.placeEntity(this);
-  }
-  end() {
+  },
+  end: function() {
     this.world.rootZone.unplaceEntity(this);
+  },
+})});
+SpatialEntity.genSerialDef = () => ({
+  rot: { sync: C.sync.delta,
+    change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
+    actual: (inst) => inst.bound.rot,
+    serial: (inst) => inst.bound.rot
+  },
+  loc: { sync: C.sync.delta,
+    change: (inst, loc2) => { inst.bound.loc = loc2; },
+    actual: (inst) => inst.bound.loc,
+    serial: (inst) => inst.bound.loc.asCarte()
   }
-}
+});
 
 // Structures
-class RectStructure extends SpatialEntity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    w: { sync: C.sync.delta,
-      change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.w
-    },
-    h: { sync: C.sync.delta,
-      change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.h
-    }
-  }}
-  constructor(w, h, loc, rot) {
+let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(w, h, loc, rot) {
     let rectBound = new RectangleBound(w, h);
     rectBound.loc = loc;
     rectBound.rot = rot;
     
-    super(rectBound);
+    insp.SpatialEntity.init.call(this, rectBound);
     this.w = w;
     this.h = h;
     this.invWeight = 0; // immovable
+  },
+  update: function(secs) { /* nothing! */ },
+})});
+RectStructure.genSerialDef = () => ({
+  w: { sync: C.sync.delta,
+    change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.w
+  },
+  h: { sync: C.sync.delta,
+    change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.h
   }
-  update(secs) { /* nothing! */ }
-}
-class SiloStructure extends SpatialEntity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    r: { sync: C.sync.delta,
-      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.r
-    }
-  }}
-  constructor(r, loc, rot) {
+});
+
+let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(r, loc, rot) {
     let circBound = new CircleBound(r);
     circBound.loc = loc;
     circBound.rot = rot;
     
-    super(circBound);
+    insp.SpatialEntity.init.call(this, circBound);
     this.r = r;
     this.invWeight = 0; // immovable
+  },
+  update: function(secs) { /* nothing! */ },
+})});
+SiloStructure.genSerialDef = () => ({
+  r: { sync: C.sync.delta,
+    change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.r
   }
-  update(secs) { /* nothing! */ }
-}
+});
 
 // Bullets
-class Bullet extends SpatialEntity {
-  static genSerialDef() { let supDef = (super.serialDef || super.genSerialDef()); return { ...supDef,
-    loc: supDef.loc.gain({ sync: C.sync.total }), // Bullet "loc" is deterministic client-side
-    unit: { sync: C.sync.delta,
-      change: (inst, unit2) => { inst.unit = unit2; },
-      serial: (inst) => inst.unit ? inst.unit.uid : null
-    },
-    maxSize: { sync: C.sync.delta,
-      change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
-      serial: (inst) => inst.maxSize
-    },
-    vel: { sync: C.sync.delta,
-      change: (inst, vel2) => { inst.vel = vel2 },
-      serial: (inst) => inst.vel.asCarte()
-    }
-  }}
-  constructor(rot, unit, shootSpd=1000, lifespanSecs=3) {
-    super(new LineSegmentBound(0));
+let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(rot, unit, shootSpd=1000, lifespanSecs=3) {
+    insp.SpatialEntity.init.call(this, new LineSegmentBound(0));
     
     this.unit = unit;
     
@@ -752,12 +833,12 @@ class Bullet extends SpatialEntity {
     this.lifespanSecs = lifespanSecs;
     this.secsLeftToLive = lifespanSecs;
     this.totalDist = 0;
-  }
-  isTangible() { return false; /* decollision doesn't occur against bullets */ }
-  canCollide(entity) {
+  },
+  isTangible: function() { return false; /* decollision doesn't occur against bullets */ },
+  canCollide: function(entity) {
     return this.secsLeftToLive > 0 && entity !== this.unit && !(entity instanceof Bullet);
-  }
-  collideAll(collisions) {
+  },
+  collideAll: function(collisions) {
     let deepestEntity = null;
     let deepestPen = U.intUpperBound; // U.intLowerBound; // TODO: Shallowest?? Wat???
     // let lowestAmt = U.intUpperBound;
@@ -772,8 +853,8 @@ class Bullet extends SpatialEntity {
     // This method is called because we've collided. Bullets die on impact
     this.world.remEntity(this);
     this.secsLeftToLive = 0;
-  }
-  strike(entity) {
+  },
+  strike: function(entity) {
     
     if (entity instanceof Actor) {
       entity.modF('health', health => health - this.strikeDamage);
@@ -781,8 +862,8 @@ class Bullet extends SpatialEntity {
       // this.world.updEntity(entity, { health: entity.health });
     }
     
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     // This is how far we'll physically translate this frame
     let dist = this.shootSpd * secs;
     this.totalDist += dist;
@@ -793,136 +874,33 @@ class Bullet extends SpatialEntity {
     this.secsLeftToLive -= secs;
     if (this.secsLeftToLive <= 0) this.world.remEntity(this);
     
-    super.update(secs);
+    insp.SpatialEntity.update.call(this, secs);
   }
-}
-
-// For 1-to-1, links are pointer names
-let relate11 = (name, sync, Cls1, link1, Cls2, link2) => {
-  
-  let syncFunc = (inst1, link1, inst2, link2) => {
-    if (sync < C.sync.delta) return;
-    let world = inst1.world || inst2.world;
-    if (!world) return;
-    world.updEntity(inst1, { [link1]: 1 });
-    world.updEntity(inst2, { [link2]: 1 });
-  };
-  
-  let both = [
-    [ Cls1, link1, Cls2, link2 ],
-    [ Cls2, link2, Cls1, link1 ]
-  ];
-  
-  for (let [ Cls1, link1, Cls2, link2 ] of both) {
-    
-    let serialDef = Cls1.has('serialDef') ? Cls1.serialDef : Cls1.genSerialDef();
-    serialDef[link1] = ((link1, link2) => ({ sync,
-      change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
-        put: (inst1, inst2) => {
-          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-          if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
-          inst1[link1] = inst2;
-          inst2[link2] = inst1;
-          syncFunc(inst1, link1, inst2, link2);
-        },
-        rem: (inst1, inst2) => {
-          if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
-          inst1[link1] = null;
-          inst2[link2] = null;
-          syncFunc(inst1, link1, inst2, link2);
-        }
-      })[act](inst1, inst2),
-      serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
-      actual: (inst1) => inst1[link1]
-    }))(link1, link2);
-    Cls1.setSerialDef(serialDef);
-    
+})});
+Bullet.genSerialDef = supDef => ({
+  // TODO: Ensure that `gain` doesn't mutate anything unexpectedly here???
+  loc: supDef.loc.gain({ sync: C.sync.total }), // Bullet "loc" is deterministic!
+  unit: { sync: C.sync.delta,
+    change: (inst, unit2) => { inst.unit = unit2; },
+    serial: (inst) => inst.unit ? inst.unit.uid : null,
+    actual: (inst) => inst.unit
+  },
+  maxSize: { sync: C.sync.delta,
+    change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
+    serial: (inst) => inst.maxSize,
+    actual: (inst) => inst.maxSize
+  },
+  vel: { sync: C.sync.delta,
+    change: (inst, vel2) => { inst.vel = vel2 },
+    serial: (inst) => inst.vel.asCarte(),
+    actual: (inst) => inst.vel
   }
-  
-};
-
-// For 1-to-M, the 1 links with a pointer and the M links back with a map
-let relate1M = (name, sync, Cls1, link1, ClsM, linkM) => {
-  
-  // Cls1 is the singular instance - ClsM links to many instances of Cls1
-  
-  let syncFunc = (inst1, instM) => {
-    if (sync < C.sync.delta) return;
-    let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
-    world.updEntity(inst1, { [link1]: 1 });
-    world.updEntity(instM, { [linkM]: 1 });
-  };
-  
-  let serialDef1 = Cls1.has('serialDef') ? Cls1.serialDef : Cls1.genSerialDef();
-  serialDef1[link1] = { sync,
-    change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
-      put: (inst1, instM) => {
-        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-        inst1[link1] = instM;
-        instM[linkM][inst1.uid] = inst1;
-        syncFunc(inst1, instM);
-      },
-      rem: (inst1, instM) => {
-        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
-        inst1[link1] = null;
-        delete instM[linkM][inst1.uid];
-        syncFunc(inst1, instM);
-      }
-    })[act](inst1, instM),
-    serial: (inst1) => inst1[link1] ? inst1[link1].uid : null,
-    actual: (inst1) => inst1[link1]
-  };
-  Cls1.setSerialDef(serialDef1);
-  
-  let serialDefM = ClsM.has('serialDef') ? ClsM.serialDef : ClsM.genSerialDef();
-  serialDefM[linkM] = { sync,
-    change: (instM, p, act=p.act, inst1=p[link1]) => ({
-      put: (instM, inst1) => {
-        if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-        inst1[link1] = instM;
-        instM[linkM][inst1.uid] = inst1;
-        syncFunc(inst1, instM);
-      },
-      rem: (instM, inst1) => {
-        if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
-        inst1[link1] = null;
-        delete instM[linkM][inst1.uid];
-        syncFunc(inst1, instM);
-      }
-    })[act](instM, inst1),
-    serial: (instM) => instM[linkM].map(ent => 1), // Only the keys are important
-    actual: (instM) => instM[linkM]
-  };
-  ClsM.setSerialDef(serialDefM);
-  
-};
+});
 
 // Actors
-class Actor extends SpatialEntity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()), 
-    r: { sync: C.sync.delta,
-      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.bound.r
-    },
-    maxHealth: { sync: C.sync.delta,
-      change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
-      serial: (inst) => inst.maxHealth
-    },
-    health: { sync: C.sync.delta,
-      change: (inst, health2) => { inst.health = health2 },
-      serial: (inst) => inst.health
-    },
-    // client: { sync: C.sync.delta,
-    //   change: (inst, { act, client=inst.client }) => rel1To1.actorWithClient[act](inst, client),
-    //   serial: (inst) => inst.client ? inst.client.uid : null
-    // },
-    // formation: { sync: C.sync.delta,
-    //   change: (inst, { act, formation=inst.formation }) => relMTo1.formationWithActor[act](formation, inst),
-    //   serial: (inst) => inst.formation ? inst.formation.uid : null
-    // }
-  }}
-  constructor(r) {
-    super(new CircleBound(r));
+let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+  init: function(r) {
+    insp.SpatialEntity.init.call(this, new CircleBound(r));
     this.formation = null;
     this.strafeSpd = 30;
     this.aheadSpd = 65;
@@ -933,43 +911,36 @@ class Actor extends SpatialEntity {
     this.health = this.maxHealth;
     
     this.client = null;
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     if (this.health > this.maxHealth) this.health = this.maxHealth;
     if (this.health <= 0) return this.world.remEntity(this);
-    super.update(secs);
-  }
-  end() {
+    insp.SpatialEntity.update.call(this, secs);
+  },
+  end: function() {
     if (this.client) this.mod('client', { act: 'rem' });
     if (this.formation) this.mod('formation', { act: 'rem' });
-    super.end();
+    insp.SpatialEntity.end.call(this);
   }
-}
-class Unit extends Actor {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    // mainItem: { sync: C.sync.delta,
-    //   change: (inst, { act, mainItem=inst.mainItem }) => rel1To1.unitWithMainItem[act](inst, mainItem),
-    //   serial: (inst) => inst.mainItem ? inst.mainItem.uid : null
-    // },
-    visionAngle: { sync: C.sync.delta,
-      change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
-      serial: (inst) => inst.visionAngle
-    },
-    visionRange: { sync: C.sync.delta,
-      change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
-      serial: (inst) => inst.visionRange
-    },
-    visionScale: { sync: C.sync.delta,
-      change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
-      serial: (inst) => inst.visionScale
-    },
-    bodyVision: { sync: C.sync.delta,
-      change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
-      serial: (inst) => inst.bodyVision
-    }
-  }}
-  constructor(r, client) {
-    super(r, client);
+})});
+Actor.genSerialDef = () => ({
+  r: { sync: C.sync.delta,
+    change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.bound.r
+  },
+  maxHealth: { sync: C.sync.delta,
+    change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
+    serial: (inst) => inst.maxHealth
+  },
+  health: { sync: C.sync.delta,
+    change: (inst, health2) => { inst.health = health2 },
+    serial: (inst) => inst.health
+  }
+});
+
+let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Insp) => ({
+  init: function(r) {
+    insp.Actor.init.call(this, r);
     
     this.aheadSpd = 200;
     this.backSpd = 150;
@@ -994,8 +965,8 @@ class Unit extends Actor {
     this.mainItem = null;
     
     this.reveals = [];
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     // Get current interactions
     let [ mainAction, aiming, int3, int4 ] = this.control.i.split('').map(c => c === '1');
     
@@ -1027,26 +998,45 @@ class Unit extends Actor {
       else if (int3) this.mainItem.activate(secs, this, { use: 'reload' });
     }
     
-    super.update(secs);
-  }
-  end() {
+    insp.Actor.update.call(this, secs);
+  },
+  end: function() {
     // TODO: What to do about our mainItem? Just remove it?
     if (this.mainItem) this.world.remEntity(this.mainItem);
-    super.end();
+    insp.Actor.end.call(this);
   }
-}
-class Npc extends Actor {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-  }}
-  constructor(r, client) {
-    super(r, client);
+})});
+Unit.genSerialDef = () => ({
+  visionAngle: { sync: C.sync.delta,
+    change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
+    serial: (inst) => inst.visionAngle
+  },
+  visionRange: { sync: C.sync.delta,
+    change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
+    serial: (inst) => inst.visionRange
+  },
+  visionScale: { sync: C.sync.delta,
+    change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
+    serial: (inst) => inst.visionScale
+  },
+  bodyVision: { sync: C.sync.delta,
+    change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
+    serial: (inst) => inst.bodyVision
   }
-}
-class Zombie extends Npc {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-  }}
-  constructor(r) {
-    super(r, null);
+});
+
+let Npc = U.inspire({ name: 'Npc', inspiration: { Actor }, methods: (insp, Insp) => ({
+  init: function(r) {
+    insp.Actor.init.call(this, r);
+  }
+})});
+Npc.genSerialDef = () => ({
+});
+
+let Zombie = U.inspire({ name: 'Zombie', inspiration: { Npc }, methods: (insp, Insp) => ({
+  init: function(r) {
+    insp.Npc.init.call(this, r);
+    
     this.idea = null;
     
     this.rotSpd = Math.PI * 2;
@@ -1065,9 +1055,9 @@ class Zombie extends Npc {
     // this.milestoneTargetLoc = null;
     
     this.damageDealt = 0;
-  }
-  canCollide(entity) { return !(entity instanceof Zombie); }
-  update(secs) {
+  },
+  canCollide: function(entity) { return !(entity instanceof Zombie); },
+  update: function(secs) {
     
     let { entities } = this.world;
     
@@ -1208,10 +1198,10 @@ class Zombie extends Npc {
       
     }
     
-    super.update(secs);
+    insp.Npc.update.call(this, secs);
     
-  }
-  collideAll(collisions) {
+  },
+  collideAll: function(collisions) {
     
     let [ barrier, barrierAxis ] = [ null, null ];
     
@@ -1259,45 +1249,34 @@ class Zombie extends Npc {
     }
     
   }
-}
+})});
+Zombie.genSerialDef = () => ({
+});
 
 // Items
-class Item extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    name: { sync: C.sync.delta,
-      change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.name
-    }
-  }}
-  constructor(name) {
-    super();
+let Item = U.inspire({ name: 'Item', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(name) {
+    insp.Entity.init.call(this);
     this.name = name;
     this.unit = null;
-  }
-  start() {}
-  update(secs) { throw new Error('not implemented'); }
-  end() {}
-  activate(secs, unit, { use='main' }) {
+  },
+  start: function() {},
+  update: function(secs) { throw new Error('not implemented'); },
+  end: function() {},
+  activate: function(secs, unit, { use='main' }) {
     throw new Error('not implemented');
   }
-}
-class Gun extends Item {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    shotsInClip: { sync: C.sync.delta,
-      change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.shotsInClip
-    },
-    shotsFired: { sync: C.sync.delta,
-      change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
-      serial: (inst) => inst.shotsFired
-    },
-    reloadDelaySecs: { sync: C.sync.delta,
-      change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.reloadDelaySecs
-    }
-  }}
-  constructor(name, makeBullet=null) {
-    super(name);
+})});
+Item.genSerialDef = () => ({
+  name: { sync: C.sync.delta,
+    change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.name
+  }
+});
+
+let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) => ({
+  init: function(name, makeBullet=null) {
+    insp.Item.init.call(this, name);
     this.makeBullet = makeBullet;
     this.recoilAng = (Math.PI * 2) / 80;
     this.shootDelaySecs = 0.14;
@@ -1306,11 +1285,8 @@ class Gun extends Item {
     this.shotsFired = 0;
     this.reloadDelaySecs = 2;
     this.reloadCooldownSecs = 0;
-  }
-  dynamicValList() {
-    return [ ...super.dynamicValList(), this.shotsFired ];
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     if (this.shootCooldownSecs > 0) this.shootCooldownSecs -= secs;
     
     // If magazine empty, start reloading
@@ -1323,8 +1299,8 @@ class Gun extends Item {
       this.reloadCooldownSecs -= secs;
       if (this.reloadCooldownSecs <= 0) this.modF('shotsFired', v => 0);
     }
-  }
-  activate(secs, unit, { use='main', steadiness=0 }) {
+  },
+  activate: function(secs, unit, { use='main', steadiness=0 }) {
     if (use === 'main') {
       
       if (this.reloadCooldownSecs > 0) return;
@@ -1357,34 +1333,42 @@ class Gun extends Item {
       
     }
   }
-}
+})});
+Gun.genSerialDef = () => ({
+  shotsInClip: { sync: C.sync.delta,
+    change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.shotsInClip
+  },
+  shotsFired: { sync: C.sync.delta,
+    change: (inst, shotsFired2) => { inst.shotsFired = shotsFired2; },
+    serial: (inst) => inst.shotsFired
+  },
+  reloadDelaySecs: { sync: C.sync.delta,
+    change: (inst, reloadDelaySecs2) => { throw new Error('Can\'t modify this prop'); },
+    serial: (inst) => inst.reloadDelaySecs
+  }
+});
 
 // Formations
-class Formation extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-    // actors: { sync: C.sync.delta,
-    //   change: (inst, { act, actor }) => relMTo1.formationWithActor[act](inst, actor),
-    //   serial: (inst) => inst.actors.map(u => 1) // Just the keys are of interest
-    // }
-  }}
-  constructor() {
-    super();
+let Formation = U.inspire({ name: 'Formation', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function() {
+    insp.Entity.init.call(this);
     this.actors = {};
-  }
-  start() {}
-  update(secs) {
-  }
-  end() {
+  },
+  start: function() {},
+  update: function(secs) {
+  },
+  end: function() {
     for (let [ uid, actor ] of Object.entries(this.actors)) actor.mod('formation', { act: 'rem' });
   }
-}
+})});
+Formation.genSerialDef = () => ({
+});
 
 // Managers
-class ClientManager extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-  }}
-  constructor(formation) {
-    super();
+let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(formation) {
+    insp.Entity.init.call(this);
     this.formation = formation;
     
     let soktServer = net.createServer(sokt => {
@@ -1397,8 +1381,8 @@ class ClientManager extends Entity {
     this.ready = Promise.all([
       new Promise(r => soktServer.listen(config.soktPort, config.hostname, r))
     ]);
-  }
-  incomingClient(client) {
+  },
+  incomingClient: function(client) {
     client.sokt.on('working', () => {
       // Listen for client commands
       client.sokt.on('command', command => this.onClientCommand(client, command))
@@ -1425,8 +1409,8 @@ class ClientManager extends Entity {
       output(`SOKT ${client.ip} ERROR: ${err.stack}`);
       this.world.remClient(client);
     });
-  }
-  onClientCommand(client, command) {
+  },
+  onClientCommand: function(client, command) {
     
     let clientCommands = ({
       spawn: (client, command) => {
@@ -1455,22 +1439,24 @@ class ClientManager extends Entity {
     
     if (!clientCommands.hasOwnProperty(command.type)) return output(`Unexpected command: ${command.type}`);
     clientCommands[command.type](client, command);
-  }
-  start() {}
-  update(secs) {}
-  end() {}
-}
-class ZombieManager extends Entity {
-  static genSerialDef() { return { ...(super.serialDef || super.genSerialDef()),
-  }}
-  constructor(secsPerSpawn=30, formation) {
-    super();
+  },
+  start: function() {},
+  update: function(secs) {},
+  end: function() {}
+})});
+ClientManager.genSerialDef = () => ({
+  
+});
+
+let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, methods: (insp, Insp) => ({
+  init: function(secsPerSpawn=30, formation) {
+    insp.Entity.init.call(this);
     this.secsPerSpawn = secsPerSpawn;
     this.formation = formation;
     this.spawnCounter = 0;
-  }
-  start() {}
-  update(secs) {
+  },
+  start: function() {},
+  update: function(secs) {
     
     if (!this.secsPerSpawn) { this.spawnCounter = 0; return; }
     
@@ -1501,9 +1487,11 @@ class ZombieManager extends Entity {
       }
     }
     
-  }
-  end() {}
-}
+  },
+  end: function() {}
+})});
+ZombieManager.genSerialDef = () => ({
+});
 
 // Relations (TODO: C.sync constants only coincidentally work here, since `C.sync.none === 0 == false`)
 relate11('actorWithClient', C.sync.delta, Actor, 'client', Client, 'actor');
@@ -1511,11 +1499,11 @@ relate1M('actorInFormation', C.sync.delta, Actor, 'formation', Formation, 'actor
 relate11('unitWithMainItem', C.sync.delta, Unit, 'mainItem', Client, 'unit');
 
 // Enforcers
-class PhysicsEnforcer {
-  constructor(rootZone) {
+let PhysicsEnforcer = U.inspire({ name: 'PhysicsEnforcer', methods: (insp, Insp) => ({
+  init: function(rootZone) {
     this.rootZone = rootZone;
-  }
-  enforce(secs) {
+  },
+  enforce: function(secs) {
     let { entities } = this.world;
     
     let checks = {};
@@ -1573,61 +1561,61 @@ class PhysicsEnforcer {
       this.rootZone.placeEntity(light); // TODO: Could this happen in the serialDef?
     }
     
-  }
-}
+  },
+})});
 
 let ZONE_UID = 0;
-class Zone {
-  constructor(name) {
+let Zone = U.inspire({ name: 'Zone', methods: (insp, Insp) => ({
+  init: function(name) {
     this.name = name;
     this.uid = ZONE_UID++;
     this.parentZone = null;
     this.entities = {};
     this.jurisdictionCount = 0; // Count of ALL entities in this zone
-  }
-  addEntity(entity) {
+  },
+  addEntity: function(entity) {
     if (entity.zone) entity.zone.remEntity(entity);
     entity.zones[this.uid] = this;
     this.entities[entity.uid] = entity;
     this.childAdd(this, entity);
     return entity;
-  }
-  remEntity(entity) {
+  },
+  remEntity: function(entity) {
     delete entity.zones[this.uid];
     delete this.entities[entity.uid];
     this.childRem(this, entity);
     return entity;
-  }
-  childAdd(child, entity) { this.jurisdictionCount++; if (this.parentZone) this.parentZone.childAdd(this, entity); }
-  childRem(child, entity) { this.jurisdictionCount--; if (this.parentZone) this.parentZone.childRem(this, entity); }
-  getFlatJurisdiction() {
+  },
+  childAdd: function(child, entity) { this.jurisdictionCount++; if (this.parentZone) this.parentZone.childAdd(this, entity); },
+  childRem: function(child, entity) { this.jurisdictionCount--; if (this.parentZone) this.parentZone.childRem(this, entity); },
+  getFlatJurisdiction: function() {
     // Returns an Array of every Zone, including `this`, under our jurisdiction
     throw new Error('not implemented');
-  }
-  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
     // Returns `null` if outside this Zone, or the finest-grained Zones in this
     // Zone's jurisdiction which fully enclose the bound
     throw new Error('not implemented');
-  }
-  placeEntity(entity) {
+  },
+  placeEntity: function(entity) {
     let exitedZones = { ...entity.zones }; // Initially mark all zones as exited
     for (let zone of this.getBestZones(entity.bound)) {
       if (!zone.entities.hasOwnProperty(entity.uid)) zone.addEntity(entity);
       delete exitedZones[zone.uid]; // Unmark this zone as exited
     }
     for (let exitedZone of Object.values(exitedZones)) exitedZone.remEntity(entity);
-  }
-  unplaceEntity(entity) {
+  },
+  unplaceEntity: function(entity) {
     for (let exitedZone of Object.values(entity.zones)) exitedZone.remEntity(entity);
-  }
-}
-class SquareZone extends Zone {
-  constructor(name, offset, e) {
-    super(name);
+  },
+})});
+let SquareZone = U.inspire({ name: 'SquareZone', inspiration: { Zone }, methods: (insp, Insp) => ({
+  init: function(name, offset, e) {
+    insp.Zone.init.call(this, name);
     this.offset = offset.toCarte();
     this.he = e * 0.5; // "e" is "extent"; "he" is "half-extent"
-  }
-  containsRect({ x0, x1, y0, y1 }) {
+  },
+  containsRect: function({ x0, x1, y0, y1 }) {
     let rhw = (x1 - x0) * 0.5; // rect-half-width
     let rhh = (y1 - y0) * 0.5; // rect-half-height
     let rx = x0 + rhw; // rect center x
@@ -1650,39 +1638,35 @@ class SquareZone extends Zone {
       (y0 > y - he) &&
       (y1 < y + he);
     */
-  }
-  getFlatJurisdiction() {
+  },
+  getFlatJurisdiction: function() {
     return [ this ];
-  }
-  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
     return (thisDefinitelyContains || this.containsRect(aaBound)) ? [ this ] : [];
-  }
-}
-class TiledZone extends SquareZone {
-  constructor(name, offset, e, numTilesAcross=4, makeSquareZone=null) {
-    super(name, offset, e);
+  },
+})});
+let TiledZone = U.inspire({ name: 'TiledZone', inspiration: { SquareZone }, methods: (insp, Insp) => ({
+  init: function(name, offset, e, numTilesAcross=4, makeSquareZone=null) {
+    insp.SquareZone.init.call(this, name, offset, e);
     this.numTilesAcross = numTilesAcross;
     this.tileW = (this.he * 2) / this.numTilesAcross;
     this.invTileW = 1 / this.tileW;
     this.tiles = {}; // List of individual tiles
     this.tileExts = {}; // List of rectangular selections of tiles
     this.makeSquareZone = makeSquareZone || ((name, off, e) => new SquareZone(name, off, e));
-  }
-  xyToTileCoords(x, y) {
+  },
+  xyToTileCoords: function(x, y) {
     return [
       Math.floor((x - (this.offset.xx() - this.he)) * this.invTileW),
       Math.floor((y - (this.offset.yy() - this.he)) * this.invTileW)
     ];
-  }
-  getFlatJurisdiction() {
-    return super.getFlatJurisdiction().concat(...Object.values(this.tiles).map(t => t.getFlatJurisdiction()));
-    
-    // return [
-    //   ...super.getFlatJurisdiction(),
-    //   ...Object.values(this.tiles).map(t => t.getFlatJurisdiction())
-    // ];
-  }
-  getBestZones(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+  },
+  getFlatJurisdiction: function() {
+    let supJurisdiction = insp.SquareZone.getFlatJurisdiction.call(this);
+    return supJurisdiction.concat(...Object.values(this.tiles).map(t => t.getFlatJurisdiction()));
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
     let { x0, y0, x1, y1 } = aaBound;
     let [ cx1, cy1 ] = this.xyToTileCoords(x0, y0);
     let [ cx2, cy2 ] = this.xyToTileCoords(x1, y1);
@@ -1705,17 +1689,17 @@ class TiledZone extends SquareZone {
     }}
     
     return [].concat(...childZones);
-  }
-  childRem(child, entity) {
+  },
+  childRem: function(child, entity) {
     // If `child` is empty, and `child` is a direct tile child of ours, free it up!
     if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) { delete this.tiles[child.name]; /*console.log('REMOVED', child.name);*/ }
-    super.childRem(child, entity);
-  }
-}
+    insp.SquareZone.childRem.call(this, child, entity);
+  },
+})});
 
-class ZombWorld extends World {
-  constructor({ framesPerSec=60, rootZone=null }={}) { // TODO: 60fps isn't a bit ambitious?
-    super();
+let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: (insp, Insp) => ({
+  init: function({ framesPerSec=60, rootZone=null }={}) { // TODO: 60fps isn't a bit ambitious?
+    insp.World.init.call(this);
     this.nextUid = 0;
     this.rootZone = rootZone;
     this.enforcers = [];
@@ -1734,14 +1718,14 @@ class ZombWorld extends World {
       process.stdout.write(`\rProcessed in ${Math.round(smoothMs.update(new Date() - time))}ms / ${Math.round(this.millisPerFrame)}ms (${(Math.floor((new Date() - initialTime) * 0.01) / 10).toFixed(1)}s) ${' '.repeat(10)}\r`);
     });
     
-  }
-  startUpdateInterval() {
+  },
+  startUpdateInterval: function() {
     this.updateInterval.start(this.millisPerFrame);
-  }
-  stopUpdateInterval() {
+  },
+  stopUpdateInterval: function() {
     this.updateInterval.stop();
-  }
-  update(secs) {
+  },
+  update: function(secs) {
     this.entities.forEach(ent => ent.update(secs));
     this.enforcers.forEach(enf => enf.enforce(secs));
     
@@ -1766,16 +1750,16 @@ class ZombWorld extends World {
     
     // Mark all clients as initialized
     this.uninitializedClients = {};
-  }
-  addEnforcer(enf) {
+  },
+  addEnforcer: function(enf) {
     this.enforcers.push(enf);
     enf.world = this;
     return enf;
-  }
-  getNextUid() {
+  },
+  getNextUid: function() {
     return this.nextUid++;
-  }
-}
+  },
+})});
 
 let secsPerZombieSpawn = 1000;
 (async () => {
@@ -1810,12 +1794,12 @@ let secsPerZombieSpawn = 1000;
   world.addEntity(new SiloStructure(150, new CarteXY(0, +600), U.ROT_U));
   
   // Test units
-  let testUnit1 = world.addEntity(new Unit(8, null));
+  let testUnit1 = world.addEntity(new Unit(8));
   testUnit1.bound.loc = new CarteXY(-130, +445);
   testUnit1.bound.rot = U.ROT_CCW1 / 2;
   testUnit1.mod('formation', { act: 'put', formation: testFormation });
   
-  let testUnit2 = world.addEntity(new Unit(8, null));
+  let testUnit2 = world.addEntity(new Unit(8));
   testUnit2.bound.loc = new CarteXY(+130, +445);
   testUnit2.bound.rot = U.ROT_CW1 / 2;
   testUnit2.mod('formation', { act: 'put', formation: testFormation });
