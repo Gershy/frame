@@ -11,7 +11,38 @@ let dom = {
   div: () => document.createElement('div')
 };
 
-let ClientEntity = U.inspire({ name: 'ClientEntity', inspiration: { Entity }, methods: (insp, Insp) => ({
+let RendersToDom = U.inspire({ name: 'RendersToDom', methods: (insp, Insp) => ({
+  init: function() {
+    this.domElem = null;
+  },
+  getContainer: function() { throw new Error('not implemented'); },
+  getRemovalDelay: function() { return 0; },
+  genElem: function() { throw new Error('not implemented'); },
+  start: function() {
+    this.domElem = this.genElem();
+    this.domElem.classList.add('rendered');
+    this.getContainer().appendChild(this.domElem);
+  },
+  end: function() {
+    let delay = this.getRemovalDelay();
+    if (delay) {
+      let domElem = this.domElem;
+      this.domElem = null;
+      domElem.classList.add('removed');
+      setTimeout(() => this.getContainer().removeChild(domElem), delay)
+    } else {
+      this.getContainer().removeChild(this.domElem);
+      this.domElem = null;
+    }
+  }
+})});
+let RendersToPixels = U.inspire({ name: 'RendersToPixels', methods: (insp, Insp) => ({
+  init: function() {
+    
+  }
+})});
+
+let ClientEntity = U.inspire({ name: 'ClientEntity', insps: { Entity }, methods: (insp, Insp) => ({
   init: function(world, uid=null, data={}) {
     insp.Entity.init.call(this);
     this.world = world;
@@ -19,7 +50,7 @@ let ClientEntity = U.inspire({ name: 'ClientEntity', inspiration: { Entity }, me
     this.data = data;
   }
 })});
-let Client = U.inspire({ name: 'Client', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let Client = U.inspire({ name: 'Client', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
   },
@@ -31,12 +62,12 @@ let Client = U.inspire({ name: 'Client', inspiration: { ClientEntity }, methods:
   }
 })});
 
-let LocalEntity = U.inspire({ name: 'LocalEntity', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let LocalEntity = U.inspire({ name: 'LocalEntity', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world=null) {
     insp.ClientEntity.init.call(this, world, null, null);
   }
 })});
-let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: (insp, Insp) => ({
+let Camera = U.inspire({ name: 'Camera', insps: { LocalEntity }, methods: (insp, Insp) => ({
   init: function(world) {
     insp.LocalEntity.init.call(this, world);
     
@@ -55,17 +86,18 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
   },
   update: function() {
     
+    if (!this.running) return;
+    
+    let fd = this.follow ? this.follow.data : { rot: 0, loc: [ 0, 0 ] };
+    
     // Need to be running and following
     if (!this.running) return;
     if (!this.follow) return;
-    
-    this.follow.updateOwned();
     
     // Get current client-side actions
     let [ folShooting, folAiming, folInt3, folInt4 ] = this.world.input.i.split('').map(c => c === '1');
     
     // Update smoothed values to approximately sync with css transitions
-    let fd = this.follow.data;
     this.smoothRot.change(fd.rot);
     this.smoothX.change(fd.loc[0]);
     this.smoothY.change(fd.loc[1]);
@@ -75,7 +107,7 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
     let [ folAhd, folRot, folX, folY, folScl ] = [ this.smoothAhd, this.smoothRot, this.smoothX, this.smoothY, this.smoothScl ].map(v => v.choppy());
     
     // Apply css transforms to each world element
-    [this.world.elems.world1, this.world.elems.world2].forEach(e => {
+    [ this.world.elems.world1, this.world.elems.world2 ].forEach(e => {
       e.style.transform = `translate(0px, ${folAhd}px) rotate(${-folRot}rad) scale(${folScl}, ${folScl}) translate(${-folX}px, ${folY}px)`;
     });
     
@@ -84,6 +116,12 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
     let g = pixels.graphics;
     let canvasElem = pixels.elem;
     let [ w, h, hw, hh ] = [ canvasElem.width, canvasElem.height, canvasElem.width >> 1, canvasElem.height >> 1 ];
+    
+    if (!this.follow) {
+      // If not following reveal everything and end
+      g.rect(0, 0, w, h, { globalCompositeOperation: 'destination-out', fillStyle: 'rgba(0, 0, 0, 1)' });
+      return;
+    }
     
     g.rect(0, 0, w, h, { fillStyle: 'rgba(0, 0, 0, 1)' });
     g.frame(() => {
@@ -164,7 +202,6 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
                     g.arcTo(-ax, ay, 0, 0, ax, ay, false);      // Circle around unit
                     g.lineTo(cx1, cy1);                         // Right edge of vision cone
                     g.arcTo(lx, ly, 0, 0, -lx, ly, false);
-                    //g.curveTo(-cx1, cy1, cx2, cy2, -cx2, cy2);  // Curved periphery of vision cone (shape is implicitly closed)
                   }
                 });
                 
@@ -180,12 +217,14 @@ let Camera = U.inspire({ name: 'Camera', inspiration: { LocalEntity }, methods: 
       
     });
     
+    this.follow.updateOwned();
+    
   },
   end: function() {
     this.running = false;
   }
 })});
-let SpawnScreen = U.inspire({ name: 'SpawnScreen', inspiration: { LocalEntity }, methods: (insp, Insp) => ({
+let SpawnScreen = U.inspire({ name: 'SpawnScreen', insps: { LocalEntity }, methods: (insp, Insp) => ({
   init: function(world, clickedSpawn=()=>{}) {
     insp.LocalEntity.init.call(this, world);
     this.clickedSpawn = clickedSpawn;
@@ -211,7 +250,71 @@ let SpawnScreen = U.inspire({ name: 'SpawnScreen', inspiration: { LocalEntity },
   }
 })});
 
-let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let Road = U.inspire({ name: 'Road', insps: { ClientEntity, RendersToDom }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+    insp.RendersToDom.init.call(this);
+  },
+  getContainer: function() { return this.world.elems.world1; },
+  genElem: function() { let elem = dom.div(); elem.classList.add('road'); return elem; },
+  start: function() {
+    insp.RendersToDom.start.call(this);
+    let { width, points } = this.data;
+    
+    for (let i = 1; i < points.length; i++) {
+      
+      let [ x1, y1 ] = points[i - 1];
+      let [ x2, y2 ] = points[i];
+      
+      let segElem = dom.div();
+      segElem.classList.add('segment');
+      this.domElem.appendChild(segElem);
+      
+      let dx = x2 - x1;
+      let dy = y2 - y1;
+      let len = Math.sqrt(dx * dx + dy * dy);
+      
+      let mx = (x2 + x1) * 0.5;
+      let my = (y2 + y1) * 0.5;
+      
+      let w = Math.round(width);
+      let h = Math.round(len + width);
+      
+      segElem.style.width = `${w}px`;
+      segElem.style.height = `${h}px`; // Add half the width on both ends
+      segElem.style.marginLeft = `${-(w >> 1)}px`;
+      segElem.style.marginTop = `${-(h >> 1)}px`;
+      segElem.style.borderRadius = `${w >> 1}px`;
+      segElem.style.transform = `translate(${mx}px, ${-my}px) rotate(${Math.atan2(dx, dy)}rad)`;
+      
+    }
+  },
+  update: function() {},
+  end: function() { insp.RendersToDom.end.call(this); }
+})});
+let FloorPlan = U.inspire({ name: 'FloorPlan', insps: { ClientEntity, RendersToDom }, methods: (insp, Insp) => ({
+  init: function(world, uid, data) {
+    insp.ClientEntity.init.call(this, world, uid, data);
+    insp.RendersToDom.init.call(this);
+  },
+  getContainer: function() { return this.world.elems.world1; },
+  genElem: function() { let elem = dom.div(); elem.classList.add('floorPlan'); return elem; },
+  start: function() {
+    insp.RendersToDom.start.call(this); // Initializes `this.domElem`
+    let [ x, y ] = this.data.loc;
+    let [ w, h ] = [ Math.round(this.data.w), Math.round(this.data.h) ];
+    let style = this.domElem.style;
+    style.transform = `translate(${x}px, ${-y}px) rotate(${this.data.rot}rad)`;
+    style.width = `${w}px`;
+    style.height = `${h}px`;
+    style.marginLeft = `${-(w >> 1)}px`;
+    style.marginTop = `${-(h >> 1)}px`;
+  },
+  update: function() {},
+  end: function() { insp.RendersToDom.end.call(this); }
+})});
+
+let SpatialEntity = U.inspire({ name: 'SpatialEntity', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
     this.elem = null;
@@ -228,8 +331,6 @@ let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { ClientEnti
   start: function() {
     this.elem = this.genElem();
     this.update(0);
-    // let [ x, y ] = this.data.loc;
-    // this.elem.style.transform = `translate(${x}px, ${-y}px) rotate(${this.data.rot}rad)`;
     this.getWorld().appendChild(this.elem);
   },
   update: function(secs) {
@@ -243,7 +344,7 @@ let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { ClientEnti
     setTimeout(() => this.getWorld().removeChild(elem), 150);
   }
 })});
-let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let RectStructure = U.inspire({ name: 'RectStructure', insps: { SpatialEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.SpatialEntity.init.call(this, world, uid, data);
   },
@@ -259,7 +360,7 @@ let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEnt
     return ret;
   }
 })});
-let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let SiloStructure = U.inspire({ name: 'SiloStructure', insps: { SpatialEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.SpatialEntity.init.call(this, world, uid, data);
   },
@@ -276,7 +377,7 @@ let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEnt
     return ret;
   }
 })});
-let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let Actor = U.inspire({ name: 'Actor', insps: { SpatialEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.SpatialEntity.init.call(this, world, uid, data);
   },
@@ -293,7 +394,7 @@ let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: 
     return ret;
   }
 })});
-let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Insp) => ({
+let Unit = U.inspire({ name: 'Unit', insps: { Actor }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.Actor.init.call(this, world, uid, data);
     this.mainItem = data.mainItem;
@@ -372,7 +473,7 @@ let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Ins
     this.metaElem = null;
   }
 })});
-let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let Bullet = U.inspire({ name: 'Bullet', insps: { SpatialEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.SpatialEntity.init.call(this, world, uid, data);
     this.totalTime = 0;
@@ -399,7 +500,7 @@ let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods
   }
 })});
 
-let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp, Insp) => ({
+let Zombie = U.inspire({ name: 'Zombie', insps: { Actor }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.Actor.init.call(this, world, uid, data);
   },
@@ -410,7 +511,7 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp,
   }
 })});
 
-let Item = U.inspire({ name: 'Item', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let Item = U.inspire({ name: 'Item', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
     this.elem = null;
@@ -446,7 +547,7 @@ let Item = U.inspire({ name: 'Item', inspiration: { ClientEntity }, methods: (in
     this.owned = false;
   }
 })});
-let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) => ({
+let Gun = U.inspire({ name: 'Gun', insps: { Item }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.Item.init.call(this, world, uid, data);
     this.bulletsRemainingElem = null;
@@ -497,7 +598,7 @@ let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) 
   }
 })});
 
-let Formation = U.inspire({ name: 'Formation', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let Formation = U.inspire({ name: 'Formation', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
   },
@@ -518,7 +619,7 @@ let Formation = U.inspire({ name: 'Formation', inspiration: { ClientEntity }, me
   },
   end: function() {},
 })});
-let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let ClientManager = U.inspire({ name: 'ClientManager', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
   },
@@ -526,7 +627,7 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { ClientEnti
   update: function(secs) {},
   end: function() {}
 })});
-let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { ClientEntity }, methods: (insp, Insp) => ({
+let ZombieManager = U.inspire({ name: 'ZombieManager', insps: { ClientEntity }, methods: (insp, Insp) => ({
   init: function(world, uid, data) {
     insp.ClientEntity.init.call(this, world, uid, data);
   },
@@ -606,7 +707,7 @@ let Pixels = U.inspire({ name: 'Pixels', methods: (insp, Insp) => ({
     this.elem.classList.add('sized');
   },
 })});
-let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: (insp, Insp) => ({
+let ZombWorld = U.inspire({ name: 'ZombWorld', insps: { World }, methods: (insp, Insp) => ({
   init: function({ remote, elems={}, pixels={}, entityClasses={}, input, ratioElem=dom.id('ratio'), hudElem=dom.id('meta') }) {
     insp.World.init.call(this);
     
@@ -798,14 +899,19 @@ let port = parseInt(window.location.port || 80);
       meta: dom.id('meta'),
       world1: dom.id('world1'),
       world2: dom.id('world2'),
-      vision: dom.id('vision')
+      vision: dom.id('vision'),
+      pixels: dom.id('pixels')
     },
     pixels: {
-      vision: new Pixels(document.getElementById('vision'))
+      vision: new Pixels(dom.id('vision')),
+      world: new Pixels(dom.id('pixels'))
     },
     entityClasses: {
-      Client,
-      ClientManager, RectStructure, SiloStructure, Unit, Bullet, Formation,
+      Client, ClientManager,
+      RectStructure, SiloStructure,
+      Road, FloorPlan,
+      Unit, Bullet,
+      Formation,
       Gun,
       ZombieManager, Zombie
     },

@@ -4,7 +4,36 @@ let crypto = require('crypto');
 let fs = require('fs-extra');
 let path = require('path');
 
+// ==== UTIL
 require('./common.js');
+
+let isShallowArr = arr => {
+  for (let i = 0; i < arr.length; i++) {
+    if (U.isType(arr[i], Array) || U.isType(arr[i], Object)) return false;
+  }
+  return true;
+};
+let vn = (v, rad=3) => U.isType(v, Number) ? v.toFixed(rad) : U.typeOf(v);
+let pArr = (arr, rad=3, spcs=0) => {
+  
+  let val = [];
+  let spcStr = ' '.repeat(spcs);
+  
+  if (!U.isType(arr, Array)) {
+    val.push(`${spcStr}${vn(arr, rad)}`);
+  } else if (arr.length === 0) {
+    val.push(`${spcStr}[]`);
+  } else if (isShallowArr(arr)) {
+    val.push(`${spcStr}[ ${arr.map(v => vn(v, rad)).join(', ')} ]`);
+  } else {
+    val.push(`${spcStr}[`);
+    for (let i = 0; i < arr.length; i++) val.push(pArr(arr[i], rad, spcs + 2) + (i === arr.length - 1 ? '' : ','));
+    val.push(`${spcStr}]`); 
+  }
+  
+  return val.join('\n');
+};
+
 U.gain({
   validNum: n => !isNaN(n) && n !== Infinity && n !== -Infinity,
   ROT_U: 0,
@@ -18,15 +47,293 @@ U.gain({
   ROT_CCW1: Math.PI / -2,
   ROT_CCW2: Math.PI,
   ROT_FULL: Math.PI * 2,
-  ROT_HALF: Math.PI
+  ROT_HALF: Math.PI,
+  rand: () => Math.random(),
+  randInt: (min=0, max) => min + (Math.floor(Math.random() * (max - min))),
+  randCen: () => Math.random() - 0.5,
+  randPrt: amt => amt + Math.random() * (1 - amt),
+  randBln: () => Math.random() > 0.5,
+  randRot: () => U.randCen * U.ROT_FULL,
+  randElem: arr => arr.length ? arr[Math.floor(Math.random() * arr.length)] : null
 });
-
 let config = {
   hostname: 'localhost', // '192.168.1.144', // 'localhost',
   httpPort: 80,
   soktPort: 81
 };
-let UID = 0;
+let RoundFixedSet = U.inspire({ name: 'RoundFixedSet', methods: (insp, Insp) => ({
+  init: function(size) {
+    this.size = size;
+    let start = { val: null, next: null };
+    let ptr = start;
+    for (let i = 1; i < size; i++) {
+      ptr.next = { val: null, next: null };
+      ptr = ptr.next;
+    }
+    ptr.next = start;
+    this.ptr = ptr;
+  },
+  add: function(val) {
+    this.ptr = this.ptr.next;
+    this.ptr.val = val;
+  },
+  upd: function(f) {
+    this.ptr.val = f(this.ptr.val);
+    let ptr = this.ptr.next;
+    while (ptr !== this.ptr) {
+      ptr.val = f(ptr.val);
+      ptr = ptr.next;
+    }
+  }
+})});
+let Brain = U.inspire({ name: 'Brain', methods: (insp, Insp) => ({
+  $sigmoid0: v => 1 / (1 + Math.exp(-v)),
+  $sigmoid1: (v, v0=Brain.sigmoid0(v)) => v0 * (1 - v0),
+  $meanSqr0: (src, trg) => { let d = src - trg; return d * d; },
+  $meanSqr1: (src, trg) => src - trg,
+  init: function(layers, initB=Math.random, initW=Math.random) {
+    
+    /*
+    
+    With `layers=[4, 5, 3]`:
+    
+    this.layers = [
+      { biases: [ 0, 0, 0, 0 ],
+        weights: []  // The `weights` array for the 1st layer is always empty!
+      },
+      { biases: [ 0, 0, 0, 0, 0 ],
+        weights: [
+          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 1st node of layer 2
+          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 2nd node of layer 2
+          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 3rd node of layer 2
+          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 4th node of layer 2
+          0, 0, 0, 0  // For nodes in the 1st layer 1-4, values connecting them to the 5th node of layer 2
+        ]
+      },
+      { biases: [ 0, 0, 0 ],
+        weights: [
+          0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0
+        ]
+      }
+    ];
+    */
+    
+    this.layers = new Array(layers.length);
+    for (let li = 0, ln = layers.length; li < ln; li++) {
+      
+      let numNow = layers[li];
+      let numPrv = li ? layers[li - 1] : 0;
+      
+      let layer = { length: numNow, biases: [], weights: [] };
+      this.layers[li] = layer;
+      
+      // if (!li) continue;
+      
+      for (let n = 0; n < numNow; n++) {
+        // Looking at node ${n} in layer ${li}...
+        
+        // Define a bias for this node...
+        layer.biases.push(initB());
+        
+        // Define a weight for each node in the next layer
+        for (let m = 0; m < numPrv; m++) layer.weights.push(initW());
+      }
+      
+    }
+    this.size = this.layers.length;
+    
+  },
+  opinion: function(inp, smoothing0=Brain.sigmoid0) {
+    
+    // Returns two lists:
+    // 1) The list of activation values for each layer
+    // 2) The list of activation values before `smoothing0` is applied for each layer
+    
+    if (inp.length !== this.layers[0].biases.length) throw new Error(`Incorrect number of inputs!`);
+    
+    let result = null;
+    let resultsZ = new Array(this.size);
+    let resultsX = new Array(this.size);
+    for (let lInd = 0; lInd < this.size; lInd++) {
+      
+      let [ layerP, layer0 ] = [ this.layers[lInd - 1], this.layers[lInd] ];
+      
+      if (!result) {
+        
+        result = inp;
+        
+      } else {
+        
+        let [ sP, s0 ] = [ layerP.length, layer0.length ];
+        let fwdWeights = layer0.weights;
+        let fwdBiases = layer0.biases;
+        let resultP = result;
+        
+        result = new Array(s0);
+        for (let ind0 = 0; ind0 < s0; ind0++) {
+          let sum = 0;
+          for (let indP = 0; indP < sP; indP++) sum += fwdWeights[indP + ind0 * sP] * resultP[indP];
+          result[ind0] = sum + fwdBiases[ind0];
+        }
+        
+      }
+      
+      // Collect unsmoothed, then smooth, then collect smoothed
+      resultsZ[lInd] = result;
+      if (lInd) result = result.map(smoothing0); // TODO: The `if` prolly isn't necessary
+      resultsX[lInd] = result;
+      
+    }
+    
+    return [ resultsZ, resultsX, result ];
+    
+  },
+  calcGradient: function([ zs, xs ], correct, cost0=Brain.meanSqr0, cost1=Brain.meanSqr1, smoothing0=Brain.sigmoid0, smoothing1=Brain.sigmoid1) {
+    
+    // `errZ` is a list of pre-smoothing activations
+    // `errX` is a list of activations
+    let s = this.size;
+    
+    let biasGrads = new Array(this.size);
+    let weightGrads = new Array(this.size);
+    let backPass = null;
+    for (let lInd = this.size - 1; lInd >= 1; lInd--) {
+      
+      // Get references to the layer size, unsmoothed layer error, and layer error
+      // Do this for the previous layer (P), current layer (0), and next layer (N)
+      let [ sP, s0, sN ] = this.layers.slice(lInd - 1, lInd + 2).map(l => l.length);
+      let [ zP, z0, zN ] = zs.slice(lInd - 1, lInd + 2);
+      let [ xP, x0, xN ] = xs.slice(lInd - 1, lInd + 2);
+      
+      // Now calculate the error gradient for this layer (`backPass`)...
+      
+      if (!backPass) {
+        
+        // Calculate the error gradient of the final activation
+        backPass = x0.map((v, i) => cost1(v, correct[i]) * smoothing1(z0[i], v));
+        
+      } else {
+        
+        // Move the error gradient `backPass` back to the previous layer
+        let fwdActivation = backPass;                   // sN x 1
+        let fwdWeights = this.layers[lInd + 1].weights; // s0 x sN
+        // let fwdBiases = this.layers[lInd + 1].biases;   // s0 x 1
+        
+        // For each node in the current layer calculate the weighted error based on the next layer's error
+        backPass = new Array(s0);
+        for (let ind0 = 0; ind0 < s0; ind0++) {
+          let sum = 0;
+          for (let indN = 0; indN < sN; indN++) sum += fwdWeights[ind0 + indN * s0] * fwdActivation[indN];
+          backPass[ind0] = sum * smoothing1(z0[ind0], x0[ind0]); // Unapply the smoothing function
+        }
+        
+      }
+      
+      // `backPass` has stepped back from `lInd + 1` and is the error gradient at layer `lInd`
+      
+      // `backPass` is already exactly the bias gradient!
+      biasGrads[lInd] = backPass;
+      
+      // The weight gradient ought to be sP x s0
+      // `backPass` -> s0 x 1
+      // `xP`       -> sP x 1
+      let weightGrad = new Array(sP * s0);
+      for (let indP = 0; indP < sP; indP++) { for (let ind0 = 0; ind0 < s0; ind0++) {
+        weightGrad[indP + ind0 * sP] = xP[indP] * backPass[ind0];
+      }}
+      weightGrads[lInd] = weightGrad;
+      
+    }
+    
+    return [ biasGrads, weightGrads ];
+    
+  },
+  study: function(trainingData, batchSize, amt=3) {
+    
+    amt /= batchSize;
+    
+    for (let i = 0; i < trainingData.length; i += batchSize) {
+      
+      // `biasGrads` and `weightGrads` will represent the average gradient for
+      // `batchSize` training examples
+      
+      let [ biasGrads, weightGrads ] = [ null, null ];
+      let num = Math.min(trainingData.length - i, batchSize);
+      for (let j = i; j < i + num; j++) {
+        
+        let [ src, trg ] = trainingData[j];
+        
+        [ bGrads, wGrads ] = this.calcGradient(this.opinion(src), trg);
+        
+        if (!biasGrads) {
+          
+          [ biasGrads, weightGrads ] = [ bGrads, wGrads ];
+          
+        } else {
+          
+          for (let lInd = 1; lInd < this.layers.length; lInd++) {
+            // Get biases+weights, and fresh biases+weights, for the current layer index
+            let [ lb, lw, lbd, lwd ] = [ biasGrads[lInd], weightGrads[lInd], bGrads[lInd], wGrads[lInd] ];
+            for (let bInd = 0; bInd < lb.length; bInd++) lb[bInd] += lbd[bInd];
+            for (let wInd = 0; wInd < lw.length; wInd++) lw[wInd] += lwd[wInd];
+          }
+          
+          
+          // biasGrads = biasGrads.map((bg, lInd) => bg.map((bv, bInd) => bv + bGrads0[lInd][bInd]));
+          // weightGrads = weightGrads.map((wg, lInd) => wg.map((wv, wInd) => wv + wGrads0[lInd][wInd]));
+        }
+        
+      }
+      
+      // We've averaged out bias+weight gradients; now apply them
+      this.refine([ biasGrads, weightGrads ], amt);
+      
+    }
+    
+  },
+  refine: function([ biasGrads, weightGrads ], amt) {
+    
+    for (let lInd = 1; lInd < this.size; lInd++) {
+      
+      let { biases, weights } = this.layers[lInd];
+      let [ bGrad, wGrad ] = [ biasGrads[lInd], weightGrads[lInd] ];
+      
+      for (let bInd = 0; bInd < biases.length; bInd++) biases[bInd] -= amt * bGrad[bInd];
+      for (let wInd = 0; wInd < weights.length; wInd++) weights[wInd] -= amt * wGrad[wInd];
+      
+    }
+    
+  }
+})});
+
+let doBrainTest = false;
+if (doBrainTest) {
+  console.log('BRAIN TEST...');
+  console.log('================================================');
+
+  let brain = new Brain([ 2, 5, 1 ]);
+
+  let egs = [];
+  for (let i = 0; i < 1000; i++) {
+    let v1 = Math.random() > 0.5 ? 0 : 1;
+    let v2 = Math.random() > 0.5 ? 0 : 1;
+    egs.push([ [ v1, v2 ], [ v1 && v2 ? 1 : 0 ] ]);
+  }
+
+  brain.study(egs, 1, 1);
+
+  for (let i = 0; i < 10; i++) {
+    let v1 = Math.random() > 0.5 ? 0 : 1;
+    let v2 = Math.random() > 0.5 ? 0 : 1;
+    let [ zs, xs, result ] = brain.opinion([ v1, v2 ]);
+    console.log(`${v1.toFixed(3)} && ${v2.toFixed(3)}: ${result}`);
+  }
+  
+  return process.exit(0);
+}
+
 
 // ==== 2D MATH
 let XY = U.inspire({ name: 'XY', methods: (insp, Insp) => ({
@@ -109,7 +416,7 @@ let PolarXY = U.inspire({ name: 'PolarXY', methods: (insp, Insp) => ({
   proj:     function(pt)  { return this.toCarte().proj(pt); },
   projLen:  function(pt)  { return this.toCarte().projLen(pt); },
   ang:      function()    { return this.r; },
-  angTo:    function(pt)  { let d = pt.ang() - this.ang(); while(d > U.ROT_HALF) d -= U.ROT_FULL; while(d < -U.ROT_HALF) d += U.ROT_FULL; return d; /*return pt.ang() - this.ang();*/ },
+  angTo:    function(pt)  { let d = pt.ang() - this.ang(); while(d > U.ROT_HALF) d -= U.ROT_FULL; while(d < -U.ROT_HALF) d += U.ROT_FULL; return d; },
   rot:      function(ang) { return new PolarXY(this.r + r, this.m); },
 })});
 XY.sum = (xys) => {
@@ -121,6 +428,11 @@ XY.sum = (xys) => {
   }
   return new CarteXY(x, y);
 };
+XY.orbit = (pt, pivot, ang) => {
+  let ang0 = pivot.angTo(pt);
+  return pivot.add(new PolarXY(ang0 + ang, pivot.dist(pt)));
+};
+XY.ORIGIN = new CarteXY(0, 0);
 
 // ==== GEN
 let makePistol = () => {
@@ -236,7 +548,7 @@ Bound.getPenetration = (b1, b2) => {
   return leastAxis ? [ leastAxis, leastPenAmt ] : null;
   
 };
-let ConvexPolygonBound = U.inspire({ name: 'ConvexPolygonBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+let ConvexPolygonBound = U.inspire({ name: 'ConvexPolygonBound', insps: { Bound }, methods: (insp, Insp) => ({
   init: function(vertsCW, angs=null) {
     insp.Bound.init.call(this);
     this.vertsCW = vertsCW;
@@ -296,7 +608,7 @@ let ConvexPolygonBound = U.inspire({ name: 'ConvexPolygonBound', inspiration: { 
     return this.vertsCW.map(v => v.rot(this.rot).add(this.loc));
   },
 })});
-let RectangleBound = U.inspire({ name: 'RectangleBound', inspiration: { ConvexPolygonBound }, methods: (insp, Insp) => ({
+let RectangleBound = U.inspire({ name: 'RectangleBound', insps: { ConvexPolygonBound }, methods: (insp, Insp) => ({
   init: function(w, h, hw=w*0.5, hh=h*0.5) {
     insp.ConvexPolygonBound.init.call(this, 
       [ new CarteXY(-hw, -hh), new CarteXY(hw, -hh), new CarteXY(hw, hh), new CarteXY(-hw, hh) ],
@@ -304,7 +616,7 @@ let RectangleBound = U.inspire({ name: 'RectangleBound', inspiration: { ConvexPo
     );
   },
 })});
-let CircleBound = U.inspire({ name: 'CircleBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+let CircleBound = U.inspire({ name: 'CircleBound', insps: { Bound }, methods: (insp, Insp) => ({
   init: function(r) {
     insp.Bound.init.call(this);
     this.r = r;
@@ -339,7 +651,7 @@ let CircleBound = U.inspire({ name: 'CircleBound', inspiration: { Bound }, metho
     return null;
   },
 })});
-let LineSegmentBound = U.inspire({ name: 'LineSegmentBound', inspiration: { Bound }, methods: (insp, Insp) => ({
+let LineSegmentBound = U.inspire({ name: 'LineSegmentBound', insps: { Bound }, methods: (insp, Insp) => ({
   init: function(length) {
     insp.Bound.init.call(this);
     this.length = length;
@@ -373,8 +685,142 @@ let LineSegmentBound = U.inspire({ name: 'LineSegmentBound', inspiration: { Boun
   },
 })});
 
+// ==== ZONE
+let Zone = U.inspire({ name: 'Zone', methods: (insp, Insp) => ({
+  $UID: 0,
+  
+  init: function(name) {
+    this.name = name;
+    this.uid = Zone.UID++;
+    this.parentZone = null;
+    this.entities = {};
+    this.jurisdictionCount = 0; // Count of ALL entities in this zone
+  },
+  addEntity: function(entity) {
+    if (entity.zone) entity.zone.remEntity(entity);
+    entity.zones[this.uid] = this;
+    this.entities[entity.uid] = entity;
+    this.childAdd(entity);
+    return entity;
+  },
+  remEntity: function(entity) {
+    delete entity.zones[this.uid];
+    delete this.entities[entity.uid];
+    this.childRem(entity);
+    return entity;
+  },
+  childAdd: function(entity, child=this) { this.jurisdictionCount++; if (this.parentZone) this.parentZone.childAdd(entity, child); },
+  childRem: function(entity, child=this) { this.jurisdictionCount--; if (this.parentZone) this.parentZone.childRem(entity, child); },
+  getFlatJurisdiction: function() {
+    // Returns an Array of every Zone, including `this`, under our jurisdiction
+    throw new Error('not implemented');
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+    // Returns `null` if outside this Zone, or the finest-grained Zones in this
+    // Zone's jurisdiction which fully enclose the bound
+    throw new Error('not implemented');
+  },
+  placeEntity: function(entity) {
+    let exitedZones = { ...entity.zones }; // Initially mark all zones as exited
+    for (let zone of this.getBestZones(entity.bound)) {
+      if (!zone.entities.hasOwnProperty(entity.uid)) zone.addEntity(entity);
+      delete exitedZones[zone.uid]; // Unmark this zone as exited
+    }
+    for (let exitedZone of Object.values(exitedZones)) exitedZone.remEntity(entity);
+  },
+  unplaceEntity: function(entity) {
+    for (let exitedZone of Object.values(entity.zones)) exitedZone.remEntity(entity);
+  },
+})});
+let SquareZone = U.inspire({ name: 'SquareZone', insps: { Zone }, methods: (insp, Insp) => ({
+  init: function(name, offset, e) {
+    insp.Zone.init.call(this, name);
+    this.offset = offset.toCarte();
+    this.he = e * 0.5; // "e" is "extent"; "he" is "half-extent"
+  },
+  containsRect: function({ x0, x1, y0, y1 }) {
+    let rhw = (x1 - x0) * 0.5; // rect-half-width
+    let rhh = (y1 - y0) * 0.5; // rect-half-height
+    let rx = x0 + rhw; // rect center x
+    let ry = y0 + rhh; // rect center y
+    
+    let { x, y } = this.offset; // Definitely a CarteXY
+    let he = this.he;
+    
+    let tw = rhw + he; // Total x clearance distance
+    let th = rhh + he; // Total y clearance distance
+    
+    return (Math.abs(rx - x) < tw) && (Math.abs(ry - y) < th);
+    
+  },
+  getFlatJurisdiction: function() {
+    return [ this ];
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+    return (thisDefinitelyContains || this.containsRect(aaBound)) ? [ this ] : [];
+  },
+})});
+let TiledZone = U.inspire({ name: 'TiledZone', insps: { SquareZone }, methods: (insp, Insp) => ({
+  init: function(name, offset, e, numTilesAcross=4, makeSquareZone=null) {
+    insp.SquareZone.init.call(this, name, offset, e);
+    this.numTilesAcross = numTilesAcross;
+    this.tileW = (this.he * 2) / this.numTilesAcross;
+    this.invTileW = 1 / this.tileW;
+    this.tiles = {}; // List of individual tiles
+    this.tileExts = {}; // List of rectangular selections of tiles
+    this.makeSquareZone = makeSquareZone || ((name, off, e) => new SquareZone(name, off, e));
+  },
+  xyToTileCoords: function(x, y) {
+    return [
+      Math.floor((x - (this.offset.xx() - this.he)) * this.invTileW),
+      Math.floor((y - (this.offset.yy() - this.he)) * this.invTileW)
+    ];
+  },
+  getFlatJurisdiction: function() {
+    let supJurisdiction = insp.SquareZone.getFlatJurisdiction.call(this);
+    return supJurisdiction.concat(...Object.values(this.tiles).map(t => t.getFlatJurisdiction()));
+  },
+  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
+    let { x0, y0, x1, y1 } = aaBound;
+    let [ cx1, cy1 ] = this.xyToTileCoords(x0, y0);
+    let [ cx2, cy2 ] = this.xyToTileCoords(x1, y1);
+    
+    // Bound the tile coords between 0 (inc) and `this.numTilesAcross` (exc)
+    if (cx1 < 0) cx1 = 0;
+    if (cy1 < 0) cy1 = 0;
+    if (cx2 >= this.numTilesAcross) cx2 = this.numTilesAcross - 1;
+    if (cy2 >= this.numTilesAcross) cy2 = this.numTilesAcross - 1;
+    
+    let childZones = [];
+    for (let x = cx1; x <= cx2; x++) { for (let y = cy1; y <= cy2; y++) {
+      let key = `${x},${y}`;
+      if (!this.tiles.has(key)) {
+        let tile = this.makeSquareZone(key, new CarteXY((cx1 + 0.5) * this.tileW, (cx2 + 0.5) * this.tileW), this.tileW);
+        this.tiles[key] = tile;
+        tile.parentZone = this;
+      }
+      childZones.push(this.tiles[key].getBestZones(bound, aaBound, true));
+    }}
+    
+    return [].concat(...childZones);
+  },
+  childRem: function(entity, child=this) {
+    // If `child` is empty, and `child` is a direct tile child of ours, free it up!
+    if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) delete this.tiles[child.name];
+    insp.SquareZone.childRem.call(this, entity, child);
+  },
+})});
+
 // ==== CLIENT
-let Client = U.inspire({ name: 'Client', inspiration: { Entity }, methods: (insp, Insp) => ({
+let Client = U.inspire({ name: 'Client', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    ip: { sync: C.sync.delta,
+      change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.ip,
+      actual: (inst) => inst.ip
+    }
+  }),
+  
   init: function(ip, sokt) {
     insp.Entity.init.call(this);
     this.ip = ip;
@@ -571,11 +1017,10 @@ let Client = U.inspire({ name: 'Client', inspiration: { Entity }, methods: (insp
     } catch(err) {
       output(`Error sending: ${err.message}`);
       output(`Type: ${command.type}`);
-      if (command.type === 'update') {
-        for (let key of [ 'add', 'rem', 'upd']) output(`${key}:`, command.update[key]);
-      }
+      if (command.type === 'update') for (let key of [ 'add', 'rem', 'upd']) output(`${key}:`, command.update[key]);
       return;
     }
+    
     let metaBuff = null;
     
     if (data.length < 126) {            // small-size
@@ -608,16 +1053,92 @@ let Client = U.inspire({ name: 'Client', inspiration: { Entity }, methods: (insp
     this.sokt.end();
   },
 })});
-Client.genSerialDef = () => ({
-  ip: { sync: C.sync.delta,
-    change: (inst, ip2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.ip,
-    actual: (inst) => inst.ip
-  }
-});
 
-// ==== PHYSICAL ENTITY
-let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { Entity }, methods: (insp, Insp) => ({
+// ==== DECALS
+let Decal = U.inspire({ name: 'Decal', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    loc: { sync: C.sync.delta,
+      change: (inst, loc) => { inst.loc = loc },
+      serial: (inst) => inst.loc.asCarte(),
+      actual: (inst) => inst.loc
+    },
+    rot: { sync: C.sync.delta,
+      change: (inst, rot) => { inst.rot = rot; },
+      serial: (inst) => inst.rot,
+      actual: (inst) => inst.rot
+    }
+  }),
+  
+  init: function(loc=new CarteXY(), rot=0) {
+    insp.Entity.init.call(this);
+    this.loc = loc;
+    this.rot = rot;
+  },
+  start: function() {},
+  update: function() {},
+  end: function() {}
+})});
+let Road = U.inspire({ name: 'Road', insps: { Decal }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    condition: { sync: C.sync.delta,
+      change: (inst, condition) => { inst.condition = condition; },
+      serial: (inst) => inst.condition,
+      actual: (inst) => inst.condition
+    },
+    width: { sync: C.sync.delta,
+      change: (inst, width) => { inst.width = width; },
+      serial: (inst) => inst.width,
+      actual: (inst) => inst.width
+    },
+    points: { sync: C.sync.delta,
+      change: (inst, points) => { inst.points = points; },
+      serial: (inst) => inst.points.map(p => p.asCarte()),
+      actual: (inst) => inst.points
+    }
+  }),
+  
+  init: function(width=10, points=[]) {
+    insp.Decal.init.call(this);
+    this.width = width;
+    this.points = points;
+  }
+})});
+let FloorPlan = U.inspire({ name: 'FloorPlan', insps: { Decal }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    w: { sync: C.sync.delta,
+      change: (inst, w) => { inst.w = w; },
+      serial: (inst) => inst.w,
+      actual: (inst) => inst.w
+    },
+    h: { sync: C.sync.delta,
+      change: (inst, h) => { inst.h = h; },
+      serial: (inst) => inst.h,
+      actual: (inst) => inst.h
+    }
+  }),
+  
+  init: function(w, h, loc, rot) {
+    insp.Decal.init.call(this, loc, rot);
+    this.w = w;
+    this.h = h;
+  }
+})});
+
+// ==== SPATIAL ENTITY
+let SpatialEntity = U.inspire({ name: 'SpatialEntity', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    rot: { sync: C.sync.delta,
+      change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
+      serial: (inst) => inst.bound.rot,
+      actual: (inst) => inst.bound.rot
+    },
+    loc: { sync: C.sync.delta,
+      change: (inst, loc2) => { inst.bound.loc = loc2; },
+      serial: (inst) => inst.bound.loc.asCarte(),
+      actual: (inst) => inst.bound.loc
+    }
+  }),
+  
   init: function(bound=new CircleBound(10)) {
     insp.Entity.init.call(this);
     
@@ -661,23 +1182,22 @@ let SpatialEntity = U.inspire({ name: 'SpatialEntity', inspiration: { Entity }, 
   },
   end: function() {
     this.world.rootZone.unplaceEntity(this);
-  },
-})});
-SpatialEntity.genSerialDef = () => ({
-  rot: { sync: C.sync.delta,
-    change: (inst, rot2) => { inst.bound.rot = (rot2 % U.ROT_FULL); },
-    actual: (inst) => inst.bound.rot,
-    serial: (inst) => inst.bound.rot
-  },
-  loc: { sync: C.sync.delta,
-    change: (inst, loc2) => { inst.bound.loc = loc2; },
-    actual: (inst) => inst.bound.loc,
-    serial: (inst) => inst.bound.loc.asCarte()
   }
-});
+})});
 
 // Structures
-let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let RectStructure = U.inspire({ name: 'RectStructure', insps: { SpatialEntity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    w: { sync: C.sync.delta,
+      change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.w
+    },
+    h: { sync: C.sync.delta,
+      change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.h
+    }
+  }),
+  
   init: function(w, h, loc, rot) {
     let rectBound = new RectangleBound(w, h);
     rectBound.loc = loc;
@@ -688,20 +1208,17 @@ let RectStructure = U.inspire({ name: 'RectStructure', inspiration: { SpatialEnt
     this.h = h;
     this.invWeight = 0; // immovable
   },
-  update: function(secs) { /* nothing! */ },
+  update: function(secs) { /* nothing! */ }
 })});
-RectStructure.genSerialDef = () => ({
-  w: { sync: C.sync.delta,
-    change: (inst, w2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.w
-  },
-  h: { sync: C.sync.delta,
-    change: (inst, h2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.h
-  }
-});
-
-let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let SiloStructure = U.inspire({ name: 'SiloStructure', insps: { SpatialEntity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    r: { sync: C.sync.delta,
+      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.r,
+      actual: (inst) => inst.r
+    }
+  }),
+  
   init: function(r, loc, rot) {
     let circBound = new CircleBound(r);
     circBound.loc = loc;
@@ -711,17 +1228,30 @@ let SiloStructure = U.inspire({ name: 'SiloStructure', inspiration: { SpatialEnt
     this.r = r;
     this.invWeight = 0; // immovable
   },
-  update: function(secs) { /* nothing! */ },
+  update: function(secs) { /* nothing! */ }
 })});
-SiloStructure.genSerialDef = () => ({
-  r: { sync: C.sync.delta,
-    change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.r
-  }
-});
 
 // Bullets
-let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let Bullet = U.inspire({ name: 'Bullet', insps: { SpatialEntity }, methods: (insp, Insp) => ({
+  $genFlatDef: supDef => ({
+    loc: supDef.loc.gain({ sync: C.sync.total }), // Bullet "loc" is deterministic!
+    unit: { sync: C.sync.delta,
+      change: (inst, unit2) => { inst.unit = unit2; },
+      serial: (inst) => inst.unit ? inst.unit.uid : null,
+      actual: (inst) => inst.unit
+    },
+    maxSize: { sync: C.sync.delta,
+      change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
+      serial: (inst) => inst.maxSize,
+      actual: (inst) => inst.maxSize
+    },
+    vel: { sync: C.sync.delta,
+      change: (inst, vel2) => { inst.vel = vel2 },
+      serial: (inst) => inst.vel.asCarte(),
+      actual: (inst) => inst.vel
+    }
+  }),
+  
   init: function(rot, unit, shootSpd=1000, lifespanSecs=3) {
     insp.SpatialEntity.init.call(this, new LineSegmentBound(0));
     
@@ -781,28 +1311,24 @@ let Bullet = U.inspire({ name: 'Bullet', inspiration: { SpatialEntity }, methods
     insp.SpatialEntity.update.call(this, secs);
   }
 })});
-Bullet.genSerialDef = supDef => ({
-  // TODO: Ensure that `gain` doesn't mutate anything unexpectedly here???
-  loc: supDef.loc.gain({ sync: C.sync.total }), // Bullet "loc" is deterministic!
-  unit: { sync: C.sync.delta,
-    change: (inst, unit2) => { inst.unit = unit2; },
-    serial: (inst) => inst.unit ? inst.unit.uid : null,
-    actual: (inst) => inst.unit
-  },
-  maxSize: { sync: C.sync.delta,
-    change: (inst, maxSize2) => { inst.maxSize = maxSize2 },
-    serial: (inst) => inst.maxSize,
-    actual: (inst) => inst.maxSize
-  },
-  vel: { sync: C.sync.delta,
-    change: (inst, vel2) => { inst.vel = vel2 },
-    serial: (inst) => inst.vel.asCarte(),
-    actual: (inst) => inst.vel
-  }
-});
 
 // Actors
-let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: (insp, Insp) => ({
+let Actor = U.inspire({ name: 'Actor', insps: { SpatialEntity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    r: { sync: C.sync.delta,
+      change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
+      serial: (inst) => inst.bound.r
+    },
+    maxHealth: { sync: C.sync.delta,
+      change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
+      serial: (inst) => inst.maxHealth
+    },
+    health: { sync: C.sync.delta,
+      change: (inst, health2) => { inst.health = health2 },
+      serial: (inst) => inst.health
+    }
+  }),
+  
   init: function(r) {
     insp.SpatialEntity.init.call(this, new CircleBound(r));
     this.formation = null;
@@ -822,27 +1348,31 @@ let Actor = U.inspire({ name: 'Actor', inspiration: { SpatialEntity }, methods: 
     insp.SpatialEntity.update.call(this, secs);
   },
   end: function() {
-    if (this.client) this.mod('client', { act: 'rem' });
-    if (this.formation) this.mod('formation', { act: 'rem' });
+    if (this.client) this.mod('client', { act: 'detach' });
+    if (this.formation) this.mod('formation', { act: 'detach' });
     insp.SpatialEntity.end.call(this);
   }
 })});
-Actor.genSerialDef = () => ({
-  r: { sync: C.sync.delta,
-    change: (inst, r2) => { throw new Error('Can\'t modify this prop'); },
-    serial: (inst) => inst.bound.r
-  },
-  maxHealth: { sync: C.sync.delta,
-    change: (inst, maxHealth2) => { inst.maxHealth = maxHealth2 },
-    serial: (inst) => inst.maxHealth
-  },
-  health: { sync: C.sync.delta,
-    change: (inst, health2) => { inst.health = health2 },
-    serial: (inst) => inst.health
-  }
-});
-
-let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Insp) => ({
+let Unit = U.inspire({ name: 'Unit', insps: { Actor }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    visionAngle: { sync: C.sync.delta,
+      change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
+      serial: (inst) => inst.visionAngle
+    },
+    visionRange: { sync: C.sync.delta,
+      change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
+      serial: (inst) => inst.visionRange
+    },
+    visionScale: { sync: C.sync.delta,
+      change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
+      serial: (inst) => inst.visionScale
+    },
+    bodyVision: { sync: C.sync.delta,
+      change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
+      serial: (inst) => inst.bodyVision
+    }
+  }),
+  
   init: function(r) {
     insp.Actor.init.call(this, r);
     
@@ -910,30 +1440,12 @@ let Unit = U.inspire({ name: 'Unit', inspiration: { Actor }, methods: (insp, Ins
     insp.Actor.end.call(this);
   }
 })});
-Unit.genSerialDef = () => ({
-  visionAngle: { sync: C.sync.delta,
-    change: (inst, visionAngle2) => { inst.visionAngle = visionAngle2; },
-    serial: (inst) => inst.visionAngle
-  },
-  visionRange: { sync: C.sync.delta,
-    change: (inst, visionRange2) => { inst.visionRange = visionRange2; },
-    serial: (inst) => inst.visionRange
-  },
-  visionScale: { sync: C.sync.delta,
-    change: (inst, visionScale2) => { inst.visionScale = visionScale2; },
-    serial: (inst) => inst.visionScale
-  },
-  bodyVision: { sync: C.sync.delta,
-    change: (inst, bodyVision2) => { inst.bodyVision = bodyVision2; },
-    serial: (inst) => inst.bodyVision
-  }
-});
-
-let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp, Insp) => ({
-  $genSerialDef: () => {},
+let PlannedZombie = U.inspire({ name: 'PlannedZombie', insps: { Actor }, methods: (insp, Insp) => ({
+  $genFlatDef: () => {},
   
   init: function(r) {
     insp.Actor.init.call(this, r);
+    this.manager = null;
     
     this.idea = null;
     
@@ -956,6 +1468,17 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp,
   },
   canCollide: function(entity) { return !U.isInspiredBy(entity, Zombie); },
   update: function(secs) {
+    
+    if (!manager) throw new Error('Zombie without manager');
+    
+    let company = this.perceivedCompany || this.bound.loc;
+    let leader = 
+    
+    let [ movementDir, setLeader, pushMilestone ] = this.manager.hiveMind.result([
+      this.bound.rot,
+      this.loneliness,
+      this.bound.loc.distSqr(company), this.bound.loc.angTo(company)
+    ]);
     
     let { entities } = this.world;
     
@@ -1146,10 +1669,87 @@ let Zombie = U.inspire({ name: 'Zombie', inspiration: { Actor }, methods: (insp,
     
   }
 })});
+let Zombie = U.inspire({ name: 'Zombie', insps: { Actor }, methods: (insp, Insp) => ({
+  $genFlatDef: () => {},
+  
+  init: function(r) {
+    insp.Actor.init.call(this, r);
+    
+    this.manager = null;
+    this.loneliness = 0;
+    this.ememies = new RoundFixedSet(2);    // Enemy actors; goal is to touch them
+    this.fellows = new RoundFixedSet(3);    // Fellow Zombies this Zombie is aware of
+    this.obstacles = new RoundFixedSet(10); // Locations the Zombie has been at when it's touched an immovable object
+    
+    // this.rotSpd = Math.PI * 2;
+    // this.aheadSpd = 200;
+    // this.leadership = Math.random(); // How naturally good of a leader this zombie is
+    // this.idol = null; // The zombie this zombie wants to be like
+    // this.progress = 0; // How close this zombie feels it is to actualizing its zombie purpose in life
+    // this.loneliness = 0; // How far away this zombie feels from all other zombies
+    // this.perceivedCompany = null; // Spot where this zombie thinks it will find company
+    // this.milestonePoint = null; // Favourable spot the zombie remembers being
+    // this.milestoneProgress = 0;
+    // this.target = null;
+    // this.milestoneTargetLoc = null;
+    // this.damageDealt = 0;
+  },
+  canCollide: function(entity) { return !U.isInspiredBy(entity, Zombie); },
+  update: function(secs) {
+    
+    if (!manager) throw new Error('Zombie without manager');
+    
+    let cmpLoc = (loc1, loc2) => {
+      if (loc2 === null) return [ 0, 0, 0 ];
+      if (U.isInspiredBy(loc2, SpatialEntity)) loc2 = loc2.bound.loc;
+      
+      let ang = loc1.angTo(loc2);
+      let absAng = ang; while(absAng < 0) absAng += U.FULL_ROT;
+      
+      return [ 1, loc1.distSqr(loc2), loc1.angTo(loc2) ];
+    };
+    
+    // Clear entities which no longer exist out of memory
+    this.enemies.upd(en => this.world.entities.has(en.uid) ? en : null);
+    this.fellows.upd(fl => this.world.entities.has(fl.uid) ? fl : null);
+    
+    let chkZmb = U.randElem(Object.values(this.manager.zombies));
+    if (this.fellows.has(chkZmb.uid)) chkZmb = null; // Don't think about random zomb if it's already a fellow?
+    
+    let chkEnm = U.randElem(Object.values(this.manager.enemyFormation.actors));
+    if (this.fellows.has(chkEnm.uid)) chkEnm = null; // Don't think about random enemy if it's already known?
+    
+    let { loc, rot } = this.bound;
+    let [ moveAmt, movementDir, addEnemy, addFellow, addHotSpot ] = this.manager.hiveMind.result([
+      rot,
+      this.loneliness,
+      ...cmpLoc(loc, chkZmb),
+      ...cmpLoc(loc, chkEnm),
+      ...this.enemies.mapFlat(en => [ ...cmpLoc(loc, en), en.health, en.bound.rot ]),
+      ...this.fellows.mapFlat(fl => cmpLoc(loc, fl)),
+      ...this.obstacles.mapFlat(ob => cmpLoc(loc, ob)),
+      ...this.manager.hotspots.mapFlat(hs => cmpLoc(loc, hs)) 
+    ]);
+    
+    if (addEnemy > 0.5) this.enemies.add(chkEnemy);
+    if (addFellow > 0.5) this.fellows.add(chkZmb);
+    if (addHotspot > 0.5) this.manager.hotspots.add(this.loc);
+    
+    this.rotSpd = 0;
+    this.mod('rot', movementDir); // This skips SpatialEntity's Zone updating from rotation changes (fortunately irrelevant with circle bounds)
+    this.vel = moveAmt > 0.5 ? new PolarXY(this.bound.rot, this.aheadSpd) : new CarteXY(0, 0);
+    
+    insp.Actor.update.call(this, secs);
+    
+  },
+  collideAll: function(collisions) {
+    for (let k in collisions) if (collisions[k].entity.invWeight === 0) { this.obstacles.add(this.bound.loc); break; }
+  }
+})});
 
 // Items
-let Item = U.inspire({ name: 'Item', inspiration: { Entity }, methods: (insp, Insp) => ({
-  $genSerialDef: () => ({
+let Item = U.inspire({ name: 'Item', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
     name: { sync: C.sync.delta,
       change: (inst, name2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.name
@@ -1168,9 +1768,8 @@ let Item = U.inspire({ name: 'Item', inspiration: { Entity }, methods: (insp, In
     throw new Error('not implemented');
   }
 })});
-
-let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) => ({
-  $genSerialDef: () => ({
+let Gun = U.inspire({ name: 'Gun', insps: { Item }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
     shotsInClip: { sync: C.sync.delta,
       change: (inst, shotsInClip2) => { throw new Error('Can\'t modify this prop'); },
       serial: (inst) => inst.shotsInClip
@@ -1246,7 +1845,11 @@ let Gun = U.inspire({ name: 'Gun', inspiration: { Item }, methods: (insp, Insp) 
 })});
 
 // Formations
-let Formation = U.inspire({ name: 'Formation', inspiration: { Entity }, methods: (insp, Insp) => ({
+let Formation = U.inspire({ name: 'Formation', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    
+  }),
+  
   init: function() {
     insp.Entity.init.call(this);
     this.actors = {};
@@ -1255,15 +1858,13 @@ let Formation = U.inspire({ name: 'Formation', inspiration: { Entity }, methods:
   update: function(secs) {
   },
   end: function() {
-    for (let [ uid, actor ] of Object.entries(this.actors)) actor.mod('formation', { act: 'rem' });
+    for (let [ uid, actor ] of Object.entries(this.actors)) actor.mod('formation', { act: 'detach' });
   }
 })});
-Formation.genSerialDef = () => ({
-});
 
 // Managers
-let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, methods: (insp, Insp) => ({
-  $genSerialDef: () => ({}),
+let ClientManager = U.inspire({ name: 'ClientManager', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({}),
   
   init: function(formation) {
     insp.Entity.init.call(this);
@@ -1296,7 +1897,7 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
       
       if (prevUnit) {
         this.world.remEntity(prevUnit.client);
-        prevUnit.mod('client', { act: 'put', client });
+        prevUnit.mod('client', { act: 'attach', client });
       }
       
     });
@@ -1317,17 +1918,18 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
         
         let mainItem = this.world.addEntity(makeGatling());
         let unit = this.world.addEntity(new Unit(8));
-        unit.bound.loc = new CarteXY(0, 425);
+        unit.bound.loc = new CarteXY(0, 0);
         unit.bound.rot = U.ROT_D;
         
         // unit.mainVisionRange = 400;
         // unit.mainVisionScale = 0.5;
         // unit.mainVisionAngle = Math.PI * 0.2;
-        // unit.mainBodyVision = 100;
+        // unit.mainBodyVision = 2000;
+        // unit.mainVisionScale = 0.4;
         
-        unit.mod('mainItem', { act: 'put', mainItem });
-        unit.mod('client', { act: 'put', client });
-        unit.mod('formation', { act: 'put', formation: this.formation });
+        unit.mod('mainItem', { act: 'attach', mainItem });
+        unit.mod('client', { act: 'attach', client });
+        unit.mod('formation', { act: 'attach', formation: this.formation });
       },
       control: (client, command) => {
         if (!client.actor) return;
@@ -1342,13 +1944,18 @@ let ClientManager = U.inspire({ name: 'ClientManager', inspiration: { Entity }, 
   update: function(secs) {},
   end: function() {}
 })});
-
-let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, methods: (insp, Insp) => ({
-  init: function(secsPerSpawn=30, formation) {
+let ZombieManager = U.inspire({ name: 'ZombieManager', insps: { Entity }, methods: (insp, Insp) => ({
+  $genFlatDef: () => ({
+    
+  }),
+  
+  init: function(secsPerSpawn=30, enemyFormation) {
     insp.Entity.init.call(this);
     this.secsPerSpawn = secsPerSpawn;
-    this.formation = formation;
+    this.enemyFormation = enemyFormation;
     this.spawnCounter = 0;
+    this.zombies = {};
+    this.hotspots = new RoundFixedSet(30);
   },
   start: function() {},
   update: function(secs) {
@@ -1359,7 +1966,8 @@ let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, 
     if (this.spawnCounter > this.secsPerSpawn) {
       this.spawnCounter = 0;
       let size = Math.round(Math.random() * Math.random() * Math.random() * Math.random() * 30);
-      let zombie = this.world.addEntity(new Zombie(10 + size));
+      let zombie = this.world.addEntity(new Zombie(this, 10 + size));
+      zombie.mod('manager', { act: 'attach', manager: this });
       zombie.aheadSpd = 200 / Math.max(2, size);
       zombie.bound.loc = new PolarXY(Math.random() * U.ROT_FULL, Math.random() * 700);
       zombie.bound.rot = Math.random() * U.ROT_FULL;
@@ -1374,10 +1982,10 @@ let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, 
         
         // Set a main item
         let mainItem = this.world.addEntity(makePistol());
-        unit.mod('mainItem', { act: 'put', mainItem });
+        unit.mod('mainItem', { act: 'attach', mainItem });
         
         // Set a formation
-        unit.mod('formation', { act: 'put', formation: this.formation });
+        unit.mod('formation', { act: 'attach', formation: this.enemyFormation });
         
       }
     }
@@ -1385,12 +1993,11 @@ let ZombieManager = U.inspire({ name: 'ZombieManager', inspiration: { Entity }, 
   },
   end: function() {}
 })});
-ZombieManager.genSerialDef = () => ({
-});
 
 Entity.relate11('actorWithClient', C.sync.delta, Actor, 'client', Client, 'actor');
 Entity.relate1M('actorInFormation', C.sync.delta, Actor, 'formation', Formation, 'actors');
 Entity.relate11('unitWithMainItem', C.sync.delta, Unit, 'mainItem', Client, 'unit');
+Entity.relate1M('zombieWithManager', C.sync.none, Zombie, 'manager', ZombieManager, 'zombies');
 
 // Enforcers
 let PhysicsEnforcer = U.inspire({ name: 'PhysicsEnforcer', methods: (insp, Insp) => ({
@@ -1452,146 +2059,13 @@ let PhysicsEnforcer = U.inspire({ name: 'PhysicsEnforcer', methods: (insp, Insp)
     
     for (let { light, heavy, sepAxis, sepAmt } of separations) {
       light.modF('loc', loc => loc.add(sepAxis.scale(sepAmt)));
-      this.rootZone.placeEntity(light); // TODO: Could this happen in the serialDef?
+      this.rootZone.placeEntity(light);
     }
     
   },
 })});
 
-let ZONE_UID = 0;
-let Zone = U.inspire({ name: 'Zone', methods: (insp, Insp) => ({
-  init: function(name) {
-    this.name = name;
-    this.uid = ZONE_UID++;
-    this.parentZone = null;
-    this.entities = {};
-    this.jurisdictionCount = 0; // Count of ALL entities in this zone
-  },
-  addEntity: function(entity) {
-    if (entity.zone) entity.zone.remEntity(entity);
-    entity.zones[this.uid] = this;
-    this.entities[entity.uid] = entity;
-    this.childAdd(this, entity);
-    return entity;
-  },
-  remEntity: function(entity) {
-    delete entity.zones[this.uid];
-    delete this.entities[entity.uid];
-    this.childRem(this, entity);
-    return entity;
-  },
-  childAdd: function(child, entity) { this.jurisdictionCount++; if (this.parentZone) this.parentZone.childAdd(this, entity); },
-  childRem: function(child, entity) { this.jurisdictionCount--; if (this.parentZone) this.parentZone.childRem(this, entity); },
-  getFlatJurisdiction: function() {
-    // Returns an Array of every Zone, including `this`, under our jurisdiction
-    throw new Error('not implemented');
-  },
-  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
-    // Returns `null` if outside this Zone, or the finest-grained Zones in this
-    // Zone's jurisdiction which fully enclose the bound
-    throw new Error('not implemented');
-  },
-  placeEntity: function(entity) {
-    let exitedZones = { ...entity.zones }; // Initially mark all zones as exited
-    for (let zone of this.getBestZones(entity.bound)) {
-      if (!zone.entities.hasOwnProperty(entity.uid)) zone.addEntity(entity);
-      delete exitedZones[zone.uid]; // Unmark this zone as exited
-    }
-    for (let exitedZone of Object.values(exitedZones)) exitedZone.remEntity(entity);
-  },
-  unplaceEntity: function(entity) {
-    for (let exitedZone of Object.values(entity.zones)) exitedZone.remEntity(entity);
-  },
-})});
-let SquareZone = U.inspire({ name: 'SquareZone', inspiration: { Zone }, methods: (insp, Insp) => ({
-  init: function(name, offset, e) {
-    insp.Zone.init.call(this, name);
-    this.offset = offset.toCarte();
-    this.he = e * 0.5; // "e" is "extent"; "he" is "half-extent"
-  },
-  containsRect: function({ x0, x1, y0, y1 }) {
-    let rhw = (x1 - x0) * 0.5; // rect-half-width
-    let rhh = (y1 - y0) * 0.5; // rect-half-height
-    let rx = x0 + rhw; // rect center x
-    let ry = y0 + rhh; // rect center y
-    
-    let { x, y } = this.offset; // Definitely a CarteXY
-    let he = this.he;
-    
-    let tw = rhw + he; // Total x clearance distance
-    let th = rhh + he; // Total y clearance distance
-    
-    return (Math.abs(rx - x) < tw) && (Math.abs(ry - y) < th);
-    
-    /*
-    let { x, y } = this.offset; // Definitely a CarteXY
-    let he = this.he;
-    return true &&
-      (x0 > x - he) &&
-      (x1 < x + he) &&
-      (y0 > y - he) &&
-      (y1 < y + he);
-    */
-  },
-  getFlatJurisdiction: function() {
-    return [ this ];
-  },
-  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
-    return (thisDefinitelyContains || this.containsRect(aaBound)) ? [ this ] : [];
-  },
-})});
-let TiledZone = U.inspire({ name: 'TiledZone', inspiration: { SquareZone }, methods: (insp, Insp) => ({
-  init: function(name, offset, e, numTilesAcross=4, makeSquareZone=null) {
-    insp.SquareZone.init.call(this, name, offset, e);
-    this.numTilesAcross = numTilesAcross;
-    this.tileW = (this.he * 2) / this.numTilesAcross;
-    this.invTileW = 1 / this.tileW;
-    this.tiles = {}; // List of individual tiles
-    this.tileExts = {}; // List of rectangular selections of tiles
-    this.makeSquareZone = makeSquareZone || ((name, off, e) => new SquareZone(name, off, e));
-  },
-  xyToTileCoords: function(x, y) {
-    return [
-      Math.floor((x - (this.offset.xx() - this.he)) * this.invTileW),
-      Math.floor((y - (this.offset.yy() - this.he)) * this.invTileW)
-    ];
-  },
-  getFlatJurisdiction: function() {
-    let supJurisdiction = insp.SquareZone.getFlatJurisdiction.call(this);
-    return supJurisdiction.concat(...Object.values(this.tiles).map(t => t.getFlatJurisdiction()));
-  },
-  getBestZones: function(bound, aaBound=bound.getAxisAlignedBound(), thisDefinitelyContains=false) {
-    let { x0, y0, x1, y1 } = aaBound;
-    let [ cx1, cy1 ] = this.xyToTileCoords(x0, y0);
-    let [ cx2, cy2 ] = this.xyToTileCoords(x1, y1);
-    
-    // Bound the tile coords between 0 (inc) and `this.numTilesAcross` (exc)
-    if (cx1 < 0) cx1 = 0;
-    if (cy1 < 0) cy1 = 0;
-    if (cx2 >= this.numTilesAcross) cx2 = this.numTilesAcross - 1;
-    if (cy2 >= this.numTilesAcross) cy2 = this.numTilesAcross - 1;
-    
-    let childZones = [];
-    for (let x = cx1; x <= cx2; x++) { for (let y = cy1; y <= cy2; y++) {
-      let key = `${x},${y}`;
-      if (!this.tiles.has(key)) {
-        let tile = this.makeSquareZone(key, new CarteXY((cx1 + 0.5) * this.tileW, (cx2 + 0.5) * this.tileW), this.tileW);
-        this.tiles[key] = tile;
-        tile.parentZone = this;
-      }
-      childZones.push(this.tiles[key].getBestZones(bound, aaBound, true));
-    }}
-    
-    return [].concat(...childZones);
-  },
-  childRem: function(child, entity) {
-    // If `child` is empty, and `child` is a direct tile child of ours, free it up!
-    if (child.jurisdictionCount === 0 && this.tiles[child.name] === child) delete this.tiles[child.name];
-    insp.SquareZone.childRem.call(this, child, entity);
-  },
-})});
-
-let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: (insp, Insp) => ({
+let ZombWorld = U.inspire({ name: 'ZombWorld', insps: { World }, methods: (insp, Insp) => ({
   init: function({ framesPerSec=60, rootZone=null }={}) { // TODO: 60fps isn't a bit ambitious?
     insp.World.init.call(this);
     this.nextUid = 0;
@@ -1603,7 +2077,6 @@ let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: 
     this.millisPerFrame = this.secsPerFrame * 1000;
     
     let smoothMs = new SmoothingVal(0, 0.1);
-    
     let initialTime = +new Date();
     
     this.updateInterval = new Interval(() => {
@@ -1611,7 +2084,6 @@ let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: 
       this.update(this.secsPerFrame);
       process.stdout.write(`\rProcessed in ${Math.round(smoothMs.update(new Date() - time))}ms / ${Math.round(this.millisPerFrame)}ms (${(Math.floor((new Date() - initialTime) * 0.01) / 10).toFixed(1)}s) ${' '.repeat(10)}\r`);
     });
-    
   },
   startUpdateInterval: function() {
     this.updateInterval.start(this.millisPerFrame);
@@ -1655,30 +2127,89 @@ let ZombWorld = U.inspire({ name: 'ZombWorld', inspiration: { World }, methods: 
   },
 })});
 
-let secsPerZombieSpawn = 2;
-let genBuildings = () => {
-  let tileSize = 300;
-  let tilePad = 20;
-  let hNumAcross = 5;
+let secsPerZombieSpawn = 2000;
+let angler = ({ changeAmt, turnAmt, maxTurnVel, ang=Math.random() * Math.PI * 2, turnVel=0 }) => {
+  return () => {
+    let ret = ang;
+    turnVel = ((1 - changeAmt) * turnVel) + changeAmt * ((Math.random() - 0.5) * U.ROT_FULL * turnAmt);
+    if (Math.abs(turnVel) > U.ROT_FULL * maxTurnVel) turnVel = Math.sign(turnVel) * U.ROT_FULL * maxTurnVel;
+    ang += turnVel;
+    return ret;
+  };
+};
+let pointsAngler = ({ startPt=new CarteXY(0, 0), d=() => 0, changeAmt, turnAmt, maxTurnVel, ang, turnVel }) => {
+  let lastPt = startPt;
+  let pts = [ lastPt ];
+  let pointAngler = angler({ changeAmt, turnAmt, maxTurnVel, ang, turnVel });
+  return [
+    () => {
+      let turn = pointAngler();
+      let nextPt = lastPt.add(new PolarXY(turn, d()));
+      pts.push(nextPt);
+      lastPt = nextPt;
+      return [ turn, lastPt ];
+    },
+    pts
+  ]
+};
+let residences = {
+  house: s => [
+    new FloorPlan(s * 1.1, s * 1.1, new CarteXY(0, 0), 0),
+    new RectStructure(s * 1.0, s * 0.6, new CarteXY(s * 0, s * +0.2), 0),
+    new RectStructure(s * 0.4, s * 1, new CarteXY(s * 0, s * 0), 0)
+  ],
+  squares: s => [
+    new FloorPlan(s * 1.1, s * 1.1, new CarteXY(0, 0), 0),
+    new RectStructure(s * 0.45, s * 0.45, new CarteXY(s * -0.275, s * -0.275), 0),
+    new RectStructure(s * 0.45, s * 0.45, new CarteXY(s * +0.275, s * -0.275), 0),
+    new RectStructure(s * 0.45, s * 0.45, new CarteXY(s * +0.275, s * +0.275), 0),
+    new RectStructure(s * 0.20, s * 0.20, new CarteXY(s * -0.275, s * +0.275), 0)
+  ]
+};
+let genStatic = () => {
   
+  let residenceEntries = Object.values(residences);
   let ret = [];
-  for (let x = -hNumAcross; x < hNumAcross; x++) { for (let y = -hNumAcross; y < hNumAcross; y++) {
-    let cenX = (tileSize + tilePad * 2) * x;
-    let cenY = (tileSize + tilePad * 2) * y;
     
-    for (let buildingNum = 0; buildingNum < 4; buildingNum++) {
-      
-      let w = 80 + Math.random() * 120;
-      let h = 80 + Math.random() * 120;
-      
-      let offX = (Math.random() - 0.5) * (tileSize - w);
-      let offY = (Math.random() - 0.5) * (tileSize - h);
-      
-      ret.push(new RectStructure(w, h, new CarteXY(cenX + offX, cenY + offY), 0));
-      
+  let [ mainRoadAngler, mainRoadPts ] = pointsAngler({
+    startPt: new CarteXY(0, 0),
+    d: () => U.randPrt(0.5) * 100,
+    changeAmt: 0.4,
+    turnAmt: 0.2,
+    maxTurnVel: 0.025
+  });
+  for (let i = 0; i < 100; i++) {
+    let [ turn, pt ] = mainRoadAngler();
+    
+    if (i === 0 || i % 5 !== 0) continue;
+    // ret.push(new FloorPlan(130, 130, pt, 0));
+    // continue;
+    
+    let [ offshootAngler, offshootPts ] = pointsAngler({
+      startPt: pt,
+      d: () => U.randPrt(0.3) * 70,
+      changeAmt: 0.3,
+      turnAmt: 0.2,
+      maxTurnVel: 0.05,
+      ang: turn + (U.randBln() ? U.ROT_CW1 : U.ROT_CCW1)
+    });
+    let [ turn0, pt0 ] = [ null, null ];
+    let len = U.randInt(4, 7);
+    for (let j = 0; j < len; j++) {
+      [ turn0, pt0 ] = offshootAngler();
     }
-  }}
+    ret.push(new Road(30, offshootPts));
+    
+    let residence = residenceEntries[U.randInt(0, residenceEntries.length)](200);
+    residence.forEach(c => {
+      c.modF('loc', loc => XY.orbit(loc, XY.ORIGIN, turn0).add(pt0).add(new PolarXY(turn0, 200 * 0.5)));
+      c.modF('rot', rot => rot + turn0);
+      ret.push(c);
+    });
+    
+  }
   
+  ret.push(new Road(50, mainRoadPts));
   return ret;
   
 };
@@ -1699,10 +2230,11 @@ let genBuildings = () => {
   let zombieManager = world.addEntity(new ZombieManager(secsPerZombieSpawn, testFormation));
   
   // ==== Static geometry
-  // Tuning-fork bunker kinda thing
-  genBuildings().forEach(building => world.addEntity(building));
+  genStatic().forEach(s => world.addEntity(s));
   
-  /*world.addEntity(new RectStructure(180, 300, new CarteXY(0, -170), U.ROT_U));
+  /*
+  // Tuning-fork bunker kinda thing
+  world.addEntity(new RectStructure(180, 300, new CarteXY(0, -170), U.ROT_U));
   world.addEntity(new RectStructure(40, 150, new CarteXY(-70, +20), U.ROT_CW1 / 3));
   world.addEntity(new RectStructure(40, 150, new CarteXY(+70, +20), U.ROT_CCW1 / 3));
   world.addEntity(new RectStructure(40, 150, new CarteXY(-36, +150), U.ROT_U));
@@ -1720,12 +2252,12 @@ let genBuildings = () => {
   let testUnit1 = world.addEntity(new Unit(8));
   testUnit1.bound.loc = new CarteXY(-130, +445);
   testUnit1.bound.rot = U.ROT_CCW1 / 2;
-  testUnit1.mod('formation', { act: 'put', formation: testFormation });
+  testUnit1.mod('formation', { act: 'attach', formation: testFormation });
   
   let testUnit2 = world.addEntity(new Unit(8));
   testUnit2.bound.loc = new CarteXY(+130, +445);
   testUnit2.bound.rot = U.ROT_CW1 / 2;
-  testUnit2.mod('formation', { act: 'put', formation: testFormation });
+  testUnit2.mod('formation', { act: 'attach', formation: testFormation });
   
   // Enforce physical entity separation
   let physicsEnforcer = world.addEnforcer(new PhysicsEnforcer(rootZone));
