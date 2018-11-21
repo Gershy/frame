@@ -2,6 +2,7 @@
 // [ ]  Random map generation!!!
 // [ ]  Turning acceleration (allowing fine adjustments to angle while maintaining quicker turns)
 // [ ]  Enemies + AI
+//   [ ]  Adversarial ZombieManager vs TroopManager learning
 // [ ]  Good reveal mechanics
 //   [X]  Reveals stored on units; formations just group units together
 //   [ ]  Ways to determine which units share vision WITHIN a formation (e.g. 2 units together in a formation, but too far apart)
@@ -55,6 +56,13 @@ Object.defineProperty(Object.prototype, 'slice', {
   },
   enumerable: false
 });
+Object.defineProperty(Object.prototype, 'find', {
+  value: function(f) {
+    for (let k in this) if (f(this[k])) return [ k, this[k] ];
+    return null;
+  },
+  enumerable: false
+});
 Object.defineProperty(Object.prototype, 'has', {
   value: Object.prototype.hasOwnProperty,
   enumerable: false
@@ -67,6 +75,13 @@ Object.defineProperty(Object.prototype, 'gain', {
   enumerable: false
 });
 
+Object.defineProperty(Array.prototype, 'find', {
+  value: function(f) {
+    for (let i = 0, len = this.length; i < len; i++) if (f(this[i])) return [ i, this[i] ];
+    return null;
+  },
+  enumerable: false
+});
 Object.defineProperty(Array.prototype, 'toObj', {
   value: function(it) {
     let ret = {};
@@ -84,33 +99,47 @@ Object.defineProperty(Array.prototype, 'gain', {
   enumerable: false
 });
 
+let BaseInsp = function() {};
+BaseInsp.prototype = Object.create(null, {
+  
+
+});
+BaseInsp.prototype.isInspiredBy = function(Insp0) { return this.constructor.insps.has(Insp0.uid); };
+
 let U = {
+  INSP_UID: 0,
   int32: Math.pow(2, 32),
   intUpperBound: Math.pow(2, 32),
   intLowerBound: -Math.pow(2, 32),
   empty: obj => { for (let k in obj) return false; return true; },
   duoKey: (v1, v2, delim=',') => v1 < v2 ? `${v1}${delim}${v2}` : `${v2}${delim}${v1}`,
   combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 }),
-  inspire: ({ name, inspiration={}, methods, statik={}, description='' }) => {
+  inspire: ({ name, insps={}, methods, statik={}, description='' }) => {
     let Insp = function(...p) {
-      if (!this || this.constructor !== Insp) return new Insp(...p);
-      this.init(...p);
+      return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p);
     };
     Object.defineProperty(Insp, 'name', { value: name });
     
-    // Ensure that all `inspiration` items are Objects full of methods
-    Insp.inspiration = { ...inspiration }; // Keep a copy of the inspiration on Insp for `isInspiredBy` testing
-    inspiration = inspiration.map(insp => insp.prototype ? insp.prototype : insp); // Resolve Insps as their prototypes
-    Insp.prototype = Object.create(null);
+    // Calculate a map of all inspirations for `isInspiredBy` testing
+    Insp.uid = U.INSP_UID++;
+    Insp.insps = { [Insp.uid]: Insp };
+    Insp.isInspiredBy = Insp0 => Insp.insps.has(Insp0.uid);
+    insps.forEach(SupInsp => { if (U.isType(SupInsp, Function) && SupInsp.has('uid')) Insp.insps.gain(SupInsp.insps); });
     
-    // Run `methods` if necessary. Ensure it always resolve to an `Object` without a "constructor" key
-    if (U.isType(methods, Function)) methods = methods(inspiration, Insp);
+    // Initialize prototype
+    Insp.prototype = Object.create(BaseInsp.prototype);
+    
+    // Resolve all SupInsps to their prototypes
+    insps = insps.map(insp => insp.prototype ? insp.prototype : insp); // Resolve Insps as their prototypes
+    
+    // Run `methods` if necessary. Ensure it always resolves to an `Object` without a "constructor" key
+    if (U.isType(methods, Function)) methods = methods(insps, Insp);
     if (!U.isType(methods, Object)) throw new Error('Couldn\'t resolve "methods" to Object');
     if (methods.has('constructor')) throw new Error('Invalid "constructor" key');
     
     let methodsByName = {};
-    inspiration.forEach((insp, inspName) => {
-      // Can`t do `insp.forEach`; `insp` may have no prototype
+    insps.forEach((insp, inspName) => {
+      // Can`t do `insp.forEach`; `insp` may be prototypeless
       for (let [ methodName, method ] of Object.entries(insp)) {
         // `insp` is likely a prototype and contains a "constructor" property that needs to be skipped
         if (methodName === 'constructor') continue;
@@ -126,7 +155,7 @@ let U = {
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
     
     methodsByName.forEach((methodsAtName, methodName) => {
-      if (methodsAtName.length > 1) throw new Error(`Multiple method names at "${methodName}"; declare a custom method`);
+      if (methodsAtName.length > 1) throw new Error(`Multiple method "${methodName}" for ${name}; declare a custom method`);
       Insp.prototype[methodName] = methodsAtName[0]; // Length will be exactly 1 now
     });
     
@@ -137,13 +166,11 @@ let U = {
     try { return val.constructor === Cls; } catch (err) {}
     return false;
   },
-  isInspiredBy: function(obj, Insp) {
-    if (obj.constructor !== Function) obj = obj.constructor; // We want the Insp; it's always a pure Function
-    if (obj === Insp) return true;
-    
-    let insp = obj.has('inspiration') ? obj.inspiration : {};
-    for (let k in insp) if (U.isInspiredBy(insp[k], Insp)) return true;
-    return false;
+  isInspiredBy: function(Insp1, Insp2) {
+    if (!Insp2.has('uid')) throw new Error(`U.typeOf(Insp2) has no "uid"!`);
+    try {
+      return (U.isType(Insp1, Function) ? Insp1 : Insp1.constructor).insps.has(Insp2.uid);
+    } catch(err) { return false; }
   },
   typeOf: function(obj) {
     if (obj === null) return '<NULL>';
@@ -231,7 +258,7 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     this.update(f(this.value));
   },
 })});
-let CalcWob = U.inspire({ name: 'CalcWob', inspiration: { Wobbly }, methods: (insp, Insp) => ({
+let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, Insp) => ({
   init: function(wobblies, func) {
     insp.Wobbly.init.call(this);
     this.wobblies = wobblies;
@@ -278,9 +305,6 @@ let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
     if (entity.uid === null) entity.setUid(this.getNextUid());
     entity.world = this;
     
-    // if (this.remEntities.has(entity.uid)) return; // rem overrides add
-    // delete this.updEntities[entity.uid]; // add overrides upd
-    
     this.addEntities[entity.uid] = entity;
     return entity;
   },
@@ -288,15 +312,11 @@ let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
     if (entity.world !== this) throw new Error(`Entity ${entity.constructor.name} ${entity.world ? 'belongs to another world' : 'has no world'}`);
     if (!entity.inWorld) return;
     this.remEntities[entity.uid] = entity;
-    // delete this.updEntities[entity.uid]; // rem overrides upd
-    // delete this.addEntities[entity.uid]; // rem overrides add
     return entity;
   },
   updEntity: function(entity, updatedProps) {
     if (U.empty(updatedProps)) return;
     if (!entity.inWorld) return this.addEntity(entity);
-    // if (this.addEntities.has(entity.uid)) return; // add overrides upd
-    // if (this.remEntities.has(entity.uid)) return; // rem overrides upd
     if (!this.updEntities.has(entity.uid)) this.updEntities[entity.uid] = {};
     this.updEntities[entity.uid].gain(updatedProps);
     return entity;
@@ -317,8 +337,8 @@ let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
       // Start all added entities
       for (let [ uid, entity ] of Object.entries(add)) {
         this.entities[uid] = entity;
-        entity.start();
         entity.inWorld = true;
+        entity.start();
         sendAddEntities[uid] = entity;
         delete this.updEntities[uid];
       }
@@ -348,26 +368,27 @@ let World = U.inspire({ name: 'World', methods: (insp, Insp) => ({
   }
 })});
 let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
-  $fullSerialDef: Insp => {
+  $fullFlatDef: Insp => {
     let fullDef = {};
     
-    // Add on all inspiring defs
+    // Add on all inspiring defs (note that `Insp.insps` contains Insp)
     // TODO: Multiple inheritance can result in some defs being clobbered in this namespace...
-    for (let SupInsp of Object.values(Insp.inspiration)) fullDef.gain(Entity.fullSerialDef(SupInsp));
+    for (let SupInsp of Object.values(Insp.insps)) if (SupInsp !== Insp) fullDef.gain(Entity.fullFlatDef(SupInsp));
     
-    // Add on the Insp's own def
-    if (!Insp.has('genSerialDef')) throw new Error(`Insp ${Insp.name} doesn't support 'genSerialDef'`);
-    fullDef.gain(Insp.genSerialDef(fullDef));
+    // Add on Insp's flat def
+    if (!Insp.has('genFlatDef')) throw new Error(`Insp ${Insp.name} doesn't support 'genFlatDef'`);
+    fullDef.gain(Insp.genFlatDef(fullDef));
     
     // Add on any relational def
     fullDef.gain(Insp.has('relSchemaDef') ? Insp.relSchemaDef : {});
     
     return fullDef;
   },
-  $genSerialDef: () => ({
+  $genFlatDef: () => ({
     type: { sync: C.sync.delta,
       change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
-      serial: (inst) => inst.constructor.name
+      serial: (inst) => inst.constructor.name,
+      actual: (inst) => inst.constructor
     }
   }),
   $relate11: (name, sync, Cls1, link1, Cls2, link2) => {
@@ -391,15 +412,15 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
       if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
       Cls1.relSchemaDef[link1] = ((link1, link2) => ({ sync,
         change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
-          put: (inst1, inst2) => {
-            if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
-            if (inst2[link2]) throw new Error(`Can't put ${name}: already have ${inst2.constructor.name}'s ${link2}`);
+          attach: (inst1, inst2) => {
+            if (inst1[link1]) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
+            if (inst2[link2]) throw new Error(`Can't attach rel "${name}" (already have ${inst2.constructor.name}'s ${link2})`);
             inst1[link1] = inst2;
             inst2[link2] = inst1;
             syncFunc(inst1, link1, inst2, link2);
           },
-          rem: (inst1, inst2) => {
-            if (inst1[link1] !== inst1) throw new Error(`Can't rem ${name}: aren't put`);
+          detach: (inst1, inst2) => {
+            if (inst1[link1] !== inst1) throw new Error(`Can't detach rel "${name}" (isn't attached)`);
             inst1[link1] = null;
             inst2[link2] = null;
             syncFunc(inst1, link1, inst2, link2);
@@ -419,22 +440,22 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
     
     let syncFunc = (inst1, instM) => {
       if (sync < C.sync.delta) return;
-      let world = inst1.world; // This needs to be a world! If not there'd be no uid for linking
-      world.updEntity(inst1, { [link1]: 1 });
-      world.updEntity(instM, { [linkM]: 1 });
+      // Certain `inst1.world` exists - otherwise there'd be no uid for linking
+      inst1.world.updEntity(inst1, { [link1]: 1 });
+      inst1.world.updEntity(instM, { [linkM]: 1 });
     };
       
     if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
     Cls1.relSchemaDef[link1] = { sync,
       change: (inst1, p, act=p.act, instM=p[link1] || inst1[link1]) => ({
-        put: (inst1, instM) => {
-          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        attach: (inst1, instM) => {
+          if (inst1[link1]) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
           inst1[link1] = instM;
           instM[linkM][inst1.uid] = inst1;
           syncFunc(inst1, instM);
         },
-        rem: (inst1, instM) => {
-          if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        detach: (inst1, instM) => {
+          if (inst1[link1] !== instM) throw new Error(`Can't detach rel "${name}" (isn't attached)`);
           inst1[link1] = null;
           delete instM[linkM][inst1.uid];
           syncFunc(inst1, instM);
@@ -447,14 +468,14 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
     if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
     ClsM.relSchemaDef[linkM] = { sync,
       change: (instM, p, act=p.act, inst1=p[link1]) => ({
-        put: (instM, inst1) => {
-          if (inst1[link1]) throw new Error(`Can't put ${name}: already have ${inst1.constructor.name}'s ${link1}`);
+        attach: (instM, inst1) => {
+          if (inst1[link1]) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
           inst1[link1] = instM;
           instM[linkM][inst1.uid] = inst1;
           syncFunc(inst1, instM);
         },
-        rem: (instM, inst1) => {
-          if (inst1[link1] !== instM) throw new Error(`Can't rem ${name}: isn't put`);
+        detach: (instM, inst1) => {
+          if (inst1[link1] !== instM) throw new Error(`Can't detach rel "${name}" (isn't attached)`);
           inst1[link1] = null;
           delete instM[linkM][inst1.uid];
           syncFunc(inst1, instM);
@@ -465,6 +486,49 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
     };
       
   },
+  $relateM1: (name, sync, ClsM, linkM, Cls1, link1) => {
+    Entity.relate1M(name, sync, Cls1, link1, ClsM, linkM);
+  },
+  $relateMM: (name, sync, Cls1, link1, Cls2, link2) => {
+    
+    // For M-to-M, links are maps of uids
+    
+    // TODO: Small changes to large related sets cause the entire set to be synced...
+    let syncFunc = (inst1, link1, inst2, link2) => {
+      if (sync < C.sync.delta) return;
+      // Certain `inst1.world` exists - otherwise there'd be no uid for linking
+      inst1.world.updEntity(inst1, { [link1]: 1 });
+      inst1.world.updEntity(inst2, { [link2]: 1 });
+    };
+    
+    let both = [
+      [ Cls1, link1, Cls2, link2 ],
+      [ Cls2, link2, Cls1, link1 ]
+    ];
+    
+    for (let [ Cls1, link1, Cls2, link2 ] of both) {
+      
+      if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+      Cls1.relSchemaDef[link1] = ((link1, link2) => ({ sync,
+        change: (inst1, p, act=p.act, inst2=p[link1] || inst1[link1]) => ({
+          attach: (inst1, inst2) => {
+            inst1[link1][inst2.uid] = inst2;
+            inst2[link2][inst1.uid] = inst1;
+            syncFunc(inst1, link1, inst2, link2);
+          },
+          detach: (inst1, inst2) => {
+            delete inst1[link1][inst2.uid];
+            delete inst2[link2][inst1.uid];
+            syncFunc(inst1, link1, inst2, link2);
+          }
+        })[act](inst1, inst2),
+        serial: (inst1) => inst1[link1].map(ent => 1),
+        actual: (inst1) => inst1[link1]
+      }))(link1, link2);
+      
+    }
+    
+  },
   
   init: function() {
     this.uid = null;
@@ -472,35 +536,35 @@ let Entity = U.inspire({ name: 'Entity', methods: (insp, Insp) => ({
     this.inWorld = false;
     this.zones = {};
   },
-  getSerialDef: function() {
-    if (!this.constructor.has('serialDef')) this.constructor.serialDef = Entity.fullSerialDef(this.constructor);
-    return this.constructor.serialDef;
+  getFlatDef: function() {
+    if (!this.constructor.has('flatDef')) this.constructor.flatDef = Entity.fullFlatDef(this.constructor);
+    return this.constructor.flatDef;
   },
   mod: function(propName, newVal) {
-    let serialDef = this.getSerialDef();
-    if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
-    let { change, sync } = serialDef[propName];
+    let flatDef = this.getFlatDef();
+    if (!flatDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${propName}`);
+    let { change, sync } = flatDef[propName];
     change(this, newVal);
     if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
   },
   modF: function(propName, f) {
-    let serialDef = this.getSerialDef();
-    if (!serialDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.serialDef.${propName}`);
-    let { change, sync, actual, serial } = serialDef[propName];
-    let val = (actual || serial)(this); // TODO: should "actual" be optional?
-    let newVal = f(val);
-    if (val === newVal) return false;
+    let flatDef = this.getFlatDef();
+    if (!flatDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${propName}`);
+    let { change, sync, actual, serial } = flatDef[propName];
+    let oldVal = (actual || serial)(this);
+    let newVal = f(oldVal);
+    if (newVal === oldVal) return false; // TODO: should "actual" be optional?
     change(this, newVal);
     if (this.world && sync >= C.sync.delta) this.world.updEntity(this, { [propName]: 1 });
     return true;
   },
   serializePart: function(fieldMap) {
-    let serialDef = this.getSerialDef();
-    return fieldMap.map((v, k) => serialDef[k].serial(this));
+    let flatDef = this.getFlatDef();
+    return fieldMap.map((v, k) => flatDef[k].serial(this));
   },
   serializeFull: function() {
     let ret = {};
-    for (let [ k, { sync, serial } ] of Object.entries(this.getSerialDef())) if (sync >= C.sync.total) ret[k] = serial(this);
+    for (let [ k, { sync, serial } ] of Object.entries(this.getFlatDef())) if (sync >= C.sync.total) ret[k] = serial(this);
     return ret;
   },
   setUid: function(uid) {

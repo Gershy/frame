@@ -164,6 +164,22 @@ body:focus #ratio {
   font-size: 200%;
 }
 
+.rendered {
+  position: absolute;
+  z-index: 0; /* TODO: Should order decals relative to entities and structures etc */
+}
+.rendered.floorPlan {
+  background-color: rgba(40, 40, 40, 0.8);
+}
+.rendered.road {
+  left: 0; top: 0;
+}
+.rendered.road > .segment {
+  position: absolute;
+  background-color: rgba(50, 40, 40, 1);
+}
+
+
 .entity {
   position: absolute;
   background-color: #000000;

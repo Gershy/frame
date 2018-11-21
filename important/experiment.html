@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style type="text/css" rel="stylesheet">
+      body, html {
+        position: fixed;
+        left: 0; top: 0;
+        width: 100%; height: 100%;
+        margin: 0; padding: 0;
+        background-color: #202020;
+      }
+      .holder {
+        position: absolute;
+        left: 50%; top: 50%;
+      }
+      .figment {
+        position: absolute;
+        width: 300px; height: 8px;
+        left: -150px; top: -4px;
+        border-radius: 100%;
+        
+        transition: transform 2000ms cubic-bezier(0.14, 0.55, 0, 1.03), background-colour 2000ms linear;
+      }
+      .overlay {
+        position: absolute;
+        left: 0; top: 0;
+        width: 100%; height: 100%;
+        z-index: 100000;
+        background-image: radial-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.7));
+      }
+    </style>
+    <script type="text/javascript">
+      let base = (amt, v1, v2) => (v1 * (1 - amt)) + v2 * amt;
+      let m = 0;
+      (async () => {
+        await new Promise(r => { window.onload = r; });
+        
+        let body = document.body;
+        let holder = body.appendChild(document.createElement('div'));
+        let lastAng = 0;
+        holder.classList.add('holder');
+        
+        let numToUpd = 200;
+        let updOffset = 0;
+        let numDivs = 200;
+        let numWinds = 5;
+        let divs = [];
+        let trfs = [];
+        let locs = [];
+        for (let i = 0; i < numDivs; i++) {
+          let amt = i / numDivs;
+          let ang = amt * numWinds * (Math.PI * 2);
+          let [ x, y ] = [ Math.sin(ang), Math.cos(ang) ];
+          let div = holder.appendChild(document.createElement('div'));
+          div.classList.add('figment');
+          div.style.left = `${50 + (x * amt * 40)}%`;
+          div.style.top = `${50 + (y * amt * 40)}%`;
+          
+          divs.push(div);
+          locs.push([ ang % (Math.PI * 2), amt ]);
+          trfs.push({
+            scale: 1,
+            translate: [ 0, 0 ],
+            rotate: 0,
+            colour: [ 0, 0, 0 ]
+          });
+        }
+        
+        let [ lw, lh ] = [ null, null ];
+        let [ mx, my ] = [ 0, 0 ];
+        body.onmousemove = evt => {
+          [ mx, my ] = [ evt.clientX, evt.clientY ];
+        };
+        let ff = () => {
+          let { x, y, width: w, height: h } = body.getBoundingClientRect();
+          
+          if (w !== lw || h !== lh) {
+            [ lw, lh ] = [ w, h ];
+            let amt = Math.ceil(Math.min(lw, lh));
+            let hAmt = amt >> 1;
+            holder.style.width = `${amt}px`;
+            holder.style.height = `${amt}px`;
+            holder.style.marginLeft = `${-hAmt}px`;
+            holder.style.marginTop = `${-hAmt}px`;
+          }
+          
+          let [ hw, hh ] = [ w >> 1, h >> 1 ];
+          let [ dx, dy ] = [ mx - hw, my - hh ];
+          let ang = Math.atan2(dy, dx);
+          let d = Math.min(Math.sqrt(dx * dx + dy * dy), 500) / 500;
+          let [ ax, ay ] = [ (hw - mx) / hw, (hh - my) / hh ];    // from -1:1
+          let [ nax, nay ] = [ (1 + ax) * 0.5, (1 + ay) * 0.5 ];  // from 0:1
+          
+          while (ang + (Math.PI) < lastAng) ang += Math.PI * 2;
+          while (ang - (Math.PI) > lastAng) ang -= Math.PI * 2;
+          
+          lastAng = ang;
+          
+          // m += Math.abs(ay) < 0.2 ? 0 : (ay * 100);
+          // ang = m;
+          
+          let nAng = ang % (Math.PI * 2);
+          
+          for (let i = 0; i < numToUpd; i++) {
+            
+            let ind = (i + updOffset) % trfs.length;
+            
+            // Calc
+            let [ figAng, figD ] = locs[ind];
+            let angDiff = ((figAng - nAng) % (Math.PI * 2));
+            while (angDiff < 0) angDiff += Math.PI * 2;
+            while (angDiff > Math.PI * 2) angDiff -= Math.PI * 2;
+            angDiff /= Math.PI * 2;
+            let amt = ind / numDivs;
+            let invD = 1 - d;
+            let rnd = Math.random() * ang * 0.0001;
+            Object.assign(trfs[ind], {
+              rotate: ang * base(amt * (1 - Math.min(1, Math.abs(ang) * 0.001)), 0.1, 1),
+              scale: base(d * angDiff, 0.2, 2.5),
+              translate: [ base(angDiff, -100, 100), base(angDiff, 100, -100) ],
+              colour: [ ang * 0.001, 1, 1 - d ],
+              angDiff
+            });
+            
+            // Apply
+            let { scale, translate, rotate, colour } = trfs[ind];
+            divs[ind].style.transform = `translate(${translate[0]}px, ${translate[1]}px) rotate(${rotate}rad) scale(${scale})`;
+            divs[ind].style.backgroundColor = `hsla(${colour[0] * Math.PI * 2}rad, ${colour[1] * 100}%, ${colour[2] * 100}%, 0.25)`;
+            
+          }
+          
+          updOffset += numToUpd;
+          if (updOffset >= trfs.length) updOffset -= trfs.length;
+
+        };
+        
+        let f = () => ff() || requestAnimationFrame(f);
+        requestAnimationFrame(f);
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="overlay"></div>
+  </body>
+</html>
