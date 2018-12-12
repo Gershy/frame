@@ -4,6 +4,11 @@ let crypto = require('crypto');
 let fs = require('fs-extra');
 let path = require('path');
 
+let { js: clientJsFile, css: clientCssFile } = ({
+  zombs: { js: 'zombs.js', css: 'zombs.css' }
+  // sound: { js: 'sound.js', css: 'sound.css' }
+})['zombs'];
+
 // ==== UTIL
 require('./common.js');
 
@@ -91,98 +96,94 @@ let Brain = U.inspire({ name: 'Brain', methods: (insp, Insp) => ({
   $sigmoid1: (v, v0=Brain.sigmoid0(v)) => v0 * (1 - v0),
   $meanSqr0: (src, trg) => { let d = src - trg; return d * d; },
   $meanSqr1: (src, trg) => src - trg,
-  init: function(layers, initB=Math.random, initW=Math.random) {
+  init: function({ sizes, inputValues=v=>v, rubric0=null, rubric1=null, smoothing0=Brain.sigmoid0, smoothing1=Brain.sigmoid1, initB=Math.random, initW=Math.random }) {
     
     /*
-    
     With `layers=[4, 5, 3]`:
     
-    this.layers = [
-      { biases: [ 0, 0, 0, 0 ],
-        weights: []  // The `weights` array for the 1st layer is always empty!
-      },
-      { biases: [ 0, 0, 0, 0, 0 ],
-        weights: [
-          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 1st node of layer 2
-          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 2nd node of layer 2
-          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 3rd node of layer 2
-          0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 4th node of layer 2
-          0, 0, 0, 0  // For nodes in the 1st layer 1-4, values connecting them to the 5th node of layer 2
-        ]
-      },
-      { biases: [ 0, 0, 0 ],
-        weights: [
-          0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0,
-          0, 0, 0, 0, 0
-        ]
-      }
-    ];
+    layer 0:
+      adds: [ 0, 0, 0, 0 ] // Filled but not used
+      muls: []
+    layer 1:
+      adds: [ 0, 0, 0, 0, 0 ]
+      muls: [
+        0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 1st node of layer 2
+        0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 2nd node of layer 2
+        0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 3rd node of layer 2
+        0, 0, 0, 0, // For nodes in the 1st layer 1-4, values connecting them to the 4th node of layer 2
+        0, 0, 0, 0  // For nodes in the 1st layer 1-4, values connecting them to the 5th node of layer 2
+      ]
+    layer 2:
+      adds: [ 0, 0, 0 ]
+      muls: [
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0
+      ]
     */
     
-    this.layers = new Array(layers.length);
-    for (let li = 0, ln = layers.length; li < ln; li++) {
+    if (!rubric0) throw new Error('Missing rubric0');
+    if (!rubric1) throw new Error('Missing rubric1');
+    
+    this.inputValues = inputValues;
+    this.rubric0 = rubric0;
+    this.rubric1 = rubric1;
+    
+    this.smoothing0 = smoothing0;
+    this.smoothing1 = smoothing1;
+    
+    this.sizes = sizes;
+    this.size = sizes.length;
+    this.adds = new Array(this.size);
+    this.muls = new Array(this.size);
+    for (let lInd = 0; lInd < this.size; lInd++) {
+      let [ s0, sP ] = [ sizes[lInd], lInd ? sizes[lInd - 1] : 0 ];
+      let [ add, mul ] = [ [], [] ];
+      this.adds[lInd] = add;
+      this.muls[lInd] = mul;
       
-      let numNow = layers[li];
-      let numPrv = li ? layers[li - 1] : 0;
-      
-      let layer = { length: numNow, biases: [], weights: [] };
-      this.layers[li] = layer;
-      
-      // if (!li) continue;
-      
-      for (let n = 0; n < numNow; n++) {
-        // Looking at node ${n} in layer ${li}...
-        
-        // Define a bias for this node...
-        layer.biases.push(initB());
-        
-        // Define a weight for each node in the next layer
-        for (let m = 0; m < numPrv; m++) layer.weights.push(initW());
+      for (let ind0 = 0; ind0 < s0; ind0++) {
+        add[ind0] = initB(lInd, ind0);
+        for (let indP = 0; indP < sP; indP++) mul[indP + ind0 * sP] = initW(lInd, ind0, indP);
       }
-      
     }
-    this.size = this.layers.length;
     
   },
-  opinion: function(inp, smoothing0=Brain.sigmoid0) {
+  opinion: function(inp) {
     
     // Returns two lists:
     // 1) The list of activation values for each layer
-    // 2) The list of activation values before `smoothing0` is applied for each layer
+    // 2) The list of activation values before `act0` is applied for each layer
     
-    if (inp.length !== this.layers[0].biases.length) throw new Error(`Incorrect number of inputs!`);
+    if (inp.length !== this.sizes[0]) throw new Error(`Incorrect number of inputs!`);
     
     let result = null;
     let resultsZ = new Array(this.size);
     let resultsX = new Array(this.size);
     for (let lInd = 0; lInd < this.size; lInd++) {
       
-      let [ layerP, layer0 ] = [ this.layers[lInd - 1], this.layers[lInd] ];
-      
       if (!result) {
         
-        result = inp;
+        result = this.inputValues(inp);
         
       } else {
         
-        let [ sP, s0 ] = [ layerP.length, layer0.length ];
-        let fwdWeights = layer0.weights;
-        let fwdBiases = layer0.biases;
+        let [ sP, s0 ] = [ this.sizes[lInd - 1], this.sizes[lInd] ];
+        let [ fwdAdds, fwdMuls ] = [ this.adds[lInd], this.muls[lInd] ];
         let resultP = result;
         
         result = new Array(s0);
         for (let ind0 = 0; ind0 < s0; ind0++) {
           let sum = 0;
-          for (let indP = 0; indP < sP; indP++) sum += fwdWeights[indP + ind0 * sP] * resultP[indP];
-          result[ind0] = sum + fwdBiases[ind0];
+          for (let indP = 0; indP < sP; indP++) sum += fwdMuls[indP + ind0 * sP] * resultP[indP];
+          result[ind0] = sum + fwdAdds[ind0];
         }
         
       }
       
-      // Collect unsmoothed, then smooth, then collect smoothed
+      // Collect unsmoothed, then do smoothing, then collect smoothed
       resultsZ[lInd] = result;
-      if (lInd) result = result.map(smoothing0); // TODO: The `if` prolly isn't necessary
+      result = result.map(this.smoothing0); // Skip smoothing for input layer
       resultsX[lInd] = result;
       
     }
@@ -190,20 +191,26 @@ let Brain = U.inspire({ name: 'Brain', methods: (insp, Insp) => ({
     return [ resultsZ, resultsX, result ];
     
   },
-  calcGradient: function([ zs, xs ], correct, cost0=Brain.meanSqr0, cost1=Brain.meanSqr1, smoothing0=Brain.sigmoid0, smoothing1=Brain.sigmoid1) {
+  reflect: function(inp) {
+    let errorVec = this.rubric0(inp, this.opinion(inp)[2]);
+    let sqrSum = 0;
+    errorVec.forEach(v => sqrSum += v * v);
+    return Math.sqrt(sqrSum);
+  },
+  calcGradient: function(inp, [ zs, xs ]) {
     
-    // `errZ` is a list of pre-smoothing activations
-    // `errX` is a list of activations
+    // Based on fed-forward x and z vals for each layer, calculate the error gradient
+    // for all adds+muls at each layer
+    
     let s = this.size;
+    let smoothing1 = this.smoothing1;
     
-    let biasGrads = new Array(this.size);
-    let weightGrads = new Array(this.size);
-    let backPass = null;
+    let [ addGrads, mulGrads, backPass ] = [ new Array(this.size), new Array(this.size), null ];
     for (let lInd = this.size - 1; lInd >= 1; lInd--) {
       
       // Get references to the layer size, unsmoothed layer error, and layer error
       // Do this for the previous layer (P), current layer (0), and next layer (N)
-      let [ sP, s0, sN ] = this.layers.slice(lInd - 1, lInd + 2).map(l => l.length);
+      let [ sP, s0, sN ] = this.sizes.slice(lInd - 1, lInd + 2);
       let [ zP, z0, zN ] = zs.slice(lInd - 1, lInd + 2);
       let [ xP, x0, xN ] = xs.slice(lInd - 1, lInd + 2);
       
@@ -211,129 +218,89 @@ let Brain = U.inspire({ name: 'Brain', methods: (insp, Insp) => ({
       
       if (!backPass) {
         
-        // Calculate the error gradient of the final activation
-        backPass = x0.map((v, i) => cost1(v, correct[i]) * smoothing1(z0[i], v));
+        // Initial value based on rubric gradient
+        backPass = this.rubric1(inp, x0).map((v, i) => v * smoothing1(z0[i], x0[i]));
         
       } else {
         
         // Move the error gradient `backPass` back to the previous layer
-        let fwdActivation = backPass;                   // sN x 1
-        let fwdWeights = this.layers[lInd + 1].weights; // s0 x sN
-        // let fwdBiases = this.layers[lInd + 1].biases;   // s0 x 1
+        let fwdActivation = backPass;       // sN x 1
+        let fwdMuls = this.muls[lInd + 1];  // s0 x sN
         
         // For each node in the current layer calculate the weighted error based on the next layer's error
         backPass = new Array(s0);
         for (let ind0 = 0; ind0 < s0; ind0++) {
           let sum = 0;
-          for (let indN = 0; indN < sN; indN++) sum += fwdWeights[ind0 + indN * s0] * fwdActivation[indN];
+          for (let indN = 0; indN < sN; indN++) sum += fwdMuls[ind0 + indN * s0] * fwdActivation[indN];
           backPass[ind0] = sum * smoothing1(z0[ind0], x0[ind0]); // Unapply the smoothing function
         }
         
       }
       
-      // `backPass` has stepped back from `lInd + 1` and is the error gradient at layer `lInd`
+      // `backPass` has moved back from `lInd + 1` and is the error gradient at layer `lInd`
+      // Now need to store add and mul gradients based on `backPass`
       
-      // `backPass` is already exactly the bias gradient!
-      biasGrads[lInd] = backPass;
+      // `backPass` is already exactly the add gradient!
+      addGrads[lInd] = backPass;
       
-      // The weight gradient ought to be sP x s0
+      // The resulting mul gradient ought to be sP x s0
       // `backPass` -> s0 x 1
       // `xP`       -> sP x 1
-      let weightGrad = new Array(sP * s0);
+      let mulGrad = new Array(sP * s0);
       for (let indP = 0; indP < sP; indP++) { for (let ind0 = 0; ind0 < s0; ind0++) {
-        weightGrad[indP + ind0 * sP] = xP[indP] * backPass[ind0];
+        mulGrad[indP + ind0 * sP] = xP[indP] * backPass[ind0];
       }}
-      weightGrads[lInd] = weightGrad;
+      mulGrads[lInd] = mulGrad;
       
     }
     
-    return [ biasGrads, weightGrads ];
+    return [ addGrads, mulGrads ];
     
   },
-  study: function(trainingData, batchSize, amt=3) {
-    
-    amt /= batchSize;
-    
-    for (let i = 0; i < trainingData.length; i += batchSize) {
-      
-      // `biasGrads` and `weightGrads` will represent the average gradient for
-      // `batchSize` training examples
-      
-      let [ biasGrads, weightGrads ] = [ null, null ];
-      let num = Math.min(trainingData.length - i, batchSize);
-      for (let j = i; j < i + num; j++) {
-        
-        let [ src, trg ] = trainingData[j];
-        
-        [ bGrads, wGrads ] = this.calcGradient(this.opinion(src), trg);
-        
-        if (!biasGrads) {
-          
-          [ biasGrads, weightGrads ] = [ bGrads, wGrads ];
-          
-        } else {
-          
-          for (let lInd = 1; lInd < this.layers.length; lInd++) {
-            // Get biases+weights, and fresh biases+weights, for the current layer index
-            let [ lb, lw, lbd, lwd ] = [ biasGrads[lInd], weightGrads[lInd], bGrads[lInd], wGrads[lInd] ];
-            for (let bInd = 0; bInd < lb.length; bInd++) lb[bInd] += lbd[bInd];
-            for (let wInd = 0; wInd < lw.length; wInd++) lw[wInd] += lwd[wInd];
-          }
-          
-          
-          // biasGrads = biasGrads.map((bg, lInd) => bg.map((bv, bInd) => bv + bGrads0[lInd][bInd]));
-          // weightGrads = weightGrads.map((wg, lInd) => wg.map((wv, wInd) => wv + wGrads0[lInd][wInd]));
-        }
-        
-      }
-      
-      // We've averaged out bias+weight gradients; now apply them
-      this.refine([ biasGrads, weightGrads ], amt);
-      
-    }
-    
+  study: function(inp, amt) {
+    this.refine(this.calcGradient(inp, this.opinion(inp)), amt);
   },
-  refine: function([ biasGrads, weightGrads ], amt) {
-    
+  refine: function([ addGrads, mulGrads ], amt) {
+    // Update values according to the provided gradients
     for (let lInd = 1; lInd < this.size; lInd++) {
-      
-      let { biases, weights } = this.layers[lInd];
-      let [ bGrad, wGrad ] = [ biasGrads[lInd], weightGrads[lInd] ];
-      
-      for (let bInd = 0; bInd < biases.length; bInd++) biases[bInd] -= amt * bGrad[bInd];
-      for (let wInd = 0; wInd < weights.length; wInd++) weights[wInd] -= amt * wGrad[wInd];
-      
+      let [ adds, muls ] = [ this.adds[lInd], this.muls[lInd] ];
+      let [ aGrad, mGrad ] = [ addGrads[lInd], mulGrads[lInd] ];
+      for (let aInd = 0; aInd < adds.length; aInd++) adds[aInd] -= amt * aGrad[aInd];
+      for (let mInd = 0; mInd < muls.length; mInd++) muls[mInd] -= amt * mGrad[mInd];
     }
-    
   }
 })});
 
 let doBrainTest = false;
 if (doBrainTest) {
-  console.log('BRAIN TEST...');
-  console.log('================================================');
-
-  let brain = new Brain([ 2, 5, 1 ]);
-
-  let egs = [];
-  for (let i = 0; i < 1000; i++) {
-    let v1 = Math.random() > 0.5 ? 0 : 1;
-    let v2 = Math.random() > 0.5 ? 0 : 1;
-    egs.push([ [ v1, v2 ], [ v1 && v2 ? 1 : 0 ] ]);
-  }
-
-  brain.study(egs, 1, 1);
-
-  for (let i = 0; i < 10; i++) {
-    let v1 = Math.random() > 0.5 ? 0 : 1;
-    let v2 = Math.random() > 0.5 ? 0 : 1;
-    let [ zs, xs, result ] = brain.opinion([ v1, v2 ]);
-    console.log(`${v1.toFixed(3)} && ${v2.toFixed(3)}: ${result}`);
-  }
+  console.log('==== BRAIN TEST ====');
   
+  let add = a => a.reduce((m, v) => m + v, 0);
+  
+  let brain = new Brain({
+    sizes: [ 5, 10, 10, 1 ],
+    rubric0: (inp, out) => [ Brain.meanSqr0(out[0], add(inp) / 5) ],
+    rubric1: (inp, out) => [ Brain.meanSqr1(out[0], add(inp) / 5) ]
+  });
+  
+  let eg = () => Array.fill(5, Math.random);
+  
+  console.log('STUDYING...');
+  for (let i = 0; i < 10000; i++) brain.study(eg(), 5);
+  
+  console.log('TESTING...');
+  for (let i = 0; i  < 10; i++) {
+    let test = eg();
+    let [ zs, xs, result ] = brain.opinion(test);
+    console.log(`${test.map(v => v.toFixed(3)).join(', ')}; [${brain.reflect(test).toFixed(3)}] (${(result[0] * 5).toFixed(3)} vs ${add(test).toFixed(3)})`);
+  }
+  // for (let v1 = 0; v1 <= 1; v1++) { for (let v2 = 0; v2 <= 1; v2++) {
+  //   let [ zs, xs, result ] = brain.opinion([ v1, v2 ]);
+  //   console.log(`${v1.toFixed(3)}, ${v2.toFixed(3)}: ${brain.reflect([ v1, v2 ]).toFixed(3)} (${result}}`);
+  // }}
+    
   return process.exit(0);
 }
-
 
 // ==== 2D MATH
 let XY = U.inspire({ name: 'XY', methods: (insp, Insp) => ({
@@ -2290,7 +2257,7 @@ let genStatic = () => {
       } else if (method === 'get' && url === '/client.js') {
         
         response.writeHead(200, { 'Content-Type': 'text/javascript' });
-        fs.createReadStream(path.join(__dirname, 'client.js')).pipe(response);
+        fs.createReadStream(path.join(__dirname, clientJsFile)).pipe(response);
         
       } else if (method === 'get' && url === '/common.js') {
         
@@ -2300,7 +2267,7 @@ let genStatic = () => {
       } else if (method === 'get' && url === '/client.css') {
         
         response.writeHead(200, { 'Content-Type': 'text/css' });
-        fs.createReadStream(path.join(__dirname, 'client.css')).pipe(response);
+        fs.createReadStream(path.join(__dirname, clientCssFile)).pipe(response);
         
       } else if (method === 'get' && url === '/favicon') {
         

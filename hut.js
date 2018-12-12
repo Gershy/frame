@@ -6,6 +6,9 @@
 [X]     - Standard start + stop paradigm
 [X]     - Mixins and Classes (the same!)
 [X]     - Function argument validation          Declarative (or ES7-style?)
+[ ]     - Extend prototypes instead of A, O
+[ ]     - `U.inspire` in "important/common.js" is cleaner than `U.makeClass` in "clearing/essentials.js"
+[ ]     - Consider `Entity.relate[1M][1M]` methods in "important/common.js"
 [X]   - Compilation
 [X]     - Client-side line mapping
 [X]   - Environment fitting                     Extensible list of supported environments
@@ -28,6 +31,7 @@
 [ ]     - Task-specific nodes
 [ ]       - A single node for all data operations (synchronous infallability)
 [ ]   - Package tests
+[ ]   - WORK ON "REAL" TWIG!! FOR CSS, TAKE A SHORTCUT (all elements `position: absolute;`)
 
 
 ==== IMPROVEMENTS
@@ -86,16 +90,6 @@ let compiler = global.COMPILER = Compiler({
       // }
     }
   }
-});
-process.on('uncaughtException', err => {
-  U.output('---- UNCAUGHT');
-  U.output(compiler.formatError(err));
-  process.exit(1);
-});
-process.on('unhandledRejection', err => {
-  U.output('---- UNHANDLED');
-  U.output(compiler.formatError(err));
-  process.exit(1);
 });
 
 (async () => await compiler.run('clearing'))();
