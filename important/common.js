@@ -75,6 +75,11 @@ Object.defineProperty(Object.prototype, 'gain', {
   enumerable: false
 });
 
+Array.fill = (n, f=()=>null) => {
+  let a = new Array(n);
+  for (let i = 0; i < n; i++) a[i] = f(i);
+  return a;
+};
 Object.defineProperty(Array.prototype, 'find', {
   value: function(f) {
     for (let i = 0, len = this.length; i < len; i++) if (f(this[i])) return [ i, this[i] ];
@@ -100,10 +105,7 @@ Object.defineProperty(Array.prototype, 'gain', {
 });
 
 let BaseInsp = function() {};
-BaseInsp.prototype = Object.create(null, {
-  
-
-});
+BaseInsp.prototype = Object.create(null, {});
 BaseInsp.prototype.isInspiredBy = function(Insp0) { return this.constructor.insps.has(Insp0.uid); };
 
 let U = {
@@ -115,9 +117,13 @@ let U = {
   duoKey: (v1, v2, delim=',') => v1 < v2 ? `${v1}${delim}${v2}` : `${v2}${delim}${v1}`,
   combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 }),
   inspire: ({ name, insps={}, methods, statik={}, description='' }) => {
-    let Insp = function(...p) {
-      return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p);
-    };
+    
+    let Insp = eval(`let F = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; F;`);
+    
+    // let Insp = function(...p) {
+    //   return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p);
+    // };
+    // Insp.name = name;
     Object.defineProperty(Insp, 'name', { value: name });
     
     // Calculate a map of all inspirations for `isInspiredBy` testing

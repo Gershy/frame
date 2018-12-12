@@ -85,7 +85,6 @@ U.makeTwig({ name: 'sound', twigs: [ 'hinterlands', 'real' ], make: (sound, reco
     return rBuff; // Only the first rBuff.length >> 1 samples are correct
     
   };
-  
   let fourierDiff = (f1, f2) => {
     
     let big = f1;
@@ -136,7 +135,6 @@ U.makeTwig({ name: 'sound', twigs: [ 'hinterlands', 'real' ], make: (sound, reco
     return ret;
   };
   let combineSlices = slices => {
-    console.log(slices);
     let totalLen = A.reduce(slices, 0, (sound, sum) => sum + sound[0].length);
     let numChannels = slices[0].length;
     let ret = [];
