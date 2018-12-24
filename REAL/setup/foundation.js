@@ -3,6 +3,11 @@
 // platform, etc. Also, for each platform, the foundation takes into account whether
 // the hut is alone, above, below, or between
 
+// TODO: Write classes for transports
+let Signaller = U.inspire({ name: 'Signaller', methods: (insp, Insp) => ({
+  init: function({}) {}
+})});
+
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function({ hut=null, bearing=null }) {
     if (!hut) throw new Error('Missing "hut" param');
@@ -14,6 +19,13 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
   getPlatformName: C.notImplemented,
   nextUid: function() { return this.uidCnt++; },
+  
+  // Functionality
+  makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
+  makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
+  
+  // Setup
+  formatError: C.notImplemeneted,
   install: async function() {
     await this.installFoundation();
     let room = U.rooms[this.hut];
@@ -24,6 +36,10 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   genInitBelow: async function(contentType) { return C.notImplemented.call(this); },
   makeTransport: C.notImplemented
 })});
+
+Foundation.gain({
+  Signaller
+});
 
 U.foundationClasses.gain({
   Foundation

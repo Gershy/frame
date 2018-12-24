@@ -2,7 +2,7 @@
 // language to behave more pleasantly and consistently
 
 let C = global.C = {
-  SKIP: { SKIP: 1 },
+  skip: { SKIP: 1 },
   BaseInsp: (() => {
     let BaseInsp = function BaseInsp() {};
     BaseInsp.prototype = Object.create(null);
@@ -37,6 +37,7 @@ protoDef(Object, 'find', function(f) {
   return null;
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
+protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
 protoDef(Object, 'gain', function(obj) {
   for (let k in obj) this[k] = obj[k];
   return this;
@@ -51,7 +52,7 @@ protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {
     let v = it(this[i], i);
-    if (v !== U.SKIP) ret.push(v);
+    if (v !== C.skip) ret.push(v);
   }
   return ret;
 });
@@ -69,6 +70,7 @@ protoDef(Array, 'find', function(f) {
   return null;
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
+protoDef(Array, 'isEmpty', function() { return !!this.length; });
 protoDef(Array, 'gain', function(arr2) { return this.push(...arr2); });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
@@ -194,32 +196,47 @@ let U = global.U = {
   rooms: {}
 };
 
-let WOBBLY_UID = 0;
 let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
-  init: function(value=null) {
-    this.uid = WOBBLY_UID++;
-    this.nextInd = 0;
-    this.holders = {};
-    this.value = value;
+  $nextUid: 0,
+  $nextHoldUid: 0,
+  
+  init: function({ value=null, uid=null }) {
+    this.uid = uid !== null ? uid : Insp.nextUid++;
+    this.setValue(value);
   },
-  hold: function(func) {
-    let ind = this.nextInd++;
+  setValue: function(value) { this.value = value; },
+  getValue: function() { return this.value; },
+  hold: function(func, hasty=true) {
+    if (!this.holders) this.holders = {};
+    let ind = Insp.nextHoldUid++;
     func[`~wob${this.uid}`] = ind;
     this.holders[ind] = func;
-    func(this.value);
+    if (hasty) func(this.getValue());
+    return func;
   },
   drop: function(func) {
+    if (!func.has(`~wob${this.uid}`)) throw new Error('Tried to drop unheld function');
     let ind = func[`~wob${this.uid}`];
     delete func[`~wob${this.uid}`];
     delete this.holders[ind];
+    if (this.holders.isEmpty()) delete this.holders;
   },
-  update: function(value) {
-    this.value = value;
-    for (let k in this.holders) this.holders[k](value);
+  wobble: function(value=null) {
+    this.setValue(value);
+    if (this.holders) for (let k in this.holders) this.holders[k](value);
   },
-  mod: function(f) {
-    this.update(f(this.value));
+  modify: function(f) {
+    this.wobble(f(this.getValue()));
   }
+})});
+let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
+  init: function({ uid=null }) {
+    insp.Wobbly.init.call(this, { uid });
+  },
+  setValue: function(v) {},
+  getValue: function() { return null; },
+  modify: function(f) { throw new Error(`Call "wobble" instead of "modify" on ${this.constructor.name}`); },
+  hold: function(func) { return insp.Wobbly.hold.call(this, func, false); }
 })});
 let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, Insp) => ({
   init: function(wobblies, func) {
@@ -228,17 +245,18 @@ let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, In
     this.func = func;
     this.watchFunc = () => {
       let value = this.calc();
-      if (value !== this.value) this.update(value);
+      if (value !== this.getValue()) this.wobble(value);
     };
-    this.value = this.calc();
+    this.setValue(this.calc());
     this.wobblies.forEach(w => w.hold(this.watchFunc));
   },
   calc: function() {
-    return this.func(...this.wobblies.map(w => w.value));
+    return this.func(...this.wobblies.map(w => w.getValue()));
   }
 })});
 
 U.gain({
   Wobbly,
+  BareWob,
   CalcWob
 });

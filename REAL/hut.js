@@ -4,12 +4,15 @@
 // Note that server-side huts perform compilation, and it's considered to
 // be part of the foundation.
 
+// ==== NOTES
+// EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
+
 Error.stackTraceLimit = Infinity;
 
-// Build the clearing:
+// Do setup
 require('./setup/clearing.js');
 require('./setup/foundation.js');
-require('./setup/foundationNode.js');
+require('./setup/foundationNodejs.js');
 
 // Process args
 let args = process.argv.slice(2).join(' ');
@@ -17,7 +20,7 @@ if (args[0] === '{') {
   args = eval(`(${args})`);
 } else {
   args = args.split('--').toObj(a => {
-    if (!a) return U.SKIP;
+    if (!a) return C.skip;
     let [ k, ...v ] = a.trim().split(' ');
     return [ k, v.join(' ') || true ];
   });
