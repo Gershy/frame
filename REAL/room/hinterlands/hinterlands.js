@@ -1,7 +1,7 @@
 U.buildRoom({
   name: 'hinterlands',
   innerRooms: [ 'record' ],
-  build: (fnd, record) => {
+  build: (foundation, record) => {
     // All huts sit together in the hinterlands
     
     let { Record } = record;
@@ -16,146 +16,146 @@ U.buildRoom({
       $genFlatDef: () => ({
       }),
       
-      init: function({ hinterlands, knownToHut=()=>false }) {
-        insp.Record.init.call(this, {});
-        this.hinterlands = null;
+      init: function({ hinterlands, uid=hinterlands.nextUid(), knownToHut=()=>false }) {
+        insp.Record.init.call(this, { uid });
         this.knownToHut = knownToHut;
-        this.uid = hinterlands.nextUid();
+        this.attach('hinterlands', hinterlands);
+        this.hinterlands = hinterlands;
         
-        this.mod('hinterlands', { act: 'attach', hinterlands });
+        let holdValueFunc = newVal => hinterlands.informValue(this, newVal);
+        this.hold(holdValueFunc);
+        
+        let holdAttachFunc = this.getAttachWob().hold(([ relName, inst ]) => hinterlands.informAttaches(relName, this, inst));
+        let holdDetachFunc = this.getDetachWob().hold(([ relName, inst ]) => hinterlands.informDetaches(relName, this, inst));
       }
     })});
     
     let Hinterlands = U.inspire({ name: 'Hinterlands', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
+      $defaultCommands: {
+        getInit: async (inst, hut, msg) => {
+          let initBelow = await inst.foundation.genInitBelow('text/html');
+          hut.tell(initBelow);
+        },
+        getFile: async (inst, hut, msg) => {
+          hut.tell({ command: 'error', type: 'notImplemented', orig: msg });
+        },
+        error: async (inst, hut, msg) => {
+          console.log(`Error from ${hut.address}:`, msg);
+        }
+      },
       
-      init: function({ foundation, name }) {
+      init: function({ foundation, name, commands=Hinterlands.defaultCommands }) {
         insp.Record.init.call(this, {});
         this.foundation = foundation;
-        this.highways = {};
-        this.records = {};
         this.uidCnt = 0;
+        this.version = 0; // This notion of "version" can increase VERY quickly
+        
+        this.commands = commands;
+        
+        this.updateLive = {};
+        this.updateDead = {};
+        this.updateValues = {};
+        this.updateAttaches = {};
+        this.updateDetaches = {};
       },
       nextUid: function() { return this.uidCnt++; },
-      open: async function() { return Promise.all(this.highways.map(h => h.open()).toArr(p => p)); },
-      shut: async function() { return Promise.all(this.highways.map(h => h.shut()).toArr(p => p)); }
+      
+      hear: async function(hut, msg) {
+        let { command } = msg;
+        
+        if (command !== 'error') console.log(`Heard ${hut.address}:`, msg);
+        
+        if (this.commands.has(command)) await this.commands[command](this, hut, msg);
+        else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
+      },
+      
+      // TODO: Ignore being informed if `inst` isn't meant to be synced
+      informLive: function(inst) {
+        this.updateLive[inst.uid] = inst;
+      },
+      informDead: function(inst) {
+        this.updateDead[inst.uid] = inst;
+      },
+      informValue: function(inst, value) {
+        // TODO: Consider ONLY allowing serializable values???
+        this.updateValues[inst.uid] = value; // TODO: If `value` isn't serializable there will be issues
+      },
+      informAttaches: function(relName, inst1, inst2) {
+        this.updateAttaches[`${relName}~${U.multiKey(inst1.uid, inst2.uid)}`] = [ relName, inst1, inst2 ];
+      },
+      informDetaches: function(relName, inst1, inst2) {
+        this.updateDetaches[`${relName}~${U.multiKey(inst1.uid, inst2.uid)}`] = [ relName, inst1, inst2 ];
+      },
+      
+      open: async function() { return Promise.all(this.getInner('highways').map(h => h.open()).toArr(p => p)); },
+      shut: async function() { return Promise.all(this.getInner('highways').map(h => h.shut()).toArr(p => p)); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { HinterlandsRecord }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
       
       init: function({ hinterlands, address }) {
+        if (!hinterlands) throw new Error('Missing "hinterlands"');
         insp.HinterlandsRecord.init.call(this, { hinterlands });
         this.address = address;
-        this.highways = {}; // All the highways which connect us to this hut through the hinterlands
-        this.discoveredAt = +new Date();
+        this.version = -10; // Some distance from 0
+        this.discoveredMs = +new Date();
+      },
+      favouredHighway: function() {
+        // TODO: Implement for real!
+        // console.log(this.getInner('highways')); // TODO: getInner is broken
+        let highways = this.inner.highways;
+        for (let k in highways) return highways[k];
+        return null;
+      },
+      tell: async function(msg) {
+        await this.favouredHighway().tellHut(this, msg);
       }
     })});
     let Highway = U.inspire({ name: 'Highway', insps: { HinterlandsRecord }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
       
-      init: function({ hinterlands }) {
-        insp.HinterlandsRecord.init.call(this, { hinterlands });
-        this.hinterlands = null;
-        this.huts = {};
-      }
-    })});
-    let HighwayHttp = U.inspire({ name: 'HighwayHttp', insps: { Highway }, methods: (insp, Insp) => ({
-      $genFlatDef: () => ({
-      }),
-      
-      init: function({ hinterlands, ...args }) {
-        insp.Highway.init.call(this, { hinterlands });
+      init: function({ hinterlands, makeServer=null }) {
+        if (!makeServer) throw new Error('Missing "makeServer"');
         
-        /// {ABOVE=
-        let { host, port } = args;
-        this.host = host;
-        this.port = port;
-        this.httpServer = null;
-        this.hutResponses = {};
-        this.hutBuffereds = {};
+        insp.HinterlandsRecord.init.call(this, { hinterlands });
+        this.makeServer = makeServer;
+        this.server = null;
+        this.serverFunc = null
         this.hutsByIp = {};
-        /// =ABOVE} {BELOW=
-        /// =BELOW}
       },
       open: async function() {
-        /// {ABOVE=
-        this.httpServer = require('http').createServer(async (req, res) => this.processHttpAndHear(req, res));
-        await new Promise(r => this.httpServer.listen(this.port, this.host, 511, r));
-        /// =ABOVE} {BELOW=
-        /// =BELOW}
-      },
-      shut: async function() {
-        /// {ABOVE=
-        if (this.httpServer) { this.httpServer.close(); this.httpServer = null; }
-        /// =ABOVE} {BELOW=
-        /// =BELOW}
-      },
-      processHttpAndHear: async function(req, res) {
-        let ipVerbose = (req.headers['x-forwarded-for'] || req.connection.remoteAddress).split(',')[0].trim();
-        let ip = compactIp(ipVerbose);
-        console.log(`${ip} (${ipVerbose}) - ${req.url}`);
-        
-        if (!this.huts.has(ip)) {
-          let newHut = Hut({ hinterlands: this.hinterlands, address: ip });
-          this.mod('huts', { act: 'attach', huts: newHut });
-          this.hutsByIp[ip] = newHut;
-          this.hutResponses[ip] = [];
-          this.hutBuffereds[ip] = [];
-        }
-        
-        this.hutResponses[ip].push(res);
-        
-        let hut = this.hutsByIp[ip];
-        
-        if (req.url === '/')            await this.tell(hut, 'getInit');
-        if (req.url === '/favicon.ico') await this.tell(hut, 'getBinary', { target: 'favicon.ico' });
-        
-        let [ buffs, resps ] = [ this.hutBuffereds[ip], this.hutResponses[ip] ];
-        
-        while (buffs.length && resps.length) {
-          let [ buff, resp ] = [ buffs.shift(), resps.shift() ];
-          buff(resp);
-        }
-      },
-      tell: async function(hut, command, params={}) {
-        // Promise resolution means that the "tell" has been formulated, but not necessarily sent
-        
-        let doTell = null;
-        
-        if (command === 'getInit') {
+        this.server = await this.makeServer();
+        this.serverFunc = this.server.hold(hutWob => {
+          let { ip } = hutWob;
+          let hut = Hut({ hinterlands: this.hinterlands, address: ip });
+          this.attach('huts', hut);
+          this.hinterlands.attach('huts', hut);
+          this.hutsByIp[ip] = { wob: hutWob, hut };
           
-          doTell = async res => {
-            let initBelow = await this.hinterlands.foundation.genInitBelow('text/html');
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(initBelow);
-          };
-          
-        } else {
-          
-          doTell = res => {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('Error');
-          };
-          
-        }
-        
-        this.hutBuffereds[hut.address].push(doTell);
+          hutWob.hear.hold(async msg => {
+            await this.hinterlands.hear(hut, msg);
+          });
+          hutWob.shut.hold(() => {
+            this.detach('huts', hut);
+            this.hinterlands.detach('huts', hut);
+          });
+        });
       },
-      hear: async function(hut, command) {
-        console.log('REQ:', command.address);
-        let initBelow = this.fnd.genInitBelow('http');
-        this.tell(initBelow, hut);
+      tellHut: function(hut, msg) {
+        console.log(`Telling ${hut.address}:`, msg);
+        this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});
     
     Record.relate1M(Record.stability.secret, 'hinterlandsRecords', Hinterlands, 'records', HinterlandsRecord, 'hinterlands');
     Record.relate1M(Record.stability.secret, 'hinterlandsHighways', Hinterlands, 'highways', Highway, 'hinterlands');
     Record.relateMM(Record.stability.secret, 'highwayHuts', Highway, 'huts', Hut, 'highways');
+    Record.relate1M(Record.stability.secret, 'hinterlandsHuts', Hinterlands, 'huts', Hut, 'hinterlands2');
     
-    return { Hinterlands, Hut, Highway, HighwayHttp };
-    
+    return { Hinterlands, Hut, Highway };
   }
 });
