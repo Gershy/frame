@@ -24,174 +24,107 @@ U.buildRoom({
         return fullDef;
       },
       $genFlatDef: () => ({
-        type: { stability: Insp.stability.constant,
-          change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
-          serial: (inst) => inst.constructor.name,
-          actual: (inst) => inst.constructor
-        },
-        uid: { stability: Insp.stability.constant,
-          change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
-          serial: (inst) => inst.uid,
-          actual: (inst) => inst.uid
-        }
+        // type: { stability: Insp.stability.constant,
+        //   change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
+        //   serial: (inst) => inst.constructor.name,
+        //   actual: (inst) => inst.constructor
+        // },
+        // uid: { stability: Insp.stability.constant,
+        //   change: (inst, val) => { throw new Error('Can\'t modify this prop'); },
+        //   serial: (inst) => inst.uid,
+        //   actual: (inst) => inst.uid
+        // }
       }),
-      $relate11: (stability, name, Cls1, link1, Cls2, link2) => {
-        // For 1-to-1, links are pointer names
-        
-        let both = [
-          [ Cls1, link1, Cls2, link2 ],
-          [ Cls2, link2, Cls1, link1 ]
-        ];
-        
-        for (let [ Cls1, link1, Cls2, link2 ] of both) {
-          
-          if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-          Cls1.relSchemaDef[link1] = ((link1, link2) => ({
-            stability,
-            change: (inst1, p, act=p.act, inst2=p[link1] || p.rec || inst1.inner[link1]) => ({
-              attach: (inst1, inst2) => {
-                let [ i1, i2 ] = [ inst1.inner || {}, inst2.inner || {} ];
-                if (i1.has(link1)) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
-                if (i2.has(link2)) throw new Error(`Can't attach rel "${name}" (already have ${inst2.constructor.name}'s ${link2})`);
-                i1[link1] = inst2;
-                i2[link2] = inst1;
-                inst1.inner = i1;
-                inst2.inner = i2;
-                if (inst1.attachWob) inst1.attachWob.wobble([ name, inst2, link1, link2 ]);
-                if (inst2.attachWob) inst2.attachWob.wobble([ name, inst1, link2, link1 ]);
-              },
-              detach: (inst1, inst2) => {
-                if (!inst1.inner || inst1.inner[link1] !== inst2) throw new Error(`Can't detach rel "${name}" (missing ${inst1.constructor.name}'s ${link1})`);
-                inst1.inner[link1] = null;
-                inst2.inner[link2] = null;
-                if (inst1.inner.isEmpty()) delete inst1.inner;
-                if (inst2.inner.isEmpty()) delete inst2.inner;
-                if (inst1.detachWob) inst1.detachWob.wobble([ name, inst2, link1, link2 ]);
-                if (inst2.detachWob) inst2.detachWob.wobble([ name, inst1, link2, link1 ]);
-              }
-            })[act](inst1, inst2),
-            serial: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner[link1].uid : null,
-            actual: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner[link1] : null
-          }))(link1, link2);
-          
-        }
-        
+      
+      $relateUni1: (name, Cls1, Cls2) => {
+        // Attach/detach instances of Cls1 to/from instances of Cls2
+        return {
+          type: '1',
+          attach0: (inst1, inst2) => {
+            if (inst1.inner && inst1.inner.has(name))
+              throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
+          },
+          attach1: (inst1, inst2) => {
+            if (!inst1.inner) inst1.inner = {};
+            inst1.inner[name] = U.Wobbly({ value: inst2 });
+          },
+          detach0: (inst1, inst2) => {
+            if (!inst1.inner || !inst1.inner.has(name))
+              throw new Error(`Can't detach rel ${Cls1.name}.${name} -> ${Cls2.name}: already detached`);
+          },
+          detach1: (inst1, inst2) => {
+            inst1.inner[name].wobble(null);
+          }
+        };
       },
-      $relateM1: (stability, name, Cls1, link1, ClsM, linkM) => {
-        // For M-to-1, the 1 links with a pointer and the M links back with a map
-        // Cls1 is the singular instance, ClsM links to many instances of Cls1
-        
-        // TODO: without serial/actual, the following 2 schema defs are exactly
-        // the same except for attach/detach parameter order
-        
+      $relateUniM: (name, ClsM, Cls1) => {
+        // Attach/detach instances of ClsM to/from multiple instances of Cls1
+        return {
+          type: 'M',
+          attach0: (instM, inst1) => {
+            if (inst1.uid === null) throw new Error(`Can't attach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
+            if (instM.inner && instM.inner.has(name) && instM.inner[name].value.has(inst1.uid))
+              throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
+          },
+          attach1: (instM, inst1) => {
+            if (!instM.inner) instM.inner = {};
+            if (!instM.inner.has(name)) instM.inner[name] = U.DeltaWob({ value: {} });
+            instM.inner[name].wobble({ add: { [inst1.uid]: inst1 } });
+          },
+          detach0: (instM, inst1) => {
+            if (inst1.uid === null) throw new Error(`Can't detach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
+            if (!instM.inner || !instM.inner.has(name) || !instM.inner[name].value.has[inst1.uid])
+              throw new Error(`Can't detach rel ${ClsM.name}.${name} -> ${Cls1.name}: already detached`);
+          },
+          detach1: (instM, inst1) => {
+            instM.inner[name].wobble({ rem: { [inst1.uid]: inst1 } });
+          }
+        };
+      },
+      
+      $relate: (stability, relFunc1, relFunc2, Cls1, Cls2, name1, name2) => {
+        if (U.isType(stability, String)) stability = Record.stability[stability];
+        return {
+          stability,
+          Cls1, Cls2,
+          name1, name2,
+          cls1Rel: relFunc1(name1, Cls1, Cls2),
+          cls2Rel: relFunc2(name2, Cls2, Cls1)
+        };
+      },
+      $relate11: (stability, Cls1, Cls2, name1, name2=name1) => {
+        let rel = Record.relate(stability, Record.relateUni1, Record.relateUni1, Cls1, Cls2, name1, name2);
         if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-        Cls1.relSchemaDef[link1] = { stability,
-          change: (inst1, p, act=p.act, instM=p[link1] || p.rec || inst1.inner[link1]) => ({
-            attach: (inst1, instM) => {
-              let [ i1, iM ] = [ inst1.inner || {}, instM.inner || {} ];
-              if (i1.has(link1)) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
-              i1[link1] = instM;
-              if (!iM.has(linkM)) iM[linkM] = {};
-              iM[linkM][inst1.uid] = inst1;
-              inst1.inner = i1;
-              instM.inner = iM;
-              if (inst1.attachWob) inst1.attachWob.wobble([ name, instM, link1, linkM ]);
-              if (instM.attachWob) instM.attachWob.wobble([ name, inst1, linkM, link1 ]);
-            },
-            detach: (inst1, instM) => {
-              if (!inst1.inner || inst1.inner[link1] !== instM) throw new Error(`Can't detach rel "${name}" (missing ${inst1.constructor.name}'s ${link1})`);
-              inst1.inner[link1] = null;
-              delete instM.inner[linkM][inst1.uid];
-              if (instM.inner[linkM].isEmpty()) delete instM.inner[linkM];
-              if (inst1.inner.isEmpty()) delete inst1.inner;
-              if (instM.inner.isEmpty()) delete instM.inner;
-              if (inst1.detachWob) inst1.detachWob.wobble([ name, instM, link1, linkM ]);
-              if (instM.detachWob) instM.detachWob.wobble([ name, inst1, linkM, link1 ]);
-            }
-          })[act](inst1, instM),
-          serial: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner[link1].uid : null,
-          actual: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner[link1] : null
-        };
-        
+        Cls1.relSchemaDef[name1] = rel;
+        if (!Cls2.has('relSchemaDef')) Cls2.relSchemaDef = {};
+        Cls2.relSchemaDef[name2] = rel;
+        return rel;
+      },
+      $relateM1: (stability, ClsM, Cls1, nameM, name1=nameM) => {
+        let rel = Record.relate(stability, Record.relateUni1, Record.relateUniM, ClsM, Cls1, nameM, name1);
         if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
-        ClsM.relSchemaDef[linkM] = { stability,
-          change: (instM, p, act=p.act, inst1=p[link1] || p.rec) => ({
-            attach: (instM, inst1) => {
-              let [ i1, iM ] = [ inst1.inner || {}, instM.inner || {} ];
-              if (i1.has(link1)) throw new Error(`Can't attach rel "${name}" (already have ${inst1.constructor.name}'s ${link1})`);
-              i1[link1] = instM;
-              if (!iM.has(linkM)) iM[linkM] = {};
-              iM[linkM][inst1.uid] = inst1;
-              inst1.inner = i1;
-              instM.inner = iM;
-              if (inst1.attachWob) inst1.attachWob.wobble([ name, instM, link1, linkM ]);
-              if (instM.attachWob) instM.attachWob.wobble([ name, inst1, linkM, link1 ]);
-            },
-            detach: (instM, inst1) => {
-              if (!inst1.inner || inst1.inner[link1] !== instM) throw new Error(`Can't detach rel "${name}" (missing ${inst1.constructor.name}'s ${link1})`);
-              inst1.inner[link1] = null;
-              delete instM.inner[linkM][inst1.uid];
-              if (instM.inner[linkM].isEmpty()) delete instM.inner[linkM];
-              if (inst1.inner.isEmpty()) delete inst1.inner;
-              if (instM.inner.isEmpty()) delete instM.inner;
-              if (inst1.detachWob) inst1.detachWob.wobble([ name, instM, link1, linkM ]);
-              if (instM.detachWob) instM.detachWob.wobble([ name, inst1, linkM, link1 ]);
-            }
-          })[act](instM, inst1),
-          serial: (instM) => instM.inner && instM.inner.has(linkM) ? instM.inner[linkM].map(ent => 1) : {}, // Only the keys are important
-          actual: (instM) => instM.inner && instM.inner.has(linkM) ? instM.inner[linkM] : {}
-        };
-          
+        ClsM.relSchemaDef[nameM] = rel;
+        if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+        Cls1.relSchemaDef[name1] = rel;
+        return rel;
       },
-      $relate1M: (stability, name, ClsM, linkM, Cls1, link1) => {
-        Record.relateM1(stability, name, Cls1, link1, ClsM, linkM);
+      $relate1M: (stability, Cls1, ClsM, name1, nameM=name1) => {
+        let rel = Record.relate(stability, Record.relateUniM, Record.relateUni1, Cls1, ClsM, name1, nameM);
+        if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+        Cls1.relSchemaDef[name1] = rel;
+        if (!ClsM.has('relSchemaDef')) ClsM.relSchemaDef = {};
+        ClsM.relSchemaDef[nameM] = rel;
+        return rel;
       },
-      $relateMM: (stability, name, Cls1, link1, Cls2, link2) => {
-        
-        // For M-to-M, links are maps of uids
-        
-        let both = [
-          [ Cls1, link1, Cls2, link2 ],
-          [ Cls2, link2, Cls1, link1 ]
-        ];
-        
-        for (let [ Cls1, link1, Cls2, link2 ] of both) {
-          
-          if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-          Cls1.relSchemaDef[link1] = ((link1, link2) => ({ stability,
-            change: (inst1, p, act=p.act, inst2=p[link1] || p.rec || inst1[link1]) => ({
-              attach: (inst1, inst2) => {
-                let [ i1, i2 ] = [ inst1.inner || {}, inst2.inner || {} ];
-                if (i1.has(link1) && i1[link1].has(inst2.uid)) throw new Error(`Can't attach rel "${name}" (already attached)`);
-                if (!i1.has(link1)) i1[link1] = {};
-                if (!i2.has(link2)) i2[link2] = {};
-                i1[link1][inst2.uid] = inst2;
-                i2[link2][inst1.uid] = inst1;
-                inst1.inner = i1;
-                inst2.inner = i2;
-                if (inst1.attachWob) inst1.attachWob.wobble([ name, inst2, link1, link2 ]);
-                if (inst2.attachWob) inst2.attachWob.wobble([ name, inst1, link2, link1 ]);
-              },
-              detach: (inst1, inst2) => {
-                if (!inst1.inner || !inst1.inner.has(link1) || !inst1.inner[link1].has(inst2.uid))
-                  throw new Error(`Can't detach rel "${name}" (already detached)`);
-                delete inst1.inner[link1][inst2.uid];
-                delete inst2.inner[link2][inst1.uid];
-                if (inst1.inner[link1].isEmpty()) delete inst1.inner[link1];
-                if (inst2.inner[link2].isEmpty()) delete inst2.inner[link2];
-                if (inst1.inner.isEmpty()) delete inst1.inner;
-                if (inst2.inner.isEmpty()) delete inst2.inner;
-                if (inst1.detachWob) inst1.detachWob.wobble([ name, inst2, link1, link2 ]);
-                if (inst2.detachWob) inst2.detachWob.wobble([ name, inst1, link2, link1 ]);
-              }
-            })[act](inst1, inst2),
-            serial: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner.map(ent => 1) : {},
-            actual: (inst1) => inst1.inner && inst1.inner.has(link1) ? inst1.inner : {}
-          }))(link1, link2);
-          
-        }
-        
+      $relateMM: (stability, Cls1, Cls2, name1, name2=name1) => {
+        let rel = Record.relate(stability, Record.relateUniM, Record.relateUniM, Cls1, Cls2, name1, name2);
+        if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
+        Cls1.relSchemaDef[name1] = rel;
+        if (!Cls2.has('relSchemaDef')) Cls2.relSchemaDef = {};
+        Cls2.relSchemaDef[name2] = rel;
+        return rel;
       },
+      
       $stability: {
         secret: 0,
         trivial: 1,
@@ -201,79 +134,93 @@ U.buildRoom({
       
       init: function({ uid }) {
         insp.Wobbly.init.call(this, { uid });
-        // this.inner = {};
       },
       getFlatDef: function() {
         if (!this.constructor.has('flatDef')) this.constructor.flatDef = Record.fullFlatDef(this.constructor);
         return this.constructor.flatDef;
       },
-      getInner: function(addr) {
-        if (U.isType(addr, String)) addr = addr.split('/');
-        return addr.reduce((ptr, link) => ptr.getFlatDef()[link].actual(ptr), this);
+      
+      getRelPart: function(rel) {
+        if (this.isInspiredBy(rel.Cls1)) {
+          
+          return {
+            stability: rel.stability,
+            Cls: rel.Cls1,
+            nameFwd: rel.name1,
+            nameBak: rel.name2,
+            clsRelFwd: rel.cls1Rel,
+            clsRelBak: rel.cls2Rel
+          };
+          
+        } else if (this.isInspiredBy(rel.Cls2)) {
+          
+          return {
+            stability: rel.stability,
+            Cls: rel.Cls2,
+            nameFwd: rel.name2,
+            nameBak: rel.name1,
+            clsRelFwd: rel.cls2Rel,
+            clsRelBak: rel.cls1Rel
+          };
+          
+        }
+        
+        throw new Error(`${this.constructor.name} doesn't use the provided relation`);
       },
-      getInnerValue: function(addr) {
-        return this.getInner(addr).getValue();
+      getInnerWob: function(rel) {
+        let relPart = this.getRelPart(rel);
+        if (!this.inner) this.inner = {};
+        if (!this.inner.has(relPart.nameFwd)) {
+          this.inner[relPart.nameFwd] = relPart.clsRelFwd.type === '1'
+            ? U.Wobbly({ value: null })
+            : U.DeltaWob({});
+        }
+        return this.inner[relPart.nameFwd];
+      },
+      getInnerVal: function(rel) {
+        return this.getInnerWob(rel).value;
       },
       
-      getAttachWob: function() {
-        if (!this.attachWob) this.attachWob = U.BareWob({});
-        return this.attachWob;
-      },
-      getDetachWob: function() {
-        if (!this.detachWob) this.detachWob = U.BareWob({});
-        return this.detachWob;
-      },
-      
-      getStability: function() { return Record.stability.secret; },
-      getSerialValue: function() { return this.getValue(); },
-      
-      getSerialized: function() {
-        let { constant } = Record.stability;
-        return this.has('inner')
-          ? this.inner.map(inn => inn.getStability() >= constant ? inn.getSerialized() : C.skip)
-          : this.getSerialValue();
+      getJson: function(trail={}) {
+        if (!U.isType(trail, Object) || trail.isEmpty()) return this.getValue();
+        
+        return trail.map((trail0, k) => {
+          let inner = this.inner[k].value;
+          return U.isType(inner, Object)
+            ? inner.map(v => v.getJson(trail0))
+            : (inner === null ? null : inner.getJson(trail0));
+        });
       },
       
-      attach: function(link, inst) {
-        let flatDef = this.getFlatDef();
-        if (!flatDef.has(link)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${link}`);
-        flatDef[link].change(this, { act: 'attach', rec: inst });
+      attach: function(rel, inst) {
+        let relPart = this.getRelPart(rel);
+        let [ fwd, bak ] = [ relPart.clsRelFwd, relPart.clsRelBak ];
+        
+        // Validate
+        fwd.attach0(this, inst);
+        bak.attach0(inst, this);
+        
+        // Perform attachment
+        fwd.attach1(this, inst);
+        bak.attach1(inst, this);
+        
         return inst;
       },
-      detach: function(link, inst) {
-        let flatDef = this.getFlatDef();
-        if (!flatDef.has(link)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${link}`);
-        flatDef[link].change(this, { act: 'detach', rec: inst });
+      detach: function(rel, inst) {
+        let relPart = this.getRelPart(rel);
+        let [ fwd, bak ] = [ relPart.clsRelFwd, relPart.clsRelBak ];
+        
+        // Validate
+        fwd.detach0(this, inst);
+        bak.detach0(inst, this);
+        
+        // Perform detachment
+        fwd.detach1(this, inst);
+        bak.detach1(inst, this);
+        
         return inst;
       },
       
-      /*mod: function(propName, newVal) {
-        let flatDef = this.getFlatDef();
-        if (!flatDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${propName}`);
-        let { change, stability } = flatDef[propName];
-        change(this, newVal);
-        if (this.world && stability >= Record.stability.changing) this.world.updRecord(this, { [propName]: 1 });
-      },
-      modF: function(propName, f) {
-        let flatDef = this.getFlatDef();
-        if (!flatDef.has(propName)) throw new Error(`Unsupported property: ${this.constructor.name}.flatDef.${propName}`);
-        let { change, stability, actual, serial } = flatDef[propName];
-        let oldVal = (actual || serial)(this);
-        let newVal = f(oldVal);
-        if (newVal === oldVal) return false; // TODO: should "actual" be optional?
-        change(this, newVal);
-        if (this.world && stability >= Record.stability.changing) this.world.updRecord(this, { [propName]: 1 });
-        return true;
-      },
-      serializePart: function(fieldMap) {
-        let flatDef = this.getFlatDef();
-        return fieldMap.map((v, k) => flatDef[k].serial(this));
-      },
-      serializeFull: function() {
-        return this.getFlatDef().map(
-          ({ stability, serial }) => stability < Record.stability.constant ? serial(this) : C.skip
-        );
-      },*/
       start: C.notImplemented, //function() { throw new Error(`not implemented for ${U.typeOf(this)}`); },
       update: C.notImplemented, //function(secs) { throw new Error(`not implemented for ${U.typeOf(this)}`); },
       end: C.notImplemented //function() { throw new Error(`not implemented for ${U.typeOf(this)}`); }

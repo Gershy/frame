@@ -18,7 +18,7 @@
       this.setText(text);
     },
     setText: function(text) {
-      if (text !== text.trim()) throw new Error('Text has extra whitespace');
+      if (text !== text.trim()) throw new Error(`Text "${text}" has extra whitespace`);
       this.text = text;
     },
     setProp: function(name, value=null) { this.props[name] = value; },
@@ -306,24 +306,36 @@
       let connections = {};
       let serverWob = BareWob({});
       let sendData = (res, msg) => {
-        let type = U.isType(msg, Object) ? 'json' : 'html';
-        if (type === 'html' && !msg.hasHead('<')) {
-          let doc = XmlElement(null, 'root');
-          let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-          doctype.setProp('html');
-          
-          let html = doc.add(XmlElement('html', 'container'));
-          let head = html.add(XmlElement('head', 'container'));
-          head.add(XmlElement('title', 'text', `Hut: ${this.hut}`));
-          let body = html.add(XmlElement('body', 'container'));
-          body.add(XmlElement('p', 'text', msg.split('\n').join('<br/>\n')));
-          msg = doc.toString(); // Html document is response content
-        } else if (type === 'json') {
-          try { msg = JSON.stringify(msg); }
-          catch(err) { console.log('Couldn\'t serialize json', msg); }
+        let type = U.isType(msg, String) ? (msg[0] === '<' ? 'html' : 'text') : 'json';
+        
+        // if (type === 'html') {
+        //   let doc = XmlElement(null, 'root');
+        //   let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
+        //   doctype.setProp('html');
+        //   let html = doc.add(XmlElement('html', 'container'));
+        //   let head = html.add(XmlElement('head', 'container'));
+        //   head.add(XmlElement('title', 'text', `Hut: ${this.hut}`));
+        //   let body = html.add(XmlElement('body', 'container'));
+        //   body.add(XmlElement('p', 'text', msg.split('\n').join('<br/>\n')));
+        //   msg = doc.toString(); // Html document is response content
+        // } else 
+        
+        if (type === 'json') {
+          try {
+            msg = JSON.stringify(msg);
+          } catch(err) {
+            console.log('Couldn\'t serialize json', msg);
+            throw err;
+          }
         }
         
-        res.writeHead(200, { 'Content-Type': (type === 'json') ? 'application/json' : 'text/html' });
+        let contentType = ({
+          html: 'text/html',
+          text: 'text/plain',
+          json: 'application/json'
+        })[type];
+        
+        res.writeHead(200, { 'Content-Type': contentType });
         res.end(msg);
       };
       let server = http.createServer(async (req, res) => {
@@ -339,6 +351,7 @@
           body = {};
         }
         
+        // Get the ip
         let ip = this.compactIp(req.headers['x-forwarded-for'] || req.connection.remoteAddress);
         
         // Create a new connection if this ip hasn't been seen before
@@ -361,22 +374,26 @@
           serverWob.wobble(connectionWob);
         }
         
+        // Get the current connection for this ip
         let connectionWob = connections[ip];
         
+        // Interpret requests with an empty body based on other features of `req`
         if (body.isEmpty()) {
           if (req.url === '/') body = { command: 'getInit' };
           if (req.url === '/favicon.ico') body = { command: 'getFile', path: 'favicon.ico' };
         }
         
+        // Default to the "ping" command
         if (body.isEmpty()) body = { command: 'ping' };
         
-        // Performing "getInit" always resets
+        // Performing "getInit" always resets any banked polls
         if (body.command === 'getInit') {
           connectionWob.queuedResponses.forEach(res => res.end());
           connectionWob.queuedResponses = [];
           connectionWob.queuedTells = [];
         }
         
+        // Build list of transport-level commands
         let httpCommands = {
           close: () => {
             console.log('Closing connection @', ip);
@@ -389,15 +406,21 @@
           }
         };
         
+        // Do either a transport- or application-level command
         if (httpCommands.has(body.command)) httpCommands[body.command]();
         else                                connectionWob.hear.wobble(body);
         
-        // If there are any tells send the oldest, otherwise buffer the response
+        // If there are any tells send the oldest, otherwise keep ahold of the response
         if (connectionWob.queuedTells.length) {
           sendData(res, connectionWob.queuedTells.shift());
         } else {
           connectionWob.queuedResponses.push(res);
         }
+        
+        // Don't hold more than one response
+        while (connectionWob.queuedResponses.length > 1)
+          sendData(connectionWob.queuedResponses.shift(), { command: 'fizzle' });
+        
       });
       
       await new Promise(r => server.listen(port, host, 511, r));
