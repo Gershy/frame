@@ -16,17 +16,17 @@ U.buildRoom({
       $genFlatDef: () => ({
       }),
       
-      init: function({ hinterlands, uid=hinterlands.nextUid(), knownToHut=()=>false }) {
+      init: function({ hinterlands, uid=hinterlands.nextUid() }) {
         insp.Record.init.call(this, { uid });
-        this.knownToHut = knownToHut;
-        this.attach('hinterlands', hinterlands);
+        
+        this.attach(relLandsRecs, hinterlands);
         this.hinterlands = hinterlands;
         
-        let holdValueFunc = newVal => hinterlands.informValue(this, newVal);
-        this.hold(holdValueFunc);
-        
-        let holdAttachFunc = this.getAttachWob().hold(([ relName, inst ]) => hinterlands.informAttaches(relName, this, inst));
-        let holdDetachFunc = this.getDetachWob().hold(([ relName, inst ]) => hinterlands.informDetaches(relName, this, inst));
+        // let holdValueFunc = newVal => hinterlands.informValue(this, newVal);
+        // this.hold(holdValueFunc);
+        // 
+        // let holdAttachFunc = this.getAttachWob().hold(([ relName, inst ]) => hinterlands.informAttaches(relName, this, inst));
+        // let holdDetachFunc = this.getDetachWob().hold(([ relName, inst ]) => hinterlands.informDetaches(relName, this, inst));
       }
     })});
     
@@ -40,6 +40,9 @@ U.buildRoom({
         },
         getFile: async (inst, hut, msg) => {
           hut.tell({ command: 'error', type: 'notImplemented', orig: msg });
+        },
+        fizzle: async(inst, hut, msg) => {
+          console.log(`Fizzled for ${hut.address}`);
         },
         error: async (inst, hut, msg) => {
           console.log(`Error from ${hut.address}:`, msg);
@@ -89,8 +92,8 @@ U.buildRoom({
         this.updateDetaches[`${relName}~${U.multiKey(inst1.uid, inst2.uid)}`] = [ relName, inst1, inst2 ];
       },
       
-      open: async function() { return Promise.all(this.getInner('highways').map(h => h.open()).toArr(p => p)); },
-      shut: async function() { return Promise.all(this.getInner('highways').map(h => h.shut()).toArr(p => p)); }
+      open: async function() { return Promise.all(this.getInnerVal(relLandsWays).map(h => h.open()).toArr(p => p)); },
+      shut: async function() { return Promise.all(this.getInnerVal(relLandsWays).map(h => h.shut()).toArr(p => p)); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { HinterlandsRecord }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
@@ -106,7 +109,7 @@ U.buildRoom({
       favouredHighway: function() {
         // TODO: Implement for real!
         // console.log(this.getInner('highways')); // TODO: getInner is broken
-        let highways = this.inner.highways;
+        let highways = this.getInnerVal(relWaysHuts);
         for (let k in highways) return highways[k];
         return null;
       },
@@ -132,30 +135,42 @@ U.buildRoom({
         this.serverFunc = this.server.hold(hutWob => {
           let { ip } = hutWob;
           let hut = Hut({ hinterlands: this.hinterlands, address: ip });
-          this.attach('huts', hut);
-          this.hinterlands.attach('huts', hut);
+          this.attach(relWaysHuts, hut);
+          this.hinterlands.attach(relLandsHuts, hut);
           this.hutsByIp[ip] = { wob: hutWob, hut };
           
           hutWob.hear.hold(async msg => {
             await this.hinterlands.hear(hut, msg);
           });
           hutWob.shut.hold(() => {
-            this.detach('huts', hut);
-            this.hinterlands.detach('huts', hut);
+            this.detach(relWaysHuts, hut);
+            this.hinterlands.detach(relLandsHuts, hut);
           });
         });
       },
       tellHut: function(hut, msg) {
-        console.log(`Telling ${hut.address}:`, msg);
+        let doOutput = true;
+        if (doOutput) {
+          let consoleOutput = msg;
+          if (U.isType(consoleOutput, String)) consoleOutput = { str: `${consoleOutput.split('\n')[0].substr(0, 30)}...` };
+          console.log(`Telling ${hut.address}:`, consoleOutput);
+        }
+        
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});
     
-    Record.relate1M(Record.stability.secret, 'hinterlandsRecords', Hinterlands, 'records', HinterlandsRecord, 'hinterlands');
-    Record.relate1M(Record.stability.secret, 'hinterlandsHighways', Hinterlands, 'highways', Highway, 'hinterlands');
-    Record.relateMM(Record.stability.secret, 'highwayHuts', Highway, 'huts', Hut, 'highways');
-    Record.relate1M(Record.stability.secret, 'hinterlandsHuts', Hinterlands, 'huts', Hut, 'hinterlands2');
+    let relLandsRecs =  Record.relate1M(Record.stability.secret, Hinterlands, HinterlandsRecord, 'relLandsRecs');
+    let relLandsWays =  Record.relate1M(Record.stability.secret, Hinterlands, Highway, 'relLandsWays');
+    let relLandsHuts =  Record.relate1M(Record.stability.secret, Hinterlands, Hut, 'relLandsHuts');
+    let relWaysHuts =   Record.relateMM(Record.stability.secret, Highway, Hut, 'relWaysHuts');
     
-    return { Hinterlands, Hut, Highway };
+    return {
+      Hinterlands, HinterlandsRecord, Hut, Highway,
+      relLandsRecs,
+      relLandsWays,
+      relLandsHuts,
+      relWaysHuts
+    };
   }
 });

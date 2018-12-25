@@ -205,7 +205,7 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     this.setValue(value);
   },
   setValue: function(value) { this.value = value; },
-  getValue: function() { return this.value; },
+  getValue: function() { return this.value ? this.value : null; },
   hold: function(func, hasty=true) {
     if (!this.holders) this.holders = {};
     let ind = Insp.nextHoldUid++;
@@ -227,6 +227,28 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
   },
   modify: function(f) {
     this.wobble(f(this.getValue()));
+  }
+})});
+let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, Insp) => ({
+  init: function({ value={}, uid=null }) {
+    this.value = value;
+    insp.Wobbly.init.call(this, { value: {}, uid });
+  },
+  setValue: function(value) {
+    let [ add, rem ] = [ value.has('add') ? value.add : {}, value.has('rem') ? value.rem : {} ];
+    
+    add.forEach((v, k) => { if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`); });
+    rem.forEach((v, k) => {
+      if (!this.value.has(k)) throw new Error(`Missing rem key: ${k}`);
+      if (add.has(k)) throw new Error(`Tried to add and rem ${k}`);
+    });
+    
+    add.forEach((v, k) => { this.value[k] = v; });
+    rem.forEach((v, k) => { delete this.value[k]; });
+  },
+  getValue: function() {
+    // Return regular value as a delta
+    return { add: this.value };
   }
 })});
 let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
@@ -256,7 +278,5 @@ let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, In
 })});
 
 U.gain({
-  Wobbly,
-  BareWob,
-  CalcWob
+  Wobbly, DeltaWob, BareWob, CalcWob
 });
