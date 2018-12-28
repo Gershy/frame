@@ -211,19 +211,24 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     let ind = Insp.nextHoldUid++;
     func[`~wob${this.uid}`] = ind;
     this.holders[ind] = func;
-    if (hasty) func(this.getValue());
+    if (hasty) { let v = this.getValue(); func(v, v); }
     return func;
   },
-  drop: function(func) {
-    if (!func.has(`~wob${this.uid}`)) throw new Error('Tried to drop unheld function');
+  drop: function(func, safe=false) {
+    if (!func.has(`~wob${this.uid}`)) {
+      if (!safe)  throw new Error('Tried to drop unheld function');
+      else        return false;
+    }
     let ind = func[`~wob${this.uid}`];
     delete func[`~wob${this.uid}`];
     delete this.holders[ind];
     if (this.holders.isEmpty()) delete this.holders;
   },
   wobble: function(value=null) {
+    let origVal = ({}).has.call(this, 'value') ? this.value : null;
+    if (value === origVal) return;
     this.setValue(value);
-    if (this.holders) for (let k in this.holders) this.holders[k](value);
+    if (this.holders) this.holders.forEach(h => h(value, origVal)); //for (let k in this.holders) this.holders[k](value, origVal);
   },
   modify: function(f) {
     this.wobble(f(this.getValue()));

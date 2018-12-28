@@ -37,13 +37,20 @@
         
         numPendingReqs++;
         
-        await new Promise((rsv, rjc) => { req.onreadystatechange = () => {
+        let res = await new Promise((rsv, rjc) => { req.onreadystatechange = () => {
           if (req.readyState !== 4) return;
           if (req.status === 0) rsv(null); // TODO: cross-domain errors will silently fail
-          try { clientWob.hear.wobble(JSON.parse(req.responseText)); }
-          catch(err) { console.log('Couldn\'t parse json from response', req.responseText); }
+          try { rsv(JSON.parse(req.responseText)); }
+          catch(err) {
+            console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
+            //clientWob.shut.wobble(null);
+            tellAndHear = () => {}; // Make sure no more requests are sent
+            numPendingReqs = -100;
+            rjc(err);
+          }
         }; });
         
+        if (res) clientWob.hear.wobble(res);
         numPendingReqs--;
         
         // Always have 1 pending req
