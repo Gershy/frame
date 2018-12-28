@@ -6,17 +6,17 @@ U.buildRoom({
     console.log('Building...');
     
     let { Record } = record;
-    let { Hinterlands, HinterlandsRecord, Highway, relLandsWays } = hinterlands;
+    let { Lands, LandsRecord, Way, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     
-    let ValThing = U.inspire({ name: 'ValThing', insps: { HinterlandsRecord }, methods: (insp, Insp) => ({
-      init: function({ hinterlands }) {
-        insp.HinterlandsRecord.init.call(this, { hinterlands });
+    let ValThing = U.inspire({ name: 'ValThing', insps: { LandsRecord }, methods: (insp, Insp) => ({
+      init: function({ lands }) {
+        insp.LandsRecord.init.call(this, { lands });
       }
     })});
     
-    let Val = U.inspire({ name: 'Val', insps: { HinterlandsRecord }, methods: (insp, Insp) => ({
-      init: function({ hinterlands }) {
-        insp.HinterlandsRecord.init.call(this, { hinterlands });
+    let Val = U.inspire({ name: 'Val', insps: { LandsRecord }, methods: (insp, Insp) => ({
+      init: function({ lands }) {
+        insp.LandsRecord.init.call(this, { lands });
       }
     })});
     
@@ -27,42 +27,52 @@ U.buildRoom({
     return {
       open: async () => {
         console.log('Init chess2...');
-        let hinterlands = Hinterlands({ foundation, name: 'lands' });
         
-        let valThing1 = ValThing({ hinterlands });
-        let val11 = Val({ hinterlands });
-        let val12 = Val({ hinterlands });
-        let val13 = Val({ hinterlands });
+        let getRecsForHut = (lands, hut) => lands.getInnerVal(relLandsRecs);
+        let lands = Lands({ foundation, name: 'lands', getRecsForHut });
+        
+        /// {ABOVE=
+        let valThing1 = ValThing({ lands });
+        let val11 = Val({ lands });
+        let val12 = Val({ lands });
+        let val13 = Val({ lands });
         
         valThing1.attach(relThingVal1, val11);
         valThing1.attach(relThingVal2, val12);
         valThing1.attach(relThingVal3, val13);
         
-        let valThing2 = ValThing({ hinterlands });
-        let val21 = Val({ hinterlands });
-        let val22 = Val({ hinterlands });
-        let val23 = Val({ hinterlands });
+        let valThing2 = ValThing({ lands });
+        let val21 = Val({ lands });
+        let val22 = Val({ lands });
+        let val23 = Val({ lands });
         
         valThing2.attach(relThingVal1, val21);
         valThing2.attach(relThingVal2, val22);
         valThing2.attach(relThingVal3, val23);
         
-        /// {ABOVE=
         setInterval(() => {
-          val11.wobble(Math.random());
-          val12.wobble(Math.random());
-          val13.wobble(Math.random());
-          console.log(valThing1.getJson({
+          let arr = [ 'larry', 'barry', 'gertrude', 'matilda', 'samson', 'crock', 'hitler', 'shammy' ];
+          arr.sort(() => 0.5 - Math.random());
+          arr.sort(() => 0.5 - Math.random());
+          arr.sort(() => 0.5 - Math.random());
+          val11.wobble(arr[0]);
+          val12.wobble(arr[1]);
+          val13.wobble(arr[2]);
+          if (false) console.log(valThing1.getJson({
             relThingVal1: {},
             relThingVal2: {},
             relThingVal3: {}
           }));
-        }, 1000);
+        }, 3000);
+        
+        setInterval(() => {
+          lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
+        }, 3100);
         /// =ABOVE}
         
-        let highway = Highway({ hinterlands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });
-        hinterlands.attach(relLandsWays, highway);
-        await hinterlands.open();
+        let way = Way({ lands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });
+        lands.attach(relLandsWays, way);
+        await lands.open();
       }
     };
     

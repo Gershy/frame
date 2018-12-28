@@ -402,7 +402,6 @@
           },
           bankPoll: () => {
             // Do nothing
-            console.log('Banked poll for', ip);
           }
         };
         
@@ -681,7 +680,7 @@
     },
     
     getPlatformName: function() { return 'nodejs'; },
-    genInitBelow: async function(contentType) {
+    genInitBelow: async function(contentType, initContent={}) {
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let doc = XmlElement(null, 'root');
@@ -705,8 +704,13 @@
       let contents = await Promise.all(files.map(f => this.readFile(path.join(rootDir, f))));
       let splitContents = new Array(files.length);
       for (let i = 0; i < files.length; i++) splitContents[i] = `// ==== File: ${files[i]}\n${contents[i]}`;
+      
       contents = splitContents.join('\n\n') + '\n\n' + [
-        '// ==== Initialization',
+        '// ==== File: hut.js',
+        'U.initData = {',
+        `  command: ${JSON.stringify(initContent)}`,
+        `  // command: ${false && require('util').inspect(initContent, { depth: null, breakLength: 20, compact: false })}`,
+        '}',
         'let { FoundationBrowser } = U.foundationClasses',
         `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,
         'U.foundation.install();'
