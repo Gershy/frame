@@ -6,17 +6,17 @@ U.buildRoom({
     console.log('Building...');
     
     let { Record } = record;
-    let { Lands, LandsRecord, Way, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
+    let { Lands, Area, LandsRecord, Way, relLandsWays, relLandsRecs, relLandsHuts, relAreasRecs } = hinterlands;
     
     let ValThing = U.inspire({ name: 'ValThing', insps: { LandsRecord }, methods: (insp, Insp) => ({
-      init: function({ lands }) {
-        insp.LandsRecord.init.call(this, { lands });
+      init: function({ uid, lands }) {
+        insp.LandsRecord.init.call(this, { uid, lands });
       }
     })});
     
     let Val = U.inspire({ name: 'Val', insps: { LandsRecord }, methods: (insp, Insp) => ({
-      init: function({ lands }) {
-        insp.LandsRecord.init.call(this, { lands });
+      init: function({ uid, lands }) {
+        insp.LandsRecord.init.call(this, { uid, lands });
       }
     })});
     
@@ -28,8 +28,26 @@ U.buildRoom({
       open: async () => {
         console.log('Init chess2...');
         
+        let records = [
+          Area,
+          ValThing,
+          Val
+        ];
+        let relations = [
+          relAreasRecs,
+          relThingVal1,
+          relThingVal2,
+          relThingVal3
+        ];
+        
+        /// {ABOVE=
+        let getRecsForHut = (lands, hut) => game.getInnerVal(relAreasRecs);
+        let lands = Lands({ foundation, name: 'lands', records, relations, getRecsForHut });
+        let game = Area({ lands });
+        /// =ABOVE} {BELOW=
         let getRecsForHut = (lands, hut) => lands.getInnerVal(relLandsRecs);
-        let lands = Lands({ foundation, name: 'lands', getRecsForHut });
+        let lands = Lands({ foundation, name: 'lands', records, relations, getRecsForHut });
+        /// =BELOW}
         
         /// {ABOVE=
         let valThing1 = ValThing({ lands });
@@ -50,25 +68,42 @@ U.buildRoom({
         valThing2.attach(relThingVal2, val22);
         valThing2.attach(relThingVal3, val23);
         
-        setInterval(() => {
-          let arr = [ 'larry', 'barry', 'gertrude', 'matilda', 'samson', 'crock', 'hitler', 'shammy' ];
-          arr.sort(() => 0.5 - Math.random());
-          arr.sort(() => 0.5 - Math.random());
-          arr.sort(() => 0.5 - Math.random());
-          val11.wobble(arr[0]);
-          val12.wobble(arr[1]);
-          val13.wobble(arr[2]);
-          if (false) console.log(valThing1.getJson({
-            relThingVal1: {},
-            relThingVal2: {},
-            relThingVal3: {}
-          }));
-        }, 3000);
+        game.attach(relAreasRecs, valThing1);
+        game.attach(relAreasRecs, val11);
+        game.attach(relAreasRecs, val12);
+        game.attach(relAreasRecs, val13);
         
-        setInterval(() => {
-          lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
-        }, 3100);
-        /// =ABOVE}
+        game.attach(relAreasRecs, valThing2);
+        game.attach(relAreasRecs, val21);
+        game.attach(relAreasRecs, val22);
+        game.attach(relAreasRecs, val23);
+        
+        let arr = [ 'larry', 'barry', 'gertrude', 'matilda', 'samson', 'crock', 'hitler', 'shammy' ];
+        arr.sort(() => 0.5 - Math.random());
+        arr.sort(() => 0.5 - Math.random());
+        arr.sort(() => 0.5 - Math.random());
+        val11.wobble(arr[0]);
+        val12.wobble(arr[1]);
+        val13.wobble(arr[2]);
+        // setInterval(() => {
+        //   if (false) console.log(valThing1.getJson({
+        //     relThingVal1: {},
+        //     relThingVal2: {},
+        //     relThingVal3: {}
+        //   }));
+        // }, 3000);
+        // 
+        // setInterval(() => {
+        //   lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
+        // }, 3000);
+        /// =ABOVE} {BELOW=
+        
+        // lands.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
+        //   console.log('Add', add.map(r => r.iden()));
+        //   console.log('Rem', rem.map(r => r.iden()));
+        // });
+        
+        /// =BELOW}
         
         let way = Way({ lands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });
         lands.attach(relLandsWays, way);

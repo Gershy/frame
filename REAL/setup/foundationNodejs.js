@@ -707,11 +707,8 @@
       
       contents = splitContents.join('\n\n') + '\n\n' + [
         '// ==== File: hut.js',
-        'U.initData = {',
-        `  command: ${JSON.stringify(initContent)}`,
-        `  // command: ${false && require('util').inspect(initContent, { depth: null, breakLength: 20, compact: false })}`,
-        '}',
-        'let { FoundationBrowser } = U.foundationClasses',
+        `U.initData = ${JSON.stringify(initContent)};`,
+        'let { FoundationBrowser } = U.foundationClasses;',
         `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,
         'U.foundation.install();'
       ].join('\n');

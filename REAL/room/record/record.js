@@ -89,7 +89,7 @@ U.buildRoom({
         let key = U.multiKey(`${Cls1.uid}.${name1}`, `${Cls2.uid}.${name2}`);
         let rel = {
           key,
-          id: Record.NEXT_REL_UID++,
+          uid: Record.NEXT_REL_UID++,
           stability,
           Cls1, Cls2,
           name1, name2,

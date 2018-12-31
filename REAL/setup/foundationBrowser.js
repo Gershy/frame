@@ -62,6 +62,9 @@
       tellAndHear({ command: 'bankPoll' });
       
       return serverWob;
+    },
+    formatError: function(err) {
+      return err;
     }
   })});
 
