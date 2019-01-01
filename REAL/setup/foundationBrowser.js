@@ -43,10 +43,9 @@
           try { rsv(JSON.parse(req.responseText)); }
           catch(err) {
             console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
-            //clientWob.shut.wobble(null);
             tellAndHear = () => {}; // Make sure no more requests are sent
-            numPendingReqs = -100;
             rjc(err);
+            clientWob.shut.wobble(null);
           }
         }; });
         

@@ -29,7 +29,7 @@ U.buildRoom({
       $defaultCommands: {
         getInit: async (inst, hut, msg) => {
           
-          hut.version = 1;
+          hut.version = 2;
           hut.recalcInitInform();
           
           let initBelow = await inst.foundation.genInitBelow('text/html', {
@@ -52,6 +52,9 @@ U.buildRoom({
         /// {BELOW=
         update: async (lands, hut, msg) => {
           let { command, version, content } = msg;
+          
+          if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
+          
           let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
           
           let ops = [];
@@ -59,49 +62,38 @@ U.buildRoom({
           
           ops.gain(addRec.toArr(({ uid, type, value }) => ({
             func: () => {
-              
               if (!lands.records.has(type)) throw new Error(`Missing class: ${type}`);
               if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
               
               let Cls = lands.records[type];
               let inst = Cls({ uid, lands });
               inst.wobble(value);
-              
-              console.log(`Added ${inst.iden()} to ${lands.iden()}`);
-              console.log('Recs:', lands.getInnerVal(relLandsRecs));
-              
-              
             },
             desc: `Add ${type} (${uid})`
           })));
           
           ops.gain(remRec.toArr((v, uid) => ({
             func: () => {
-              
               if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
               
               let rec = recs[uid];
               rec.isolate();
-              
             },
             desc: `Rem ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid})`
           })));
           
           ops.gain(updRec.toArr((v, uid) => ({
             func: () => {
-              
               if (!recs.has(uid)) throw new Error(`Upd missing uid: ${uid}`);
               
               let rec = recs[uid];
               rec.wobble(v);
-              
             },
             desc: `Upd ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid}) -> ${U.typeOf(v)}`
           })));
           
           ops.gain(addRel.toArr(([ relUid, uid1, uid2 ]) => ({
             func: () => {
-              
               let recs = lands.getInnerVal(relLandsRecs);
               
               if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
@@ -111,14 +103,12 @@ U.buildRoom({
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
               rec1.attach(rel, rec2);
-              
             },
             desc: `Attach relation ${relUid} (${uid1} + ${uid2})`
           })));
           
           ops.gain(remRel.toArr(([ relUid, uid1, uid2 ]) => ({
             func: () => {
-              
               if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
               if (!recs.has(uid1)) throw new Error(`Rem relation with missing uid: ${uid1}`);
               if (!recs.has(uid2)) throw new Error(`Rem relation with missing uid: ${uid2}`);
@@ -126,12 +116,9 @@ U.buildRoom({
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
               rec1.detach(rel, rec2);
-              
             },
             desc: `Detach relation ${relUid} (${uid1} + ${uid2})`
           })));
-          
-          console.log('Updating with', ops.length, 'ops');
           
           let successes = [];
           let failures = null;
@@ -158,10 +145,14 @@ U.buildRoom({
             
           }
           
-          console.log('SUCCESS:', successes);
-          console.log('FAILURE:', failures);
           
-          if (failures.length) throw new Error(`Couldn't fully update!`);
+          if (failures.length) {
+            console.log('SUCCESS:', successes);
+            console.log('FAILURE:', failures);
+            throw new Error(`Couldn't fully update!`);
+          }
+          
+          lands.version = version;
           
         }
         /// =BELOW}
@@ -244,28 +235,22 @@ U.buildRoom({
         let huts = this.getInnerVal(relLandsHuts);
         let hut = huts.find(() => true)[0];
         await this.hear(hut, U.initData);
-        console.log('Initialized!!');
         /// =BELOW}
       },
       shut: async function() {
         return Promise.all(this.getInnerVal(relLandsWays).map(h => h.shut()).toArr(p => p));
       }
     })});
-    let Area = U.inspire({ name: 'Area', insps: { LandsRecord }, methods: (insp, Insp) => ({
-      
-      init: function({ lands }) {
-        insp.LandsRecord.init.call(this, { lands });
-      }
-      
-    })});
     
-    let Hut = U.inspire({ name: 'Hut', insps: { LandsRecord }, methods: (insp, Insp) => ({
+    let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
       
       init: function({ lands, address }) {
         if (!lands) throw new Error('Missing "lands"');
-        insp.LandsRecord.init.call(this, { lands });
+        
+        insp.Record.init.call(this, {});
+        this.lands = lands;
         this.address = address;
         this.discoveredMs = +new Date();
         
@@ -426,14 +411,16 @@ U.buildRoom({
         await this.favouredWay().tellHut(this, msg);
       }
     })});
-    let Way = U.inspire({ name: 'Way', insps: { LandsRecord }, methods: (insp, Insp) => ({
+    let Way = U.inspire({ name: 'Way', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
       
       init: function({ lands, makeServer=null }) {
+        if (!lands) throw new Error('Missing "lands"');
         if (!makeServer) throw new Error('Missing "makeServer"');
         
-        insp.LandsRecord.init.call(this, { lands });
+        insp.Record.init.call(this, { lands });
+        this.lands = lands;
         this.makeServer = makeServer;
         this.server = null;
         this.serverFunc = null
@@ -471,18 +458,16 @@ U.buildRoom({
     })});
     
     let relLandsRecs =  Record.relate1M(Record.stability.secret, Lands, LandsRecord, 'relLandsRecs');
-    let relAreasRecs =  Record.relate1M(Record.stability.secret, Area, LandsRecord, 'relAreasRecs');
     let relLandsWays =  Record.relate1M(Record.stability.secret, Lands, Way, 'relLandsWays');
     let relLandsHuts =  Record.relate1M(Record.stability.secret, Lands, Hut, 'relLandsHuts');
     let relWaysHuts =   Record.relateMM(Record.stability.secret, Way, Hut, 'relWaysHuts');
     
     return {
-      Lands, LandsRecord, Hut, Way, Area,
+      Lands, LandsRecord, Hut, Way,
       relLandsRecs,
       relLandsWays,
       relLandsHuts,
-      relWaysHuts,
-      relAreasRecs
+      relWaysHuts
     };
   }
 });

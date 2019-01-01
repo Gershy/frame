@@ -3,10 +3,8 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record' ],
   build: (foundation, hinterlands, record, random) => {
     
-    console.log('Building...');
-    
     let { Record } = record;
-    let { Lands, Area, LandsRecord, Way, relLandsWays, relLandsRecs, relLandsHuts, relAreasRecs } = hinterlands;
+    let { Lands, LandsRecord, Way, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     
     let ValThing = U.inspire({ name: 'ValThing', insps: { LandsRecord }, methods: (insp, Insp) => ({
       init: function({ uid, lands }) {
@@ -29,25 +27,18 @@ U.buildRoom({
         console.log('Init chess2...');
         
         let records = [
-          Area,
           ValThing,
           Val
         ];
         let relations = [
-          relAreasRecs,
           relThingVal1,
           relThingVal2,
           relThingVal3
         ];
         
-        /// {ABOVE=
-        let getRecsForHut = (lands, hut) => game.getInnerVal(relAreasRecs);
-        let lands = Lands({ foundation, name: 'lands', records, relations, getRecsForHut });
-        let game = Area({ lands });
-        /// =ABOVE} {BELOW=
         let getRecsForHut = (lands, hut) => lands.getInnerVal(relLandsRecs);
         let lands = Lands({ foundation, name: 'lands', records, relations, getRecsForHut });
-        /// =BELOW}
+        U.lands = lands;
         
         /// {ABOVE=
         let valThing1 = ValThing({ lands });
@@ -68,23 +59,6 @@ U.buildRoom({
         valThing2.attach(relThingVal2, val22);
         valThing2.attach(relThingVal3, val23);
         
-        game.attach(relAreasRecs, valThing1);
-        game.attach(relAreasRecs, val11);
-        game.attach(relAreasRecs, val12);
-        game.attach(relAreasRecs, val13);
-        
-        game.attach(relAreasRecs, valThing2);
-        game.attach(relAreasRecs, val21);
-        game.attach(relAreasRecs, val22);
-        game.attach(relAreasRecs, val23);
-        
-        let arr = [ 'larry', 'barry', 'gertrude', 'matilda', 'samson', 'crock', 'hitler', 'shammy' ];
-        arr.sort(() => 0.5 - Math.random());
-        arr.sort(() => 0.5 - Math.random());
-        arr.sort(() => 0.5 - Math.random());
-        val11.wobble(arr[0]);
-        val12.wobble(arr[1]);
-        val13.wobble(arr[2]);
         // setInterval(() => {
         //   if (false) console.log(valThing1.getJson({
         //     relThingVal1: {},
@@ -92,10 +66,22 @@ U.buildRoom({
         //     relThingVal3: {}
         //   }));
         // }, 3000);
-        // 
-        // setInterval(() => {
-        //   lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
-        // }, 3000);
+        
+        let arr = [ 'larry', 'barry', 'gertrude', 'matilda', 'samson', 'crock', 'hitler', 'shammy' ];
+        setInterval(() => {
+          arr.sort(() => 0.5 - Math.random());
+          val11.wobble(arr[0]);
+          val12.wobble(arr[1]);
+          val13.wobble(arr[2]);
+          
+          lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
+          
+          console.log(valThing1.getJson({
+            relThingVal1: {},
+            relThingVal2: {},
+            relThingVal3: {}
+          }))
+        }, 5000);
         /// =ABOVE} {BELOW=
         
         // lands.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
@@ -108,7 +94,11 @@ U.buildRoom({
         let way = Way({ lands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });
         lands.attach(relLandsWays, way);
         await lands.open();
-      }
+      },
+      ValThing, Val,
+      relThingVal1,
+      relThingVal2,
+      relThingVal3
     };
     
   }
