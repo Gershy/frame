@@ -34,7 +34,18 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
   installFoundation: C.notImplemented,
   genInitBelow: async function(contentType) { return C.notImplemented.call(this); },
-  makeTransport: C.notImplemented
+  parseUrl: function(url) {
+    let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
+    return {
+      protocol,
+      host,
+      port,
+      path,
+      query: query.split('&').toObj(queryPc => queryPc.has('=') ? queryPc.split('=') : [ queryPc, null ])
+    };
+  },
+  makeHttpServer: async function(contentType) { return C.notImplemented.call(this); },
+  makeSoktServer: async function(contentType) { return C.notImplemented.call(this); }
 })});
 
 Foundation.gain({

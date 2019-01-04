@@ -170,7 +170,7 @@ let U = global.U = {
   typeOf: obj => {
     if (obj === null) return '<NULL>';
     if (typeof obj === 'undefined') return '<UNDEF>';
-    try { return (obj.constructor === Function && obj.name) ? `<Insp(${obj.name})>` : `<insp(${obj.constructor.name})>`; } catch (e) {}
+    try { return (obj.constructor === Function && obj.name) ? obj.name : obj.constructor.name; } catch (e) {}
     return '<UNKNOWN>';
   },
   

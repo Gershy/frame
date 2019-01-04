@@ -42,15 +42,18 @@ U.buildRoom({
         return {
           type: '1',
           attach0: (inst1, inst2) => {
-            if (inst1.inner && inst1.inner.has(name) && inst1.inner[name].value)
+            if (inst1.inner && inst1.inner.has(name) && inst1.inner[name].value) {
+              console.log('HAS', inst1.inner[name].value);
               throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
+            }
           },
           attach1: (inst1, inst2) => {
             if (!inst1.inner) inst1.inner = {};
-            inst1.inner[name] = U.Wobbly({ value: inst2 });
+            if (!inst1.inner.has(name)) inst1.inner[name] = U.Wobbly({});
+            inst1.inner[name].wobble(inst2);
           },
           detach0: (inst1, inst2) => {
-            if (!inst1.inner || !inst1.inner.has(name) || !inst1.inner[name].value)
+            if (!inst1.inner || !inst1.inner.has(name) || inst1.inner[name].value !== inst2)
               throw new Error(`Can't detach rel ${Cls1.name}.${name} -> ${Cls2.name}: already detached`);
           },
           detach1: (inst1, inst2) => {
@@ -74,7 +77,7 @@ U.buildRoom({
           },
           detach0: (instM, inst1) => {
             if (inst1.uid === null) throw new Error(`Can't detach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
-            if (!instM.inner || !instM.inner.has(name) || !instM.inner[name].value.has[inst1.uid])
+            if (!instM.inner || !instM.inner.has(name) || !instM.inner[name].value.has(inst1.uid))
               throw new Error(`Can't detach rel ${ClsM.name}.${name} -> ${Cls1.name}: already detached`);
           },
           detach1: (instM, inst1) => {

@@ -15,6 +15,10 @@
     },
     makeHttpServer: async function() {
       
+      let reqUrl = '';
+      let { query } = this.parseUrl(window.location.href);
+      if (query.has('spoof')) reqUrl = `?spoof=${query.spoof}`;
+      
       let numPendingReqs = 0;
       
       let clientWob = {
@@ -29,7 +33,6 @@
       let tellAndHear = async msg => {
         let req = new XMLHttpRequest();
         
-        let reqUrl = ''; // TODO: If spoofing params are needed here
         req.open('POST', reqUrl, true);
         req.setRequestHeader('Content-Type', 'application/json');
         try { req.send(JSON.stringify(msg)); }
@@ -39,9 +42,10 @@
         
         let res = await new Promise((rsv, rjc) => { req.onreadystatechange = () => {
           if (req.readyState !== 4) return;
-          if (req.status === 0) rsv(null); // TODO: cross-domain errors will silently fail
-          try { rsv(JSON.parse(req.responseText)); }
-          catch(err) {
+          try {
+            if (req.status === 0) throw new Error('XMLHttpRequest had status 0');
+            rsv(JSON.parse(req.responseText));
+          } catch(err) {
             console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
             tellAndHear = () => {}; // Make sure no more requests are sent
             rjc(err);

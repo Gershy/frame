@@ -44,13 +44,13 @@ U.buildRoom({
           hut.tell({ command: 'error', type: 'notImplemented', orig: msg });
         },
         fizzle: async(inst, hut, msg) => {
-          console.log(`Fizzled for ${hut.address}`);
         },
         error: async (inst, hut, msg) => {
-          //console.log(`Error from ${hut.address}:`, msg);
         },
-        /// {BELOW=
         update: async (lands, hut, msg) => {
+          
+          // TODO: Huts above need to make sure the hut below is authenticated
+          
           let { command, version, content } = msg;
           
           if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
@@ -135,8 +135,7 @@ U.buildRoom({
                 successesNow.push(op);
                 successes.push(op.desc);
               } catch(err) {
-                console.log(foundation.formatError(err));
-                failures.push(`${op.desc}: ${err.message}`)
+                failures.push(`${op.desc}:\n${foundation.formatError(err)}`)
                 ops.push(op);
               }
             });
@@ -144,7 +143,6 @@ U.buildRoom({
             if (failures.length && successesNow.isEmpty()) break;
             
           }
-          
           
           if (failures.length) {
             console.log('SUCCESS:', successes);
@@ -155,10 +153,9 @@ U.buildRoom({
           lands.version = version;
           
         }
-        /// =BELOW}
       },
       
-      init: function({ foundation, name, getRecsForHut, checkHutHasRec=null, records=[], relations=[], commands=Lands.defaultCommands }) {
+      init: function({ foundation, getRecsForHut, checkHutHasRec=null, records=[], relations=[], commands=Lands.defaultCommands }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.foundation = foundation;
         this.uidCnt = 0;
@@ -401,11 +398,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        // TODO: Implement for real!
-        // console.log(this.getInner('ways')); // TODO: getInner is broken
-        let ways = this.getInnerVal(relWaysHuts);
-        for (let k in ways) return ways[k];
-        return null;
+        return this.getInnerVal(relWaysHuts).find(() => true)[0];
       },
       tell: async function(msg) {
         await this.favouredWay().tellHut(this, msg);
@@ -430,7 +423,6 @@ U.buildRoom({
         this.server = await this.makeServer();
         this.serverFunc = this.server.hold(hutWob => {
           let { ip } = hutWob;
-          console.log(`Added hut with ip "${ip}"`);
           let hut = Hut({ lands: this.lands, address: ip });
           this.attach(relWaysHuts, hut);
           this.lands.attach(relLandsHuts, hut);
@@ -449,10 +441,9 @@ U.buildRoom({
         let doOutput = true;
         if (doOutput) {
           let consoleOutput = msg;
-          if (U.isType(consoleOutput, String)) consoleOutput = { str: `${consoleOutput.split('\n')[0].substr(0, 30)}...` };
+          if (U.isType(consoleOutput, String)) consoleOutput = { stringy: `${consoleOutput.split('\n')[0].substr(0, 30)}...` };
           console.log(`TELL ${hut.address}:`, consoleOutput);
         }
-        
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});

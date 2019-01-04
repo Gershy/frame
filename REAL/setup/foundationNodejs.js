@@ -308,25 +308,9 @@
       let sendData = (res, msg) => {
         let type = U.isType(msg, String) ? (msg[0] === '<' ? 'html' : 'text') : 'json';
         
-        // if (type === 'html') {
-        //   let doc = XmlElement(null, 'root');
-        //   let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-        //   doctype.setProp('html');
-        //   let html = doc.add(XmlElement('html', 'container'));
-        //   let head = html.add(XmlElement('head', 'container'));
-        //   head.add(XmlElement('title', 'text', `Hut: ${this.hut}`));
-        //   let body = html.add(XmlElement('body', 'container'));
-        //   body.add(XmlElement('p', 'text', msg.split('\n').join('<br/>\n')));
-        //   msg = doc.toString(); // Html document is response content
-        // } else 
-        
         if (type === 'json') {
-          try {
-            msg = JSON.stringify(msg);
-          } catch(err) {
-            console.log('Couldn\'t serialize json', msg);
-            throw err;
-          }
+          try { msg = JSON.stringify(msg); }
+          catch(err) { console.log('Couldn\'t serialize json', msg); throw err; }
         }
         
         let contentType = ({
@@ -352,10 +336,19 @@
         }
         
         // Get the ip
-        let ip = this.compactIp(req.headers['x-forwarded-for'] || req.connection.remoteAddress);
+        let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        let { path: urlPath, query } = this.parseUrl(`http://${ip}${req.url}`);
+        
+        // Allow ip spoofing (TODO: REALLY disable in production!)
+        if (query.has('spoof')) ip = query.spoof;
+        
+        // Compactify the ip
+        ip = this.compactIp(ip);
         
         // Create a new connection if this ip hasn't been seen before
         if (!connections.has(ip)) {
+          console.log(`CONN ${ip}`);
+          
           let connectionWob = connections[ip] = {
             ip,
             hear: BareWob({}),
@@ -379,8 +372,8 @@
         
         // Interpret requests with an empty body based on other features of `req`
         if (body.isEmpty()) {
-          if (req.url === '/') body = { command: 'getInit' };
-          if (req.url === '/favicon.ico') body = { command: 'getFile', path: 'favicon.ico' };
+          if (urlPath === '/') body = { command: 'getInit' };
+          if (urlPath === '/favicon.ico') body = { command: 'getFile', path: 'favicon.ico' };
         }
         
         // Default to the "ping" command
@@ -716,8 +709,20 @@
       mainScript.setProp('type', 'text/javascript');
       mainScript.setText(contents);
       
+      let mainStyle = head.add(XmlElement('style', 'text'));
+      mainStyle.setProp('type', 'text/css');
+      mainStyle.setText([
+        'html, body {',
+        '  position: absolute;',
+        '  left: 0; top: 0;',
+        '  width: 100%; height: 100%;',
+        '  margin: 0;',
+        '  padding: 0;',
+        '  background-color: #eaeaf2;',
+        '}'
+      ].join('\n'));
+      
       let body = html.add(XmlElement('body', 'container'));
-      let header = body.add(XmlElement('h1', 'text', this.hut));
       
       return doc.toString();
     },
