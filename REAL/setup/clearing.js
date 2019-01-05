@@ -71,7 +71,7 @@ protoDef(Array, 'find', function(f) {
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !!this.length; });
-protoDef(Array, 'gain', function(arr2) { return this.push(...arr2); });
+protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -224,14 +224,18 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     delete this.holders[ind];
     if (this.holders.isEmpty()) delete this.holders;
   },
-  wobble: function(value=null) {
+  wobble: function(value=null, force=U.isType(value, Object)) {
+    // Default `value` is null
+    // If `value` is an `Object`, `force` default to `true` (because it's likely that inner properties changed)
+    // If `value` is any other type, `force` defaults to `false`
+    
     let origVal = ({}).has.call(this, 'value') ? this.value : null;
-    if (value === origVal) return;
+    if (!force && value === origVal) return;
     this.setValue(value);
     if (this.holders) this.holders.forEach(h => h(value, origVal)); //for (let k in this.holders) this.holders[k](value, origVal);
   },
-  modify: function(f) {
-    this.wobble(f(this.getValue()));
+  modify: function(f, force) {
+    this.wobble(f(this.getValue()), force);
   }
 })});
 let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, Insp) => ({
@@ -257,28 +261,29 @@ let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, 
   }
 })});
 let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ uid=null }) {
+  init: function({ uid=null, hasty=false }) {
     insp.Wobbly.init.call(this, { uid });
   },
   setValue: function(v) {},
   getValue: function() { return null; },
+  wobble: function(value=null, force=true) { insp.Wobbly.wobble.call(this, value, force); },
   modify: function(f) { throw new Error(`Call "wobble" instead of "modify" on ${this.constructor.name}`); },
   hold: function(func) { return insp.Wobbly.hold.call(this, func, false); }
 })});
 let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function(wobblies, func) {
-    insp.Wobbly.init.call(this);
-    this.wobblies = wobblies;
+  init: function({ uid, wobs, func }) {
+    insp.Wobbly.init.call(this, { uid });
+    this.wobs = wobs;
     this.func = func;
     this.watchFunc = () => {
       let value = this.calc();
       if (value !== this.getValue()) this.wobble(value);
     };
     this.setValue(this.calc());
-    this.wobblies.forEach(w => w.hold(this.watchFunc));
+    this.wobs.forEach(w => w.hold(this.watchFunc));
   },
   calc: function() {
-    return this.func(...this.wobblies.map(w => w.getValue()));
+    return this.func(...this.wobs.map(w => w.getValue()));
   }
 })});
 

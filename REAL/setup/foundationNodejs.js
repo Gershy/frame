@@ -673,7 +673,7 @@
     },
     
     getPlatformName: function() { return 'nodejs'; },
-    genInitBelow: async function(contentType, initContent={}) {
+    genInitBelow: async function(contentType, hutTerm, initContent={}) {
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let doc = XmlElement(null, 'root');
@@ -700,6 +700,7 @@
       
       contents = splitContents.join('\n\n') + '\n\n' + [
         '// ==== File: hut.js',
+        `U.hutTerm = '${hutTerm}';`,
         `U.initData = ${JSON.stringify(initContent)};`,
         'let { FoundationBrowser } = U.foundationClasses;',
         `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,
@@ -719,6 +720,7 @@
         '  margin: 0;',
         '  padding: 0;',
         '  background-color: #eaeaf2;',
+        '  font-family: monospace;',
         '}'
       ].join('\n'));
       

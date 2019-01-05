@@ -26,13 +26,14 @@ U.buildRoom({
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
+      $terms: [ 'gabe', 'bomb', 'dumb', 'lobe', 'dull', 'read', 'wade', 'jail', 'more', 'plot', 'frog' ],
       $defaultCommands: {
         getInit: async (inst, hut, msg) => {
-          
+          let ts = Lands.terms;
           hut.version = 2;
           hut.recalcInitInform();
           
-          let initBelow = await inst.foundation.genInitBelow('text/html', {
+          let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
             command: 'update',
             version: 1,
             content: hut.flushAndGenInform()
@@ -75,9 +76,8 @@ U.buildRoom({
           ops.gain(remRec.toArr((v, uid) => ({
             func: () => {
               if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
-              
               let rec = recs[uid];
-              rec.isolate();
+              lands.remRec(rec);
             },
             desc: `Rem ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid})`
           })));
@@ -225,6 +225,10 @@ U.buildRoom({
         if (this.commands.has(command)) await this.commands[command](this, hut, msg);
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
       },
+      remRec: function(rec) {
+        rec.isolate();
+        this.getInnerVal(relLandsHuts).forEach(hut => hut.forgetRec(rec));
+      },
       
       open: async function() {
         await Promise.all(this.getInnerVal(relLandsWays).map(h => h.open()).toArr(p => p));
@@ -250,11 +254,11 @@ U.buildRoom({
         this.lands = lands;
         this.address = address;
         this.discoveredMs = +new Date();
-        
+        this.term = null;
         this.version = 0;
         
         /// {ABOVE=
-        this.recHolds = {};
+        this.holds = {};
         this.addRec = {};
         this.remRec = {};
         this.updRec = {};
@@ -262,23 +266,31 @@ U.buildRoom({
         this.remRel = {};
         /// =ABOVE}
       },
+      getTerm: function() {
+        if (!this.term) {
+          let ts = Lands.terms;
+          this.term = Array.fill(2, () => ts[Math.floor(Math.random() * ts.length)]).join('-')
+        }
+        return this.term;
+      },
       
       /// {ABOVE=
       followRec: function(rec, uid=rec.uid) {
-        // Start keeping track of new holds
-        var holds = {
+        // Track `rec`; our hold on `rec` itself, and all its relations
+        var hold = {
           value: null,
           rel: {}
         };
         
-        // Need to send initial data for this record
+        // Need to send initial data for this record now
         this.addRec[uid] = rec;
         
-        // Need to send updated data for this record
-        holds.value = rec.hold(value => {
-          if (!this.addRec.has(rec.uid)) this.updRec[rec.uid] = value;
+        // Need to send updated data for this record later
+        hold.value = rec.hold(val => {
+          if (!this.addRec.has(rec.uid)) this.updRec[rec.uid] = val;
         });
         
+        // Sync all relations similarly
         let checkHasRec = this.lands.checkHutHasRec.bind(null, this.lands, this);
         rec.getFlatDef().forEach((rel, relFwdName) => {
           
@@ -290,20 +302,24 @@ U.buildRoom({
           let attached = wob.value;
           if (!U.isType(attached, Object)) attached = attached ? { [attached.uid]: attached } : {};
           
-          // Need to send initial relations for this record
+          // Need to send initial relations for this record now
           attached.forEach((rec2, uid2) => {
             // Skip relations outside the hut's knowledge
             if (!checkHasRec(rec2)) return;
             this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
           });
           
-          // Need to send updated relations for this record
+          // Need to send updated relations for this record later
           let relType = rec.getRelPart(rel).clsRelFwd.type;
-          let hold = ({
+          let relHold = ({
             type1: (newVal, oldVal) => {
-              let [ map, rec2 ] = newVal ? [ this.addRel, newVal ] : [ this.remRel, oldVal ];
-              if (!rec2 || !checkHasRec(rec2)) return;
-              map[`${relUid}.${U.multiKey(uid, rec2.uid)}`] = [ relUid, uid, rec2.uid ];
+              if (newVal) {
+                if (!checkHasRec(newVal)) return;
+                this.addRel[`${relUid}.${U.multiKey(uid, newVal.uid)}`] = [ relUid, uid, newVal.uid ];
+              } else {
+                if (!oldVal || !checkHasRec(oldVal)) return;
+                this.remRel[`${relUid}.${U.multiKey(uid, oldVal.uid)}`] = [ relUid, uid, oldVal.uid ];
+              }
             },
             typeM: ({ add={}, rem={} }) => {
               add.forEach((rec2, uid2) => {
@@ -317,10 +333,12 @@ U.buildRoom({
             }
           })[`type${relType}`];
           
-          holds.rel[relUid] = wob.hold(hold);
+          hold.rel[relUid] = wob.hold(relHold);
+          if (!hold.rel[relUid]) throw new Error('Didn\'t get a function out of "hold"');
           
-          this.recHolds[uid] = holds;
         });
+        
+        this.holds[uid] = hold;
       },
       forgetRec: function(rec, uid=rec.uid) {
         // Note that the dropping here is "safe" - doesn't throw errors
@@ -330,9 +348,11 @@ U.buildRoom({
         // is detached from `Lands` the `Lands` will ensure all huts forget
         // `rec` appropriately.
         if (!this.holds.has(uid)) return;
-        let recHolds = this.holds[uid];
-        rec.drop(recHolds.value, true);
-        rec.getInnerWobs().forEach((wob, uid) => wob.drop(recHolds.rel[uid], true));
+        let hold = this.holds[uid];
+        rec.drop(hold.value, true);
+        rec.getInnerWobs().forEach((wob, uid) => {
+          if (hold.rel.has(uid)) wob.drop(hold.rel[uid], true)
+        });
         delete this.holds[uid];
       },
       forgetAllRecs: function() {
@@ -345,7 +365,7 @@ U.buildRoom({
         [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => { this[p] = {}; });
         
         let recs = this.lands.getInnerVal(relLandsRecs);
-        this.recHolds.forEach((h, uid) => {
+        this.holds.forEach((h, uid) => {
           
           // Send an "add" for this record
           let rec = recs[uid];
@@ -387,13 +407,15 @@ U.buildRoom({
       },
       informBelow: async function() {
         let content = this.flushAndGenInform();
-        if (content.isEmpty()) return;
+        if (content.isEmpty()) return null;
         
         await this.tell({
           command: 'update',
           version: this.version++,
           content
         });
+        
+        return content;
       },
       /// =ABOVE}
       

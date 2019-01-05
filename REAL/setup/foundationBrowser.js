@@ -43,7 +43,7 @@
         let res = await new Promise((rsv, rjc) => { req.onreadystatechange = () => {
           if (req.readyState !== 4) return;
           try {
-            if (req.status === 0) throw new Error('XMLHttpRequest had status 0');
+            if (req.status === 0) { console.log('Got response status 0'); return rsv(null); }
             rsv(JSON.parse(req.responseText));
           } catch(err) {
             console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
@@ -67,7 +67,7 @@
       return serverWob;
     },
     formatError: function(err) {
-      return err;
+      return err.stack;
     }
   })});
 

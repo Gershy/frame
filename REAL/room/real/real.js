@@ -3,21 +3,26 @@ U.buildRoom({
   innerRooms: [ 'record' ],
   build: (foundation, record) => {
     
+    let { Wobbly } = U;
+    
     let Real = U.inspire({ name: 'Real', methods: (insp, Insp) => ({
       init: function({ isRoot=false, flag=null }) {
         this.dom = isRoot ? document.body : document.createElement('div');
         
         if (flag) this.addFlag(flag);
         
-        this.transforms = [];
         this.loc = [ 0, 0 ];
+        this.rot = 0;
+        this.scl = [ 1, 1 ];
+        this.transitions = {};
+        this.removalDelayMs = 0;
         
         this.dom.style.gain({
           position: 'absolute',
           left: '50%',
           top: '50%',
           overflow: 'visible'
-        })
+        });
         
         if (isRoot) {
           
@@ -35,13 +40,14 @@ U.buildRoom({
             lineHeight: '100px',
             marginLeft: '-50px',
             marginTop: '-50px',
-            transform: 'translate(0, 0)',
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
             textAlign: 'center',
             color: 'rgba(255, 255, 255, 1)'
           });
           
         }
+        
+        this.applyTransform();
         
         this.interactWob = U.Wobbly({ value: false });
         this.dom.addEventListener('mousedown', evt => {
@@ -55,9 +61,23 @@ U.buildRoom({
           evt.preventDefault();
         });
         
+        this.addWob = U.BareWob({});
+        this.remWob = U.BareWob({});
+      },
+      setRemovalDelayMs: function(ms) {
+        this.removalDelayMs = ms;
+      },
+      setPriority: function(amt) {
+        this.dom.style.zIndex = amt === null ? '' : `${amt}`;
+      },
+      setTangible: function(isTng) {
+        this.dom.style.pointerEvents = isTng ? '' : 'none';
       },
       setText: function(text) {
         this.dom.innerHTML = text;
+      },
+      setTextSize: function(amt) {
+        this.dom.style.fontSize = `${amt}px`;
       },
       setTextColour: function(col) {
         this.dom.style.gain({
@@ -77,58 +97,75 @@ U.buildRoom({
         this.loc = [ x, y ];
         this.applyTransform();
       },
+      setRot: function(rot) {
+        this.rot = rot;
+        this.applyTransform();
+      },
+      setScale: function(x, y=x) {
+        this.scl = [ x, y ];
+        this.applyTransform();
+      },
+      applyTransform: function() {
+        this.dom.style.transform = [
+          `translate(${this.loc[0]}px, ${this.loc[1]}px)`,
+          `rotate(${this.rot}deg)`,
+          `scale(${this.scl[0]}, ${this.scl[1]})`
+        ].join(' ');
+      },
       setColour: function(col) {
-        this.dom.style.gain({
-          backgroundColor: col
-        });
+        this.dom.style.backgroundColor = col;
       },
       setBorderRadius: function(amt) {
-        this.dom.style.gain({
-          borderRadius: `${amt * 100}%`
-        });
+        this.dom.style.borderRadius = `${amt * 100}%`;
       },
       setBorder: function(type, w, col) {
-        if (type === null) { this.dom.style.boxShadow = ''; return; }
-        type = ({
-          inner: 'inset ',
-          outer: ''
-        })[type];
-        this.dom.style.gain({
-          boxShadow: `${type}0 0 0 ${w}px ${col}`
-        });
+        this.dom.style.boxShadow = type !== null
+          ? (type === 'inner' ? `inset 0 0 0 ${w}px ${col}` : `0 0 0 ${w}px ${col}`)
+          : '';
       },
-      addTranslate: function(x, y) { this.transforms.push({ type: 'translate', x, y }); this.applyTransform(); },
-      addRotate: function(rad) { this.transforms.push({ type: 'rotate', rad }); this.applyTransform(); },
-      addScale: function(x, y=x) { this.transforms.push({ type: 'scale', x, y }); this.applyTransform(); },
-      resetTransform: function() { this.transforms = []; this.applyTransform(); },
-      applyTransform: function() {
-        let ops = this.transforms.map(({ type, ...v }) => ({
-          translate: () => `translate(${v.x}px, ${v.y}px)`,
-          rotate: () => `rotate(${v.rad}rad)`,
-          scale: () => `scale(${v.x}, ${v.y})`
-        })[type]());
+      setOpacity: function(amt) {
+        this.dom.style.opacity = `${amt}`;
+      },
+      setTransition: function(prop, ms, delay=0, ease='smooth') {
+        let props = ({
+          loc: [ 'transform' ],
+          size: [ 'width', 'height' ],
+          colour: [ 'backgroundColour' ],
+          opacity: [ 'opacity' ]
+        })[prop];
         
-        let transform = `translate(${this.loc[0]}px, ${this.loc[1]}px)`;
-        if (ops.length) transform = `${transform} ${ops.join(' ')}`; 
+        if (ms === null) { props.forEach(prop => { delete this.transitions[prop]; }); return; }
         
-        this.dom.style.gain({ transform });
+        props.forEach(prop => {
+          this.transitions[prop] = { time: `${ms}ms`, delay: `${delay}ms`, ease: ({ smooth: 'ease-in-out', sharp: 'linear' })[ease] };
+        });
+        
+        this.applyTransition();
+      },
+      applyTransition: function() {
+        if (this.transitions.isEmpty()) { this.dom.style.transition = ''; return; }
+        let trnStr = this.transitions.toArr(({ time, delay, ease }, type) => `${type} ${time} ${ease} ${delay}`).join(', ');
+        this.dom.style.transition = trnStr;
       },
       addReal: function(real) {
         this.dom.appendChild(real.dom);
+        requestAnimationFrame(() => real.addWob.wobble());
         return real;
       },
       remReal: function(real) {
-        this.dom.removeChild(real.dom);
+        real.rem(this.dom);
+        return real;
       },
-      rem: function() {
-        this.dom.parentNode.removeChild(this.dom);
+      rem: function(domPar=this.dom.parentNode) {
+        let remove = () => domPar.removeChild(this.dom);
+        if (this.removalDelayMs === 0)  remove();
+        else                            this.setTangible(false) && setTimeout(remove, this.removalDelayMs);
+        this.remWob.wobble();
+        return this;
       },
-      addFlag: function(flag) {
-        this.dom.classList.add(flag);
-      },
-      remFlag: function(flag) {
-        this.dom.classList.remove(flag);
-      }
+      addFlag: function(flag) { this.dom.classList.add(flag); },
+      remFlag: function(flag) { this.dom.classList.remove(flag); },
+      hasFlag: function(flag) { return this.dom.classList.contains(flag); }
     })});
     
     return {

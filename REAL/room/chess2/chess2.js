@@ -19,6 +19,7 @@ U.buildRoom({
     let Player = U.inspire({ name: 'Player', insps: { LandsRecord }, methods: (insp, Insp) => ({
       init: function({ uid, lands }) {
         insp.LandsRecord.init.call(this, { uid, lands });
+        this.move = U.Wobbly({ value: null });
       }
     })});
     let Board = U.inspire({ name: 'Board', insps: { LandsRecord }, methods: (insp, Insp) => ({
@@ -119,7 +120,7 @@ U.buildRoom({
             let orth = [ [ -1, +0 ], [ +0, +1 ], [ +1, +0 ], [ +0, -1 ] ];
             let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
             
-            steps.forEach((dx, dy) => {
+            steps.forEach(([dx, dy]) => {
               
               let [ xx, yy ] = [ x, y ];
               while (true) {
@@ -151,30 +152,17 @@ U.buildRoom({
         /// {ABOVE=
         lands.commands.gain({
           confirmMove: async (lands, hut, msg) => {
-            
             let player = hut.getInnerVal(rel.playerHut);
             let playerPieces = player.getInnerVal(rel.piecePlayer);
-            let movedPiece = playerPieces[msg.piece];
             
-            console.log('MSG', msg);
-            console.log('PP', playerPieces[msg.piece]);
-            return;
+            if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
             
-            return;
-            
-            let { tile: [ x, y ] } = msg;
-            
-            piece.modify(v => v.gain({ x, y }));
-            
-            console.log('MOVE!');
-            
-            lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
-            //let hut = player.getInnerVal(rel.playerHut);
-            //  hut.informBelow();
-            
+            player.move.wobble({
+              piece: playerPieces[msg.piece],
+              tile: msg.tile
+            });
           }
         });
-        
         
         let pieceDef = [
           [
@@ -217,23 +205,17 @@ U.buildRoom({
         
         let chess2 = Chess2({ lands });
         
+        // Make a Player for each Hut
         lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-          
           add.forEach(hut => {
-            
             let player = Player({ lands });
-            player.wobble({ ip: hut.address });
+            player.wobble({ term: hut.getTerm(), gameStatus: 'waiting' });
             player.attach(rel.playerHut, hut);
             chess2.attach(rel.playersWaiting, player);
-            
           });
-          
         });
         
-        // TODO: HEEERE!! Currently matchmaking occurs when 2 separate players join
-        // - Tell clients which Player instance is theirs, so the board can know to flip
-        //   and certain pieces can become unclickable
-        // - Update clients with results of moves
+        // TODO: HEEERE!!
         // - Allow for animation upon inevitable DOM element removal
         // - Win/loss/draw screen
         setInterval(() => {
@@ -268,22 +250,97 @@ U.buildRoom({
               });
             });
             
+            [ p1, p2 ].forEach(player => player.modify(v => v.gain({ gameStatus: 'playing' })));
+            
             // Inform each player that they've entered a match
             [ p1, p2 ].forEach(player => {
               let hut = player.getInnerVal(rel.playerHut);
               hut.informBelow();
             });
+            
+            U.CalcWob({ wobs: [ p1.move, p2.move ], func: (p1Move, p2Move) => {
+              if (!p1Move || !p2Move) return;
+              
+              let { piece: p1Piece, tile: [ p1X, p1Y ] } = p1Move;
+              let { piece: p2Piece, tile: [ p2X, p2Y ] } = p2Move;
+              
+              p1Piece.modify(v => v.gain({ x: p1X, y: p1Y }), true);
+              p2Piece.modify(v => v.gain({ x: p2X, y: p2Y }), true);
+              
+              let pieces = board.getInnerVal(rel.boardPieces);
+              
+              let p1Trgs = pieces.map(p => (p !== p1Piece && p.value.x === p1X && p.value.y === p1Y) ? p : C.skip);
+              let p2Trgs = pieces.map(p => (p !== p2Piece && p.value.x === p2X && p.value.y === p2Y) ? p : C.skip);
+              
+              p1Trgs.forEach(pc => lands.remRec(pc));
+              p2Trgs.forEach(pc => lands.remRec(pc));
+              
+              let p1Wins = !!p1Trgs.find(piece => piece.value.type === 'king');
+              let p2Wins = !!p2Trgs.find(piece => piece.value.type === 'king');
+              
+              if (p1Wins || p2Wins) {
+                
+                if (p1Wins && p2Wins) {
+                  p1.modify(v => v.gain({ gameStatus: 'stalemated' }));
+                  p2.modify(v => v.gain({ gameStatus: 'stalemated' }));
+                } else if (p1Wins) {
+                  p1.modify(v => v.gain({ gameStatus: 'victorious' }));
+                  p2.modify(v => v.gain({ gameStatus: 'defeated' }));
+                } else if (p2Wins) {
+                  p1.modify(v => v.gain({ gameStatus: 'defeated' }));
+                  p2.modify(v => v.gain({ gameStatus: 'victorious' }));
+                }
+                
+              }
+              
+              
+              [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
+              
+              p1.move.wobble(null);
+              p2.move.wobble(null);
+            }});
+            
           }
-        }, 1000);
+        }, 5000);
         
         /// =ABOVE} {BELOW=
         let { Real } = real;
         
         let myMatch = U.Wobbly({ value: null });
         let mySelectedPiece = U.Wobbly({ value: null });
-        let mySelectedTile = U.Wobbly({ value: [ -1, -1 ] });
+        let myConfirmedPiece = U.Wobbly({ value: null });
+        let myConfirmedTile = U.Wobbly({ value: [ -1, -1 ] });
         let myTileClickers = U.Wobbly({ value: [] });
         let myPlayer = U.Wobbly({ value: null });
+        let myColour = U.Wobbly({ value: null });
+        let myGameStatus = U.Wobbly({ value: 'waiting' });
+        
+        let colours = {
+          clear: 'rgba(0, 0, 0, 0)',
+          whiteTile: 'rgba(170, 170, 170, 1)',
+          blackTile: 'rgba(140, 140, 140, 1)',
+          whitePiece: 'rgba(205, 205, 205, 1)',
+          blackPiece: 'rgba(100, 100, 100, 1)',
+          selected: 'rgba(0, 255, 255, 0.5)',
+          confirmed: 'rgba(0, 230, 40, 0.8)'
+        };
+        
+        // Determine game status by listening to our player once we've entered the game
+        myPlayer.hold(player => {
+          if (!player) return;
+          player.hold(v => v ? myGameStatus.wobble(v.gameStatus) : null);
+        });
+        
+        // Determine colour by the reference used to link our player to our match
+        myMatch.hold(match => {
+          if (!match) return;
+          U.CalcWob({ wobs: [ match.getInnerWob(rel.matchPlayerWhite), myPlayer ], func: (white, player) => {
+            if (player && white === player) myColour.wobble('white');
+          }});
+          U.CalcWob({ wobs: [ match.getInnerWob(rel.matchPlayerBlack), myPlayer ], func: (black, player) => {
+            if (player && black === player) myColour.wobble('black');
+          }});
+        });
         
         let boardSize = 320;
         let tileW = Math.round(boardSize / 8);
@@ -293,6 +350,11 @@ U.buildRoom({
         let genMatch = rec => {
           let real = Real({ flag: 'match' });
           real.setSize(500, 500);
+          real.setColour('rgba(0, 0, 0, 0.8)');
+          real.setPriority(1);
+          
+          // Flip the board for the black player
+          myColour.hold(col => real.setRot(col === 'black' ? 180 : 0));
           
           let boardReal = null;
           rec.getInnerWob(rel.matchBoard).hold(board => {
@@ -308,9 +370,8 @@ U.buildRoom({
             whiteReal = real.addReal(Real({ flag: 'whitePlayer' }));
             whiteReal.setSize(500, 90);
             whiteReal.setLoc(0, 205);
-            white.hold(v => {
-              whiteReal.setText(`White: ${JSON.stringify(v)}`);
-            });
+            white.hold(v => whiteReal.setText(`White: ${JSON.stringify(v)}`));
+            myColour.hold(col => whiteReal.setRot(col === 'black' ? 180 : 0));
           });
           
           let blackReal = null;
@@ -320,28 +381,30 @@ U.buildRoom({
             blackReal = real.addReal(Real({ flag: 'blackPlayer' }));
             blackReal.setSize(500, 90);
             blackReal.setLoc(0, -205);
-            black.hold(v => {
-              blackReal.setText(`Black: ${JSON.stringify(v)}`);
-            });
+            black.hold(v => blackReal.setText(`Black: ${JSON.stringify(v)}`));
+            myColour.hold(col => blackReal.setRot(col === 'black' ? 180 : 0));
           });
           
           return real;
         };
-        
         let genBoard = rec => {
           let real = Real({ flag: 'board' });
+          real.setSize(320, 320);
+          
+          // The entire board is only tangible when the player is playing
+          myGameStatus.hold(status => real.setTangible(status === 'playing'));
           
           for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) ((x, y) => {
             let tileReal = real.addReal(Real({ flag: 'tile' }));
-            let colour = (y % 2) === (x % 2) ? '#c8c8c8' : '#808080';
+            let colour = (y % 2) === (x % 2) ? colours.blackTile : colours.whiteTile;
             tileReal.setSize(tileW, tileW);
             tileReal.setLoc(...tileLoc(x, y));
             tileReal.interactWob.hold(active => {
               if (!active) return;
               mySelectedPiece.wobble(null);
             });
-            mySelectedTile.hold(([x0, y0]) => {
-              tileReal.setColour((x0 === x && y0 === y) ? '#00c000' : colour);
+            myConfirmedTile.hold(([x0, y0]) => {
+              tileReal.setColour((x0 === x && y0 === y) ? colours.confirmed : colour);
             });
           })(x, y);
           
@@ -363,17 +426,19 @@ U.buildRoom({
             tileSelectors.forEach(real => real.rem());
             
             if (!piece) {
+              
               tileSelectors = [];
+              
             } else {
+              
               let moves = validMoves(rec, piece);
               tileSelectors = moves.map(([ x, y ]) => {
-                let tileReal = real.addReal(Real({}));
+                let tileReal = real.addReal(Real({ flag: 'validTile' }));
                 tileReal.setSize(tileW, tileW);
                 tileReal.setLoc(...tileLoc(x, y));
-                tileReal.setColour('rgba(0, 255, 255, 0.7)');
+                tileReal.setColour(colours.selected);
                 tileReal.interactWob.hold(active => {
                   if (!active) return;
-                  console.log(`Move piece ${piece.value.type} to (${x}, ${y})`);
                   lands.getInnerVal(relLandsHuts).forEach(hut => {
                     hut.tell({
                       command: 'confirmMove',
@@ -381,44 +446,76 @@ U.buildRoom({
                       tile: [ x, y ]
                     });
                   });
+                  mySelectedPiece.wobble(null);
+                  myConfirmedTile.wobble([ x, y ]);
+                  myConfirmedPiece.wobble(piece);
                 });
                 return tileReal;
               });
+              
             }
             
           });
           
-          real.setSize(320, 320);
           return real;
         };
-        
         let genPiece = rec => {
           let real = Real({ flag: 'piece' });
-          real.setColour('rgba(0, 0, 0, 0)');
-          real.setBorderRadius(1);
+          real.setColour(colours.clear);
           real.setSize(30, 30);
+          real.setBorderRadius(1);
+          real.setOpacity(1);
+          real.setPriority(1);
+          real.setRemovalDelayMs(1000);
+          real.setTangible(false);
+          real.setTransition('loc', 500, 0, 'smooth');
+          real.setTransition('opacity', 500, 0, 'sharp');
+          real.remWob.hold(() => {
+            // TODO: Not a fan of this `setTimeout` - better to work with css delays?
+            real.setPriority(2);
+            setTimeout(() => { real.setScale(3); real.setOpacity(0); }, 500);
+          });
+          
+          // Border depends on whether we are the selected and/or confirmed piece
+          U.CalcWob({ wobs: [ mySelectedPiece, myConfirmedPiece ], func: (sel, cnf) => {
+            if      (sel === rec) real.setBorder('outer', 4, colours.selected);
+            else if (cnf === rec) real.setBorder('outer', 4, colours.confirmed);
+            else                  real.setBorder('outer', 4, colours.clear);
+          }});
+          
+          // The tangibility of this piece depends on whether its colour matches our player's colour
+          U.CalcWob({ wobs: [ myColour, rec ], func: (colour, v) => {
+            if (!v || !colour) return;
+            real.setTangible(colour === v.colour);
+          }});
+          
+          // Ensure pieces are upright for black player (rotated an additional 180deg)
+          myColour.hold(col => real.setRot(col === 'black' ? 180 : 0));
           
           let avatar = real.addReal(Real({ flag: 'avatar' }));
           avatar.setSize(30, 30);
-          avatar.setColour('rgba(0, 0, 0, 0)');
-          
-          rec.hold(({ type, colour, x, y }) => {
-            real.setLoc(...tileLoc(x, y));
-            real.setColour(colour === 'white' ? '#ffffff' : '#000000');
-            avatar.setText(type === 'knight' ? 'N' : type[0].upper());
-            avatar.setTextColour(colour === 'white' ? '#000000' : '#ffffff');
-          });
+          avatar.setColour(colours.clear);
           
           let grip = real.addReal(Real({ flag: 'grip' }));
-          grip.setColour('rgba(0, 0, 0, 0)');
+          grip.setColour(colours.clear);
           grip.setSize(tileW, tileW);
-          grip.interactWob.hold(active => {
-            if (!active) return;
-            mySelectedPiece.wobble(rec);
+          
+          // Apply visuals, colour, and positioning to this piece
+          rec.hold(({ type, colour, x, y }) => {
+            real.setLoc(...tileLoc(x, y));
+            real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
+            avatar.setText((type === 'knight' ? 'n' : type[0]).upper());
+            avatar.setTextSize(20);
+            avatar.setTextColour(colour === 'white' ? '#ffffff' : '#000000');
+            mySelectedPiece.wobble(null);
+            myConfirmedPiece.wobble(null);
+            myConfirmedTile.wobble([ -1, -1 ]);
           });
           
-          mySelectedPiece.hold(piece => {
-            real.setBorder('outer', 3, piece === rec ? 'rgba(0, 255, 255, 1)' : 'rgba(0, 0, 0, 0)');
+          // Interactions cause piece to be selected
+          grip.interactWob.hold(active => {
+            if (!active) return;
+            mySelectedPiece.modify(sel => sel === rec ? null : rec);
           });
           
           return real;
@@ -426,33 +523,61 @@ U.buildRoom({
         
         let root = Real({ isRoot: true, flag: 'root' });
         let mainView = null;
+        let notifyView = null;
         
         myMatch.hold(rec => {
+          if (mainView) { root.remReal(mainView); mainView = null; }
+          if (rec) mainView = root.addReal(genMatch(rec));
+        });
+        
+        myGameStatus.hold(gameStatus => {
           
-          if (mainView) root.remReal(mainView);
+          if (notifyView) { root.remReal(notifyView); notifyView = null; }
           
-          mainView = root.addReal(Real({}));
-          if (!rec) {
-            mainView.setSize(300, 300);
-            mainView.setText('WAITING...');
-            mainView.addFlag('waiting');
-          } else {
-            mainView.setSize(500, 500);
-            mainView.addFlag('playing');
-            mainView.addReal(genMatch(rec));
-          }
+          if (gameStatus === 'playing') return;
+          
+          notifyView = root.addReal(Real({}));
+          notifyView.setSize(230, 230);
+          notifyView.setColour('rgba(0, 0, 0, 0.85)');
+          notifyView.setPriority(2);
+          notifyView.setOpacity(0);
+          notifyView.setTransition('opacity', 500, 0, 'sharp');
+          notifyView.addWob.hold(() => {
+            notifyView.setOpacity(1);
+          });
+          
+          let [ size, str ] = ({
+            waiting: [ 18, 'Finding match...' ],
+            victorious: [ 25, 'You WIN!' ],
+            defeated: [ 25, 'You LOSE!' ],
+            stalemated: [ 25, 'It\'s a DRAW!' ]
+          })[gameStatus];
+          
+          notifyView.setTextSize(size);
+          notifyView.setText(str);
           
         });
         
         lands.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
           
-          let matches = add.map(rec => rec.isInspiredBy(Match) ? rec : C.skip);
-          let match = matches.find(() => true);
+          // Split incoming records by class
+          let addsByCls = { Match: {}, Player: {} };
+          add.forEach((rec, uid) => {
+            let clsName = rec.constructor.name;
+            if (!addsByCls.has(clsName)) addsByCls[clsName] = {};
+            addsByCls[clsName][uid] = rec;
+          });
           
+          // Look for any match
+          let match = addsByCls.Match.find(() => true);
           if (match) myMatch.wobble(match[0]);
           
+          // Search for players whose term is our term
+          addsByCls.Player.forEach(player => player.hold(v => {
+            if (v && v.term === U.hutTerm) myPlayer.wobble(player);
+          }));
+          
         });
-        
         /// =BELOW}
         
         let way = Way({ lands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });

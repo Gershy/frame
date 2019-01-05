@@ -42,10 +42,8 @@ U.buildRoom({
         return {
           type: '1',
           attach0: (inst1, inst2) => {
-            if (inst1.inner && inst1.inner.has(name) && inst1.inner[name].value) {
-              console.log('HAS', inst1.inner[name].value);
+            if (inst1.inner && inst1.inner.has(name) && inst1.inner[name].value)
               throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
-            }
           },
           attach1: (inst1, inst2) => {
             if (!inst1.inner) inst1.inner = {};
@@ -177,7 +175,7 @@ U.buildRoom({
         return this.inner[relPart.nameFwd];
       },
       getInnerWobs: function() {
-        return this.getFlatDef().map((rel, uid) => this.getInnerWob(rel));
+        return this.getFlatDef().map(rel => this.getInnerWob(rel));
       },
       getInnerVal: function(rel) {
         return this.getInnerWob(rel).value;
@@ -223,13 +221,10 @@ U.buildRoom({
         return inst;
       },
       isolate: function() {
-        this.getFlatDef.forEach(rel => {
-          let wob = this.getInnerWob(rel);
-          let huts = rel.type === '1'
-            ? (wob.value ? { [wob.value.uid]: wob.value } : {})
-            : wob.value;
-          
-          huts.forEach(huts => this.detach(rel, hut));
+        this.getFlatDef().forEach(rel => {
+          let recs = this.getInnerVal(rel);
+          if (!U.isType(recs, Object)) recs = recs ? { [recs.uid]: recs } : {};
+          recs.forEach(rec => this.detach(rel, rec));
         });
       },
       
