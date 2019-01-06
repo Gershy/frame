@@ -48,6 +48,18 @@ Array.fill = (n, f=()=>null) => {
   for (let i = 0; i < n; i++) a[i] = f(i);
   return a;
 };
+Array.combine = (...arrs) => {
+  let len = 0;
+  for (let i = 0; i < arrs.length; i++) len += arrs[i].length;
+  
+  let ret = new Array(len);
+  let ind = 0;
+  for (let i = 0; i < arrs.length; i++) { let arr = arrs[i]; for (let j = 0; j < arr.length; j++) {
+    ret[ind++] = arr[j];
+  }}
+  
+  return ret;
+};
 protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {

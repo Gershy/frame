@@ -132,7 +132,7 @@ U.buildRoom({
         
         /// =BELOW}
         
-        let way = Way({ lands, makeServer: foundation.makeHttpServer.bind(foundation, 'localhost', 80) }); // host: 'localhost', port: 80 });
+        let way = Way({ lands, makeServer: () => foundation.makeHttpServer() }); // host: 'localhost', port: 80 });
         lands.attach(relLandsWays, way);
         await lands.open();
       }

@@ -1,6 +1,6 @@
 (() => {
   
-  let [ path, fs, http, crypto ] = [ 'path', 'fs', 'http', 'crypto' ].map(v => require(v));
+  let [ path, fs, http, crypto, os ] = [ 'path', 'fs', 'http', 'crypto', 'os' ].map(v => require(v));
   let { BareWob } = U;
   
   let rootDir = path.join(__dirname, '..');
@@ -43,11 +43,20 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs }) {
+    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80 }) {
       insp.Foundation.init.call(this, { hut, bearing });
       this.roomsInOrder = [];
       this.variantDefs = variantDefs || {};
       this.compilationData = {};
+      
+      if (ip === 'static') {
+        let staticIp = this.getStaticIp();
+        if (!staticIp) throw new Error('No static ip available!');
+        ip = staticIp;
+      }
+      
+      this.ip = ip;
+      this.port = port;
     },
     
     // Compiling
@@ -282,6 +291,12 @@
     },
     
     // Functionality
+    getStaticIp: function() {
+      let viableInterface = Array.combine(...os.networkInterfaces().toArr(v => v))
+        .find(({ family, address }) => family.lower() === 'ipv4' && address !== '127.0.0.1');
+      
+      return viableInterface ? viableInterface[0].address : null;
+    },
     readFile: async function(name, options='utf8') {
       let err0 = new Error('');
       return new Promise((rsv, rjc) => fs.readFile(name, options, (err, c) => {
@@ -302,7 +317,7 @@
       if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Bad ip format: ${ipVerbose}`);
       return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
     },
-    makeHttpServer: async function(host, port) {
+    makeHttpServer: async function(ip=this.ip, port=this.port) {
       let connections = {};
       let serverWob = BareWob({});
       let sendData = (res, msg) => {
@@ -415,10 +430,10 @@
         
       });
       
-      await new Promise(r => server.listen(port, host, 511, r));
+      await new Promise(r => server.listen(port, ip, 511, r));
       return serverWob;
     },
-    makeSoktServer: async function(host, port) {
+    makeSoktServer: async function(ip=this.ip, port=this.port + 1) {
       let serverWob = BareWob({});
       let server = net.createServer(sokt => {
         
@@ -668,11 +683,11 @@
         
       });
       
-      await new Promise(r => server.listen(port, host, r));
+      await new Promise(r => server.listen(port, ip, r));
       return serverWob;
     },
     
-    getPlatformName: function() { return 'nodejs'; },
+    getPlatformName: function() { return `nodejs@${this.ip}:${this.port}`; },
     genInitBelow: async function(contentType, hutTerm, initContent={}) {
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
