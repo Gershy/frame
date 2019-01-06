@@ -16,6 +16,7 @@ U.buildRoom({
         this.scl = [ 1, 1 ];
         this.transitions = {};
         this.removalDelayMs = 0;
+        this.vals = {};
         
         this.dom.style.gain({
           position: 'absolute',
@@ -72,6 +73,9 @@ U.buildRoom({
       },
       setTangible: function(isTng) {
         this.dom.style.pointerEvents = isTng ? '' : 'none';
+      },
+      setWindowlike: function(isWnd) {
+        this.dom.style.overflow = isWnd ? 'hidden' : 'visible';
       },
       setText: function(text) {
         this.dom.innerHTML = text;
@@ -163,6 +167,8 @@ U.buildRoom({
         this.remWob.wobble();
         return this;
       },
+      setVal: function(k, v) { this.vals[k] = v; },
+      getVal: function(k) { return this.vals.has(k) ? this.vals[k] : null; },
       addFlag: function(flag) { this.dom.classList.add(flag); },
       remFlag: function(flag) { this.dom.classList.remove(flag); },
       hasFlag: function(flag) { return this.dom.classList.contains(flag); }

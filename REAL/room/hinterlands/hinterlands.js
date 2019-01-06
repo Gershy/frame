@@ -26,7 +26,7 @@ U.buildRoom({
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
-      $terms: [ 'gabe', 'bomb', 'dumb', 'lobe', 'dull', 'read', 'wade', 'jail', 'more', 'plot', 'frog' ],
+      $terms: [ 'frog', 'oxen', 'tool', 'plot', 'wide', 'rope', 'side', 'crow', 'swan', 'quit', 'zest', 'mark', 'lark', 'hide' ],
       $defaultCommands: {
         getInit: async (inst, hut, msg) => {
           let ts = Lands.terms;
@@ -61,10 +61,13 @@ U.buildRoom({
           let ops = [];
           let recs = lands.getInnerVal(relLandsRecs);
           
+          // TODO: All validation errors thrown by ops should be distinguishable so that
+          // true coder errors can be differentiated
+          
           ops.gain(addRec.toArr(({ uid, type, value }) => ({
             func: () => {
-              if (!lands.records.has(type)) throw new Error(`Missing class: ${type}`);
-              if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
+              if (!lands.records.has(type)) throw new Error(`UPDERR - Missing class: ${type}`);
+              if (recs.has(uid)) throw new Error(`UPDERR - Add duplicate uid: ${uid}`);
               
               let Cls = lands.records[type];
               let inst = Cls({ uid, lands });
@@ -75,7 +78,7 @@ U.buildRoom({
           
           ops.gain(remRec.toArr((v, uid) => ({
             func: () => {
-              if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
+              if (!recs.has(uid)) throw new Error(`UPDERR - Rem missing uid: ${uid}`);
               let rec = recs[uid];
               lands.remRec(rec);
             },
@@ -84,7 +87,7 @@ U.buildRoom({
           
           ops.gain(updRec.toArr((v, uid) => ({
             func: () => {
-              if (!recs.has(uid)) throw new Error(`Upd missing uid: ${uid}`);
+              if (!recs.has(uid)) throw new Error(`UPDERR - Upd missing uid: ${uid}`);
               
               let rec = recs[uid];
               rec.wobble(v);
@@ -96,9 +99,9 @@ U.buildRoom({
             func: () => {
               let recs = lands.getInnerVal(relLandsRecs);
               
-              if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`Add relation with missing uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`Add relation with missing uid: ${uid2}`);
+              if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Add relation missing uid: ${relUid}`);
+              if (!recs.has(uid1)) throw new Error(`UPDERR - Add relation with missing uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`UPDERR - Add relation with missing uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
@@ -109,9 +112,9 @@ U.buildRoom({
           
           ops.gain(remRel.toArr(([ relUid, uid1, uid2 ]) => ({
             func: () => {
-              if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`Rem relation with missing uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`Rem relation with missing uid: ${uid2}`);
+              if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Rem relation missing uid: ${relUid}`);
+              if (!recs.has(uid1)) throw new Error(`UPDERR - Rem relation with missing uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`UPDERR - Rem relation with missing uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
@@ -121,9 +124,10 @@ U.buildRoom({
           })));
           
           let successes = [];
-          let failures = null;
+          let failures = [];
+          let attempts = 0; // TODO: For sanity - take it out eventually
           
-          while (ops.length) {
+          while (ops.length && attempts++ < lands.maxUpdateAttempts) {
             let successesNow = [];
             failures = [];
             let opsNow = ops;
@@ -135,13 +139,18 @@ U.buildRoom({
                 successesNow.push(op);
                 successes.push(op.desc);
               } catch(err) {
+                if (!err.message.hasHead('UPDERR - ')) throw err;
                 failures.push(`${op.desc}:\n${foundation.formatError(err)}`)
                 ops.push(op);
               }
             });
             
             if (failures.length && successesNow.isEmpty()) break;
-            
+          }
+          
+          if (attempts >= lands.maxUpdateAttempts) {
+            console.log('TOO MANY ATTEMPTS!!', failures);
+            throw new Error('Too many attempts');
           }
           
           if (failures.length) {
@@ -159,6 +168,7 @@ U.buildRoom({
         insp.Record.init.call(this, { uid: 'root' });
         this.foundation = foundation;
         this.uidCnt = 0;
+        this.maxUpdateAttempts = 1000;
         
         this.records = U.isType(records, Array)
           ? records.toObj(r => [ r.name, r ])
@@ -191,14 +201,8 @@ U.buildRoom({
         recWob.hold(({ add={}, rem={} }) => {
           
           let huts = this.getInnerVal(relLandsHuts);
-          
-          add.forEach(rec => {
-            huts.forEach(hut => this.checkHutHasRec(this, hut, rec) && hut.followRec(rec));
-          });
-          
-          rem.forEach(rec => {
-            huts.forEach(hut => hut.forgetRec(rec));
-          });
+          add.forEach(rec => huts.forEach(hut => this.checkHutHasRec(this, hut, rec) && hut.followRec(rec)));
+          rem.forEach(rec => huts.forEach(hut => hut.forgetRec(rec)));
           
         });
         /// =ABOVE}
@@ -221,9 +225,12 @@ U.buildRoom({
         let { command } = msg;
         
         console.log(`HEAR ${hut.address}:`, msg);
-        
+          
         if (this.commands.has(command)) await this.commands[command](this, hut, msg);
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
+      },
+      tell: async function(msg) {
+        await Promise.all(this.getInnerVal(relLandsHuts).toArr(hut => hut.tell(msg)));
       },
       remRec: function(rec) {
         rec.isolate();

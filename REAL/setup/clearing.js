@@ -258,6 +258,12 @@ let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, 
   getValue: function() {
     // Return regular value as a delta
     return { add: this.value };
+  },
+  wobbleAdd: function(k, v, force) {
+    return this.wobble({ add: { [k]: v } }, force);
+  },
+  wobbleRem: function(k, v, force) {
+    return this.wobble({ rem: { [k]: v } }, force);
   }
 })});
 let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
