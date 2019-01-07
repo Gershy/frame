@@ -4,9 +4,6 @@
 // the hut is alone, above, below, or between
 
 // TODO: Write classes for transports
-let Signaller = U.inspire({ name: 'Signaller', methods: (insp, Insp) => ({
-  init: function({}) {}
-})});
 
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function({ hut=null, bearing=null }) {
@@ -37,20 +34,13 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   parseUrl: function(url) {
     let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
     return {
-      protocol,
-      host,
-      port,
-      path,
+      protocol, host, port, path,
       query: query.split('&').toObj(queryPc => queryPc.has('=') ? queryPc.split('=') : [ queryPc, null ])
     };
   },
   makeHttpServer: async function(contentType) { return C.notImplemented.call(this); },
   makeSoktServer: async function(contentType) { return C.notImplemented.call(this); }
 })});
-
-Foundation.gain({
-  Signaller
-});
 
 U.foundationClasses.gain({
   Foundation

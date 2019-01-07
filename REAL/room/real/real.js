@@ -116,6 +116,9 @@ U.buildRoom({
           `scale(${this.scl[0]}, ${this.scl[1]})`
         ].join(' ');
       },
+      setColoursInverted: function(isInv) {
+        this.dom.style.filter = isInv ? 'invert(100%)' : '';
+      },
       setColour: function(col) {
         this.dom.style.backgroundColor = col;
       },
@@ -126,6 +129,17 @@ U.buildRoom({
         this.dom.style.boxShadow = type !== null
           ? (type === 'inner' ? `inset 0 0 0 ${w}px ${col}` : `0 0 0 ${w}px ${col}`)
           : '';
+      },
+      setImage: function(file) {
+        if (!file) {
+          delete this.dom.style.backgroundImage;
+          delete this.dom.style.backgroundSize;
+        } else {
+          this.dom.style.gain({
+            backgroundImage: `url('${file.url}')`,
+            backgroundSize: 'contain'
+          });
+        }
       },
       setOpacity: function(amt) {
         this.dom.style.opacity = `${amt}`;
@@ -153,7 +167,7 @@ U.buildRoom({
       },
       addReal: function(real) {
         this.dom.appendChild(real.dom);
-        requestAnimationFrame(() => real.addWob.wobble());
+        setTimeout(() => real.addWob.wobble(), 0);
         return real;
       },
       remReal: function(real) {

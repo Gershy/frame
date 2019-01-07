@@ -43,23 +43,40 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80 }) {
+    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false }) {
       insp.Foundation.init.call(this, { hut, bearing });
       this.roomsInOrder = [];
       this.variantDefs = variantDefs || {};
       this.compilationData = {};
+      this.mountedFiles = {};
+      
+      if (showIps) {
+        console.log('IP OPTIONS:', this.getStaticIps());
+        return process.exit(0);
+      }
       
       if (ip === 'static') {
-        let staticIp = this.getStaticIp();
-        if (!staticIp) throw new Error('No static ip available!');
-        ip = staticIp;
+        let staticIps = this.getStaticIps();
+        if (staticIps.isEmpty()) throw new Error('No static ip available!');
+        
+        if (!ipPref) {
+          console.log(`In absence of ipPref using "${staticIps[0].type}"`);
+          ip = staticIps[0].address;
+        } else {
+          ip = staticIps.find(({ type }) => type.lower() === ipPref.lower());
+          ip = !ip
+            ? console.log(`Couldn\'t find ipPref "${ipPref}"; using "${staticIps[0].type}"`) || staticIps[0].address
+            : ip[0].address;
+        }
       }
       
       this.ip = ip;
       this.port = port;
+      
+      this.addMountFile('favicon.ico', 'setup/favicon.ico', 'image/x-icon');
     },
     
-    // Compiling
+    // Compilation
     parsedDependencies: async function(roomName) {
       // Determine the inner rooms of `roomName` by parsing the file for the "innerRooms" property
       
@@ -291,11 +308,32 @@
     },
     
     // Functionality
-    getStaticIp: function() {
-      let viableInterface = Array.combine(...os.networkInterfaces().toArr(v => v))
-        .find(({ family, address }) => family.lower() === 'ipv4' && address !== '127.0.0.1');
-      
-      return viableInterface ? viableInterface[0].address : null;
+    addMountFile: function(name, src, type=null) {
+      let nativeDir = path.join(rootDir, src);
+      try { fs.statSync(nativeDir); }
+      catch(err) { throw new Error(`Couldn't add file ${name}: ${src}`); }
+      this.mountedFiles[name] = { type, nativeDir };
+    },
+    getMountFile: function(name) {
+      if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+      let { type, nativeDir } = this.mountedFiles[name];
+      return {
+        ISFILE: true, type,
+        getContent: async () => {
+          if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+          this.readFile(nativeDir)
+        },
+        getPipe: () => fs.createReadStream(nativeDir),
+        getNumBytes: async () => {
+          return new Promise((rsv, rjc) => fs.stat(nativeDir, (err, nb) => err ? rjc(err) : rsv(nb.size)));
+        }
+      };
+    },
+    getStaticIps: function(pref=[]) {
+      return os.networkInterfaces()
+        .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
+        .to(arr => Array.combine(...arr))
+        .map(v => v.family === 'IPv4' && v.address !== '127.0.0.1' ? v : C.skip);
     },
     readFile: async function(name, options='utf8') {
       let err0 = new Error('');
@@ -321,21 +359,37 @@
       let connections = {};
       let serverWob = BareWob({});
       let sendData = (res, msg) => {
-        let type = U.isType(msg, String) ? (msg[0] === '<' ? 'html' : 'text') : 'json';
+        let type = (() => {
+          if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
+          if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
+          throw new Error(`Unknown type for ${U.typeOf(msg)}`);
+        })();
         
-        if (type === 'json') {
-          try { msg = JSON.stringify(msg); }
-          catch(err) { console.log('Couldn\'t serialize json', msg); throw err; }
-        }
+        return ({
+          text: () => {
+            res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
+            res.end(msg);
+          },
+          html: () => {
+            res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': Buffer.byteLength(msg) });
+            res.end(msg);
+          },
+          json: () => {
+            try { msg = JSON.stringify(msg); }
+            catch(err) { console.log('Couldn\'t serialize json', msg); throw err; }
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
+            res.end(msg);
+          },
+          file: async () => {
+            let numBytes = await msg.getNumBytes();
+            res.writeHead(200, {
+              'Content-Type': (msg.has('type') && msg.type) ? msg.type : 'application/octet-stream',
+              'Content-Length': numBytes
+            });
+            msg.getPipe().pipe(res);
+          }
+        })[type]();
         
-        let contentType = ({
-          html: 'text/html',
-          text: 'text/plain',
-          json: 'application/json'
-        })[type];
-        
-        res.writeHead(200, { 'Content-Type': contentType });
-        res.end(msg);
       };
       let server = http.createServer(async (req, res) => {
         
@@ -343,6 +397,8 @@
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
+        
+        // TODO: Force all bodies to be JSON?
         if (body.length) {
           try { body = JSON.parse(body); }
           catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
@@ -385,10 +441,18 @@
         // Get the current connection for this ip
         let connectionWob = connections[ip];
         
+        // A requirement to sync means the response data alone lacks context;
+        // the response object will need to correspond to its fellow request
+        let syncReqRes = false;
+        
         // Interpret requests with an empty body based on other features of `req`
         if (body.isEmpty()) {
-          if (urlPath === '/') body = { command: 'getInit' };
-          if (urlPath === '/favicon.ico') body = { command: 'getFile', path: 'favicon.ico' };
+          if (urlPath.hasHead('/!')) {
+            if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
+          } else {
+            if (urlPath === '/') { body = { command: 'getInit' }; syncReqRes = true; }
+            if (urlPath === '/favicon.ico') { body = { command: 'getFile', path: 'favicon.ico' }; syncReqRes = true; }
+          }
         }
         
         // Default to the "ping" command
@@ -401,32 +465,42 @@
           connectionWob.queuedTells = [];
         }
         
-        // Build list of transport-level commands
-        let httpCommands = {
-          close: () => {
-            console.log('Closing connection @', ip);
-            delete connections[ip];
-            connectionWob.shut.wobble();
-          },
-          bankPoll: () => {
-            // Do nothing
-          }
-        };
-        
-        // Do either a transport- or application-level command
-        if (httpCommands.has(body.command)) httpCommands[body.command]();
-        else                                connectionWob.hear.wobble(body);
-        
-        // If there are any tells send the oldest, otherwise keep ahold of the response
-        if (connectionWob.queuedTells.length) {
-          sendData(res, connectionWob.queuedTells.shift());
+        if (syncReqRes) {
+          
+          // Send along a "reply" func which uses the corresponding response object
+          connectionWob.hear.wobble([ body, msg => sendData(res, msg) ]);
+          
         } else {
-          connectionWob.queuedResponses.push(res);
+          
+          // Build list of transport-level commands
+          // TODO: Is it a safe assumption that these httpCommands are never synced?
+          let httpCommands = {
+            close: () => {
+              console.log('Closing connection @', ip);
+              delete connections[ip];
+              connectionWob.shut.wobble();
+            },
+            bankPoll: () => {
+              // Do nothing
+            }
+          };
+          
+          // Do either a transport- or application-level command
+          if (httpCommands.has(body.command)) httpCommands[body.command]();
+          else                                connectionWob.hear.wobble([ body, null ]);
+          
+          // If there are any tells send the oldest, otherwise keep ahold of the response
+          if (connectionWob.queuedTells.length) {
+            sendData(res, connectionWob.queuedTells.shift());
+          } else {
+            connectionWob.queuedResponses.push(res);
+          }
+          
+          // Don't hold more than one response
+          while (connectionWob.queuedResponses.length > 1)
+            sendData(connectionWob.queuedResponses.shift(), { command: 'fizzle' });
+            
         }
-        
-        // Don't hold more than one response
-        while (connectionWob.queuedResponses.length > 1)
-          sendData(connectionWob.queuedResponses.shift(), { command: 'fizzle' });
         
       });
       
@@ -699,7 +773,7 @@
       let html = doc.add(XmlElement('html', 'container'));
       
       let head = html.add(XmlElement('head', 'container'));
-      let title = head.add(XmlElement('title', 'text', `Hut: ${this.hut}`));
+      let title = head.add(XmlElement('title', 'text', `${this.hut.upper()}`));
       
       let setupScript = head.add(XmlElement('script', 'text'));
       setupScript.setProp('type', 'text/javascript');

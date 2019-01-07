@@ -1,3 +1,11 @@
+// FOR PRODUCTION:
+// [ ]  Piece avatar images
+// [X]  Ensure that requests and responses don't desync when necessary
+// [ ]  Move timer (prevent indefinite stalls)
+// [ ]  Replay button
+// [ ]  Detect idle clients; remove them
+// [ ]  Simple usernames, restricted in length
+
 U.buildRoom({
   name: 'chess2',
   innerRooms: [ 'hinterlands', 'record', 'real' ],
@@ -164,6 +172,12 @@ U.buildRoom({
           }
         });
         
+        [ 'pawn', 'knight', 'bishop', 'rook', 'queen', 'king' ].forEach(
+          // TODO: shouldn't need to include "room/chess2"
+          // The instance of `foundation` received should be specialized for this 1 room
+          pieceName => foundation.addMountFile(`img/${pieceName}.png`, `room/chess2/img/stackPieces/${pieceName}.png`, 'image/png')
+        );
+        
         let pieceDef = [
           [
             [ 'rook',     0, 0 ],
@@ -244,12 +258,13 @@ U.buildRoom({
             [ p1, p2 ].forEach((player, ind) => {
               pieceDef[ind].forEach(([ type, x, y ]) => {
                 let piece = Piece({ lands });
-                piece.wobble({ type, colour: !ind ? 'white' : 'black', x, y });
+                piece.wobble({ type, colour: !ind ? 'white' : 'black', wait: 0, x, y });
                 board.attach(rel.boardPieces, piece);
                 player.attach(rel.piecePlayer, piece);
               });
             });
             
+            // Mark the players as playing
             [ p1, p2 ].forEach(player => player.modify(v => v.gain({ gameStatus: 'playing' })));
             
             // Inform each player that they've entered a match
@@ -258,28 +273,35 @@ U.buildRoom({
               hut.informBelow();
             });
             
+            // Resolve moves when both players have confirmed
             U.CalcWob({ wobs: [ p1.move, p2.move ], func: (p1Move, p2Move) => {
               if (!p1Move || !p2Move) return;
+              
+              let pieces = board.getInnerVal(rel.boardPieces);
+              
+              // All pieces can wait 1 turn less
+              pieces.forEach(piece => piece.value.wait ? piece.modify(v => v.gain({ wait: v.wait - 1 })) : null);
               
               let { piece: p1Piece, tile: [ p1X, p1Y ] } = p1Move;
               let { piece: p2Piece, tile: [ p2X, p2Y ] } = p2Move;
               
-              p1Piece.modify(v => v.gain({ x: p1X, y: p1Y }), true);
-              p2Piece.modify(v => v.gain({ x: p2X, y: p2Y }), true);
+              // Update the 2 moved pieces
+              p1Piece.modify(v => v.gain({ x: p1X, y: p1Y, wait: 1 }));
+              p2Piece.modify(v => v.gain({ x: p2X, y: p2Y, wait: 1 }));
               
-              let pieces = board.getInnerVal(rel.boardPieces);
-              
+              // Identify collided pieces...
               let p1Trgs = pieces.map(p => (p !== p1Piece && p.value.x === p1X && p.value.y === p1Y) ? p : C.skip);
               let p2Trgs = pieces.map(p => (p !== p2Piece && p.value.x === p2X && p.value.y === p2Y) ? p : C.skip);
               
+              // And remove them
               p1Trgs.forEach(pc => lands.remRec(pc));
               p2Trgs.forEach(pc => lands.remRec(pc));
               
+              // Check if either player has captured the others' king
               let p1Wins = !!p1Trgs.find(piece => piece.value.type === 'king');
               let p2Wins = !!p2Trgs.find(piece => piece.value.type === 'king');
               
               if (p1Wins || p2Wins) {
-                
                 if (p1Wins && p2Wins) {
                   p1.modify(v => v.gain({ gameStatus: 'stalemated' }));
                   p2.modify(v => v.gain({ gameStatus: 'stalemated' }));
@@ -290,10 +312,9 @@ U.buildRoom({
                   p1.modify(v => v.gain({ gameStatus: 'defeated' }));
                   p2.modify(v => v.gain({ gameStatus: 'victorious' }));
                 }
-                
               }
               
-              
+              // Inform the 2 players of the updates
               [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
               
               p1.move.wobble(null);
@@ -301,9 +322,10 @@ U.buildRoom({
             }});
             
           }
-        }, 5000);
+        }, 2000);
         
         /// =ABOVE} {BELOW=
+        
         let { Real } = real;
         
         let myMatch = U.Wobbly({ value: null });
@@ -319,11 +341,15 @@ U.buildRoom({
           clear: 'rgba(0, 0, 0, 0)',
           whiteTile: 'rgba(170, 170, 170, 1)',
           blackTile: 'rgba(140, 140, 140, 1)',
-          whitePiece: 'rgba(205, 205, 205, 1)',
-          blackPiece: 'rgba(100, 100, 100, 1)',
-          selected: 'rgba(0, 255, 255, 0.5)',
-          confirmed: 'rgba(0, 230, 40, 0.8)'
+          whitePiece: 'rgba(205, 205, 205, 0.9)',
+          blackPiece: 'rgba(100, 100, 100, 0.9)',
+          selected: 'rgba(0, 255, 255, 0.9)',
+          confirmed: 'rgba(0, 245, 20, 0.9)',
+          disabled: 'rgba(245, 50, 0, 0.9)'
         };
+        let imgs = await Promise.allObj({ pawn: 1, knight: 1, bishop: 1, rook: 1, queen: 1, king: 1 }.map((v, name) => {
+          return foundation.getMountFile(`img/${name}.png`);
+        }));
         
         // Determine game status by listening to our player once we've entered the game
         myPlayer.hold(player => {
@@ -342,14 +368,19 @@ U.buildRoom({
           }});
         });
         
-        let boardSize = 320;
-        let tileW = Math.round(boardSize / 8);
-        let tileHw = Math.round(tileW >> 1);
-        let tileLoc = (x, y) => [ tileHw + (x - 4) * tileW, -tileHw + (4 - y) * tileW ];
+        let matchSize = 600;
+        let boardSize = 480;
+        let playerSize = Math.round((matchSize - boardSize) * 0.5);
+        let tileSize = Math.round(boardSize / 8);
+        let tileHSize = Math.round(tileSize >> 1);
+        let tileLoc = (x, y) => [ tileHSize + (x - 4) * tileSize, -tileHSize + (4 - y) * tileSize ];
+        let pieceSize = 46;
+        let avatarSize = 32;
+        let indicatorSize = 32;
         
         let genMatch = rec => {
           let real = Real({ flag: 'match' });
-          real.setSize(500, 500);
+          real.setSize(matchSize, matchSize);
           real.setColour('rgba(0, 0, 0, 0.8)');
           real.setPriority(1);
           
@@ -368,8 +399,8 @@ U.buildRoom({
             if (whiteReal) real.remReal(whiteReal);
             if (!white) { whiteReal = null; return; }
             whiteReal = real.addReal(Real({ flag: 'whitePlayer' }));
-            whiteReal.setSize(500, 90);
-            whiteReal.setLoc(0, 205);
+            whiteReal.setSize(matchSize, playerSize);
+            whiteReal.setLoc(0, +0.5 * (matchSize - playerSize));
             white.hold(v => whiteReal.setText(`White: ${JSON.stringify(v)}`));
             myColour.hold(col => whiteReal.setRot(col === 'black' ? 180 : 0));
           });
@@ -379,8 +410,8 @@ U.buildRoom({
             if (blackReal) real.remReal(blackReal);
             if (!black) { blackReal = null; return; }
             blackReal = real.addReal(Real({ flag: 'blackPlayer' }));
-            blackReal.setSize(500, 90);
-            blackReal.setLoc(0, -205);
+            blackReal.setSize(matchSize, playerSize);
+            blackReal.setLoc(0, -0.5 * (matchSize - playerSize));
             black.hold(v => blackReal.setText(`Black: ${JSON.stringify(v)}`));
             myColour.hold(col => blackReal.setRot(col === 'black' ? 180 : 0));
           });
@@ -397,14 +428,21 @@ U.buildRoom({
           for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) ((x, y) => {
             let tileReal = real.addReal(Real({ flag: 'tile' }));
             let colour = (y % 2) === (x % 2) ? colours.blackTile : colours.whiteTile;
-            tileReal.setSize(tileW, tileW);
+            tileReal.setColour(colour);
+            tileReal.setSize(tileSize, tileSize);
             tileReal.setLoc(...tileLoc(x, y));
+            
+            let indicator = tileReal.addReal(Real({ flag: 'ind'}));
+            indicator.setSize(indicatorSize, indicatorSize);
+            indicator.setBorderRadius(1);
+            indicator.setTangible(false);
+            
             tileReal.interactWob.hold(active => {
               if (!active) return;
               mySelectedPiece.wobble(null);
             });
             myConfirmedTile.hold(([x0, y0]) => {
-              tileReal.setColour((x0 === x && y0 === y) ? colours.confirmed : colour);
+              indicator.setColour((x0 === x && y0 === y) ? colours.confirmed : colours.clear);
             });
           })(x, y);
           
@@ -434,9 +472,16 @@ U.buildRoom({
               let moves = validMoves(rec, piece);
               tileSelectors = moves.map(([ x, y ]) => {
                 let tileReal = real.addReal(Real({ flag: 'validTile' }));
-                tileReal.setSize(tileW, tileW);
+                tileReal.setSize(tileSize, tileSize);
                 tileReal.setLoc(...tileLoc(x, y));
-                tileReal.setColour(colours.selected);
+                tileReal.setColour(colours.clear);
+                
+                let indicator = tileReal.addReal(Real({ flag: 'ind' }));
+                indicator.setSize(indicatorSize, indicatorSize);
+                indicator.setColour(colours.selected);
+                indicator.setBorderRadius(1);
+                indicator.setTangible(false);
+                
                 tileReal.interactWob.hold(active => {
                   if (!active) return;
                   lands.getInnerVal(relLandsHuts).forEach(hut => {
@@ -450,6 +495,7 @@ U.buildRoom({
                   myConfirmedTile.wobble([ x, y ]);
                   myConfirmedPiece.wobble(piece);
                 });
+                
                 return tileReal;
               });
               
@@ -462,7 +508,7 @@ U.buildRoom({
         let genPiece = rec => {
           let real = Real({ flag: 'piece' });
           real.setColour(colours.clear);
-          real.setSize(30, 30);
+          real.setSize(pieceSize, pieceSize);
           real.setBorderRadius(1);
           real.setOpacity(1);
           real.setPriority(1);
@@ -476,37 +522,38 @@ U.buildRoom({
             setTimeout(() => { real.setScale(3); real.setOpacity(0); }, 500);
           });
           
-          // Border depends on whether we are the selected and/or confirmed piece
-          U.CalcWob({ wobs: [ mySelectedPiece, myConfirmedPiece ], func: (sel, cnf) => {
-            if      (sel === rec) real.setBorder('outer', 4, colours.selected);
+          // Border depends on whether we are selected, confirmed, and/or waiting
+          U.CalcWob({ wobs: [ rec, mySelectedPiece, myConfirmedPiece ], func: (v, sel, cnf) => {
+            if (v && v.wait)      real.setBorder('outer', 4, colours.disabled);
+            else if (sel === rec) real.setBorder('outer', 4, colours.selected);
             else if (cnf === rec) real.setBorder('outer', 4, colours.confirmed);
             else                  real.setBorder('outer', 4, colours.clear);
           }});
           
-          // The tangibility of this piece depends on whether its colour matches our player's colour
+          // The tangibility of this piece depends on colour and whether it's waiting
           U.CalcWob({ wobs: [ myColour, rec ], func: (colour, v) => {
             if (!v || !colour) return;
-            real.setTangible(colour === v.colour);
+            real.setTangible(v.wait === 0 && colour === v.colour);
           }});
           
           // Ensure pieces are upright for black player (rotated an additional 180deg)
           myColour.hold(col => real.setRot(col === 'black' ? 180 : 0));
           
           let avatar = real.addReal(Real({ flag: 'avatar' }));
-          avatar.setSize(30, 30);
+          avatar.setSize(avatarSize, avatarSize);
           avatar.setColour(colours.clear);
           
           let grip = real.addReal(Real({ flag: 'grip' }));
           grip.setColour(colours.clear);
-          grip.setSize(tileW, tileW);
+          grip.setSize(tileSize, tileSize);
           
           // Apply visuals, colour, and positioning to this piece
           rec.hold(({ type, colour, x, y }) => {
             real.setLoc(...tileLoc(x, y));
             real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
-            avatar.setText((type === 'knight' ? 'n' : type[0]).upper());
-            avatar.setTextSize(20);
-            avatar.setTextColour(colour === 'white' ? '#ffffff' : '#000000');
+            //real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
+            avatar.setColoursInverted(colour === 'white');
+            avatar.setImage(imgs[type]);
             mySelectedPiece.wobble(null);
             myConfirmedPiece.wobble(null);
             myConfirmedTile.wobble([ -1, -1 ]);
@@ -536,25 +583,23 @@ U.buildRoom({
           
           if (gameStatus === 'playing') return;
           
-          notifyView = root.addReal(Real({}));
-          notifyView.setSize(230, 230);
-          notifyView.setColour('rgba(0, 0, 0, 0.85)');
-          notifyView.setPriority(2);
-          notifyView.setOpacity(0);
-          notifyView.setTransition('opacity', 500, 0, 'sharp');
-          notifyView.addWob.hold(() => {
-            notifyView.setOpacity(1);
-          });
+          let nv = notifyView = root.addReal(Real({}));
+          nv.setSize(220, 220);
+          nv.setColour('rgba(0, 0, 0, 0.85)');
+          nv.setPriority(2);
+          nv.setOpacity(0);
+          nv.setTransition('opacity', 500, 0, 'sharp');
+          nv.addWob.hold(() => nv.setOpacity(1));
           
           let [ size, str ] = ({
-            waiting: [ 18, 'Finding match...' ],
+            waiting:    [ 18, 'Finding match...' ],
             victorious: [ 25, 'You WIN!' ],
-            defeated: [ 25, 'You LOSE!' ],
+            defeated:   [ 25, 'You LOSE!' ],
             stalemated: [ 25, 'It\'s a DRAW!' ]
           })[gameStatus];
           
-          notifyView.setTextSize(size);
-          notifyView.setText(str);
+          nv.setTextSize(size);
+          nv.setText(str);
           
         });
         
@@ -573,9 +618,7 @@ U.buildRoom({
           if (match) myMatch.wobble(match[0]);
           
           // Search for players whose term is our term
-          addsByCls.Player.forEach(player => player.hold(v => {
-            if (v && v.term === U.hutTerm) myPlayer.wobble(player);
-          }));
+          addsByCls.Player.forEach(player => player.hold(v => v && v.term === U.hutTerm && myPlayer.wobble(player)));
           
         });
         /// =BELOW}

@@ -38,10 +38,8 @@ protoDef(Object, 'find', function(f) {
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
-protoDef(Object, 'gain', function(obj) {
-  for (let k in obj) this[k] = obj[k];
-  return this;
-});
+protoDef(Object, 'gain', function(obj) { for (let k in obj) this[k] = obj[k]; return this; });
+protoDef(Object, 'to', function(f) { return f(this); });
 
 Array.fill = (n, f=()=>null) => {
   let a = new Array(n);
@@ -82,7 +80,7 @@ protoDef(Array, 'find', function(f) {
   return null;
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
-protoDef(Array, 'isEmpty', function() { return !!this.length; });
+protoDef(Array, 'isEmpty', function() { return this.length === 0; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
@@ -109,6 +107,15 @@ protoDef(String, 'padTail', function(amt, c=' ') {
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
+
+Promise.allArr = async arr => Promise.all(arr);
+Promise.allObj = async obj => {
+  let result = await Promise.all(obj.toArr(v => v));
+  let ind = 0;
+  let ret = {};
+  for (let k in obj) ret[k] = result[ind++];
+  return ret;
+};
 
 let U = global.U = {
   INSP_UID: 0,

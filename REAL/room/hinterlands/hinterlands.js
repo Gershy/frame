@@ -28,7 +28,7 @@ U.buildRoom({
       }),
       $terms: [ 'frog', 'oxen', 'tool', 'plot', 'wide', 'rope', 'side', 'crow', 'swan', 'quit', 'zest', 'mark', 'lark', 'hide' ],
       $defaultCommands: {
-        getInit: async (inst, hut, msg) => {
+        getInit: async (inst, hut, msg, reply) => {
           let ts = Lands.terms;
           hut.version = 2;
           hut.recalcInitInform();
@@ -39,10 +39,15 @@ U.buildRoom({
             content: hut.flushAndGenInform()
           });
           
-          hut.tell(initBelow);
+          reply(initBelow);
         },
-        getFile: async (inst, hut, msg) => {
-          hut.tell({ command: 'error', type: 'notImplemented', orig: msg });
+        getFile: async (inst, hut, msg, reply) => {
+          try {
+            let file = foundation.getMountFile(msg.path);
+            reply(file);
+          } catch(err) {
+            reply({ command: 'error', type: 'notFound', orig: msg });
+          }
         },
         fizzle: async(inst, hut, msg) => {
         },
@@ -220,13 +225,18 @@ U.buildRoom({
         return '~' + (this.uidCnt++).toString(16).padHead(8, '0');
         /// =BELOW}
       },
+      genUniqueTerm: function() {
+        let ts = Lands.terms;
+        let ret = Array.fill(2, () => ts[Math.floor(Math.random() * ts.length)]).join('-');
+        return this.getInnerVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
+      },
       
-      hear: async function(hut, msg) {
+      hear: async function(hut, msg, reply=null) {
         let { command } = msg;
         
         console.log(`HEAR ${hut.address}:`, msg);
           
-        if (this.commands.has(command)) await this.commands[command](this, hut, msg);
+        if (this.commands.has(command)) await this.commands[command](this, hut, msg, reply);
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
       },
       tell: async function(msg) {
@@ -274,10 +284,7 @@ U.buildRoom({
         /// =ABOVE}
       },
       getTerm: function() {
-        if (!this.term) {
-          let ts = Lands.terms;
-          this.term = Array.fill(2, () => ts[Math.floor(Math.random() * ts.length)]).join('-')
-        }
+        if (!this.term) this.term = this.lands.genUniqueTerm();
         return this.term;
       },
       
@@ -457,9 +464,10 @@ U.buildRoom({
           this.lands.attach(relLandsHuts, hut);
           this.hutsByIp[ip] = { wob: hutWob, hut };
           
-          hutWob.hear.hold(async msg => {
-            await this.lands.hear(hut, msg);
-          });
+          //console.log('HUTWOB', hutWob);
+          //console.log('HEAR', hutWob.hear);
+          
+          hutWob.hear.hold(([ msg, reply=null ]) => this.lands.hear(hut, msg, reply));
           hutWob.shut.hold(() => {
             this.detach(relWaysHuts, hut);
             this.lands.detach(relLandsHuts, hut);
@@ -469,9 +477,9 @@ U.buildRoom({
       tellHut: function(hut, msg) {
         let doOutput = true;
         if (doOutput) {
-          let consoleOutput = msg;
-          if (U.isType(consoleOutput, String)) consoleOutput = { stringy: `${consoleOutput.split('\n')[0].substr(0, 30)}...` };
-          console.log(`TELL ${hut.address}:`, consoleOutput);
+          console.log(`TELL ${hut.address}:`, U.isType(msg, String)
+            ? consoleOutput = { stringy: `${msg.split('\n')[0].substr(0, 30)}...` }
+            : msg);
         }
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }

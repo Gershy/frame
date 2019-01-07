@@ -13,6 +13,12 @@
       await new Promise(r => { window.onload = r; });
       
     },
+    
+    // Functionality
+    addMountFile: function() { /* Nothing... */ },
+    getMountFile: function(name) {
+    return { ISFILE: true, name, url: `!FILE/${name}` };
+    },
     makeHttpServer: async function() {
       
       let reqUrl = '';
@@ -53,7 +59,7 @@
           }
         }; });
         
-        if (res) clientWob.hear.wobble(res);
+        if (res) clientWob.hear.wobble([ res, null ]);
         numPendingReqs--;
         
         // Always have 1 pending req
