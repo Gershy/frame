@@ -413,7 +413,7 @@
             `IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress}`,
             `REQURL: ${req.url}`,
             `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
-            `BODY: ${JSON.stringify(body, null, 2)`
+            `BODY: ${JSON.stringify(body, null, 2)}`
           ].join('\n'));
         }
         
