@@ -1,5 +1,6 @@
 // FOR PRODUCTION:
-// [ ]  Piece avatar images
+// [ ]  More than 1 game at a time!!!
+// [X]  Piece avatar images
 // [X]  Ensure that requests and responses don't desync when necessary
 // [ ]  Move timer (prevent indefinite stalls)
 // [ ]  Replay button
