@@ -43,17 +43,18 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false }) {
+    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false, networkDebug=false }) {
+      if (showIps) {
+        console.log('IP OPTIONS:', this.getStaticIps());
+        return process.exit(0);
+      }
+      
       insp.Foundation.init.call(this, { hut, bearing });
       this.roomsInOrder = [];
       this.variantDefs = variantDefs || {};
       this.compilationData = {};
       this.mountedFiles = {};
-      
-      if (showIps) {
-        console.log('IP OPTIONS:', this.getStaticIps());
-        return process.exit(0);
-      }
+      this.networkDebug = networkDebug;
       
       if (ip === 'static') {
         let staticIps = this.getStaticIps();
@@ -404,6 +405,16 @@
           catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
         } else {
           body = {};
+        }
+        
+        if (this.networkDebug) {
+          console.log('\n\n' + [
+            '==== INCOMING REQUEST ====',
+            `IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress}`,
+            `REQURL: ${req.url}`,
+            `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
+            `BODY: ${JSON.stringify(body, null, 2)`
+          ].join('\n'));
         }
         
         // Get the ip
