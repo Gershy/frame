@@ -69,6 +69,8 @@
             ? console.log(`Couldn\'t find ipPref "${ipPref}"; using "${staticIps[0].type}"`) || staticIps[0].address
             : ip[0].address;
         }
+      } else if (ip === 'local') {
+        ip = '127.0.0.1';
       }
       
       this.ip = ip;
@@ -320,6 +322,7 @@
       let { type, nativeDir } = this.mountedFiles[name];
       return {
         ISFILE: true, type,
+        name,
         getContent: async () => {
           if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
           this.readFile(nativeDir)
@@ -359,12 +362,19 @@
     makeHttpServer: async function(ip=this.ip, port=this.port) {
       let connections = {};
       let serverWob = BareWob({});
-      let sendData = (res, msg) => {
+      let sendData = (ip, res, msg) => {
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
+        
+        console.log(`TELL ${ip}:`, ({
+          text: () => ({ ISTEXT: true, val: msg }),
+          html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
+          json: () => JSON.stringify(msg).length < 100 ? msg : `${JSON.stringify(msg).substr(0, 100)}...`,
+          file: () => ({ ISFILE: true, ...msg.slice('name', 'type') })
+        })[type]());
         
         return ({
           text: () => {
@@ -390,7 +400,6 @@
             msg.getPipe().pipe(res);
           }
         })[type]();
-        
       };
       let server = http.createServer(async (req, res) => {
         
@@ -441,12 +450,20 @@
           };
           connectionWob.tell.hold(msg => {
             if (connectionWob.queuedResponses.length) {
-              sendData(connectionWob.queuedResponses.shift(), msg);
+              sendData(ip, connectionWob.queuedResponses.shift(), msg);
             } else {
               connectionWob.queuedTells.push(msg);
             }
           });
           serverWob.wobble(connectionWob);
+          
+          connectionWob.hear.hold(([ msg, reply ]) => {
+            console.log(`HEAR ${ip}:`, msg);
+          });
+          connectionWob.tell.hold(msg => {
+            
+          });
+          
         }
         
         // Get the current connection for this ip
@@ -479,7 +496,7 @@
         if (syncReqRes) {
           
           // Send along a "reply" func which uses the corresponding response object
-          connectionWob.hear.wobble([ body, msg => sendData(res, msg) ]);
+          connectionWob.hear.wobble([ body, msg => sendData(ip, res, msg) ]);
           
         } else {
           
@@ -502,14 +519,14 @@
           
           // If there are any tells send the oldest, otherwise keep ahold of the response
           if (connectionWob.queuedTells.length) {
-            sendData(res, connectionWob.queuedTells.shift());
+            sendData(ip, res, connectionWob.queuedTells.shift());
           } else {
             connectionWob.queuedResponses.push(res);
           }
           
           // Don't hold more than one response
           while (connectionWob.queuedResponses.length > 1)
-            sendData(connectionWob.queuedResponses.shift(), { command: 'fizzle' });
+            sendData(ip, connectionWob.queuedResponses.shift(), { command: 'fizzle' });
             
         }
         

@@ -22,16 +22,15 @@ U.buildRoom({
         this.lands = lands;
        }
     })});
-    
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
-      $terms: [ 'frog', 'oxen', 'tool', 'plot', 'wide', 'rope', 'side', 'crow', 'swan', 'quit', 'zest', 'mark', 'lark', 'hide' ],
       $defaultCommands: {
         getInit: async (inst, hut, msg, reply) => {
           let ts = Lands.terms;
           hut.version = 2;
           hut.recalcInitInform();
+          hut.initializeWob.wobble(true);
           
           let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
             command: 'update',
@@ -174,6 +173,7 @@ U.buildRoom({
         this.foundation = foundation;
         this.uidCnt = 0;
         this.maxUpdateAttempts = 1000;
+        this.terms = [];
         
         this.records = U.isType(records, Array)
           ? records.toObj(r => [ r.name, r ])
@@ -226,29 +226,45 @@ U.buildRoom({
         /// =BELOW}
       },
       genUniqueTerm: function() {
-        let ts = Lands.terms;
-        let ret = Array.fill(2, () => ts[Math.floor(Math.random() * ts.length)]).join('-');
+        let ts = this.terms;
+        let ret = ts[Math.floor(Math.random() * ts.length)];
         return this.getInnerVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
       hear: async function(hut, msg, reply=null) {
         let { command } = msg;
-        
-        console.log(`HEAR ${hut.address}:`, msg);
-          
         if (this.commands.has(command)) await this.commands[command](this, hut, msg, reply);
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
       },
       tell: async function(msg) {
-        await Promise.all(this.getInnerVal(relLandsHuts).toArr(hut => hut.tell(msg)));
+        return Promise.all(this.getInnerVal(relLandsHuts).toArr(hut => hut.tell(msg)));
       },
+      /// {ABOVE=
+      informBelow: async function() {
+        return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.informBelow()));
+      },
+      /// =ABOVE}
       remRec: function(rec) {
         rec.isolate();
         this.getInnerVal(relLandsHuts).forEach(hut => hut.forgetRec(rec));
       },
       
       open: async function() {
-        await Promise.all(this.getInnerVal(relLandsWays).map(h => h.open()).toArr(p => p));
+        let { terms } = await Promise.allObj({
+          /// {ABOVE=
+          terms: (async () => {
+            let terms = await foundation.readFile('room/hinterlands/terms.json');
+            return JSON.parse(terms);
+          })(),
+          /// =ABOVE} {BELOW=
+          terms: [ 'remote' ],
+          /// =BELOW}
+          ...this.getInnerVal(relLandsWays).map(w => w.open())
+        });
+        
+        this.terms = terms;
+        
+        //await Promise.all(this.getInnerVal(relLandsWays).map(h => h.open()).toArr(p => p));
         /// {BELOW=
         let huts = this.getInnerVal(relLandsHuts);
         let hut = huts.find(() => true)[0];
@@ -259,7 +275,6 @@ U.buildRoom({
         return Promise.all(this.getInnerVal(relLandsWays).map(h => h.shut()).toArr(p => p));
       }
     })});
-    
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
@@ -273,6 +288,7 @@ U.buildRoom({
         this.discoveredMs = +new Date();
         this.term = null;
         this.version = 0;
+        this.initializeWob = U.Wobbly({});
         
         /// {ABOVE=
         this.holds = {};
@@ -475,12 +491,6 @@ U.buildRoom({
         });
       },
       tellHut: function(hut, msg) {
-        let doOutput = true;
-        if (doOutput) {
-          console.log(`TELL ${hut.address}:`, U.isType(msg, String)
-            ? consoleOutput = { stringy: `${msg.split('\n')[0].substr(0, 30)}...` }
-            : msg);
-        }
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});

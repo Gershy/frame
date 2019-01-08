@@ -309,6 +309,9 @@ let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, In
   },
   calc: function() {
     return this.func(...this.wobs.map(w => w.getValue()));
+  },
+  shut: function() {
+    this.wobs.forEach(w => w.drop(this.watchFunc));
   }
 })});
 

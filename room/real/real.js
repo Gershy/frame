@@ -5,6 +5,11 @@ U.buildRoom({
     
     let { Wobbly } = U;
     
+    let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
+      init: function({}) {
+      }
+    })});
+    
     let Real = U.inspire({ name: 'Real', methods: (insp, Insp) => ({
       init: function({ isRoot=false, flag=null }) {
         this.dom = isRoot ? document.body : document.createElement('div');
@@ -22,7 +27,9 @@ U.buildRoom({
           position: 'absolute',
           left: '50%',
           top: '50%',
-          overflow: 'visible'
+          overflow: 'visible',
+          fontSize: '14px',
+          whiteSpace: 'nowrap'
         });
         
         if (isRoot) {
@@ -100,6 +107,9 @@ U.buildRoom({
       setLoc: function(x, y) {
         this.loc = [ x, y ];
         this.applyTransform();
+      },
+      setFeel: function(feel) {
+        this.dom.style.cursor = feel ? ({ interactive: 'pointer', normal: '', text: 'text' })[feel] : '';
       },
       setRot: function(rot) {
         this.rot = rot;

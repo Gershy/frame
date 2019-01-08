@@ -10,7 +10,14 @@
       
       // Build all rooms
       U.rooms.forEach(room => room());
+      let { query } = this.parseUrl(window.location.href);
       await new Promise(r => { window.onload = r; });
+      
+      if (query.has('title')) {
+        let head = document.getElementsByTagName('head')[0];
+        let title = head.getElementsByTagName('title')[0];
+        title.innerHTML = `${title.innerHTML} (${query.title})`;
+      }
       
     },
     
@@ -37,8 +44,10 @@
       let serverWob = U.Wobbly({ value: clientWob });
       
       let tellAndHear = async msg => {
-        let req = new XMLHttpRequest();
         
+        console.log(`TELL remote:`, msg);
+        
+        let req = new XMLHttpRequest();
         req.open('POST', reqUrl, true);
         req.setRequestHeader('Content-Type', 'application/json');
         try { req.send(JSON.stringify(msg)); }
@@ -59,7 +68,10 @@
           }
         }; });
         
-        if (res) clientWob.hear.wobble([ res, null ]);
+        if (res) {
+          console.log(`HEAR remote:`, res);
+          clientWob.hear.wobble([ res, null ]);
+        }
         numPendingReqs--;
         
         // Always have 1 pending req
