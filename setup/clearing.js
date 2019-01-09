@@ -225,6 +225,10 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
   },
   setValue: function(value) { this.value = value; },
   getValue: function() { return this.value ? this.value : null; },
+  setThrottle: function(throttle) {
+    this.throttle = open;
+    this.throttleVal = null;
+  },
   hold: function(func, hasty=true) {
     if (!this.holders) this.holders = {};
     let ind = Insp.nextHoldUid++;
@@ -250,8 +254,31 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     
     let origVal = ({}).has.call(this, 'value') ? this.value : null;
     if (!force && value === origVal) return;
-    this.setValue(value);
-    if (this.holders) this.holders.forEach(h => h(value, origVal)); //for (let k in this.holders) this.holders[k](value, origVal);
+    
+    if (!this.throttle) {
+      
+      this.setValue(value);
+      if (this.holders) this.holders.forEach(h => h(value, origVal));
+      
+    } else {
+      
+      let isThrottleActive = !!this.throttleVal;
+      this.throttleVal = { value };
+      
+      if (!isThrottleActive) {
+        
+        // Begin waiting on the throttle event. Once it resolves the most
+        // recent `this.throttleVal.value` will be set.
+        this.throttle().then(() => {
+          this.setValue(this.throttleVal.value);
+          this.throttleVal = null;
+          if (this.holders) this.holders.forEach(h => h(value, origVal));
+        });
+        
+      }
+      
+    }
+    
   },
   modify: function(f, force) {
     this.wobble(f(this.getValue()), force);
@@ -310,8 +337,9 @@ let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, In
   calc: function() {
     return this.func(...this.wobs.map(w => w.getValue()));
   },
-  shut: function() {
-    this.wobs.forEach(w => w.drop(this.watchFunc));
+  drop: function(func, safe) {
+    if (!func) return this.wobs.forEach(w => w.drop(this.watchFunc));
+    return insp.Wobbly.drop.call(this, func, safe);
   }
 })});
 

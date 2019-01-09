@@ -6,6 +6,8 @@
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
+  let httpDebug = false;
+  
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
     init: function(tagName, type, text='') {
@@ -369,7 +371,7 @@
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        console.log(`TELL ${ip}:`, ({
+        if (httpDebug) console.log(`TELL ${ip}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 100 ? msg : `${JSON.stringify(msg).substr(0, 100)}...`,
@@ -438,7 +440,7 @@
         
         // Create a new connection if this ip hasn't been seen before
         if (!connections.has(ip)) {
-          console.log(`CONN ${ip}`);
+          if (httpDebug) console.log(`CONN ${ip}`);
           
           let connectionWob = connections[ip] = {
             ip,
@@ -457,13 +459,10 @@
           });
           serverWob.wobble(connectionWob);
           
-          connectionWob.hear.hold(([ msg, reply ]) => {
-            console.log(`HEAR ${ip}:`, msg);
-          });
+          if (httpDebug) connectionWob.hear.hold(([ msg, reply ]) => console.log(`HEAR ${ip}:`, msg));
           connectionWob.tell.hold(msg => {
             
           });
-          
         }
         
         // Get the current connection for this ip

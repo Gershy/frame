@@ -11,6 +11,17 @@ U.buildRoom({
     })});
     
     let Real = U.inspire({ name: 'Real', methods: (insp, Insp) => ({
+      $type2Loc: {
+        c:  [  0,  0 ],
+        tl: [ -1, -1 ],
+        t:  [  0, -1 ],
+        tr: [ +1, -1 ],
+        r:  [ +1,  0 ],
+        br: [ +1, +1 ],
+        b:  [  0, +1 ],
+        bl: [ -1, +1 ],
+        l:  [ -1,  0 ]
+      },
       init: function({ isRoot=false, flag=null }) {
         this.dom = isRoot ? document.body : document.createElement('div');
         
@@ -19,6 +30,7 @@ U.buildRoom({
         this.loc = [ 0, 0 ];
         this.rot = 0;
         this.scl = [ 1, 1 ];
+        this.size = [ 0, 0 ];
         this.transitions = {};
         this.removalDelayMs = 0;
         this.vals = {};
@@ -52,6 +64,7 @@ U.buildRoom({
             textAlign: 'center',
             color: 'rgba(255, 255, 255, 1)'
           });
+          this.size = [ 100, 100 ];
           
         }
         
@@ -97,16 +110,33 @@ U.buildRoom({
       },
       setSize: function(x, y) {
         this.dom.style.gain({
-          width: `${x}px`,
-          height: `${y}px`,
+          width: `${Math.round(x)}px`,
+          height: `${Math.round(y)}px`,
           lineHeight: `${y}px`,
           marginLeft: `${-Math.round(x * 0.5)}px`,
           marginTop: `${-Math.round(y * 0.5)}px`
         });
+        this.size = [ x, y ];
       },
       setLoc: function(x, y) {
         this.loc = [ x, y ];
         this.applyTransform();
+      },
+      setAgainst: function(real, type='c', wOff=0, hOff=0) {
+        if (this.dom.parentNode !== real.dom && this.dom.parentNode !== real.dom.parentNode)
+          throw new Error('Can\'t set against non-parent, non-sibling');
+        
+        if (real.dom.parentNode === this.dom.parentNode)
+          [ wOff, hOff ] = [ wOff + real.loc[0], hOff + real.loc[1] ];
+        
+        let [ w0, h0 ] = this.size;
+        let [ w1, h1 ] = real.size;
+        
+        let wd = (w0 + w1) * 0.5 + wOff;
+        let hd = (h0 + h1) * 0.5 + hOff;
+        
+        let [ x, y ] = Real.type2Loc[type];
+        this.setLoc(x * wd, y * hd);
       },
       setFeel: function(feel) {
         this.dom.style.cursor = feel ? ({ interactive: 'pointer', normal: '', text: 'text' })[feel] : '';

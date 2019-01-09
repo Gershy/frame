@@ -30,7 +30,6 @@ U.buildRoom({
           let ts = Lands.terms;
           hut.version = 2;
           hut.recalcInitInform();
-          hut.initializeWob.wobble(true);
           
           let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
             command: 'update',
@@ -39,6 +38,12 @@ U.buildRoom({
           });
           
           reply(initBelow);
+          
+          // Don't send an initialized wobble until the very 1st sync has been sent!!
+          // If this weren't the case the initialized wobble could result in broader
+          // code deciding to do an "informBelow", and this "informBelow" would arrive
+          // inappropriately ahead of the initial "informBelow"
+          hut.initializeWob.wobble(true);
         },
         getFile: async (inst, hut, msg, reply) => {
           try {
@@ -104,8 +109,8 @@ U.buildRoom({
               let recs = lands.getInnerVal(relLandsRecs);
               
               if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Add relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`UPDERR - Add relation with missing uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`UPDERR - Add relation with missing uid: ${uid2}`);
+              if (!recs.has(uid1)) throw new Error(`UPDERR - Can't find a relation target for attach; uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`UPDERR - Can't find a relation target for attach; uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
@@ -117,8 +122,8 @@ U.buildRoom({
           ops.gain(remRel.toArr(([ relUid, uid1, uid2 ]) => ({
             func: () => {
               if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Rem relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`UPDERR - Rem relation with missing uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`UPDERR - Rem relation with missing uid: ${uid2}`);
+              if (!recs.has(uid1)) throw new Error(`UPDERR - Can't find a relation target for detach; uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`UPDERR - Can't find a relation target for detach; uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
@@ -184,6 +189,7 @@ U.buildRoom({
           : relations;
         
         /// {ABOVE=
+        
         // Listen for changes to ALL data!
         this.getRecsForHut = getRecsForHut;
         this.checkHutHasRec = checkHutHasRec || ((lands, hut, rec) => getRecsForHut(lands, hut).has(rec.uid));
@@ -210,10 +216,11 @@ U.buildRoom({
           rem.forEach(rec => huts.forEach(hut => hut.forgetRec(rec)));
           
         });
-        /// =ABOVE}
         
-        /// {BELOW=
+        /// =ABOVE} {BELOW=
+        
         this.version = 0;
+        
         /// =BELOW}
         
         this.commands = commands;
@@ -245,8 +252,10 @@ U.buildRoom({
       },
       /// =ABOVE}
       remRec: function(rec) {
+        // Isolates `rec`, causes huts to forget about `rec`, and returns
+        // a list of all huts which followed `rec` in the first place
         rec.isolate();
-        this.getInnerVal(relLandsHuts).forEach(hut => hut.forgetRec(rec));
+        return this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
       },
       
       open: async function() {
@@ -377,13 +386,14 @@ U.buildRoom({
         // are redundant. No need to worry about leaks though - once `rec`
         // is detached from `Lands` the `Lands` will ensure all huts forget
         // `rec` appropriately.
-        if (!this.holds.has(uid)) return;
+        if (!this.holds.has(uid)) return null;
         let hold = this.holds[uid];
         rec.drop(hold.value, true);
         rec.getInnerWobs().forEach((wob, uid) => {
           if (hold.rel.has(uid)) wob.drop(hold.rel[uid], true)
         });
         delete this.holds[uid];
+        return rec;
       },
       forgetAllRecs: function() {
         this.holds.forEach((hold, uid) => {
@@ -473,21 +483,19 @@ U.buildRoom({
       },
       open: async function() {
         this.server = await this.makeServer();
-        this.serverFunc = this.server.hold(hutWob => {
-          let { ip } = hutWob;
-          let hut = Hut({ lands: this.lands, address: ip });
-          this.attach(relWaysHuts, hut);
-          this.lands.attach(relLandsHuts, hut);
-          this.hutsByIp[ip] = { wob: hutWob, hut };
-          
-          //console.log('HUTWOB', hutWob);
-          //console.log('HEAR', hutWob.hear);
-          
+        this.serverFunc = this.server.hold(async hutWob => {
           hutWob.hear.hold(([ msg, reply=null ]) => this.lands.hear(hut, msg, reply));
           hutWob.shut.hold(() => {
             this.detach(relWaysHuts, hut);
             this.lands.detach(relLandsHuts, hut);
           });
+          
+          let { ip } = hutWob;
+          
+          let hut = Hut({ lands: this.lands, address: ip });
+          this.hutsByIp[ip] = { wob: hutWob, hut };
+          hut.attach(relWaysHuts, this);
+          hut.attach(relLandsHuts, this.lands);
         });
       },
       tellHut: function(hut, msg) {
