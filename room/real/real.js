@@ -5,6 +5,35 @@ U.buildRoom({
     
     let { Wobbly } = U;
     
+    let frameCb = (frames, f) => {
+      let ff = cnt => {
+        if (cnt <= 0) return f();
+        return requestAnimationFrame(() => ff(cnt - 1));
+      };
+      ff(frames);
+    };
+    
+    let Colour = U.inspire({ name: 'Colour', methods: (insp, Insp) => ({
+      init: function(r, g, b, a=1) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+        this.a = a;
+      },
+      fadeTo: function({ r, g, b, a=1 }, amt1) {
+        let amt0 = 1 - amt1;
+        return new Colour(
+          (this.r * amt0 + r * amt1),
+          (this.g * amt0 + g * amt1),
+          (this.b * amt0 + b * amt1),
+          (this.a * amt0 + a * amt1)
+        );
+      },
+      toCss: function() {
+        return `rgba(${Math.round(this.r * 255)}, ${Math.round(this.g * 255)}, ${Math.round(this.b * 255)}, ${this.a}`;
+      }
+    })});
+    
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
       init: function({}) {
       }
@@ -32,6 +61,7 @@ U.buildRoom({
         this.scl = [ 1, 1 ];
         this.size = [ 0, 0 ];
         this.transitions = {};
+        this.transitionsBkp = null;
         this.removalDelayMs = 0;
         this.vals = {};
         
@@ -109,13 +139,16 @@ U.buildRoom({
         });
       },
       setSize: function(x, y) {
-        this.dom.style.gain({
-          width: `${Math.round(x)}px`,
-          height: `${Math.round(y)}px`,
-          lineHeight: `${y}px`,
-          marginLeft: `${-Math.round(x * 0.5)}px`,
-          marginTop: `${-Math.round(y * 0.5)}px`
+        frameCb(this.transitions.has('size') ? 2 : 0, () => {
+          this.dom.style.gain({
+            width: `${Math.round(x)}px`,
+            height: `${Math.round(y)}px`,
+            lineHeight: `${y}px`,
+            marginLeft: `${-Math.round(x * 0.5)}px`,
+            marginTop: `${-Math.round(y * 0.5)}px`
+          });
         });
+        
         this.size = [ x, y ];
       },
       setLoc: function(x, y) {
@@ -160,7 +193,9 @@ U.buildRoom({
         this.dom.style.filter = isInv ? 'invert(100%)' : '';
       },
       setColour: function(col) {
-        this.dom.style.backgroundColor = col;
+        frameCb(this.transitions.has('colour') ? 2 : 0, () => {
+          this.dom.style.backgroundColor = col;
+        });
       },
       setBorderRadius: function(amt) {
         this.dom.style.borderRadius = `${amt * 100}%`;
@@ -184,26 +219,39 @@ U.buildRoom({
       setOpacity: function(amt) {
         this.dom.style.opacity = `${amt}`;
       },
-      setTransition: function(prop, ms, delay=0, ease='smooth') {
-        let props = ({
-          loc: [ 'transform' ],
-          size: [ 'width', 'height' ],
-          colour: [ 'backgroundColour' ],
-          opacity: [ 'opacity' ]
-        })[prop];
-        
-        if (ms === null) { props.forEach(prop => { delete this.transitions[prop]; }); return; }
-        
-        props.forEach(prop => {
-          this.transitions[prop] = { time: `${ms}ms`, delay: `${delay}ms`, ease: ({ smooth: 'ease-in-out', sharp: 'linear' })[ease] };
-        });
-        
+      setTransition: function(prop, ms, ease='smooth') {
+        if (ms === null) { delete this.transitions[prop]; return; }
+        this.transitions[prop] = { ms, ease };
         this.applyTransition();
       },
       applyTransition: function() {
         if (this.transitions.isEmpty()) { this.dom.style.transition = ''; return; }
-        let trnStr = this.transitions.toArr(({ time, delay, ease }, type) => `${type} ${time} ${ease} ${delay}`).join(', ');
-        this.dom.style.transition = trnStr;
+        
+        let prop2Css = ({
+          loc: [ 'transform' ],
+          size: [ 'width', 'height', 'margin-left', 'margin-top' ],
+          colour: [ 'background-color' ],
+          opacity: [ 'opacity' ]
+        });
+        let ease2Css = ({
+          smooth: 'ease-in-out',
+          sharp: 'linear'
+        });
+        
+        let trnStrs = [];
+        this.transitions.forEach(({ ms, ease }, prop) => {
+          prop2Css[prop].forEach(cssProp => trnStrs.push(`${cssProp} ${ms}ms ${ease2Css[ease]}`));
+        });
+        
+        this.dom.style.transition = trnStrs.join(', ');
+      },
+      skipTransition: function() {
+        // Remove/reinsert our dom element. Need to insert at our current index
+        // to avoid changing node order
+        let nextElem = this.dom.nextSibling;
+        let par = this.dom.parentNode;
+        par.removeChild(this.dom);
+        par.insertBefore(this.dom, nextElem);
       },
       addReal: function(real) {
         this.dom.appendChild(real.dom);
@@ -228,9 +276,7 @@ U.buildRoom({
       hasFlag: function(flag) { return this.dom.classList.contains(flag); }
     })});
     
-    return {
-      Real
-    };
+    return { Colour, Reality, Real };
     
   }
 });

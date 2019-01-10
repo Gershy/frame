@@ -244,7 +244,7 @@ U.buildRoom({
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
       },
       tell: async function(msg) {
-        return Promise.all(this.getInnerVal(relLandsHuts).toArr(hut => hut.tell(msg)));
+        return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.tell(msg)));
       },
       /// {ABOVE=
       informBelow: async function() {

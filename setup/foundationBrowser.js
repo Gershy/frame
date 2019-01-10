@@ -4,6 +4,34 @@
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function({ hut, bearing }) {
       insp.Foundation.init.call(this, { hut, bearing });
+      
+      // GOAL: Determine how long since Above generated `U.aboveMsAtResponseTime`
+      // - `firstContactMs` is our earliest timing of server response
+      // - We'll calculate `firstContactMs` as `performance.timing.responseStart`
+      //   This is the time we received the server's 1st byte
+      // - No certainty further than `now - firstContactMs`; increasing accuracy
+      //   requires guessing time between data insertion and our 1st byte
+      // - We'll estimate LESS than the real latency this way
+      
+      let nativeNow = +new Date();
+      let firstContactMs = performance.timing.responseStart;
+      let knownLatencyMs = nativeNow - firstContactMs;
+      
+      // With this value, `new Date() + this.clockDeltaMs` is best guess at
+      // current value of Above's `foundation.getMs()`
+      this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
+      console.log('CURRENT TIME FOR ABOVE:', this.getMs());
+      
+      //console.log([
+      //  'TIME DIF:',
+      //  `HERE: ${now}`,
+      //  `ABOV: ${U.aboveMsAtResponseTime}`,
+      //  `TRANSPORT TOOK: ${knownLatencyMs}`,
+      //  `AHEAD BY: ${now - U.aboveMsAtResponseTime} (- ${knownLatencyMs}??)`
+      //].join('\n'));
+      //console.log(window.performance.timing);
+      //console.log(new PerformanceNavigationTiming());
+      
     },
     getPlatformName: function() { return 'browser'; },
     installFoundation: async function() {
@@ -22,6 +50,7 @@
     },
     
     // Functionality
+    getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {
     return { ISFILE: true, name, url: `!FILE/${name}` };

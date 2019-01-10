@@ -6,7 +6,7 @@
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
-  let httpDebug = false;
+  let httpDebug = true;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -817,6 +817,7 @@
       contents = splitContents.join('\n\n') + '\n\n' + [
         '// ==== File: hut.js',
         `U.hutTerm = '${hutTerm}';`,
+        `U.aboveMsAtResponseTime = ${this.getMs()};`,
         `U.initData = ${JSON.stringify(initContent)};`,
         'let { FoundationBrowser } = U.foundationClasses;',
         `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,

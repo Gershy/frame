@@ -18,6 +18,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   nextUid: function() { return this.uidCnt++; },
   
   // Functionality
+  getMs: function() { return +new Date(); },
   makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
   makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
   

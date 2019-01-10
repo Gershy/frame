@@ -48,6 +48,7 @@ U.buildRoom({
     let Match = U.inspire({ name: 'Match', insps: { LandsRecord }, methods: (insp, Insp) => ({
       init: function({ uid, lands }) {
         insp.LandsRecord.init.call(this, { uid, lands });
+        this.wobble({ turns: 0, movesDeadlineMs: null });
       }
     })});
     let Player = U.inspire({ name: 'Player', insps: { LandsRecord }, methods: (insp, Insp) => ({
@@ -176,7 +177,6 @@ U.buildRoom({
         
         let records = [ Chess2, Match, Player, Board, Piece ];
         let relations = rel.toArr(v => v);
-        
         let lands = U.lands = Lands({
           foundation,
           commands: Lands.defaultCommands.map(v => v),
@@ -184,6 +184,8 @@ U.buildRoom({
           relations,
           getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs)
         });
+        
+        let moveMs = 30000;
         
         /// {ABOVE=
         
@@ -200,12 +202,17 @@ U.buildRoom({
             let player = hut.getInnerVal(rel.playerHut);
             let playerPieces = player.getInnerVal(rel.piecePlayer);
             
-            if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
+            if (msg.piece !== null) {
+              
+              if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
+              player.move.wobble({ piece: playerPieces[msg.piece], tile: msg.tile });
+              
+            } else {
+              
+              player.move.wobble({ piece: null, tile: null });
+              
+            }
             
-            player.move.wobble({
-              piece: playerPieces[msg.piece],
-              tile: msg.tile
-            });
           },
           playAgain: async (lands, hut, msg) => {
             let player = hut.getInnerVal(rel.playerHut);
@@ -366,55 +373,83 @@ U.buildRoom({
             // Mark the players as playing
             [ p1, p2 ].forEach(player => player.modify(v => v.gain({ gameStatus: 'playing' })));
             
+            match.modify(v => v.gain({ movesDeadlineMs: foundation.getMs() + moveMs }));
+            
             // Inform each player that they've entered a match
             [ hut1, hut2 ].forEach(hut => hut.informBelow());
             
+            let forcePassTimeout = null;
+            
+            // Activate move timeouts when the round progresses (detected via match wobbles)
+            match.hold(v => {
+              clearTimeout(forcePassTimeout);
+              
+              if (!v || v.movesDeadlineMs === null) return;
+              
+              let timeRemaining = v.movesDeadlineMs - new Date();
+              forcePassTimeout = setTimeout(() => {
+                // Unsubmitted moves become passes
+                p1.move.modify(v => v || { piece: null, tile: null });
+                p2.move.modify(v => v || { piece: null, tile: null });
+              }, timeRemaining);
+            });
+            
             // Resolve moves when both players have confirmed
             let holdMove = U.CalcWob({ wobs: [ p1.move, p2.move ], func: (p1Move, p2Move) => {
+              
               if (!p1Move || !p2Move) return;
               
               let pieces = board.getInnerVal(rel.boardPieces);
               
-              // All pieces can wait 1 turn less
+              // All pieces have waited a turn
               pieces.forEach(piece => piece.value.wait ? piece.modify(v => v.gain({ wait: v.wait - 1 })) : null);
               
-              let { piece: p1Piece, tile: [ p1X, p1Y ] } = p1Move;
-              let { piece: p2Piece, tile: [ p2X, p2Y ] } = p2Move;
+              // Move both pieces
+              [ p1Move, p2Move ].forEach(({ piece, tile }) => {
+                if (!piece) return;
+                piece.modify(v => v.gain({ x: tile[0], y: tile[1], wait: 1 }));
+              });
               
-              // Update the 2 moved pieces
-              p1Piece.modify(v => v.gain({ x: p1X, y: p1Y, wait: 1 }));
-              p2Piece.modify(v => v.gain({ x: p2X, y: p2Y, wait: 1 }));
-              
-              // Identify collided pieces...
-              let p1Trgs = pieces.map(p => (p !== p1Piece && p.value.x === p1X && p.value.y === p1Y) ? p : C.skip);
-              let p2Trgs = pieces.map(p => (p !== p2Piece && p.value.x === p2X && p.value.y === p2Y) ? p : C.skip);
+              // Identify captured pieces...
+              let [ p1Trgs, p2Trgs ] = [ p1Move, p2Move ].map(({ piece, tile }) => {
+                if (!piece) return {};
+                return pieces.map(p => (p !== piece && p.value.x === tile[0] && p.value.y === tile[1]) ? p : C.skip);
+              });
               
               // And remove them
               p1Trgs.forEach(pc => lands.remRec(pc));
               p2Trgs.forEach(pc => lands.remRec(pc));
               
               // Check if either player has captured the others' king
-              let p1Wins = !!p1Trgs.find(piece => piece.value.type === 'king');
-              let p2Wins = !!p2Trgs.find(piece => piece.value.type === 'king');
+              let p1CapturedKing = !!p1Trgs.find(piece => piece.value.type === 'king');
+              let p2CapturedKing = !!p2Trgs.find(piece => piece.value.type === 'king');
               
-              if (p1Wins || p2Wins) {
-                if (p1Wins && p2Wins) {
+              // If a king is captured figured out game result
+              let addTime = moveMs;
+              let concluded = p1CapturedKing || p2CapturedKing || (!p1Move.piece && !p2Move.piece);
+              if (concluded) {
+                addTime = null; // Don't add more time if the game is over!
+                if (p1CapturedKing === p2CapturedKing) {
                   p1.modify(v => v.gain({ gameStatus: 'stalemated' }));
                   p2.modify(v => v.gain({ gameStatus: 'stalemated' }));
-                } else if (p1Wins) {
+                } else if (p1CapturedKing) {
                   p1.modify(v => v.gain({ gameStatus: 'victorious' }));
                   p2.modify(v => v.gain({ gameStatus: 'defeated' }));
-                } else if (p2Wins) {
+                } else if (p2CapturedKing) {
                   p1.modify(v => v.gain({ gameStatus: 'defeated' }));
                   p2.modify(v => v.gain({ gameStatus: 'victorious' }));
                 }
               }
               
-              // Inform the 2 players of the updates
-              [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
-              
+              // Reset moves
               p1.move.wobble(null);
               p2.move.wobble(null);
+              
+              // Increment turns; set deadline for next move
+              match.modify(v => v.gain({ turns: v.turns + 1, movesDeadlineMs: addTime ? foundation.getMs() + addTime : null }));
+              
+              // Inform the 2 players of the updates
+              [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
             }});
             
             // Clean up when no players remain
@@ -429,23 +464,31 @@ U.buildRoom({
               lands.remRec(board);
               lands.remRec(match);
               
-              // Reset players
+              // Inform players
               lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
             });
             
           }
-        }, 5000);
+        }, 2000);
         
         /// =ABOVE} {BELOW=
         
-        let { Real } = real;
+        let { Colour, Real } = real;
         
         let mySelectedPiece = U.Wobbly({ value: null });
         let myConfirmedPiece = U.Wobbly({ value: null });
-        let myConfirmedTile = U.Wobbly({ value: [ -1, -1 ] });
-        let myTileClickers = U.Wobbly({ value: [] });
+        let myConfirmedTile = U.Wobbly({ value: null });
+        let myConfirmedPass = U.Wobbly({ value: false });
         let myChess2 = U.Wobbly({ value: null });
         let myPlayer = U.Wobbly({ value: null });
+        
+        // Confirming tiles and passing each cancel the other
+        myConfirmedPass.hold(isPassing => {
+          if (isPassing) { myConfirmedPiece.wobble(null); myConfirmedTile.wobble(null); }
+        });
+        myConfirmedTile.hold(tile => {
+          if (tile) myConfirmedPass.wobble(false);
+        });
         
         let colours = {
           clear: 'rgba(0, 0, 0, 0)',
@@ -513,7 +556,7 @@ U.buildRoom({
             nv.setColour('rgba(0, 0, 0, 0.85)');
             nv.setPriority(2);
             nv.setOpacity(0);
-            nv.setTransition('opacity', 500, 0, 'sharp');
+            nv.setTransition('opacity', 500, 'sharp');
             nv.addWob.hold(() => nv.setOpacity(1));
             
             // Different content based on the type of notification
@@ -542,7 +585,7 @@ U.buildRoom({
           }));
           
         };
-        let genMatch = rec => {
+        let genMatch = matchRec => {
           let real = Real({ flag: 'match' });
           real.setSize(matchSize, matchSize);
           real.setColour('rgba(0, 0, 0, 0.8)');
@@ -553,25 +596,83 @@ U.buildRoom({
           
           // Show the board when one associates
           let boardReal = null;
-          rec.getInnerWob(rel.matchBoard).hold(board => {
+          matchRec.getInnerWob(rel.matchBoard).hold(board => {
             if (boardReal) real.remReal(boardReal);
             if (!board) { boardReal = null; return; }
             boardReal = real.addReal(genBoard(board));
           });
           
           let playerReals = {};
-          rec.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
+          matchRec.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
             
             add.forEach(playerRec => {
-              
               let playerReal = playerReals[playerRec.uid] = real.addReal(Real({ flag: 'player' }));
               playerReal.setSize(matchSize, playerSize);
+              
+              let timerReal = null;
+              matchRec.hold(v => {
+                if (timerReal) { timerReal.rem(); timerReal = null; }
+                
+                if (v === null || v.movesDeadlineMs === null) return;
+                
+                let timeLeft = v.movesDeadlineMs - foundation.getMs();
+                let timeLeftPerc = timeLeft / moveMs;
+                let colourCool = Colour(0.3, 0.3, 1, 0.5);
+                let colourHot = Colour(1, 0, 0, 0.5);
+                
+                timerReal = playerReal.addReal(Real({ flag: 'timer'}));
+                timerReal.setSize(matchSize * timeLeftPerc, playerSize);
+                timerReal.setColour(colourCool.fadeTo(colourHot, 1 - timeLeftPerc).toCss());
+                timerReal.setPriority(1);
+                timerReal.setTangible(false);
+                
+                // Begin animation
+                timerReal.setTransition('size', timeLeft, 'sharp');
+                timerReal.setTransition('colour', timeLeft, 'sharp');
+                timerReal.setSize(0, playerSize);
+                timerReal.setColour(colourHot.toCss());
+              });
+              
+              let playerNameReal = playerReal.addReal(Real({ flag: 'player' }));
+              playerNameReal.setSize(matchSize, playerSize);
+              playerNameReal.setColour(colours.clear);
+              playerNameReal.setTextColour('rgba(255, 255, 255, 1)');
+              playerNameReal.setPriority(2);
               playerRec.hold(v => {
-                playerReal.setText(JSON.stringify(v))
+                playerNameReal.setText(`Name: ${v ? v.term : '- unknown -'}`);
                 playerReal.setLoc(0, (v && v.colour === 'black' ? -0.5 : +0.5) * (matchSize - playerSize));
               });
+              
+              // Make sure to rotate things upright for the black player
               myPlayer.hold(p => p && p.hold(v => playerReal.setRot(v && v.colour === 'black' ? 180 : 0)));
               
+              let passReal = null;
+              myPlayer.hold(mp => {
+                if (passReal) { passReal.rem(); passReal = null; }
+                
+                if (mp !== playerRec) return;
+                
+                passReal = playerReal.addReal(Real({ flag: 'player' }));
+                passReal.setSize(50, 30);
+                passReal.setLoc(260, 0);
+                passReal.setPriority(3);
+                passReal.setBorderRadius(0.2);
+                passReal.setColour('rgba(0, 0, 0, 0.5)');
+                passReal.setTextColour('rgba(255, 255, 255, 1)');
+                passReal.setText('Pass');
+                passReal.setTransition('colour', 200, 'sharp');
+                myConfirmedPass.hold(isPassing => {
+                  isPassing
+                    ? passReal.setBorder('outer', 3, colours.confirmed)
+                    : passReal.setBorder('outer', 1, 'rgba(255, 255, 255, 1)');
+                });
+                passReal.setFeel('interactive');
+                passReal.interactWob.hold(active => {
+                  if (!active) return;
+                  myConfirmedPass.wobble(true);
+                  lands.tell({ command: 'confirmMove', piece: null, tile: null });
+                });
+              });
             });
             
             rem.forEach((p, uid) => {
@@ -603,10 +704,12 @@ U.buildRoom({
               if (!active) return;
               mySelectedPiece.wobble(null);
             });
-            myConfirmedTile.hold(([x0, y0, cap]) => {
+            myConfirmedTile.hold(v => {
               if (confirmedTileReal) { confirmedTileReal.rem(); confirmedTileReal = null; }
               
-              if (x0 === -1 || y0 === -1) return;
+              if (!v) return;
+              
+              [x0, y0, cap] = v;
               
               confirmedTileReal = real.addReal(Real({ flag: 'confirmed' }));
               confirmedTileReal.setSize(tileSize, tileSize);
@@ -621,11 +724,10 @@ U.buildRoom({
                 indicator.setSize(indicatorSize, indicatorSize);
                 indicator.setColour(colours.confirmed);
               } else {
-                indicator.setSize(pieceSize - 16, pieceSize - 16);
+                indicator.setSize(pieceSize, pieceSize);
                 indicator.setColour(colours.clear);
-                indicator.setBorder('outer', 8, colours.confirmed);
+                indicator.setBorder('inner', 8, colours.confirmed);
               }
-              
             });
           })(x, y);
           
@@ -674,13 +776,7 @@ U.buildRoom({
                 tileReal.setFeel('interactive');
                 tileReal.interactWob.hold(active => {
                   if (!active) return;
-                  lands.getInnerVal(relLandsHuts).forEach(hut => {
-                    hut.tell({
-                      command: 'confirmMove',
-                      piece: piece.uid,
-                      tile: [ x, y ]
-                    });
-                  });
+                  lands.tell({ command: 'confirmMove', piece: piece.uid, tile: [ x, y ] });
                   mySelectedPiece.wobble(null);
                   myConfirmedTile.wobble([ x, y, cap ]);
                   myConfirmedPiece.wobble(piece);
@@ -702,12 +798,11 @@ U.buildRoom({
           real.setBorderRadius(1);
           real.setOpacity(1);
           real.setPriority(1);
-          real.setRemovalDelayMs(1000);
           real.setTangible(false);
-          real.setTransition('loc', 500, 0, 'smooth');
-          real.setTransition('opacity', 500, 0, 'sharp');
+          real.setTransition('loc', 500, 'smooth');
+          real.setTransition('opacity', 500, 'sharp');
+          real.setRemovalDelayMs(1000);
           real.remWob.hold(() => {
-            // TODO: Not a fan of this `setTimeout` - better to work with css delays?
             real.setPriority(4);
             setTimeout(() => { real.setScale(3); real.setOpacity(0); }, 500);
           });
@@ -746,9 +841,12 @@ U.buildRoom({
             //real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
             avatar.setColoursInverted(colour === 'white');
             avatar.setImage(imgs[type]);
+            
+            // If a piece moved we can clear the state of our last confirmation
             mySelectedPiece.wobble(null);
             myConfirmedPiece.wobble(null);
-            myConfirmedTile.wobble([ -1, -1 ]);
+            myConfirmedTile.wobble(null);
+            myConfirmedPass.wobble(null);
           });
           
           // Interactions cause piece to be selected
