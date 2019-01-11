@@ -31,6 +31,7 @@ U.buildRoom({
           hut.version = 2;
           hut.recalcInitInform();
           
+          console.log(`GET INIT FOR ${hut.address}`);
           let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
             command: 'update',
             version: 1,
@@ -56,6 +57,9 @@ U.buildRoom({
         fizzle: async(inst, hut, msg) => {
         },
         error: async (inst, hut, msg) => {
+        },
+        thunThunk: async (inst, hut, msg) => {
+          // Do nothing. Hearing the message will automatically renew expiry
         },
         update: async (lands, hut, msg) => {
           
@@ -173,20 +177,18 @@ U.buildRoom({
         }
       },
       
-      init: function({ foundation, getRecsForHut, checkHutHasRec=null, records=[], relations=[], commands=Lands.defaultCommands }) {
+      init: function({ foundation, getRecsForHut, checkHutHasRec=null, records=[], relations=[], commands=Lands.defaultCommands, heartbeatMs=10000 }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.foundation = foundation;
         this.uidCnt = 0;
         this.maxUpdateAttempts = 1000;
         this.terms = [];
         
-        this.records = U.isType(records, Array)
-          ? records.toObj(r => [ r.name, r ])
-          : records;
+        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
+        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
         
-        this.relations = U.isType(relations, Array)
-          ? relations.toObj(r => [ r.uid, r ])
-          : relations;
+        this.commands = commands;
+        this.heartbeatMs = heartbeatMs;
         
         /// {ABOVE=
         
@@ -194,36 +196,34 @@ U.buildRoom({
         this.getRecsForHut = getRecsForHut;
         this.checkHutHasRec = checkHutHasRec || ((lands, hut, rec) => getRecsForHut(lands, hut).has(rec.uid));
         
-        let hutWob = this.getInnerWob(relLandsHuts);
-        hutWob.hold(({ add={}, rem={} }) => {
-          
-          // Newly added huts need to set up tracking for all preexisting records
+        // Listen for incoming huts; they need to follow recs
+        this.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
+          // Newly added huts need to immediately follow all the recs they
+          // have access to
           add.forEach(hut => {
             let recs = this.getRecsForHut(this, hut);
             recs.forEach((rec, uid) => hut.followRec(rec, uid));
           });
           
-          // Removed huts need to detach from all records they're following
+          // Removed huts need to forget all records they're following
           rem.forEach(hut => hut.forgetAllRecs());
-          
         });
         
-        let recWob = this.getInnerWob(relLandsRecs);
-        recWob.hold(({ add={}, rem={} }) => {
-          
+        // Listen for incoming recs; they need to be followed by huts
+        this.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
           let huts = this.getInnerVal(relLandsHuts);
           add.forEach(rec => huts.forEach(hut => this.checkHutHasRec(this, hut, rec) && hut.followRec(rec)));
           rem.forEach(rec => huts.forEach(hut => hut.forgetRec(rec)));
-          
         });
         
         /// =ABOVE} {BELOW=
         
         this.version = 0;
+        this.heartbeatTimeout = null;
+        this.resetHeartbeatTimeout();
         
         /// =BELOW}
         
-        this.commands = commands;
       },
       nextUid: function() {
         /// {ABOVE=
@@ -244,13 +244,22 @@ U.buildRoom({
         else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
       },
       tell: async function(msg) {
+        /// {BELOW=
+        this.resetHeartbeatTimeout();
+        /// =BELOW}
         return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.tell(msg)));
       },
       /// {ABOVE=
       informBelow: async function() {
         return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.informBelow()));
       },
-      /// =ABOVE}
+      /// =ABOVE} {BELOW=
+      resetHeartbeatTimeout: function() {
+        console.log('Heartbeat timeout reset...');
+        clearTimeout(this.heartbeatTimeout);
+        this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
+      },
+      /// =BELOW}
       remRec: function(rec) {
         // Isolates `rec`, causes huts to forget about `rec`, and returns
         // a list of all huts which followed `rec` in the first place
@@ -273,7 +282,6 @@ U.buildRoom({
         
         this.terms = terms;
         
-        //await Promise.all(this.getInnerVal(relLandsWays).map(h => h.open()).toArr(p => p));
         /// {BELOW=
         let huts = this.getInnerVal(relLandsHuts);
         let hut = huts.find(() => true)[0];
@@ -281,7 +289,7 @@ U.buildRoom({
         /// =BELOW}
       },
       shut: async function() {
-        return Promise.all(this.getInnerVal(relLandsWays).map(h => h.shut()).toArr(p => p));
+        return Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.shut()));
       }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
@@ -306,6 +314,9 @@ U.buildRoom({
         this.updRec = {};
         this.addRel = {};
         this.remRel = {};
+        
+        this.expiryTimeout = null;
+        this.refreshExpiry();
         /// =ABOVE}
       },
       getTerm: function() {
@@ -314,6 +325,10 @@ U.buildRoom({
       },
       
       /// {ABOVE=
+      refreshExpiry: function(ms=this.lands.heartbeatMs) {
+        clearTimeout(this.expiryTimeout);
+        this.expiryTimeout = setTimeout(() => this.lands.remRec(this), ms);
+      },
       followRec: function(rec, uid=rec.uid) {
         // Track `rec`; our hold on `rec` itself, and all its relations
         var hold = {
@@ -449,21 +464,22 @@ U.buildRoom({
         let content = this.flushAndGenInform();
         if (content.isEmpty()) return null;
         
-        await this.tell({
-          command: 'update',
-          version: this.version++,
-          content
-        });
+        if (this.version === 0) throw new Error('Not ready to inform below; version === 0');
         
+        console.log(`INFORM ${this.address} BELOW`);
+        await this.tell({ command: 'update', version: this.version++, content });
         return content;
       },
       /// =ABOVE}
       
       favouredWay: function() {
-        return this.getInnerVal(relWaysHuts).find(() => true)[0];
+        let findWay = this.getInnerVal(relWaysHuts).find(() => true);
+        return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
-        await this.favouredWay().tellHut(this, msg);
+        let way = this.favouredWay();
+        if (!way) return; // throw new Error(`Hut ${this.address} has no favoured Way`);
+        await way.tellHut(this, msg);
       }
     })});
     let Way = U.inspire({ name: 'Way', insps: { Record }, methods: (insp, Insp) => ({
@@ -481,24 +497,52 @@ U.buildRoom({
         this.serverFunc = null
         this.hutsByIp = {};
       },
+      
+      disconnect: function(address) {
+        if (!this.hutsByIp.has(address)) throw new Error(`Can't expire unknown hut: ${address}`);
+        this.hutsByIp[address].wob.shut.wobble(true);
+      },
+      
       open: async function() {
         this.server = await this.makeServer();
         this.serverFunc = this.server.hold(async hutWob => {
-          hutWob.hear.hold(([ msg, reply=null ]) => this.lands.hear(hut, msg, reply));
-          hutWob.shut.hold(() => {
-            this.detach(relWaysHuts, hut);
-            this.lands.detach(relLandsHuts, hut);
-          });
           
+          // Get the IP
           let { ip } = hutWob;
           
+          // Create the hut, and reference by IP
           let hut = Hut({ lands: this.lands, address: ip });
           this.hutsByIp[ip] = { wob: hutWob, hut };
+          
+          // Pass anything heard on to our Lands
+          hutWob.hear.hold(([ msg, reply=null ]) => {
+            this.lands.hear(hut, msg, reply);
+            
+            /// {ABOVE=
+            // Any communication refreshes the expiry
+            hut.refreshExpiry();
+            /// =ABOVE}
+          });
+          
+          // Attach the hut to the Way and to the Lands
           hut.attach(relWaysHuts, this);
           hut.attach(relLandsHuts, this.lands);
+          
+          // Close the connection when the hut is removed
+          hut.getInnerWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
+          
         });
       },
+      shut: async function() {
+        throw new Error('not implemented');
+      },
+      
       tellHut: function(hut, msg) {
+        /// {ABOVE=
+        if (U.isType(msg, Object) && msg.has('command') && msg.command === 'update') {
+          console.log('SENDING UPDATE:', msg.version, JSON.stringify(msg).substr(0, 30) + '...');
+        }
+        /// =ABOVE}
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});

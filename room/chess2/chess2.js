@@ -3,13 +3,14 @@
 // [X]  Piece avatar images
 // [X]  Ensure that requests and responses don't desync when necessary
 // [X]  Replay button
-// [ ]  Pass turn button
-// [ ]  Quit button
-// [ ]  Move timer (prevent indefinite stalls)
+// [X]  Pass turn button
+// [X]  Move timer (prevent indefinite stalls)
+// [X]  Heartbeat + client removal after timeout
+// [ ]  Fix issue requiring a bunch of refreshes to load properly
 // [ ]  Data isolation (getRecsForHut is super buggy rn)
-// [ ]  Heartbeat + client removal after timeout
 // [ ]  Deny connections for clients which issue invalid commands
 // [ ]  More multi-game testing
+// [ ]  Quit button
 
 // CONCERNS:
 // [ ]  Some requests only appear once under TELL in browser, but after a
@@ -185,7 +186,7 @@ U.buildRoom({
           getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs)
         });
         
-        let moveMs = 30000;
+        let moveMs = 50000;
         
         /// {ABOVE=
         
@@ -317,21 +318,45 @@ U.buildRoom({
         
         let chess2 = Chess2({ lands });
         
+        // TODO: HEEERE! This holder for new huts joining ends with `lands.informBelow()`;
+        // if that `informBelow` happens before the initial sync is sent the client will
+        // get an "update" with the wrong version. Right now Huts are attached to the 
+        // Lands shortly after being created. This is happening before the initial
+        // `genInitBelow` data is able to be sent. Need to fix up this ordering
+        // hinterlands.js line 468 detects the issue
+        
         // Track hut initialization; create players for initialized huts
         lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-          add.forEach(hut => {
-            hut.initializeWob.hold(isInit => {
-              if (!isInit) return;
-              let player = Player({ lands, hut });
-              chess2.attach(rel.chess2Players, player);
-              chess2.attach(rel.playersWaiting, player);
-            });
-          });
+          add.forEach(hut => hut.initializeWob.hold(isInit => {
+            if (!isInit) return;
+            let player = Player({ lands, hut });
+            chess2.attach(rel.chess2Players, player);
+            chess2.attach(rel.playersWaiting, player);
+          }));
+          
           rem.forEach(hut => {
             let player = hut.getInnerVal(rel.playerHut);
-            if (player) lands.remRec(player);
+            if (!player) return;
+            player.move.wobble(null);
+            
+            // Make sure to get the match before removing the player
+            let match = player.getInnerVal(rel.matchPlayers);
+            lands.remRec(player);
+            
+            if (match) {
+              // Update the match so that other player wins. Don't delete the
+              // match; we want the player to be able to stick around
+              match.modify(v => v.gain({ movesDeadlineMs: null }));
+              let ps = match.getInnerVal(rel.matchPlayers);
+              ps.forEach(p => p.modify(v => v.gain({ gameStatus: 'victorious' })));
+            }
           });
-          lands.informBelow();
+          
+          lands.getInnerVal(relLandsHuts).forEach(hut => hut.initializeWob.hold(isInit => {
+            if (isInit) hut.informBelow();
+          }));
+          
+          //lands.informBelow();
         });
         
         // Matchmaking
@@ -469,7 +494,7 @@ U.buildRoom({
             });
             
           }
-        }, 2000);
+        }, 5000);
         
         /// =ABOVE} {BELOW=
         
@@ -579,7 +604,7 @@ U.buildRoom({
               playAgainReal.setFeel('interactive');
               playAgainReal.interactWob.hold(active => {
                 if (!active) return;
-                lands.getInnerVal(relLandsHuts).forEach(hut => hut.tell({ command: 'playAgain' }));
+                lands.tell({ command: 'playAgain' });
               });
             }
           }));

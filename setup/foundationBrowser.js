@@ -20,7 +20,9 @@
       // With this value, `new Date() + this.clockDeltaMs` is best guess at
       // current value of Above's `foundation.getMs()`
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
-      console.log('CURRENT TIME FOR ABOVE:', this.getMs());
+      
+      let { query } = this.parseUrl(window.location.href);
+      this.spoof = query.has('spoof') ? query.spoof : null;
       
       //console.log([
       //  'TIME DIF:',
@@ -53,13 +55,11 @@
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {
-    return { ISFILE: true, name, url: `!FILE/${name}` };
+      return { ISFILE: true, name, url: this.spoof ? `!FILE/${name}?spoof=${this.spoof}` : `!FILE/${name}` };
     },
     makeHttpServer: async function() {
       
-      let reqUrl = '';
-      let { query } = this.parseUrl(window.location.href);
-      if (query.has('spoof')) reqUrl = `?spoof=${query.spoof}`;
+      let reqUrl = this.spoof ? `?spoof=${this.spoof}` : '';
       
       let numPendingReqs = 0;
       
@@ -72,15 +72,30 @@
       };
       let serverWob = U.Wobbly({ value: clientWob });
       
+      let heartbeatTimeout = null;
       let tellAndHear = async msg => {
         
         console.log(`TELL remote:`, msg);
         
+        // Serialize `msg`
+        try {
+          msg = JSON.stringify(msg);
+        } catch(err) {
+          console.log('Couldn\'t stringify message:', msg);
+          throw err;
+        }
+        
+        // Any message also qualifies as a heartbeat - but in case no other message
+        // is sent over a duration, send a specific heartbeat signal to inform Above
+        // we still exist
+        // clearTimeout(heartbeatTimeout);
+        // heartbeatTimeout = setTimeout(() => tellAndHear({ command: 'thunThunk' }), 10000);
+        
+        // Do
         let req = new XMLHttpRequest();
         req.open('POST', reqUrl, true);
         req.setRequestHeader('Content-Type', 'application/json');
-        try { req.send(JSON.stringify(msg)); }
-        catch(err) { return console.log('Couldn\'t stringify msg', msg); }
+        req.send(msg);
         
         numPendingReqs++;
         
@@ -88,12 +103,13 @@
           if (req.readyState !== 4) return;
           try {
             if (req.status === 0) { console.log('Got response status 0'); return rsv(null); }
-            rsv(JSON.parse(req.responseText));
+            if (req.responseText.length === 0) { console.log('Above sent empty message'); }
+            rsv(req.responseText.length ? JSON.parse(req.responseText) : null);
           } catch(err) {
             console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
-            tellAndHear = () => {}; // Make sure no more requests are sent
+            tellAndHear = () => {}; // Make sure we don't make any more noise
             rjc(err);
-            clientWob.shut.wobble(null);
+            clientWob.shut.wobble(true);
           }
         }; });
         

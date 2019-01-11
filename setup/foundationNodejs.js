@@ -6,7 +6,7 @@
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
-  let httpDebug = true;
+  let transportDebug = false;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -371,7 +371,7 @@
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        if (httpDebug) console.log(`TELL ${ip}:`, ({
+        if (transportDebug) console.log(`TELL ${ip}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 100 ? msg : `${JSON.stringify(msg).substr(0, 100)}...`,
@@ -405,27 +405,21 @@
       };
       let server = http.createServer(async (req, res) => {
         
+        // TODO: Implement a "multi" command for executing multiple commands at once
+        // This will be nice when there are several pending Tells but only 1 available
+        // Response. Should be easy to implement too!
+        
         // Stream the body
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
         
-        // TODO: Force all bodies to be JSON?
+        // TODO: `body` is either JSON or the empty string?
         if (body.length) {
           try { body = JSON.parse(body); }
           catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
         } else {
           body = {};
-        }
-        
-        if (this.networkDebug) {
-          console.log('\n\n' + [
-            '==== INCOMING REQUEST ====',
-            `IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress}`,
-            `REQURL: ${req.url}`,
-            `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
-            `BODY: ${JSON.stringify(body, null, 2)}`
-          ].join('\n'));
         }
         
         // Get the ip
@@ -435,38 +429,54 @@
         // Allow ip spoofing (TODO: REALLY disable in production!)
         if (query.has('spoof')) ip = query.spoof;
         
+        if (this.networkDebug || ip === '127.0.0.1') {
+          console.log('\n\n' + [
+            '==== INCOMING REQUEST ====',
+            `IP: ${ip}`,
+            `REQURL: ${req.url}`,
+            `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
+            `BODY: ${JSON.stringify(body, null, 2)}`
+          ].join('\n'));
+        }
+        
         // Compactify the ip
         ip = this.compactIp(ip);
         
         // Create a new connection if this ip hasn't been seen before
         if (!connections.has(ip)) {
-          if (httpDebug) console.log(`CONN ${ip}`);
+          if (transportDebug) console.log(`CONN ${ip}`);
           
-          let connectionWob = connections[ip] = {
+          if (ip === '7f000001') throw new Error('WAT??');
+          
+          let conn = connections[ip] = {
             ip,
             hear: BareWob({}),
             tell: BareWob({}),
             shut: BareWob({}),
-            queuedTells: [],
-            queuedResponses: []
+            waitResps: [],
+            waitTells: [],
+            isShut: false
           };
-          connectionWob.tell.hold(msg => {
-            if (connectionWob.queuedResponses.length) {
-              sendData(ip, connectionWob.queuedResponses.shift(), msg);
-            } else {
-              connectionWob.queuedTells.push(msg);
-            }
+          conn.tell.hold(msg => {
+            conn.waitResps.length
+              ? sendData(ip, conn.waitResps.shift(), msg)
+              : conn.waitTells.push(msg);
           });
-          serverWob.wobble(connectionWob);
+          conn.shut.hold(closed => {
+            if (!closed || conn.isShut) return;
+            conn.isShut = true;
+            conn.waitResps.forEach(res => res.end());
+            console.log(`EXIT ${ip}`);
+            delete connections[ip];
+          });
+          serverWob.wobble(conn);
           
-          if (httpDebug) connectionWob.hear.hold(([ msg, reply ]) => console.log(`HEAR ${ip}:`, msg));
-          connectionWob.tell.hold(msg => {
-            
-          });
+          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`HEAR ${ip}:`, msg));
         }
         
         // Get the current connection for this ip
-        let connectionWob = connections[ip];
+        let conn = connections[ip];
+        if (!conn) throw new Error('WAT???' + ' ' + ip);
         
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
@@ -485,49 +495,38 @@
         // Default to the "ping" command
         if (body.isEmpty()) body = { command: 'ping' };
         
-        // Performing "getInit" always resets any banked polls
+        // The "getInit" command is special at this native level; it flushes all
+        // previously queued responses for the connection.
         if (body.command === 'getInit') {
-          connectionWob.queuedResponses.forEach(res => res.end());
-          connectionWob.queuedResponses = [];
-          connectionWob.queuedTells = [];
+          console.log('Cleaned up old responses for', ip);
+          conn.waitResps.forEach(res => res.end());
+          conn.waitResps = [];
+          conn.waitTells = [];
         }
         
-        if (syncReqRes) {
-          
-          // Send along a "reply" func which uses the corresponding response object
-          connectionWob.hear.wobble([ body, msg => sendData(ip, res, msg) ]);
-          
+        // If this is a synced request provide a "reply" func and do no further work
+        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(ip, res, msg) ]);
+        
+        // A list of transport-level commands
+        let nativeComs = {
+          close: () => conn.shut.wobble(true),
+          bankPoll: () => { /* Do nothing */ }
+        };
+        
+        // Do either a transport- or application-level command
+        nativeComs.has(body.command)
+          ? nativeComs[body.command]()
+          : conn.hear.wobble([ body, null ]); // THIS.......
+        
+        // If there are any tells send the oldest, otherwise keep ahold of the response
+        if (conn.waitTells.length) {
+          sendData(ip, res, conn.waitTells.shift());
         } else {
-          
-          // Build list of transport-level commands
-          // TODO: Is it a safe assumption that these httpCommands are never synced?
-          let httpCommands = {
-            close: () => {
-              console.log('Closing connection @', ip);
-              delete connections[ip];
-              connectionWob.shut.wobble();
-            },
-            bankPoll: () => {
-              // Do nothing
-            }
-          };
-          
-          // Do either a transport- or application-level command
-          if (httpCommands.has(body.command)) httpCommands[body.command]();
-          else                                connectionWob.hear.wobble([ body, null ]);
-          
-          // If there are any tells send the oldest, otherwise keep ahold of the response
-          if (connectionWob.queuedTells.length) {
-            sendData(ip, res, connectionWob.queuedTells.shift());
-          } else {
-            connectionWob.queuedResponses.push(res);
-          }
-          
-          // Don't hold more than one response
-          while (connectionWob.queuedResponses.length > 1)
-            sendData(ip, connectionWob.queuedResponses.shift(), { command: 'fizzle' });
-            
+          conn.waitResps.push(res);
         }
+        
+        // Only hold 1 response at the most
+        while (conn.waitResps.length > 1) sendData(ip, conn.waitResps.shift(), { command: 'fizzle' });
         
       });
       
@@ -775,7 +774,7 @@
           buffer = null;
           curOp = null;
           curFrames = [];
-          connectionWob.shut.wobble();
+          connectionWob.shut.wobble(true);
         });
         sokt.on('error', err => {
           console.log(`Socket error:\n${this.formatError(err)}`);
@@ -801,6 +800,12 @@
       
       let head = html.add(XmlElement('head', 'container'));
       let title = head.add(XmlElement('title', 'text', `${this.hut.upper()}`));
+      let favicon = head.add(XmlElement('link', 'singleton'));
+      favicon.setProp('rel', 'shortcut icon');
+      favicon.setProp('href', 'data:image/x-icon;,'); // TODO: Should be a URL but spoofing data is needed and isn't present
+      favicon.setProp('type', 'image/x-icon');
+      
+      //      <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
       
       let setupScript = head.add(XmlElement('script', 'text'));
       setupScript.setProp('type', 'text/javascript');
