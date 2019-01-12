@@ -108,8 +108,8 @@
           } catch(err) {
             console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
             tellAndHear = () => {}; // Make sure we don't make any more noise
-            rjc(err);
             clientWob.shut.wobble(true);
+            rjc(err);
           }
         }; });
         

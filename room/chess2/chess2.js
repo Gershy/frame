@@ -327,6 +327,7 @@ U.buildRoom({
         
         // Track hut initialization; create players for initialized huts
         lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
+          
           add.forEach(hut => hut.initializeWob.hold(isInit => {
             if (!isInit) return;
             let player = Player({ lands, hut });
@@ -345,7 +346,7 @@ U.buildRoom({
             
             if (match) {
               // Update the match so that other player wins. Don't delete the
-              // match; we want the player to be able to stick around
+              // match; we want the winner to be able to stick around
               match.modify(v => v.gain({ movesDeadlineMs: null }));
               let ps = match.getInnerVal(rel.matchPlayers);
               ps.forEach(p => p.modify(v => v.gain({ gameStatus: 'victorious' })));
@@ -356,7 +357,6 @@ U.buildRoom({
             if (isInit) hut.informBelow();
           }));
           
-          //lands.informBelow();
         });
         
         // Matchmaking

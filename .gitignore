@@ -1,6 +1,4 @@
 node_modules/
-state/
-cmp-*.js
 .old/
 *.above.js
 *.below.js

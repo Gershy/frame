@@ -429,7 +429,7 @@
         // Allow ip spoofing (TODO: REALLY disable in production!)
         if (query.has('spoof')) ip = query.spoof;
         
-        if (this.networkDebug || ip === '127.0.0.1') {
+        if (this.networkDebug) {
           console.log('\n\n' + [
             '==== INCOMING REQUEST ====',
             `IP: ${ip}`,
@@ -445,8 +445,6 @@
         // Create a new connection if this ip hasn't been seen before
         if (!connections.has(ip)) {
           if (transportDebug) console.log(`CONN ${ip}`);
-          
-          if (ip === '7f000001') throw new Error('WAT??');
           
           let conn = connections[ip] = {
             ip,
@@ -498,7 +496,6 @@
         // The "getInit" command is special at this native level; it flushes all
         // previously queued responses for the connection.
         if (body.command === 'getInit') {
-          console.log('Cleaned up old responses for', ip);
           conn.waitResps.forEach(res => res.end());
           conn.waitResps = [];
           conn.waitTells = [];

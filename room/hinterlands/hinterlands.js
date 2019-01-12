@@ -31,7 +31,6 @@ U.buildRoom({
           hut.version = 2;
           hut.recalcInitInform();
           
-          console.log(`GET INIT FOR ${hut.address}`);
           let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
             command: 'update',
             version: 1,
@@ -240,8 +239,20 @@ U.buildRoom({
       
       hear: async function(hut, msg, reply=null) {
         let { command } = msg;
-        if (this.commands.has(command)) await this.commands[command](this, hut, msg, reply);
-        else                            hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
+        
+        /// {ABOVE=
+        this.commands.has(command)
+          ? await this.commands[command](this, hut, msg, reply)
+          : hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
+        /// =ABOVE} {BELOW=
+        try {
+          await this.commands[command](this, hut, msg, reply);
+        } catch(err) {
+          console.log('Refreshing due to:', foundation.formatError(err));
+          await new Promise(r => setTimeout(r, 200));
+          window.location.reload(true)
+        }
+        /// =BELOW}
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -452,6 +463,7 @@ U.buildRoom({
           this[str] = {};
         });
         
+        // TODO: Actual value calculations should be performed as late as possible
         if (content.has('addRec')) content.addRec = content.addRec.map(rec => ({
           uid: rec.uid,
           type: rec.constructor.name,
@@ -464,9 +476,8 @@ U.buildRoom({
         let content = this.flushAndGenInform();
         if (content.isEmpty()) return null;
         
-        if (this.version === 0) throw new Error('Not ready to inform below; version === 0');
+        //if (this.version === 0) throw new Error('Not ready to inform below; version === 0');
         
-        console.log(`INFORM ${this.address} BELOW`);
         await this.tell({ command: 'update', version: this.version++, content });
         return content;
       },
@@ -510,7 +521,7 @@ U.buildRoom({
           // Get the IP
           let { ip } = hutWob;
           
-          // Create the hut, and reference by IP
+          // Create the Hut, and reference by IP
           let hut = Hut({ lands: this.lands, address: ip });
           this.hutsByIp[ip] = { wob: hutWob, hut };
           
@@ -519,16 +530,16 @@ U.buildRoom({
             this.lands.hear(hut, msg, reply);
             
             /// {ABOVE=
-            // Any communication refreshes the expiry
+            // Any communication from a Hut refreshes its expiry
             hut.refreshExpiry();
             /// =ABOVE}
           });
           
-          // Attach the hut to the Way and to the Lands
+          // Attach the Hut to the Way and to the Lands
           hut.attach(relWaysHuts, this);
           hut.attach(relLandsHuts, this.lands);
           
-          // Close the connection when the hut is removed
+          // Close the connection when the Hut is removed
           hut.getInnerWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
           
         });
@@ -538,11 +549,6 @@ U.buildRoom({
       },
       
       tellHut: function(hut, msg) {
-        /// {ABOVE=
-        if (U.isType(msg, Object) && msg.has('command') && msg.command === 'update') {
-          console.log('SENDING UPDATE:', msg.version, JSON.stringify(msg).substr(0, 30) + '...');
-        }
-        /// =ABOVE}
         this.hutsByIp[hut.address].wob.tell.wobble(msg);
       }
     })});
