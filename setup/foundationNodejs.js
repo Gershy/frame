@@ -6,7 +6,7 @@
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
-  let transportDebug = false;
+  let transportDebug = true;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -45,7 +45,7 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false, networkDebug=false }) {
+    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false, networkDebug=false, spoofEnabled=false }) {
       if (showIps) {
         console.log('IP OPTIONS:', this.getStaticIps());
         return process.exit(0);
@@ -57,6 +57,7 @@
       this.compilationData = {};
       this.mountedFiles = {};
       this.networkDebug = networkDebug;
+      this.spoofEnabled = spoofEnabled;
       
       if (ip === 'static') {
         let staticIps = this.getStaticIps();
@@ -79,6 +80,8 @@
       this.port = port;
       
       this.addMountFile('favicon.ico', 'setup/favicon.ico', 'image/x-icon');
+      
+      this.usage0 = process.memoryUsage().map(v => v);
     },
     
     // Compilation
@@ -313,6 +316,14 @@
     },
     
     // Functionality
+    getMemUsage: function() {
+      let usage1 = process.memoryUsage();
+      return {
+        rss: usage1.rss - this.usage0.rss,
+        heapTotal: usage1.heapTotal,
+        heapUsed: usage1.heapUsed - this.usage0.heapUsed
+      };
+    },
     addMountFile: function(name, src, type=null) {
       let nativeDir = path.join(rootDir, src);
       try { fs.statSync(nativeDir); }
@@ -426,8 +437,7 @@
         let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
         let { path: urlPath, query } = this.parseUrl(`http://${ip}${req.url}`);
         
-        // Allow ip spoofing (TODO: REALLY disable in production!)
-        if (query.has('spoof')) ip = query.spoof;
+        if (this.spoofEnabled && query.has('spoof')) ip = query.spoof;
         
         if (this.networkDebug) {
           console.log('\n\n' + [
@@ -486,7 +496,8 @@
             if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
           } else {
             if (urlPath === '/') { body = { command: 'getInit' }; syncReqRes = true; }
-            if (urlPath === '/favicon.ico') { body = { command: 'getFile', path: 'favicon.ico' }; syncReqRes = true; }
+            else if (urlPath === '/feedback') { body = { command: 'getFeedback' }; syncReqRes = true; }
+            // if (urlPath === '/favicon.ico') { body = { command: 'getFile', path: 'favicon.ico' }; syncReqRes = true; }
           }
         }
         
@@ -797,12 +808,12 @@
       
       let head = html.add(XmlElement('head', 'container'));
       let title = head.add(XmlElement('title', 'text', `${this.hut.upper()}`));
+      
+      // If spoofing is allowed don't issue an unspoofed favicon request; instead disable favicon
       let favicon = head.add(XmlElement('link', 'singleton'));
       favicon.setProp('rel', 'shortcut icon');
-      favicon.setProp('href', 'data:image/x-icon;,'); // TODO: Should be a URL but spoofing data is needed and isn't present
+      favicon.setProp('href', this.spoofEnabled ? 'data:image/x-icon;,' : '/!FILE/favicon.ico');
       favicon.setProp('type', 'image/x-icon');
-      
-      //      <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
       
       let setupScript = head.add(XmlElement('script', 'text'));
       setupScript.setProp('type', 'text/javascript');

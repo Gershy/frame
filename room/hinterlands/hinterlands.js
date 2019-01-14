@@ -27,23 +27,13 @@ U.buildRoom({
       }),
       $defaultCommands: {
         getInit: async (inst, hut, msg, reply) => {
-          let ts = Lands.terms;
-          hut.version = 2;
-          hut.recalcInitInform();
+          // Reset the hut to reflect a blank Below; then send update data
+          hut.resetVersion();
+          let term = hut.getTerm();
+          let tell = hut.genUpdateTell();
           
-          let initBelow = await inst.foundation.genInitBelow('text/html', hut.getTerm(), {
-            command: 'update',
-            version: 1,
-            content: hut.flushAndGenInform()
-          });
-          
+          let initBelow = await inst.foundation.genInitBelow('text/html', term, tell);
           reply(initBelow);
-          
-          // Don't send an initialized wobble until the very 1st sync has been sent!!
-          // If this weren't the case the initialized wobble could result in broader
-          // code deciding to do an "informBelow", and this "informBelow" would arrive
-          // inappropriately ahead of the initial "informBelow"
-          hut.initializeWob.wobble(true);
         },
         getFile: async (inst, hut, msg, reply) => {
           try {
@@ -60,10 +50,14 @@ U.buildRoom({
         thunThunk: async (inst, hut, msg) => {
           // Do nothing. Hearing the message will automatically renew expiry
         },
+        getFeedback: async (inst, hut, msg, reply) => {
+          reply({
+            hut: foundation.hut,
+            ms: foundation.getMs()
+          });
+        },
+        /// {BELOW=
         update: async (lands, hut, msg) => {
-          
-          // TODO: Huts above need to make sure the hut below is authenticated
-          
           let { command, version, content } = msg;
           
           if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
@@ -117,9 +111,9 @@ U.buildRoom({
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              rec1.attach(rel, rec2);
+              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't attach`); }
             },
-            desc: `Attach relation ${relUid} (${uid1} + ${uid2})`
+            desc: `Attach relation ${lands.relations[relUid].desc} (${uid1} + ${uid2})`
           })));
           
           ops.gain(remRel.toArr(([ relUid, uid1, uid2 ]) => ({
@@ -130,9 +124,9 @@ U.buildRoom({
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              rec1.detach(rel, rec2);
+              try { rec1.detach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't detach`); }
             },
-            desc: `Detach relation ${relUid} (${uid1} + ${uid2})`
+            desc: `Detach relation ${lands.relations[relUid].desc} (${uid1} + ${uid2})`
           })));
           
           let successes = [];
@@ -172,11 +166,11 @@ U.buildRoom({
           }
           
           lands.version = version;
-          
         }
+        /// =BELOW}
       },
       
-      init: function({ foundation, getRecsForHut, checkHutHasRec=null, records=[], relations=[], commands=Lands.defaultCommands, heartbeatMs=10000 }) {
+      init: function({ foundation, records=[], relations=[], commands=Lands.defaultCommands, heartbeatMs=10000 }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.foundation = foundation;
         this.uidCnt = 0;
@@ -191,29 +185,9 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        // Listen for changes to ALL data!
-        this.getRecsForHut = getRecsForHut;
-        this.checkHutHasRec = checkHutHasRec || ((lands, hut, rec) => getRecsForHut(lands, hut).has(rec.uid));
-        
-        // Listen for incoming huts; they need to follow recs
-        this.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-          // Newly added huts need to immediately follow all the recs they
-          // have access to
-          add.forEach(hut => {
-            let recs = this.getRecsForHut(this, hut);
-            recs.forEach((rec, uid) => hut.followRec(rec, uid));
-          });
-          
-          // Removed huts need to forget all records they're following
-          rem.forEach(hut => hut.forgetAllRecs());
-        });
-        
-        // Listen for incoming recs; they need to be followed by huts
-        this.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
-          let huts = this.getInnerVal(relLandsHuts);
-          add.forEach(rec => huts.forEach(hut => this.checkHutHasRec(this, hut, rec) && hut.followRec(rec)));
-          rem.forEach(rec => huts.forEach(hut => hut.forgetRec(rec)));
-        });
+        // Ensure removed huts drop all holds on their followed Records
+        // This is mostly a safeguard against careless broader code
+        this.getInnerWob(relLandsHuts).hold(({ rem={} }) => rem.forEach(hut => hut.forgetAllRecs()));
         
         /// =ABOVE} {BELOW=
         
@@ -266,16 +240,22 @@ U.buildRoom({
       },
       /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
-        console.log('Heartbeat timeout reset...');
         clearTimeout(this.heartbeatTimeout);
         this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
       },
       /// =BELOW}
       remRec: function(rec) {
-        // Isolates `rec`, causes huts to forget about `rec`, and returns
-        // a list of all huts which followed `rec` in the first place
+        /// {ABOVE=
+        // Return a list of huts which followed `rec` in the first place
+        let alteredHuts = this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
+        /// =ABOVE} {BELOW=
+        let alteredHuts = {};
+        /// =BELOW}
+        
+        // Isolates `rec`, causes huts to forget about `rec`
         rec.isolate();
-        return this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
+        
+        return alteredHuts
       },
       
       open: async function() {
@@ -316,18 +296,19 @@ U.buildRoom({
         this.discoveredMs = +new Date();
         this.term = null;
         this.version = 0;
-        this.initializeWob = U.Wobbly({});
+        this.versionHist = [];
         
         /// {ABOVE=
         this.holds = {};
         this.addRec = {};
-        this.remRec = {};
+        this.remRec = {}; // TODO: Confusing to have `hut.remRec` (an Object), and `lands.remRec` (a method)
         this.updRec = {};
         this.addRel = {};
         this.remRel = {};
         
         this.expiryTimeout = null;
         this.refreshExpiry();
+        this.informThrottlePrm = null;
         /// =ABOVE}
       },
       getTerm: function() {
@@ -341,22 +322,23 @@ U.buildRoom({
         this.expiryTimeout = setTimeout(() => this.lands.remRec(this), ms);
       },
       followRec: function(rec, uid=rec.uid) {
+        
+        if (this.holds.has(uid)) return;
+        
         // Track `rec`; our hold on `rec` itself, and all its relations
-        var hold = {
-          value: null,
-          rel: {}
-        };
+        var hold = { rec, value: null, rel: {} };
         
         // Need to send initial data for this record now
-        this.addRec[uid] = rec;
+        this.addRec[uid] = rec; // `requestInformBelow` is called at the end of this method
         
         // Need to send updated data for this record later
         hold.value = rec.hold(val => {
-          if (!this.addRec.has(rec.uid)) this.updRec[rec.uid] = val;
+          if (this.addRec.has(rec.uid)) return; // Redundant to send "upd" along with "add"
+          this.updRec[rec.uid] = val;
+          this.requestInformBelow();
         });
         
         // Sync all relations similarly
-        let checkHasRec = this.lands.checkHutHasRec.bind(null, this.lands, this);
         rec.getFlatDef().forEach((rel, relFwdName) => {
           
           let relUid = rel.uid;
@@ -370,8 +352,8 @@ U.buildRoom({
           // Need to send initial relations for this record now
           attached.forEach((rec2, uid2) => {
             // Skip relations outside the hut's knowledge
-            if (!checkHasRec(rec2)) return;
-            this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+            if (!this.holds.has(uid2)) return;
+            this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ]; // `requestInformBelow` is called at the end of this method
           });
           
           // Need to send updated relations for this record later
@@ -379,31 +361,39 @@ U.buildRoom({
           let relHold = ({
             type1: (newVal, oldVal) => {
               if (newVal) {
-                if (!checkHasRec(newVal)) return;
-                this.addRel[`${relUid}.${U.multiKey(uid, newVal.uid)}`] = [ relUid, uid, newVal.uid ];
+                if (!this.holds.has(newVal.uid)) return;
+                this.addRel[`${relUid}.${U.multiKey(uid, newVal.uid)}`] = [ relUid, uid, newVal.uid, rel.name1 ];
+                this.requestInformBelow();
               } else {
-                if (!oldVal || !checkHasRec(oldVal)) return;
-                this.remRel[`${relUid}.${U.multiKey(uid, oldVal.uid)}`] = [ relUid, uid, oldVal.uid ];
+                if (!oldVal || !this.holds.has(oldVal.uid)) return;
+                this.remRel[`${relUid}.${U.multiKey(uid, oldVal.uid)}`] = [ relUid, uid, oldVal.uid, rel.name1 ];
+                this.requestInformBelow();
               }
             },
             typeM: ({ add={}, rem={} }) => {
               add.forEach((rec2, uid2) => {
-                if (!checkHasRec(rec2)) return;
-                this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+                if (!this.holds.has(uid2)) return;
+                this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2, rel.name1 ];
+                this.requestInformBelow();
               });
               rem.forEach((rec2, uid2) => {
-                if (!checkHasRec(rec2)) return;
-                this.remRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+                if (!this.holds.has(uid2)) return;
+                this.remRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2, rel.name1 ];
+                this.requestInformBelow();
               });
             }
           })[`type${relType}`];
           
-          hold.rel[relUid] = wob.hold(relHold);
+          hold.rel[relUid] = { wob, f: wob.hold(relHold) };
           if (!hold.rel[relUid]) throw new Error('Didn\'t get a function out of "hold"');
           
         });
         
         this.holds[uid] = hold;
+        
+        // This method has changed the delta, at least to include `rec` and probably to include
+        // several of its relations. Need to inform our Below
+        this.requestInformBelow();
       },
       forgetRec: function(rec, uid=rec.uid) {
         // Note that the dropping here is "safe" - doesn't throw errors
@@ -412,32 +402,59 @@ U.buildRoom({
         // are redundant. No need to worry about leaks though - once `rec`
         // is detached from `Lands` the `Lands` will ensure all huts forget
         // `rec` appropriately.
+        
+        // Note that forgetting the Record does NOT clear any delta memory!
+        // This is because the delta still needs to be delivered to our Below.
+        // To deal with careless broader code calling `forgetRec` will issue
+        // a call to `requestInformBelow`, just to make sure the Below is aware
+        // the Record no longer exists
+        
+        // TODO: Consider ensuring that "remRec" and "remRel" deltas are filled
+        // out?
+        
         if (!this.holds.has(uid)) return null;
-        let hold = this.holds[uid];
-        rec.drop(hold.value, true);
-        rec.getInnerWobs().forEach((wob, uid) => {
-          if (hold.rel.has(uid)) wob.drop(hold.rel[uid], true)
-        });
+        
+        let recs = this.lands.getInnerVal(relLandsRecs);
+        
+        let { value, rel } = this.holds[uid];
+        
+        // Record and associated relations need to be removed from Below
+        // Note that specifying the removed Record is sufficient to also
+        // remove all relations associated with it!
+        this.remRec[uid] = 1;
+        this.requestInformBelow();
+        
+        // Drop the value and relation holders...
+        rec.drop(value, true); // Drop safely. It may have already been dropped.
+        rel.forEach(({ wob, f }) => wob.drop(f, true));
+        
+        // And finally forget our reference to the hold itself
         delete this.holds[uid];
+        
         return rec;
       },
       forgetAllRecs: function() {
-        this.holds.forEach((hold, uid) => {
-          let rec = this.lands.getInnerVal(relLandsRecs)[uid];
-          this.forgetRec(rec);
-        });
+        this.holds.forEach(hold => this.forgetRec(hold.rec));
       },
-      recalcInitInform: function() {
+      resetVersion: function() {
+        // Clears memory of current delta and generates a new delta which would bring
+        // a blank Below up to date. Resets this Hut's version to 0 to reflect the Below
+        // is currently blank. Note that this method modifies our memory of the delta
+        // **without calling `requestInformBelow`**!! This means that the caller needs
+        // to insure the Below is eventually sent the data to bring it up to date.
+        
+        // Clear current delta...
         [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => { this[p] = {}; });
         
+        // Now recalculate!
         let recs = this.lands.getInnerVal(relLandsRecs);
-        this.holds.forEach((h, uid) => {
+        this.holds.forEach((hold, uid) => {
           
-          // Send an "add" for this record
+          // Send an "addRec" for this record
           let rec = recs[uid];
           this.addRec[uid] = rec;
           
-          // Send an "add" for each of this record's relations
+          // Send an "addRel" for each of this record's relations
           rec.getFlatDef().forEach((rel, relFwdName) => {
             let relUid = rel.uid;
             
@@ -447,23 +464,48 @@ U.buildRoom({
             
             attached.forEach((rec2, uid2) => {
               // Skip relations outside the hut's knowledge
-              if (!this.addRec.has(uid2)) return;
+              if (!this.holds.has(uid2)) return;
               this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
             });
           });
           
         });
         
+        this.version = 0;
+        this.versionHist = [];
       },
-      flushAndGenInform: function() {
+      offloadInformData: function() {
+        // Returns the delta of data to be sent Below. Clears the Hut's memory
+        // of this delta.
+        
+        // 1) Sanitize our delta:
+        
+        // Don't affect relations of Records being removed
+        // Don't add or update Records which are removed
+        if (!this.remRec.isEmpty()) {
+          let r = this.remRec;
+          this.addRel = this.addRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
+          this.remRel = this.remRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
+          this.remRec.forEach((r, uid) => {
+            delete this.addRec[uid];
+            delete this.updRec[uid];
+          });
+        }
+        
+        // Don't update Records being added
+        this.addRec.forEach((r, uid) => { delete this.updRec[uid]; });
+        
+        // 2) Construct "tell" based on our delta:
+        
         let content = {};
         
-        [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(str => {
-          if (!this[str].isEmpty()) content[str] = this[str];
-          this[str] = {};
+        [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => {
+          if (!this[p].isEmpty()) content[p] = this[p];
+          this[p] = {};
         });
         
-        // TODO: Actual value calculations should be performed as late as possible
+        // TODO: Actual value calculations should be performed as late as possible?
+        // Or should `offloadInformData` just be called as late as possible?
         if (content.has('addRec')) content.addRec = content.addRec.map(rec => ({
           uid: rec.uid,
           type: rec.constructor.name,
@@ -472,14 +514,35 @@ U.buildRoom({
         
         return content;
       },
-      informBelow: async function() {
-        let content = this.flushAndGenInform();
+      genUpdateTell: function() {
+        // Generates a "tell" msg to bring the Below up to date. Has the side-effect
+        // of clearing this Hut's memory of the current delta.
+        
+        let content = this.offloadInformData(); // Clear our memory of the delta; it will be sent Below
         if (content.isEmpty()) return null;
+        this.version++;
+        //this.versionHist.push(this.version);
+        //console.log('TIME:', +new Date(), 'HUT', this.address, '->', this.versionHist);
+        return { command: 'update', version: this.version, content }
+      },
+      requestInformBelow: function() {
+        // Implements inform-below-throttling. Schedules a new request to inform
+        // our Below if there is not already a request to do so.
         
-        //if (this.version === 0) throw new Error('Not ready to inform below; version === 0');
+        if (!this.informThrottlePrm) {
+          
+          this.informThrottlePrm = (async () => {
+            await new Promise(r => process.nextTick(r));
+            this.informThrottlePrm = null;
+            let updateTell = this.genUpdateTell();
+            
+            if (updateTell) this.tell(updateTell);
+            return updateTell;
+          })();
+          
+        }
         
-        await this.tell({ command: 'update', version: this.version++, content });
-        return content;
+        return this.informThrottlePrm;
       },
       /// =ABOVE}
       

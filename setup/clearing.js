@@ -243,6 +243,9 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
       else        return false;
     }
     let ind = func[`~wob${this.uid}`];
+    if (!this.holders || !this.holders.has(ind)) {
+      throw new Error(`${this.constructor.name} doesn't know index ${ind}`);
+    }
     delete func[`~wob${this.uid}`];
     delete this.holders[ind];
     if (this.holders.isEmpty()) delete this.holders;

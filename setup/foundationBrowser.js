@@ -1,5 +1,7 @@
 (() => {
   
+  let transportDebug = false;
+  
   let { Foundation } = U.foundationClasses;
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function({ hut, bearing }) {
@@ -58,9 +60,6 @@
       return { ISFILE: true, name, url: this.spoof ? `!FILE/${name}?spoof=${this.spoof}` : `!FILE/${name}` };
     },
     makeHttpServer: async function() {
-      
-      let reqUrl = this.spoof ? `?spoof=${this.spoof}` : '';
-      
       let numPendingReqs = 0;
       
       let clientWob = {
@@ -75,7 +74,7 @@
       let heartbeatTimeout = null;
       let tellAndHear = async msg => {
         
-        console.log(`TELL remote:`, msg);
+        if (transportDebug) console.log(`TELL remote:`, msg);
         
         // Serialize `msg`
         try {
@@ -85,15 +84,9 @@
           throw err;
         }
         
-        // Any message also qualifies as a heartbeat - but in case no other message
-        // is sent over a duration, send a specific heartbeat signal to inform Above
-        // we still exist
-        // clearTimeout(heartbeatTimeout);
-        // heartbeatTimeout = setTimeout(() => tellAndHear({ command: 'thunThunk' }), 10000);
-        
-        // Do
+        // Do XHR
         let req = new XMLHttpRequest();
-        req.open('POST', reqUrl, true);
+        req.open('POST', this.spoof ? `?spoof=${this.spoof}` : '', true);
         req.setRequestHeader('Content-Type', 'application/json');
         req.send(msg);
         
@@ -114,7 +107,7 @@
         }; });
         
         if (res) {
-          console.log(`HEAR remote:`, res);
+          if (transportDebug) console.log(`HEAR remote:`, res);
           clientWob.hear.wobble([ res, null ]);
         }
         numPendingReqs--;

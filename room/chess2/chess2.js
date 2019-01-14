@@ -6,8 +6,16 @@
 // [X]  Pass turn button
 // [X]  Move timer (prevent indefinite stalls)
 // [X]  Heartbeat + client removal after timeout
-// [ ]  Fix issue requiring a bunch of refreshes to load properly
+// [X]  Fix issue requiring a bunch of refreshes to load properly
 // [ ]  Data isolation (getRecsForHut is super buggy rn)
+//      1)  Don't panic; Hut's git is in a great state and the process of stabilizing things
+//          is linear! You understand how everything will fit together!
+//      2)  Forget about getRecsForHut and informBelow! Until a convenience wrapper is written
+//          client code will manually hold recs and call `hut.followRec` + `hut.forgetRec`
+//      3)  Rec-following-functionality doesn't need to change; values and relations remain
+//          listened to. The most useful addition would be more debug information
+//      4)  Follow-functionality should signal changes, which pass through some throttling
+//          wrapper (probably process.nextTick), and finally automatically issue `informBelow`
 // [ ]  Deny connections for clients which issue invalid commands
 // [ ]  More multi-game testing
 // [ ]  Quit button
@@ -40,7 +48,6 @@ U.buildRoom({
           
           if (playerDiff) {
             this.modify(v => v.gain({ numPlayersOnline: v.numPlayersOnline + playerDiff }));
-            this.lands.informBelow();
           };
         });
         /// =ABOVE}
@@ -163,8 +170,6 @@ U.buildRoom({
       matches:          Record.relate1M(Record.stability.dynamic, Chess2, Match, 'matches'),
       playerHut:        Record.relate11(Record.stability.dynamic, Player, Hut, 'playerHut'),
       chess2Players:    Record.relate1M(Record.stability.dynamic, Chess2, Player, 'chess2Players'),
-      playersWaiting:   Record.relate1M(Record.stability.dynamic, Chess2, Player, 'playersWaiting'),
-      playersPlaying:   Record.relate1M(Record.stability.dynamic, Chess2, Player, 'playersPlaying'),
       matchPlayers:     Record.relate1M(Record.stability.dynamic, Match, Player, 'matchPlayers'),
       matchBoard:       Record.relate11(Record.stability.dynamic, Match, Board, 'matchBoard'),
       boardPieces:      Record.relate1M(Record.stability.dynamic, Board, Piece, 'boardPieces'),
@@ -187,6 +192,7 @@ U.buildRoom({
         });
         
         let moveMs = 50000;
+        let matchmakeMs = 2000;
         
         /// {ABOVE=
         
@@ -222,19 +228,51 @@ U.buildRoom({
             let match = player.getInnerVal(rel.matchPlayers);
             if (!match) return;
             
+            // TODO: This is temporary, because the follow/forget process isn't yet
+            // smart enough to forget recursively! Eventually forgetting the Match
+            // should automatically forget the Board, and forgetting the Board
+            // forgets the Pieces, etc.
+            hut.forgetRec(match);
+            hut.forgetRec(match.getInnerVal(rel.matchBoard));
+            match.getInnerVal(rel.matchBoard).getInnerVal(rel.boardPieces).forEach(piece => hut.forgetRec(piece));
+            
             // Remove from match
             player.detach(rel.matchPlayers, match);
             
-            // Switch from playing to waiting
-            player.detach(rel.playersPlaying, chess2);
-            player.attach(rel.playersWaiting, chess2);
-            
             // Update status
+            hut.followRec(player);
             player.modify(v => v.gain({ colour: null, gameStatus: 'waiting' }));
             player.move.wobble(null);
+          },
+          getFeedback: async (lands, hut, msg, reply) => {
             
-            // Inform the huts of all match players
-            lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
+            let chess2 = lands.getInnerVal(relLandsRecs).find(r => r.isInspiredBy(Chess2))[0];
+            
+            reply({
+              name: 'Chess2',
+              resources: foundation.getMemUsage(),
+              numPlayers: chess2.getInnerVal(rel.chess2Players).toArr(v => v).length,
+              players: chess2.getInnerVal(rel.chess2Players).map(player => {
+                let hut = player.getInnerVal(rel.playerHut);
+                return {
+                  ip: hut.address,
+                  term: hut.getTerm(),
+                  playerVal: player.value
+                };
+              }),
+              numMatches: chess2.getInnerVal(rel.matches).toArr(v => v).length,
+              matches: chess2.getInnerVal(rel.matches).map(match => {
+                let white = match.getInnerVal(rel.matchPlayers).find(p => p.value.colour === 'white')[0];
+                let black = match.getInnerVal(rel.matchPlayers).find(p => p.value.colour === 'black')[0];
+                
+                return {
+                  white: white.value,
+                  black: black.value,
+                  numWhitePieces: white.getInnerVal(rel.piecePlayer).toArr(v => v).length,
+                  numBlackPieces: black.getInnerVal(rel.piecePlayer).toArr(v => v).length
+                };
+              })
+            });
           }
         });
         
@@ -318,22 +356,95 @@ U.buildRoom({
         
         let chess2 = Chess2({ lands });
         
-        // TODO: HEEERE! This holder for new huts joining ends with `lands.informBelow()`;
-        // if that `informBelow` happens before the initial sync is sent the client will
-        // get an "update" with the wrong version. Right now Huts are attached to the 
-        // Lands shortly after being created. This is happening before the initial
-        // `genInitBelow` data is able to be sent. Need to fix up this ordering
-        // hinterlands.js line 468 detects the issue
-        
-        // Track hut initialization; create players for initialized huts
+        // Track incoming / outgoing huts
         lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
           
-          add.forEach(hut => hut.initializeWob.hold(isInit => {
-            if (!isInit) return;
+          // Incoming huts are shown how to follow Records, and held for initialization
+          add.forEach(hut => {
+            
             let player = Player({ lands, hut });
             chess2.attach(rel.chess2Players, player);
-            chess2.attach(rel.playersWaiting, player);
-          }));
+            
+            // Set up Wobbly trails to follow all necessary Records
+            
+            // HEEERE: Need some kind of recursive tree which spans the relation graph,
+            // keeping track of cascading forgets. E.g. forgetting the match should
+            // forget the board as well!
+            
+            hut.getInnerWob(rel.playerHut).hold((p1, p0) => {
+              if (p0) hut.forgetRec(p0); //console.log('FORGET--- PLAYER!!', hut.address, p0.value);
+              
+              if (!p1) return;
+              
+              hut.followRec(p1); //console.log('FOLLOW+++ PLAYER!!', hut.address);
+              
+              p1.getInnerWob(rel.chess2Players).hold((c1, c0) => {
+                if (c0) hut.forgetRec(c0); //console.log('FORGET--- CHESS2!!', hut.address);
+                
+                if (!c1) return;
+                
+                hut.followRec(c1); //console.log('FOLLOW+++ CHESS2!!', hut.address);
+              });
+              
+              p1.getInnerWob(rel.matchPlayers).hold((m1, m0) => {
+                if (m0) hut.forgetRec(m0); //console.log('FORGET--- MATCH!!', hut.address);
+                
+                if (!m1) return;
+                
+                hut.followRec(m1); //console.log('FOLLOW+++ MATCH!!', hut.address);
+                
+                m1.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
+                  add.forEach(p => {
+                    hut.followRec(p); //console.log('FOLLOW+++ OPPONENT!!', hut.address);
+                    // p.getInnerWob(...).hold((v1, v0) => {
+                    //   ...
+                    // })
+                  });
+                  rem.forEach(p => {
+                    // TODO: Something that will make conveniencing this very tricky:
+                    // there are conditions that ought to prevent certain Forgets from
+                    // occurring. E.g. in this case when players are removed from the
+                    // match the hut forgets them, but there should be an exception
+                    // for the hut's own player instance, which should obviously not
+                    // be forgotten.
+                    // Ideas:
+                    // 1) Reference counting; count needs to hit 0 before reference is
+                    //   removed. In this case the hut's own player would have it's count
+                    //   increased when it's detected at `hut.getInnerWob(rel.playerHut)`,
+                    //   and so wouldn't reach 0 just when it's removed from the match
+                    // 2) In the earlier `add.forEach`, it could be possible to detect
+                    //   if `hut.followRec(p)` doesn't actually do anything, because the
+                    //   Record we're asking to follow has already been followed. Then
+                    //   in `rem.forEach`, make sure that `p` was originally by `add.forEach`.
+                    //   This entails that in a follow/forget tree, the SHALLOWEST scope of
+                    //   following a Record is the only one which should be able to forget
+                    //   that Record.
+                    if (p === p1) return; // Don't unfollow our own Player!!
+                    hut.forgetRec(p); //console.log('FORGET--- OPPONENT!!', hut.address);
+                  });
+                });
+                
+                m1.getInnerWob(rel.matchBoard).hold((b1, b0) => {
+                  if (b0) hut.forgetRec(b0); //console.log('FORGET--- BOARD!!');
+                  
+                  if (!b1) return;
+                  
+                  hut.followRec(b1); //console.log('FOLLOW+++ BOARD!!');
+                  
+                  b1.getInnerWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
+                    add.forEach(p => {
+                      hut.followRec(p);
+                    });
+                    rem.forEach(p => {
+                      hut.forgetRec(p);
+                    });
+                  });
+                  
+                });
+              });
+            });
+            
+          });
           
           rem.forEach(hut => {
             let player = hut.getInnerVal(rel.playerHut);
@@ -353,27 +464,22 @@ U.buildRoom({
             }
           });
           
-          lands.getInnerVal(relLandsHuts).forEach(hut => hut.initializeWob.hold(isInit => {
-            if (isInit) hut.informBelow();
-          }));
-          
         });
         
         // Matchmaking
         setInterval(() => {
-          let playersWaiting = chess2.getInnerVal(rel.playersWaiting).toArr(v => v);
-          playersWaiting.sort(() => 0.5 - Math.random());
           
-          for (let i = 0; i < playersWaiting.length - 1; i += 2) {
-            let [ p1, p2 ] = playersWaiting.slice(i, i + 2);
+          let matchmakePlayers = chess2.getInnerVal(rel.chess2Players).toArr(p => {
+            return p.value && p.value.gameStatus === 'waiting' ? p : C.skip;
+          });
+          
+          matchmakePlayers.sort(() => 0.5 - Math.random());
+          
+          for (let i = 0; i < matchmakePlayers.length - 1; i += 2) {
+            let [ p1, p2 ] = matchmakePlayers.slice(i, i + 2);
             if (Math.random() > 0.5) [ p1, p2 ] = [ p2, p1 ];
             
             let [ hut1, hut2 ] = [ p1, p2 ].map(p => p.getInnerVal(rel.playerHut));
-            
-            chess2.detach(rel.playersWaiting, p1);
-            chess2.detach(rel.playersWaiting, p2);
-            chess2.attach(rel.playersPlaying, p1);
-            chess2.attach(rel.playersPlaying, p2);
             
             let match = Match({ lands });
             let board = Board({ lands });
@@ -399,9 +505,6 @@ U.buildRoom({
             [ p1, p2 ].forEach(player => player.modify(v => v.gain({ gameStatus: 'playing' })));
             
             match.modify(v => v.gain({ movesDeadlineMs: foundation.getMs() + moveMs }));
-            
-            // Inform each player that they've entered a match
-            [ hut1, hut2 ].forEach(hut => hut.informBelow());
             
             let forcePassTimeout = null;
             
@@ -473,8 +576,8 @@ U.buildRoom({
               // Increment turns; set deadline for next move
               match.modify(v => v.gain({ turns: v.turns + 1, movesDeadlineMs: addTime ? foundation.getMs() + addTime : null }));
               
-              // Inform the 2 players of the updates
-              [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
+              //ZZ // Inform the 2 players of the updates
+              //ZZ [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
             }});
             
             // Clean up when no players remain
@@ -488,13 +591,10 @@ U.buildRoom({
               board.getInnerVal(rel.boardPieces).forEach(piece => lands.remRec(piece));
               lands.remRec(board);
               lands.remRec(match);
-              
-              // Inform players
-              lands.getInnerVal(relLandsHuts).forEach(hut => hut.informBelow());
             });
             
           }
-        }, 5000);
+        }, matchmakeMs);
         
         /// =ABOVE} {BELOW=
         

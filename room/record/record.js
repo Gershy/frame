@@ -90,6 +90,7 @@ U.buildRoom({
         let key = U.multiKey(`${Cls1.uid}.${name1}`, `${Cls2.uid}.${name2}`);
         let rel = {
           key,
+          desc: name1, //`${Cls1.name} >--(${name1}--${name2})--> ${Cls2.name}`, // TODO: Obviously `name1` is not descriptive of the relation; only half the relation
           uid: Record.NEXT_REL_UID++,
           stability,
           Cls1, Cls2,
@@ -164,8 +165,10 @@ U.buildRoom({
         
         throw new Error(`${this.constructor.name} doesn't use the provided relation`);
       },
-      getInnerWob: function(rel) {
-        let relPart = this.getRelPart(rel);
+      getInnerWob: function(rel, cheat=false) {
+        let relPart = !cheat ? this.getRelPart(rel) : { nameFwd: cheat.name, clsRelFwd: { type: cheat.type } };
+        
+        //let relPart = this.getRelPart(rel);
         if (!this.inner) this.inner = {};
         if (!this.inner.has(relPart.nameFwd)) {
           this.inner[relPart.nameFwd] = relPart.clsRelFwd.type === '1'
@@ -177,8 +180,8 @@ U.buildRoom({
       getInnerWobs: function() {
         return this.getFlatDef().map(rel => this.getInnerWob(rel));
       },
-      getInnerVal: function(rel) {
-        return this.getInnerWob(rel).value;
+      getInnerVal: function(rel, cheat) {
+        return this.getInnerWob(rel, cheat).value;
       },
       
       getJson: function(trail={}) {
