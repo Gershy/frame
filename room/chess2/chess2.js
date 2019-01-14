@@ -1003,6 +1003,21 @@ U.buildRoom({
           
         });
         
+        let credits = document.body.appendChild(document.createElement('div'));
+        credits.innerHTML = 'Project by Gershom Maes';
+        credits.style.gain({
+          position: 'absolute',
+          right: '0',
+          bottom: '0',
+          width: '200px',
+          textAlign: 'center',
+          height: '30px',
+          lineHeight: '30px',
+          fontSize: '12px',
+          backgroundColor: 'rgba(0, 0, 0, 0.2)',
+          color: 'rgba(255, 255, 255, 1)'
+        });
+        
         /// =BELOW}
         
         let way = Way({ lands, makeServer: () => foundation.makeHttpServer() });

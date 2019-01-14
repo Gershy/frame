@@ -52,7 +52,7 @@ U.buildRoom({
         l:  [ -1,  0 ]
       },
       init: function({ isRoot=false, flag=null }) {
-        this.dom = isRoot ? document.body : document.createElement('div');
+        this.dom = isRoot ? document.body.appendChild(document.createElement('div')) : document.createElement('div');
         
         if (flag) this.addFlag(flag);
         
