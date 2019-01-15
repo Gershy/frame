@@ -377,6 +377,7 @@
       let connections = {};
       let idsAtIp = {};
       let serverWob = BareWob({});
+      serverWob.idsAtIp = idsAtIp;
       let sendData = (address, res, msg) => {
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';

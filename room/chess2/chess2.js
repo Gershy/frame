@@ -18,6 +18,7 @@
 //          wrapper (probably process.nextTick), and finally automatically issue `informBelow`
 // [X]  Click begin to start playing. Avoid ip spammers getting into games
 // [X]  Cookies for device disambiguation. `hut.address` can become a more unique value
+// [ ]  Bug: if a game is drawn and then a player leaves, the other player is told they won
 // [ ]  More multi-game testing
 
 // IMPROVE:
@@ -387,7 +388,8 @@ U.buildRoom({
                   numWhitePieces: white.getInnerVal(rel.piecePlayer).toArr(v => v).length,
                   numBlackPieces: black.getInnerVal(rel.piecePlayer).toArr(v => v).length
                 };
-              })
+              }),
+              idsAtIp: lands.getInnerVal(relLandsWays).find(v => true)[0].server.idsAtIp
             });
           }
         });
