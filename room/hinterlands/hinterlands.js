@@ -6,12 +6,6 @@ U.buildRoom({
     
     let { Record } = record;
     
-    let compactIp = ipVerbose => {
-      let pcs = ipVerbose.split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Bad ip format: ${ipVerbose}`);
-      return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
-    };
-    
     let LandsRecord = U.inspire({ name: 'LandsRecord', insps: { Record }, methods: (insp, Insp) => ({
       $genFlatDef: () => ({
       }),
@@ -569,24 +563,22 @@ U.buildRoom({
         this.makeServer = makeServer;
         this.server = null;
         this.serverFunc = null
-        this.hutsByIp = {};
-      },
-      
-      disconnect: function(address) {
-        if (!this.hutsByIp.has(address)) throw new Error(`Can't expire unknown hut: ${address}`);
-        this.hutsByIp[address].wob.shut.wobble(true);
+        this.connections = {};
       },
       
       open: async function() {
         this.server = await this.makeServer();
         this.serverFunc = this.server.hold(async hutWob => {
           
-          // Get the IP
-          let { ip } = hutWob;
+          // Get the address
+          let { address } = hutWob;
           
           // Create the Hut, and reference by IP
-          let hut = Hut({ lands: this.lands, address: ip });
-          this.hutsByIp[ip] = { wob: hutWob, hut };
+          let hut = Hut({ lands: this.lands, address });
+          this.connections[address] = { wob: hutWob, hut };
+          
+          // Forget about this hut
+          hutWob.shut.hold(closed => { if (closed) delete this.connections[address]; });
           
           // Pass anything heard on to our Lands
           hutWob.hear.hold(([ msg, reply=null ]) => {
@@ -612,7 +604,7 @@ U.buildRoom({
       },
       
       tellHut: function(hut, msg) {
-        this.hutsByIp[hut.address].wob.tell.wobble(msg);
+        this.connections[hut.address].wob.tell.wobble(msg);
       }
     })});
     

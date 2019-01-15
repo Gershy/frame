@@ -7,7 +7,7 @@
 // [X]  Move timer (prevent indefinite stalls)
 // [X]  Heartbeat + client removal after timeout
 // [X]  Fix issue requiring a bunch of refreshes to load properly
-// [ ]  Data isolation (getRecsForHut is super buggy rn)
+// [X]  Data isolation (getRecsForHut is super buggy rn)
 //      1)  Don't panic; Hut's git is in a great state and the process of stabilizing things
 //          is linear! You understand how everything will fit together!
 //      2)  Forget about getRecsForHut and informBelow! Until a convenience wrapper is written
@@ -16,13 +16,21 @@
 //          listened to. The most useful addition would be more debug information
 //      4)  Follow-functionality should signal changes, which pass through some throttling
 //          wrapper (probably process.nextTick), and finally automatically issue `informBelow`
-// [ ]  Deny connections for clients which issue invalid commands
+// [X]  Click begin to start playing. Avoid ip spammers getting into games
+// [X]  Cookies for device disambiguation. `hut.address` can become a more unique value
 // [ ]  More multi-game testing
-// [ ]  Quit button
 
-// CONCERNS:
-// [ ]  Some requests only appear once under TELL in browser, but after a
-//      long period of time show up twice under HEAR in terminal
+// IMPROVE:
+// [ ]  CLEAN THE HECK UP
+// [ ]  Shorthand notation for Huts following Records
+// [ ]  Shorthand notation for Records becoming Reals
+// [ ]  Look into memory leaks - There's probably all kinds of Wobblies which need to be
+//      dropped
+// [ ]  Watch out for XSS stuff through `domElem.innerHTML`
+// [ ]  HTTP server logic should protect against huge payloads
+// [ ]  HTTP server logic should enforce deadlines on transmission completions
+// [ ]  Better UI, especially for mobile
+// [ ]  Accounts + login
 
 // getValue(), hold() --> data(), hold()
 // getInnerVal(), getInnerWob() --> relData(), relHold()  (relHold attaches listener; doesn't return anything (IS THIS SUFFICIENT?))
@@ -205,6 +213,114 @@ U.buildRoom({
         
         // Listen for chess2-specific commands
         lands.commands.gain({
+          initialize: async (lands, hut, msg) => {
+            
+            if (hut.getInnerVal(rel.playerHut)) return;
+            
+            let player = Player({ lands, hut });
+            chess2.attach(rel.chess2Players, player);
+            
+            
+            // HEEERE: Need some kind of recursive tree which spans the relation graph,
+            // keeping track of cascading forgets. E.g. forgetting the match should
+            // forget the board as well!
+            
+            // Set up Wobbly trails to follow all necessary Records
+            hut.getInnerWob(rel.playerHut).hold((p1, p0) => {
+              if (p0) hut.forgetRec(p0); //console.log('FORGET--- PLAYER!!', hut.address, p0.value);
+              
+              if (!p1) return;
+              
+              hut.followRec(p1); //console.log('FOLLOW+++ PLAYER!!', hut.address);
+              
+              // p1.getInnerWob(rel.chess2Players).hold((c1, c0) => {
+              //   if (c0) hut.forgetRec(c0); //console.log('FORGET--- CHESS2!!', hut.address);
+              //   
+              //   if (!c1) return;
+              //   
+              //   hut.followRec(c1); //console.log('FOLLOW+++ CHESS2!!', hut.address);
+              // });
+              
+              p1.getInnerWob(rel.matchPlayers).hold((m1, m0) => {
+                if (m0) hut.forgetRec(m0); //console.log('FORGET--- MATCH!!', hut.address);
+                
+                if (!m1) return;
+                
+                hut.followRec(m1); //console.log('FOLLOW+++ MATCH!!', hut.address);
+                
+                m1.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
+                  add.forEach(p => {
+                    hut.followRec(p); //console.log('FOLLOW+++ OPPONENT!!', hut.address);
+                    // p.getInnerWob(...).hold((v1, v0) => {
+                    //   ...
+                    // })
+                  });
+                  rem.forEach(p => {
+                    // TODO: Something that will make conveniencing this very tricky:
+                    // there are conditions that ought to prevent certain Forgets from
+                    // occurring. E.g. in this case when players are removed from the
+                    // match the hut forgets them, but there should be an exception
+                    // for the hut's own player instance, which should obviously not
+                    // be forgotten.
+                    // Ideas:
+                    // 1) Reference counting; count needs to hit 0 before reference is
+                    //   removed. In this case the hut's own player would have it's count
+                    //   increased when it's detected at `hut.getInnerWob(rel.playerHut)`,
+                    //   and so wouldn't reach 0 just when it's removed from the match
+                    // 2) In the earlier `add.forEach`, it could be possible to detect
+                    //   if `hut.followRec(p)` doesn't actually do anything, because the
+                    //   Record we're asking to follow has already been followed. Then
+                    //   in `rem.forEach`, make sure that `p` was originally by `add.forEach`.
+                    //   This entails that in a follow/forget tree, the SHALLOWEST scope of
+                    //   following a Record is the only one which should be able to forget
+                    //   that Record.
+                    if (p === p1) return; // Don't unfollow our own Player!!
+                    hut.forgetRec(p); //console.log('FORGET--- OPPONENT!!', hut.address);
+                  });
+                });
+                
+                m1.getInnerWob(rel.matchBoard).hold((b1, b0) => {
+                  if (b0) hut.forgetRec(b0); //console.log('FORGET--- BOARD!!');
+                  
+                  if (!b1) return;
+                  
+                  hut.followRec(b1); //console.log('FOLLOW+++ BOARD!!');
+                  
+                  b1.getInnerWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
+                    add.forEach(p => {
+                      hut.followRec(p);
+                    });
+                    rem.forEach(p => {
+                      hut.forgetRec(p);
+                    });
+                  });
+                  
+                });
+              });
+            });
+            
+            // Clean up Player + Match when Hut is removed
+            hut.getInnerWob(rel.playerHut).hold((noPlayer, player) => {
+              if (noPlayer || !player) return; // We're looking to have gone from having a player to having no player
+              
+              //let player = hut.getInnerVal(rel.playerHut);
+              //if (!player) return;
+              player.move.wobble(null);
+              
+              // Make sure to get the match before removing the player
+              let match = player.getInnerVal(rel.matchPlayers);
+              lands.remRec(player);
+              
+              if (match) {
+                // Update the match so that other player wins. Don't delete the
+                // match; we want the winner to be able to stick around
+                match.modify(v => v.gain({ movesDeadlineMs: null }));
+                let ps = match.getInnerVal(rel.matchPlayers);
+                ps.forEach(p => p.modify(v => v.gain({ gameStatus: 'victorious' })));
+              }
+            });
+            
+          },
           confirmMove: async (lands, hut, msg) => {
             let player = hut.getInnerVal(rel.playerHut);
             let playerPieces = player.getInnerVal(rel.piecePlayer);
@@ -358,112 +474,9 @@ U.buildRoom({
         
         // Track incoming / outgoing huts
         lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-          
           // Incoming huts are shown how to follow Records, and held for initialization
-          add.forEach(hut => {
-            
-            let player = Player({ lands, hut });
-            chess2.attach(rel.chess2Players, player);
-            
-            // Set up Wobbly trails to follow all necessary Records
-            
-            // HEEERE: Need some kind of recursive tree which spans the relation graph,
-            // keeping track of cascading forgets. E.g. forgetting the match should
-            // forget the board as well!
-            
-            hut.getInnerWob(rel.playerHut).hold((p1, p0) => {
-              if (p0) hut.forgetRec(p0); //console.log('FORGET--- PLAYER!!', hut.address, p0.value);
-              
-              if (!p1) return;
-              
-              hut.followRec(p1); //console.log('FOLLOW+++ PLAYER!!', hut.address);
-              
-              p1.getInnerWob(rel.chess2Players).hold((c1, c0) => {
-                if (c0) hut.forgetRec(c0); //console.log('FORGET--- CHESS2!!', hut.address);
-                
-                if (!c1) return;
-                
-                hut.followRec(c1); //console.log('FOLLOW+++ CHESS2!!', hut.address);
-              });
-              
-              p1.getInnerWob(rel.matchPlayers).hold((m1, m0) => {
-                if (m0) hut.forgetRec(m0); //console.log('FORGET--- MATCH!!', hut.address);
-                
-                if (!m1) return;
-                
-                hut.followRec(m1); //console.log('FOLLOW+++ MATCH!!', hut.address);
-                
-                m1.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
-                  add.forEach(p => {
-                    hut.followRec(p); //console.log('FOLLOW+++ OPPONENT!!', hut.address);
-                    // p.getInnerWob(...).hold((v1, v0) => {
-                    //   ...
-                    // })
-                  });
-                  rem.forEach(p => {
-                    // TODO: Something that will make conveniencing this very tricky:
-                    // there are conditions that ought to prevent certain Forgets from
-                    // occurring. E.g. in this case when players are removed from the
-                    // match the hut forgets them, but there should be an exception
-                    // for the hut's own player instance, which should obviously not
-                    // be forgotten.
-                    // Ideas:
-                    // 1) Reference counting; count needs to hit 0 before reference is
-                    //   removed. In this case the hut's own player would have it's count
-                    //   increased when it's detected at `hut.getInnerWob(rel.playerHut)`,
-                    //   and so wouldn't reach 0 just when it's removed from the match
-                    // 2) In the earlier `add.forEach`, it could be possible to detect
-                    //   if `hut.followRec(p)` doesn't actually do anything, because the
-                    //   Record we're asking to follow has already been followed. Then
-                    //   in `rem.forEach`, make sure that `p` was originally by `add.forEach`.
-                    //   This entails that in a follow/forget tree, the SHALLOWEST scope of
-                    //   following a Record is the only one which should be able to forget
-                    //   that Record.
-                    if (p === p1) return; // Don't unfollow our own Player!!
-                    hut.forgetRec(p); //console.log('FORGET--- OPPONENT!!', hut.address);
-                  });
-                });
-                
-                m1.getInnerWob(rel.matchBoard).hold((b1, b0) => {
-                  if (b0) hut.forgetRec(b0); //console.log('FORGET--- BOARD!!');
-                  
-                  if (!b1) return;
-                  
-                  hut.followRec(b1); //console.log('FOLLOW+++ BOARD!!');
-                  
-                  b1.getInnerWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
-                    add.forEach(p => {
-                      hut.followRec(p);
-                    });
-                    rem.forEach(p => {
-                      hut.forgetRec(p);
-                    });
-                  });
-                  
-                });
-              });
-            });
-            
-          });
-          
-          rem.forEach(hut => {
-            let player = hut.getInnerVal(rel.playerHut);
-            if (!player) return;
-            player.move.wobble(null);
-            
-            // Make sure to get the match before removing the player
-            let match = player.getInnerVal(rel.matchPlayers);
-            lands.remRec(player);
-            
-            if (match) {
-              // Update the match so that other player wins. Don't delete the
-              // match; we want the winner to be able to stick around
-              match.modify(v => v.gain({ movesDeadlineMs: null }));
-              let ps = match.getInnerVal(rel.matchPlayers);
-              ps.forEach(p => p.modify(v => v.gain({ gameStatus: 'victorious' })));
-            }
-          });
-          
+          add.forEach(hut => hut.followRec(chess2));
+          rem.forEach(hut => hut.forgetRec(chess2));
         });
         
         // Matchmaking
@@ -664,50 +677,142 @@ U.buildRoom({
           
           // Show notifications based on our player's gameStatus
           let notifyReal = null;
+          myPlayer.hold(player => {
+            
+            let f = v => {
+              
+              if (notifyReal) { chess2Real.remReal(notifyReal); notifyReal = null; }
+              
+              if (!v) return;
+              let { gameStatus } = v;
+              if (gameStatus === 'playing') return;
+              
+              let nv = notifyReal = chess2Real.addReal(Real({}));
+              nv.setSize(220, 220);
+              nv.setColour('rgba(0, 0, 0, 0.85)');
+              nv.setPriority(2);
+              nv.setOpacity(0);
+              nv.setTransition('opacity', 500, 'sharp');
+              nv.addWob.hold(() => nv.setOpacity(1));
+              
+              if (gameStatus === 'uninitialized') {
+                
+                nv.setTextSize(18);
+                nv.setText('Welcome to Chess2!');
+                
+                let enterReal = nv.addReal(Real({ flag: 'enter' }));
+                enterReal.setSize(150, 40);
+                enterReal.setLoc(0, 140);
+                enterReal.setTextSize(14);
+                enterReal.setText('Start playing!');
+                enterReal.setFeel('interactive');
+                enterReal.interactWob.hold(active => {
+                  if (!active) return;
+                  lands.tell({ command: 'initialize' });
+                });
+                
+              } else if (gameStatus === 'waiting') {
+                
+                nv.setTextSize(18);
+                nv.setText('Finding match...');
+                
+              } else {
+                
+                let [ text1, text2 ] = ({
+                  victorious: [ 'You WIN!',       'Win more!' ],
+                  defeated:   [ 'You LOSE!',      'Reclaim dignity' ],
+                  stalemated: [ 'It\'s a DRAW!',  'More chess!' ]
+                })[gameStatus];
+                
+                nv.setTextSize(25);
+                nv.setText(text1);
+                
+                let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
+                playAgainReal.setSize(150, 50);
+                playAgainReal.setLoc(0, 140);
+                playAgainReal.setTextSize(14);
+                playAgainReal.setText(text2);
+                playAgainReal.setFeel('interactive');
+                playAgainReal.interactWob.hold(active => {
+                  if (!active) return;
+                  lands.tell({ command: 'playAgain' });
+                });
+                
+              }
+              
+              // // Different content based on the type of notification
+              // let [ playAgainStr, size, str ] = ({
+              //   waiting:    [ false,              18, 'Finding match...' ],
+              //   victorious: [ 'Win more!',        25, 'You WIN!' ],
+              //   defeated:   [ 'Reclaim dignity!', 25, 'You LOSE!' ],
+              //   stalemated: [ 'More chess!',      25, 'It\'s a DRAW!' ]
+              // })[gameStatus];
+              // 
+              // nv.setTextSize(size);
+              // nv.setText(str);
+              // 
+              // if (playAgainStr) {
+              //   let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
+              //   playAgainReal.setSize(150, 40);
+              //   playAgainReal.setLoc(0, 140);
+              //   playAgainReal.setText(playAgainStr);
+              //   playAgainReal.setTextSize(14);
+              //   playAgainReal.setFeel('interactive');
+              //   playAgainReal.interactWob.hold(active => {
+              //     if (!active) return;
+              //     lands.tell({ command: 'playAgain' });
+              //   });
+              // }
+              
+            };
+            
+            player ? player.hold(f) : f({ gameStatus: 'uninitialized' });
+            
+          });
+          
+          /*
           myPlayer.hold(player => player && player.hold(v => {
             
-            // TODO: doing `remReal` followed by `addReal` isn't unnoticeable when
-            // there's an initial transition, like the fade-in of the notification.
-            // Need to make sure `v.gameStatus` has changed before removing anything.
-            
-            if (notifyReal) { chess2Real.remReal(notifyReal); notifyReal = null; }
-            
-            if (!v) return;
-            let { gameStatus } = v;
-            if (gameStatus === 'playing') return;
-            
-            let nv = notifyReal = chess2Real.addReal(Real({}));
-            nv.setSize(220, 220);
-            nv.setColour('rgba(0, 0, 0, 0.85)');
-            nv.setPriority(2);
-            nv.setOpacity(0);
-            nv.setTransition('opacity', 500, 'sharp');
-            nv.addWob.hold(() => nv.setOpacity(1));
-            
-            // Different content based on the type of notification
-            let [ playAgainStr, size, str ] = ({
-              waiting:    [ false,              18, 'Finding match...' ],
-              victorious: [ 'Win more!',        25, 'You WIN!' ],
-              defeated:   [ 'Reclaim dignity!', 25, 'You LOSE!' ],
-              stalemated: [ 'More chess!',      25, 'It\'s a DRAW!' ]
-            })[gameStatus];
-            
-            nv.setTextSize(size);
-            nv.setText(str);
-            
-            if (playAgainStr) {
-              let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
-              playAgainReal.setSize(150, 40);
-              playAgainReal.setLoc(0, 140);
-              playAgainReal.setText(playAgainStr);
-              playAgainReal.setTextSize(14);
-              playAgainReal.setFeel('interactive');
-              playAgainReal.interactWob.hold(active => {
-                if (!active) return;
-                lands.tell({ command: 'playAgain' });
-              });
-            }
+              if (notifyReal) { chess2Real.remReal(notifyReal); notifyReal = null; }
+              
+              if (!v) return;
+              let { gameStatus } = v;
+              if (gameStatus === 'playing') return;
+              
+              let nv = notifyReal = chess2Real.addReal(Real({}));
+              nv.setSize(220, 220);
+              nv.setColour('rgba(0, 0, 0, 0.85)');
+              nv.setPriority(2);
+              nv.setOpacity(0);
+              nv.setTransition('opacity', 500, 'sharp');
+              nv.addWob.hold(() => nv.setOpacity(1));
+              
+              // Different content based on the type of notification
+              let [ playAgainStr, size, str ] = ({
+                waiting:    [ false,              18, 'Finding match...' ],
+                victorious: [ 'Win more!',        25, 'You WIN!' ],
+                defeated:   [ 'Reclaim dignity!', 25, 'You LOSE!' ],
+                stalemated: [ 'More chess!',      25, 'It\'s a DRAW!' ]
+              })[gameStatus];
+              
+              nv.setTextSize(size);
+              nv.setText(str);
+              
+              if (playAgainStr) {
+                let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
+                playAgainReal.setSize(150, 40);
+                playAgainReal.setLoc(0, 140);
+                playAgainReal.setText(playAgainStr);
+                playAgainReal.setTextSize(14);
+                playAgainReal.setFeel('interactive');
+                playAgainReal.interactWob.hold(active => {
+                  if (!active) return;
+                  lands.tell({ command: 'playAgain' });
+                });
+              }
+              
           }));
+          */
           
         };
         let genMatch = matchRec => {

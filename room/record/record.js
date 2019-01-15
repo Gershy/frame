@@ -227,7 +227,10 @@ U.buildRoom({
         this.getFlatDef().forEach(rel => {
           let recs = this.getInnerVal(rel);
           if (!U.isType(recs, Object)) recs = recs ? { [recs.uid]: recs } : {};
-          recs.forEach(rec => this.detach(rel, rec));
+          
+          // The extra check for `recs.has(uid)` is important in case the call to
+          // `detach` activates holders to detach more items in `recs`
+          recs.forEach(rec => { try { this.detach(rel, rec); } catch(err) {} });
         });
       },
       

@@ -368,21 +368,23 @@
     },
     compactIp: function(ipVerbose) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
+      if (ipVerbose === 'localhost') ipVerbose = '127.0.0.1';
       let pcs = ipVerbose.split(',')[0].trim().split('.');
       if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Bad ip format: ${ipVerbose}`);
       return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
     },
     makeHttpServer: async function(ip=this.ip, port=this.port) {
       let connections = {};
+      let idsAtIp = {};
       let serverWob = BareWob({});
-      let sendData = (ip, res, msg) => {
+      let sendData = (address, res, msg) => {
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        if (transportDebug) console.log(`TELL ${ip}:`, ({
+        if (transportDebug) console.log(`TELL ${address}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 100 ? msg : `${JSON.stringify(msg).substr(0, 100)}...`,
@@ -433,31 +435,71 @@
           body = {};
         }
         
-        // Get the ip
-        let ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-        let { path: urlPath, query } = this.parseUrl(`http://${ip}${req.url}`);
-        
-        if (this.spoofEnabled && query.has('spoof')) ip = query.spoof;
-        
+        let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
         if (this.networkDebug) {
           console.log('\n\n' + [
             '==== INCOMING REQUEST ====',
-            `IP: ${ip}`,
+            `IP: ${req.connection.remoteAddress}`,
             `REQURL: ${req.url}`,
+            `REQQRY: ${JSON.stringify(query, null, 2)}`,
             `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
             `BODY: ${JSON.stringify(body, null, 2)}`
           ].join('\n'));
         }
         
-        // Compactify the ip
-        ip = this.compactIp(ip);
-        
-        // Create a new connection if this ip hasn't been seen before
-        if (!connections.has(ip)) {
-          if (transportDebug) console.log(`CONN ${ip}`);
+        // Build the "address"; use ip + innerId
+        let ip = this.compactIp(req.headers['x-forwarded-for'] || req.connection.remoteAddress);
+        let innerId = req.headers.has('cookie') ? req.headers.cookie.substr(3) : null; // .substr(3) trims off "id="
+        if (innerId === null || !idsAtIp.has(ip) || !idsAtIp[ip].has(innerId)) {
           
-          let conn = connections[ip] = {
-            ip,
+          // TODO: Even with innerId, collisions could STILL happen if the server is ever restarted
+          // 1) user1 + user2 both at IP 67.67.67.67
+          // 2) user1 requests and gets user1.innerId === ee
+          // 3) server restarts
+          // 4) server's list of innerIds is now empty, "ee" may be assigned
+          // 5) user2 requests and gets user2.innerId === ee
+          // 6) user1 comes back, browser sends user1.innerId === ee, server
+          //    thinks that ee is a valid assigned inner @ user1's IP
+          // Overall there's a collision chance for 2 users at the same IP
+          
+          innerId = null;
+          let ids = idsAtIp.has(ip) ? idsAtIp[ip] : {};
+          
+          let maxId = 36 * 36 * 36 * 36;
+          for (let i = 0; i < 100; i++) {
+            let tryId = Math.floor(Math.random() * maxId).toString(36).padHead(4, '0');
+            if (!ids.has(tryId)) { innerId = tryId; break; }
+          }
+          
+          if (innerId === null) {
+            console.log(`Couldn't find an inner id at IP ${ip}! :S`);
+            let msg = `Your IP (${ip}) already has a dense number of innerIds`;
+            res.writeHead(400, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
+            res.end(msg);
+            return;
+          }
+          
+          // TODO: It's important not to hit errors between here and `conn.shut.hold`
+          // If the flow is interrupted between these points, `idsAtIp` will never be
+          // cleaned up.
+          if (!idsAtIp.has(ip)) idsAtIp[ip] = {};
+          idsAtIp[ip][innerId] = 1;
+          res.setHeader('Set-Cookie', `id=${innerId}`);
+          
+        }
+        
+        let address = `${ip}/${innerId}`;
+        if (this.spoofEnabled && query.has('spoof')) {
+          let [ ip, innerId ] = query.spoof.split('/');
+          address = `${this.compactIp(ip)}/${parseInt(innerId, 36).toString(36).padHead(2, '0')}`;
+        }
+        
+        // Create a new connection if this address hasn't been seen before
+        if (!connections.has(address)) {
+          if (transportDebug) console.log(`CONN ${address}`);
+          
+          let conn = connections[address] = {
+            ip, innerId, address,
             hear: BareWob({}),
             tell: BareWob({}),
             shut: BareWob({}),
@@ -467,24 +509,30 @@
           };
           conn.tell.hold(msg => {
             conn.waitResps.length
-              ? sendData(ip, conn.waitResps.shift(), msg)
+              ? sendData(address, conn.waitResps.shift(), msg)
               : conn.waitTells.push(msg);
           });
           conn.shut.hold(closed => {
             if (!closed || conn.isShut) return;
             conn.isShut = true;
+            
+            // Clean up `idsAtIp`
+            if (idsAtIp.has(conn.ip) && idsAtIp[conn.ip].has(conn.innerId)) {
+              delete idsAtIp[conn.ip][conn.innerId];
+              if (idsAtIp[conn.ip].isEmpty()) delete idsAtIp[conn.ip];
+            }
+            
             conn.waitResps.forEach(res => res.end());
-            console.log(`EXIT ${ip}`);
-            delete connections[ip];
+            console.log(`EXIT ${address}`);
+            delete connections[address];
           });
           serverWob.wobble(conn);
           
-          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`HEAR ${ip}:`, msg));
+          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`HEAR ${address}:`, msg));
         }
         
         // Get the current connection for this ip
-        let conn = connections[ip];
-        if (!conn) throw new Error('WAT???' + ' ' + ip);
+        let conn = connections[address];
         
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
@@ -513,7 +561,7 @@
         }
         
         // If this is a synced request provide a "reply" func and do no further work
-        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(ip, res, msg) ]);
+        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(address, res, msg) ]);
         
         // A list of transport-level commands
         let nativeComs = {
@@ -528,13 +576,13 @@
         
         // If there are any tells send the oldest, otherwise keep ahold of the response
         if (conn.waitTells.length) {
-          sendData(ip, res, conn.waitTells.shift());
+          sendData(address, res, conn.waitTells.shift());
         } else {
           conn.waitResps.push(res);
         }
         
         // Only hold 1 response at the most
-        while (conn.waitResps.length > 1) sendData(ip, conn.waitResps.shift(), { command: 'fizzle' });
+        while (conn.waitResps.length > 1) sendData(address, conn.waitResps.shift(), { command: 'fizzle' });
         
       });
       
