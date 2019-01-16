@@ -449,18 +449,22 @@
         }
         
         // Build the "address"; use ip + innerId
+        // TODO: Is x-forwarded-for ever set?
         let ip = this.compactIp(req.headers['x-forwarded-for'] || req.connection.remoteAddress);
-        let innerId = req.headers.has('cookie') ? req.headers.cookie.substr(3) : null; // .substr(3) trims off "id="
+        let cookieVal = req.headers.has('cookie') ? req.headers.cookie.trim() : '';
+        let cookieVals = cookieVal ? cookieVal.split(';').toObj(v => v.trim().split('=')) : {}; // Get key-value map of cookie values
+        let innerId = cookieVals.has('id') ? cookieVals.id : null;
+        
         if (innerId === null || !idsAtIp.has(ip) || !idsAtIp[ip].has(innerId)) {
           
           // TODO: Even with innerId, collisions could STILL happen if the server is ever restarted
           // 1) user1 + user2 both at IP 67.67.67.67
-          // 2) user1 requests and gets user1.innerId === ee
+          // 2) user1 requests and gets user1.innerId === eeee
           // 3) server restarts
-          // 4) server's list of innerIds is now empty, "ee" may be assigned
-          // 5) user2 requests and gets user2.innerId === ee
-          // 6) user1 comes back, browser sends user1.innerId === ee, server
-          //    thinks that ee is a valid assigned inner @ user1's IP
+          // 4) server's list of innerIds is now empty, "eeee" may be assigned
+          // 5) user2 requests and gets user2.innerId === 'eeee'
+          // 6) user1 comes back, browser sends user1.innerId === 'eeee', server
+          //    thinks that eeee is a valid assigned innerId @ user1's IP
           // Overall there's a collision chance for 2 users at the same IP
           
           innerId = null;
@@ -474,7 +478,7 @@
           
           if (innerId === null) {
             console.log(`Couldn't find an inner id at IP ${ip}! :S`);
-            let msg = `Your IP (${ip}) already has a dense number of innerIds`;
+            let msg = `Your IP (${ip}) has a dense number of innerIds`;
             res.writeHead(400, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
             res.end(msg);
             return;
@@ -844,7 +848,7 @@
       return serverWob;
     },
     
-    getPlatformName: function() { return `nodejs@${this.ip}:${this.port}`; },
+    getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
     genInitBelow: async function(contentType, hutTerm, initContent={}) {
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       

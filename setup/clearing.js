@@ -126,9 +126,8 @@ let U = global.U = {
   intUpperBound: Math.pow(2, 32),
   intLowerBound: -Math.pow(2, 32),
   empty: obj => { for (let k in obj) return false; return true; },
-  duoKey: (v1, v2, delim=',') => v1 < v2 ? `${v1}${delim}${v2}` : `${v2}${delim}${v1}`,
   multiKey: (...keys) => keys.sort().join('|'),
-  combineObjs: (obj1, obj2) => ({ ...obj1, ...obj2 }),
+  safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
   inspire: ({ name, insps={}, methods, statik={}, description='' }) => {
     
     let Insp = eval(`let Insp = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
@@ -138,7 +137,7 @@ let U = global.U = {
     Insp.uid = U.INSP_UID++;
     Insp.insps = { [Insp.uid]: Insp };
     Insp.isInspiredBy = Insp0 => Insp.insps.has(Insp0.uid);
-    insps.forEach(SupInsp => { if (U.isType(SupInsp, Function) && SupInsp.has('uid')) Insp.insps.gain(SupInsp.insps); });
+    insps.forEach(SupInsp => Insp.insps.gain(U.isType(SupInsp, Function) && SupInsp.has('uid') ? SupInsp.insps : {}));
     
     // Initialize prototype
     Insp.prototype = Object.create(C.BaseInsp.prototype);

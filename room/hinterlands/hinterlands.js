@@ -7,9 +7,6 @@ U.buildRoom({
     let { Record } = record;
     
     let LandsRecord = U.inspire({ name: 'LandsRecord', insps: { Record }, methods: (insp, Insp) => ({
-      $genFlatDef: () => ({
-      }),
-      
       init: function({ lands, uid=lands.nextUid() }) {
         insp.Record.init.call(this, { uid });
         this.attach(relLandsRecs, lands);
@@ -17,8 +14,6 @@ U.buildRoom({
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
-      $genFlatDef: () => ({
-      }),
       $defaultCommands: {
         getInit: async (inst, hut, msg, reply) => {
           // Reset the hut to reflect a blank Below; then send update data
@@ -30,20 +25,14 @@ U.buildRoom({
           reply(initBelow);
         },
         getFile: async (inst, hut, msg, reply) => {
-          try {
-            let file = foundation.getMountFile(msg.path);
-            reply(file);
-          } catch(err) {
-            reply({ command: 'error', type: 'notFound', orig: msg });
-          }
+          reply(U.safe(
+            () => foundation.getMountFile(msg.path),
+            () => ({ command: 'error', type: 'notFound', orig: msg })
+          ));
         },
-        fizzle: async(inst, hut, msg) => {
-        },
-        error: async (inst, hut, msg) => {
-        },
-        thunThunk: async (inst, hut, msg) => {
-          // Do nothing. Hearing the message will automatically renew expiry
-        },
+        fizzle: async(inst, hut, msg) => { /* nothing */ },
+        error: async (inst, hut, msg) => { /* nothing */ },
+        thunThunk: async (inst, hut, msg) => { /* nothing - reception has already lead to expiry renewal */ },
         getFeedback: async (inst, hut, msg, reply) => {
           reply({
             hut: foundation.hut,
@@ -61,9 +50,8 @@ U.buildRoom({
           let ops = [];
           let recs = lands.getInnerVal(relLandsRecs);
           
-          // TODO: All validation errors thrown by ops should be distinguishable so that
-          // true coder errors can be differentiated
-          
+          // Note: validation error messages must begin with 'UPDERR - '; other messages
+          // will be considered indicative of errors in broader code
           ops.gain(addRec.toArr(({ uid, type, value }) => ({
             func: () => {
               if (!lands.records.has(type)) throw new Error(`UPDERR - Missing class: ${type}`);
@@ -234,6 +222,8 @@ U.buildRoom({
       },
       /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
+        // After exactly `this.heartbeatMs` millis Above will shut us down
+        // Therefore we need to be quicker; only wait a high percentage of the overall time
         clearTimeout(this.heartbeatTimeout);
         this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
       },
@@ -278,9 +268,6 @@ U.buildRoom({
       }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
-      $genFlatDef: () => ({
-      }),
-      
       init: function({ lands, address }) {
         if (!lands) throw new Error('Missing "lands"');
         
@@ -551,9 +538,6 @@ U.buildRoom({
       }
     })});
     let Way = U.inspire({ name: 'Way', insps: { Record }, methods: (insp, Insp) => ({
-      $genFlatDef: () => ({
-      }),
-      
       init: function({ lands, makeServer=null }) {
         if (!lands) throw new Error('Missing "lands"');
         if (!makeServer) throw new Error('Missing "makeServer"');
@@ -608,10 +592,10 @@ U.buildRoom({
       }
     })});
     
-    let relLandsRecs =  Record.relate1M(Record.stability.secret, Lands, LandsRecord, 'relLandsRecs');
-    let relLandsWays =  Record.relate1M(Record.stability.secret, Lands, Way, 'relLandsWays');
-    let relLandsHuts =  Record.relate1M(Record.stability.secret, Lands, Hut, 'relLandsHuts');
-    let relWaysHuts =   Record.relateMM(Record.stability.secret, Way, Hut, 'relWaysHuts');
+    let relLandsRecs =  Record.relate1M(Lands, LandsRecord, 'relLandsRecs');
+    let relLandsWays =  Record.relate1M(Lands, Way, 'relLandsWays');
+    let relLandsHuts =  Record.relate1M(Lands, Hut, 'relLandsHuts');
+    let relWaysHuts =   Record.relateMM(Way, Hut, 'relWaysHuts');
     
     return {
       Lands, LandsRecord, Hut, Way,

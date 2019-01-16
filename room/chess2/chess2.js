@@ -23,10 +23,12 @@
 
 // IMPROVE:
 // [ ]  CLEAN THE HECK UP
+// [ ]  Remove necessity to define relations in same order on Above/Below (currently incrementing uids need to match)
+// [ ]  Promotion (automatically queen?), en-passante, consider castling? (which pieces need to wait? both?)
+// [ ]  Deal with multiple tabs @ same session
 // [ ]  Shorthand notation for Huts following Records
 // [ ]  Shorthand notation for Records becoming Reals
-// [ ]  Look into memory leaks - There's probably all kinds of Wobblies which need to be
-//      dropped
+// [ ]  Look into memory leaks - There's probably all kinds of Wobblies which need to be dropped
 // [ ]  Watch out for XSS stuff through `domElem.innerHTML`
 // [ ]  HTTP server logic should protect against huge payloads
 // [ ]  HTTP server logic should enforce deadlines on transmission completions
@@ -176,14 +178,14 @@ U.buildRoom({
     })});
     
     let rel = {
-      matches:          Record.relate1M(Record.stability.dynamic, Chess2, Match, 'matches'),
-      playerHut:        Record.relate11(Record.stability.dynamic, Player, Hut, 'playerHut'),
-      chess2Players:    Record.relate1M(Record.stability.dynamic, Chess2, Player, 'chess2Players'),
-      matchPlayers:     Record.relate1M(Record.stability.dynamic, Match, Player, 'matchPlayers'),
-      matchBoard:       Record.relate11(Record.stability.dynamic, Match, Board, 'matchBoard'),
-      boardPieces:      Record.relate1M(Record.stability.dynamic, Board, Piece, 'boardPieces'),
-      piecePlayer:      Record.relate1M(Record.stability.dynamic, Player, Piece, 'piecePlayer'),
-      playerMove:       Record.relate11(Record.stability.dynamic, Player, Move, 'playerMove')
+      matches:          Record.relate1M(Chess2, Match, 'matches'),
+      playerHut:        Record.relate11(Player, Hut, 'playerHut'),
+      chess2Players:    Record.relate1M(Chess2, Player, 'chess2Players'),
+      matchPlayers:     Record.relate1M(Match, Player, 'matchPlayers'),
+      matchBoard:       Record.relate11(Match, Board, 'matchBoard'),
+      boardPieces:      Record.relate1M(Board, Piece, 'boardPieces'),
+      piecePlayer:      Record.relate1M(Player, Piece, 'piecePlayer'),
+      playerMove:       Record.relate11(Player, Move, 'playerMove')
     };
     
     return {
@@ -197,7 +199,8 @@ U.buildRoom({
           commands: Lands.defaultCommands.map(v => v),
           records,
           relations,
-          getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs)
+          getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs),
+          heartbeatMs: 240 * 1000 // 4 minute timeout
         });
         
         let moveMs = 50000;
@@ -317,7 +320,7 @@ U.buildRoom({
                 // match; we want the winner to be able to stick around
                 match.modify(v => v.gain({ movesDeadlineMs: null }));
                 let ps = match.getInnerVal(rel.matchPlayers);
-                ps.forEach(p => p.modify(v => v.gain({ gameStatus: 'victorious' })));
+                ps.forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
               }
             });
             
@@ -336,7 +339,6 @@ U.buildRoom({
               player.move.wobble({ piece: null, tile: null });
               
             }
-            
           },
           playAgain: async (lands, hut, msg) => {
             let player = hut.getInnerVal(rel.playerHut);
@@ -372,7 +374,7 @@ U.buildRoom({
               players: chess2.getInnerVal(rel.chess2Players).map(player => {
                 let hut = player.getInnerVal(rel.playerHut);
                 return {
-                  ip: hut.address,
+                  address: hut.address,
                   term: hut.getTerm(),
                   playerVal: player.value
                 };
