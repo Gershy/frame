@@ -1,28 +1,6 @@
-// FOR PRODUCTION:
-// [Y]  More than 1 game at a time!!!
-// [X]  Piece avatar images
-// [X]  Ensure that requests and responses don't desync when necessary
-// [X]  Replay button
-// [X]  Pass turn button
-// [X]  Move timer (prevent indefinite stalls)
-// [X]  Heartbeat + client removal after timeout
-// [X]  Fix issue requiring a bunch of refreshes to load properly
-// [X]  Data isolation (getRecsForHut is super buggy rn)
-//      1)  Don't panic; Hut's git is in a great state and the process of stabilizing things
-//          is linear! You understand how everything will fit together!
-//      2)  Forget about getRecsForHut and informBelow! Until a convenience wrapper is written
-//          client code will manually hold recs and call `hut.followRec` + `hut.forgetRec`
-//      3)  Rec-following-functionality doesn't need to change; values and relations remain
-//          listened to. The most useful addition would be more debug information
-//      4)  Follow-functionality should signal changes, which pass through some throttling
-//          wrapper (probably process.nextTick), and finally automatically issue `informBelow`
-// [X]  Click begin to start playing. Avoid ip spammers getting into games
-// [X]  Cookies for device disambiguation. `hut.address` can become a more unique value
-// [ ]  Bug: if a game is drawn and then a player leaves, the other player is told they won
-// [ ]  More multi-game testing
-
 // IMPROVE:
 // [ ]  CLEAN THE HECK UP
+// [ ]  Relations should be slightly reworked; more certain getRelPart, meaningful names instead of uids
 // [ ]  Remove necessity to define relations in same order on Above/Below (currently incrementing uids need to match)
 // [ ]  Promotion (automatically queen?), en-passante, consider castling? (which pieces need to wait? both?)
 // [ ]  Deal with multiple tabs @ same session
@@ -34,6 +12,7 @@
 // [ ]  HTTP server logic should enforce deadlines on transmission completions
 // [ ]  Better UI, especially for mobile
 // [ ]  Accounts + login
+// [ ]  Websockets
 
 // getValue(), hold() --> data(), hold()
 // getInnerVal(), getInnerWob() --> relData(), relHold()  (relHold attaches listener; doesn't return anything (IS THIS SUFFICIENT?))
@@ -43,6 +22,7 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real' ],
   build: (foundation, hinterlands, record, real) => {
     
+    let { Wobbly, CalcWob, Law } = U;
     let { Record } = record;
     let { Lands, LandsRecord, Way, Hut, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     
@@ -200,7 +180,7 @@ U.buildRoom({
           records,
           relations,
           getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs),
-          heartbeatMs: 240 * 1000 // 4 minute timeout
+          heartbeatMs: 2000 // 240 * 1000 // 4 minute timeout
         });
         
         let moveMs = 50000;
@@ -224,91 +204,10 @@ U.buildRoom({
             let player = Player({ lands, hut });
             chess2.attach(rel.chess2Players, player);
             
-            
-            // HEEERE: Need some kind of recursive tree which spans the relation graph,
-            // keeping track of cascading forgets. E.g. forgetting the match should
-            // forget the board as well!
-            
-            // Set up Wobbly trails to follow all necessary Records
-            hut.getInnerWob(rel.playerHut).hold((p1, p0) => {
-              if (p0) hut.forgetRec(p0); //console.log('FORGET--- PLAYER!!', hut.address, p0.value);
-              
-              if (!p1) return;
-              
-              hut.followRec(p1); //console.log('FOLLOW+++ PLAYER!!', hut.address);
-              
-              // p1.getInnerWob(rel.chess2Players).hold((c1, c0) => {
-              //   if (c0) hut.forgetRec(c0); //console.log('FORGET--- CHESS2!!', hut.address);
-              //   
-              //   if (!c1) return;
-              //   
-              //   hut.followRec(c1); //console.log('FOLLOW+++ CHESS2!!', hut.address);
-              // });
-              
-              p1.getInnerWob(rel.matchPlayers).hold((m1, m0) => {
-                if (m0) hut.forgetRec(m0); //console.log('FORGET--- MATCH!!', hut.address);
-                
-                if (!m1) return;
-                
-                hut.followRec(m1); //console.log('FOLLOW+++ MATCH!!', hut.address);
-                
-                m1.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
-                  add.forEach(p => {
-                    hut.followRec(p); //console.log('FOLLOW+++ OPPONENT!!', hut.address);
-                    // p.getInnerWob(...).hold((v1, v0) => {
-                    //   ...
-                    // })
-                  });
-                  rem.forEach(p => {
-                    // TODO: Something that will make conveniencing this very tricky:
-                    // there are conditions that ought to prevent certain Forgets from
-                    // occurring. E.g. in this case when players are removed from the
-                    // match the hut forgets them, but there should be an exception
-                    // for the hut's own player instance, which should obviously not
-                    // be forgotten.
-                    // Ideas:
-                    // 1) Reference counting; count needs to hit 0 before reference is
-                    //   removed. In this case the hut's own player would have it's count
-                    //   increased when it's detected at `hut.getInnerWob(rel.playerHut)`,
-                    //   and so wouldn't reach 0 just when it's removed from the match
-                    // 2) In the earlier `add.forEach`, it could be possible to detect
-                    //   if `hut.followRec(p)` doesn't actually do anything, because the
-                    //   Record we're asking to follow has already been followed. Then
-                    //   in `rem.forEach`, make sure that `p` was originally by `add.forEach`.
-                    //   This entails that in a follow/forget tree, the SHALLOWEST scope of
-                    //   following a Record is the only one which should be able to forget
-                    //   that Record.
-                    if (p === p1) return; // Don't unfollow our own Player!!
-                    hut.forgetRec(p); //console.log('FORGET--- OPPONENT!!', hut.address);
-                  });
-                });
-                
-                m1.getInnerWob(rel.matchBoard).hold((b1, b0) => {
-                  if (b0) hut.forgetRec(b0); //console.log('FORGET--- BOARD!!');
-                  
-                  if (!b1) return;
-                  
-                  hut.followRec(b1); //console.log('FOLLOW+++ BOARD!!');
-                  
-                  b1.getInnerWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
-                    add.forEach(p => {
-                      hut.followRec(p);
-                    });
-                    rem.forEach(p => {
-                      hut.forgetRec(p);
-                    });
-                  });
-                  
-                });
-              });
-            });
-            
             // Clean up Player + Match when Hut is removed
             hut.getInnerWob(rel.playerHut).hold((noPlayer, player) => {
               if (noPlayer || !player) return; // We're looking to have gone from having a player to having no player
               
-              //let player = hut.getInnerVal(rel.playerHut);
-              //if (!player) return;
               player.move.wobble(null);
               
               // Make sure to get the match before removing the player
@@ -476,12 +375,42 @@ U.buildRoom({
         
         let chess2 = Chess2({ lands });
         
-        // Track incoming / outgoing huts
-        lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-          // Incoming huts are shown how to follow Records, and held for initialization
-          add.forEach(hut => hut.followRec(chess2));
-          rem.forEach(hut => hut.forgetRec(chess2));
-        });
+        let hutsFollowLaw = Law('hutsFollow', Wobbly({ value: lands }), lands => [
+          Law('huts', lands.getInnerWob(relLandsHuts), hut => [
+            Law('followChess2', Wobbly({ value: chess2 }), chess2 => [
+              hut.genFollowTemp(chess2)
+            ]),
+            Law('followPlayer', hut.getInnerWob(rel.playerHut), player => [
+              hut.genFollowTemp(player),
+              Law('followMatch', player.getInnerWob(rel.matchPlayers), match => [
+                hut.genFollowTemp(match),
+                Law('followPlaymates', match.getInnerWob(rel.matchPlayers), player => [
+                  hut.genFollowTemp(player)
+                ]),
+                Law('followBoard', match.getInnerWob(rel.matchBoard), board => [
+                  hut.genFollowTemp(board),
+                  Law('followPieces', board.getInnerWob(rel.boardPieces), piece => [
+                    hut.genFollowTemp(piece)
+                  ])
+                ])
+              ])
+            ])
+          ])
+        ]);
+        
+        let chess2Law = Law('chess2Law', Wobbly({ value: chess2 }), chess2 => [
+          { shut: () => {}, open: () => {
+          }}
+        ]);
+        
+        [ hutsFollowLaw, chess2Law ].forEach(law => law.open());
+        
+        // // Track incoming / outgoing huts
+        // lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
+        //   // Incoming huts are shown how to follow Records, and held for initialization
+        //   add.forEach(hut => hut.followRec(chess2));
+        //   rem.forEach(hut => hut.forgetRec(chess2));
+        // });
         
         // Matchmaking
         setInterval(() => {
@@ -593,8 +522,6 @@ U.buildRoom({
               // Increment turns; set deadline for next move
               match.modify(v => v.gain({ turns: v.turns + 1, movesDeadlineMs: addTime ? foundation.getMs() + addTime : null }));
               
-              //ZZ // Inform the 2 players of the updates
-              //ZZ [ p1, p2 ].forEach(player => player.getInnerVal(rel.playerHut).informBelow());
             }});
             
             // Clean up when no players remain

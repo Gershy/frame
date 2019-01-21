@@ -134,11 +134,9 @@ U.buildRoom({
         this.dom.style.fontSize = `${amt}px`;
       },
       setTextColour: function(col) {
-        this.dom.style.gain({
-          color: col
-        });
+        this.dom.style.color = col;
       },
-      setSize: function(x, y) {
+      setSize: function(x, y=x) {
         frameCb(this.transitions.has('size') ? 2 : 0, () => {
           this.dom.style.gain({
             width: `${Math.round(x)}px`,
@@ -148,7 +146,6 @@ U.buildRoom({
             marginTop: `${-Math.round(y * 0.5)}px`
           });
         });
-        
         this.size = [ x, y ];
       },
       setLoc: function(x, y) {

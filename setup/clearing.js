@@ -233,7 +233,7 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     let ind = Insp.nextHoldUid++;
     func[`~wob${this.uid}`] = ind;
     this.holders[ind] = func;
-    if (hasty) { let v = this.getValue(); func(v, v); }
+    if (hasty) { let v = this.getValue(); func(v, null); } // TODO: Why v, v?
     return func;
   },
   drop: function(func, safe=false) {
@@ -315,36 +315,133 @@ let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, 
   }
 })});
 let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ uid=null, hasty=false }) {
+  init: function({ uid=null }) {
     insp.Wobbly.init.call(this, { uid });
   },
   setValue: function(v) {},
   getValue: function() { return null; },
   wobble: function(value=null, force=true) { insp.Wobbly.wobble.call(this, value, force); },
   modify: function(f) { throw new Error(`Call "wobble" instead of "modify" on ${this.constructor.name}`); },
-  hold: function(func) { return insp.Wobbly.hold.call(this, func, false); }
+  hold: function(func, hasty=false) { return insp.Wobbly.hold.call(this, func, hasty); }
+})});
+let DelayWob = U.inspire({ name: 'DelayWob', insps: { BareWob }, methods: (insp, Insp) => ({
+  init: function({ uid, ms, open=true }) {
+    insp.BareWob.init.call(this, { uid });
+    this.ms = ms;
+    this.ref = null;
+    if (open) this.open();
+  },
+  open: function() { this.ref = setTimeout(() => this.wobble(null), this.ms); },
+  shut: function() { clearTimeout(this.ref); this.ref = null; }
+})});
+let IntervalWob = U.inspire({ name: 'IntervalWob', insps: { BareWob }, methods: (insp, Insp) => ({
+  init: function({ uid, ms, open=true }) {
+    insp.BareWob.init.call(this, { uid });
+    this.ms = ms;
+    this.ref = null;
+    if (open) this.open();
+  },
+  open: function() { this.ref = setInterval(() => this.wobble(null), this.ms); },
+  shut: function() { clearInterval(this.ref); this.ref = null; }
 })});
 let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ uid, wobs, func }) {
+  init: function({ uid, wobs, func, open=true }) {
     insp.Wobbly.init.call(this, { uid });
     this.wobs = wobs;
     this.func = func;
-    this.watchFunc = () => {
-      let value = this.calc();
-      if (value !== this.getValue()) this.wobble(value);
-    };
-    this.setValue(this.calc());
-    this.wobs.forEach(w => w.hold(this.watchFunc));
+    
+    this.watchFunc = null;
+    if (open) this.open();
+    else      this.setValue(this.calc());
   },
   calc: function() {
     return this.func(...this.wobs.map(w => w.getValue()));
   },
+  open: function() {
+    if (this.watchFunc) { console.log('MULTIPLE CALCWOB ADDS :('); return; }
+    this.watchFunc = () => {
+      let value = this.calc();
+      if (value !== this.getValue()) this.wobble(value);
+    };
+    this.wobs.forEach(w => w.hold(this.watchFunc, false));  // Don't wobble on hold
+    this.setValue(this.calc());                             // Only change value once at end
+  },
+  shut: function() {
+    if (!this.watchFunc) { console.log('MULTIPLE CALCWOB REMS :('); return; }
+    this.wobs.forEach(w => w.drop(this.watchFunc));
+    this.watchFunc = null;
+  },
   drop: function(func, safe) {
-    if (!func) return this.wobs.forEach(w => w.drop(this.watchFunc));
-    return insp.Wobbly.drop.call(this, func, safe);
+    // Overloads `Wobbly.prototype.drop`; providing `func` uses parent behaviour
+    // otherwise synonymous with `CalcWob.prototype.shut`
+    return func ? insp.Wobbly.drop.call(this, func, safe) : this.shut();
   }
 })});
 
+let Law = U.inspire({ name: 'Law', methods: (insp, Insp) => ({
+  init: function(name, wob, func) {
+    this.name = name;
+    this.wob = wob;
+    this.func = func;
+    this.wobHold = null;
+    this.innerHolds = {};
+  },
+  open: function() {
+    
+    this.wobHold = this.wob.hold((v1, v0) => {
+      
+      // TODO: Hard to meaningfully distinguish between adds/rems here... maybe subclass in Record?
+      // Consider a subclass of Wobbly which guarantees that any wobbled values have a uid? WobblId?
+      let add = null, rem = null;
+      if (U.isType(v1, Object)) {
+        add = v1.add || {};
+        rem = v1.rem || {};
+      } else {
+        add = v1 ? { [v1.uid]: v1 } : {};
+        rem = v0 ? { [v0.uid]: v0 } : {};
+      }
+      
+      // if (add.toArr(v => v).length || rem.toArr(v => v).length)
+      //   console.log(`LAW ${this.name}: +${add.toArr(v => v).length}, -${rem.toArr(v => v).length}`);
+      
+      add.forEach(addVal => {
+        if (this.innerHolds.has(addVal.uid)) { console.log('MULTIPLE LAW ADDS! :('); return; }
+        this.innerHolds[addVal.uid] = this.func(addVal);
+        this.innerHolds[addVal.uid].forEach(temp => temp.open());
+      });
+      
+      rem.forEach(remVal => {
+        if (!this.innerHolds.has(remVal.uid)) { console.log('MULTIPLE LAW REMS! :('); return; }
+        this.innerHolds[remVal.uid].forEach(temp => temp.shut());
+        delete this.innerHolds[remVal.uid];
+      });
+      
+    });
+    
+  },
+  shut: function() {
+    
+    // Shut all inner holds
+    this.innerHolds.forEach(tempsAtUid => tempsAtUid.forEach(temp => temp.shut()));
+    this.innerHolds = {};
+    
+    // Drop our Wobbly
+    this.wob.drop(this.wobHold);
+    this.wobHold = null;
+    
+  }
+})});
+let Waw = U.inspire({ name: 'Waw', methods: (insp, Insp) => ({
+  init: function(name, wob, func) {
+    this.name = name;
+    this.wob = wob;
+    this.func = func;
+    this.wobHold = null;
+  },
+  open: function() { this.wobHold = this.wob.hold((...vals) => this.func(...vals)); },
+  shut: function() { this.wob.drop(this.wobHold); this.wobHold = null; }
+})});
+
 U.gain({
-  Wobbly, DeltaWob, BareWob, CalcWob
+  Wobbly, DeltaWob, BareWob, DelayWob, IntervalWob, CalcWob, Law, Waw
 });

@@ -370,7 +370,7 @@
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
       if (ipVerbose === 'localhost') ipVerbose = '127.0.0.1';
       let pcs = ipVerbose.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Bad ip format: ${ipVerbose}`);
+      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Invalid ip: "${ipVerbose}"`);
       return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
     },
     makeHttpServer: async function(ip=this.ip, port=this.port) {

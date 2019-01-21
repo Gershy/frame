@@ -1,6 +1,6 @@
 (() => {
   
-  let transportDebug = false;
+  let transportDebug = true;
   
   let { Foundation } = U.foundationClasses;
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({

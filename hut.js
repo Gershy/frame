@@ -1,8 +1,7 @@
 // The server-side equivalent of a web-page running hut:
-// Build the clearing, the foundation and all prerequisite chambers, and
+// Build the clearing, the foundation and all prerequisite rooms, and
 // finally build the hut being run.
-// Note that server-side huts perform compilation, and it's considered to
-// be part of the foundation.
+// Server-side huts perform compilation, as part of the foundation.
 
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource

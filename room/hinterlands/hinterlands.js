@@ -18,10 +18,7 @@ U.buildRoom({
         getInit: async (inst, hut, msg, reply) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
-          let term = hut.getTerm();
-          let tell = hut.genUpdateTell();
-          
-          let initBelow = await inst.foundation.genInitBelow('text/html', term, tell);
+          let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), hut.genUpdateTell());
           reply(initBelow);
         },
         getFile: async (inst, hut, msg, reply) => {
@@ -154,42 +151,31 @@ U.buildRoom({
       
       init: function({ foundation, records=[], relations=[], commands=Lands.defaultCommands, heartbeatMs=10000 }) {
         insp.Record.init.call(this, { uid: 'root' });
-        this.foundation = foundation;
         this.uidCnt = 0;
         this.maxUpdateAttempts = 1000;
         this.terms = [];
-        
-        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
-        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
-        
         this.commands = commands;
         this.heartbeatMs = heartbeatMs;
-        
+        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
+        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
         /// {ABOVE=
-        
-        // Ensure removed huts drop all holds on their followed Records
-        // This is mostly a safeguard against careless broader code
+        // Forget all recs for removed huts. Safeguard against sloppy broader code.
         this.getInnerWob(relLandsHuts).hold(({ rem={} }) => rem.forEach(hut => hut.forgetAllRecs()));
-        
         /// =ABOVE} {BELOW=
-        
         this.version = 0;
         this.heartbeatTimeout = null;
-        this.resetHeartbeatTimeout();
-        
+        this.resetHeartbeatTimeout(); // Begin heartbeat
         /// =BELOW}
-        
       },
       nextUid: function() {
         /// {ABOVE=
-        return (this.uidCnt++).toString(16).padHead(8, '0');
+        return (this.uidCnt++).toString(36).padHead(8, '0');
         /// =ABOVE} {BELOW=
-        return '~' + (this.uidCnt++).toString(16).padHead(8, '0');
+        return '~' + (this.uidCnt++).toString(36).padHead(8, '0');
         /// =BELOW}
       },
       genUniqueTerm: function() {
-        let ts = this.terms;
-        let ret = ts[Math.floor(Math.random() * ts.length)];
+        let ret = this.terms[Math.floor(Math.random() * this.terms.length)];
         return this.getInnerVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
@@ -201,71 +187,52 @@ U.buildRoom({
           ? await this.commands[command](this, hut, msg, reply)
           : hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         /// =ABOVE} {BELOW=
-        try {
-          await this.commands[command](this, hut, msg, reply);
-        } catch(err) {
-          console.log('Refreshing due to:', foundation.formatError(err));
-          await new Promise(r => setTimeout(r, 200));
-          window.location.reload(true)
-        }
+        try {         await this.commands[command](this, hut, msg, reply); }
+        catch(err) {  console.log('Refresh:', foundation.formatError(err)); if (false) window.location.reload(true); }
         /// =BELOW}
       },
       tell: async function(msg) {
         /// {BELOW=
-        this.resetHeartbeatTimeout();
+        this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
         return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.tell(msg)));
       },
-      /// {ABOVE=
-      informBelow: async function() {
-        return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.informBelow()));
-      },
-      /// =ABOVE} {BELOW=
+      /// {BELOW=
       resetHeartbeatTimeout: function() {
         // After exactly `this.heartbeatMs` millis Above will shut us down
-        // Therefore we need to be quicker; only wait a high percentage of the overall time
+        // Therefore we need to be quicker; only wait a percentage of the overall time
         clearTimeout(this.heartbeatTimeout);
         this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
       },
       /// =BELOW}
       remRec: function(rec) {
+        // TODO: All forgetting should happen as a result of Wobblies
+        // This method should be removed.
+        // Rename `Record.prototype.isolate` -> `Record.prototype.rem`
+        // A call to `aRecord.rem()` should result in all forgetting!
+        
         /// {ABOVE=
-        // Return a list of huts which followed `rec` in the first place
-        let alteredHuts = this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
-        /// =ABOVE} {BELOW=
-        let alteredHuts = {};
-        /// =BELOW}
-        
-        // Isolates `rec`, causes huts to forget about `rec`
-        rec.isolate();
-        
-        return alteredHuts
+        // Cause all huts to forget about this record!
+        this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
+        /// =ABOVE}
+        rec.isolate(); // Detach `rec` from EVERYTHING!
       },
       
       open: async function() {
-        let { terms } = await Promise.allObj({
-          /// {ABOVE=
-          terms: (async () => {
-            let terms = await foundation.readFile('room/hinterlands/terms.json');
-            return JSON.parse(terms);
-          })(),
-          /// =ABOVE} {BELOW=
-          terms: [ 'remote' ],
-          /// =BELOW}
-          ...this.getInnerVal(relLandsWays).map(w => w.open())
-        });
+        /// {ABOVE=
+        this.terms = JSON.parse(await foundation.readFile('room/hinterlands/terms.json'));
+        /// =ABOVE} {BELOW=
+        this.terms = [ 'remote' ];
+        /// =BELOW}
         
-        this.terms = terms;
+        await Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let huts = this.getInnerVal(relLandsHuts);
-        let hut = huts.find(() => true)[0];
-        await this.hear(hut, U.initData);
+        let hut = this.getInnerVal(relLandsHuts).find(() => true)[0];
+        await this.hear(hut, U.initData); // Hear the initial update
         /// =BELOW}
       },
-      shut: async function() {
-        return Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.shut()));
-      }
+      shut: async function() { return Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.shut())); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       init: function({ lands, address }) {
@@ -274,12 +241,10 @@ U.buildRoom({
         insp.Record.init.call(this, {});
         this.lands = lands;
         this.address = address;
-        this.discoveredMs = +new Date();
         this.term = null;
-        this.version = 0;
-        this.versionHist = [];
         
         /// {ABOVE=
+        this.version = 0;
         this.holds = {};
         this.addRec = {};
         this.remRec = {}; // TODO: Confusing to have `hut.remRec` (an Object), and `lands.remRec` (a method)
@@ -302,12 +267,13 @@ U.buildRoom({
         clearTimeout(this.expiryTimeout);
         this.expiryTimeout = setTimeout(() => this.lands.remRec(this), ms);
       },
+      
       followRec: function(rec, uid=rec.uid) {
         
         if (this.holds.has(uid)) return;
         
         // Track `rec`; our hold on `rec` itself, and all its relations
-        var hold = { rec, value: null, rel: {} };
+        var hold = { rec, value: null, rel: {}, amt: 0 };
         
         // Need to send initial data for this record now
         this.addRec[uid] = rec; // `requestInformBelow` is called at the end of this method
@@ -417,6 +383,23 @@ U.buildRoom({
       forgetAllRecs: function() {
         this.holds.forEach(hold => this.forgetRec(hold.rec));
       },
+      incFollow: function(rec, uid=rec.uid) {
+        
+        if (!this.holds.has(uid)) this.followRec(rec, uid);
+        this.holds[uid].amt++;
+        
+      },
+      decFollow: function(rec, uid=rec.uid) {
+        
+        if (!this.holds.has(uid)) return;
+        this.holds[uid].amt--;
+        if (this.holds[uid].amt <= 0) this.forgetRec(rec, uid);
+        
+      },
+      genFollowTemp: function(rec) {
+        return { open: () => this.incFollow(rec), shut: () => this.decFollow(rec) };
+      },
+      
       resetVersion: function() {
         // Clears memory of current delta and generates a new delta which would bring
         // a blank Below up to date. Resets this Hut's version to 0 to reflect the Below
