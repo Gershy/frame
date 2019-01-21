@@ -102,14 +102,14 @@ U.buildRoom({
         }
         throw new Error(`${this.constructor.name} doesn't use the provided relation`);
       },
-      getInnerWob: function(rel) {
+      relWob: function(rel) {
         let { nameFwd, clsRelFwd } = this.getRelPart(rel);
         let inner = this.inner ? this.inner : (this.inner = {});
         if (!inner.has(nameFwd)) inner[nameFwd] = clsRelFwd.type === '1' ? U.Wobbly({}) : U.DeltaWob({});
         return inner[nameFwd];
       },
-      getInnerWobs: function() { return this.getFlatDef().map(rel => this.getInnerWob(rel)); },
-      getInnerVal: function(rel) { return this.getInnerWob(rel).value; },
+      relWobs: function() { return this.getFlatDef().map(rel => this.relWob(rel)); },
+      relVal: function(rel) { return this.relWob(rel).value; },
       
       attach: function(rel, inst) {
         // Validate then attach
@@ -128,7 +128,7 @@ U.buildRoom({
       isolate: function() {
         // For all our relations, detach from all related Records
         this.getFlatDef().forEach(rel => {
-          let recs = this.getInnerVal(rel);
+          let recs = this.relVal(rel);
           if (!U.isType(recs, Object)) recs = recs ? { [recs.uid]: recs } : {};
           
           // TODO: `U.safe` fixes the problem but is most likely overkill!

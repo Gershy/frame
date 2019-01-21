@@ -45,7 +45,7 @@ U.buildRoom({
           let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
           
           let ops = [];
-          let recs = lands.getInnerVal(relLandsRecs);
+          let recs = lands.relVal(relLandsRecs);
           
           // Note: validation error messages must begin with 'UPDERR - '; other messages
           // will be considered indicative of errors in broader code
@@ -82,7 +82,7 @@ U.buildRoom({
           
           ops.gain(addRel.toArr(([ relUid, uid1, uid2 ]) => ({
             func: () => {
-              let recs = lands.getInnerVal(relLandsRecs);
+              let recs = lands.relVal(relLandsRecs);
               
               if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Add relation missing uid: ${relUid}`);
               if (!recs.has(uid1)) throw new Error(`UPDERR - Can't find a relation target for attach; uid: ${uid1}`);
@@ -160,7 +160,7 @@ U.buildRoom({
         this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
         /// {ABOVE=
         // Forget all recs for removed huts. Safeguard against sloppy broader code.
-        this.getInnerWob(relLandsHuts).hold(({ rem={} }) => rem.forEach(hut => hut.forgetAllRecs()));
+        this.relWob(relLandsHuts).hold(({ rem={} }) => rem.forEach(hut => hut.forgetAllRecs()));
         /// =ABOVE} {BELOW=
         this.version = 0;
         this.heartbeatTimeout = null;
@@ -176,7 +176,7 @@ U.buildRoom({
       },
       genUniqueTerm: function() {
         let ret = this.terms[Math.floor(Math.random() * this.terms.length)];
-        return this.getInnerVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
+        return this.relVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
       hear: async function(hut, msg, reply=null) {
@@ -195,7 +195,7 @@ U.buildRoom({
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allObj(this.getInnerVal(relLandsHuts).map(hut => hut.tell(msg)));
+        return Promise.allObj(this.relVal(relLandsHuts).map(hut => hut.tell(msg)));
       },
       /// {BELOW=
       resetHeartbeatTimeout: function() {
@@ -213,7 +213,7 @@ U.buildRoom({
         
         /// {ABOVE=
         // Cause all huts to forget about this record!
-        this.getInnerVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
+        this.relVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
         /// =ABOVE}
         rec.isolate(); // Detach `rec` from EVERYTHING!
       },
@@ -225,14 +225,14 @@ U.buildRoom({
         this.terms = [ 'remote' ];
         /// =BELOW}
         
-        await Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.open())); // Open all Ways
+        await Promise.allObj(this.relVal(relLandsWays).map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let hut = this.getInnerVal(relLandsHuts).find(() => true)[0];
+        let hut = this.relVal(relLandsHuts).find(() => true)[0];
         await this.hear(hut, U.initData); // Hear the initial update
         /// =BELOW}
       },
-      shut: async function() { return Promise.allObj(this.getInnerVal(relLandsWays).map(w => w.shut())); }
+      shut: async function() { return Promise.allObj(this.relVal(relLandsWays).map(w => w.shut())); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       init: function({ lands, address }) {
@@ -290,7 +290,7 @@ U.buildRoom({
           
           let relUid = rel.uid;
           
-          let wob = rec.getInnerWob(rel);
+          let wob = rec.relWob(rel);
           
           // Normalize; regardless of cardinality deal with a maplist of Records
           let attached = wob.value;
@@ -361,7 +361,7 @@ U.buildRoom({
         
         if (!this.holds.has(uid)) return null;
         
-        let recs = this.lands.getInnerVal(relLandsRecs);
+        let recs = this.lands.relVal(relLandsRecs);
         
         let { value, rel } = this.holds[uid];
         
@@ -411,7 +411,7 @@ U.buildRoom({
         [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => { this[p] = {}; });
         
         // Now recalculate!
-        let recs = this.lands.getInnerVal(relLandsRecs);
+        let recs = this.lands.relVal(relLandsRecs);
         this.holds.forEach((hold, uid) => {
           
           // Send an "addRec" for this record
@@ -423,7 +423,7 @@ U.buildRoom({
             let relUid = rel.uid;
             
             // Normalize; regardless of cardinality deal with a maplist of Records
-            let attached = rec.getInnerVal(rel);
+            let attached = rec.relVal(rel);
             if (!U.isType(attached, Object)) attached = attached ? { [attached.uid]: attached } : {};
             
             attached.forEach((rec2, uid2) => {
@@ -511,7 +511,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findWay = this.getInnerVal(relWaysHuts).find(() => true);
+        let findWay = this.relVal(relWaysHuts).find(() => true);
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
@@ -562,7 +562,7 @@ U.buildRoom({
           hut.attach(relLandsHuts, this.lands);
           
           // Close the connection when the Hut is removed
-          hut.getInnerWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
+          hut.relWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
           
         });
       },

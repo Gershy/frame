@@ -15,14 +15,14 @@
 // [ ]  Websockets
 
 // getValue(), hold() --> data(), hold()
-// getInnerVal(), getInnerWob() --> relData(), relHold()  (relHold attaches listener; doesn't return anything (IS THIS SUFFICIENT?))
+// relVal(), relWob() --> relData(), relHold()  (relHold attaches listener; doesn't return anything (IS THIS SUFFICIENT?))
 
 U.buildRoom({
   name: 'chess2',
   innerRooms: [ 'hinterlands', 'record', 'real' ],
   build: (foundation, hinterlands, record, real) => {
     
-    let { Wobbly, CalcWob, Law } = U;
+    let { Wobbly, CalcWob, IntervalWob, Law, Waw } = U;
     let { Record } = record;
     let { Lands, LandsRecord, Way, Hut, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     
@@ -32,7 +32,7 @@ U.buildRoom({
         
         /// {ABOVE=
         this.wobble({ numPlayersOnline: 0 });
-        this.getInnerWob(rel.chess2Players).hold(({ add={}, rem={} }) => {
+        this.relWob(rel.chess2Players).hold(({ add={}, rem={} }) => {
           let playerDiff = 0;
           for (let k in add) playerDiff++;
           for (let k in rem) playerDiff--;
@@ -72,8 +72,8 @@ U.buildRoom({
       },
       validMoves: function () {
         // Get board and fellow pieces
-        let board = this.getInnerVal(rel.boardPieces);
-        let pieces = board.getInnerVal(rel.boardPieces);
+        let board = this.relVal(rel.boardPieces);
+        let pieces = board.relVal(rel.boardPieces);
         
         // Make a nice 2d representation of the board
         let calc = Array.fill(8, () => Array.fill(8, () => null));
@@ -179,8 +179,8 @@ U.buildRoom({
           commands: Lands.defaultCommands.map(v => v),
           records,
           relations,
-          getRecsForHut: (lands, hut) => lands.getInnerVal(relLandsRecs),
-          heartbeatMs: 2000 // 240 * 1000 // 4 minute timeout
+          getRecsForHut: (lands, hut) => lands.relVal(relLandsRecs),
+          heartbeatMs: 240 * 1000 // 4 minute timeout
         });
         
         let moveMs = 50000;
@@ -199,34 +199,34 @@ U.buildRoom({
         lands.commands.gain({
           initialize: async (lands, hut, msg) => {
             
-            if (hut.getInnerVal(rel.playerHut)) return;
+            if (hut.relVal(rel.playerHut)) return;
             
             let player = Player({ lands, hut });
             chess2.attach(rel.chess2Players, player);
             
             // Clean up Player + Match when Hut is removed
-            hut.getInnerWob(rel.playerHut).hold((noPlayer, player) => {
+            hut.relWob(rel.playerHut).hold((noPlayer, player) => {
               if (noPlayer || !player) return; // We're looking to have gone from having a player to having no player
               
               player.move.wobble(null);
               
               // Make sure to get the match before removing the player
-              let match = player.getInnerVal(rel.matchPlayers);
+              let match = player.relVal(rel.matchPlayers);
               lands.remRec(player);
               
               if (match) {
                 // Update the match so that other player wins. Don't delete the
                 // match; we want the winner to be able to stick around
                 match.modify(v => v.gain({ movesDeadlineMs: null }));
-                let ps = match.getInnerVal(rel.matchPlayers);
+                let ps = match.relVal(rel.matchPlayers);
                 ps.forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
               }
             });
             
           },
           confirmMove: async (lands, hut, msg) => {
-            let player = hut.getInnerVal(rel.playerHut);
-            let playerPieces = player.getInnerVal(rel.piecePlayer);
+            let player = hut.relVal(rel.playerHut);
+            let playerPieces = player.relVal(rel.piecePlayer);
             
             if (msg.piece !== null) {
               
@@ -240,10 +240,10 @@ U.buildRoom({
             }
           },
           playAgain: async (lands, hut, msg) => {
-            let player = hut.getInnerVal(rel.playerHut);
+            let player = hut.relVal(rel.playerHut);
             if (!player) return;
             
-            let match = player.getInnerVal(rel.matchPlayers);
+            let match = player.relVal(rel.matchPlayers);
             if (!match) return;
             
             // TODO: This is temporary, because the follow/forget process isn't yet
@@ -251,8 +251,8 @@ U.buildRoom({
             // should automatically forget the Board, and forgetting the Board
             // forgets the Pieces, etc.
             hut.forgetRec(match);
-            hut.forgetRec(match.getInnerVal(rel.matchBoard));
-            match.getInnerVal(rel.matchBoard).getInnerVal(rel.boardPieces).forEach(piece => hut.forgetRec(piece));
+            hut.forgetRec(match.relVal(rel.matchBoard));
+            match.relVal(rel.matchBoard).relVal(rel.boardPieces).forEach(piece => hut.forgetRec(piece));
             
             // Remove from match
             player.detach(rel.matchPlayers, match);
@@ -264,33 +264,33 @@ U.buildRoom({
           },
           getFeedback: async (lands, hut, msg, reply) => {
             
-            let chess2 = lands.getInnerVal(relLandsRecs).find(r => r.isInspiredBy(Chess2))[0];
+            let chess2 = lands.relVal(relLandsRecs).find(r => r.isInspiredBy(Chess2))[0];
             
             reply({
               name: 'Chess2',
               resources: foundation.getMemUsage(),
-              numPlayers: chess2.getInnerVal(rel.chess2Players).toArr(v => v).length,
-              players: chess2.getInnerVal(rel.chess2Players).map(player => {
-                let hut = player.getInnerVal(rel.playerHut);
+              numPlayers: chess2.relVal(rel.chess2Players).toArr(v => v).length,
+              players: chess2.relVal(rel.chess2Players).map(player => {
+                let hut = player.relVal(rel.playerHut);
                 return {
                   address: hut.address,
                   term: hut.getTerm(),
                   playerVal: player.value
                 };
               }),
-              numMatches: chess2.getInnerVal(rel.matches).toArr(v => v).length,
-              matches: chess2.getInnerVal(rel.matches).map(match => {
-                let white = match.getInnerVal(rel.matchPlayers).find(p => p.value.colour === 'white')[0];
-                let black = match.getInnerVal(rel.matchPlayers).find(p => p.value.colour === 'black')[0];
+              numMatches: chess2.relVal(rel.matches).toArr(v => v).length,
+              matches: chess2.relVal(rel.matches).map(match => {
+                let white = match.relVal(rel.matchPlayers).find(p => p.value.colour === 'white')[0];
+                let black = match.relVal(rel.matchPlayers).find(p => p.value.colour === 'black')[0];
                 
                 return {
                   white: white.value,
                   black: black.value,
-                  numWhitePieces: white.getInnerVal(rel.piecePlayer).toArr(v => v).length,
-                  numBlackPieces: black.getInnerVal(rel.piecePlayer).toArr(v => v).length
+                  numWhitePieces: white.relVal(rel.piecePlayer).toArr(v => v).length,
+                  numBlackPieces: black.relVal(rel.piecePlayer).toArr(v => v).length
                 };
               }),
-              idsAtIp: lands.getInnerVal(relLandsWays).find(v => true)[0].server.idsAtIp
+              idsAtIp: lands.relVal(relLandsWays).find(v => true)[0].server.idsAtIp
             });
           }
         });
@@ -376,20 +376,20 @@ U.buildRoom({
         let chess2 = Chess2({ lands });
         
         let hutsFollowLaw = Law('hutsFollow', Wobbly({ value: lands }), lands => [
-          Law('huts', lands.getInnerWob(relLandsHuts), hut => [
+          Law('huts', lands.relWob(relLandsHuts), hut => [
             Law('followChess2', Wobbly({ value: chess2 }), chess2 => [
               hut.genFollowTemp(chess2)
             ]),
-            Law('followPlayer', hut.getInnerWob(rel.playerHut), player => [
+            Law('followPlayer', hut.relWob(rel.playerHut), player => [
               hut.genFollowTemp(player),
-              Law('followMatch', player.getInnerWob(rel.matchPlayers), match => [
+              Law('followMatch', player.relWob(rel.matchPlayers), match => [
                 hut.genFollowTemp(match),
-                Law('followPlaymates', match.getInnerWob(rel.matchPlayers), player => [
+                Law('followPlaymates', match.relWob(rel.matchPlayers), player => [
                   hut.genFollowTemp(player)
                 ]),
-                Law('followBoard', match.getInnerWob(rel.matchBoard), board => [
+                Law('followBoard', match.relWob(rel.matchBoard), board => [
                   hut.genFollowTemp(board),
-                  Law('followPieces', board.getInnerWob(rel.boardPieces), piece => [
+                  Law('followPieces', board.relWob(rel.boardPieces), piece => [
                     hut.genFollowTemp(piece)
                   ])
                 ])
@@ -399,23 +399,14 @@ U.buildRoom({
         ]);
         
         let chess2Law = Law('chess2Law', Wobbly({ value: chess2 }), chess2 => [
-          { shut: () => {}, open: () => {
-          }}
         ]);
         
         [ hutsFollowLaw, chess2Law ].forEach(law => law.open());
         
-        // // Track incoming / outgoing huts
-        // lands.getInnerWob(relLandsHuts).hold(({ add={}, rem={} }) => {
-        //   // Incoming huts are shown how to follow Records, and held for initialization
-        //   add.forEach(hut => hut.followRec(chess2));
-        //   rem.forEach(hut => hut.forgetRec(chess2));
-        // });
-        
         // Matchmaking
         setInterval(() => {
           
-          let matchmakePlayers = chess2.getInnerVal(rel.chess2Players).toArr(p => {
+          let matchmakePlayers = chess2.relVal(rel.chess2Players).toArr(p => {
             return p.value && p.value.gameStatus === 'waiting' ? p : C.skip;
           });
           
@@ -425,7 +416,7 @@ U.buildRoom({
             let [ p1, p2 ] = matchmakePlayers.slice(i, i + 2);
             if (Math.random() > 0.5) [ p1, p2 ] = [ p2, p1 ];
             
-            let [ hut1, hut2 ] = [ p1, p2 ].map(p => p.getInnerVal(rel.playerHut));
+            let [ hut1, hut2 ] = [ p1, p2 ].map(p => p.relVal(rel.playerHut));
             
             let match = Match({ lands });
             let board = Board({ lands });
@@ -473,7 +464,7 @@ U.buildRoom({
               
               if (!p1Move || !p2Move) return;
               
-              let pieces = board.getInnerVal(rel.boardPieces);
+              let pieces = board.relVal(rel.boardPieces);
               
               // All pieces have waited a turn
               pieces.forEach(piece => piece.value.wait ? piece.modify(v => v.gain({ wait: v.wait - 1 })) : null);
@@ -525,14 +516,14 @@ U.buildRoom({
             }});
             
             // Clean up when no players remain
-            match.getInnerWob(rel.matchPlayers).hold(() => {
-              let players = match.getInnerVal(rel.matchPlayers);
+            match.relWob(rel.matchPlayers).hold(() => {
+              let players = match.relVal(rel.matchPlayers);
               if (!players.isEmpty()) return;
               
               holdMove.drop(); // Stop listening for moves!
               
               // Remove all pieces, the board and the match
-              board.getInnerVal(rel.boardPieces).forEach(piece => lands.remRec(piece));
+              board.relVal(rel.boardPieces).forEach(piece => lands.remRec(piece));
               lands.remRec(board);
               lands.remRec(match);
             });
@@ -601,7 +592,7 @@ U.buildRoom({
           
           // Display any matches which become associated
           let matchReal = null;
-          myPlayer.hold(player => player && player.getInnerWob(rel.matchPlayers).hold(matchRec => {
+          myPlayer.hold(player => player && player.relWob(rel.matchPlayers).hold(matchRec => {
             if (matchReal) { matchHolder.remReal(matchReal); matchReal = null; }
             if (matchRec) matchReal = matchHolder.addReal(genMatch(matchRec));
           }));
@@ -671,79 +662,11 @@ U.buildRoom({
                 
               }
               
-              // // Different content based on the type of notification
-              // let [ playAgainStr, size, str ] = ({
-              //   waiting:    [ false,              18, 'Finding match...' ],
-              //   victorious: [ 'Win more!',        25, 'You WIN!' ],
-              //   defeated:   [ 'Reclaim dignity!', 25, 'You LOSE!' ],
-              //   stalemated: [ 'More chess!',      25, 'It\'s a DRAW!' ]
-              // })[gameStatus];
-              // 
-              // nv.setTextSize(size);
-              // nv.setText(str);
-              // 
-              // if (playAgainStr) {
-              //   let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
-              //   playAgainReal.setSize(150, 40);
-              //   playAgainReal.setLoc(0, 140);
-              //   playAgainReal.setText(playAgainStr);
-              //   playAgainReal.setTextSize(14);
-              //   playAgainReal.setFeel('interactive');
-              //   playAgainReal.interactWob.hold(active => {
-              //     if (!active) return;
-              //     lands.tell({ command: 'playAgain' });
-              //   });
-              // }
-              
             };
             
             player ? player.hold(f) : f({ gameStatus: 'uninitialized' });
             
           });
-          
-          /*
-          myPlayer.hold(player => player && player.hold(v => {
-            
-              if (notifyReal) { chess2Real.remReal(notifyReal); notifyReal = null; }
-              
-              if (!v) return;
-              let { gameStatus } = v;
-              if (gameStatus === 'playing') return;
-              
-              let nv = notifyReal = chess2Real.addReal(Real({}));
-              nv.setSize(220, 220);
-              nv.setColour('rgba(0, 0, 0, 0.85)');
-              nv.setPriority(2);
-              nv.setOpacity(0);
-              nv.setTransition('opacity', 500, 'sharp');
-              nv.addWob.hold(() => nv.setOpacity(1));
-              
-              // Different content based on the type of notification
-              let [ playAgainStr, size, str ] = ({
-                waiting:    [ false,              18, 'Finding match...' ],
-                victorious: [ 'Win more!',        25, 'You WIN!' ],
-                defeated:   [ 'Reclaim dignity!', 25, 'You LOSE!' ],
-                stalemated: [ 'More chess!',      25, 'It\'s a DRAW!' ]
-              })[gameStatus];
-              
-              nv.setTextSize(size);
-              nv.setText(str);
-              
-              if (playAgainStr) {
-                let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
-                playAgainReal.setSize(150, 40);
-                playAgainReal.setLoc(0, 140);
-                playAgainReal.setText(playAgainStr);
-                playAgainReal.setTextSize(14);
-                playAgainReal.setFeel('interactive');
-                playAgainReal.interactWob.hold(active => {
-                  if (!active) return;
-                  lands.tell({ command: 'playAgain' });
-                });
-              }
-              
-          }));
-          */
           
         };
         let genMatch = matchRec => {
@@ -757,14 +680,14 @@ U.buildRoom({
           
           // Show the board when one associates
           let boardReal = null;
-          matchRec.getInnerWob(rel.matchBoard).hold(board => {
+          matchRec.relWob(rel.matchBoard).hold(board => {
             if (boardReal) real.remReal(boardReal);
             if (!board) { boardReal = null; return; }
             boardReal = real.addReal(genBoard(board));
           });
           
           let playerReals = {};
-          matchRec.getInnerWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
+          matchRec.relWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
             
             add.forEach(playerRec => {
               let playerReal = playerReals[playerRec.uid] = real.addReal(Real({ flag: 'player' }));
@@ -893,7 +816,7 @@ U.buildRoom({
           })(x, y);
           
           let pieceReals = {};
-          rec.getInnerWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
+          rec.relWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
             add.forEach((pieceRec, uid) => {
               pieceReals[uid] = genPiece(pieceRec);
               real.addReal(pieceReals[uid]);
@@ -1021,7 +944,7 @@ U.buildRoom({
         
         genChess2();
         
-        lands.getInnerWob(relLandsRecs).hold(({ add={}, rem={} }) => {
+        lands.relWob(relLandsRecs).hold(({ add={}, rem={} }) => {
           
           // Split incoming records by class
           let addsByCls = { Chess2: {}, Player: {} };
