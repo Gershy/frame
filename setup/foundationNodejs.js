@@ -268,7 +268,7 @@
           fileName = path.normalize(fileName);
           if (!fileName.hasHead(rootDir)) return U.SKIP; // Skip non-hut files
           
-          let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd));
+          let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
           
           if (mappedLineData) {
             fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.cmp`;
@@ -458,14 +458,14 @@
         if (innerId === null || !idsAtIp.has(ip) || !idsAtIp[ip].has(innerId)) {
           
           // TODO: Even with innerId, collisions could STILL happen if the server is ever restarted
-          // 1) user1 + user2 both at IP 67.67.67.67
+          // 1) user1 + user2 both at same IP 67.67.67.67
           // 2) user1 requests and gets user1.innerId === eeee
           // 3) server restarts
           // 4) server's list of innerIds is now empty, "eeee" may be assigned
           // 5) user2 requests and gets user2.innerId === 'eeee'
           // 6) user1 comes back, browser sends user1.innerId === 'eeee', server
-          //    thinks that eeee is a valid assigned innerId @ user1's IP
-          // Overall there's a collision chance for 2 users at the same IP
+          //    thinks that eeee is a valid innerId @ user1's IP
+          // Overall there's a (very small) collision chance for 2 users at the same IP
           
           innerId = null;
           let ids = idsAtIp.has(ip) ? idsAtIp[ip] : {};
@@ -496,7 +496,7 @@
         let address = `${ip}/${innerId}`;
         if (this.spoofEnabled && query.has('spoof')) {
           let [ ip, innerId ] = query.spoof.split('/');
-          address = `${this.compactIp(ip)}/${parseInt(innerId, 36).toString(36).padHead(2, '0')}`;
+          address = `${this.compactIp(ip)}/${parseInt(innerId || 0, 36).toString(36).padHead(4, '0')}`;
         }
         
         // Create a new connection if this address hasn't been seen before
@@ -547,18 +547,23 @@
         if (body.isEmpty()) {
           if (urlPath.hasHead('/!')) {
             if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
-          } else {
-            if (urlPath === '/') { body = { command: 'getInit' }; syncReqRes = true; }
-            else if (urlPath === '/feedback') { body = { command: 'getFeedback' }; syncReqRes = true; }
-            // if (urlPath === '/favicon.ico') { body = { command: 'getFile', path: 'favicon.ico' }; syncReqRes = true; }
+          } else if (urlPath === '/') {
+            [ body, syncReqRes ] = [ { command: 'getInit' }, true ];
+          } else if (urlPath === '/feedback') {
+            [ body, syncReqRes ] = [ { command: 'getFeedback' }, true ];
+          } else { // If a meaningless request is received reject it and close the connection
+            conn.shut.wobble(true);
+            res.writeHead(400);
+            res.end();
+            return;
           }
         }
         
-        // Default to the "ping" command
-        if (body.isEmpty()) body = { command: 'ping' };
-        
         // The "getInit" command is special at this native level; it flushes all
-        // previously queued responses for the connection.
+        // previously queued responses for the connection. It's an exception to
+        // the current dichotomy of request types; it's neither "transport-level"
+        // or "hut-level", but both: it has this effect at "transport-level" but
+        // still propagates to "hut-level"
         if (body.command === 'getInit') {
           conn.waitResps.forEach(res => res.end());
           conn.waitResps = [];
@@ -577,14 +582,10 @@
         // Do either a transport- or application-level command
         nativeComs.has(body.command)
           ? nativeComs[body.command]()
-          : conn.hear.wobble([ body, null ]); // THIS.......
+          : conn.hear.wobble([ body, null ]);
         
         // If there are any tells send the oldest, otherwise keep ahold of the response
-        if (conn.waitTells.length) {
-          sendData(address, res, conn.waitTells.shift());
-        } else {
-          conn.waitResps.push(res);
-        }
+        conn.waitTells.length ? sendData(address, res, conn.waitTells.shift()) : conn.waitResps.push(res);
         
         // Only hold 1 response at the most
         while (conn.waitResps.length > 1) sendData(address, conn.waitResps.shift(), { command: 'fizzle' });

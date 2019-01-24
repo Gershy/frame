@@ -121,9 +121,6 @@ U.buildRoom({
       setPriority: function(amt) {
         this.dom.style.zIndex = amt === null ? '' : `${amt}`;
       },
-      setTangible: function(isTng) {
-        this.dom.style.pointerEvents = isTng ? '' : 'none';
-      },
       setWindowlike: function(isWnd) {
         this.dom.style.overflow = isWnd ? 'hidden' : 'visible';
       },
@@ -169,7 +166,16 @@ U.buildRoom({
         this.setLoc(x * wd, y * hd);
       },
       setFeel: function(feel) {
-        this.dom.style.cursor = feel ? ({ interactive: 'pointer', normal: '', text: 'text' })[feel] : '';
+        let [ pointerEvents, cursor ] = ({
+          airy: [ 'none', '' ],
+          smooth: [ 'all', '' ],
+          bumpy: [ 'all', 'pointer' ]
+        })[feel];
+        
+        this.dom.style.gain({
+          pointerEvents,
+          cursor
+        });
       },
       setRot: function(rot) {
         this.rot = rot;
@@ -261,8 +267,8 @@ U.buildRoom({
       },
       rem: function(domPar=this.dom.parentNode) {
         let remove = () => domPar.removeChild(this.dom);
-        if (this.removalDelayMs === 0)  remove();
-        else                            this.setTangible(false) && setTimeout(remove, this.removalDelayMs);
+        if (this.removalDelayMs)  this.setFeel('airy') && setTimeout(remove, this.removalDelayMs);
+        else                      remove();
         this.remWob.wobble();
         return this;
       },

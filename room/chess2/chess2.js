@@ -31,15 +31,13 @@ U.buildRoom({
         insp.LandsRecord.init.call(this, { uid, lands });
         
         /// {ABOVE=
-        this.wobble({ numPlayersOnline: 0 });
+        this.wobble({ playerCount: 0 });
         this.relWob(rel.chess2Players).hold(({ add={}, rem={} }) => {
           let playerDiff = 0;
           for (let k in add) playerDiff++;
           for (let k in rem) playerDiff--;
           
-          if (playerDiff) {
-            this.modify(v => v.gain({ numPlayersOnline: v.numPlayersOnline + playerDiff }));
-          };
+          if (playerDiff) this.modify(v => v.gain({ playerCount: v.playerCount + playerDiff }));
         });
         /// =ABOVE}
       }
@@ -185,15 +183,16 @@ U.buildRoom({
         
         let moveMs = 50000;
         let matchmakeMs = 2000;
+        let pieceNames = [ 'pawn', 'knight', 'bishop', 'rook', 'queen', 'king' ];
         
         /// {ABOVE=
         
         // Mount files
-        [ 'pawn', 'knight', 'bishop', 'rook', 'queen', 'king' ].forEach(
+        pieceNames.forEach(type => [ 'black', 'white' ].forEach(colour =>
           // TODO: shouldn't need to include "room/chess2"
-          // The instance of `foundation` received should be specialized for this 1 room
-          pieceName => foundation.addMountFile(`img/${pieceName}.png`, `room/chess2/img/stackPieces/${pieceName}.png`, 'image/png')
-        );
+          // The instance of `foundation` received should be specialized for this 1 room??
+          foundation.addMountFile(`img/${colour}-${type}.png`, `room/chess2/img/classicPieces/${colour}-${type}.png`, 'image/png')
+        ));
         
         // Listen for chess2-specific commands
         lands.commands.gain({
@@ -375,7 +374,7 @@ U.buildRoom({
         
         let chess2 = Chess2({ lands });
         
-        let hutsFollowLaw = Law('hutsFollow', Wobbly({ value: lands }), lands => [
+        Law('hutsFollow', Wobbly({ value: lands }), lands => [
           Law('huts', lands.relWob(relLandsHuts), hut => [
             Law('followChess2', Wobbly({ value: chess2 }), chess2 => [
               hut.genFollowTemp(chess2)
@@ -396,12 +395,10 @@ U.buildRoom({
               ])
             ])
           ])
-        ]);
+        ]).open();
         
-        let chess2Law = Law('chess2Law', Wobbly({ value: chess2 }), chess2 => [
-        ]);
-        
-        [ hutsFollowLaw, chess2Law ].forEach(law => law.open());
+        Law('chess2Law', Wobbly({ value: chess2 }), chess2 => [
+        ]).open();
         
         // Matchmaking
         setInterval(() => {
@@ -554,15 +551,16 @@ U.buildRoom({
           clear: 'rgba(0, 0, 0, 0)',
           whiteTile: 'rgba(170, 170, 170, 1)',
           blackTile: 'rgba(140, 140, 140, 1)',
-          whitePiece: 'rgba(205, 205, 205, 0.9)',
-          blackPiece: 'rgba(100, 100, 100, 0.9)',
+          whitePiece: 'rgba(205, 205, 205, 0.2)',
+          blackPiece: 'rgba(100, 100, 100, 0.2)',
           selected: 'rgba(0, 255, 255, 0.9)',
           confirmed: 'rgba(0, 245, 20, 0.9)',
           disabled: 'rgba(245, 50, 0, 0.9)'
         };
-        let imgs = await Promise.allObj({ pawn: 1, knight: 1, bishop: 1, rook: 1, queen: 1, king: 1 }.map((v, name) => {
-          return foundation.getMountFile(`img/${name}.png`);
-        }));
+        let imgs = await Promise.allObj({
+          white: Promise.allObj(pieceNames.toObj(v => [ v, foundation.getMountFile(`img/white-${v}.png`) ])),
+          black: Promise.allObj(pieceNames.toObj(v => [ v, foundation.getMountFile(`img/black-${v}.png`) ]))
+        });
         
         let matchSize = 600;
         let boardSize = 480;
@@ -572,7 +570,7 @@ U.buildRoom({
         let tileHSize = Math.round(tileSize >> 1);
         let tileLoc = (x, y) => [ tileHSize + (x - 4) * tileSize, -tileHSize + (4 - y) * tileSize ];
         let pieceSize = 46;
-        let avatarSize = 32;
+        let avatarSize = 56;
         let indicatorSize = 32;
         
         let genChess2 = () => {
@@ -587,7 +585,7 @@ U.buildRoom({
           statusReal.setColour('rgba(0, 0, 0, 0.2)');
           statusReal.setTextColour('rgba(255, 255, 255, 1)');
           myChess2.hold(chess2 => chess2 && chess2.hold(v => {
-            statusReal.setText(`Players online: ${v ? v.numPlayersOnline : 0}`);
+            statusReal.setText(`Players online: ${v ? v.playerCount : 0}`);
           }));
           
           // Display any matches which become associated
@@ -627,7 +625,7 @@ U.buildRoom({
                 enterReal.setLoc(0, 140);
                 enterReal.setTextSize(14);
                 enterReal.setText('Start playing!');
-                enterReal.setFeel('interactive');
+                enterReal.setFeel('bumpy');
                 enterReal.interactWob.hold(active => {
                   if (!active) return;
                   lands.tell({ command: 'initialize' });
@@ -654,7 +652,7 @@ U.buildRoom({
                 playAgainReal.setLoc(0, 140);
                 playAgainReal.setTextSize(14);
                 playAgainReal.setText(text2);
-                playAgainReal.setFeel('interactive');
+                playAgainReal.setFeel('bumpy');
                 playAgainReal.interactWob.hold(active => {
                   if (!active) return;
                   lands.tell({ command: 'playAgain' });
@@ -708,7 +706,7 @@ U.buildRoom({
                 timerReal.setSize(matchSize * timeLeftPerc, playerSize);
                 timerReal.setColour(colourCool.fadeTo(colourHot, 1 - timeLeftPerc).toCss());
                 timerReal.setPriority(1);
-                timerReal.setTangible(false);
+                timerReal.setFeel('airy');
                 
                 // Begin animation
                 timerReal.setTransition('size', timeLeft, 'sharp');
@@ -750,7 +748,7 @@ U.buildRoom({
                     ? passReal.setBorder('outer', 3, colours.confirmed)
                     : passReal.setBorder('outer', 1, 'rgba(255, 255, 255, 1)');
                 });
-                passReal.setFeel('interactive');
+                passReal.setFeel('bumpy');
                 passReal.interactWob.hold(active => {
                   if (!active) return;
                   myConfirmedPass.wobble(true);
@@ -760,9 +758,9 @@ U.buildRoom({
             });
             
             rem.forEach((p, uid) => {
-              
-              if (playerReals.has(uid)) { playerReals[uid].rem(); delete playerReals[uid]; }
-              
+              if (!playerReals.has(uid)) return;
+              playerReals[uid].rem();
+              delete playerReals[uid];
             });
             
           });
@@ -774,7 +772,7 @@ U.buildRoom({
           real.setSize(boardSize, boardSize);
           
           // The entire board is only tangible when the player is playing
-          myPlayer.hold(p => p && p.hold(v => real.setTangible(v && v.gameStatus === 'playing')));
+          myPlayer.hold(p => p && p.hold(v => real.setFeel(v && v.gameStatus === 'playing' ? 'smooth' : 'airy')));
           
           let confirmedTileReal = null;
           for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) ((x, y) => {
@@ -803,7 +801,7 @@ U.buildRoom({
               
               let indicator = confirmedTileReal.addReal(Real({ flag: 'ind' }));
               indicator.setBorderRadius(1);
-              indicator.setTangible(false);
+              indicator.setFeel('airy');
               if (!cap) {
                 indicator.setSize(indicatorSize, indicatorSize);
                 indicator.setColour(colours.confirmed);
@@ -855,9 +853,9 @@ U.buildRoom({
                   indicator.setColour(colours.clear);
                   indicator.setBorder('outer', 8, colours.selected);
                 }
-                indicator.setTangible(false);
+                indicator.setFeel('airy');
                 
-                tileReal.setFeel('interactive');
+                tileReal.setFeel('bumpy');
                 tileReal.interactWob.hold(active => {
                   if (!active) return;
                   lands.tell({ command: 'confirmMove', piece: piece.uid, tile: [ x, y ] });
@@ -882,7 +880,7 @@ U.buildRoom({
           real.setBorderRadius(1);
           real.setOpacity(1);
           real.setPriority(1);
-          real.setTangible(false);
+          real.setFeel('airy');
           real.setTransition('loc', 500, 'smooth');
           real.setTransition('opacity', 500, 'sharp');
           real.setRemovalDelayMs(1000);
@@ -903,7 +901,7 @@ U.buildRoom({
           U.CalcWob({ wobs: [ myPlayer, rec ], func: (pl, pcVal) => {
             if (!pl || !pcVal) return;
             pl.hold(plVal => {
-              real.setTangible(pcVal && plVal && pcVal.wait === 0 && plVal.colour === pcVal.colour);
+              real.setFeel(pcVal && pcVal.wait === 0 && plVal.colour === pcVal.colour ? 'bumpy' : 'airy');
             });
           }});
           
@@ -921,10 +919,7 @@ U.buildRoom({
           // Apply visuals, colour, and positioning to this piece
           rec.hold(({ type, colour, x, y }) => {
             real.setLoc(...tileLoc(x, y));
-            real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
-            //real.setColour(colour === 'white' ? colours.whitePiece : colours.blackPiece);
-            avatar.setColoursInverted(colour === 'white');
-            avatar.setImage(imgs[type]);
+            avatar.setImage(imgs[colour][type]);
             
             // If a piece moved we can clear the state of our last confirmation
             mySelectedPiece.wobble(null);

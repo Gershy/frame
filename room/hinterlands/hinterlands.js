@@ -188,7 +188,7 @@ U.buildRoom({
           : hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         /// =ABOVE} {BELOW=
         try {         await this.commands[command](this, hut, msg, reply); }
-        catch(err) {  console.log('Refresh:', foundation.formatError(err)); if (false) window.location.reload(true); }
+        catch(err) {  console.log('Reload:', foundation.formatError(err)); if (false) window.location.reload(true); }
         /// =BELOW}
       },
       tell: async function(msg) {
@@ -540,7 +540,7 @@ U.buildRoom({
           // Get the address
           let { address } = hutWob;
           
-          // Create the Hut, and reference by IP
+          // Create the Hut, and reference by address
           let hut = Hut({ lands: this.lands, address });
           this.connections[address] = { wob: hutWob, hut };
           
