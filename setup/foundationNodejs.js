@@ -905,6 +905,7 @@
         '  padding: 0;',
         '  background-color: #eaeaf2;',
         '  font-family: monospace;',
+        '  overflow: hidden;',
         '}'
       ].join('\n'));
       

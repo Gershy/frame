@@ -561,6 +561,9 @@ U.buildRoom({
           hut.attach(relWaysHuts, this);
           hut.attach(relLandsHuts, this.lands);
           
+          // When the connection is closed, remove the Hut (TODO: Consider uncommenting?)
+          //hutWob.shut.hold(shut => shut && hut.isolate());
+          
           // Close the connection when the Hut is removed
           hut.relWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
           

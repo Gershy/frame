@@ -26,6 +26,9 @@
       let { query } = this.parseUrl(window.location.href);
       this.spoof = query.has('spoof') ? query.spoof : null;
       
+      this.unloadWob = U.BareWob({});
+      window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
+      
       //console.log([
       //  'TIME DIF:',
       //  `HERE: ${now}`,
@@ -119,6 +122,8 @@
       clientWob.tell.hold(msg => tellAndHear(msg));
       
       tellAndHear({ command: 'bankPoll' });
+      
+      this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
       
       return serverWob;
     },

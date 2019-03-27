@@ -167,9 +167,9 @@ U.buildRoom({
       },
       setFeel: function(feel) {
         let [ pointerEvents, cursor ] = ({
-          airy: [ 'none', '' ],
+          airy:   [ 'none', '' ],
           smooth: [ 'all', '' ],
-          bumpy: [ 'all', 'pointer' ]
+          bumpy:  [ 'all', 'pointer' ]
         })[feel];
         
         this.dom.style.gain({

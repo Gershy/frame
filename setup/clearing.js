@@ -1,5 +1,5 @@
-// The "clearing" is javascript-level bootstrapping; configuring+extending the
-// language to behave more pleasantly and consistently
+// The "clearing" is javascript-level bootstrapping; top-level configuration
+// and extension for increased functionality and consistency
 
 let C = global.C = {
   skip: { SKIP: 1 },
@@ -14,9 +14,7 @@ let C = global.C = {
 
 let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false });
 
-protoDef(Object, 'forEach', function(fn) {
-  for (let k in this) fn(this[k], k);
-});
+protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
 protoDef(Object, 'map', function(fn) {
   let ret = {};
   for (let k in this) { let v = fn(this[k], k); if (v !== C.skip) ret[k] = v; }
@@ -108,9 +106,9 @@ protoDef(String, 'padTail', function(amt, c=' ') {
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
 
-Promise.allArr = async arr => Promise.all(arr);
+Promise.allArr = Promise.all;
 Promise.allObj = async obj => {
-  let result = await Promise.all(obj.toArr(v => v));
+  let result = await Promise.allArr(obj.toArr(v => v));
   let ind = 0;
   let ret = {};
   for (let k in obj) ret[k] = result[ind++];
