@@ -515,9 +515,6 @@ U.buildRoom({
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
-        
-        console.log('TELL:', this.getTerm(), JSON.stringify(msg, null, 2));
-        
         // Could consider making `favouredWay` async - that way if it isn't present when
         // we call this method, it could become present eventually
         let way = this.favouredWay();

@@ -15,13 +15,28 @@ require('./setup/foundationNodejs.js');
 
 // Process args
 let args = process.argv.slice(2).join(' ');
+
 if (args[0] === '{') {
   args = eval(`(${args})`);
 } else {
-  args = args.split('--').toObj(a => {
+  args = args.split('-').toObj(a => {
     if (!a) return C.skip;
     let [ k, ...v ] = a.trim().split(' ');
     return [ k, v.join(' ') || true ];
+  });
+}
+
+// Powershell and other terminals may pass "encodedCommand"
+if (args.has('encodedCommand')) {
+  // Decode from base64; strip all 0-bytes
+  let encoded = Buffer.from(args.encodedCommand, 'base64').toString('utf8')
+    .split('').map(v => v.charCodeAt(0) ? v : C.skip).join('');
+  
+  args.gain({
+    ...eval(`({${encoded}})`),
+    encodedCommand: C.skip,
+    inputFormat: C.skip,
+    outputFormat: C.skip
   });
 }
 
@@ -31,9 +46,9 @@ U.foundation = FoundationNodejs({
   ...args,
   variantDefs: {
     above: { above: 1, below: 0 },
-    below: { above: 0, below: 1 },
-    between: { above: 1, below: 1 },
-    alone: { above: 0, below: 0 }
+    below: { above: 0, below: 1 }
+    //between: { above: 1, below: 1 },
+    //alone: { above: 0, below: 0 }
   }
 });
 

@@ -42,7 +42,13 @@ protoDef(Object, 'find', function(f) {
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
-protoDef(Object, 'gain', function(obj) { for (let k in obj) this[k] = obj[k]; return this; });
+protoDef(Object, 'gain', function(obj) {
+  for (let k in obj) {
+    let v = obj[k];
+    if (v !== C.skip) { this[k] = v; } else { delete this[k]; }
+  }
+  return this;
+});
 protoDef(Object, 'to', function(f) { return f(this); });
 
 Array.fill = (n, f=()=>null) => {
