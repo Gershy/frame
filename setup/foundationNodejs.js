@@ -45,8 +45,8 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, ipPref=null, showIps=false, networkDebug=false, spoofEnabled=false }) {
-      if (showIps) {
+    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, showIps=false, networkDebug=false, spoofEnabled=false }) {
+      if (ip === 'help') {
         console.log('IP OPTIONS:', this.getStaticIps());
         return process.exit(0);
       }
@@ -59,7 +59,10 @@
       this.networkDebug = networkDebug;
       this.spoofEnabled = spoofEnabled;
       
-      if (ip === 'static') {
+      if (ip.hasHead('static')) {
+        
+        let [ _, ipPref=null ] = ip.split(':');
+        
         let staticIps = this.getStaticIps();
         if (staticIps.isEmpty()) throw new Error('No static ip available!');
         
@@ -68,10 +71,10 @@
           ip = staticIps[0].address;
         } else {
           ip = staticIps.find(({ type }) => type.lower() === ipPref.lower());
-          ip = !ip
-            ? console.log(`Couldn\'t find ipPref "${ipPref}"; using "${staticIps[0].type}"`) || staticIps[0].address
-            : ip[0].address;
+          if (!ip) throw new Error(`Couldn't match static ip ${ipPref}`);
+          ip = ip[0].address;
         }
+        
       } else if (ip === 'local') {
         ip = '127.0.0.1';
       }

@@ -26,9 +26,15 @@ protoDef(Object, 'toArr', function(it) {
   return ret;
 });
 protoDef(Object, 'slice', function(...props) {
-  let ret = {};
-  props.forEach(p => { ret[p] = this[p]; });
-  return ret;
+  if (props.length === 1 && U.isType(props[0], Object)) {
+    let map = props[0];
+    for (let k in map) map[k] = this[map[k]];
+    return map;
+  } else {
+    let ret = {};
+    props.forEach(p => { ret[p] = this[p]; });
+    return ret;
+  }
 });
 protoDef(Object, 'find', function(f) {
   for (let k in this) if (f(this[k], k)) return [ this[k], k ];
@@ -231,7 +237,7 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     let ind = Insp.nextHoldUid++;
     func[`~wob${this.uid}`] = ind;
     this.holders[ind] = func;
-    if (hasty) { let v = this.getValue(); func(v, null); } // TODO: Why v, v?
+    if (hasty) func(this.getValue(), null);
     return func;
   },
   drop: function(func, safe=false) {
@@ -292,7 +298,9 @@ let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, 
   setValue: function(value) {
     let [ add, rem ] = [ value.has('add') ? value.add : {}, value.has('rem') ? value.rem : {} ];
     
-    add.forEach((v, k) => { if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`); });
+    add.forEach((v, k) => {
+      if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`);
+    });
     rem.forEach((v, k) => {
       if (!this.value.has(k)) throw new Error(`Missing rem key: ${k}`);
       if (add.has(k)) throw new Error(`Tried to add and rem ${k}`);

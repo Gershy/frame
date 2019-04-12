@@ -90,7 +90,7 @@ U.buildRoom({
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't attach`); }
+              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't attach (${err.message.split('\n').join('; ')})`); }
             },
             desc: `Attach relation ${lands.relations[relUid].desc} (${uid1} + ${uid2})`
           })));
@@ -270,6 +270,10 @@ U.buildRoom({
       
       followRec: function(rec, uid=rec.uid) {
         
+        if (rec.constructor.name === 'Player') {
+          console.log(`HERE!!!! Hut: ${this.getTerm()} -> Player: ${rec.uid}`);
+        }
+        
         if (this.holds.has(uid)) return;
         
         // Track `rec`; our hold on `rec` itself, and all its relations
@@ -280,7 +284,7 @@ U.buildRoom({
         
         // Need to send updated data for this record later
         hold.value = rec.hold(val => {
-          if (this.addRec.has(rec.uid)) return; // Redundant to send "upd" along with "add"
+          if (this.addRec.has(rec.uid)) return; // Don't send "upd" along with "add"
           this.updRec[rec.uid] = val;
           this.requestInformBelow();
         });
@@ -352,8 +356,8 @@ U.buildRoom({
         
         // Note that forgetting the Record does NOT clear any delta memory!
         // This is because the delta still needs to be delivered to our Below.
-        // To deal with careless broader code calling `forgetRec` will issue
-        // a call to `requestInformBelow`, just to make sure the Below is aware
+        // To deal with careless broader code, calling `forgetRec` issues a
+        // call to `requestInformBelow`, just to make sure the Below is aware
         // the Record no longer exists
         
         // TODO: Consider ensuring that "remRec" and "remRel" deltas are filled
@@ -445,15 +449,12 @@ U.buildRoom({
         // 1) Sanitize our delta:
         
         // Don't affect relations of Records being removed
-        // Don't add or update Records which are removed
+        // Don't add Records which are removed
         if (!this.remRec.isEmpty()) {
           let r = this.remRec;
           this.addRel = this.addRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
           this.remRel = this.remRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
-          this.remRec.forEach((r, uid) => {
-            delete this.addRec[uid];
-            delete this.updRec[uid];
-          });
+          this.remRec.forEach((r, uid) => { delete this.addRec[uid]; });
         }
         
         // Don't update Records being added
@@ -496,10 +497,9 @@ U.buildRoom({
         if (!this.informThrottlePrm) {
           
           this.informThrottlePrm = (async () => {
-            await new Promise(r => process.nextTick(r));
+            await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
             this.informThrottlePrm = null;
             let updateTell = this.genUpdateTell();
-            
             if (updateTell) this.tell(updateTell);
             return updateTell;
           })();
@@ -515,6 +515,11 @@ U.buildRoom({
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
+        
+        console.log('TELL:', this.getTerm(), JSON.stringify(msg, null, 2));
+        
+        // Could consider making `favouredWay` async - that way if it isn't present when
+        // we call this method, it could become present eventually
         let way = this.favouredWay();
         if (!way) return; // throw new Error(`Hut ${this.address} has no favoured Way`);
         await way.tellHut(this, msg);
@@ -574,6 +579,7 @@ U.buildRoom({
       },
       
       tellHut: function(hut, msg) {
+        if (!this.connections.has(hut.address)) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
         this.connections[hut.address].wob.tell.wobble(msg);
       }
     })});

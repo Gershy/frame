@@ -32,13 +32,10 @@ U.buildRoom({
         
         /// {ABOVE=
         this.wobble({ playerCount: 0 });
-        this.relWob(rel.chess2Players).hold(({ add={}, rem={} }) => {
-          let playerDiff = 0;
-          for (let k in add) playerDiff++;
-          for (let k in rem) playerDiff--;
-          
-          if (playerDiff) this.modify(v => v.gain({ playerCount: v.playerCount + playerDiff }));
-        });
+        
+        let plWob = this.relWob(rel.chess2Players);
+        plWob.attach.hold(() => this.modify(v => { v.playerCount++; return v; }));
+        plWob.detach.hold(() => this.modify(v => { v.playerCount--; return v; }));
         /// =ABOVE}
       }
     })});
@@ -59,19 +56,15 @@ U.buildRoom({
         /// =ABOVE}
       }
     })});
-    let Board = U.inspire({ name: 'Board', insps: { LandsRecord }, methods: (insp, Insp) => ({
-      init: function({ uid, lands }) {
-        insp.LandsRecord.init.call(this, { uid, lands });
-      }
-    })});
     let Piece = U.inspire({ name: 'Piece', insps: { LandsRecord }, methods: (insp, Insp) => ({
       init: function({ uid, lands }) {
         insp.LandsRecord.init.call(this, { uid, lands });
       },
       validMoves: function () {
         // Get board and fellow pieces
-        let board = this.relVal(rel.boardPieces);
-        let pieces = board.relVal(rel.boardPieces);
+        let pieces = this.relVal(rel.matchPieces).relVal(rel.matchPieces);
+        
+        console.log('PIECES:', pieces);
         
         // Make a nice 2d representation of the board
         let calc = Array.fill(8, () => Array.fill(8, () => null));
@@ -160,8 +153,7 @@ U.buildRoom({
       playerHut:        Record.relate11(Player, Hut, 'playerHut'),
       chess2Players:    Record.relate1M(Chess2, Player, 'chess2Players'),
       matchPlayers:     Record.relate1M(Match, Player, 'matchPlayers'),
-      matchBoard:       Record.relate11(Match, Board, 'matchBoard'),
-      boardPieces:      Record.relate1M(Board, Piece, 'boardPieces'),
+      matchPieces:      Record.relate1M(Match, Piece, 'matchPieces'),
       piecePlayer:      Record.relate1M(Player, Piece, 'piecePlayer'),
       playerMove:       Record.relate11(Player, Move, 'playerMove')
     };
@@ -169,7 +161,7 @@ U.buildRoom({
     let open = async () => {
       console.log('Init chess2...');
       
-      let records = [ Chess2, Match, Player, Board, Piece ];
+      let records = [ Chess2, Match, Player, Piece ];
       let relations = rel.toArr(v => v);
       let lands = U.lands = Lands({
         foundation,
@@ -247,9 +239,8 @@ U.buildRoom({
           // smart enough to forget recursively! Eventually forgetting the Match
           // should automatically forget the Board, and forgetting the Board
           // forgets the Pieces, etc.
+          match.relVal(rel.matchPieces).forEach(piece => hut.forgetRec(piece));
           hut.forgetRec(match);
-          hut.forgetRec(match.relVal(rel.matchBoard));
-          match.relVal(rel.matchBoard).relVal(rel.boardPieces).forEach(piece => hut.forgetRec(piece));
           
           // Remove from match
           player.detach(rel.matchPlayers, match);
@@ -384,11 +375,8 @@ U.buildRoom({
               Law('followPlaymates', match.relWob(rel.matchPlayers), player => [
                 hut.genFollowTemp(player)
               ]),
-              Law('followBoard', match.relWob(rel.matchBoard), board => [
-                hut.genFollowTemp(board),
-                Law('followPieces', board.relWob(rel.boardPieces), piece => [
-                  hut.genFollowTemp(piece)
-                ])
+              Law('followPieces', match.relWob(rel.matchPieces), piece => [
+                hut.genFollowTemp(piece)
               ])
             ])
           ])
@@ -410,9 +398,7 @@ U.buildRoom({
           let [ hut1, hut2 ] = [ p1, p2 ].map(p => p.relVal(rel.playerHut));
           
           let match = Match({ lands });
-          let board = Board({ lands });
           chess2.attach(rel.matches, match);
-          match.attach(rel.matchBoard, board);
           match.attach(rel.matchPlayers, p1);
           match.attach(rel.matchPlayers, p2);
           
@@ -424,7 +410,7 @@ U.buildRoom({
             pieceDefs.standard[ind].forEach(([ type, x, y ]) => {
               let piece = Piece({ lands });
               piece.wobble({ type, colour: !ind ? 'white' : 'black', wait: 0, x, y });
-              board.attach(rel.boardPieces, piece);
+              match.attach(rel.matchPieces, piece);
               player.attach(rel.piecePlayer, piece);
             });
           });
@@ -455,7 +441,7 @@ U.buildRoom({
             
             if (!p1Move || !p2Move) return;
             
-            let pieces = board.relVal(rel.boardPieces);
+            let pieces = match.relVal(rel.matchPieces);
             
             // All pieces have waited a turn
             pieces.forEach(piece => piece.value.wait ? piece.modify(v => v.gain({ wait: v.wait - 1 })) : null);
@@ -501,7 +487,7 @@ U.buildRoom({
             p1.move.wobble(null);
             p2.move.wobble(null);
             
-            board.relVal(rel.boardPieces).forEach(piece => {
+            match.relVal(rel.matchPieces).forEach(piece => {
               if (!piece.value || piece.value.type !== 'pawn') return;
               let { colour, y } = piece.value;
               if ((colour === 'white' && y === 7) || (colour === 'black' && y === 0))
@@ -521,8 +507,7 @@ U.buildRoom({
             holdMove.drop(); // Stop listening for moves!
             
             // Remove all pieces, the board and the match
-            board.relVal(rel.boardPieces).forEach(piece => lands.remRec(piece));
-            lands.remRec(board);
+            match.relVal(rel.matchPieces).forEach(piece => lands.remRec(piece));
             lands.remRec(match);
           });
           
@@ -695,16 +680,113 @@ U.buildRoom({
         real.setColour('rgba(0, 0, 0, 0.8)');
         real.setPriority(1);
         
-        // Flip the board for the black player
+        // Flip the match for the black player
         myPlayer.hold(p => p && p.hold(v => real.setRot(v && v.colour === 'black' ? 180 : 0)));
         
-        // Show the board when one associates
-        let boardReal = null;
-        matchRec.relWob(rel.matchBoard).hold(board => {
-          if (boardReal) real.remReal(boardReal);
-          if (!board) { boardReal = null; return; }
-          boardReal = real.addReal(genBoard(board));
+        // ==============================
+        
+        // Build the board
+        let boardReal = real.addReal(Real({ flag: 'board' }));
+        boardReal.setSize(boardSize, boardSize);
+        
+        // The entire board is only tangible when the player is playing
+        myPlayer.hold(p => p && p.hold(v => boardReal.setFeel(v && v.gameStatus === 'playing' ? 'smooth' : 'airy')));
+        
+        let confirmedTileReal = null;
+        for (let x = 0; x < 8; x++) { for (let y = 0; y < 8; y++) {
+          
+          // Add a physical tile to the board
+          let tileReal = boardReal.addReal(Real({ flag: 'tile' }));
+          let colour = (y % 2) === (x % 2) ? colours.blackTile : colours.whiteTile;
+          tileReal.setColour(colour);
+          tileReal.setSize(tileSize, tileSize);
+          tileReal.setLoc(...tileLoc(x, y));
+          tileReal.interactWob.hold(active => active && mySelectedPiece.wobble(null));
+          
+        }}
+        
+        // When a tile becomes confirmed put an indicator on the board
+        myConfirmedTile.hold(v => {
+          if (confirmedTileReal) { confirmedTileReal.rem(); confirmedTileReal = null; }
+          
+          if (!v) return;
+          
+          [x0, y0, cap] = v;
+          
+          confirmedTileReal = boardReal.addReal(Real({ flag: 'confirmed' }));
+          confirmedTileReal.setSize(tileSize, tileSize);
+          confirmedTileReal.setLoc(...tileLoc(x0, y0));
+          confirmedTileReal.setPriority(2);
+          confirmedTileReal.setColour(colours.clear);
+          
+          let indicator = confirmedTileReal.addReal(Real({ flag: 'ind' }));
+          indicator.setBorderRadius(1);
+          indicator.setFeel('airy');
+          if (!cap) {
+            indicator.setSize(indicatorSize, indicatorSize);
+            indicator.setColour(colours.confirmed);
+          } else {
+            indicator.setSize(pieceSize, pieceSize);
+            indicator.setColour(colours.clear);
+            indicator.setBorder('inner', borderWidthSimple, colours.confirmed);
+          }
         });
+        
+        // Pieces on the board
+        let pieceReals = {};
+        matchRec.relWob(rel.matchPieces).attach.hold(rec => {
+          pieceReals[rec.uid] = genPiece(rec);
+          real.addReal(pieceReals[rec.uid]);
+        });
+        matchRec.relWob(rel.matchPieces).detach.hold(rec => {
+          real.remReal(pieceReals[rec.uid]);
+          delete pieceReals[rec.uid];
+        });
+        
+        // When a piece becomes selected show selectors for all its valid moves
+        let tileSelectors = [];
+        mySelectedPiece.hold(piece => {
+          
+          tileSelectors.forEach(real => real.rem());
+          tileSelectors = [];
+          
+          if (!piece) return;
+            
+          tileSelectors = piece.validMoves().map(([ x, y, cap ]) => {
+            let tileReal = boardReal.addReal(Real({ flag: 'validTile' }));
+            tileReal.setSize(tileSize, tileSize);
+            tileReal.setLoc(...tileLoc(x, y));
+            tileReal.setColour(colours.clear);
+            tileReal.setPriority(2);
+            
+            let indicator = tileReal.addReal(Real({ flag: 'ind' }));
+            indicator.setBorderRadius(1);
+            if (!cap) {
+              indicator.setSize(indicatorSize, indicatorSize);
+              indicator.setColour(colours.selected);
+            } else {
+              indicator.setSize(pieceSize - (borderWidthSimple * 2));
+              indicator.setColour(colours.clear);
+              indicator.setBorder('outer', borderWidthSimple, colours.selected);
+            }
+            indicator.setFeel('airy');
+            
+            // Activating a selector confirms the move with Above
+            tileReal.setFeel('bumpy');
+            tileReal.interactWob.hold(active => {
+              if (!active) return;
+              lands.tell({ command: 'confirmMove', piece: piece.uid, tile: [ x, y ] });
+              mySelectedPiece.wobble(null);
+              myConfirmedTile.wobble([ x, y, cap ]);
+              myConfirmedPiece.wobble(piece);
+            });
+            
+            return tileReal;
+          });
+          
+        });
+        
+        // ==============================
         
         let playerReals = {};
         matchRec.relWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
@@ -794,112 +876,6 @@ U.buildRoom({
         
         return real;
       };
-      let genBoard = rec => {
-        let real = Real({ flag: 'board' });
-        real.setSize(boardSize, boardSize);
-        
-        // The entire board is only tangible when the player is playing
-        myPlayer.hold(p => p && p.hold(v => real.setFeel(v && v.gameStatus === 'playing' ? 'smooth' : 'airy')));
-        
-        let confirmedTileReal = null;
-        for (let x = 0; x < 8; x++) for (let y = 0; y < 8; y++) ((x, y) => {
-          let tileReal = real.addReal(Real({ flag: 'tile' }));
-          let colour = (y % 2) === (x % 2) ? colours.blackTile : colours.whiteTile;
-          tileReal.setColour(colour);
-          tileReal.setSize(tileSize, tileSize);
-          tileReal.setLoc(...tileLoc(x, y));
-          
-          tileReal.interactWob.hold(active => {
-            if (!active) return;
-            mySelectedPiece.wobble(null);
-          });
-          myConfirmedTile.hold(v => {
-            if (confirmedTileReal) { confirmedTileReal.rem(); confirmedTileReal = null; }
-            
-            if (!v) return;
-            
-            [x0, y0, cap] = v;
-            
-            confirmedTileReal = real.addReal(Real({ flag: 'confirmed' }));
-            confirmedTileReal.setSize(tileSize, tileSize);
-            confirmedTileReal.setLoc(...tileLoc(x0, y0));
-            confirmedTileReal.setPriority(2);
-            confirmedTileReal.setColour(colours.clear);
-            
-            let indicator = confirmedTileReal.addReal(Real({ flag: 'ind' }));
-            indicator.setBorderRadius(1);
-            indicator.setFeel('airy');
-            if (!cap) {
-              indicator.setSize(indicatorSize, indicatorSize);
-              indicator.setColour(colours.confirmed);
-            } else {
-              indicator.setSize(pieceSize, pieceSize);
-              indicator.setColour(colours.clear);
-              indicator.setBorder('inner', borderWidthSimple, colours.confirmed);
-            }
-          });
-        })(x, y);
-        
-        let pieceReals = {};
-        rec.relWob(rel.boardPieces).hold(({ add={}, rem={} }) => {
-          add.forEach((pieceRec, uid) => {
-            pieceReals[uid] = genPiece(pieceRec);
-            real.addReal(pieceReals[uid]);
-          });
-          rem.forEach((pieceRec, uid) => {
-            real.remReal(pieceReals[uid]);
-            delete pieceReals[uid];
-          });
-        });
-        
-        let tileSelectors = [];
-        mySelectedPiece.hold(piece => {
-          
-          tileSelectors.forEach(real => real.rem());
-          
-          if (!piece) {
-            
-            tileSelectors = [];
-            
-          } else {
-            
-            tileSelectors = piece.validMoves().map(([ x, y, cap ]) => {
-              let tileReal = real.addReal(Real({ flag: 'validTile' }));
-              tileReal.setSize(tileSize, tileSize);
-              tileReal.setLoc(...tileLoc(x, y));
-              tileReal.setColour(colours.clear);
-              tileReal.setPriority(2);
-              
-              let indicator = tileReal.addReal(Real({ flag: 'ind' }));
-              indicator.setBorderRadius(1);
-              if (!cap) {
-                indicator.setSize(indicatorSize, indicatorSize);
-                indicator.setColour(colours.selected);
-              } else {
-                indicator.setSize(pieceSize - (borderWidthSimple * 2));
-                indicator.setColour(colours.clear);
-                indicator.setBorder('outer', borderWidthSimple, colours.selected);
-              }
-              indicator.setFeel('airy');
-              
-              tileReal.setFeel('bumpy');
-              tileReal.interactWob.hold(active => {
-                if (!active) return;
-                lands.tell({ command: 'confirmMove', piece: piece.uid, tile: [ x, y ] });
-                mySelectedPiece.wobble(null);
-                myConfirmedTile.wobble([ x, y, cap ]);
-                myConfirmedPiece.wobble(piece);
-              });
-              
-              return tileReal;
-            });
-            
-          }
-          
-        });
-        
-        return real;
-      };
       let genPiece = rec => {
         let real = Real({ flag: 'piece' });
         real.setColour(colours.clear);
@@ -967,22 +943,9 @@ U.buildRoom({
       
       genChess2();
       
-      lands.relWob(relLandsRecs).hold(({ add={}, rem={} }) => {
-        
-        // Split incoming records by class
-        let addsByCls = { Chess2: {}, Player: {} };
-        add.forEach((rec, uid) => {
-          let clsName = rec.constructor.name;
-          if (!addsByCls.has(clsName)) addsByCls[clsName] = {};
-          addsByCls[clsName][uid] = rec;
-        });
-        
-        // Search for an instance of Chess2
-        addsByCls.Chess2.forEach(chess2 => myChess2.wobble(chess2));
-        
-        // Search for players whose term is our term
-        addsByCls.Player.forEach(player => player.hold(v => v && v.term === U.hutTerm && myPlayer.wobble(player)));
-        
+      lands.relWob(relLandsRecs).attach.hold(rec => {
+        if (rec.isInspiredBy(Chess2)) myChess2.wobble(rec);
+        if (rec.isInspiredBy(Player)) rec.hold(v => v && v.term === U.hutTerm && myPlayer.wobble(rec));
       });
       
       let credits = document.body.appendChild(document.createElement('div'));

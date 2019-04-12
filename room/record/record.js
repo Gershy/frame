@@ -20,16 +20,15 @@ U.buildRoom({
         // Attach/detach instances of Cls1 to/from instances of Cls2
         type: '1',
         attach0: (inst1, inst2) => {
-          if (inst1.inner && inst1.inner.has(name) && inst1.inner[name].value)
+          if (inst1.inner.has(name) && inst1.inner[name].value)
             throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
         },
         attach1: (inst1, inst2) => {
-          if (!inst1.inner) inst1.inner = {};
           if (!inst1.inner.has(name)) inst1.inner[name] = U.Wobbly({});
           inst1.inner[name].wobble(inst2);
         },
         detach0: (inst1, inst2) => {
-          if (!inst1.inner || !inst1.inner.has(name) || inst1.inner[name].value !== inst2)
+          if (!inst1.inner.has(name) || inst1.inner[name].value !== inst2)
             throw new Error(`Can't detach rel ${Cls1.name}.${name} -> ${Cls2.name}: already detached`);
         },
         detach1: (inst1, inst2) => {
@@ -41,16 +40,15 @@ U.buildRoom({
         type: 'M',
         attach0: (instM, inst1) => {
           if (inst1.uid === null) throw new Error(`Can't attach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
-          if (instM.inner && instM.inner.has(name) && instM.inner[name].value.has(inst1.uid)) throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
+          if (instM.inner.has(name) && instM.inner[name].value.has(inst1.uid)) throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
         },
         attach1: (instM, inst1) => {
-          if (!instM.inner) instM.inner = {};
           if (!instM.inner.has(name)) instM.inner[name] = U.DeltaWob({ value: {} });
           instM.inner[name].wobble({ add: { [inst1.uid]: inst1 } });
         },
         detach0: (instM, inst1) => {
           if (inst1.uid === null) throw new Error(`Can't detach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
-          if (!instM.inner || !instM.inner.has(name) || !instM.inner[name].value.has(inst1.uid))
+          if (!instM.inner.has(name) || !instM.inner[name].value.has(inst1.uid))
             throw new Error(`Can't detach rel ${ClsM.name}.${name} -> ${Cls1.name}: already detached`);
         },
         detach1: (instM, inst1) => {
@@ -61,6 +59,7 @@ U.buildRoom({
         // TODO: could consider automatically providing names for `name1`, `name2`:
         // `let name1 = 'relVar' + (Cls1.nextRelVarInd++);`
         // `let name2 = 'relVar' + (Cls2.nextRelVarInd++);`
+        
         let key = U.multiKey(`${Cls1.uid}.${name1}`, `${Cls2.uid}.${name2}`);
         let rel = {
           key, uid: Record.NEXT_REL_UID++, desc: name1 === name2 ? name1 : `${name1}<->${name2}`,
@@ -81,6 +80,7 @@ U.buildRoom({
       
       init: function({ uid }) {
         insp.Wobbly.init.call(this, { uid });
+        this.inner = {};
       },
       iden: function() { return `${this.constructor.name}@${this.uid}`; },
       getFlatDef: function() {
@@ -91,24 +91,67 @@ U.buildRoom({
         return this.constructor.flatDef;
       },
       
-      getRelPart: function(rel) {
-        // TODO: This implementation seems heuristical (error-prone). Is there a better way?
+      getRelPart: function(rel, direction='fwd') {
+        if (![ 'fwd', 'bak' ].has(direction)) throw new Error(`Direction should be either "fwd" or "bak" (got ${direction})`);
+        
         let flatDef = this.getFlatDef();
-        let { Cls1, Cls2, name1, name2, clsRel1, clsRel2 } = rel;
+        
+        let pcs = [
+          rel.slice({ Cls: 'Cls1', name: 'name1', clsRel: 'clsRel1' }),
+          rel.slice({ Cls: 'Cls2', name: 'name2', clsRel: 'clsRel2' })
+        ];
+        if (direction === 'bak') pcs.reverse(); // If going "bak", check the 2nd piece first
+        
+        let fwdPc = pcs.find(({ Cls, name, clsRel }) => this.isInspiredBy(Cls) && flatDef.has(name) && flatDef[name] === rel);
+        
+        if (!fwdPc) throw new Error(`${this.constructor.name} doesn't use the provided relation`);
+        
+        let [ pcFwd, ind ] = fwdPc;
+        let pcBak = pcs[1 - ind];
+        
+        return {
+          Cls: pcFwd.Cls,
+          nameFwd: pcFwd.name, nameBak: pcBak.name,
+          clsRelFwd: pcFwd.clsRel, clsRelBak: pcBak.clsRel
+        };
+        
+        /*let { Cls1, Cls2, name1, name2, clsRel1, clsRel2 } = rel;
+        
+        if (direction === 'bak') [ Cls1, Cls2, name1, name2, clsRel1, clsRel2 ] = [ Cls2, Cls1, name2, name1, clsRel2, clsRel1 ];
+        
         if (this.isInspiredBy(Cls1) && flatDef.has(name1) && flatDef[name1] === rel) {
           return { Cls: Cls1, nameFwd: name1, nameBak: name2, clsRelFwd: clsRel1, clsRelBak: clsRel2 };
         } else if (this.isInspiredBy(Cls2) && flatDef.has(name2) && flatDef[name2] === rel) {
           return { Cls: Cls2, nameFwd: name2, nameBak: name1, clsRelFwd: clsRel2, clsRelBak: clsRel1 };
         }
-        throw new Error(`${this.constructor.name} doesn't use the provided relation`);
+        throw new Error(`${this.constructor.name} doesn't use the provided relation`);*/
       },
-      relWob: function(rel) {
-        let { nameFwd, clsRelFwd } = this.getRelPart(rel);
-        let inner = this.inner ? this.inner : (this.inner = {});
-        if (!inner.has(nameFwd)) inner[nameFwd] = clsRelFwd.type === '1' ? U.Wobbly({}) : U.DeltaWob({});
-        return inner[nameFwd];
+      relWob: function(rel, direction) {
+        let { nameFwd, clsRelFwd } = this.getRelPart(rel, direction);
+        if (!this.inner.has(nameFwd)) {
+          let [ wob, attach, detach ] = [ null, U.BareWob({}), U.BareWob({}) ];
+          
+          if (clsRelFwd.type === '1') {
+            wob = U.Wobbly({});
+            wob.hold((newVal, oldVal) => {
+              if (newVal) attach.wobble(newVal);
+              if (oldVal) detach.wobble(oldVal);
+            });
+          } else {
+            wob = U.DeltaWob({});
+            wob.hold(({ add={}, rem={} }) => {
+              add.forEach(rec => attach.wobble(rec));
+              rem.forEach(rec => detach.wobble(rec));
+            });
+          }
+          
+          wob.attach = attach;
+          wob.detach = detach;
+          
+          this.inner[nameFwd] = wob;
+        }
+        return this.inner[nameFwd];
       },
-      relWobs: function() { return this.getFlatDef().map(rel => this.relWob(rel)); },
       relVal: function(rel) { return this.relWob(rel).value; },
       
       attach: function(rel, inst) {
