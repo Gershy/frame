@@ -358,15 +358,13 @@
     readFile: async function(name, options='utf8') {
       let err0 = new Error('');
       return new Promise((rsv, rjc) => fs.readFile(name, options, (err, c) => {
-        if (err) return rjc(err0.gain({ message: `Couldn't read ${name}: ${err.message}` }));
-        return rsv(c);
+        return err ? rjc(err0.gain({ message: `Couldn't read ${name}: ${err.message}` })) : rsv(c);
       }));
     },
     writeFile: async function(name, content, options='utf8') {
       let err0 = new Error('');
       return new Promise((rsv, rjc) => fs.writeFile(name, content, options, (err, c) => {
-        if (err) return rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` }));
-        return rsv(c);
+        return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
       }));
     },
     compactIp: function(ipVerbose) {
@@ -431,13 +429,9 @@
         req.on('data', chunk => chunks.push(chunk));
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
         
-        // TODO: `body` is either JSON or the empty string?
-        if (body.length) {
-          try { body = JSON.parse(body); }
-          catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
-        } else {
-          body = {};
-        }
+        // `body` is either JSON or the empty string
+        try { body = body.length ? JSON.parse(body) : {}; }
+        catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
         if (this.networkDebug) {
@@ -520,8 +514,8 @@
               ? sendData(address, conn.waitResps.shift(), msg)
               : conn.waitTells.push(msg);
           });
-          conn.shut.hold(closed => {
-            if (!closed || conn.isShut) return;
+          conn.shut.hold(() => {
+            if (conn.isShut) return; // Don't shut multiple times
             conn.isShut = true;
             
             // Clean up `idsAtIp`
@@ -539,10 +533,10 @@
           if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`HEAR ${address}:`, msg));
         }
         
+        if (!connections.has(address)) throw new Error(`No connection at address: ${address}`);
+        
         // Get the current connection for this ip
         let conn = connections[address];
-        
-        // TODO: HEEERE!! Overhauled responses at hut/transport level; not sure if buggy - pls test more!!
         
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
@@ -795,18 +789,17 @@
           // Process "continuation" ops as if they were the op being continued
           if (op === 0) op = curOp;
           
-          if (op !== 1) {
-            throw new Error(`Unsupported op: ${op}`);
-          } else { // Text ops are our ONLY supported ops!
-            curOp = 1;
-            curFrames.push(data);
-            
-            if (final) {
-              let fullStr = Buffer.concat(p.curFrames).toString('utf8');
-              curOp = null;
-              curFrames = [];
-              connectionWob.hear.wobble(JSON.parse(fullStr));
-            }
+          // Text ops are our ONLY supported ops!
+          if (op !== 1) throw new Error(`Unsupported op: ${op}`);
+          
+          curOp = 1;
+          curFrames.push(data);
+          
+          if (final) {
+            let fullStr = Buffer.concat(p.curFrames).toString('utf8');
+            curOp = null;
+            curFrames = [];
+            connectionWob.hear.wobble(JSON.parse(fullStr));
           }
         }};
         let safeHeardData = function() {
@@ -884,23 +877,60 @@
       favicon.setProp('href', this.spoofEnabled ? 'data:image/x-icon;,' : '/!FILE/favicon.ico');
       favicon.setProp('type', 'image/x-icon');
       
+      // Make a `global` value available to browsers
       let setupScript = head.add(XmlElement('script', 'text'));
       setupScript.setProp('type', 'text/javascript');
       setupScript.setText('window.global = window;');
       
       let mainScript = head.add(XmlElement('script', 'text'));
       
-      let files = [ 'setup/clearing.js', 'setup/foundation.js', 'setup/foundationBrowser.js' ]
-        .concat(this.roomsInOrder.map(r => `room/${r}/${r}.below.js`));
-      let contents = await Promise.all(files.map(f => this.readFile(path.join(rootDir, f))));
-      let splitContents = new Array(files.length);
-      for (let i = 0; i < files.length; i++) splitContents[i] = `// ==== File: ${files[i]}\n${contents[i]}`;
+      // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
+      // TODO: Could memoize the static portion of the script
+      // Accumulate all files needed to run this hut Below in the browser:
+      // 1) The clearing
+      // 2) Generic foundation
+      // 3) Browser-specific foundation
+      // 4..n) Necessary rooms
+      let files = {
+        clearing: 'setup/clearing.js',
+        foundation: 'setup/foundation.js',
+        foundationBrowser: 'setup/foundationBrowser.js',
+        ...this.roomsInOrder.toObj(roomName => [ roomName, `room/${roomName}/${roomName}.below.js` ])
+      };
+      let contents = await Promise.allObj(files.map(roomPath => this.readFile(path.join(rootDir, roomPath))));
       
-      contents = splitContents.join('\n\n') + '\n\n' + [
+      let debugLineData = {
+        // TODO: "scriptOffset" is the number of HTML lines which appear before the first line of code
+        // inside the <script> tag. Note that if the opening "<script>" tag is on its own line, it
+        // counts towards the "scriptOffset".
+        scriptOffset: 7, // TODO: Hardcoded for now! doctype+html+head+title+link+script+script = 7
+        rooms: {}
+      };
+      let fullScriptContent = [];
+      contents.forEach((fileContent, roomName) => {
+        console.log(`Room "${roomName}" has file with \\r at ${fileContent.indexOf('\r')}!`);
+        
+        // Mark the beginning of what is logically, on the Above, a separate file
+        fullScriptContent.push(`// ==== File: ${roomName}`);
+        
+        debugLineData.rooms[roomName] = {
+          offsetWithinScript: fullScriptContent.length,
+          // Note that rooms without offset data have uncompiled files
+          offsets: this.compilationData.has(roomName) ? this.compilationData[roomName].below.offsets : null // TODO: In the future, a Hut Below us could be a HutBetween
+        };
+        let lines = fileContent.trim().replace(/\r/g, '').split('\n');
+        fullScriptContent.push(...lines);
+        
+        // Separate logical files with an extra newline
+        fullScriptContent.push('');
+      });
+      
+      contents = fullScriptContent.join('\n') + '\n\n' + [
         '// ==== File: hut.js',
         `U.hutTerm = '${hutTerm}';`,
         `U.aboveMsAtResponseTime = ${this.getMs()};`,
         `U.initData = ${JSON.stringify(initContent)};`,
+        `U.debugLineData = ${JSON.stringify(debugLineData)};`,
         'let { FoundationBrowser } = U.foundationClasses;',
         `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,
         'U.foundation.install();'

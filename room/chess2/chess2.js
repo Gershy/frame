@@ -787,90 +787,86 @@ U.buildRoom({
         
         // ==============================
         
+        // TODO: This doesn't work, but has correct format
         let playerReals = {};
-        matchRec.relWob(rel.matchPlayers).hold(({ add={}, rem={} }) => {
+        matchRec.relWob(rel.matchPlayers).attach.hold(playerRec => {
           
-          add.forEach(playerRec => {
-            let playerReal = playerReals[playerRec.uid] = real.addReal(Real({ flag: 'player' }));
-            playerReal.setSize(matchSize, playerSize);
+          let playerReal = playerReals[playerRec.uid] = real.addReal(Real({ flag: 'player' }));
+          playerReal.setSize(matchSize, playerSize);
+          
+          let timerReal = null;
+          matchRec.hold(v => {
+            if (timerReal) { timerReal.rem(); timerReal = null; }
             
-            let timerReal = null;
-            matchRec.hold(v => {
-              if (timerReal) { timerReal.rem(); timerReal = null; }
-              
-              if (v === null || v.movesDeadlineMs === null) return;
-              
-              let timeLeft = v.movesDeadlineMs - foundation.getMs();
-              let timeLeftPerc = timeLeft / moveMs;
-              let colourCool = Colour(0.3, 0.3, 1, 0.5);
-              let colourHot = Colour(1, 0, 0, 0.5);
-              
-              timerReal = playerReal.addReal(Real({ flag: 'timer'}));
-              timerReal.setSize(matchSize * timeLeftPerc, playerSize);
-              timerReal.setColour(colourCool.fadeTo(colourHot, 1 - timeLeftPerc).toCss());
-              timerReal.setPriority(1);
-              timerReal.setFeel('airy');
-              
-              // Begin animation
-              timerReal.setTransition('size', timeLeft, 'sharp');
-              timerReal.setTransition('colour', timeLeft, 'sharp');
-              timerReal.setSize(0, playerSize);
-              timerReal.setColour(colourHot.toCss());
-            });
+            if (v === null || v.movesDeadlineMs === null) return;
             
-            let playerNameReal = playerReal.addReal(Real({ flag: 'player' }));
-            playerNameReal.setSize(matchSize, playerSize);
-            playerNameReal.setColour(colours.clear);
-            playerNameReal.setTextColour('rgba(255, 255, 255, 1)');
-            playerNameReal.setTextSize(62);
-            playerNameReal.setPriority(2);
-            playerRec.hold(v => {
-              playerNameReal.setText(`${v ? v.term : '- unknown -'}`);
-              playerReal.setLoc(0, (v && v.colour === 'black' ? -0.5 : +0.5) * (matchSize - playerSize));
-            });
+            let timeLeft = v.movesDeadlineMs - foundation.getMs();
+            let timeLeftPerc = timeLeft / moveMs;
+            let colourCool = Colour(0.3, 0.3, 1, 0.5);
+            let colourHot = Colour(1, 0, 0, 0.5);
             
-            // Make sure to rotate things upright for the black player
-            myPlayer.hold(p => p && p.hold(v => playerReal.setRot(v && v.colour === 'black' ? 180 : 0)));
+            timerReal = playerReal.addReal(Real({ flag: 'timer'}));
+            timerReal.setSize(matchSize * timeLeftPerc, playerSize);
+            timerReal.setColour(colourCool.fadeTo(colourHot, 1 - timeLeftPerc).toCss());
+            timerReal.setPriority(1);
+            timerReal.setFeel('airy');
             
-            let passReal = null;
-            myPlayer.hold(mp => {
-              if (passReal) { passReal.rem(); passReal = null; }
-              
-              if (mp !== playerRec) return;
-              
-              passReal = playerReal.addReal(Real({ flag: 'player' }));
-              passReal.setSize(180, 80);
-              passReal.setLoc(750, 0);
-              passReal.setColour('rgba(0, 0, 0, 0)');
-              passReal.setPriority(3);
-              passReal.setBorderRadius(0.2);
-              passReal.setTextSize(48);
-              passReal.setText('Pass');
-              passReal.setTransition('colour', 200, 'sharp');
-              myConfirmedPass.hold(isPassing => {
-                let [ bw, col ] = isPassing
-                  ? [ borderWidthBold, colours.confirmed ]
-                  : [ borderWidthSimple, 'rgba(255, 255, 255, 1)' ];
-                
-                passReal.setBorder('outer', bw, col);
-                passReal.setTextColour(col);
-              });
-              passReal.setFeel('bumpy');
-              passReal.interactWob.hold(active => {
-                if (!active) return;
-                myConfirmedPass.wobble(true);
-                mySelectedPiece.wobble(null);
-                lands.tell({ command: 'confirmMove', piece: null, tile: null });
-              });
-            });
+            // Begin animation
+            timerReal.setTransition('size', timeLeft, 'sharp');
+            timerReal.setTransition('colour', timeLeft, 'sharp');
+            timerReal.setSize(0, playerSize);
+            timerReal.setColour(colourHot.toCss());
           });
           
-          rem.forEach((p, uid) => {
-            if (!playerReals.has(uid)) return;
-            playerReals[uid].rem();
-            delete playerReals[uid];
+          let playerNameReal = playerReal.addReal(Real({ flag: 'playerName' }));
+          playerNameReal.setSize(matchSize, playerSize);
+          playerNameReal.setColour(colours.clear);
+          playerNameReal.setTextColour('rgba(255, 255, 255, 1)');
+          playerNameReal.setTextSize(62);
+          playerNameReal.setPriority(2);
+          playerRec.hold(v => {
+            playerNameReal.setText(`${v ? v.term : '- unknown -'}`);
+            playerReal.setLoc(0, (v && v.colour === 'black' ? -0.5 : +0.5) * (matchSize - playerSize));
           });
           
+          // Make sure to rotate things upright for the black player
+          myPlayer.hold(p => p && p.hold(v => playerReal.setRot(v && v.colour === 'black' ? 180 : 0)));
+          
+          let passReal = null;
+          myPlayer.hold(mp => {
+            if (passReal) { passReal.rem(); passReal = null; }
+            
+            if (mp !== playerRec) return;
+            
+            passReal = playerReal.addReal(Real({ flag: 'player' }));
+            passReal.setSize(180, 80);
+            passReal.setLoc(750, 0);
+            passReal.setColour('rgba(0, 0, 0, 0)');
+            passReal.setPriority(3);
+            passReal.setBorderRadius(0.2);
+            passReal.setTextSize(48);
+            passReal.setText('Pass');
+            passReal.setTransition('colour', 200, 'sharp');
+            myConfirmedPass.hold(isPassing => {
+              let [ bw, col ] = isPassing
+                ? [ borderWidthBold, colours.confirmed ]
+                : [ borderWidthSimple, 'rgba(255, 255, 255, 1)' ];
+              
+              passReal.setBorder('outer', bw, col);
+              passReal.setTextColour(col);
+            });
+            passReal.setFeel('bumpy');
+            passReal.interactWob.hold(active => {
+              if (!active) return;
+              myConfirmedPass.wobble(true);
+              mySelectedPiece.wobble(null);
+              lands.tell({ command: 'confirmMove', piece: null, tile: null });
+            });
+          });
+        });
+        matchRec.relWob(rel.matchPlayers).detach.hold(playerRec => {
+          playerReals[playerRec.uid].rem();
+          delete playerReals[playerRec.uid];
         });
         
         return real;

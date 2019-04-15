@@ -23,12 +23,6 @@
       // current value of Above's `foundation.getMs()`
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
-      let { query } = this.parseUrl(window.location.href);
-      this.spoof = query.has('spoof') ? query.spoof : null;
-      
-      this.unloadWob = U.BareWob({});
-      window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
-      
       //console.log([
       //  'TIME DIF:',
       //  `HERE: ${now}`,
@@ -38,6 +32,18 @@
       //].join('\n'));
       //console.log(window.performance.timing);
       //console.log(new PerformanceNavigationTiming());
+      
+      let { query } = this.parseUrl(window.location.href);
+      this.spoof = query.has('spoof') ? query.spoof : null;
+      
+      // This value shows up in stack traces (used to isolate line number)
+      this.traceUrl = window.location.slice('origin', 'pathname', 'search').toArr(v => v).join('');
+      
+      // We want to be able to react when the browser is closed
+      // TODO: Still need to qualify what browser-closing signifies...
+      // Does it mean pausing? Exiting immediately? Exiting after a delay?
+      this.unloadWob = U.BareWob({});
+      window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
       
     },
     getPlatformName: function() { return 'browser'; },
@@ -79,56 +85,126 @@
         
         if (transportDebug) console.log(`TELL remote:`, msg);
         
-        // Serialize `msg`
-        try {
-          msg = JSON.stringify(msg);
-        } catch(err) {
-          console.log('Couldn\'t stringify message:', msg);
-          throw err;
-        }
-        
         // Do XHR
         let req = new XMLHttpRequest();
         req.open('POST', this.spoof ? `?spoof=${this.spoof}` : '', true);
         req.setRequestHeader('Content-Type', 'application/json');
-        req.send(msg);
+        req.send(JSON.stringify(msg));
         
         numPendingReqs++;
         
-        let res = await new Promise((rsv, rjc) => { req.onreadystatechange = () => {
-          if (req.readyState !== 4) return;
-          try {
-            if (req.status === 0) { console.log('Got response status 0'); return rsv(null); }
-            if (req.responseText.length === 0) { console.log('Above sent empty message'); }
-            rsv(req.responseText.length ? JSON.parse(req.responseText) : null);
-          } catch(err) {
-            console.log('Received invalid message from above:', U.typeOf(req.responseText), req.responseText);
-            tellAndHear = () => {}; // Make sure we don't make any more noise
-            clientWob.shut.wobble(true);
-            rjc(err);
+        // Communicating with Above has two parts; performing the HTTP transmission, and
+        // responding to its result. Inside this try/catch both occur:
+        try {
+          
+          // Listen for the request to result in a JSON response
+          let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
+            if (req.readyState !== 4) return;
+            try {
+              if (req.status === 0) throw new Error('Got HTTP response 0');
+              if (req.responseText.length === 0) throw new Error('Above sent empty message');
+              rsv(JSON.parse(req.responseText));
+            } catch(err) {
+              tellAndHear = () => {}; // Don't make any more noise
+              clientWob.shut.wobble(true);
+              rjc(err);
+            }
+          }}));
+          
+          // If any data was received, process it at a higher level
+          if (res) {
+            if (transportDebug) console.log('HEAR remote:', res);
+            clientWob.hear.wobble([ res, null ]);
           }
-        }; });
-        
-        if (res) {
-          if (transportDebug) console.log(`HEAR remote:`, res);
-          clientWob.hear.wobble([ res, null ]);
+          
+        } catch(err) {
+          
+          // TODO: Reset our state Below! Reload page?
+          throw err;
+          
         }
+        
         numPendingReqs--;
         
         // Always have 1 pending req
         if (!numPendingReqs) tellAndHear({ command: 'bankPoll' });
       };
       
+      // Expose our ability to communicate Above with the higher app
       clientWob.tell.hold(msg => tellAndHear(msg));
       
+      // Immediately bank a poll
       tellAndHear({ command: 'bankPoll' });
       
+      // TODO: Uncommenting the following may have an issue:
+      // This relies on having a good referenced value at "tellAndHear"'
+      // Not the case if a transmission errored (`tellAndHear = () => {}`)
       //this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
       
       return serverWob;
     },
     formatError: function(err) {
-      return err.stack;
+      if (!U.has('debugLineData')) return err.stack;
+      
+      let [ msg, type, stack ] = [ err.message, err.constructor.name, err.stack ];
+      
+      let traceBeginSearch = `${type}: ${msg}\n`;
+      let traceInd = stack.indexOf(traceBeginSearch);
+      let traceBegins = traceInd + traceBeginSearch.length;
+      let trace = stack.substr(traceBegins);
+      
+      let lines = trace.split('\n').map(ln => {
+        let [ pre, suf ] = ln.split(this.traceUrl);
+        let [ full, lineInd, charInd ] = suf.match(/([0-9]+):([0-9]+)/);
+        
+        lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document
+        
+        let roomName = null;
+        for (let k in U.debugLineData.rooms) {
+          let { offsetWithinScript, offsets } = U.debugLineData.rooms[k];
+          if (offsetWithinScript > lineInd) break;
+          roomName = k;
+        }
+        
+        if (roomName === null) return `UNKNOWN: ${lineInd}:${charInd}`;
+        
+        let { offsetWithinScript, offsets } = U.debugLineData.rooms[roomName];
+        lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
+        
+        let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
+        
+        if (offsets) {
+          
+          let nextOffset = 0; // The index of the next offset chunk which may take effect
+          for (let i = 0; i < lineInd; i++) {
+            // Find all the offsets which exist for the source line
+            // For each offset increment the line in the source file
+            while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
+              srcLineInd += offsets[nextOffset].offset;
+              nextOffset++;
+            }
+            srcLineInd++;
+          }
+          
+          roomName += '.cmp';
+          
+        } else {
+          
+          srcLineInd = lineInd;
+          roomName += '.js';
+          
+        }
+        
+        let padRoom = (roomName + ': ').padTail(25);
+        let padLine = `${srcLineInd}:${charInd}`.padTail(10);
+        let traceLine = ln.has('(') ? ln.split('(')[1].crop(0, 1) : ln.trim().crop(3);
+        
+        return `${padRoom} ${padLine} (${traceLine})`;
+        
+      });
+      
+      return `${err.message}:\n${lines.map(v => `  ${v}`).join('\n')}`;
+      
     }
   })});
 

@@ -6,6 +6,46 @@ U.buildRoom({
     
     let { Wobbly } = U;
     
+    let getWob1 = () => {
+      let [ attach, detach ] = [ U.BareWob({}), U.BareWob({}) ];
+      
+      let wob = U.Wobbly({});
+      wob.hold((newVal, oldVal) => {
+        if (newVal) attach.wobble(newVal);
+        if (oldVal) detach.wobble(oldVal);
+      });
+      wob.attach = attach;
+      wob.detach = detach;
+      
+      let attachHold0 = attach.hold;
+      attach.hold = fn => {
+        let ret = attachHold0.call(attach, fn);
+        if (wob.value) attach.wobble(wob.value);
+        return ret;
+      };
+      
+      return wob;
+    };
+    let getWobM = () => {
+      let [ attach, detach ] = [ U.BareWob({}), U.BareWob({}) ];
+      let wob = U.DeltaWob({});
+      wob.hold(({ add={}, rem={} }) => {
+        add.forEach(rec => attach.wobble(rec));
+        rem.forEach(rec => detach.wobble(rec));
+      });
+      wob.attach = attach;
+      wob.detach = detach;
+      
+      let attachHold0 = attach.hold;
+      attach.hold = fn => {
+        let ret = attachHold0.call(attach, fn);
+        wob.value.forEach(v => attach.wobble(v));
+        return ret;
+      };
+      
+      return wob;
+    };
+    
     let Record = U.inspire({ name: 'Record', insps: { Wobbly }, methods: (insp, Insp) => ({
       $NEXT_REL_UID: 0,
       $fullFlatDef: Insp => {
@@ -24,7 +64,7 @@ U.buildRoom({
             throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
         },
         attach1: (inst1, inst2) => {
-          if (!inst1.inner.has(name)) inst1.inner[name] = U.Wobbly({});
+          if (!inst1.inner.has(name)) inst1.inner[name] = getWob1();
           inst1.inner[name].wobble(inst2);
         },
         detach0: (inst1, inst2) => {
@@ -43,7 +83,7 @@ U.buildRoom({
           if (instM.inner.has(name) && instM.inner[name].value.has(inst1.uid)) throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
         },
         attach1: (instM, inst1) => {
-          if (!instM.inner.has(name)) instM.inner[name] = U.DeltaWob({ value: {} });
+          if (!instM.inner.has(name)) instM.inner[name] = getWobM();
           instM.inner[name].wobble({ add: { [inst1.uid]: inst1 } });
         },
         detach0: (instM, inst1) => {
@@ -128,28 +168,7 @@ U.buildRoom({
       },
       relWob: function(rel, direction) {
         let { nameFwd, clsRelFwd } = this.getRelPart(rel, direction);
-        if (!this.inner.has(nameFwd)) {
-          let [ wob, attach, detach ] = [ null, U.BareWob({}), U.BareWob({}) ];
-          
-          if (clsRelFwd.type === '1') {
-            wob = U.Wobbly({});
-            wob.hold((newVal, oldVal) => {
-              if (newVal) attach.wobble(newVal);
-              if (oldVal) detach.wobble(oldVal);
-            });
-          } else {
-            wob = U.DeltaWob({});
-            wob.hold(({ add={}, rem={} }) => {
-              add.forEach(rec => attach.wobble(rec));
-              rem.forEach(rec => detach.wobble(rec));
-            });
-          }
-          
-          wob.attach = attach;
-          wob.detach = detach;
-          
-          this.inner[nameFwd] = wob;
-        }
+        if (!this.inner.has(nameFwd)) this.inner[nameFwd] = clsRelFwd.type === '1' ? getWob1() : getWobM();
         return this.inner[nameFwd];
       },
       relVal: function(rel) { return this.relWob(rel).value; },

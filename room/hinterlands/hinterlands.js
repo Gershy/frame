@@ -37,115 +37,6 @@ U.buildRoom({
           });
         },
         /// {BELOW=
-        update000: async (lands, hut, msg) => {
-          let { command, version, content } = msg;
-          
-          if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
-          
-          let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
-          
-          let ops = [];
-          let recs = lands.relVal(relLandsRecs);
-          
-          // Note: validation error messages must begin with 'UPDERR - '; other messages
-          // will be considered indicative of errors in broader code
-          ops.gain(addRec.toArr(({ uid, type, value }) => ({
-            func: () => {
-              if (!lands.records.has(type)) throw new Error(`UPDERR - Missing class: ${type}`);
-              if (recs.has(uid)) throw new Error(`UPDERR - Add duplicate uid: ${uid}`);
-              
-              let Cls = lands.records[type];
-              let inst = Cls({ uid, lands });
-              inst.wobble(value);
-            },
-            desc: `Add ${type} (${uid})`
-          })));
-          
-          ops.gain(updRec.toArr((v, uid) => ({
-            func: () => {
-              if (!recs.has(uid)) throw new Error(`UPDERR - Upd missing uid: ${uid}`);
-              
-              let rec = recs[uid];
-              rec.wobble(v);
-            },
-            desc: `Upd ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid}) -> ${JSON.stringify(v)}`
-          })));
-          
-          ops.gain(remRec.toArr((v, uid) => ({
-            func: () => {
-              if (!recs.has(uid)) throw new Error(`UPDERR - Rem missing uid: ${uid}`);
-              let rec = recs[uid];
-              lands.remRec(rec);
-            },
-            desc: `Rem ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid})`
-          })));
-          
-          ops.gain(addRel.toArr(([ relUid, uid1, uid2 ]) => ({
-            func: () => {
-              let recs = lands.relVal(relLandsRecs);
-              
-              if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Add relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`UPDERR - Can't find a relation target for attach; uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`UPDERR - Can't find a relation target for attach; uid: ${uid2}`);
-              
-              let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't attach (${err.message.split('\n').join('; ')})`); }
-            },
-            desc: `Attach relation ${lands.relations[relUid].desc} (${uid1} + ${uid2})`
-          })));
-          
-          ops.gain(remRel.toArr(([ relUid, uid1, uid2 ]) => ({
-            func: () => {
-              if (!lands.relations.has(relUid)) throw new Error(`UPDERR - Rem relation missing uid: ${relUid}`);
-              if (!recs.has(uid1)) throw new Error(`UPDERR - Can't find a relation target for detach; uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`UPDERR - Can't find a relation target for detach; uid: ${uid2}`);
-              
-              let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.detach(rel, rec2); } catch(err) { throw new Error(`UPDERR - Couldn't detach`); }
-            },
-            desc: `Detach relation ${lands.relations[relUid].desc} (${uid1} + ${uid2})`
-          })));
-          
-          let successes = [];
-          let failures = [];
-          let attempts = 0; // TODO: For sanity - take it out eventually
-          
-          while (ops.length && attempts++ < lands.maxUpdateAttempts) {
-            let successesNow = [];
-            failures = [];
-            let opsNow = ops;
-            ops = [];
-            
-            opsNow.forEach(op => {
-              try {
-                op.func();
-                successesNow.push(op);
-                successes.push(op.desc);
-              } catch(err) {
-                if (!err.message.hasHead('UPDERR - ')) throw err;
-                failures.push(`${op.desc}:\n${foundation.formatError(err)}`)
-                ops.push(op);
-              }
-            });
-            
-            if (failures.length && successesNow.isEmpty()) break;
-          }
-          
-          if (attempts >= lands.maxUpdateAttempts) {
-            console.log('TOO MANY ATTEMPTS!!', failures);
-            throw new Error('Too many attempts');
-          }
-          
-          if (failures.length) {
-            console.log('SUCCESS:', successes);
-            console.log('FAILURE:', failures);
-            throw new Error(`Couldn't fully update!`);
-          }
-          
-          lands.version = version;
-        },
         update: async (lands, hut, msg) => {
           let { command, version, content } = msg;
           
@@ -180,7 +71,7 @@ U.buildRoom({
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`Couldn't attach (${err.message.split('\n').join('; ')})`); }
+              try { rec1.attach(rel, rec2); } catch(err) { err.message = `Couldn't attach: ${err.message}`; throw err; }
             });
             remRel.forEach(([ relUid, uid1, uid2 ]) => {
               if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
@@ -190,7 +81,7 @@ U.buildRoom({
               
               let rel = lands.relations[relUid];
               let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.detach(rel, rec2); } catch(err) { throw new Error(`Couldn't detach`); }
+              try { rec1.detach(rel, rec2); } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
             });
           } catch(err) {
             err.message = `ABOVE CAUSED: ${err.message}`;
@@ -240,7 +131,7 @@ U.buildRoom({
           : hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         /// =ABOVE} {BELOW=
         try {         await this.commands[command](this, hut, msg, reply); }
-        catch(err) {  console.log('Reload:', foundation.formatError(err)); if (false) window.location.reload(true); }
+        catch(err) {  console.log('Error from transmission:', foundation.formatError(err)); if (false) window.location.reload(true); }
         /// =BELOW}
       },
       tell: async function(msg) {
@@ -265,7 +156,7 @@ U.buildRoom({
         
         /// {ABOVE=
         // Cause all huts to forget about this record!
-        this.relVal(relLandsHuts).map(hut => hut.forgetRec(rec) ? hut : C.skip);
+        this.relVal(relLandsHuts).forEach(hut => hut.forgetRec(rec));
         /// =ABOVE}
         rec.isolate(); // Detach `rec` from EVERYTHING!
       },
@@ -281,7 +172,7 @@ U.buildRoom({
         
         /// {BELOW=
         let hut = this.relVal(relLandsHuts).find(() => true)[0];
-        await this.hear(hut, U.initData); // Hear the initial update
+        await this.hear(hut, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
       shut: async function() { return Promise.allObj(this.relVal(relLandsWays).map(w => w.shut())); }
@@ -546,6 +437,11 @@ U.buildRoom({
           
           this.informThrottlePrm = (async () => {
             await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
+            
+            // It's possible that in between scheduling and performing the tick,
+            // this Hut has become isolated. In this case no update should occur
+            if (!this.relVal(relLandsHuts)) return null;
+            
             this.informThrottlePrm = null;
             let updateTell = this.genUpdateTell();
             if (updateTell) this.tell(updateTell);
@@ -566,7 +462,10 @@ U.buildRoom({
         // Could consider making `favouredWay` async - that way if it isn't present when
         // we call this method, it could become present eventually
         let way = this.favouredWay();
-        if (!way) return; // throw new Error(`Hut ${this.address} has no favoured Way`);
+        if (!way) {
+          console.log('Couldn\'t tell:', this.getTerm(), msg);
+          throw new Error(`Hut ${this.address} has no Ways`);
+        }
         await way.tellHut(this, msg);
       }
     })});
@@ -575,7 +474,7 @@ U.buildRoom({
         if (!lands) throw new Error('Missing "lands"');
         if (!makeServer) throw new Error('Missing "makeServer"');
         
-        insp.Record.init.call(this, { lands });
+        insp.Record.init.call(this, {});
         this.lands = lands;
         this.makeServer = makeServer;
         this.server = null;
@@ -585,20 +484,33 @@ U.buildRoom({
       
       open: async function() {
         this.server = await this.makeServer();
-        this.serverFunc = this.server.hold(async hutWob => {
+        this.serverFunc = this.server.hold(async absConn => {
           
-          // Get the address
-          let { address } = hutWob;
+          // For connections: service heirarchy from lowest to highest:
+          // 1) FundamentalConnection (HTTP, SOKT, etc.)
+          // 2) AbstractConnection (here, `absConn`)
+          //    - Provides connection events; provides state for stateless
+          //      FundamentalConnections
+          // 3) Connected Hut (the thing provided by this function)
+          //    - A HinterlandsRecord which persists for the duration of its
+          //      AbstractConnection 
+          
+          // Get the address; ensure it isn't already connected
+          let { address } = absConn;
+          if (this.connections.has(address)) throw new Error(`Multiple Huts at address ${address} - makeServer is likely flawed`);
           
           // Create the Hut, and reference by address
           let hut = Hut({ lands: this.lands, address });
-          this.connections[address] = { wob: hutWob, hut };
+          this.connections[address] = { absConn, hut };
           
-          // Forget about this hut
-          hutWob.shut.hold(closed => { if (closed) delete this.connections[address]; });
+          // Clean up AbstractConnection and Hut when the connection is closed
+          absConn.shut.hold(closed => {
+            delete this.connections[address];
+            this.lands.remRec(hut);
+          });
           
           // Pass anything heard on to our Lands
-          hutWob.hear.hold(([ msg, reply=null ]) => {
+          absConn.hear.hold(([ msg, reply=null ]) => {
             this.lands.hear(hut, msg, reply);
             
             /// {ABOVE=
@@ -607,15 +519,13 @@ U.buildRoom({
             /// =ABOVE}
           });
           
+          // Removing the hut results in the connection being closed
+          // This gives higher applications control over the connection
+          hut.relWob(relLandsHuts).detach.hold(() => absConn.shut.wobble(true));
+          
           // Attach the Hut to the Way and to the Lands
           hut.attach(relWaysHuts, this);
           hut.attach(relLandsHuts, this.lands);
-          
-          // When the connection is closed, remove the Hut (TODO: Consider uncommenting?)
-          //hutWob.shut.hold(shut => shut && hut.isolate());
-          
-          // Close the connection when the Hut is removed
-          hut.relWob(relLandsHuts).hold(lands => (!lands) ? hutWob.shut.wobble(true) : null);
           
         });
       },
@@ -625,7 +535,7 @@ U.buildRoom({
       
       tellHut: function(hut, msg) {
         if (!this.connections.has(hut.address)) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
-        this.connections[hut.address].wob.tell.wobble(msg);
+        this.connections[hut.address].absConn.tell.wobble(msg);
       }
     })});
     

@@ -117,6 +117,9 @@ protoDef(String, 'padTail', function(amt, c=' ') {
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
+protoDef(String, 'crop', function(amtL=0, amtR=0) {
+  return this.substr(amtL, this.length - amtR);
+});
 
 Promise.allArr = Promise.all;
 Promise.allObj = async obj => {
