@@ -37,7 +37,7 @@ U.buildRoom({
           });
         },
         /// {BELOW=
-        update: async (lands, hut, msg) => {
+        update000: async (lands, hut, msg) => {
           let { command, version, content } = msg;
           
           if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
@@ -61,15 +61,6 @@ U.buildRoom({
             desc: `Add ${type} (${uid})`
           })));
           
-          ops.gain(remRec.toArr((v, uid) => ({
-            func: () => {
-              if (!recs.has(uid)) throw new Error(`UPDERR - Rem missing uid: ${uid}`);
-              let rec = recs[uid];
-              lands.remRec(rec);
-            },
-            desc: `Rem ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid})`
-          })));
-          
           ops.gain(updRec.toArr((v, uid) => ({
             func: () => {
               if (!recs.has(uid)) throw new Error(`UPDERR - Upd missing uid: ${uid}`);
@@ -77,7 +68,16 @@ U.buildRoom({
               let rec = recs[uid];
               rec.wobble(v);
             },
-            desc: `Upd ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid}) -> ${U.typeOf(v)}`
+            desc: `Upd ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid}) -> ${JSON.stringify(v)}`
+          })));
+          
+          ops.gain(remRec.toArr((v, uid) => ({
+            func: () => {
+              if (!recs.has(uid)) throw new Error(`UPDERR - Rem missing uid: ${uid}`);
+              let rec = recs[uid];
+              lands.remRec(rec);
+            },
+            desc: `Rem ${recs.has(uid) ? recs[uid].constructor.name : '???'} (${uid})`
           })));
           
           ops.gain(addRel.toArr(([ relUid, uid1, uid2 ]) => ({
@@ -144,6 +144,58 @@ U.buildRoom({
             throw new Error(`Couldn't fully update!`);
           }
           
+          lands.version = version;
+        },
+        update: async (lands, hut, msg) => {
+          let { command, version, content } = msg;
+          
+          let recs = lands.relVal(relLandsRecs);
+          
+          try {
+            if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
+            
+            // Apply all operations
+            let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
+            addRec.forEach(({ uid, type, value }) => {
+              if (!lands.records.has(type)) throw new Error(`Missing class: ${type}`);
+              if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
+              
+              let Cls = lands.records[type];
+              let inst = Cls({ uid, lands });
+              inst.wobble(value);
+            });
+            updRec.forEach((v, uid) => {
+              if (!recs.has(uid)) throw new Error(`Upd missing uid: ${uid}`);
+              recs[uid].wobble(v);
+            });
+            remRec.forEach((v, uid) => {
+              if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
+              lands.remRec(recs[uid]);
+            });
+            addRel.forEach(([ relUid, uid1, uid2 ]) => {
+              if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
+              
+              if (!recs.has(uid1)) throw new Error(`Can't find a relation target for attach; uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`Can't find a relation target for attach; uid: ${uid2}`);
+              
+              let rel = lands.relations[relUid];
+              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
+              try { rec1.attach(rel, rec2); } catch(err) { throw new Error(`Couldn't attach (${err.message.split('\n').join('; ')})`); }
+            });
+            remRel.forEach(([ relUid, uid1, uid2 ]) => {
+              if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
+              
+              if (!recs.has(uid1)) throw new Error(`Can't find a relation target for detach; uid: ${uid1}`);
+              if (!recs.has(uid2)) throw new Error(`Can't find a relation target for detach; uid: ${uid2}`);
+              
+              let rel = lands.relations[relUid];
+              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
+              try { rec1.detach(rel, rec2); } catch(err) { throw new Error(`Couldn't detach`); }
+            });
+          } catch(err) {
+            err.message = `ABOVE CAUSED: ${err.message}`;
+            throw err;
+          }
           lands.version = version;
         }
         /// =BELOW}
@@ -269,10 +321,6 @@ U.buildRoom({
       },
       
       followRec: function(rec, uid=rec.uid) {
-        
-        if (rec.constructor.name === 'Player') {
-          console.log(`HERE!!!! Hut: ${this.getTerm()} -> Player: ${rec.uid}`);
-        }
         
         if (this.holds.has(uid)) return;
         

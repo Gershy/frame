@@ -542,11 +542,17 @@
         // Get the current connection for this ip
         let conn = connections[address];
         
+        // TODO: HEEERE!! Overhauled responses at hut/transport level; not sure if buggy - pls test more!!
+        
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
         let syncReqRes = false;
         
-        // Interpret requests with an empty body based on other features of `req`
+        // We are receiving http Requests, but need to work with hut-style Commands
+        // The http body should be a Command in json format, but if it's empty
+        // we'll translate the other features of the Request into a Command
+        // This is necessary for interpreting core http functionality, like the
+        // initial request to a page (which has no http body!)
         if (body.isEmpty()) {
           if (urlPath.hasHead('/!')) {
             if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
@@ -562,35 +568,41 @@
           }
         }
         
-        // The "getInit" command is special at this native level; it flushes all
-        // previously queued responses for the connection. It's an exception to
-        // the current dichotomy of request types; it's neither "transport-level"
-        // or "hut-level", but both: it has this effect at "transport-level" but
-        // still propagates to "hut-level"
-        if (body.command === 'getInit') {
-          conn.waitResps.forEach(res => res.end());
-          conn.waitResps = [];
-          conn.waitTells = [];
-        }
+        // Determine the actions that need to happen at various levels for this command
+        let comTypesMap = {
+          // getInit has effects at both transport- and hut-level
+          getInit:  {
+            transport: conn => {
+              conn.waitResps.forEach(res => res.end());
+              conn.waitResps = [];
+              conn.waitTells = [];
+            },
+            hut: true
+          },
+          close: {
+            transport: conn => conn.shut.wobble(true)
+          },
+          bankPoll: {
+            transport: conn => { /* do nothing */ }
+          }
+        };
+        let comTypes = comTypesMap.has(body.command) ? comTypesMap[body.command] : { hut: true };
         
-        // If this is a synced request provide a "reply" func and do no further work
+        // Run transport-level actions
+        if (comTypes.has('transport')) comTypes.transport(conn);
+        
+        // Synced requests end here - `conn.hear.wobble` MUST result in a response
+        // TODO: Could consider a timeout to deal with careless, responseless usage
         if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(address, res, msg) ]);
         
-        // A list of transport-level commands
-        let nativeComs = {
-          close: () => conn.shut.wobble(true),
-          bankPoll: () => { /* Do nothing */ }
-        };
+        // Run hut-level actions
+        if (comTypes.has('hut')) conn.hear.wobble([ body, null ]);
         
-        // Do either a transport- or application-level command
-        nativeComs.has(body.command)
-          ? nativeComs[body.command]()
-          : conn.hear.wobble([ body, null ]);
-        
+        // HTTP POLLING MANAGEMENT; We now have an unspent, generic-purpose poll available:
         // If there are any tells send the oldest, otherwise keep ahold of the response
+        // If we have multiple polls available, return all but one
+        // (Can't hold too many polls - most browsers limit http connections per site)
         conn.waitTells.length ? sendData(address, res, conn.waitTells.shift()) : conn.waitResps.push(res);
-        
-        // Only hold 1 response at the most
         while (conn.waitResps.length > 1) sendData(address, conn.waitResps.shift(), { command: 'fizzle' });
         
       });

@@ -32,7 +32,6 @@ U.buildRoom({
         
         /// {ABOVE=
         this.wobble({ playerCount: 0 });
-        
         let plWob = this.relWob(rel.chess2Players);
         plWob.attach.hold(() => this.modify(v => { v.playerCount++; return v; }));
         plWob.detach.hold(() => this.modify(v => { v.playerCount--; return v; }));
@@ -63,8 +62,6 @@ U.buildRoom({
       validMoves: function () {
         // Get board and fellow pieces
         let pieces = this.relVal(rel.matchPieces).relVal(rel.matchPieces);
-        
-        console.log('PIECES:', pieces);
         
         // Make a nice 2d representation of the board
         let calc = Array.fill(8, () => Array.fill(8, () => null));
@@ -598,15 +595,15 @@ U.buildRoom({
           
           let f = v => {
             
-            if (notifyReal) { chess2Real.remReal(notifyReal); notifyReal = null; }
+            if (notifyReal) { scaleApp.remReal(notifyReal); notifyReal = null; }
             
             if (!v) return;
             let { gameStatus } = v;
             if (gameStatus === 'playing') return;
             
-            let nv = notifyReal = chess2Real.addReal(Real({}));
-            nv.setSize(220, 220);
-            nv.setColour('rgba(0, 0, 0, 0.85)');
+            let nv = notifyReal = scaleApp.addReal(Real({}));
+            nv.setSize(1000, 1000);
+            nv.setColour('rgba(0, 0, 0, 0.75)');
             nv.setPriority(2);
             nv.setOpacity(0);
             nv.setTransition('opacity', 500, 'sharp');
@@ -614,15 +611,16 @@ U.buildRoom({
             
             if (gameStatus === 'uninitialized') {
               
-              nv.setTextSize(18);
+              nv.setTextSize(65);
               nv.setText('Welcome to Chess2!');
               
               let enterReal = nv.addReal(Real({ flag: 'enter' }));
-              enterReal.setSize(150, 40);
-              enterReal.setLoc(0, 140);
-              enterReal.setTextSize(14);
+              enterReal.setSize(480, 120);
+              enterReal.setLoc(0, 280);
+              enterReal.setTextSize(50);
               enterReal.setText('Start playing!');
               enterReal.setFeel('bumpy');
+              enterReal.setBorder('outer', 10, 'rgba(255, 255, 255, 0.3)');
               enterReal.interactWob.hold(active => {
                 if (!active) return;
                 lands.tell({ command: 'initialize' });
@@ -630,7 +628,7 @@ U.buildRoom({
               
             } else if (gameStatus === 'waiting') {
               
-              nv.setTextSize(18);
+              nv.setTextSize(50);
               nv.setText('Finding match...');
               
             } else {
@@ -641,15 +639,16 @@ U.buildRoom({
                 stalemated: [ 'It\'s a DRAW!',  'More chess!' ]
               })[gameStatus];
               
-              nv.setTextSize(25);
+              nv.setTextSize(80);
               nv.setText(text1);
               
               let playAgainReal = nv.addReal(Real({ flag: 'playAgain' }));
-              playAgainReal.setSize(150, 50);
+              playAgainReal.setSize(450, 150);
               playAgainReal.setColour('rgba(0, 0, 0, 0.85)');
-              playAgainReal.setLoc(0, 140);
-              playAgainReal.setTextSize(14);
+              playAgainReal.setLoc(0, 280);
+              playAgainReal.setTextSize(45);
               playAgainReal.setText(text2);
+              playAgainReal.setBorder('outer', 10, 'rgba(255, 255, 255, 0.3)');
               playAgainReal.setFeel('bumpy');
               playAgainReal.interactWob.hold(active => {
                 if (!active) return;
@@ -664,12 +663,12 @@ U.buildRoom({
           
         });
         
+        let scaleFac = 1 / totalSize;
         let scaleFunc = () => {
           let { width, height } = document.body.getBoundingClientRect();
-          let scaleAmt = (width <= height ? width : height) / totalSize;
+          let scaleAmt = (width <= height ? width : height) * scaleFac;
           scaleApp.setScale(scaleAmt);
         };
-        
         window.addEventListener('resize', scaleFunc);
         scaleFunc();
         

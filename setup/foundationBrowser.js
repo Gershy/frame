@@ -123,7 +123,7 @@
       
       tellAndHear({ command: 'bankPoll' });
       
-      this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
+      //this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
       
       return serverWob;
     },
