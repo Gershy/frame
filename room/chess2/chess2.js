@@ -191,8 +191,7 @@ U.buildRoom({
           chess2.attach(rel.chess2Players, player);
           
           // Clean up Player + Match when Hut is removed
-          hut.relWob(rel.playerHut).hold((noPlayer, player) => {
-            if (noPlayer || !player) return; // We're looking to have gone from having a player to having no player
+          hut.relWob(rel.playerHut).detach.hold(player => {
             
             player.move.wobble(null);
             
@@ -202,11 +201,12 @@ U.buildRoom({
             
             if (match) {
               // Update the match so that other player wins. Don't delete the
-              // match; we want the winner to be able to stick around
+              // match; we want the winner to be able to stick around.
               match.modify(v => v.gain({ movesDeadlineMs: null }));
-              let ps = match.relVal(rel.matchPlayers);
-              ps.forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
+              match.relVal(rel.matchPlayers)
+                .forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
             }
+            
           });
           
         },
