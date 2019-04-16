@@ -262,6 +262,10 @@ let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
     delete this.holders[ind];
     if (this.holders.isEmpty()) delete this.holders;
   },
+  isolate: function() {
+    // Avoid deletion-while-looping headaches; clone holders
+    this.holders.map(v => v).forEach(func => this.drop(func));
+  },
   wobble: function(value=null, force=U.isType(value, Object)) {
     // Default `value` is null
     // If `value` is an `Object`, `force` default to `true` (because it's likely that inner properties changed)

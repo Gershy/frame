@@ -14,30 +14,63 @@ U.buildRoom({
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
-      $defaultCommands: {
-        getInit: async (inst, hut, msg, reply) => {
+      init: function({ foundation, records=[], relations=[], commands={}, heartbeatMs=10000 }) {
+        insp.Record.init.call(this, { uid: 'root' });
+        this.uidCnt = 0;
+        this.maxUpdateAttempts = 1000;
+        this.terms = [];
+        this.commands = commands;
+        this.comWobs = {};
+        this.heartbeatMs = heartbeatMs;
+        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
+        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
+        
+        /// {ABOVE=
+        
+        // Forget all recs for removed huts. Safeguard against sloppy broader code.
+        this.relWob(relLandsHuts).detach.hold(hut => hut.forgetAllRecs());
+        
+        /// =ABOVE} {BELOW=
+        
+        // Some values to control transmission
+        this.version = 0;
+        this.heartbeatTimeout = null;
+        this.resetHeartbeatTimeout(); // Begin heartbeat
+        
+        /// =BELOW}
+        
+        // Lands have some "required" commands which are in place regardless of the current hut
+        let requiredCommand = (name, effect) => {
+          this.commands[name] = 1;
+          this.comWob(name).hold(effect);
+        };
+        
+        requiredCommand('error', async ({ hut, msg, reply }) => { /* nothing */ });
+        
+        requiredCommand('fizzle', async ({ hut, msg, reply }) => { /* nothing */ });
+        
+        /// {ABOVE=
+        
+        requiredCommand('getInit', async ({ hut, msg, reply }) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
           let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), hut.genUpdateTell());
           reply(initBelow);
-        },
-        getFile: async (inst, hut, msg, reply) => {
+        });
+        
+        requiredCommand('getFile', async ({ hut, msg, reply }) => {
           reply(U.safe(
             () => foundation.getMountFile(msg.path),
             () => ({ command: 'error', type: 'notFound', orig: msg })
           ));
-        },
-        fizzle: async(inst, hut, msg) => { /* nothing */ },
-        error: async (inst, hut, msg) => { /* nothing */ },
-        thunThunk: async (inst, hut, msg) => { /* nothing - reception has already lead to expiry renewal */ },
-        getFeedback: async (inst, hut, msg, reply) => {
-          reply({
-            hut: foundation.hut,
-            ms: foundation.getMs()
-          });
-        },
-        /// {BELOW=
-        update: async (lands, hut, msg) => {
+        });
+        
+        requiredCommand('thunThunk', async ({ hut, msg, reply }) => { /* nothing */ });
+        
+        /// =ABOVE} {BELOW=
+        
+        requiredCommand('update', async ({ lands, hut, msg, reply }) => {
+          
           let { command, version, content } = msg;
           
           let recs = lands.relVal(relLandsRecs);
@@ -88,32 +121,16 @@ U.buildRoom({
             throw err;
           }
           lands.version = version;
-        }
-        /// =BELOW}
-      },
-      
-      init: function({ foundation, records=[], relations=[], commands=Lands.defaultCommands, heartbeatMs=10000 }) {
-        insp.Record.init.call(this, { uid: 'root' });
-        this.uidCnt = 0;
-        this.maxUpdateAttempts = 1000;
-        this.terms = [];
-        this.commands = commands;
-        this.heartbeatMs = heartbeatMs;
-        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
-        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
-        /// {ABOVE=
-        // Forget all recs for removed huts. Safeguard against sloppy broader code.
-        this.relWob(relLandsHuts).hold(({ rem={} }) => rem.forEach(hut => hut.forgetAllRecs()));
-        /// =ABOVE} {BELOW=
-        this.version = 0;
-        this.heartbeatTimeout = null;
-        this.resetHeartbeatTimeout(); // Begin heartbeat
+          
+        });
+        
         /// =BELOW}
       },
       nextUid: function() {
         /// {ABOVE=
         return (this.uidCnt++).toString(36).padHead(8, '0');
         /// =ABOVE} {BELOW=
+        // The "~" prefix prevents collision between local/shared Records
         return '~' + (this.uidCnt++).toString(36).padHead(8, '0');
         /// =BELOW}
       },
@@ -122,17 +139,21 @@ U.buildRoom({
         return this.relVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
+      comWob: function(command) {
+        if (!this.comWobs.has(command)) {
+          if (!this.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
+          this.comWobs[command] = U.BareWob({});
+        }
+        return this.comWobs[command];
+      },
       hear: async function(hut, msg, reply=null) {
         let { command } = msg;
+        if (!this.commands.has(command)) {
+          return hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
+        }
         
-        /// {ABOVE=
-        this.commands.has(command)
-          ? await this.commands[command](this, hut, msg, reply)
-          : hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
-        /// =ABOVE} {BELOW=
-        try {         await this.commands[command](this, hut, msg, reply); }
-        catch(err) {  console.log('Error from transmission:', foundation.formatError(err)); if (false) window.location.reload(true); }
-        /// =BELOW}
+        this.comWob(command).wobble({ lands: this, hut, msg, reply });
+        hut.comWob(command).wobble({ lands: this, hut, msg, reply });
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -185,6 +206,7 @@ U.buildRoom({
         this.lands = lands;
         this.address = address;
         this.term = null;
+        this.comWobs = {};
         
         /// {ABOVE=
         this.version = 0;
@@ -203,6 +225,13 @@ U.buildRoom({
       getTerm: function() {
         if (!this.term) this.term = this.lands.genUniqueTerm();
         return this.term;
+      },
+      comWob: function(command) {
+        if (!this.comWobs.has(command)) {
+          if (!this.lands.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
+          this.comWobs[command] = U.BareWob({});
+        }
+        return this.comWobs[command];
       },
       
       /// {ABOVE=

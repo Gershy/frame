@@ -1,16 +1,22 @@
 // IMPROVE:
 // [ ]  CLEAN THE HECK UP
-// [ ]  Relations should be slightly reworked; more certain getRelPart, meaningful names instead of uids
-// [ ]  Remove necessity to define relations in same order on Above/Below (currently incrementing uids need to match)
-// [ ]  Promotion (automatically queen?), en-passante, consider castling? (which pieces need to wait? both?)
-// [ ]  Deal with multiple tabs @ same session
-// [ ]  Shorthand notation for Huts following Records
+// [ ]  Relations should be slightly reworked
+//    [X] More certain getRelPart
+//    [ ] Meaningful names instead of ints
+//    [ ] Remove constraint: relations need to be defined in same order on Above/Below (incrementing uids)
+// [ ]  Promotion (automatically queen?), en-passante
+// [ ]  En passante?
+// [ ]  Castling? (Which pieces need to wait? Both?)
+// [/]  Deal with multiple tabs @ same session (Actually seems to work! Tabs are buggy, but no explosion. Test more?)
+// [X]  Shorthand notation for Huts following Records
 // [ ]  Shorthand notation for Records becoming Reals
 // [ ]  Look into memory leaks - There's probably all kinds of Wobblies which need to be dropped
 // [ ]  Watch out for XSS stuff through `domElem.innerHTML`
 // [ ]  HTTP server logic should protect against huge payloads
 // [ ]  HTTP server logic should enforce deadlines on transmission completions
 // [ ]  Better UI, especially for mobile
+//    [X] Fill more screen
+//    [ ] Annoying magnifying feature on phones!
 // [ ]  Accounts + login
 // [ ]  Websockets
 
@@ -162,7 +168,7 @@ U.buildRoom({
       let relations = rel.toArr(v => v);
       let lands = U.lands = Lands({
         foundation,
-        commands: Lands.defaultCommands.map(v => v),
+        commands: { initialize: 1, confirmMove: 1, playAgain: 1 },
         records,
         relations,
         heartbeatMs: 60 * 1000 // 1 minute timeout
@@ -181,103 +187,67 @@ U.buildRoom({
         foundation.addMountFile(`img/${colour}-${type}.png`, `room/chess2/img/classicPieces/${colour}-${type}.png`, 'image/png')
       ));
       
-      // Listen for chess2-specific commands
-      lands.commands.gain({
-        initialize: async (lands, hut, msg) => {
+      lands.comWob('initialize').hold(({ lands, hut, msg }) => {
+        if (hut.relVal(rel.playerHut)) return;
+        
+        let player = Player({ lands, hut });
+        chess2.attach(rel.chess2Players, player);
+        
+        // Clean up Player + Match when Hut is removed
+        hut.relWob(rel.playerHut).detach.hold(player => {
           
-          if (hut.relVal(rel.playerHut)) return;
-          
-          let player = Player({ lands, hut });
-          chess2.attach(rel.chess2Players, player);
-          
-          // Clean up Player + Match when Hut is removed
-          hut.relWob(rel.playerHut).detach.hold(player => {
-            
-            player.move.wobble(null);
-            
-            // Make sure to get the match before removing the player
-            let match = player.relVal(rel.matchPlayers);
-            lands.remRec(player);
-            
-            if (match) {
-              // Update the match so that other player wins. Don't delete the
-              // match; we want the winner to be able to stick around.
-              match.modify(v => v.gain({ movesDeadlineMs: null }));
-              match.relVal(rel.matchPlayers)
-                .forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
-            }
-            
-          });
-          
-        },
-        confirmMove: async (lands, hut, msg) => {
-          let player = hut.relVal(rel.playerHut);
-          let playerPieces = player.relVal(rel.piecePlayer);
-          
-          if (msg.piece !== null) {
-            
-            if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
-            player.move.wobble({ piece: playerPieces[msg.piece], tile: msg.tile });
-            
-          } else {
-            
-            player.move.wobble({ piece: null, tile: null });
-            
-          }
-        },
-        playAgain: async (lands, hut, msg) => {
-          let player = hut.relVal(rel.playerHut);
-          if (!player) return;
-          
-          let match = player.relVal(rel.matchPlayers);
-          if (!match) return;
-          
-          // TODO: This is temporary, because the follow/forget process isn't yet
-          // smart enough to forget recursively! Eventually forgetting the Match
-          // should automatically forget the Board, and forgetting the Board
-          // forgets the Pieces, etc.
-          match.relVal(rel.matchPieces).forEach(piece => hut.forgetRec(piece));
-          hut.forgetRec(match);
-          
-          // Remove from match
-          player.detach(rel.matchPlayers, match);
-          
-          // Update status
-          hut.followRec(player);
-          player.modify(v => v.gain({ colour: null, gameStatus: 'waiting' }));
           player.move.wobble(null);
-        },
-        getFeedback: async (lands, hut, msg, reply) => {
           
-          let chess2 = lands.relVal(relLandsRecs).find(r => r.isInspiredBy(Chess2))[0];
+          // Make sure to get the match before removing the player
+          let match = player.relVal(rel.matchPlayers);
+          lands.remRec(player);
           
-          reply({
-            name: 'Chess2',
-            resources: foundation.getMemUsage(),
-            numPlayers: chess2.relVal(rel.chess2Players).toArr(v => v).length,
-            players: chess2.relVal(rel.chess2Players).map(player => {
-              let hut = player.relVal(rel.playerHut);
-              return {
-                address: hut.address,
-                term: hut.getTerm(),
-                playerVal: player.value
-              };
-            }),
-            numMatches: chess2.relVal(rel.matches).toArr(v => v).length,
-            matches: chess2.relVal(rel.matches).map(match => {
-              let white = match.relVal(rel.matchPlayers).find(p => p.value.colour === 'white')[0];
-              let black = match.relVal(rel.matchPlayers).find(p => p.value.colour === 'black')[0];
-              
-              return {
-                white: white.value,
-                black: black.value,
-                numWhitePieces: white.relVal(rel.piecePlayer).toArr(v => v).length,
-                numBlackPieces: black.relVal(rel.piecePlayer).toArr(v => v).length
-              };
-            }),
-            idsAtIp: lands.relVal(relLandsWays).find(v => true)[0].server.idsAtIp
-          });
+          if (match) {
+            // Update the match so that other player wins. Don't delete the
+            // match; we want the winner to be able to stick around.
+            match.modify(v => v.gain({ movesDeadlineMs: null }));
+            match.relVal(rel.matchPlayers)
+              .forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
+          }
+          
+        });
+      });
+      lands.comWob('confirmMove').hold(({ lands, hut, msg }) => {
+        let player = hut.relVal(rel.playerHut);
+        let playerPieces = player.relVal(rel.piecePlayer);
+        
+        if (msg.piece !== null) {
+          
+          if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
+          player.move.wobble({ piece: playerPieces[msg.piece], tile: msg.tile });
+          
+        } else {
+          
+          player.move.wobble({ piece: null, tile: null });
+          
         }
+      });
+      lands.comWob('playAgain').hold(({ lands, hut, msg }) => {
+        let player = hut.relVal(rel.playerHut);
+        if (!player) return;
+        
+        let match = player.relVal(rel.matchPlayers);
+        if (!match) return;
+        
+        // TODO: This is temporary, because the follow/forget process isn't yet
+        // smart enough to forget recursively! Eventually forgetting the Match
+        // should automatically forget the Board, and forgetting the Board
+        // forgets the Pieces, etc.
+        match.relVal(rel.matchPieces).forEach(piece => hut.forgetRec(piece));
+        hut.forgetRec(match);
+        
+        // Remove from match
+        player.detach(rel.matchPlayers, match);
+        
+        // Update status
+        hut.followRec(player);
+        player.modify(v => v.gain({ colour: null, gameStatus: 'waiting' }));
+        player.move.wobble(null);
       });
       
       // Chess2-specific data

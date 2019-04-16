@@ -552,8 +552,6 @@
             if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
           } else if (urlPath === '/') {
             [ body, syncReqRes ] = [ { command: 'getInit' }, true ];
-          } else if (urlPath === '/feedback') {
-            [ body, syncReqRes ] = [ { command: 'getFeedback' }, true ];
           } else { // If a meaningless request is received reject it and close the connection
             conn.shut.wobble(true);
             res.writeHead(400);
@@ -908,8 +906,6 @@
       };
       let fullScriptContent = [];
       contents.forEach((fileContent, roomName) => {
-        console.log(`Room "${roomName}" has file with \\r at ${fileContent.indexOf('\r')}!`);
-        
         // Mark the beginning of what is logically, on the Above, a separate file
         fullScriptContent.push(`// ==== File: ${roomName}`);
         

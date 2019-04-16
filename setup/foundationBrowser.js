@@ -49,6 +49,16 @@
     getPlatformName: function() { return 'browser'; },
     installFoundation: async function() {
       
+      //window.on('uncaughtException', err => console.log(this.formatError(err)));
+      window.addEventListener('unhandledrejection', evt => {
+        console.log(this.formatError(evt.reason));
+        evt.preventDefault();
+      });
+      window.addEventListener('error', evt => {
+        console.log(this.formatError(evt.reason));
+        evt.preventDefault();
+      });
+      
       // Build all rooms
       U.rooms.forEach(room => room());
       let { query } = this.parseUrl(window.location.href);
@@ -120,6 +130,7 @@
         } catch(err) {
           
           // TODO: Reset our state Below! Reload page?
+          console.log('Error from transmission:', foundation.formatError(err));
           throw err;
           
         }
