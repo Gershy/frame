@@ -28,7 +28,7 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real' ],
   build: (foundation, hinterlands, record, real) => {
     
-    let { Wobbly, CalcWob, IntervalWob, Law, Waw } = U;
+    let { WobVal, WobFnc } = U;
     let { Record } = record;
     let { Lands, LandsRecord, Way, Hut, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     
@@ -55,7 +55,7 @@ U.buildRoom({
         insp.LandsRecord.init.call(this, { uid, lands });
         
         /// {ABOVE=
-        this.move = U.Wobbly({ value: null });
+        this.move = U.WobVal();
         this.wobble({ term: hut.getTerm(), gameStatus: 'waiting', colour: null });
         this.attach(rel.playerHut, hut);
         /// =ABOVE}
@@ -154,6 +154,7 @@ U.buildRoom({
     let rel = {
       matches:          Record.relate1M(Chess2, Match, 'matches'),
       playerHut:        Record.relate11(Player, Hut, 'playerHut'),
+      landsChess2:      Record.relate11(Lands,  Chess2, 'landsChess2'),
       chess2Players:    Record.relate1M(Chess2, Player, 'chess2Players'),
       matchPlayers:     Record.relate1M(Match, Player, 'matchPlayers'),
       matchPieces:      Record.relate1M(Match, Piece, 'matchPieces'),
@@ -164,93 +165,11 @@ U.buildRoom({
     let open = async () => {
       console.log('Init chess2...');
       
-      let records = [ Chess2, Match, Player, Piece ];
-      let relations = rel.toArr(v => v);
-      let lands = U.lands = Lands({
-        foundation,
-        commands: { initialize: 1, confirmMove: 1, playAgain: 1 },
-        records,
-        relations,
-        heartbeatMs: 60 * 1000 // 1 minute timeout
-      });
-      
-      let moveMs = 50000;
+      // Config values
+      let moveMs = 50 * 1000;
       let matchmakeMs = 2000;
+      let heartbeatMs = 60 * 1000;
       let pieceNames = [ 'pawn', 'knight', 'bishop', 'rook', 'queen', 'king' ];
-      
-      /// {ABOVE=
-      
-      // Mount files
-      pieceNames.forEach(type => [ 'black', 'white' ].forEach(colour =>
-        // TODO: shouldn't need to include "room/chess2"
-        // The instance of `foundation` received should be specialized for this 1 room??
-        foundation.addMountFile(`img/${colour}-${type}.png`, `room/chess2/img/classicPieces/${colour}-${type}.png`, 'image/png')
-      ));
-      
-      lands.comWob('initialize').hold(({ lands, hut, msg }) => {
-        if (hut.relVal(rel.playerHut)) return;
-        
-        let player = Player({ lands, hut });
-        chess2.attach(rel.chess2Players, player);
-        
-        // Clean up Player + Match when Hut is removed
-        hut.relWob(rel.playerHut).detach.hold(player => {
-          
-          player.move.wobble(null);
-          
-          // Make sure to get the match before removing the player
-          let match = player.relVal(rel.matchPlayers);
-          lands.remRec(player);
-          
-          if (match) {
-            // Update the match so that other player wins. Don't delete the
-            // match; we want the winner to be able to stick around.
-            match.modify(v => v.gain({ movesDeadlineMs: null }));
-            match.relVal(rel.matchPlayers)
-              .forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
-          }
-          
-        });
-      });
-      lands.comWob('confirmMove').hold(({ lands, hut, msg }) => {
-        let player = hut.relVal(rel.playerHut);
-        let playerPieces = player.relVal(rel.piecePlayer);
-        
-        if (msg.piece !== null) {
-          
-          if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
-          player.move.wobble({ piece: playerPieces[msg.piece], tile: msg.tile });
-          
-        } else {
-          
-          player.move.wobble({ piece: null, tile: null });
-          
-        }
-      });
-      lands.comWob('playAgain').hold(({ lands, hut, msg }) => {
-        let player = hut.relVal(rel.playerHut);
-        if (!player) return;
-        
-        let match = player.relVal(rel.matchPlayers);
-        if (!match) return;
-        
-        // TODO: This is temporary, because the follow/forget process isn't yet
-        // smart enough to forget recursively! Eventually forgetting the Match
-        // should automatically forget the Board, and forgetting the Board
-        // forgets the Pieces, etc.
-        match.relVal(rel.matchPieces).forEach(piece => hut.forgetRec(piece));
-        hut.forgetRec(match);
-        
-        // Remove from match
-        player.detach(rel.matchPlayers, match);
-        
-        // Update status
-        hut.followRec(player);
-        player.modify(v => v.gain({ colour: null, gameStatus: 'waiting' }));
-        player.move.wobble(null);
-      });
-      
-      // Chess2-specific data
       let pieceDefs = {
         standard: [
           [
@@ -328,33 +247,236 @@ U.buildRoom({
         ]
       };
       
-      let chess2 = Chess2({ lands });
+      let lands = U.lands = Lands({
+        foundation,
+        commands: { initialize: 1, confirmMove: 1, playAgain: 1 },
+        records: [ Chess2, Match, Player, Piece ],
+        relations: rel.toArr(v => v),
+        heartbeatMs
+      });
       
-      Law('hutsFollow', Wobbly({ value: lands }), lands => [
-        Law('huts', lands.relWob(relLandsHuts), hut => [
-          Law('followChess2', Wobbly({ value: chess2 }), chess2 => [
-            hut.genFollowTemp(chess2)
-          ]),
-          Law('followPlayer', hut.relWob(rel.playerHut), player => [
-            hut.genFollowTemp(player),
-            Law('followMatch', player.relWob(rel.matchPlayers), match => [
-              hut.genFollowTemp(match),
-              Law('followPlaymates', match.relWob(rel.matchPlayers), player => [
-                hut.genFollowTemp(player)
-              ]),
-              Law('followPieces', match.relWob(rel.matchPieces), piece => [
-                hut.genFollowTemp(piece)
-              ])
-            ])
-          ])
-        ])
-      ]).open();
+      /// {ABOVE=
+      
+      // Mount files
+      pieceNames.forEach(type => [ 'black', 'white' ].forEach(colour =>
+        // TODO: shouldn't need to include "room/chess2"
+        // The instance of `foundation` received should be specialized for this 1 room??
+        foundation.addMountFile(`img/${colour}-${type}.png`, `room/chess2/img/classicPieces/${colour}-${type}.png`, 'image/png')
+      ));
+      
+      // Define commands
+      lands.comWob('initialize').hold(({ lands, hut, msg }) => {
+        if (hut.relVal(rel.playerHut)) return;
+        
+        let player = Player({ lands, hut });
+        chess2.attach(rel.chess2Players, player);
+        
+        // Clean up Player + Match when Hut is removed
+        hut.relWob(rel.playerHut).detach.hold(player => {
+          
+          player.move.wobble(null);
+          
+          // Make sure to get the match before removing the player
+          let match = player.relVal(rel.matchPlayers);
+          lands.remRec(player);
+          
+          if (match) {
+            // Update the match so that other player wins. Don't delete the
+            // match; we want the winner to be able to stick around.
+            match.modify(v => v.gain({ movesDeadlineMs: null }));
+            match.relVal(rel.matchPlayers)
+              .forEach(p => p.value.gameStatus === 'playing' ? p.modify(v => v.gain({ gameStatus: 'victorious' })) : null);
+          }
+          
+        });
+      });
+      lands.comWob('confirmMove').hold(({ lands, hut, msg }) => {
+        let player = hut.relVal(rel.playerHut);
+        let playerPieces = player.relVal(rel.piecePlayer);
+        
+        if (msg.piece !== null) {
+          
+          if (!playerPieces.has(msg.piece)) return hut.tell({ command: 'error', type: 'pieceNotFound', orig: msg });
+          player.move.wobble({ piece: playerPieces[msg.piece], tile: msg.tile });
+          
+        } else {
+          
+          player.move.wobble({ piece: null, tile: null });
+          
+        }
+      });
+      lands.comWob('playAgain').hold(({ lands, hut, msg }) => {
+        let player = hut.relVal(rel.playerHut);
+        if (!player) return;
+        
+        let match = player.relVal(rel.matchPlayers);
+        if (!match) return;
+        
+        // TODO: This is temporary, because the follow/forget process isn't yet
+        // smart enough to forget recursively! Eventually forgetting the Match
+        // should automatically forget the Board, and forgetting the Board
+        // forgets the Pieces, etc.
+        match.relVal(rel.matchPieces).forEach(piece => hut.forgetRec(piece));
+        hut.forgetRec(match);
+        
+        // Remove from match
+        player.detach(rel.matchPlayers, match);
+        
+        // Update status
+        hut.followRec(player);
+        player.modify(v => v.gain({ colour: null, gameStatus: 'waiting' }));
+        player.move.wobble(null);
+      });
+      
+      let chess2 = Chess2({ lands });
+      lands.attach(rel.landsChess2, chess2);
+      
+      let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp) => ({
+        $FULL_SIZE: 0,
+        $TOTAL_OPEN: 0,
+        $UID: 0,
+        $TOTAL_CHILDREN_LINKS: par => {
+          if (!par.children.size) return 0;
+          
+          let n = 0;
+          for (let child of par.children) n += AccessPath.TOTAL_CHILDREN_LINKS(child);
+          
+          return n;
+        },
+        
+        init: function(par=null, wob, openObj, shutObj, gen=null, open=true, dbg=false) {
+          this.par = par;
+          this.wob = wob;
+          this.gen = gen;
+          this.openObj = openObj;
+          this.shutObj = shutObj;
+          this.accessed = new Set(); // Accessed Records. Shutting `this` should weaken access to all of them
+          this.children = new Set(); // Dependent child AccessPaths. Shutting `this` should shut all of them
+          
+          // TODO: Not all cases will have attach/detach
+          this.openAccessWob = wob.attach;
+          this.shutAccessWob = wob.detach;
+          
+          if (open) this.open();
+        },
+        accessStrength: function(v) {
+          let [ ptr, amt ] = [ this, 0 ];
+          while (ptr) { if (ptr.accessed.has(v)) amt++; ptr = ptr.par; }
+          return amt;
+        },
+        open: function() {
+          
+          if (this.openAccess) throw new Error('Already open!');
+          
+          if (this.par) this.par.children.add(this);
+          
+          // NOTE:
+          // Imagine Player -> Match -> MatchPlayers
+          // The initial Player will be iterated over twice in that sequence, once
+          // as the initial Player, and again in MatchPlayers (which inevitably
+          // contains the initial Player).
+          // 
+          // Each item in that chain has an AccessPath associated. A Player object
+          // will have a different "openObj" and "shutObj" called on it depending
+          // on which AccessPath finds it first. In situations like these, the
+          // "openObj" and "shutObj" methods should be identical for all possible
+          // AccessPaths which could discover the same Object.
+          // 
+          // While "(open|shut)Obj" will be called only once even when an Object
+          // is discovered multiple times, "gen" will be called every time. This
+          // makes us capable of applying uniform "(open|shut)Obj" functions to
+          // Records of the same type, while spawning new AccessPaths depending
+          // on the way a Record was accessed via "gen"
+          
+          this.openAccess = this.openAccessWob.hold(v => {
+            
+            if (this.accessed.has(v)) throw new Error(`Can't open; already accessing ${U.typeOf(v)}`);
+            
+            let amt = this.accessStrength(v);
+            
+            // Add `v`, call "openObj" if we are first accessor, and always call "gen"
+            this.accessed.add(v);
+            if (this.openObj && amt === 0) this.openObj(v);
+            if (this.gen) this.gen(this, v);
+            
+          });
+          this.shutAccess = this.shutAccessWob.hold(v => {
+            if (!this.accessed.has(v)) { err.message = `Can't shut; not accessing ${U.typeOf(v)}`; throw err; }
+            
+            let amt = this.accessStrength(v);
+            
+            // Rem `v`, call "shutObj" if we were the first accessor
+            this.accessed.delete(v);
+            if (this.shutObj && amt === 1) this.shutObj(v);
+            
+          });
+          
+        },
+        shut: function() {
+          
+          if (!this.openAccess) throw new Error('Already shut!');
+          
+          if (this.par) this.par.children.remove(this);
+          
+          // Shut all children first. This is important because for any Records
+          // where we were the first accessor (and therefore opener), we also
+          // need to be the shutter. Closing all children will decrement
+          // Record strength appropriately so that it hits 0 by the time we
+          // decrement it.
+          for (let child of this.children) this.child.shut();
+          
+          // Shut all accessed Records. Note that we are calling `this.shutAccess`
+          // directly, not `this.shutAccessWob.wobble`. They seem equivalent,
+          // but creating a wobble could have unexpected holders react as well,
+          // which we don't want. (E.g. it could lead to multiple "detach" wobbles
+          // on the same relation).
+          for (let v of this.accessed) this.shutAccess(v); // TODO: Inside "shutAccess", will `this` be scoped correctly?
+          
+          // Need to drop our holds! Otherwise we wouldn't be completely cleaned up
+          this.openAccessWob.drop(this.openAccess);
+          this.shutAccessWob.drop(this.shutAccess);
+          this.openAccess = null;
+          this.shutAccess = null;
+          
+        }
+      })});
+      
+      let nop = [ () => {}, () => {} ];
+      let apCnt = 0;
+      AccessPath(null, { attach: U.WobVal(lands), detach: U.Wob() }, ...nop, (ap, lands) => {
+        
+        AccessPath(ap, lands.relWob(relLandsHuts), ...nop, (ap, hut) => {
+          
+          let term = hut.getTerm();
+          
+          let fol = [
+            rec => { console.log(`FOLLOW: Hut ${term.padTail(16)} -> ${rec.uid} (${U.typeOf(rec)})`); hut.followRec(rec); },
+            rec => { console.log(`FORGET: Hut ${term.padTail(16)} -> ${rec.uid} (${U.typeOf(rec)})`); hut.forgetRec(rec); }
+          ];
+          
+          AccessPath(ap, lands.relWob(rel.landsChess2), ...fol, null, true, `AP#${apCnt}`);
+          
+          AccessPath(ap, hut.relWob(rel.playerHut), ...fol, (ap, player) => {
+            
+            AccessPath(ap, player.relWob(rel.matchPlayers), ...fol, (ap, match) => {
+              
+              AccessPath(ap, match.relWob(rel.matchPlayers), ...fol, null);
+              
+              AccessPath(ap, match.relWob(rel.matchPieces), ...fol, null);
+              
+            });
+            
+          });
+          
+        });
+        
+      });
       
       // Matchmaking
       setInterval(() => {
         
-        let matchmakePlayers = chess2
-          .relVal(rel.chess2Players)
+        // Players in roughly random order
+        let matchmakePlayers = lands.relVal(rel.landsChess2).relVal(rel.chess2Players)
           .toArr(p => p.value && p.value.gameStatus === 'waiting' ? p : C.skip)
           .sort(() => 0.5 - Math.random());
         
@@ -385,26 +507,25 @@ U.buildRoom({
           // Mark the players as playing
           [ p1, p2 ].forEach(player => player.modify(v => v.gain({ gameStatus: 'playing' })));
           
-          match.modify(v => v.gain({ movesDeadlineMs: foundation.getMs() + moveMs }));
-          
+          // When the Match wobbles it signifies a change in state; move deadline needs update
           let forcePassTimeout = null;
-          
-          // Activate move timeouts when the round progresses (detected via match wobbles)
-          match.hold(v => {
-            clearTimeout(forcePassTimeout);
-            
-            if (!v || v.movesDeadlineMs === null) return;
-            
-            let timeRemaining = v.movesDeadlineMs - new Date();
+          U.WobFlt(match, v => v && v.movesDeadlineMs !== null).hold(v => {
+            let timeDelta = v.movesDeadlineMs - new Date();
             forcePassTimeout = setTimeout(() => {
               // Unsubmitted moves become passes
               p1.move.modify(v => v || { piece: null, tile: null });
               p2.move.modify(v => v || { piece: null, tile: null });
-            }, timeRemaining);
+            }, timeDelta);
+          });
+          U.WobFlt(match, v => !v || v.movesDeadlineMs === null).hold(v => {
+            clearTimeout(forcePassTimeout);
           });
           
+          // TODO: Need to modify match AFTER WobFlts are in place - is this a design issue?
+          match.modify(v => v.gain({ movesDeadlineMs: foundation.getMs() + moveMs }));
+          
           // Resolve moves when both players have confirmed
-          let holdMove = U.CalcWob({ wobs: [ p1.move, p2.move ], func: (p1Move, p2Move) => {
+          let holdMove = U.WobFnc([ p1.move, p2.move ], (p1Move, p2Move) => {
             
             if (!p1Move || !p2Move) return;
             
@@ -464,14 +585,14 @@ U.buildRoom({
             // Increment turns; set deadline for next move
             match.modify(v => v.gain({ turns: v.turns + 1, movesDeadlineMs: addTime ? foundation.getMs() + addTime : null }));
             
-          }});
+          });
           
           // Clean up when no players remain
           match.relWob(rel.matchPlayers).hold(() => {
             let players = match.relVal(rel.matchPlayers);
             if (!players.isEmpty()) return;
             
-            holdMove.drop(); // Stop listening for moves!
+            holdMove.isolate(); // Stop listening for moves!
             
             // Remove all pieces, the board and the match
             match.relVal(rel.matchPieces).forEach(piece => lands.remRec(piece));
@@ -486,12 +607,12 @@ U.buildRoom({
       
       let { Colour, Real } = real;
       
-      let mySelectedPiece = U.Wobbly({ value: null });
-      let myConfirmedPiece = U.Wobbly({ value: null });
-      let myConfirmedTile = U.Wobbly({ value: null });
-      let myConfirmedPass = U.Wobbly({ value: false });
-      let myChess2 = U.Wobbly({ value: null });
-      let myPlayer = U.Wobbly({ value: null });
+      let mySelectedPiece = U.WobVal();
+      let myConfirmedPiece = U.WobVal();
+      let myConfirmedTile = U.WobVal();
+      let myConfirmedPass = U.WobVal();
+      let myChess2 = U.WobVal();
+      let myPlayer = U.WobVal();
       
       // Confirming tiles and passing each cancel the other
       myConfirmedPass.hold(isPassing => {
@@ -858,20 +979,20 @@ U.buildRoom({
         });
         
         // Border depends on whether we are selected, confirmed, and/or waiting
-        U.CalcWob({ wobs: [ rec, mySelectedPiece, myConfirmedPiece ], func: (v, sel, cnf) => {
+        U.WobFnc([ rec, mySelectedPiece, myConfirmedPiece ], (v, sel, cnf) => {
           if (v && v.wait)      real.setBorder('outer', borderWidthSimple, colours.disabled);
           else if (sel === rec) real.setBorder('outer', borderWidthSimple, colours.selected);
           else if (cnf === rec) real.setBorder('outer', borderWidthBold, colours.confirmed);
           else                  real.setBorder('outer', borderWidthSimple, colours.clear);
-        }});
+        });
         
         // The tangibility of this piece depends on colour and whether it's waiting
-        U.CalcWob({ wobs: [ myPlayer, rec ], func: (pl, pcVal) => {
+        U.WobFnc([ myPlayer, rec ], (pl, pcVal) => {
           if (!pl || !pcVal) return;
           pl.hold(plVal => {
             real.setFeel(pcVal && pcVal.wait === 0 && plVal.colour === pcVal.colour ? 'bumpy' : 'airy');
           });
-        }});
+        });
         
         // Ensure pieces are upright for black player (rotated an additional 180deg)
         myPlayer.hold(p => p && p.hold(v => real.setRot(v && v.colour === 'black' ? 180 : 0)));

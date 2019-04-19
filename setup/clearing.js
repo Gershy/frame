@@ -227,240 +227,145 @@ let U = global.U = {
   rooms: {}
 };
 
-let Wobbly = U.inspire({ name: 'Wobbly', methods: (insp, Insp) => ({
-  $nextUid: 0,
-  $nextHoldUid: 0,
-  
-  init: function({ value=null, uid=null }) {
-    this.uid = uid !== null ? uid : Insp.nextUid++;
-    this.setValue(value);
+let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
+  init: function() {
+    this.holders = new Set();
   },
-  setValue: function(value) { this.value = value; },
-  getValue: function() { return this.value ? this.value : null; },
-  setThrottle: function(throttle) {
-    this.throttle = open;
-    this.throttleVal = null;
-  },
-  hold: function(func, hasty=true) {
-    if (!this.holders) this.holders = {};
-    let ind = Insp.nextHoldUid++;
-    func[`~wob${this.uid}`] = ind;
-    this.holders[ind] = func;
-    if (hasty) func(this.getValue(), null);
+  hold: function(func) {
+    if (this.holders.has(func)) throw new Error('Already held');
+    this.holders.add(func);
     return func;
   },
   drop: function(func, safe=false) {
-    if (!func.has(`~wob${this.uid}`)) {
-      if (!safe)  throw new Error('Tried to drop unheld function');
-      else        return false;
-    }
-    let ind = func[`~wob${this.uid}`];
-    if (!this.holders || !this.holders.has(ind)) {
-      throw new Error(`${this.constructor.name} doesn't know index ${ind}`);
-    }
-    delete func[`~wob${this.uid}`];
-    delete this.holders[ind];
-    if (this.holders.isEmpty()) delete this.holders;
+    if (!this.holders.delete(func) && !safe) throw new Error('Tried to drop unheld function');
+    return func;
   },
-  isolate: function() {
-    // Avoid deletion-while-looping headaches; clone holders
-    this.holders.map(v => v).forEach(func => this.drop(func));
+  isolate: function() { this.holders.clear(); },
+  wobble: function(...args) { this.holders.forEach(func => func(...args)); }
+})});
+let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function(value=null) {
+    insp.Wob.init.call(this);
+    this.value = value;
+  },
+  setValue: function(value) { this.value = value; },
+  getValue: function() { return this.value; },
+  hold: function(func, hasty=true) {
+    let ret = insp.Wob.hold.call(this, func);
+    if (hasty) func(this.getValue(), null);
+    return ret;
   },
   wobble: function(value=null, force=U.isType(value, Object)) {
-    // Default `value` is null
-    // If `value` is an `Object`, `force` default to `true` (because it's likely that inner properties changed)
-    // If `value` is any other type, `force` defaults to `false`
-    
-    let origVal = ({}).has.call(this, 'value') ? this.value : null;
-    if (!force && value === origVal) return;
-    
-    if (!this.throttle) {
-      
-      this.setValue(value);
-      if (this.holders) this.holders.forEach(h => h(value, origVal));
-      
-    } else {
-      
-      let isThrottleActive = !!this.throttleVal;
-      this.throttleVal = { value };
-      
-      if (!isThrottleActive) {
-        
-        // Begin waiting on the throttle event. Once it resolves the most
-        // recent `this.throttleVal.value` will be set.
-        this.throttle().then(() => {
-          this.setValue(this.throttleVal.value);
-          this.throttleVal = null;
-          if (this.holders) this.holders.forEach(h => h(value, origVal));
-        });
-        
-      }
-      
-    }
-    
+    // Wobbles ought to be prevented on duplicate data; impossible
+    // to detect mutation of value though, e.g.:
+    // wobbly.wobble(wobbly.value.gain({ prop: 'hi' })
+    // The above should generate a wobble, even though the param
+    // to `wobbly.wobble` appears to be a duplicate. Therefore the
+    // default behaviour here is to force the wobble to occur,
+    // only if the new value is an Object
+    let origVal = this.value;
+    if (!force && value === origVal) return; // Duplicate value; no forcing
+    this.setValue(value);
+    insp.Wob.wobble.call(this, value, origVal);
   },
-  modify: function(f, force) {
-    this.wobble(f(this.getValue()), force);
-  }
+  modify: function(func, force) { this.wobble(func(this.getValue()), force); }
 })});
-let DeltaWob = U.inspire({ name: 'DeltaWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ value={}, uid=null }) {
-    this.value = value;
-    insp.Wobbly.init.call(this, { value: {}, uid });
+let WobObj = U.inspire({ name: 'WobObj', insps: { WobVal }, methods: (insp, Insp) => ({
+  init: function(value={}) {
+    this.value = {};
+    insp.WobVal.init.call(this, value); // Empty obj will add nothing to `this.value`, not clobber it
   },
-  setValue: function(value) {
-    let [ add, rem ] = [ value.has('add') ? value.add : {}, value.has('rem') ? value.rem : {} ];
-    
-    add.forEach((v, k) => {
-      if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`);
-    });
-    rem.forEach((v, k) => {
-      if (!this.value.has(k)) throw new Error(`Missing rem key: ${k}`);
-      if (add.has(k)) throw new Error(`Tried to add and rem ${k}`);
-    });
-    
-    add.forEach((v, k) => { this.value[k] = v; });
-    rem.forEach((v, k) => { delete this.value[k]; });
+  wobble: function(delta) {
+    this.setValue(delta);
+    this.holders.forEach(func => func(delta));
   },
-  getValue: function() {
-    // Return regular value as a delta
-    return { add: this.value };
+  setValue: function({ add={}, rem={}, ...invalid }) {
+    if (!invalid.isEmpty()) throw new Error(`Keys for ${this.constructor.name} should be "add" and "rem"; got: ${Object.keys(invalid).join(', ')}`);
+    add.forEach((v, k) => { if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`); });
+    rem.forEach((v, k) => { if (!this.value.has(k)) throw new Error(`Missing rem key: ${k}`); });
+    for (let k in add) this.value[k] = add[k];
+    for (let k in rem) delete this.value[k];
   },
-  wobbleAdd: function(k, v, force) {
-    return this.wobble({ add: { [k]: v } }, force);
-  },
-  wobbleRem: function(k, v, force) {
-    return this.wobble({ rem: { [k]: v } }, force);
-  }
+  getValue: function() { return { add: this.value }; }
 })});
-let BareWob = U.inspire({ name: 'BareWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ uid=null }) {
-    insp.Wobbly.init.call(this, { uid });
-  },
-  setValue: function(v) {},
-  getValue: function() { return null; },
-  wobble: function(value=null, force=true) { insp.Wobbly.wobble.call(this, value, force); },
-  modify: function(f) { throw new Error(`Call "wobble" instead of "modify" on ${this.constructor.name}`); },
-  hold: function(func, hasty=false) { return insp.Wobbly.hold.call(this, func, hasty); }
-})});
-let DelayWob = U.inspire({ name: 'DelayWob', insps: { BareWob }, methods: (insp, Insp) => ({
-  init: function({ uid, ms, open=true }) {
-    insp.BareWob.init.call(this, { uid });
-    this.ms = ms;
-    this.ref = null;
-    if (open) this.open();
-  },
-  open: function() { this.ref = setTimeout(() => this.wobble(null), this.ms); },
-  shut: function() { clearTimeout(this.ref); this.ref = null; }
-})});
-let IntervalWob = U.inspire({ name: 'IntervalWob', insps: { BareWob }, methods: (insp, Insp) => ({
-  init: function({ uid, ms, open=true }) {
-    insp.BareWob.init.call(this, { uid });
-    this.ms = ms;
-    this.ref = null;
-    if (open) this.open();
-  },
-  open: function() { this.ref = setInterval(() => this.wobble(null), this.ms); },
-  shut: function() { clearInterval(this.ref); this.ref = null; }
-})});
-let CalcWob = U.inspire({ name: 'CalcWob', insps: { Wobbly }, methods: (insp, Insp) => ({
-  init: function({ uid, wobs, func, open=true }) {
-    insp.Wobbly.init.call(this, { uid });
+let WobFnc = U.inspire({ name: 'WobFnc', insps: { WobVal }, methods: (insp, Insp) => ({
+  init: function(wobs, calc) {
+    insp.WobVal.init.call(this);
     this.wobs = wobs;
-    this.func = func;
+    this.calc = calc;
     
     this.watchFunc = null;
-    if (open) this.open();
-    else      this.setValue(this.calc());
-  },
-  calc: function() {
-    return this.func(...this.wobs.map(w => w.getValue()));
+    this.open();
   },
   open: function() {
-    if (this.watchFunc) { console.log('MULTIPLE CALCWOB ADDS :('); return; }
+    if (this.watchFunc) throw new Error(`${this.constructor.name} is already open`);
     this.watchFunc = () => {
-      let value = this.calc();
-      if (value !== this.getValue()) this.wobble(value);
+      let value = this.calc(...this.wobs.map(wob => wob.getValue()));
+      this.wobble(value); // TODO: No "force" being set
     };
-    this.wobs.forEach(w => w.hold(this.watchFunc, false));  // Don't wobble on hold
-    this.setValue(this.calc());                             // Only change value once at end
+    this.wobs.forEach(wob => wob.hold(this.watchFunc, false));
+    this.watchFunc(); // Get an initial value
   },
   shut: function() {
-    if (!this.watchFunc) { console.log('MULTIPLE CALCWOB REMS :('); return; }
-    this.wobs.forEach(w => w.drop(this.watchFunc));
+    if (!this.watchFunc) throw new Error(`${this.constructor.name} is already shut`);
+    insp.WobVal.shut.call(this);
+    this.wobs.forEach(wob => wob.drop(this.watchFunc));
     this.watchFunc = null;
-  },
-  drop: function(func, safe) {
-    // Overloads `Wobbly.prototype.drop`; providing `func` uses parent behaviour
-    // otherwise synonymous with `CalcWob.prototype.shut`
-    return func ? insp.Wobbly.drop.call(this, func, safe) : this.shut();
   }
 })});
-
-let Law = U.inspire({ name: 'Law', methods: (insp, Insp) => ({
-  init: function(name, wob, func) {
-    this.name = name;
+let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function(wob, filter) {
+    insp.Wob.init.call(this);
     this.wob = wob;
-    this.func = func;
-    this.wobHold = null;
-    this.innerHolds = {};
+    this.filter = filter;
+    
+    this.watchFunc = null
+    this.open();
   },
   open: function() {
-    
-    this.wobHold = this.wob.hold((v1, v0) => {
-      
-      // TODO: Hard to meaningfully distinguish between adds/rems here... maybe subclass in Record?
-      // Consider a subclass of Wobbly which guarantees that any wobbled values have a uid? WobblId?
-      let add = null, rem = null;
-      if (U.isType(v1, Object)) {
-        add = v1.add || {};
-        rem = v1.rem || {};
-      } else {
-        add = v1 ? { [v1.uid]: v1 } : {};
-        rem = v0 ? { [v0.uid]: v0 } : {};
-      }
-      
-      // if (add.toArr(v => v).length || rem.toArr(v => v).length)
-      //   console.log(`LAW ${this.name}: +${add.toArr(v => v).length}, -${rem.toArr(v => v).length}`);
-      
-      add.forEach(addVal => {
-        if (this.innerHolds.has(addVal.uid)) { console.log('MULTIPLE LAW ADDS! :('); return; }
-        this.innerHolds[addVal.uid] = this.func(addVal);
-        this.innerHolds[addVal.uid].forEach(temp => temp.open());
-      });
-      
-      rem.forEach(remVal => {
-        if (!this.innerHolds.has(remVal.uid)) { console.log('MULTIPLE LAW REMS! :('); return; }
-        this.innerHolds[remVal.uid].forEach(temp => temp.shut());
-        delete this.innerHolds[remVal.uid];
-      });
-      
-    });
-    
+    if (this.watchFunc) throw new Error(`${this.constructor.name} is already open`);
+    this.watchFunc = v => this.filter(v) && this.wobble(v);
+    this.wob.hold(this.watchFunc);
   },
   shut: function() {
-    
-    // Shut all inner holds
-    this.innerHolds.forEach(tempsAtUid => tempsAtUid.forEach(temp => temp.shut()));
-    this.innerHolds = {};
-    
-    // Drop our Wobbly
-    this.wob.drop(this.wobHold);
-    this.wobHold = null;
-    
+    if (!this.watchFunc) throw new Error(`${this.constructor.name} is already shut`);
+    this.wob.drop(this.watchFunc);
+    this.watchFunc = null;
   }
 })});
-let Waw = U.inspire({ name: 'Waw', methods: (insp, Insp) => ({
-  init: function(name, wob, func) {
-    this.name = name;
-    this.wob = wob;
-    this.func = func;
-    this.wobHold = null;
+let WobRep = U.inspire({ name: 'WobRep', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function(ms, open=false) {
+    insp.Wob.init.call(this);
+    this.ms = ms;
+    this.interval = null;
+    if (open) this.open();
   },
-  open: function() { this.wobHold = this.wob.hold((...vals) => this.func(...vals)); },
-  shut: function() { this.wob.drop(this.wobHold); this.wobHold = null; }
+  open: function() {
+    if (this.interval !== null) throw new Error('Already open');
+    this.interval = setInterval(() => this.wobble(), this.ms);
+  },
+  shut: function() {
+    if (this.interval === null) throw new Error('Already shut');
+    clearInterval(this.interval);
+    this.interval = null;
+  }
+})});
+let WobDel = U.inspire({ name: 'WobDel', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function(ms, open=false) {
+    insp.Wob.init.call(this);
+    this.ms = ms;
+    this.timeout = null;
+    if (open) this.open();
+  },
+  open: function() {
+    if (this.timeout !== null) throw new Error('Already open');
+    this.timeout = setTimeout(() => this.wobble(), this.ms);
+  },
+  shut: function() {
+    if (this.timeout === null) throw new Error('Already shut');
+    clearTimeout(this.timeout);
+    this.timeout = null;
+  }
 })});
 
-U.gain({
-  Wobbly, DeltaWob, BareWob, DelayWob, IntervalWob, CalcWob, Law, Waw
-});
+U.gain({ Wob, WobVal, WobObj, WobFnc, WobFlt, WobRep, WobDel });

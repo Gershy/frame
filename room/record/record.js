@@ -4,12 +4,12 @@ U.buildRoom({
   build: (foundation) => {
     // Records are data items with a number of properties, including relational properties
     
-    let { Wobbly } = U;
+    let { WobVal } = U;
     
     let getWob1 = () => {
-      let [ attach, detach ] = [ U.BareWob({}), U.BareWob({}) ];
+      let [ attach, detach ] = [ U.Wob({}), U.Wob({}) ];
       
-      let wob = U.Wobbly({});
+      let wob = U.WobVal();
       wob.hold((newVal, oldVal) => {
         if (newVal) attach.wobble(newVal);
         if (oldVal) detach.wobble(oldVal);
@@ -20,15 +20,15 @@ U.buildRoom({
       let attachHold0 = attach.hold;
       attach.hold = fn => {
         let ret = attachHold0.call(attach, fn);
-        if (wob.value) attach.wobble(wob.value);
+        if (wob.value) fn(wob.value); // DON'T WOBBLE - just call the function being attached
         return ret;
       };
       
       return wob;
     };
     let getWobM = () => {
-      let [ attach, detach ] = [ U.BareWob({}), U.BareWob({}) ];
-      let wob = U.DeltaWob({});
+      let [ attach, detach ] = [ U.Wob({}), U.Wob({}) ];
+      let wob = U.WobObj({});
       wob.hold(({ add={}, rem={} }) => {
         add.forEach(rec => attach.wobble(rec));
         rem.forEach(rec => detach.wobble(rec));
@@ -39,15 +39,16 @@ U.buildRoom({
       let attachHold0 = attach.hold;
       attach.hold = fn => {
         let ret = attachHold0.call(attach, fn);
-        wob.value.forEach(v => attach.wobble(v));
+        wob.value.forEach(v => fn(v)); // DON'T WOBBLE - just call the function being attached with every current value
         return ret;
       };
       
       return wob;
     };
     
-    let Record = U.inspire({ name: 'Record', insps: { Wobbly }, methods: (insp, Insp) => ({
+    let Record = U.inspire({ name: 'Record', insps: { WobVal }, methods: (insp, Insp) => ({
       $NEXT_REL_UID: 0,
+      $NEXT_REC_UID: 0,
       $fullFlatDef: Insp => {
         // Inherit relations from inspirations, and add on our own relations
         // TODO: Multiple inheritance can result in some defs being clobbered in this namespace...
@@ -118,8 +119,9 @@ U.buildRoom({
       $relate1M: (Cls1, ClsM, name1, nameM=name1) => Record.relate(Record.relateUniM, Record.relateUni1, Cls1, ClsM, name1, nameM),
       $relateMM: (Cls1, Cls2, name1, name2=name1) => Record.relate(Record.relateUniM, Record.relateUniM, Cls1, Cls2, name1, name2),      
       
-      init: function({ uid }) {
-        insp.Wobbly.init.call(this, { uid });
+      init: function({ uid=null }) {
+        this.uid = uid !== null ? uid : Record.NEXT_REC_UID++;
+        insp.WobVal.init.call(this);
         this.inner = {};
       },
       iden: function() { return `${this.constructor.name}@${this.uid}`; },

@@ -1,12 +1,12 @@
 (() => {
   
   let [ path, fs, http, crypto, os ] = [ 'path', 'fs', 'http', 'crypto', 'os' ].map(v => require(v));
-  let { BareWob } = U;
+  let { Wob } = U;
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
-  let transportDebug = true;
+  let transportDebug = false; //true;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -284,7 +284,7 @@
           
         } catch(err) {
           
-          return `${err.message.split('\n').join(' ')} - "${origLine}"`;
+          return C.skip; // `TRACEERR - ${err.message.split('\n').join(' ')} - "${origLine}"`;
           
         }
         
@@ -377,7 +377,7 @@
     makeHttpServer: async function(ip=this.ip, port=this.port) {
       let connections = {};
       let idsAtIp = {};
-      let serverWob = BareWob({});
+      let serverWob = Wob({});
       serverWob.idsAtIp = idsAtIp;
       let sendData = (address, res, msg) => {
         let type = (() => {
@@ -389,7 +389,7 @@
         if (transportDebug) console.log(`TELL ${address}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
-          json: () => JSON.stringify(msg).length < 100 ? msg : `${JSON.stringify(msg).substr(0, 100)}...`,
+          json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
           file: () => ({ ISFILE: true, ...msg.slice('name', 'type') })
         })[type]());
         
@@ -501,10 +501,10 @@
           if (transportDebug) console.log(`CONN ${address}`);
           
           let conn = connections[address] = {
-            ip, innerId, address,
-            hear: BareWob({}),
-            tell: BareWob({}),
-            shut: BareWob({}),
+            ip, address,
+            hear: Wob({}),
+            tell: Wob({}),
+            shut: Wob({}),
             waitResps: [],
             waitTells: [],
             isShut: false
@@ -603,14 +603,14 @@
       return serverWob;
     },
     makeSoktServer: async function(ip=this.ip, port=this.port + 1) {
-      let serverWob = BareWob({});
+      let serverWob = Wob({});
       let server = net.createServer(sokt => {
         
         let connectionWob = {
           ip: this.compactIp(sokt.remoteAddress),
-          hear: BareWob({}),
-          tell: BareWob({}),
-          shut: BareWob({})
+          hear: Wob({}),
+          tell: Wob({}),
+          shut: Wob({})
         };
         
         let status = 'starting';
@@ -857,6 +857,9 @@
     
     getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
     genInitBelow: async function(contentType, hutTerm, initContent={}) {
+      
+      if (!initContent || initContent.isEmpty()) throw new Error('Prolly not');
+      
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let doc = XmlElement(null, 'root');

@@ -6,6 +6,11 @@
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
 
+// RIGHT NOW: Match deadline should be implemented with FilterWob, or some other paradigm
+// that makes beginning and ending explicit. WobVal implementation should be cleaned up,
+// and with it, Wobblies accept simpler parameters, not objects (with ramifications for
+// certain occurrences of WobVal usage)
+
 Error.stackTraceLimit = Infinity;
 
 // Do setup

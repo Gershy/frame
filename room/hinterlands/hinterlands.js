@@ -44,9 +44,7 @@ U.buildRoom({
           this.commands[name] = 1;
           this.comWob(name).hold(effect);
         };
-        
         requiredCommand('error', async ({ hut, msg, reply }) => { /* nothing */ });
-        
         requiredCommand('fizzle', async ({ hut, msg, reply }) => { /* nothing */ });
         
         /// {ABOVE=
@@ -54,22 +52,26 @@ U.buildRoom({
         requiredCommand('getInit', async ({ hut, msg, reply }) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
+          
+          //console.log('INITIALIZING HUT:', hut.getTerm());
+          //console.log('FOLLOWING:', hut.holds);
+          
           let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), hut.genUpdateTell());
           reply(initBelow);
         });
-        
         requiredCommand('getFile', async ({ hut, msg, reply }) => {
           reply(U.safe(
             () => foundation.getMountFile(msg.path),
             () => ({ command: 'error', type: 'notFound', orig: msg })
           ));
         });
-        
         requiredCommand('thunThunk', async ({ hut, msg, reply }) => { /* nothing */ });
         
         /// =ABOVE} {BELOW=
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
+          
+          console.log('PERFORM:', msg);
           
           let { command, version, content } = msg;
           
@@ -142,7 +144,7 @@ U.buildRoom({
       comWob: function(command) {
         if (!this.comWobs.has(command)) {
           if (!this.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
-          this.comWobs[command] = U.BareWob({});
+          this.comWobs[command] = U.Wob({});
         }
         return this.comWobs[command];
       },
@@ -229,7 +231,7 @@ U.buildRoom({
       comWob: function(command) {
         if (!this.comWobs.has(command)) {
           if (!this.lands.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
-          this.comWobs[command] = U.BareWob({});
+          this.comWobs[command] = U.Wob({});
         }
         return this.comWobs[command];
       },
@@ -530,6 +532,7 @@ U.buildRoom({
           
           // Create the Hut, and reference by address
           let hut = Hut({ lands: this.lands, address });
+          
           this.connections[address] = { absConn, hut };
           
           // Clean up AbstractConnection and Hut when the connection is closed
@@ -553,8 +556,8 @@ U.buildRoom({
           hut.relWob(relLandsHuts).detach.hold(() => absConn.shut.wobble(true));
           
           // Attach the Hut to the Way and to the Lands
-          hut.attach(relWaysHuts, this);
-          hut.attach(relLandsHuts, this.lands);
+          this.attach(relWaysHuts, hut);
+          this.lands.attach(relLandsHuts, hut);
           
         });
       },

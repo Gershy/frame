@@ -42,14 +42,13 @@
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what browser-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?
-      this.unloadWob = U.BareWob({});
+      this.unloadWob = U.Wob({});
       window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
       
     },
     getPlatformName: function() { return 'browser'; },
     installFoundation: async function() {
       
-      //window.on('uncaughtException', err => console.log(this.formatError(err)));
       window.addEventListener('unhandledrejection', evt => {
         console.log(this.formatError(evt.reason));
         evt.preventDefault();
@@ -83,12 +82,12 @@
       
       let clientWob = {
         ip: 'remote',
-        hear: U.BareWob({}),
-        tell: U.BareWob({}),
-        open: U.BareWob({}),
-        shut: U.BareWob({})
+        hear: U.Wob({}),
+        tell: U.Wob({}),
+        open: U.Wob({}),
+        shut: U.Wob({})
       };
-      let serverWob = U.Wobbly({ value: clientWob });
+      let serverWob = U.WobVal(clientWob);
       
       let heartbeatTimeout = null;
       let tellAndHear = async msg => {
@@ -130,7 +129,7 @@
         } catch(err) {
           
           // TODO: Reset our state Below! Reload page?
-          console.log('Error from transmission:', foundation.formatError(err));
+          console.log('Error from transmission:', this.formatError(err));
           throw err;
           
         }
@@ -165,53 +164,58 @@
       let trace = stack.substr(traceBegins);
       
       let lines = trace.split('\n').map(ln => {
-        let [ pre, suf ] = ln.split(this.traceUrl);
-        let [ full, lineInd, charInd ] = suf.match(/([0-9]+):([0-9]+)/);
-        
-        lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document
-        
-        let roomName = null;
-        for (let k in U.debugLineData.rooms) {
-          let { offsetWithinScript, offsets } = U.debugLineData.rooms[k];
-          if (offsetWithinScript > lineInd) break;
-          roomName = k;
-        }
-        
-        if (roomName === null) return `UNKNOWN: ${lineInd}:${charInd}`;
-        
-        let { offsetWithinScript, offsets } = U.debugLineData.rooms[roomName];
-        lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
-        
-        let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
-        
-        if (offsets) {
+        try {
+          let [ pre, suf ] = ln.split(this.traceUrl);
+          let [ full, lineInd, charInd ] = suf.match(/([0-9]+):([0-9]+)/);
           
-          let nextOffset = 0; // The index of the next offset chunk which may take effect
-          for (let i = 0; i < lineInd; i++) {
-            // Find all the offsets which exist for the source line
-            // For each offset increment the line in the source file
-            while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
-              srcLineInd += offsets[nextOffset].offset;
-              nextOffset++;
-            }
-            srcLineInd++;
+          lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document
+          
+          let roomName = null;
+          for (let k in U.debugLineData.rooms) {
+            let { offsetWithinScript, offsets } = U.debugLineData.rooms[k];
+            if (offsetWithinScript > lineInd) break;
+            roomName = k;
           }
           
-          roomName += '.cmp';
+          if (roomName === null) return `UNKNOWN: ${lineInd}:${charInd}`;
           
-        } else {
+          let { offsetWithinScript, offsets } = U.debugLineData.rooms[roomName];
+          lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
           
-          srcLineInd = lineInd;
-          roomName += '.js';
+          let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
+          
+          if (offsets) {
+            
+            let nextOffset = 0; // The index of the next offset chunk which may take effect
+            for (let i = 0; i < lineInd; i++) {
+              // Find all the offsets which exist for the source line
+              // For each offset increment the line in the source file
+              while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
+                srcLineInd += offsets[nextOffset].offset;
+                nextOffset++;
+              }
+              srcLineInd++;
+            }
+            
+            roomName += '.cmp';
+            
+          } else {
+            
+            srcLineInd = lineInd;
+            roomName += '.js';
+            
+          }
+          
+          let padRoom = (roomName + ': ').padTail(25);
+          let padLine = `${srcLineInd}:${charInd}`.padTail(10);
+          let traceLine = ln.has('(') ? ln.split('(')[1].crop(0, 1) : ln.trim().crop(3);
+          
+          return `${padRoom} ${padLine} (${traceLine})`;
+        } catch(err) {
+          
+          return `TRACEERR - ${err.message.split('\n').join(' ')} - "${ln}"`;
           
         }
-        
-        let padRoom = (roomName + ': ').padTail(25);
-        let padLine = `${srcLineInd}:${charInd}`.padTail(10);
-        let traceLine = ln.has('(') ? ln.split('(')[1].crop(0, 1) : ln.trim().crop(3);
-        
-        return `${padRoom} ${padLine} (${traceLine})`;
-        
       });
       
       return `${err.message}:\n${lines.map(v => `  ${v}`).join('\n')}`;

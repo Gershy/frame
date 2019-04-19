@@ -3,7 +3,7 @@ U.buildRoom({
   innerRooms: [ 'record' ],
   build: (foundation, record) => {
     
-    let { Wobbly } = U;
+    let { WobVal } = U;
     
     let frameCb = (frames, f) => {
       let ff = cnt => {
@@ -100,7 +100,7 @@ U.buildRoom({
         
         this.applyTransform();
         
-        this.interactWob = U.Wobbly({ value: false });
+        this.interactWob = U.WobVal(false);
         this.dom.addEventListener('mousedown', evt => {
           this.interactWob.wobble(true);
           evt.stopPropagation();
@@ -112,8 +112,8 @@ U.buildRoom({
           evt.preventDefault();
         });
         
-        this.addWob = U.BareWob({});
-        this.remWob = U.BareWob({});
+        this.addWob = U.Wob({});
+        this.remWob = U.Wob({});
       },
       setRemovalDelayMs: function(ms) {
         this.removalDelayMs = ms;
