@@ -61,18 +61,22 @@ U.buildRoom({
         // Attach/detach instances of Cls1 to/from instances of Cls2
         type: '1',
         attach0: (inst1, inst2) => {
+          if (!inst2.isInspiredBy(Record)) throw new Error(`Can't attach: need Record; got ${U.typeOf(inst2)}`);
           if (inst1.inner.has(name) && inst1.inner[name].value)
             throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
         },
-        attach1: (inst1, inst2) => {
+        attach1: (inst1, inst2, agg) => {
           if (!inst1.inner.has(name)) inst1.inner[name] = getWob1();
+          agg.addWob(inst1.inner[name]);
           inst1.inner[name].wobble(inst2);
         },
         detach0: (inst1, inst2) => {
+          if (!inst2.isInspiredBy(Record)) throw new Error(`Can't detach: need Record; got ${U.typeOf(inst2)}`);
           if (!inst1.inner.has(name) || inst1.inner[name].value !== inst2)
             throw new Error(`Can't detach rel ${Cls1.name}.${name} -> ${Cls2.name}: already detached`);
         },
-        detach1: (inst1, inst2) => {
+        detach1: (inst1, inst2, agg) => {
+          agg.addWob(inst1.inner[name]);
           inst1.inner[name].wobble(null);
         }
       }),
@@ -83,8 +87,9 @@ U.buildRoom({
           if (inst1.uid === null) throw new Error(`Can't attach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
           if (instM.inner.has(name) && instM.inner[name].value.has(inst1.uid)) throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
         },
-        attach1: (instM, inst1) => {
+        attach1: (instM, inst1, agg) => {
           if (!instM.inner.has(name)) instM.inner[name] = getWobM();
+          agg.addWob(instM.inner[name]);
           instM.inner[name].wobble({ add: { [inst1.uid]: inst1 } });
         },
         detach0: (instM, inst1) => {
@@ -92,7 +97,8 @@ U.buildRoom({
           if (!instM.inner.has(name) || !instM.inner[name].value.has(inst1.uid))
             throw new Error(`Can't detach rel ${ClsM.name}.${name} -> ${Cls1.name}: already detached`);
         },
-        detach1: (instM, inst1) => {
+        detach1: (instM, inst1, agg) => {
+          agg.addWob(instM.inner[name]);
           instM.inner[name].wobble({ rem: { [inst1.uid]: inst1 } });
         }
       }),
@@ -101,12 +107,14 @@ U.buildRoom({
         // `let name1 = 'relVar' + (Cls1.nextRelVarInd++);`
         // `let name2 = 'relVar' + (Cls2.nextRelVarInd++);`
         
+        let clsRel1 = relFunc1(name1, Cls1, Cls2);
+        let clsRel2 = relFunc2(name2, Cls2, Cls1);
+        
         let key = U.multiKey(`${Cls1.uid}.${name1}`, `${Cls2.uid}.${name2}`);
         let rel = {
           key, uid: Record.NEXT_REL_UID++, desc: name1 === name2 ? name1 : `${name1}<->${name2}`,
           Cls1, Cls2, name1, name2,
-          clsRel1: relFunc1(name1, Cls1, Cls2),
-          clsRel2: relFunc2(name2, Cls2, Cls1)
+          clsRel1, clsRel2
         };
         
         if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {}; Cls1.relSchemaDef[name1] = rel;
@@ -119,9 +127,9 @@ U.buildRoom({
       $relate1M: (Cls1, ClsM, name1, nameM=name1) => Record.relate(Record.relateUniM, Record.relateUni1, Cls1, ClsM, name1, nameM),
       $relateMM: (Cls1, Cls2, name1, name2=name1) => Record.relate(Record.relateUniM, Record.relateUniM, Cls1, Cls2, name1, name2),      
       
-      init: function({ uid=null }) {
+      init: function({ uid=null, value=null }) {
         this.uid = uid !== null ? uid : Record.NEXT_REC_UID++;
-        insp.WobVal.init.call(this);
+        insp.WobVal.init.call(this, value);
         this.inner = {};
       },
       iden: function() { return `${this.constructor.name}@${this.uid}`; },
@@ -169,39 +177,67 @@ U.buildRoom({
         throw new Error(`${this.constructor.name} doesn't use the provided relation`);*/
       },
       relWob: function(rel, direction) {
+        if (!rel) throw new Error('Invalid rel provided');
         let { nameFwd, clsRelFwd } = this.getRelPart(rel, direction);
         if (!this.inner.has(nameFwd)) this.inner[nameFwd] = clsRelFwd.type === '1' ? getWob1() : getWobM();
         return this.inner[nameFwd];
       },
       relVal: function(rel) { return this.relWob(rel).value; },
       
-      attach: function(rel, inst) {
+      attach: function(rel, inst, agg=null) {
         // Validate then attach
         let { clsRelFwd, clsRelBak } = this.getRelPart(rel);
+        
+        // NOTE: Unaggregated, the order would be:
+        // validate1, validate2, set1, wobble1, set2, wobble2
+        // We need to aggregate! Because the order needs to be:
+        // validate1, validate2, set1, set2, wobble1, wobbl2
+        // Otherwise a wobble occurs before the full new state is set
+        
+        let defAgg = !agg;
+        if (defAgg) agg = U.AggWobs();
+        
         clsRelFwd.attach0(this, inst); clsRelBak.attach0(inst, this);
-        clsRelFwd.attach1(this, inst); clsRelBak.attach1(inst, this);
+        clsRelFwd.attach1(this, inst, agg); clsRelBak.attach1(inst, this, agg);
+        
+        if (defAgg) agg.complete();
         return inst;
       },
-      detach: function(rel, inst) {
+      detach: function(rel, inst, agg=null) {
         // Validate then detach
         let { clsRelFwd, clsRelBak } = this.getRelPart(rel);
+        
+        let defAgg = !agg;
+        if (defAgg) agg = U.AggWobs();
+        
         clsRelFwd.detach0(this, inst); clsRelBak.detach0(inst, this);
-        clsRelFwd.detach1(this, inst); clsRelBak.detach1(inst, this);
+        clsRelFwd.detach1(this, inst, agg); clsRelBak.detach1(inst, this, agg);
+        
+        if (defAgg) agg.complete();
         return inst;
       },
-      isolate: function() {
-        // For all our relations, detach from all related Records
+      shut: function() {
+        insp.WobVal.shut.call(this);
+        
+        let agg = U.AggWobs();
+        
+        // For all our relations, detach from all Records related via that relation
         this.getFlatDef().forEach(rel => {
-          let recs = this.relVal(rel);
-          if (!U.isType(recs, Object)) recs = recs ? { [recs.uid]: recs } : {};
           
-          // TODO: `U.safe` fixes the problem but is most likely overkill!
-          // Earlier items detached may, through holds, cause later items to become
-          // detached ahead of the forEach loop. Using `U.safe` ensures failures
-          // are tolerated - without it there are bugs, but I haven't bothered to
-          // fully understand their origin.
-          recs.forEach(rec => U.safe(() => this.detach(rel, rec)));
+          let recs = this.relVal(rel);
+          let getRecs = U.isType(recs, Object)
+            ? (n => recs) // Take advantage of `recs` being a live reference
+            : (n => (recs && n === 0) ? { [recs.uid]: recs } : {});
+          
+          for (let n = 0; true; n++) {
+            let rec = getRecs(n).find(v => true);
+            if (!rec) break;
+            this.detach(rel, rec[0], agg);
+          }
+          
         });
+        
+        agg.complete();
       }
     })});
     

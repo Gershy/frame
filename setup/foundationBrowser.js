@@ -72,6 +72,7 @@
     },
     
     // Functionality
+    queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {
@@ -92,7 +93,7 @@
       let heartbeatTimeout = null;
       let tellAndHear = async msg => {
         
-        if (transportDebug) console.log(`TELL remote:`, msg);
+        if (transportDebug) console.log(`--TELL remote:`, msg);
         
         // Do XHR
         let req = new XMLHttpRequest();
@@ -122,7 +123,7 @@
           
           // If any data was received, process it at a higher level
           if (res) {
-            if (transportDebug) console.log('HEAR remote:', res);
+            if (transportDebug) console.log('--HEAR remote:', res);
             clientWob.hear.wobble([ res, null ]);
           }
           

@@ -19,6 +19,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   
   // Functionality
   getMs: function() { return +new Date(); },
+  queueTask: C.notImplemented,
   makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
   makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
   

@@ -6,7 +6,7 @@
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
   
-  let transportDebug = false; //true;
+  let transportDebug = true;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -45,7 +45,10 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, roomDir, variantDefs, ip='static', port=80, showIps=false, networkDebug=false, spoofEnabled=false }) {
+    init: function({ hut, bearing, variantDefs={}, ip='static', port=80, transportDebug=true, ...moreOpts }) {
+      
+      let { httpFullDebug=false, spoofEnabled=false } = moreOpts;
+      
       if (ip === 'help') {
         console.log('IP OPTIONS:', this.getStaticIps());
         return process.exit(0);
@@ -53,10 +56,10 @@
       
       insp.Foundation.init.call(this, { hut, bearing });
       this.roomsInOrder = [];
-      this.variantDefs = variantDefs || {};
+      this.variantDefs = variantDefs;
       this.compilationData = {};
       this.mountedFiles = {};
-      this.networkDebug = networkDebug;
+      this.httpFullDebug = httpFullDebug;
       this.spoofEnabled = spoofEnabled;
       
       if (ip.hasHead('static')) {
@@ -319,6 +322,7 @@
     },
     
     // Functionality
+    queueTask: function(func) { process.nextTick(func); },
     getMemUsage: function() {
       let usage1 = process.memoryUsage();
       return {
@@ -386,7 +390,7 @@
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        if (transportDebug) console.log(`TELL ${address}:`, ({
+        if (transportDebug) console.log(`--TELL ${address}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
@@ -434,7 +438,7 @@
         catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
-        if (this.networkDebug) {
+        if (this.httpFullDebug) {
           console.log('\n\n' + [
             '==== INCOMING REQUEST ====',
             `IP: ${req.connection.remoteAddress}`,
@@ -498,7 +502,7 @@
         
         // Create a new connection if this address hasn't been seen before
         if (!connections.has(address)) {
-          if (transportDebug) console.log(`CONN ${address}`);
+          if (transportDebug) console.log(`++CONN ${address}`);
           
           let conn = connections[address] = {
             ip, address,
@@ -525,12 +529,12 @@
             }
             
             conn.waitResps.forEach(res => res.end());
-            console.log(`EXIT ${address}`);
+            console.log(`++EXIT ${address}`);
             delete connections[address];
           });
           serverWob.wobble(conn);
           
-          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`HEAR ${address}:`, msg));
+          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
         }
         
         if (!connections.has(address)) throw new Error(`No connection at address: ${address}`);
@@ -858,8 +862,6 @@
     getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
     genInitBelow: async function(contentType, hutTerm, initContent={}) {
       
-      if (!initContent || initContent.isEmpty()) throw new Error('Prolly not');
-      
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let doc = XmlElement(null, 'root');
@@ -888,9 +890,9 @@
       // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
       // TODO: Could memoize the static portion of the script
       // Accumulate all files needed to run this hut Below in the browser:
-      // 1) The clearing
-      // 2) Generic foundation
-      // 3) Browser-specific foundation
+      // 1) setup/clearing.js
+      // 2) setup/foundation.js
+      // 3) setup/foundationBrowser.js
       // 4..n) Necessary rooms
       let files = {
         clearing: 'setup/clearing.js',

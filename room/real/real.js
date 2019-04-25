@@ -54,7 +54,7 @@ U.buildRoom({
       init: function({ isRoot=false, flag=null }) {
         this.dom = isRoot ? document.body.appendChild(document.createElement('div')) : document.createElement('div');
         
-        if (flag) this.addFlag(flag);
+        if (flag) this.dom.classList.add(flag);
         
         this.loc = [ 0, 0 ];
         this.rot = 0;
@@ -267,16 +267,18 @@ U.buildRoom({
       },
       rem: function(domPar=this.dom.parentNode) {
         let remove = () => domPar.removeChild(this.dom);
-        if (this.removalDelayMs)  this.setFeel('airy') && setTimeout(remove, this.removalDelayMs);
-        else                      remove();
-        this.remWob.wobble();
+        if (this.removalDelayMs)  {
+          this.setFeel('airy');
+          setTimeout(remove, this.removalDelayMs);
+        } else {
+          remove();
+        }
         return this;
       },
-      setVal: function(k, v) { this.vals[k] = v; },
-      getVal: function(k) { return this.vals.has(k) ? this.vals[k] : null; },
-      addFlag: function(flag) { this.dom.classList.add(flag); },
-      remFlag: function(flag) { this.dom.classList.remove(flag); },
-      hasFlag: function(flag) { return this.dom.classList.contains(flag); }
+      shut: function() {
+        // TODO: Consider shutting all children?
+        this.rem();
+      }
     })});
     
     return { Colour, Reality, Real };

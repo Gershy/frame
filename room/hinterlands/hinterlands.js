@@ -6,11 +6,13 @@ U.buildRoom({
     
     let { Record } = record;
     
+    let TERMS = [];
+    
     let LandsRecord = U.inspire({ name: 'LandsRecord', insps: { Record }, methods: (insp, Insp) => ({
-      init: function({ lands, uid=lands.nextUid() }) {
-        insp.Record.init.call(this, { uid });
-        this.attach(relLandsRecs, lands);
+      init: function({ lands, uid=lands.nextUid(), value=null }) {
+        insp.Record.init.call(this, { uid, value });
         this.lands = lands;
+        this.attach(relLandsRecs, lands);
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
@@ -18,19 +20,13 @@ U.buildRoom({
         insp.Record.init.call(this, { uid: 'root' });
         this.uidCnt = 0;
         this.maxUpdateAttempts = 1000;
-        this.terms = [];
         this.commands = commands;
         this.comWobs = {};
         this.heartbeatMs = heartbeatMs;
         this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
         this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
         
-        /// {ABOVE=
-        
-        // Forget all recs for removed huts. Safeguard against sloppy broader code.
-        this.relWob(relLandsHuts).detach.hold(hut => hut.forgetAllRecs());
-        
-        /// =ABOVE} {BELOW=
+        /// {BELOW=
         
         // Some values to control transmission
         this.version = 0;
@@ -52,10 +48,6 @@ U.buildRoom({
         requiredCommand('getInit', async ({ hut, msg, reply }) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
-          
-          //console.log('INITIALIZING HUT:', hut.getTerm());
-          //console.log('FOLLOWING:', hut.holds);
-          
           let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), hut.genUpdateTell());
           reply(initBelow);
         });
@@ -70,8 +62,6 @@ U.buildRoom({
         /// =ABOVE} {BELOW=
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
-          
-          console.log('PERFORM:', msg);
           
           let { command, version, content } = msg;
           
@@ -96,7 +86,7 @@ U.buildRoom({
             });
             remRec.forEach((v, uid) => {
               if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
-              lands.remRec(recs[uid]);
+              recs[uid].shut();
             });
             addRel.forEach(([ relUid, uid1, uid2 ]) => {
               if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
@@ -137,7 +127,7 @@ U.buildRoom({
         /// =BELOW}
       },
       genUniqueTerm: function() {
-        let ret = this.terms[Math.floor(Math.random() * this.terms.length)];
+        let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
         return this.relVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
@@ -154,8 +144,8 @@ U.buildRoom({
           return hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         }
         
-        this.comWob(command).wobble({ lands: this, hut, msg, reply });
-        hut.comWob(command).wobble({ lands: this, hut, msg, reply });
+        this.comWob(command).wobble({ lands: this, hut, msg, reply, dudo: true });
+        hut.comWob(command).wobble({ lands: this, hut, msg, reply, dudo: true });
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -171,24 +161,12 @@ U.buildRoom({
         this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
       },
       /// =BELOW}
-      remRec: function(rec) {
-        // TODO: All forgetting should happen as a result of Wobblies
-        // This method should be removed.
-        // Rename `Record.prototype.isolate` -> `Record.prototype.rem`
-        // A call to `aRecord.rem()` should result in all forgetting!
-        
-        /// {ABOVE=
-        // Cause all huts to forget about this record!
-        this.relVal(relLandsHuts).forEach(hut => hut.forgetRec(rec));
-        /// =ABOVE}
-        rec.isolate(); // Detach `rec` from EVERYTHING!
-      },
       
       open: async function() {
         /// {ABOVE=
-        this.terms = JSON.parse(await foundation.readFile('room/hinterlands/terms.json'));
+        TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
         /// =ABOVE} {BELOW=
-        this.terms = [ 'remote' ];
+        TERMS = [ 'remote' ];
         /// =BELOW}
         
         await Promise.allObj(this.relVal(relLandsWays).map(w => w.open())); // Open all Ways
@@ -239,7 +217,7 @@ U.buildRoom({
       /// {ABOVE=
       refreshExpiry: function(ms=this.lands.heartbeatMs) {
         clearTimeout(this.expiryTimeout);
-        this.expiryTimeout = setTimeout(() => this.lands.remRec(this), ms);
+        this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
       
       followRec: function(rec, uid=rec.uid) {
@@ -354,25 +332,6 @@ U.buildRoom({
         
         return rec;
       },
-      forgetAllRecs: function() {
-        this.holds.forEach(hold => this.forgetRec(hold.rec));
-      },
-      incFollow: function(rec, uid=rec.uid) {
-        
-        if (!this.holds.has(uid)) this.followRec(rec, uid);
-        this.holds[uid].amt++;
-        
-      },
-      decFollow: function(rec, uid=rec.uid) {
-        
-        if (!this.holds.has(uid)) return;
-        this.holds[uid].amt--;
-        if (this.holds[uid].amt <= 0) this.forgetRec(rec, uid);
-        
-      },
-      genFollowTemp: function(rec) {
-        return { open: () => this.incFollow(rec), shut: () => this.decFollow(rec) };
-      },
       
       resetVersion: function() {
         // Clears memory of current delta and generates a new delta which would bring
@@ -456,8 +415,6 @@ U.buildRoom({
         let content = this.offloadInformData(); // Clear our memory of the delta; it will be sent Below
         if (content.isEmpty()) return null;
         this.version++;
-        //this.versionHist.push(this.version);
-        //console.log('TIME:', +new Date(), 'HUT', this.address, '->', this.versionHist);
         return { command: 'update', version: this.version, content }
       },
       requestInformBelow: function() {
@@ -538,7 +495,7 @@ U.buildRoom({
           // Clean up AbstractConnection and Hut when the connection is closed
           absConn.shut.hold(closed => {
             delete this.connections[address];
-            this.lands.remRec(hut);
+            hut.shut();
           });
           
           // Pass anything heard on to our Lands
