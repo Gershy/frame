@@ -28,6 +28,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   install: async function() {
     await this.installFoundation();
     let room = U.rooms[this.hut];
+    if (!room.built.has('open')) throw new Error(`Couldn't find "open" prop for ${this.hut}`);
     await room.built.open();
     console.log(`Built ${this.hut} for ${this.getPlatformName()}`);
   },

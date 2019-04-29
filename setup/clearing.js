@@ -232,22 +232,70 @@ let U = global.U = {
   rooms: {}
 };
 
+// TODO: VERY draining on performance! Take this out!!!
+U.DBG_WOBS = null;
+U.TOTAL_WOB_HOLDS = () => {
+  let sum = 0;
+  for (let wob of U.DBG_WOBS) sum += (wob.holds ? wob.holds.size : 0);
+  return sum;
+};
+
 let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
   init: function() {
-    this.holders = new Set();
+    this.holds = new Set();
+    if (U.DBG_WOBS) U.DBG_WOBS.add(this);
   },
   hold: function(func) {
-    if (this.holders.has(func)) throw new Error('Already held');
-    this.holders.add(func);
-    return func;
+    if (this.holds.has(func)) throw new Error('Already held');
+    this.holds.add(func);
+    
+    let shutHoldWob = null;
+    return {
+      func,
+      shut: () => {
+        this.holds.delete(func);
+        if (shutHoldWob) shutHoldWob.wobble();
+      },
+      shutWob: () => shutHoldWob || (shutHoldWob = U.WobOne())
+    };
   },
-  drop: function(func, safe=false) {
-    if (!this.holders.delete(func) && !safe) throw new Error('Tried to drop unheld function');
-    return func;
-  },
-  shut: function() { this.holders.clear(); },
-  toHolds: function(...args) { new Set(this.holders).forEach(func => func(...args)); },
+  toHolds: function(...args) { this.holds.forEach(func => func(...args)); },
   wobble: function(...args) { this.toHolds(...args); }
+})});
+let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
+  hold: function(func) {
+    // If we haven't wobbled, regular `Wob` functionality
+    if (this.holds) {
+      if (this.holds.has(func)) throw new Error('Already held');
+      this.holds.add(func);
+      
+      let shutHoldWob = null;
+      return {
+        func,
+        shut: () => {
+          if (this.holds) this.holds.delete(func);
+          else if (this.tmpHolds) this.tmpHolds.delete(func);
+          if (shutHoldWob) shutHoldWob.wobble();
+        },
+        shutWob: () => shutHoldWob || (shutHoldWob = U.WobOne())
+      };
+
+    }
+    
+    // If we've wobbled, we're either mid-wobble or done wobbling
+    if (this.tmpHolds)  this.tmpHolds.add(func);  // Mid-wobble: extend list of holds
+    else                  func();                     // Done wobbling: call func immediately
+    
+    return { shut: () => {}, shutWob: this };
+  },
+  hadWob: function() { return !this.holds; },
+  toHolds: function(...args) {
+    if (!this.holds) return;
+    this.tmpHolds = this.holds;
+    this.holds = null;
+    this.tmpHolds.forEach(func => func(...args));
+    delete this.tmpHolds;
+  }
 })});
 let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) => ({
   init: function(value=null) {
@@ -294,6 +342,7 @@ let WobObj = U.inspire({ name: 'WobObj', insps: { WobVal }, methods: (insp, Insp
   getValue: function() { return { add: this.value }; }
 })});
 let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) => ({
+  // TODO: WobFnc should almost definitely only wobble when all its children have wobbled
   init: function(wobs, calc=v=>v) {
     if (!U.isType(wobs, Array)) wobs = [ wobs ];
     if (!wobs.length) throw new Error('Must provide at least one child Wob');
@@ -301,7 +350,7 @@ let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) =
     
     insp.Wob.init.call(this);
     
-    this.wobs = wobs.map(wob => ({ wob, val: null, func: null }));
+    this.wobs = wobs.map(wob => ({ wob, val: null, holdHog: null }));
     this.calc = calc;
     
     // TODO: Should a wobble be owed when one of our Wobs has wobbled, or only when ALL have?
@@ -309,7 +358,7 @@ let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) =
     this.open();
   },
   childWob: function(item, ...vals) {
-    item.val = vals[0]; // NOTE: Dropping all params past the 1st (e.g. for relation11, would drop "old" value)
+    item.val = vals[0]; // NOTE: Omitting all params past the 1st (e.g. for relation11, would omit "old" value)
     this.wobble();
   },
   getValue: function() { return this.calc(...this.wobs.map(wob => wob.val)); },
@@ -319,42 +368,41 @@ let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) =
     if (val !== C.skip) this.toHolds(val);
   },
   hold: function(func, hasty=this.wobOwed) {
-    let ret = insp.Wob.hold.call(this, func, false); // Call to `insp.WobVal.hold` should NEVER be hasty
+    let ret = insp.Wob.hold.call(this, func);
     if (hasty) { let v = this.getValue(); if (v !== C.skip) func(v); } // We implement our own hastiness, controlled with `C.skip`
     return ret;
   },
   open: function() {
-    if (this.wobs[0].func) throw new Error(`${this.constructor.name} is already open`);
-    
-    this.wobOwed = false;
+    if (this.wobs[0].holdHog) throw new Error(`${this.constructor.name} is already open`);
     
     // Any wobbles resulting from these holds will be prevented, and instead we'll
     // remember that we owe a wobble
+    this.wobOwed = false;
     this['toHolds'] = () => { this.wobOwed = true; };
+    
     this.wobs.forEach(wobItem => {
       wobItem.val = null;
-      wobItem.func = this.childWob.bind(this, wobItem);
-      wobItem.wob.hold(wobItem.func);
+      wobItem.holdHog = wobItem.wob.hold((...args) => this.childWob(wobItem, ...args));
     });
-    delete this['toHolds']; // Allow wobbles once more
+    
+    // Allow wobbles once more
+    delete this['toHolds'];
   },
   shut: function() {
-    if (!this.wobs[0].func) throw new Error(`${this.constructor.name} is already shut`);
+    if (!this.wobs[0].holdHog) throw new Error(`${this.constructor.name} is already shut`);
+    
     insp.Wob.shut.call(this);
     this.wobs.forEach(wobItem => {
       wobItem.val = null;
-      
-      // TODO: Need to safely drop, or there are occasional errors which I haven't investigated
-      // Could have to do with `this.wobs` containing duplicates, while `this.holders` only
-      // contains unique items? Or could have to do with `wobItem.wob.shut` being called?
-      wobItem.wob.drop(wobItem.func, true);
-      wobItem.func = null;
+      wobItem.holdHog.shut();
+      wobItem.holdHog = null;
     });
   }
 })});
 let WobRep = U.inspire({ name: 'WobRep', insps: { Wob }, methods: (insp, Insp) => ({
   init: function(ms, open=true) {
     insp.Wob.init.call(this);
+    if (ms <= 0) throw new Error('Tried to repeat infinitely quickly');
     this.ms = ms;
     this.interval = null;
     if (open) this.open();
@@ -365,78 +413,30 @@ let WobRep = U.inspire({ name: 'WobRep', insps: { Wob }, methods: (insp, Insp) =
   },
   shut: function() {
     if (this.interval === null) throw new Error('Already shut');
-    clearInterval(this.interval);
-    this.interval = null;
+    clearInterval(this.interval); this.interval = null;
   }
 })});
-let WobDel = U.inspire({ name: 'WobDel', insps: { Wob }, methods: (insp, Insp) => ({
+let WobDel = U.inspire({ name: 'WobDel', insps: { WobOne }, methods: (insp, Insp) => ({
   init: function(ms, open=true) {
-    insp.Wob.init.call(this);
+    insp.WobOne.init.call(this);
     this.ms = ms;
     this.timeout = null;
     if (open) this.open();
   },
   open: function() {
     if (this.timeout !== null) throw new Error('Already open');
-    this.timeout = setTimeout(() => this.toHolds(), this.ms);
+    if (this.ms > 0) {
+      this.timeout = setTimeout(() => this.toHolds(), this.ms);
+    } else {
+      this.timeout = 'immediate'; this.toHolds();
+    }
   },
   shut: function() {
     if (this.timeout === null) throw new Error('Already shut');
-    clearTimeout(this.timeout);
-    this.timeout = null;
+    clearTimeout(this.timeout); this.timeout = null;
   }
 })});
 
-// Manage a bunch of Tmps together, so that only 1 is open at a time
-let MulTmps = U.inspire({ name: 'MulTmps', insps: {}, methods: (insp, Insp) => ({
-  init: function(decideWob, decideFunc=v=>v, open=true) {
-    this.decideWob = decideWob;
-    this.decideHold = null;
-    this.decideFunc = decideFunc;
-    this.latestVal = null;
-    this.latestDecision = null;
-    this.tmps = {};
-    if (open) this.open();
-  },
-  getTmp: function(name) {
-    if (!this.tmps[name]) {
-      let [ attach, detach ] = [ U.Wob(), U.Wob() ];
-      this.tmps[name] = { attach, detach };
-      
-      // A Tmp's "attach" immediately fires if this Tmp is the current active one
-      let attachHold0 = attach.hold;
-      attach.hold = fn => {
-        let ret = attachHold0.call(attach, fn);
-        if (name === this.latestDecision) fn();
-        return ret;
-      };
-    }
-    return this.tmps[name];
-  },
-  open: function() {
-    if (this.decideHold) throw new Error('Already open');
-    
-    this.decideHold = this.decideWob.hold((...val) => {
-      let decision = this.decideFunc(...val);
-      
-      if (decision === this.latestDecision) return;
-      
-      if (this.latestDecision !== null) this.getTmp(this.latestDecision).detach.wobble(...this.latestVal);
-      this.latestDecision = decision;
-      this.latestVal = val;
-      if (this.latestDecision !== null) this.getTmp(this.latestDecision).attach.wobble(...this.latestVal);
-    });
-  },
-  shut: function() {
-    if (!this.decideHold) throw new Error('Already closed');
-    
-    if (this.latestDecision !== null) this.getTmp(this.latestDecision).detach.wobble(...this.latestVal);
-    this.latestDecision = null;
-    this.latestVal = null;
-    this.tmps = {};
-    this.decideWob.drop(this.decideHold);
-  }
-})});
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
   init: function(...wobs) {
     this.wobs = [];
@@ -468,112 +468,69 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
   }
 })});
 
-// TODO: A major feature missing is a simple ability to define AccessPaths with complex
-// "wob.attach" functionality, so that they also have detach functionality
-// E.g. `let playerAttach = U.WobFunc(chess2.relWob(rel.chess2Players), pl => pl.value.term === U.hut ? pl : C.skip);`
-// In this case the corresponding "detach" Wob is quite complicated to come by...
+// TODO: HEEERE! Cleaning up AccessPaths. They'll no longer maintain "accessStrength",
+// so Huts will need to know their own strength for following particular Records
 let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp) => ({
-  init: function(par=null, wob, openObj, shutObj, gen=null, open=true, dbg=false) {
-    this.par = par;
-    this.wob = wob;
+  init: function(hogWob, gen=null, open=true, dbg=false) {
+    this.hogWob = hogWob;
     this.gen = gen;
-    this.openObj = openObj;
-    this.shutObj = shutObj;
-    this.accessed = new Map(); // Accessed Records, mapped to independent shuttable actions. Shutting `this` should weaken access to all of them
     
-    // TODO: Not all cases will have attach/detach
-    this.openAccessWob = wob.attach;
-    this.shutAccessWob = wob.detach;
+    this.hogWobHold = null;
+    this.allHogDeps = new Set();
+    this.shutWob0 = U.WobOne();
     
     if (open) this.open();
-    
-    this.err = new Error('');
-  },
-  // TODO: Keep track of "strength" may be more suitable for some subclass of AccessPath
-  accessStrength: function(v) {
-    let [ ptr, amt ] = [ this, 0 ];
-    while (ptr) { if (ptr.accessed.has(v)) amt++; ptr = ptr.par; }
-    return amt;
   },
   open: function() {
     
-    if (this.openAccess) throw new Error('Already open!');
-    
-    // NOTE:
-    // Imagine Player -> Match -> MatchPlayers
-    // The initial Player will be iterated over twice in that sequence, once
-    // as the initial Player, and again in MatchPlayers (which inevitably
-    // contains the initial Player).
-    // 
-    // Each item in that chain has an AccessPath associated. A Player object
-    // will have a different "openObj" and "shutObj" called on it depending
-    // on which AccessPath finds it first. In situations like these, the
-    // "openObj" and "shutObj" methods should be identical for all possible
-    // AccessPaths which could discover the same Object.
-    // 
-    // While "(open|shut)Obj" will be called only once even when an Object
-    // is discovered multiple times, "gen" will be called every time. This
-    // makes us capable of applying uniform "(open|shut)Obj" functions to
-    // Records of the same type, while spawning new AccessPaths depending
-    // on the way a Record was accessed via "gen"
-    
-    let foundDuringOpen = new Set();
-    
-    this.openAccess = this.openAccessWob.hold(v => {
+    this.hogWobHold = this.hogWob.hold(hog => {
       
-      if (foundDuringOpen) foundDuringOpen.add(v);
+      let hogShutWob = hog.shutWob();
+      let apShutWob = this.shutWob();
       
-      if (this.accessed.has(v)) {
-        console.log('ME:', foundation.formatError(this.err));
-        throw new Error(`Can't open; already accessing ${U.typeOf(v)}`);
-      }
+      // Shutting the `AccessPath` shuts every accessed `Hog`
+      // If the Hog shuts first stop holding
+      // let apShutCauseHogShutHold = this.shutWob0.hold(() => hog.shut());
+      // hogShutWob.hold(() => apShutCauseHogShutHold.shut());
       
-      let str = this.accessStrength(v);
+      // Deps alongside `hog` shut when `hog` shuts
+      let seen = new Set();
+      let addHogDep = dep => {
+        
+        if (seen.has(dep)) throw new Error('Added same dependency multiple times');
+        seen.add(dep);
+        
+        // If the Dep shuts first stop holding
+        let depShutFirstWob = dep.shutWob().hold(() => {
+          hogShutCauseDepShutHold.shut();
+          apShutCauseDepShutHold.shut();
+        });
+        
+        // If the AccessPath or Hog shut, shut the Dep too
+        let hogShutCauseDepShutHold = hogShutWob.hold(() => {
+          apShutCauseDepShutHold.shut(); // Stop holding AccessPath
+          dep.shut()
+        });
+        let apShutCauseDepShutHold = apShutWob.hold(() => {
+          hogShutCauseDepShutHold.shut(); // Stop holding Hog
+          dep.shut();
+        });
+        
+        return dep;
+      };
       
-      // Add `v`, call "openObj" if we are first accessor, and always call "gen"
-      let accessDeps = new Set();
-      this.accessed.set(v, accessDeps);
-      
-      // Do special open actions if we are the initial accessor
-      if (this.openObj && str === 0) this.openObj(v);
-      
-      if (this.gen) this.gen(this, vv => accessDeps.add(vv) && vv, v);
-      
+      this.gen(addHogDep, hog);
     });
-    this.shutAccess = this.shutAccessWob.hold(v => {
-      
-      if (!this.accessed.has(v)) { this.err.message = 'CANT SHUT'; throw this.err; }//throw new Error(`Can't shut; not accessing ${U.typeOf(v)}`);
-      
-      if (foundDuringOpen) {
-        if (foundDuringOpen.has(v)) throw new Error(`During open, both attached and detached a ${U.typeOf(v)}`);
-        return; // Skip anything detached during opening
-      }
-      
-      let str = this.accessStrength(v);
-      
-      // Rem `v`, call "shutObj" if we were the first accessor
-      this.accessed.get(v).forEach(dep => dep.shut()); // Shut all dependencies
-      this.accessed.delete(v);
-      if (this.shutObj && str === 1) this.shutObj(v);
-      
-    });
-    
-    foundDuringOpen = null;
     
   },
   shut: function() {
-    
-    if (!this.openAccess) throw new Error('Already shut!');
-    
-    // Careful not to wobble; instead call `this.shutAccess` directly
-    for (let [ v, deps ] of this.accessed) this.shutAccess(v);
-    
-    // Need to drop our holds! Otherwise we wouldn't be completely cleaned up
-    this.openAccessWob.drop(this.openAccess, true); this.openAccess = null; // TODO: Need to safely drop
-    this.shutAccessWob.drop(this.shutAccess); this.shutAccess = null;
-    
-  }
+    if (!this.hogWobHold) throw new Error('Already shut');
+    this.hogWobHold.shut(); this.hogWobHold = null;
+    this.shutWob0.wobble();
+  },
+  shutWob: function() { return this.shutWob0; }
+  
 })});
 
-U.gain({ Wob, WobVal, WobObj, WobFnc, WobRep, WobDel, AccessPath, MulTmps, AggWobs });
+U.gain({ Wob, WobOne, WobVal, WobObj, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
 
