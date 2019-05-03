@@ -45,6 +45,8 @@ if (args.has('encodedCommand')) {
   });
 }
 
+if (args.has('test') && args.test) require('./setup/housekeeping.js');
+
 // Make the foundation
 let { FoundationNodejs } = U.foundationClasses;
 U.foundation = FoundationNodejs({
@@ -56,10 +58,5 @@ U.foundation = FoundationNodejs({
     //alone: { above: 0, below: 0 }
   }
 });
-
-if (args.has('test') && args.test) {
-  require('./test.js')(args);
-  return process.exit(0);
-}
 
 U.foundation.install();

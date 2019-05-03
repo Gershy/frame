@@ -220,6 +220,7 @@ U.buildRoom({
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
       
+      // TODO: AccessPaths don't support "access strength"! Need to implement that here...
       followRec: function(rec, uid=rec.uid) {
         
         if (this.holds.has(uid)) return;
@@ -528,17 +529,26 @@ U.buildRoom({
       }
     })});
     
+    let rel = {
+      landsRecs: Record.relate1M(Lands, LandsRecord, 'landsRecs'),
+      landsWays: Record.relate1M(Lands, Way, 'landsWays'),
+      landsHuts: Record.relate1M(Lands, Hut, 'landsHuts'),
+      waysHuts: Record.relateMM(Way, Hut, 'waysHuts')
+    };
+    
     let relLandsRecs =  Record.relate1M(Lands, LandsRecord, 'relLandsRecs');
     let relLandsWays =  Record.relate1M(Lands, Way, 'relLandsWays');
     let relLandsHuts =  Record.relate1M(Lands, Hut, 'relLandsHuts');
     let relWaysHuts =   Record.relateMM(Way, Hut, 'relWaysHuts');
     
-    return {
-      Lands, LandsRecord, Hut, Way,
-      relLandsRecs,
-      relLandsWays,
-      relLandsHuts,
-      relWaysHuts
-    };
+    let content = { Lands, LandsRecord, Hut, Way, rel };
+    
+    /// {TEST=
+    content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'hinterlands').contain(k => {
+      
+    }));
+    /// =TEST}
+    
+    return content;
   }
 });

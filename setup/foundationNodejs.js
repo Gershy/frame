@@ -54,9 +54,10 @@
         return process.exit(0);
       }
       
-      insp.Foundation.init.call(this, { hut, bearing });
+      insp.Foundation.init.call(this, { hut, bearing, ...moreOpts });
+      
       this.roomsInOrder = [];
-      this.variantDefs = variantDefs;
+      this.variantDefs = variantDefs.map(v => v.gain({ test: this.test }));
       this.compilationData = {};
       this.mountedFiles = {};
       this.httpFullDebug = httpFullDebug;

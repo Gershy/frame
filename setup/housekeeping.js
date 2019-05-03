@@ -1,44 +1,92 @@
-let Case = U.inspire({ name: 'Case', methods: (insp, Insp) => ({
+let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
   init: function(par, name, func) {
     this.par = par;
+    this.root = par ? par.root : this;
     this.name = name;
     this.func = func;
-    this.children = new Set();
+    this.children = new Map();
+    this.sandwich = { before: null, after: null };
     
-    if (this.par) this.par.children.add(this);
+    if (!par) {
+      this.total = 0;
+      this.passed = 0;
+      this.errId = 0;
+    }
+    
+    if (this.par) {
+      if (this.par.children.has(this.name)) throw new Error(`Multiple Keeps named "${this.name}"`);
+      this.par.children.set(this.name, this);
+    }
   },
-  contain: function(f) {
-    f(this);
+  contain: function(fn) {
+    let amt0 = this.children.size;
+    fn(this);
+    if (this.children.size === amt0) throw new Error('Called "contain" but didn\'t add any children');
     return this;
   },
+  getChild: function(...names) {
+    let ptr = this;
+    names.forEach(name => {
+      if (!ptr.children.has(name)) throw new Error(`Couldn't find child ${names.join('.')} (at name ${name})`);
+      ptr = ptr.children.get(name);
+    });
+    return ptr;
+  },
   run: function(...vals) {
-    let { result, val=null } = this.func ? this.func(...vals) : { result: null, val: null };
+    
+    let [ result, val, err ] = [ null, null, null ];
+    
+    try {
+      let v = this.func ? this.func(...vals) : { result: null, val: null };
+      result = v.result;
+      val = v.has('val') ? v.val : null;
+    } catch(err0) {
+      result = false;
+      val = null;
+      err = err0;
+      
+      let errId = this.root.errId++;
+      err.message = `TESTERROR(${errId}): ${err.message}`;
+      err.id = errId;
+      console.log(U.foundation.formatError(err));
+    }
+    
+    this.root.total++;
     
     if (this.children.size) {
       
       let childVals = [ val ].concat(vals);
-      let total = this.children.size;
-      let passed = 0;
+      let cTotal = this.children.size;
+      let cPassed = 0;
       let cases = {};
       
       this.children.forEach(child => {
-        let { result, childResults } = child.run(childVals);
-        cases[child.name] = { result, childResults };
-        if (result !== false) passed++;
+        if (this.sandwich.before) this.sandwich.before();
+        let { result, err, childResults } = child.run(childVals);
+        if (this.sandwich.after) this.sandwich.after();
+        if (result !== false) cPassed++;
+        cases[child.name] = { result, err, childResults };
       });
       
+      if (cPassed < cTotal) result = false;
+      if (result !== false) this.root.passed++;
+      
       return {
-        result: result !== false && passed === total,
+        result: result !== false,
+        err,
         childResults: {
-          summary: { passed, total },
+          summary: { total: cTotal, passed: cPassed },
           cases
         }
       };
       
     } else {
       
+      if (result !== false) this.root.passed++;
+      
       return {
         result: result !== false,
+        err,
         childResults: null
       };
       
@@ -47,23 +95,78 @@ let Case = U.inspire({ name: 'Case', methods: (insp, Insp) => ({
   }
 })});
 
-let showResult = (name, run, ind='') => {
-  let { result, childResults } = run;
-  let { summary, cases } = childResults || { summary: null, cases: {} };
-  
-  console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
-  
-  if (cases.isEmpty()) return;
-  
-  console.log(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
-  for (let [ name0, run ] of Object.entries(cases)) showResult(`${name}.${name0}`, run, ind + '    ');
-};
-
-module.exports = args => {
-  
-  let rootCase = Case(null, 'root').contain(c => {
-    
-    Case(c, 'WobOne').contain(c => {
+U.gain({
+  Keep,
+  addSetupKeep: rootKeep => rootKeep.contain(k => {
+    Keep(k, 'U').contain(k => {
+      
+      Keep(k, 'overwriteWobProp1', () => {
+        
+        let wob = U.Wob();
+        
+        return { result: wob.toHolds === U.Wob.prototype.toHolds };
+        
+      });
+      
+      Keep(k, 'overwriteWobProp2', () => {
+        
+        let wob = U.Wob();
+        let repl = () => 'hi';
+        wob.toHolds = repl;
+        return { result: wob.toHolds === repl };
+        
+      });
+      
+      Keep(k, 'overwriteWobProp3', () => {
+        
+        let wob = U.Wob();
+        
+        let numOrigCalls = 0;
+        let numReplCalls = 0;
+        
+        wob.hold(v => { numOrigCalls++; });
+        wob.wobble();
+        
+        wob.toHolds = () => { numReplCalls++; };
+        wob.wobble();
+        wob.wobble();
+        
+        return {
+          result: true
+            && numOrigCalls === 1
+            && numReplCalls === 2
+        }
+        
+      });
+      
+      Keep(k, 'overwriteWobProp4', () => {
+        
+        let wob = U.Wob();
+        
+        let numOrigCalls = 0;
+        let numReplCalls = 0;
+        
+        wob.hold(v => { numOrigCalls++; });
+        wob.wobble();
+        
+        wob.toHolds = () => { numReplCalls++; };
+        wob.wobble();
+        wob.wobble();
+        
+        delete wob.toHolds;
+        wob.wobble();
+        wob.wobble();
+        
+        return {
+          result: true
+            && numOrigCalls === 3
+            && numReplCalls === 2
+        }
+        
+      });
+      
+    });
+    Keep(k, 'WobOne').contain(k => {
       
       let setup = (n=1000) => {
         let wob = U.WobOne();
@@ -73,7 +176,7 @@ module.exports = args => {
         return wob;
       };
       
-      Case(c, 'holdCount', () => {
+      Keep(k, 'holdCount', () => {
         
         U.DBG_WOBS = new Set();
         let wob = setup();
@@ -81,7 +184,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'wobbleCount', () => {
+      Keep(k, 'wobbleCount', () => {
         
         U.DBG_WOBS = new Set();
         let wob = setup();
@@ -91,7 +194,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'dropCount', () => {
+      Keep(k, 'dropCount', () => {
         
         U.DBG_WOBS = new Set();
         let wob = setup();
@@ -101,8 +204,7 @@ module.exports = args => {
       });
       
     });
-    
-    Case(c, 'AccessPath').contain(c => {
+    Keep(k, 'AccessPath').contain(k => {
       
       let cntHogs = 0;
       let allHogs = new Set();
@@ -144,7 +246,7 @@ module.exports = args => {
         }
       };
       
-      let reset = () => {
+      k.sandwich.after = () => {
         U.DBG_WOBS = new Set();
         cntHogs = 0;
         allHogs = new Set();
@@ -152,9 +254,8 @@ module.exports = args => {
         cntFinNames = new Map();
       };
       
-      Case(c, 'openSepHog', () => {
+      Keep(k, 'openSepHog', () => {
         
-        reset();
         let hog = interimHog();
         let hogWob = U.Wob();
         
@@ -169,9 +270,8 @@ module.exports = args => {
         
       });
       
-      Case(c, 'shutDepHog', () => {
+      Keep(k, 'shutDepHog', () => {
         
-        reset();
         let hog = interimHog();
         let hogWob = U.Wob();
         
@@ -187,9 +287,8 @@ module.exports = args => {
         
       });
       
-      Case(c, 'doubleDepCauseErr', () => {
+      Keep(k, 'doubleDepCauseErr', () => {
         
-        reset();
         let reachedPoint = false;
         let hog = interimHog();
         let hogWob = U.Wob();
@@ -209,9 +308,8 @@ module.exports = args => {
         
       });
       
-      Case(c, 'gen1', () => {
+      Keep(k, 'gen1', () => {
         
-        reset();
         
         let hogWob = U.Wob();
         
@@ -248,9 +346,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'gen2', () => {
-        
-        reset();
+      Keep(k, 'gen2', () => {
         
         let hogWob = U.Wob();
         
@@ -300,9 +396,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'genAndCleanup1', () => {
-        
-        reset();
+      Keep(k, 'genAndCleanup1', () => {
         
         let hogWob = U.Wob();
         
@@ -340,8 +434,6 @@ module.exports = args => {
         
         p1.shut();
         
-        console.log(`GC1: HOGS ${cntHogs}, HOLDS ${U.TOTAL_WOB_HOLDS()}`);
-        
         return {
           result: true
             && cntHogs === 0
@@ -350,9 +442,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'genAndCleanup2', () => {
-        
-        reset();
+      Keep(k, 'genAndCleanup2', () => {
         
         let hogWob = U.Wob();
         
@@ -408,9 +498,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'genAndCleanup3', () => {
-        
-        reset();
+      Keep(k, 'genAndCleanup3', () => {
         
         let hogWob = U.Wob();
         
@@ -471,9 +559,7 @@ module.exports = args => {
         
       });
       
-      Case(c, 'genAndPartialCleanup1', () => {
-        
-        reset();
+      Keep(k, 'genAndPartialCleanup1', () => {
         
         let hogWob = U.Wob();
         
@@ -534,9 +620,5 @@ module.exports = args => {
       });
       
     });
-    
-  });
-  
-  showResult(rootCase.name, rootCase.run());
-  
-};
+  })
+});

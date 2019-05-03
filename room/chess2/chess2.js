@@ -28,6 +28,10 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real' ],
   build: (foundation, hinterlands, record, real) => {
     
+    /// {TEST=
+    console.log('HEYOOO');
+    /// =TEST}
+    
     let { Record } = record;
     let { Lands, LandsRecord, Way, Hut, relLandsWays, relLandsRecs, relLandsHuts } = hinterlands;
     

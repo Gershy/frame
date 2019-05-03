@@ -12,7 +12,8 @@ let C = global.C = {
   notImplemented: function() { throw new Error(`Not implemented by ${this.constructor.name}`); }
 };
 
-let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false });
+// TODO: Is "writable" ok?
+let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
 protoDef(Object, 'map', function(fn) {
@@ -105,14 +106,16 @@ protoDef(String, 'hasTail', function(str) {
   for (let i = 0; i < str.length; i++) if (str[i] !== this[diff + i]) return false;
   return true;
 });
-protoDef(String, 'padHead', function(amt, c=' ') {
+protoDef(String, 'padHead', function(amt, char=' ') {
+  //return char.repeat(Math.max(0, amt - this.length)) + ret;
   let ret = this;
-  while (ret.length < amt) ret = c + ret;
+  while (ret.length < amt) ret = char + ret;
   return ret;
 });
-protoDef(String, 'padTail', function(amt, c=' ') {
+protoDef(String, 'padTail', function(amt, char=' ') {
+  //return char.repeat(Math.max(0, amt - this.length)) + ret;
   let ret = this;
-  while (ret.length < amt) ret += c;
+  while (ret.length < amt) ret += char;
   return ret;
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
@@ -184,8 +187,11 @@ let U = global.U = {
     });
     
     methods.forEach((method, methodName) => {
-      if (methodName[0] === '$')  Insp[methodName.substr(1)] = method;
-      else                        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
+      if (methodName[0] === '$') {
+        Insp[methodName.substr(1)] = method;
+      } else {
+        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
+      }
     });
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
     
@@ -195,6 +201,7 @@ let U = global.U = {
     });
     
     Insp.prototype.constructor = Insp;
+    //Object.freeze(Insp.prototype); // TODO: `Object.freeze` prevents `WobAggs` from spoofing `Wob.prototype.toHolds`
     return Insp;
   },
   isType: (val, Cls) => {
@@ -245,6 +252,7 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
     this.holds = new Set();
     if (U.DBG_WOBS) U.DBG_WOBS.add(this);
   },
+  numHolds: function() { return this.holds ? this.holds.size : 0; },
   hold: function(func) {
     if (this.holds.has(func)) throw new Error('Already held');
     this.holds.add(func);
@@ -252,15 +260,12 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
     let shutHoldWob = null;
     return {
       func,
-      shut: () => {
-        this.holds.delete(func);
-        if (shutHoldWob) shutHoldWob.wobble();
-      },
+      shut: () => this.holds.delete(func) && shutHoldWob && shutHoldWob.wobble(),
       shutWob: () => shutHoldWob || (shutHoldWob = U.WobOne())
     };
   },
-  toHolds: function(...args) { this.holds.forEach(func => func(...args)); },
-  wobble: function(...args) { this.toHolds(...args); }
+  wobble: function(...args) { this.toHolds(...args); },
+  toHolds: function(...args) { /*!!!*/ this.holds.forEach(func => func(...args)); }
 })});
 let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
   hold: function(func) {
@@ -439,7 +444,7 @@ let WobDel = U.inspire({ name: 'WobDel', insps: { WobOne }, methods: (insp, Insp
 
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
   init: function(...wobs) {
-    this.wobs = [];
+    this.wobs = new Map(); // Maps a `Wob` to its related WobItem
     wobs.forEach(wob => this.addWob(wobs));
     
     this.err = new Error('');
@@ -449,10 +454,15 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     });
   },
   addWob: function(wob) {
+    if (this.wobs.has(wob)) return; // TODO: Throw error?
+    
     let wobItem = { wob, vals: null };
+    
     wob.numAggs = wob.numAggs ? wob.numAggs + 1 : 1;
+    if (wob.numAggs > 1) console.log(U.foundation.formatError(new Error('Multiple aggs')));
     if (wob.numAggs === 1) wob['toHolds'] = (...vals) => { wobItem.vals = vals; };
-    this.wobs.push(wobItem);
+    
+    this.wobs.set(wob, wobItem);
   },
   complete: function() {
     this.wobs.forEach(wobItem => {
@@ -468,8 +478,6 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
   }
 })});
 
-// TODO: HEEERE! Cleaning up AccessPaths. They'll no longer maintain "accessStrength",
-// so Huts will need to know their own strength for following particular Records
 let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp) => ({
   init: function(hogWob, gen=null, open=true, dbg=false) {
     this.hogWob = hogWob;
@@ -529,7 +537,6 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
     this.shutWob0.wobble();
   },
   shutWob: function() { return this.shutWob0; }
-  
 })});
 
 U.gain({ Wob, WobOne, WobVal, WobObj, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
