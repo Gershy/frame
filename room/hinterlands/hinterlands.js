@@ -12,7 +12,7 @@ U.buildRoom({
       init: function({ lands, uid=lands.nextUid(), value=null }) {
         insp.Record.init.call(this, { uid, value });
         this.lands = lands;
-        this.attach(relLandsRecs, lands);
+        this.attach(rel.landsRecs, lands);
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
@@ -34,6 +34,9 @@ U.buildRoom({
         this.resetHeartbeatTimeout(); // Begin heartbeat
         
         /// =BELOW}
+        
+        // TODO: Whitelisting command names ahead of time might not be necessary - not likely
+        // that user input could wind up as parameter for `(Lands|Hut).prototype.comWob`
         
         // Lands have some "required" commands which are in place regardless of the current hut
         let requiredCommand = (name, effect) => {
@@ -65,7 +68,7 @@ U.buildRoom({
           
           let { command, version, content } = msg;
           
-          let recs = lands.relVal(relLandsRecs);
+          let recs = lands.relVal(rel.landsRecs);
           
           try {
             if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
@@ -128,7 +131,7 @@ U.buildRoom({
       },
       genUniqueTerm: function() {
         let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
-        return this.relVal(relLandsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
+        return this.relVal(rel.landsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
       },
       
       comWob: function(command) {
@@ -144,19 +147,21 @@ U.buildRoom({
           return hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         }
         
-        this.comWob(command).wobble({ lands: this, hut, msg, reply, dudo: true });
-        hut.comWob(command).wobble({ lands: this, hut, msg, reply, dudo: true });
+        this.comWob(command).wobble({ lands: this, hut, msg, reply });
+        hut.comWob(command).wobble({ lands: this, hut, msg, reply });
       },
       tell: async function(msg) {
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allObj(this.relVal(relLandsHuts).map(hut => hut.tell(msg)));
+        return Promise.allObj(this.relVal(rel.landsHuts).map(hut => hut.tell(msg)));
       },
       /// {BELOW=
       resetHeartbeatTimeout: function() {
+        if (!this.heartbeatMs) return;
+        
         // After exactly `this.heartbeatMs` millis Above will shut us down
-        // Therefore we need to be quicker; only wait a percentage of the overall time
+        // Therefore we need to be quicker; wait a percentage of the overall time
         clearTimeout(this.heartbeatTimeout);
         this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
       },
@@ -169,14 +174,14 @@ U.buildRoom({
         TERMS = [ 'remote' ];
         /// =BELOW}
         
-        await Promise.allObj(this.relVal(relLandsWays).map(w => w.open())); // Open all Ways
+        await Promise.allObj(this.relVal(rel.landsWays).map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let hut = this.relVal(relLandsHuts).find(() => true)[0];
+        let hut = this.relVal(rel.landsHuts).find(() => true)[0];
         await this.hear(hut, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
-      shut: async function() { return Promise.allObj(this.relVal(relLandsWays).map(w => w.shut())); }
+      shut: async function() { return Promise.allObj(this.relVal(rel.landsWays).map(w => w.shut())); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       init: function({ lands, address }) {
@@ -216,6 +221,8 @@ U.buildRoom({
       
       /// {ABOVE=
       refreshExpiry: function(ms=this.lands.heartbeatMs) {
+        if (!ms) return;
+        
         clearTimeout(this.expiryTimeout);
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
@@ -314,7 +321,7 @@ U.buildRoom({
         
         if (!this.holds.has(uid)) return null;
         
-        let recs = this.lands.relVal(relLandsRecs);
+        let recs = this.lands.relVal(rel.landsRecs);
         
         let { value, rel } = this.holds[uid];
         
@@ -345,7 +352,7 @@ U.buildRoom({
         [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => { this[p] = {}; });
         
         // Now recalculate!
-        let recs = this.lands.relVal(relLandsRecs);
+        let recs = this.lands.relVal(rel.landsRecs);
         this.holds.forEach((hold, uid) => {
           
           // Send an "addRec" for this record
@@ -429,7 +436,7 @@ U.buildRoom({
             
             // It's possible that in between scheduling and performing the tick,
             // this Hut has become isolated. In this case no update should occur
-            if (!this.relVal(relLandsHuts)) return null;
+            if (!this.relVal(rel.landsHuts)) return null;
             
             this.informThrottlePrm = null;
             let updateTell = this.genUpdateTell();
@@ -444,7 +451,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findWay = this.relVal(relWaysHuts).find(() => true);
+        let findWay = this.relVal(rel.waysHuts).find(() => true);
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
@@ -473,7 +480,7 @@ U.buildRoom({
       
       open: async function() {
         this.server = await this.makeServer();
-        this.serverFunc = this.server.hold(async absConn => {
+        this.serverFunc = this.server.hold(absConn => {
           
           // For connections: service heirarchy from lowest to highest:
           // 1) FundamentalConnection (HTTP, SOKT, etc.)
@@ -490,13 +497,18 @@ U.buildRoom({
           
           // Create the Hut, and reference by address
           let hut = Hut({ lands: this.lands, address });
-          
           this.connections[address] = { absConn, hut };
           
-          // Clean up AbstractConnection and Hut when the connection is closed
-          absConn.shut.hold(closed => {
+          // AbstractConnection and Hut open and shut together
+          let holdConnShut = absConn.shutWob().hold(() => {
+            holdHutShut.shut();
             delete this.connections[address];
             hut.shut();
+          });
+          let holdHutShut = hut.shutWob().hold(() => {
+            holdConnShut.shut();
+            delete this.connections[address];
+            absConn.shut();
           });
           
           // Pass anything heard on to our Lands
@@ -504,18 +516,13 @@ U.buildRoom({
             this.lands.hear(hut, msg, reply);
             
             /// {ABOVE=
-            // Any communication from a Hut refreshes its expiry
-            hut.refreshExpiry();
+            hut.refreshExpiry(); // Any amount of communication refreshes expiry
             /// =ABOVE}
           });
           
-          // Removing the hut results in the connection being closed
-          // This gives higher applications control over the connection
-          hut.relWob(relLandsHuts).detach.hold(() => absConn.shut.wobble(true));
-          
           // Attach the Hut to the Way and to the Lands
-          this.attach(relWaysHuts, hut);
-          this.lands.attach(relLandsHuts, hut);
+          this.attach(rel.waysHuts, hut);
+          this.lands.attach(rel.landsHuts, hut);
           
         });
       },
@@ -536,15 +543,114 @@ U.buildRoom({
       waysHuts: Record.relateMM(Way, Hut, 'waysHuts')
     };
     
-    let relLandsRecs =  Record.relate1M(Lands, LandsRecord, 'relLandsRecs');
-    let relLandsWays =  Record.relate1M(Lands, Way, 'relLandsWays');
-    let relLandsHuts =  Record.relate1M(Lands, Hut, 'relLandsHuts');
-    let relWaysHuts =   Record.relateMM(Way, Hut, 'relWaysHuts');
-    
     let content = { Lands, LandsRecord, Hut, Way, rel };
     
     /// {TEST=
     content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'hinterlands').contain(k => {
+      
+      U.Keep(k, 'lands1', () => {
+        
+        let lands = Lands({ foundation });
+        return { result: lands.nextUid().length === 8 };
+        
+      });
+      
+      U.Keep(k, 'lands2', () => {
+        
+        let lands = Lands({ foundation });
+        
+        try {
+          lands.comWob('unspecified');
+        } catch(err) {
+          return { result: true };
+        }
+        
+        return { result: false };
+        
+      });
+      
+      U.Keep(k, 'server').contain(k => {
+        
+        let addrCnt = 0;
+        let server = null;
+        let clients = new Set();
+        k.sandwich.before = () => {
+          server = U.Wob();
+          server.spoofClient = () => {
+            let isShut = false;
+            let shutWob = U.WobOne();
+            
+            let client = {
+              address: (addrCnt++).toString(36).padHead(8, '0'),
+              hear: U.Wob(),
+              tell: U.Wob(),
+              shut: () => {
+                if (isShut) throw new Error('Already shut');
+                isShut = true;
+                shutWob.wobble();
+              },
+              shutWob: () => shutWob
+            };
+            
+            server.wobble(client);
+            return client;
+          };
+        };
+        k.sandwich.after = () => {
+          clients.forEach(c => c.shut());
+          clients = new Set();
+          server = null;
+          addrCnt = 0;
+        };
+        
+        U.Keep(k, 'client1', async () => {
+          
+          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          
+          let way = Way({ lands, makeServer: () => server });
+          lands.attach(rel.landsWays, way);
+          await lands.open();
+          
+          let complete = false;
+          lands.comWob('test').hold(({ lands, hut, msg }) => { complete = true; });
+          
+          let client = server.spoofClient();
+          client.hear.wobble([ { command: 'test' }, null ]);
+          
+          return { result: complete };
+          
+        });
+        
+        U.Keep(k, 'client2', async () => {
+          
+          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          
+          let way = Way({ lands, makeServer: () => server });
+          lands.attach(rel.landsWays, way);
+          await lands.open();
+          
+          let mostRecentConn = null;
+          let mostRecentHear = null;
+          
+          lands.relWob(rel.landsHuts).hold(({ rec }) => { mostRecentConn = rec; });
+          lands.comWob('test').hold(({ hut }) => { mostRecentHear = hut; });
+          
+          for (let i = 0; i < 10; i++) {
+            
+            let client = server.spoofClient();
+            client.hear.wobble([ { command: 'test' }, null ]);
+            
+            if (!mostRecentHear || mostRecentHear !== mostRecentConn) return { result: false };
+            
+            mostRecentHear = null;
+            
+          }
+          
+          return { result: true };
+          
+        });
+        
+      });
       
     }));
     /// =TEST}

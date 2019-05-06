@@ -53,14 +53,16 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
         for (let [ name0, run ] of Object.entries(cases)) outputTest(`${name}.${name0}`, run, ind + '    ');
       };
       
-      let result = keep.run();
+      console.log('Running tests...');
+      let result = await keep.run();
       console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
       outputTest(keep.name, result);
       console.log(`Tested ${this.hut} for ${this.getPlatformName()}`);
+      process.exit(0);
       
     } else {
       
-      if (!room.built.has('open')) throw new Error(`Couldn't find "${runProp}" prop for ${this.hut}`);
+      if (!room.built.has('open')) throw new Error(`Couldn't find "open" prop for ${this.hut}`);
       await room.built.open();
       console.log(`Built ${this.hut} for ${this.getPlatformName()}`);
       

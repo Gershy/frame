@@ -289,20 +289,15 @@ U.buildRoom({
       
       U.Keep(k, 'rel11').contain(k => {
         
-        U.Keep(k, 'circular0', () => {
+        U.Keep(k, 'circular1', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
           Record.relate11(Rec, Rec, 'circFwd', 'circBak');
-          
-          console.log('DEF:', Record.fullFlatDef(Rec));
-          
           return { result: true };
           
         });
         
-        U.Keep(k, 'circular1', () => {
-          
-          // TODO: Circular failures!
+        U.Keep(k, 'circular2', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
           let rel = Record.relate11(Rec, Rec, 'fwd', 'bak');
@@ -333,7 +328,49 @@ U.buildRoom({
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel).hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.relWob(rel, 'fwd').hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel, loopRec);
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'circular4', () => {
+          
+          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
+          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          
+          let loopRec = Rec({});
+          let correct = false;
+          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel, loopRec);
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'circular5', () => {
+          
+          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
+          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          
+          let loopRec = Rec({});
+          let correct = false;
+          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = loopRec.relVal(rel, 'fwd') === rec; });
+          loopRec.attach(rel, loopRec);
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'circular6', () => {
+          
+          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
+          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          
+          let loopRec = Rec({});
+          let correct = false;
+          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = loopRec.relVal(rel, 'bak') === rec; });
           loopRec.attach(rel, loopRec);
           
           return { result: correct };

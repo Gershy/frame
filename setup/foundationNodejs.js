@@ -273,7 +273,7 @@
           let [ fileName, lineInd, charInd ] = codePointPcs.slice(1);
           
           fileName = path.normalize(fileName);
-          if (!fileName.hasHead(rootDir)) return U.SKIP; // Skip non-hut files
+          if (!fileName.hasHead(rootDir)) return C.skip; // Skip non-hut files
           
           let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
           
@@ -284,7 +284,7 @@
             fileName = fileName.substr(rootDir.length + 1).split(path.sep).join('/');
           }
           
-          return `${fileName.padTail(32)} @ ${lineInd.toString().padTail(10)}|`;
+          return `${fileName.padTail(36)} @ ${lineInd.toString()}`;
           
         } catch(err) {
           
@@ -295,7 +295,8 @@
       });
       
       let fileRegex = /([^/\\]+(\/|\\))*([^/\\]+\.js):([0-9]+)/;
-      let moreData = stack.substr(0, traceBegins - 1).replace(fileRegex, (match, x, y, file, lineInd) => {
+      let preLen = err.constructor.name.length + 2; // The classname plus ": "
+      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, x, y, file, lineInd) => {
         
         let fileNameData = file.match(/^cmp-([^-]+)-(.+)\.js/);
         if (!fileNameData) return match;
@@ -308,10 +309,20 @@
         
         return `twig/${mappedLineData.twigName}/${mappedLineData.twigName}.js:${mappedLineData.lineInd}`;
         
-      });
+      }).split('\n');
       
-      let content = lines.join('\n');
-      if (!content.trim().length) content = 'Couldn\'t format error:\n' + trace;
+      return [
+        '='.repeat(46),
+        ...moreLines.map(ln => `||  ${ln}`),
+        '||' + ' -'.repeat(22),
+        ...(lines.length ? lines : [ 'Couldn\'t format error:', ...trace.split('\n') ]).map(ln => `||  ${ln}`)
+      ].join('\n');
+      
+      /*return ''
+        + '/\n'
+        + moreLines.map(ln => ` |  ${ln}`).join('\n')
+        + 
+      
       
       let lineAbove = '\u203E';
       let lineBelow = '_';
@@ -319,7 +330,7 @@
       return `/${lineAbove.repeat(30)}\n` +
         moreData.split('\n').map(ln => `| ${ln}`).join('\n') + '\n' +
         `\\${lineBelow.repeat(30)}\n\n` +
-        content;
+        content;*/
     },
     
     // Functionality
@@ -424,6 +435,12 @@
         })[type]();
       };
       let server = http.createServer(async (req, res) => {
+        
+        // TODO: connections should be Hogs - with "shut" and "shutWob" methods
+        // Right now they have "shut" set to `U.Wob()`
+        
+        // TODO: connections should have "tell" as a method, not a Wob
+        // Would never want to do `conn.tell.hold(...)`
         
         // TODO: Implement a "multi" command for executing multiple commands at once
         // This will be nice when there are several pending Tells but only 1 available

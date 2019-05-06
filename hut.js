@@ -31,7 +31,7 @@ if (args[0] === '{') {
   });
 }
 
-// Powershell and other terminals may pass "encodedCommand"
+// PowerShell and other terminals may pass "encodedCommand"
 if (args.has('encodedCommand')) {
   // Decode from base64; strip all 0-bytes
   let encoded = Buffer.from(args.encodedCommand, 'base64').toString('utf8')

@@ -32,12 +32,19 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     });
     return ptr;
   },
-  run: function(...vals) {
+  fullName: function() {
+    let ptr = this;
+    let names = [];
+    while (ptr) { names.push(ptr.name); ptr = ptr.par; }
+    return names.reverse().join('.');
+  },
+  run: async function() {
     
     let [ result, val, err ] = [ null, null, null ];
     
     try {
-      let v = this.func ? this.func(...vals) : { result: null, val: null };
+      let v = this.func ? await this.func() : { result: null, val: null };
+      if (!U.isType(v, Object) || !v.has('result')) throw new Error('Invalid test result format');
       result = v.result;
       val = v.has('val') ? v.val : null;
     } catch(err0) {
@@ -46,7 +53,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       err = err0;
       
       let errId = this.root.errId++;
-      err.message = `TESTERROR(${errId}): ${err.message}`;
+      err.message = `TESTERROR(${errId}):\n${this.fullName()}:\n${err.message}`;
       err.id = errId;
       console.log(U.foundation.formatError(err));
     }
@@ -55,18 +62,17 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
     if (this.children.size) {
       
-      let childVals = [ val ].concat(vals);
       let cTotal = this.children.size;
       let cPassed = 0;
       let cases = {};
       
-      this.children.forEach(child => {
-        if (this.sandwich.before) this.sandwich.before();
-        let { result, err, childResults } = child.run(childVals);
-        if (this.sandwich.after) this.sandwich.after();
+      for (let child of this.children.values()) {
+        if (this.sandwich.before) await this.sandwich.before();
+        let { result, err, childResults } = await child.run();
+        if (this.sandwich.after) await this.sandwich.after();
         if (result !== false) cPassed++;
         cases[child.name] = { result, err, childResults };
-      });
+      }
       
       if (cPassed < cTotal) result = false;
       if (result !== false) this.root.passed++;
