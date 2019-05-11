@@ -12,7 +12,12 @@ U.buildRoom({
       init: function({ lands, uid=lands.nextUid(), value=null }) {
         insp.Record.init.call(this, { uid, value });
         this.lands = lands;
+        
+        /// {BELOW=
+        // Only Below needs a flat list of all Records! Need to be able to
+        // quickly find Records by uid for update/removal
         this.attach(rel.landsRecs, lands);
+        /// =BELOW}
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
@@ -51,7 +56,8 @@ U.buildRoom({
         requiredCommand('getInit', async ({ hut, msg, reply }) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
-          let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), hut.genUpdateTell());
+          let update = hut.genUpdateTell();
+          let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), update);
           reply(initBelow);
         });
         requiredCommand('getFile', async ({ hut, msg, reply }) => {
@@ -72,6 +78,8 @@ U.buildRoom({
           
           try {
             if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
+            
+            // TODO: Aggregate this!
             
             // Apply all operations
             let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
@@ -195,16 +203,18 @@ U.buildRoom({
         
         /// {ABOVE=
         this.version = 0;
-        this.holds = {};
-        this.addRec = {};
-        this.remRec = {}; // TODO: Confusing to have `hut.remRec` (an Object), and `lands.remRec` (a method)
-        this.updRec = {};
-        this.addRel = {};
-        this.remRel = {};
+        this.fols = new Map();
+        this.sync = {
+          addRec: {},
+          remRec: {},
+          updRec: {},
+          addRel: {},
+          remRel: {}
+        };
         
         this.expiryTimeout = null;
-        this.refreshExpiry();
         this.informThrottlePrm = null;
+        this.refreshExpiry();
         /// =ABOVE}
       },
       getTerm: function() {
@@ -222,123 +232,109 @@ U.buildRoom({
       /// {ABOVE=
       refreshExpiry: function(ms=this.lands.heartbeatMs) {
         if (!ms) return;
-        
         clearTimeout(this.expiryTimeout);
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
       
-      // TODO: AccessPaths don't support "access strength"! Need to implement that here...
-      followRec: function(rec, uid=rec.uid) {
+      setRecFollowStrength: function(rec, strength) {
         
-        if (this.holds.has(uid)) return;
+        if (strength < 0) throw new Error(`Invalid strength: ${strength}`);
         
-        // Track `rec`; our hold on `rec` itself, and all its relations
-        var hold = { rec, value: null, rel: {}, amt: 0 };
+        let fol = this.fols.get(rec) || null;
+        let strength0 = fol ? fol.strength : 0;
+        if (strength === strength0) throw new Error(`Strength is already ${strength}`);
         
-        // Need to send initial data for this record now
-        this.addRec[uid] = rec; // `requestInformBelow` is called at the end of this method
-        
-        // Need to send updated data for this record later
-        hold.value = rec.hold(val => {
-          if (this.addRec.has(rec.uid)) return; // Don't send "upd" along with "add"
-          this.updRec[rec.uid] = val;
-          this.requestInformBelow();
-        });
-        
-        // Sync all relations similarly
-        rec.getFlatDef().forEach((rel, relFwdName) => {
+        if (!strength0) {                   // ADD
           
-          let relUid = rel.uid;
+          let uid = rec.uid;
           
-          let wob = rec.relWob(rel);
+          // Create all necessary holds
+          let deps = new Set();
           
-          // Normalize; regardless of cardinality deal with a maplist of Records
-          let attached = wob.value;
-          if (!U.isType(attached, Object)) attached = attached ? { [attached.uid]: attached } : {};
+          // Immediately signal "addRec"
+          this.sync.addRec[`${uid}`] = rec;
           
-          // Need to send initial relations for this record now
-          attached.forEach((rec2, uid2) => {
-            // Skip relations outside the hut's knowledge
-            if (!this.holds.has(uid2)) return;
-            this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ]; // `requestInformBelow` is called at the end of this method
+          // Signal "updRec" every time `rec` wobbles
+          // Note that this will run immediately, and call `this.requestInformBelow()`
+          let holdRec = rec.hold(val => {
+            this.sync.updRec[`${uid}`] = val;
+            this.requestInformBelow();
+          });
+          deps.add(holdRec);
+          
+          // Sync all Relations
+          rec.getFlatDef().forEach((rel, relFwdName) => {
+            
+            let relUid = rel.uid;
+            let holdRel = rec.relWob(rel).hold(relRec => {
+              
+              let rec2 = relRec.rec;
+              if (!this.fols.has(rec2)) return; // Don't deal with Relation unless we have both Records
+              
+              let uid2 = rec2.uid;
+              this.sync.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+              this.requestInformBelow();
+              
+              let holdRelRecShut = relRec.shut.hold(() => {
+                this.sync.remRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+                this.requestInformBelow();
+                deps.delete(holdRelRecShut);
+              });
+              deps.add(holdRelRecShut);
+              
+            });
+            deps.add(holdRel);
+            
           });
           
-          // Need to send updated relations for this record later
-          let relType = rec.getRelPart(rel).clsRelFwd.type;
-          let relHold = ({
-            type1: (newVal, oldVal) => {
-              if (newVal) {
-                if (!this.holds.has(newVal.uid)) return;
-                this.addRel[`${relUid}.${U.multiKey(uid, newVal.uid)}`] = [ relUid, uid, newVal.uid, rel.name1 ];
-                this.requestInformBelow();
-              } else {
-                if (!oldVal || !this.holds.has(oldVal.uid)) return;
-                this.remRel[`${relUid}.${U.multiKey(uid, oldVal.uid)}`] = [ relUid, uid, oldVal.uid, rel.name1 ];
-                this.requestInformBelow();
-              }
-            },
-            typeM: ({ add={}, rem={} }) => {
-              add.forEach((rec2, uid2) => {
-                if (!this.holds.has(uid2)) return;
-                this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2, rel.name1 ];
-                this.requestInformBelow();
-              });
-              rem.forEach((rec2, uid2) => {
-                if (!this.holds.has(uid2)) return;
-                this.remRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2, rel.name1 ];
-                this.requestInformBelow();
-              });
-            }
-          })[`type${relType}`];
+          fol = { strength, deps };
+          this.fols.set(rec, fol);
           
-          hold.rel[relUid] = { wob, f: wob.hold(relHold) };
-          if (!hold.rel[relUid]) throw new Error('Didn\'t get a function out of "hold"');
+        } else if (strength0 && strength) { // UPD
           
-        });
+          fol.strength = strength;
+          
+        } else {                            // REM
+          
+          // Clean up all follow-related data for the Record
+          this.fols.delete(rec);
+          
+          // Remove all existing holds
+          fol.deps.forEach(dep => dep.shut());
+          
+          // Note: No need to issue `remRel` for each of the Record's relations
+          // If the Record is shut, so are its relations
+          this.sync.remRec[`${rec.uid}`] = 1; // Signal that the rec is removed
+          
+          // Send this message Below
+          this.requestInformBelow();
+          
+        }
         
-        this.holds[uid] = hold;
-        
-        // This method has changed the delta, at least to include `rec` and probably to include
-        // several of its relations. Need to inform our Below
-        this.requestInformBelow();
       },
-      forgetRec: function(rec, uid=rec.uid) {
-        // Note that the dropping here is "safe" - doesn't throw errors
-        // It's possible that a followed record has been "isolated"; in this
-        // case all relations are already dropped and these attempts to drop
-        // are redundant. No need to worry about leaks though - once `rec`
-        // is detached from `Lands` the `Lands` will ensure all huts forget
-        // `rec` appropriately.
+      followRec: function(rec) {
         
-        // Note that forgetting the Record does NOT clear any delta memory!
-        // This is because the delta still needs to be delivered to our Below.
-        // To deal with careless broader code, calling `forgetRec` issues a
-        // call to `requestInformBelow`, just to make sure the Below is aware
-        // the Record no longer exists
+        let str = (this.fols.get(rec) || { strength: 0 }).strength;
+        this.setRecFollowStrength(rec, str + 1);
         
-        // TODO: Consider ensuring that "remRec" and "remRel" deltas are filled
-        // out?
+        let isShut = false;
+        let shutWob0 = null;
         
-        if (!this.holds.has(uid)) return null;
+        return {
+          shut: () => {
+            if (isShut) throw new Error('Already shut');
+            isShut = true;
+            let str = this.fols.get(rec).strength;
+            this.setRecFollowStrength(rec, str + 1);
+            if (shutWob0) shutWob0.wobble();
+          },
+          shutWob: () => shutWob0 || (shutWob0 = U.WobOne())
+        };
         
-        let recs = this.lands.relVal(rel.landsRecs);
-        
-        let { value, rel } = this.holds[uid];
-        
-        // Record and associated relations need to be removed from Below
-        // Note that specifying the removed Record is sufficient to also
-        // remove all relations associated with it!
-        this.remRec[uid] = 1;
-        this.requestInformBelow();
-        
-        // Drop the value and relation holders...
-        rec.drop(value, true); // Drop safely. It may have already been dropped.
-        rel.forEach(({ wob, f }) => wob.drop(f, true));
-        
-        // And finally forget our reference to the hold itself
-        delete this.holds[uid];
-        
-        return rec;
+      },
+      
+      hasDataToSync: function() {
+        return this.sync.find(v => !v.isEmpty());
       },
       
       resetVersion: function() {
@@ -348,80 +344,65 @@ U.buildRoom({
         // **without calling `requestInformBelow`**!! This means that the caller needs
         // to insure the Below is eventually sent the data to bring it up to date.
         
-        // Clear current delta...
-        [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => { this[p] = {}; });
+        if (this.version === 0) return;
         
-        // Now recalculate!
-        let recs = this.lands.relVal(rel.landsRecs);
-        this.holds.forEach((hold, uid) => {
+        // Clear current delta...
+        this.sync = this.sync.map(v => ({}));
+        
+        // Rebuild delta based on immediate state
+        this.fols.forEach((fol, rec) => {
           
-          // Send an "addRec" for this record
-          let rec = recs[uid];
-          this.addRec[uid] = rec;
+          let uid = rec.uid;
+          this.sync.addRec[`${uid}`] = rec;
           
-          // Send an "addRel" for each of this record's relations
-          rec.getFlatDef().forEach((rel, relFwdName) => {
-            let relUid = rel.uid;
+          rec.getFlatDef().forEach(rel => {
             
-            // Normalize; regardless of cardinality deal with a maplist of Records
-            let attached = rec.relVal(rel);
-            if (!U.isType(attached, Object)) attached = attached ? { [attached.uid]: attached } : {};
-            
-            attached.forEach((rec2, uid2) => {
-              // Skip relations outside the hut's knowledge
-              if (!this.holds.has(uid2)) return;
-              this.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+            rec.relWob(rel).forEach(({ rec: rec2 }) => {
+              
+              if (!this.fols.has(rec2)) return;
+              this.sync.addRel[`${rel.uid}.${U.multiKey(uid, rec2.uid)}`] = [ rel.uid, uid, rec2.uid ];
+              
             });
+            
           });
           
         });
         
         this.version = 0;
-        this.versionHist = [];
       },
-      offloadInformData: function() {
-        // Returns the delta of data to be sent Below. Clears the Hut's memory
-        // of this delta.
+      genUpdateTell: function() {
+        // Generates a "tell" msg to bring the Below up to date. Has the side-effect
+        // of clearing this Hut's memory of the current delta.
         
         // 1) Sanitize our delta:
         
         // Don't affect relations of Records being removed
         // Don't add Records which are removed
-        if (!this.remRec.isEmpty()) {
+        if (!this.sync.remRec.isEmpty()) {
           let r = this.remRec;
-          this.addRel = this.addRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
-          this.remRel = this.remRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
-          this.remRec.forEach((r, uid) => { delete this.addRec[uid]; });
+          this.sync.addRel = this.sync.addRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
+          this.sync.remRel = this.sync.remRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
+          this.sync.remRec.forEach((r, uid) => { delete this.sync.addRec[uid]; });
         }
         
         // Don't update Records being added
-        this.addRec.forEach((r, uid) => { delete this.updRec[uid]; });
+        this.sync.addRec.forEach((r, uid) => { delete this.sync.updRec[uid]; });
         
         // 2) Construct "tell" based on our delta:
         
-        let content = {};
-        
-        [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].forEach(p => {
-          if (!this[p].isEmpty()) content[p] = this[p];
-          this[p] = {};
-        });
+        let content = this.sync.map(v => v.isEmpty() ? C.skip : v);
+        this.sync = this.sync.map(v => ({}));
         
         // TODO: Actual value calculations should be performed as late as possible?
-        // Or should `offloadInformData` just be called as late as possible?
+        // Or should `genUpdateTell` just be called as late as possible?
         if (content.has('addRec')) content.addRec = content.addRec.map(rec => ({
           uid: rec.uid,
           type: rec.constructor.name,
           value: rec.getValue()
         }));
         
-        return content;
-      },
-      genUpdateTell: function() {
-        // Generates a "tell" msg to bring the Below up to date. Has the side-effect
-        // of clearing this Hut's memory of the current delta.
-        
-        let content = this.offloadInformData(); // Clear our memory of the delta; it will be sent Below
         if (content.isEmpty()) return null;
+        
         this.version++;
         return { command: 'update', version: this.version, content }
       },
@@ -532,7 +513,7 @@ U.buildRoom({
       
       tellHut: function(hut, msg) {
         if (!this.connections.has(hut.address)) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
-        this.connections[hut.address].absConn.tell.wobble(msg);
+        this.connections[hut.address].absConn.tell(msg);
       }
     })});
     
@@ -571,11 +552,8 @@ U.buildRoom({
       
       U.Keep(k, 'server').contain(k => {
         
-        let addrCnt = 0;
-        let server = null;
-        let clients = new Set();
-        k.sandwich.before = () => {
-          server = U.Wob();
+        let makeServer = () => {
+          let server = U.Wob();
           server.spoofClient = () => {
             let isShut = false;
             let shutWob = U.WobOne();
@@ -583,7 +561,7 @@ U.buildRoom({
             let client = {
               address: (addrCnt++).toString(36).padHead(8, '0'),
               hear: U.Wob(),
-              tell: U.Wob(),
+              tell: () => {},
               shut: () => {
                 if (isShut) throw new Error('Already shut');
                 isShut = true;
@@ -595,6 +573,14 @@ U.buildRoom({
             server.wobble(client);
             return client;
           };
+          return server;
+        };
+        
+        let addrCnt = 0;
+        let server = null;
+        let clients = new Set();
+        k.sandwich.before = () => {
+          server = makeServer();
         };
         k.sandwich.after = () => {
           clients.forEach(c => c.shut());
@@ -647,6 +633,164 @@ U.buildRoom({
           }
           
           return { result: true };
+          
+        });
+        
+        U.Keep(k, 'hutShutCauseConnShut', async () => {
+          
+          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          
+          let way = Way({ lands, makeServer: () => server });
+          lands.attach(rel.landsWays, way);
+          await lands.open();
+          
+          let correct = false;
+          
+          let hut = null;
+          lands.relWob(rel.landsHuts).hold(({ rec }) => { hut = rec; });
+          
+          let client = server.spoofClient();
+          client.shutWob().hold(() => { correct = true; });
+          
+          hut.shut();
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'connShutCauseHutShut', async () => {
+          
+          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          
+          let way = Way({ lands, makeServer: () => server });
+          lands.attach(rel.landsWays, way);
+          await lands.open();
+          
+          let correct = false;
+          
+          let hut = null;
+          
+          let client = server.spoofClient();
+          lands.relWob(rel.landsHuts).hold(({ rec: hut }) => {
+            hut.shutWob().hold(() => { correct = true; });
+          });
+          client.shut();
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'communication').contain(k => {
+          
+          U.Keep(k, 'getInit1', async () => {
+            
+            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+            
+            let way = Way({ lands, makeServer: () => server });
+            lands.attach(rel.landsWays, way);
+            await lands.open();
+            
+            let c = server.spoofClient();
+            let resp = new Promise(r => { c.tell = r; });
+            
+            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
+            
+            resp = await resp;
+            return { result: resp.hasHead('<!DOCTYPE html>') };
+            
+          });
+          
+          U.Keep(k, 'getInit2', async () => {
+            
+            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+            
+            let way = Way({ lands, makeServer: () => server });
+            lands.attach(rel.landsWays, way);
+            await lands.open();
+            
+            let c = server.spoofClient();
+            let resp = new Promise(r => { c.tell = r; });
+            
+            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
+            
+            resp = await resp;
+            return { result: resp.has('window.global = window;') };
+            
+          });
+          
+          U.Keep(k, 'syncRec1', async () => {
+            
+            let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
+            let appRel = {
+              landsRec1Set: Record.relate1M(Lands, Rec1, 'landsRec1Set')
+            };
+            
+            let resp = null;
+            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+            lands.attach(rel.landsWays, Way({ lands, makeServer: () => server }));
+            await lands.open();
+            
+            U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(U.AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+              }));
+            });
+            
+            let c = server.spoofClient();
+            resp = new Promise(r => { c.tell = r; });
+            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
+            
+            let initResp = await resp;
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            return { result: initData === null };
+            
+          });
+          
+          U.Keep(k, 'syncRec2', async () => {
+            
+            let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
+            let appRel = {
+              landsRec1Set: Record.relate1M(Lands, Rec1, 'landsRec1Set')
+            };
+            
+            let resp = null;
+            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+            lands.attach(rel.landsWays, Way({ lands, makeServer: () => server }));
+            await lands.open();
+            
+            U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(U.AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+              }));
+            });
+            
+            let attachRec1 = lands.attach(appRel.landsRec1Set, Rec1({ lands, value: 'test' }));
+            
+            let c = server.spoofClient();
+            resp = new Promise(r => { c.tell = r; });
+            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
+            
+            let initResp = await resp;
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            return {
+              result: true
+                && U.isType(initData, Object)
+                && initData.command === 'update'
+                && initData.version === 1
+                && initData.content.has('addRec')
+                && initData.content.addRec.toArr(v => v).length === 1
+                && initData.content.addRec.find(v => 1)[0].value === 'test'
+            };
+            
+          });
           
         });
         

@@ -186,19 +186,22 @@ let U = global.U = {
       }
     });
     
-    methods.forEach((method, methodName) => {
+    for (let methodName in methods) {
+      let method = methods[methodName];
       if (methodName[0] === '$') {
         Insp[methodName.substr(1)] = method;
       } else {
         methodsByName[methodName] = [ method ]; // Guaranteed to be singular
       }
-    });
+    }
+    
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
     
-    methodsByName.forEach((methodsAtName, methodName) => {
+    for (let methodName in methodsByName) {
+      let methodsAtName = methodsByName[methodName];
       if (methodsAtName.length > 1) throw new Error(`Multiple method "${methodName}" for ${name}; declare a custom method`);
       Insp.prototype[methodName] = methodsAtName[0]; // Length will be exactly 1 now
-    });
+    }
     
     Insp.prototype.constructor = Insp;
     //Object.freeze(Insp.prototype); // TODO: `Object.freeze` prevents `WobAggs` from spoofing `Wob.prototype.toHolds`

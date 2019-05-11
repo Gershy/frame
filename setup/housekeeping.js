@@ -32,6 +32,12 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     });
     return ptr;
   },
+  chain: function() {
+    let ptr = this;
+    let chain = [];
+    while (ptr) { chain.push(ptr); ptr = ptr.par; };
+    return chain.reverse();
+  },
   fullName: function() {
     let ptr = this;
     let names = [];
@@ -42,6 +48,8 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
     let [ result, val, err ] = [ null, null, null ];
     
+    let chain = this.chain();
+    for (let par of chain) if (par.sandwich.before) await par.sandwich.before();
     try {
       let v = this.func ? await this.func() : { result: null, val: null };
       if (!U.isType(v, Object) || !v.has('result')) throw new Error('Invalid test result format');
@@ -57,6 +65,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       err.id = errId;
       console.log(U.foundation.formatError(err));
     }
+    for (let par of chain) if (par.sandwich.after) await par.sandwich.after();
     
     this.root.total++;
     
@@ -67,9 +76,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       let cases = {};
       
       for (let child of this.children.values()) {
-        if (this.sandwich.before) await this.sandwich.before();
         let { result, err, childResults } = await child.run();
-        if (this.sandwich.after) await this.sandwich.after();
         if (result !== false) cPassed++;
         cases[child.name] = { result, err, childResults };
       }

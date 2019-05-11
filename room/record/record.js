@@ -21,7 +21,7 @@ U.buildRoom({
         if (this.relRec) fn(this.relRec); // Call immediately
         return insp.Wob.hold.call(this, fn);
       },
-      each: function(fn) { if (this.relRec) fn(this.relRec.rec); },
+      forEach: function(fn) { if (this.relRec) fn(this.relRec); },
       isEmpty: function() { return !this.relRec; },
       getValue: function() { return this.relRec ? this.relRec.rec : null; },
       wobble: function(relRec) {
@@ -35,11 +35,11 @@ U.buildRoom({
         this.relRecs = {};
       },
       hold: function(fn) {
-        this.relRecs.forEach(rr => fn(rr.rec));
+        this.relRecs.forEach(fn);
         return insp.Wob.hold.call(this, fn);
       },
-      each: function(fn) { this.relRecs.forEach(rr => fn(rr.rec)); },
-      isEmpty0: function() { return this.relRecs.isEmpty(); },
+      forEach: function(fn) { this.relRecs.forEach(fn); },
+      isEmpty: function() { return this.relRecs.isEmpty(); },
       getValue: function() { return this.relRecs.map(rr => rr.rec); },
       wobbleAdd: function(relRec) {
         if (this.relRecs.has(relRec.rec.uid)) throw new Error('Already have hog');
@@ -112,6 +112,8 @@ U.buildRoom({
         }
       }),
       $relate: (relFunc1, relFunc2, Cls1, Cls2, name1, name2) => {
+        if (!name1) throw new Error('Need to provide relation name');
+        
         // TODO: could consider automatically providing names for `name1`, `name2`:
         // `let name1 = 'relVar' + (Cls1.nextRelVarInd++);`
         // `let name2 = 'relVar' + (Cls2.nextRelVarInd++);`
@@ -235,45 +237,20 @@ U.buildRoom({
       },
       shut: function() {
         
-        // TODO: Consider validating for no remaining relations AFTER wobbling shut
-        //  - This wouldn't always be recoverable, but would give the opportunity to
-        //    shut all relations via the wobble...
         // TODO: Consider a "shut group" - a number of Hogs being shut together, which
         // are allowed to still be linked to each other (just not to any Hogs outside
         // of the "shut group")
         
-        this.inner.forEach((wob, name) => {
-          if (!wob.isEmpty()) {
-            let rels = [];
-            wob.each(v => rels.push(v));
-            throw new Error(`Can't shut ${U.typeOf(this)} - still attached to ${rels.map(U.typeOf).join(', ')}`);
-          }
-        });
+        if (this.isShut) throw new Error('Already shut');
+        this.isShut = true;
+        
+        // For all Records of all Relations, shut the RecordRelation
+        let agg = U.AggWobs();
+        this.getFlatDef().forEach(rel => this.relWob(rel).forEach(relRec => relRec.shut(agg)));
+        agg.complete();
         
         if (this.shutWob0) this.shutWob0.wobble();
         return;
-        
-        /*
-        let agg = U.AggWobs();
-        
-        // For all our relations, detach from all Records related via that relation
-        this.getFlatDef().forEach(rel => {
-          
-          let recs = this.relVal(rel);
-          let getRecs = U.isType(recs, Object)
-            ? (n => recs) // Take advantage of `recs` being a live reference
-            : (n => (recs && n === 0) ? { [recs.uid]: recs } : {});
-          
-          for (let n = 0; true; n++) {
-            let rec = getRecs(n).find(v => true);
-            if (!rec) break;
-            this.detach(rel, rec[0], agg);
-          }
-          
-        });
-        
-        agg.complete();
-        */
         
       },
       shutWob: function() {
@@ -499,7 +476,7 @@ U.buildRoom({
           
         });
         
-        U.Keep(k, 'detachWithRelCauseErr', () => {
+        U.Keep(k, 'detachWithRelShutsRel1', () => {
           
           let RecA = U.inspire({ name: 'RecA', insps: { Record } });
           let RecB = U.inspire({ name: 'RecB', insps: { Record } });
@@ -507,10 +484,53 @@ U.buildRoom({
           let rel = Record.relate1M(RecA, RecB, 'A1BM');
           
           let recA = RecA({});
-          let attach = recA.attach(rel, RecB({}));
+          let recB = RecB({});
+          let attach = recA.attach(rel, recB);
           
-          try { recA.shut(); }
-          catch(err) { return { result: true }; }
+          recA.shut();
+          
+          return {
+            result: true
+              && recA.relWob(rel).isEmpty()
+              && recB.relWob(rel).isEmpty()
+          };
+          
+        });
+        
+        U.Keep(k, 'detachWithRelShutsRel2', () => {
+          
+          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          
+          let rel = Record.relate1M(RecA, RecB, 'A1BM');
+          
+          let correct = false;
+          
+          let recA = RecA({});
+          let recB = RecB({});
+          let attach = recA.attach(rel, recB);
+          attach.shutWob().hold(() => { correct = true; });
+          recA.shut();
+          
+          return { result: correct };
+          
+        });
+        
+        U.Keep(k, 'detachWithRelShutsRel3', () => {
+          
+          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          
+          let rel = Record.relate1M(RecA, RecB, 'A1BM');
+          
+          let recA = RecA({});
+          let recB = RecB({});
+          let attach = recA.attach(rel, recB);
+          
+          recA.shut();
+          
+          try { attach.shut(); }
+          catch(err) { return { result: err.message.has('already detached') }; }
           return { result: false };
           
         });
@@ -531,8 +551,6 @@ U.buildRoom({
             attaches.push(recX.attach(rel, recY));
           }
           
-          let countHolds0 = U.TOTAL_WOB_HOLDS();
-          
           attaches.forEach(at => at.shut());
           recs.forEach(r => r.shut());
           
@@ -542,6 +560,7 @@ U.buildRoom({
               && !recs.find(r => r.shutWob().numHolds() > 0)
               && recX.numHolds() === 0
               && recX.shutWob().numHolds() === 0
+              && U.TOTAL_WOB_HOLDS() === 0
           };
           
         });
