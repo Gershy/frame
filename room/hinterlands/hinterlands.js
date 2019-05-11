@@ -164,7 +164,12 @@ U.buildRoom({
         /// =BELOW}
         return Promise.allObj(this.relVal(rel.landsHuts).map(hut => hut.tell(msg)));
       },
-      /// {BELOW=
+      
+      /// {ABOVE=
+      allRelationsFor: function(rec) {
+        this.relations.map(v => (rec.isInspiredBy(v.Cls1) || rec.isInspiredBy(v.Cls2)) ? rec : C.skip);
+      },
+      /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
         if (!this.heartbeatMs) return;
         
@@ -263,7 +268,7 @@ U.buildRoom({
           deps.add(holdRec);
           
           // Sync all Relations
-          rec.getFlatDef().forEach((rel, relFwdName) => {
+          this.lands.allRelationsFor(rec).forEach(rel => {
             
             let relUid = rel.uid;
             let holdRel = rec.relWob(rel).hold(relRec => {
@@ -355,7 +360,7 @@ U.buildRoom({
           let uid = rec.uid;
           this.sync.addRec[`${uid}`] = rec;
           
-          rec.getFlatDef().forEach(rel => {
+          this.lands.allRelationsFor(rec).forEach(rel => {
             
             rec.relWob(rel).forEach(({ rec: rec2 }) => {
               

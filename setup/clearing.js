@@ -214,7 +214,9 @@ let U = global.U = {
   isInspiredBy: (Insp1, Insp2) => {
     if (!Insp2.has('uid')) throw new Error(`${U.typeOf(Insp2)} has no "uid"!`);
     try {
-      return (U.isType(Insp1, Function) ? Insp1 : Insp1.constructor).insps.has(Insp2.uid);
+      if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;
+      return Insp1.has('insps') && Insp1.insps.has(Insp2.uid);
+      //return (U.isType(Insp1, Function) ? Insp1 : Insp1.constructor).insps.has(Insp2.uid);
     } catch(err) { return false; }
   },
   getConstructor: obj => { try { return obj.constructor; } catch(err) { return null; } },
@@ -467,7 +469,8 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     
     this.wobs.set(wob, wobItem);
   },
-  complete: function() {
+  complete: function(fnc=null) {
+    if (fnc) fnc(this);
     this.wobs.forEach(wobItem => {
       delete wobItem.wob.toHolds;
       if (wobItem.wob.numAggs > 1) {
