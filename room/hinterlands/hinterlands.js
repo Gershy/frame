@@ -4,7 +4,7 @@ U.buildRoom({
   build: (foundation, record) => {
     // All huts sit together in the lands
     
-    let { Record } = record;
+    let { Record, Relation } = record;
     
     let TERMS = [];
     
@@ -15,8 +15,11 @@ U.buildRoom({
         
         /// {BELOW=
         // Only Below needs a flat list of all Records! Need to be able to
-        // quickly find Records by uid for update/removal
-        this.attach(rel.landsRecs, lands);
+        // directly find Records by uid for update/removal. The only alternative
+        // would be to form complex Record addresses, walking from the Lands
+        // until the desired Record
+        lands.allRecs.set(this.uid, this);
+        this.shutWob().hold(() => lands.allRecs.delete(this.uid));
         /// =BELOW}
        }
     })});
@@ -28,12 +31,15 @@ U.buildRoom({
         this.commands = commands;
         this.comWobs = {};
         this.heartbeatMs = heartbeatMs;
+        
         this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
         this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
+        this.ways = new Set();
         
         /// {BELOW=
         
         // Some values to control transmission
+        this.allRecs = new Map();
         this.version = 0;
         this.heartbeatTimeout = null;
         this.resetHeartbeatTimeout(); // Begin heartbeat
@@ -72,14 +78,17 @@ U.buildRoom({
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
           
+          // TODO: multiKey stuff for relations needs to be changed! Relations
+          // are now ordered!
+          
           let { command, version, content } = msg;
           
-          let recs = lands.relVal(rel.landsRecs);
+          let recs = lands.allRecs;
           
           try {
             if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
             
-            // TODO: Aggregate this!
+            let agg = U.AggWobs();
             
             // Apply all operations
             let { addRec={}, remRec={}, updRec={}, addRel={}, remRel={} } = content;
@@ -88,16 +97,17 @@ U.buildRoom({
               if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
               
               let Cls = lands.records[type];
-              let inst = Cls({ uid, lands });
+              let inst = agg.addWob(Cls({ uid, lands }));
               inst.wobble(value);
             });
             updRec.forEach((v, uid) => {
               if (!recs.has(uid)) throw new Error(`Upd missing uid: ${uid}`);
-              recs[uid].wobble(v);
+              agg.addWob(recs.get(uid)).wobble(v);
             });
             remRec.forEach((v, uid) => {
               if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
-              recs[uid].shut();
+              agg.addWob(rec.shutWob());
+              recs.get(uid).shut();
             });
             addRel.forEach(([ relUid, uid1, uid2 ]) => {
               if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
@@ -106,8 +116,8 @@ U.buildRoom({
               if (!recs.has(uid2)) throw new Error(`Can't find a relation target for attach; uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.attach(rel, rec2); } catch(err) { err.message = `Couldn't attach: ${err.message}`; throw err; }
+              let [ rec1, rec2 ] = [ recs.get(uid1), recs.get(uid2) ];
+              try { rec1.attach(rel, rec2, agg); } catch(err) { err.message = `Couldn't attach: ${err.message}`; throw err; }
             });
             remRel.forEach(([ relUid, uid1, uid2 ]) => {
               if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
@@ -116,8 +126,14 @@ U.buildRoom({
               if (!recs.has(uid2)) throw new Error(`Can't find a relation target for detach; uid: ${uid2}`);
               
               let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs[uid1], recs[uid2] ];
-              try { rec1.detach(rel, rec2); } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
+              let [ rec1, rec2 ] = [ recs.get(uid1), recs.get(uid2) ];
+              try {
+                // TODO: This requires understanding internal implementation
+                let wob = rec1.getWob(rel);
+                let relRec = rel.cardinality[1] === '1' ? wob.relRec : wob.relRec[rec2.uid];
+                agg.addWob(relRec.shutWob());
+                relRec.shut();
+              } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
             });
           } catch(err) {
             err.message = `ABOVE CAUSED: ${err.message}`;
@@ -138,8 +154,12 @@ U.buildRoom({
         /// =BELOW}
       },
       genUniqueTerm: function() {
-        let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
-        return this.relVal(rel.landsHuts).find(hut => hut.term === ret) ? this.genUniqueTerm() : ret;
+        let huts = this.relVal(rel.landsHuts);
+        for (let i = 0; i < 100; i++) {
+          let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
+          if (!huts.find(hut => hut.term === ret)) return ret;
+        }
+        throw new Error('Too many huts! Not enough terms!! AHHHH!!!');
       },
       
       comWob: function(command) {
@@ -167,7 +187,7 @@ U.buildRoom({
       
       /// {ABOVE=
       allRelationsFor: function(rec) {
-        this.relations.map(v => (rec.isInspiredBy(v.Cls1) || rec.isInspiredBy(v.Cls2)) ? rec : C.skip);
+        return this.relations.map(rel => rec.isInspiredBy(rel.head) ? rel : C.skip);
       },
       /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
@@ -180,6 +200,7 @@ U.buildRoom({
       },
       /// =BELOW}
       
+      // TODO: async functions shouldn't be named "open" and "shut"
       open: async function() {
         /// {ABOVE=
         TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
@@ -187,14 +208,14 @@ U.buildRoom({
         TERMS = [ 'remote' ];
         /// =BELOW}
         
-        await Promise.allObj(this.relVal(rel.landsWays).map(w => w.open())); // Open all Ways
+        await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
         
         /// {BELOW=
         let hut = this.relVal(rel.landsHuts).find(() => true)[0];
         await this.hear(hut, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
-      shut: async function() { return Promise.allObj(this.relVal(rel.landsWays).map(w => w.shut())); }
+      shut: async function() { return Promise.all([ ...this.ways ].map(w => w.shut())); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Record }, methods: (insp, Insp) => ({
       init: function({ lands, address }) {
@@ -338,10 +359,6 @@ U.buildRoom({
         
       },
       
-      hasDataToSync: function() {
-        return this.sync.find(v => !v.isEmpty());
-      },
-      
       resetVersion: function() {
         // Clears memory of current delta and generates a new delta which would bring
         // a blank Below up to date. Resets this Hut's version to 0 to reflect the Below
@@ -422,7 +439,7 @@ U.buildRoom({
             
             // It's possible that in between scheduling and performing the tick,
             // this Hut has become isolated. In this case no update should occur
-            if (!this.relVal(rel.landsHuts)) return null;
+            if (this.isShut) return null;
             
             this.informThrottlePrm = null;
             let updateTell = this.genUpdateTell();
@@ -437,7 +454,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findWay = this.relVal(rel.waysHuts).find(() => true);
+        let findWay = this.relVal(rel.waysHuts.bak()).find(() => true);
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
@@ -461,6 +478,8 @@ U.buildRoom({
         this.makeServer = makeServer;
         this.server = null;
         this.serverFunc = null
+        
+        // TODO: Should be in Lands (e.g. a single Hut connected by 2 Ways)
         this.connections = {};
       },
       
@@ -482,6 +501,8 @@ U.buildRoom({
           if (this.connections.has(address)) throw new Error(`Multiple Huts at address ${address} - makeServer is likely flawed`);
           
           // Create the Hut, and reference by address
+          // TODO: The same machine connecting through multiple Ways will result in
+          // multiple Hut instances
           let hut = Hut({ lands: this.lands, address });
           this.connections[address] = { absConn, hut };
           
@@ -507,8 +528,13 @@ U.buildRoom({
           });
           
           // Attach the Hut to the Way and to the Lands
-          this.attach(rel.waysHuts, hut);
-          this.lands.attach(rel.landsHuts, hut);
+          U.AggWobs().complete(agg => {
+            this.attach(rel.waysHuts.fwd(), hut);
+            hut.attach(rel.waysHuts.bak(), this);
+            
+            this.lands.attach(rel.landsHuts.fwd(), hut);
+            hut.attach(rel.landsHuts.bak(), this.lands);
+          });
           
         });
       },
@@ -523,10 +549,8 @@ U.buildRoom({
     })});
     
     let rel = {
-      landsRecs: Record.relate1M(Lands, LandsRecord, 'landsRecs'),
-      landsWays: Record.relate1M(Lands, Way, 'landsWays'),
-      landsHuts: Record.relate1M(Lands, Hut, 'landsHuts'),
-      waysHuts: Record.relateMM(Way, Hut, 'waysHuts')
+      landsHuts: Relation(Lands, Hut, '1M'),
+      waysHuts: Relation(Way, Hut, 'MM')
     };
     
     let content = { Lands, LandsRecord, Hut, Way, rel };
@@ -599,7 +623,7 @@ U.buildRoom({
           let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
-          lands.attach(rel.landsWays, way);
+          lands.ways.add(way);
           await lands.open();
           
           let complete = false;
@@ -617,7 +641,7 @@ U.buildRoom({
           let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
-          lands.attach(rel.landsWays, way);
+          lands.ways.add(way);
           await lands.open();
           
           let mostRecentConn = null;
@@ -646,7 +670,7 @@ U.buildRoom({
           let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
-          lands.attach(rel.landsWays, way);
+          lands.ways.add(way);
           await lands.open();
           
           let correct = false;
@@ -668,7 +692,7 @@ U.buildRoom({
           let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
-          lands.attach(rel.landsWays, way);
+          lands.ways.add(way);
           await lands.open();
           
           let correct = false;
@@ -692,7 +716,7 @@ U.buildRoom({
             let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
             
             let way = Way({ lands, makeServer: () => server });
-            lands.attach(rel.landsWays, way);
+            lands.ways.add(way);
             await lands.open();
             
             let c = server.spoofClient();
@@ -710,7 +734,7 @@ U.buildRoom({
             let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
             
             let way = Way({ lands, makeServer: () => server });
-            lands.attach(rel.landsWays, way);
+            lands.ways.add(way);
             await lands.open();
             
             let c = server.spoofClient();
@@ -727,12 +751,12 @@ U.buildRoom({
             
             let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
             let appRel = {
-              landsRec1Set: Record.relate1M(Lands, Rec1, 'landsRec1Set')
+              landsRec1Set: Relation(Lands, Rec1, '1M')
             };
             
             let resp = null;
             let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
-            lands.attach(rel.landsWays, Way({ lands, makeServer: () => server }));
+            lands.ways.add(Way({ lands, makeServer: () => server }));
             await lands.open();
             
             U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
@@ -759,12 +783,16 @@ U.buildRoom({
             
             let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
             let appRel = {
-              landsRec1Set: Record.relate1M(Lands, Rec1, 'landsRec1Set')
+              landsRec1Set: Relation(Lands, Rec1, '1M')
             };
             
             let resp = null;
-            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
-            lands.attach(rel.landsWays, Way({ lands, makeServer: () => server }));
+            let lands = Lands({
+              foundation,
+              commands: { test: 1 },
+              heartbeatMs: null
+            });
+            lands.ways.add(Way({ lands, makeServer: () => server }));
             await lands.open();
             
             U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
@@ -784,6 +812,10 @@ U.buildRoom({
             let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
+            
+            // TODO: Next need to sync a relation. Will need all Relations in play to
+            // be defined on the Lands so that for a Record, all its Relations can be
+            // held.
             
             return {
               result: true

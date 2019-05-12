@@ -468,6 +468,8 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     if (wob.numAggs === 1) wob['toHolds'] = (...vals) => { wobItem.vals = vals; };
     
     this.wobs.set(wob, wobItem);
+    
+    return wob;
   },
   complete: function(fnc=null) {
     if (fnc) fnc(this);

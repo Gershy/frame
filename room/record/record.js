@@ -39,7 +39,7 @@ U.buildRoom({
     let WobM = U.inspire({ name: 'WobM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.relRecs = {}; // TODO: Use `Set` instead of `{}`
+        this.relRecs = {}; // TODO: Use `Set` instead of `{}` (it's also referenced in hinterlands.js)
       },
       hold: function(fn) {
         this.relRecs.forEach(fn);
@@ -258,7 +258,7 @@ U.buildRoom({
       }
     })});
     
-    let content = { Record };
+    let content = { Record, Relation };
     
     /// {TEST=
     content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'record').contain(k => {
@@ -276,23 +276,27 @@ U.buildRoom({
         U.Keep(k, 'circular2', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Record.relate11(Rec, Rec, 'fwd', 'bak');
+          let rel = Relation(Rec, Rec, '11');
           
           let rec1 = Rec({});
           let rec2 = Rec({});
           
           let correct1 = false;
           let correct2 = false;
-          rec1.relWob(rel, 'fwd').hold(({ rec }) => { correct1 = rec === rec2; });
-          rec2.relWob(rel, 'bak').hold(({ rec }) => { correct2 = rec === rec1; });
-          rec1.attach(rel, rec2);
+          rec1.relWob(rel.fwd()).hold(({ rec }) => { correct1 = rec === rec2; console.log('CORR1:', correct1); });
+          rec2.relWob(rel.bak()).hold(({ rec }) => { correct2 = rec === rec1; console.log('CORR2:', correct2); });
+          
+          U.AggWobs().complete(agg => {
+            rec1.attach(rel.fwd(), rec2, agg);
+            rec2.attach(rel.bak(), rec1, agg);
+          });
           
           return {
             result: true
               && correct1
               && correct2
-              && rec1.relVal(rel, 'fwd') === rec2
-              && rec2.relVal(rel, 'bak') === rec1
+              && rec1.relVal(rel.fwd()) === rec2
+              && rec2.relVal(rel.bak()) === rec1
           };
           
         });
@@ -300,11 +304,11 @@ U.buildRoom({
         U.Keep(k, 'circular3', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          let rel = Relation(Rec, Rec, '11');
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel, 'fwd').hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.relWob(rel.fwd()).hold(({ rec }) => { correct = rec === loopRec; });
           loopRec.attach(rel, loopRec);
           
           return { result: correct };
@@ -314,12 +318,16 @@ U.buildRoom({
         U.Keep(k, 'circular4', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          let rel = Relation(Rec, Rec, '11');
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel, loopRec);
+          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = rec === loopRec; });
+          
+          U.AggWobs().complete(agg => {
+            loopRec.attach(rel.bak(), loopRec);
+            loopRec.attach(rel.fwd(), loopRec);
+          });
           
           return { result: correct };
           
@@ -328,12 +336,16 @@ U.buildRoom({
         U.Keep(k, 'circular5', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          let rel = Relation(Rec, Rec, '11');
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = loopRec.relVal(rel, 'fwd') === rec; });
-          loopRec.attach(rel, loopRec);
+          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = loopRec.relVal(rel.fwd()) === rec; });
+          
+          U.AggWobs().complete(agg => {
+            loopRec.attach(rel.fwd(), loopRec, agg);
+            loopRec.attach(rel.bak(), loopRec, agg);
+          });
           
           return { result: correct };
           
@@ -342,12 +354,16 @@ U.buildRoom({
         U.Keep(k, 'circular6', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Record.relate11(Rec, Rec, 'relFwd', 'relBak');
+          let rel = Relation(Rec, Rec, '11');
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel, 'bak').hold(({ rec }) => { correct = loopRec.relVal(rel, 'bak') === rec; });
-          loopRec.attach(rel, loopRec);
+          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = loopRec.relVal(rel.bak()) === rec; });
+          
+          U.AggWobs().complete(agg => {
+            loopRec.attach(rel.fwd(), loopRec, agg);
+            loopRec.attach(rel.bak(), loopRec, agg);
+          });
           
           return { result: correct };
           
@@ -358,14 +374,17 @@ U.buildRoom({
           let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
           let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
           
-          let rel = Record.relate11(Rec1, Rec2, 'rel12');
+          let rel = Relation(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
           
-          rec1.attach(rel, rec2);
+          U.AggWobs().complete(agg => {
+            rec1.attach(rel.fwd(), rec2, agg);
+            rec2.attach(rel.bak(), rec1, agg);
+          });
           
-          return { result: rec1.relVal(rel) === rec2 && rec2.relVal(rel) === rec1 };
+          return { result: rec1.relVal(rel.fwd()) === rec2 && rec2.relVal(rel.bak()) === rec1 };
           
         });
         
@@ -374,14 +393,14 @@ U.buildRoom({
           let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
           let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
           
-          let rel = Record.relate11(Rec1, Rec2, 'rel12');
+          let rel = Relation(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
           
-          rec1.attach(rel, rec2);
+          rec1.attach(rel.fwd(), rec2);
           
-          try { rec1.attach(rel, Rec2({})); }
+          try { rec1.attach(rel.fwd(), Rec2({})); }
           catch(err) { return { result: true }; }
           
           return { result: false };
@@ -393,7 +412,7 @@ U.buildRoom({
           let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
           let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
           
-          let rel = Record.relate11(Rec1, Rec2, 'rel12');
+          let rel = Relation(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -401,7 +420,7 @@ U.buildRoom({
           let attach = rec1.attach(rel, rec2);
           attach.shut();
           
-          return { result: rec1.relVal(rel) === null && rec2.relVal(rel) === null };
+          return { result: rec1.relVal(rel) === null };
           
         });
         
@@ -410,7 +429,7 @@ U.buildRoom({
           let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
           let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
           
-          let rel = Record.relate11(Rec1, Rec2, 'rel12');
+          let rel = Relation(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -420,7 +439,6 @@ U.buildRoom({
           
           try { attach.shut(); }
           catch(err) { return { result: true }; }
-          
           return { result: false };
           
         });
@@ -682,7 +700,7 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -703,7 +721,7 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -722,7 +740,7 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -743,7 +761,7 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
@@ -763,7 +781,7 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
@@ -783,16 +801,19 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
             let result = false;
-            recA.relWob(relAB).hold(relRec => {
-              result = recB.relVal(relAB) === recA;
+            recA.relWob(relAB.fwd()).hold(relRec => {
+              result = recB.relVal(relAB.bak()) === recA;
             });
             
-            recA.attach(relAB, recB);
+            U.AggWobs().complete(agg => {
+              recA.attach(relAB.fwd(), recB, agg);
+              recB.attach(relAB.bak(), recA, agg);
+            });
             
             return { result };
             
@@ -803,15 +824,19 @@ U.buildRoom({
             let RecA = U.inspire({ name: 'RecA', insps: { Record } });
             let RecB = U.inspire({ name: 'RecB', insps: { Record } });
             
-            let relAB = Record.relate11(RecA, RecB, 'ab');
+            let relAB = Relation(RecA, RecB, '11');
             
             let recA = RecA({});
+            let recB = RecB({});
             let result = false;
-            recA.relWob(relAB).hold(({ rec: recB }) => {
-              result = recB.relVal(relAB) === recA;
+            recA.relWob(relAB.fwd()).hold(({ rec: recB }) => {
+              result = recB.relVal(relAB.bak()) === recA;
             });
             
-            recA.attach(relAB, RecB({}));
+            U.AggWobs().complete(agg => {
+              recA.attach(relAB.fwd(), recB, agg);
+              recB.attach(relAB.bak(), recA, agg);
+            });
             
             return { result };
             
