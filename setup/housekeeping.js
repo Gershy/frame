@@ -300,29 +300,7 @@ U.gain({
         
       });
       
-      Keep(k, 'doubleDepCauseErr', () => {
-        
-        let reachedPoint = false;
-        let hog = interimHog();
-        let hogWob = U.Wob();
-        
-        try {
-          let ap = U.AccessPath(hogWob, (dep, hog) => {
-            dep(hog);
-            reachedPoint = true; // Shouldn't fail before this point
-            dep(hog);
-          });
-          hogWob.wobble(hog);
-        } catch(err) {
-          return { result: reachedPoint };
-        }
-        
-        return { result: false };
-        
-      });
-      
       Keep(k, 'gen1', () => {
-        
         
         let hogWob = U.Wob();
         

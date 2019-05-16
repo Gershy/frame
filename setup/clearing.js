@@ -298,7 +298,7 @@ let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) =
     
     return { shut: () => {}, shutWob: this };
   },
-  hadWob: function() { return !this.holds; },
+  wobbled: function() { return !this.holds; },
   toHolds: function(...args) {
     if (!this.holds) return;
     this.tmpHolds = this.holds;
@@ -332,24 +332,6 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     this.toHolds(value, origVal);
   },
   modify: function(func, force) { this.wobble(func(this.getValue()), force); }
-})});
-let WobObj = U.inspire({ name: 'WobObj', insps: { WobVal }, methods: (insp, Insp) => ({
-  init: function(value={}) {
-    this.value = {};
-    insp.WobVal.init.call(this, value); // Empty obj will add nothing to `this.value`, not clobber it
-  },
-  wobble: function(delta) {
-    this.setValue(delta);
-    this.toHolds(delta);
-  },
-  setValue: function({ add={}, rem={}, ...invalid }) {
-    if (!invalid.isEmpty()) throw new Error(`Keys for ${this.constructor.name} should be "add" and "rem"; got: ${Object.keys(invalid).join(', ')}`);
-    add.forEach((v, k) => { if (this.value.has(k)) throw new Error(`Duplicate add key: ${k}`); });
-    rem.forEach((v, k) => { if (!this.value.has(k)) throw new Error(`Missing rem key: ${k}`); });
-    for (let k in add) this.value[k] = add[k];
-    for (let k in rem) delete this.value[k];
-  },
-  getValue: function() { return { add: this.value }; }
 })});
 let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) => ({
   // TODO: WobFnc should almost definitely only wobble when all its children have wobbled
@@ -510,11 +492,7 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
       // hogShutWob.hold(() => apShutCauseHogShutHold.shut());
       
       // Deps alongside `hog` shut when `hog` shuts
-      let seen = new Set();
       let addHogDep = dep => {
-        
-        if (seen.has(dep)) throw new Error('Added same dependency multiple times');
-        seen.add(dep);
         
         // If the Dep shuts first stop holding
         let depShutFirstWob = dep.shutWob().hold(() => {
@@ -534,7 +512,6 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
         
         return dep;
       };
-      
       this.gen(addHogDep, hog);
     });
     
@@ -547,5 +524,12 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
   shutWob: function() { return this.shutWob0; }
 })});
 
-U.gain({ Wob, WobOne, WobVal, WobObj, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
+// TODO: Oughtn't be aggregated
+let nullWob = {
+  hold: () => {},
+  wobble: () => {}
+};
+C.gain({ nullWob, nullShutWob: { shut: () => {}, shutWob: () => nullWob } });
+
+U.gain({ Wob, WobOne, WobVal, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
 

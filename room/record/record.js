@@ -15,47 +15,52 @@ U.buildRoom({
     let Wob1 = U.inspire({ name: 'Wob1', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.relRec = null;
+        this.hog = null;
       },
       hold: function(fn) {
-        if (this.relRec) fn(this.relRec); // Call immediately
+        if (this.hog) fn(this.hog); // Call immediately
         return insp.Wob.hold.call(this, fn);
       },
-      forEach: function(fn) { if (this.relRec) fn(this.relRec); },
-      isEmpty: function() { return !this.relRec; },
-      getValue: function() { return this.relRec ? this.relRec.rec : null; },
-      wobbleAdd: function(relRec) {
-        if (!relRec) throw new Error('Invalid hog for add');
-        if (this.relRec) throw new Error('Already have hog');
-        this.relRec = relRec;
-        this.wobble(this.relRec);
+      forEach: function(fn) { if (this.hog) fn(this.hog); },
+      isEmpty: function() { return !this.hog; },
+      getValue: function() { return this.hog ? this.hog.rec : null; }, // TODO: Don't mention `rec`! (remove relVal and getValue?)
+      wobbleAdd: function(hog) {
+        if (!hog) throw new Error('Invalid hog for add');
+        if (this.hog) throw new Error('Already add');
+        this.hog = hog;
+        this.wobble(this.hog);
       },
-      wobbleRem: function(relRec) {
-        if (!relRec) throw new Error('Invalid hog for rem')
-        if (relRec !== this.relRec) throw new Error('Already rem');
-        this.relRec = null;
+      wobbleRem: function(hog) {
+        if (!hog) throw new Error('Invalid hog for rem')
+        if (hog !== this.hog) throw new Error('Already rem');
+        this.hog = null;
       }
     })});
     let WobM = U.inspire({ name: 'WobM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.relRecs = {}; // TODO: Use `Set` instead of `{}` (it's also referenced in hinterlands.js)
+        this.hogs = new Set();
+        //this.hogs = {}; // TODO: Use `Set` instead of `{}` (it's also referenced in hinterlands.js)
       },
       hold: function(fn) {
-        this.relRecs.forEach(fn);
+        this.hogs.forEach(fn);
         return insp.Wob.hold.call(this, fn);
       },
-      forEach: function(fn) { this.relRecs.forEach(fn); },
-      isEmpty: function() { return this.relRecs.isEmpty(); },
-      getValue: function() { return this.relRecs.map(rr => rr.rec); },
-      wobbleAdd: function(relRec) {
-        if (this.relRecs.has(relRec.rec.uid)) throw new Error('Already have hog');
-        this.relRecs[relRec.rec.uid] = relRec;
-        this.wobble(relRec);
+      forEach: function(fn) { this.hogs.forEach(fn); },
+      isEmpty: function() { return this.hogs.size === 0; },
+      getValue: function() {
+        let ret = {};
+        for (let hog of this.hogs) ret[hog.rec.uid] = hog.rec;
+        return ret;
       },
-      wobbleRem: function(relRec, uid=relRec.rec.uid) {
-        if (!this.relRecs.has(uid) || this.relRecs[uid].rec !== relRec.rec) throw new Error('Don\'t have relRec');
-        delete this.relRecs[uid];
+      wobbleAdd: function(hog) {
+        if (this.hogs.has(hog)) throw new Error('Already add');
+        this.hogs.add(hog);
+        this.wobble(hog);
+      },
+      wobbleRem: function(hog) {
+        if (!this.hogs.has(hog)) throw new Error('Already rem');
+        this.hogs.delete(hog);
       }
     })});
     
@@ -109,96 +114,26 @@ U.buildRoom({
         
         if (agg) agg.addWob(wob);
         wob.wobbleRem(relRec);
-      }
+      },
+      keyFor: function(head, tail) {
+        return `${this.uid}:${head.uid}->${tail.uid}`;
+      },
+      shut: function() {},
+      shutWob: function() { return C.nullWob; }
     })});
     
     let Record = U.inspire({ name: 'Record', insps: { WobVal }, methods: (insp, Insp) => ({
-      $NEXT_REL_UID: 0,
       $NEXT_REC_UID: 0,
-      $relateUni1: (name, Cls1, Cls2) => ({
-        // Attach/detach instances of Cls1 to/from instances of Cls2
-        type: '1',
-        attach0: (inst1, inst2) => {
-          if (!inst2.isInspiredBy(Record)) throw new Error(`Can't attach: need Record; got ${U.typeOf(inst2)}`);
-          if (inst1.inner.has(name) && inst1.inner[name].relRec)
-            throw new Error(`Can't attach rel ${Cls1.name}.${name} -> ${Cls2.name}: already attached`);
-        },
-        attach1: (inst1, relInst2, agg) => {
-          if (!inst1.inner.has(name)) inst1.inner[name] = getWob1();
-          agg.addWob(inst1.inner[name]);
-          inst1.inner[name].wobble(relInst2);
-        },
-        detach0: (inst1, inst2) => {
-          if (!inst2.isInspiredBy(Record)) throw new Error(`Can't detach: need Record; got ${U.typeOf(inst2)}`);
-          if (!inst1.inner.has(name) || inst1.inner[name].relRec.rec !== inst2)
-            throw new Error(`Can't detach rel ${Cls1.name}.${name} -> ${Cls2.name}: already detached`);
-        },
-        detach1: (inst1, relInst2, agg) => {
-          agg.addWob(inst1.inner[name]);
-          inst1.inner[name].wobble(null);
-        }
-      }),
-      $relateUniM: (name, ClsM, Cls1) => ({
-        // Attach/detach instances of ClsM to/from multiple instances of Cls1
-        type: 'M',
-        attach0: (instM, inst1) => {
-          if (inst1.uid === null) throw new Error(`Can't attach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
-          if (instM.inner.has(name) && instM.inner[name].relRecs.has(inst1.uid)) throw new Error(`Can't attach rel ${ClsM.name}.${name} -> ${Cls1.name}: already attached`);
-        },
-        attach1: (instM, relInst1, agg) => {
-          if (!instM.inner.has(name)) instM.inner[name] = getWobM();
-          agg.addWob(instM.inner[name]);
-          instM.inner[name].wobbleAdd(relInst1);
-        },
-        detach0: (instM, inst1) => {
-          if (inst1.uid === null) throw new Error(`Can't detach ${ClsM.name}.${name} -> ${Cls1.name}: has no uid`);
-          if (!instM.inner.has(name) || !instM.inner[name].relRecs.has(inst1.uid))
-            throw new Error(`Can't detach rel ${ClsM.name}.${name} -> ${Cls1.name}: already detached`);
-        },
-        detach1: (instM, relInst1, agg) => {
-          agg.addWob(instM.inner[name]);
-          instM.inner[name].wobbleRem(relInst1);
-        }
-      }),
-      $relate: (relFunc1, relFunc2, Cls1, Cls2, name1, name2) => {
-        // Creates relations in both directions
-        
-        if (!name1) throw new Error('Need to provide relation name');
-        
-        // TODO: could consider automatically providing names for `name1`, `name2`:
-        // `let name1 = 'relVar' + (Cls1.nextRelVarInd++);`
-        // `let name2 = 'relVar' + (Cls2.nextRelVarInd++);`
-        
-        let clsRel1 = relFunc1(name1, Cls1, Cls2);
-        let clsRel2 = relFunc2(name2, Cls2, Cls1);
-        
-        let key = U.multiKey(`${Cls1.uid}.${name1}`, `${Cls2.uid}.${name2}`);
-        let rel = {
-          key, uid: Record.NEXT_REL_UID++, desc: name1 === name2 ? name1 : `${name1}<->${name2}`,
-          Cls1, Cls2, name1, name2,
-          clsRel1, clsRel2
-        };
-        
-        if (!Cls1.has('relSchemaDef')) Cls1.relSchemaDef = {};
-        Cls1.relSchemaDef[name1] = rel;
-        
-        if (!Cls2.has('relSchemaDef')) Cls2.relSchemaDef = {};
-        Cls2.relSchemaDef[name2] = rel;
-        
-        return rel;
-      },
-      $relate11: (Cls1, Cls2, name1, name2=name1) => Record.relate(Record.relateUni1, Record.relateUni1, Cls1, Cls2, name1, name2),
-      $relateM1: (ClsM, Cls1, nameM, name1=nameM) => Record.relate(Record.relateUni1, Record.relateUniM, ClsM, Cls1, nameM, name1),
-      $relate1M: (Cls1, ClsM, name1, nameM=name1) => Record.relate(Record.relateUniM, Record.relateUni1, Cls1, ClsM, name1, nameM),
-      $relateMM: (Cls1, Cls2, name1, name2=name1) => Record.relate(Record.relateUniM, Record.relateUniM, Cls1, Cls2, name1, name2),      
       
       init: function({ uid=null, value=null }) {
         this.uid = uid !== null ? uid : Record.NEXT_REC_UID++;
         insp.WobVal.init.call(this, value);
         this.inner = {};
         this.shutWob0 = null;
+        this.relsWob0 = WobM();
       },
       
+      relsWob: function() { return this.relsWob0; },
       relWob: function(rel, direction) {
         if (!rel || !U.isInspiredBy(rel, Relation)) throw new Error('Invalid rel provided');
         if (!this.isInspiredBy(rel.head)) throw new Error(`Can't use rel: ${U.typeOf(this)} isn't inspired by ${rel.head.name}`);
@@ -207,28 +142,41 @@ U.buildRoom({
       },
       relVal: function(rel, direction) { return this.relWob(rel, direction).getValue(); },
       
-      attach: function(rel, inst, agg=null) {
+      attach: function(rel, rec, agg=null) {
         
         // TODO: Attaching in a two-way manner will have interleaved validation,
-        // instead of front-loaded validation. E.g. the order will be:
+        // instead of ahead-of-time validation. E.g. the order will be:
         // validate1, attach1, validate2, attach2,
         // Instead of:
         // validate1, validate2, attach1, attach2
-        // This is no good because errors could occur partway through attaching!
+        // This is no good; errors could occur partway through state change!
         
         let relRec = null;
-        let isShut = false;
-        let shutWob0 = null;
-        let shutWob = () => shutWob0 || (shutWob0 = U.WobOne());
-        let shut = agg => {
+        let shut = null;
+        
+        // If `rec` shuts before we detach - detach!
+        let holdRecShut = rec.shutWob().hold(() => shut());
+        
+        let shutWob0 = U.WobOne();
+        let shutWob = () => shutWob0;
+        shut = agg => {
           if (relRec.has('isShut') && relRec.isShut) throw new Error('Already shut');
           relRec.isShut = true;
           
+          holdRecShut.shut(); // Stop listening for `rec` to shut
+          
+          // Detach and wobble!
           rel.detach(this, relRec, agg);
-          if (shutWob0) shutWob0.wobble();
+          shutWob0.wobble();
         };
         
-        relRec = { rec: inst, shut, shutWob };
+        // Create a RelatedRecord
+        relRec = { rec, shut, shutWob };
+        
+        // Show that this Relation is in play for this Record
+        if (!this.relsWob0.hogs.has(rel)) this.relsWob0.wobbleAdd(rel);
+        
+        // Perform the attach!
         rel.attach(this, relRec, agg);
         
         return { shut, shutWob };
@@ -268,7 +216,7 @@ U.buildRoom({
         U.Keep(k, 'circular1', () => {
           
           let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          Record.relate11(Rec, Rec, 'circFwd', 'circBak');
+          Relation(Rec, Rec, '11');
           return { result: true };
           
         });
@@ -283,8 +231,8 @@ U.buildRoom({
           
           let correct1 = false;
           let correct2 = false;
-          rec1.relWob(rel.fwd()).hold(({ rec }) => { correct1 = rec === rec2; console.log('CORR1:', correct1); });
-          rec2.relWob(rel.bak()).hold(({ rec }) => { correct2 = rec === rec1; console.log('CORR2:', correct2); });
+          rec1.relWob(rel.fwd()).hold(({ rec }) => { correct1 = rec === rec2; });
+          rec2.relWob(rel.bak()).hold(({ rec }) => { correct2 = rec === rec1; });
           
           U.AggWobs().complete(agg => {
             rec1.attach(rel.fwd(), rec2, agg);
@@ -579,6 +527,73 @@ U.buildRoom({
               && recX.numHolds() === 0
               && recX.shutWob().numHolds() === 0
               && U.TOTAL_WOB_HOLDS() === 0
+          };
+          
+        });
+        
+        U.Keep(k, 'relShutCausesDetach1', () => {
+          
+          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          
+          let rel = Relation(RecX, RecY, '1M');
+          
+          let recX = RecX({});
+          let recY = RecY({});
+          
+          let att = recX.attach(rel, recY);
+          recY.shut();
+          
+          return { result: recX.relVal(rel).isEmpty() };
+          
+        });
+        
+        U.Keep(k, 'relShutCausesDetach2', () => {
+          
+          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          
+          let rel = Relation(RecX, RecY, '11');
+          
+          let recX = RecX({});
+          let recY = RecY({});
+          
+          U.AggWobs().complete(agg => {
+            recX.attach(rel.fwd(), recY, agg);
+            recY.attach(rel.bak(), recX, agg);
+          });
+          
+          recX.shut();
+          
+          return {
+            result: true
+              && recX.relWob(rel.fwd()).isEmpty()
+              && recY.relWob(rel.bak()).isEmpty()
+          };
+          
+        });
+        
+        U.Keep(k, 'relShutCausesDetach3', () => {
+          
+          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          
+          let rel = Relation(RecX, RecY, '11');
+          
+          let recX = RecX({});
+          let recY = RecY({});
+          
+          U.AggWobs().complete(agg => {
+            recX.attach(rel.fwd(), recY, agg);
+            recY.attach(rel.bak(), recX, agg);
+          });
+          
+          recY.shut();
+          
+          return {
+            result: true
+              && recX.relWob(rel.fwd()).isEmpty()
+              && recY.relWob(rel.bak()).isEmpty()
           };
           
         });

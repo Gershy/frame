@@ -4,7 +4,13 @@ U.buildRoom({
   build: (foundation, record) => {
     // All huts sit together in the lands
     
+    // TODO: WobOne instances need to exist before the first wobble is due. They
+    // must immediately wobble upon hold if they've already wobbled beforehand,
+    // and won't do so if they're only instantialized after the first wobble
+    // occurred.
+    
     let { Record, Relation } = record;
+    let { AccessPath } = U;
     
     let TERMS = [];
     
@@ -27,13 +33,15 @@ U.buildRoom({
       init: function({ foundation, records=[], relations=[], commands={}, heartbeatMs=10000 }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.uidCnt = 0;
-        this.maxUpdateAttempts = 1000;
         this.commands = commands;
         this.comWobs = {};
         this.heartbeatMs = heartbeatMs;
         
-        this.records = U.isType(records, Array) ? records.toObj(r => [ r.name, r ]) : records;
-        this.relations = U.isType(relations, Array) ? relations.toObj(r => [ r.uid, r ]) : relations;
+        this.records = new Map();
+        for (let rec of records) this.records.set(rec.name, rec);
+        this.relations = new Map();
+        for (let rel of relations) this.relations.set(rel.uid, rel);
+        
         this.ways = new Set();
         
         /// {BELOW=
@@ -187,7 +195,9 @@ U.buildRoom({
       
       /// {ABOVE=
       allRelationsFor: function(rec) {
-        return this.relations.map(rel => rec.isInspiredBy(rel.head) ? rel : C.skip);
+        let ret = [];
+        for (let [ uid, rel ] of this.relations) if (rec.isInspiredBy(rel.head)) ret.push(rel);
+        return ret;
       },
       /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
@@ -230,6 +240,7 @@ U.buildRoom({
         /// {ABOVE=
         this.version = 0;
         this.fols = new Map();
+        this.awaitedTails = new Map(); // Tails in a relation whose Head is followed
         this.sync = {
           addRec: {},
           remRec: {},
@@ -262,6 +273,9 @@ U.buildRoom({
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
       
+      getRecFollowStrength: function(rec) {
+        return (this.fols.get(rec) || { strength: 0 }).strength;
+      },
       setRecFollowStrength: function(rec, strength) {
         
         if (strength < 0) throw new Error(`Invalid strength: ${strength}`);
@@ -274,47 +288,108 @@ U.buildRoom({
           
           let uid = rec.uid;
           
-          // Create all necessary holds
-          let deps = new Set();
-          
-          // Immediately signal "addRec"
-          this.sync.addRec[`${uid}`] = rec;
-          
-          // Signal "updRec" every time `rec` wobbles
-          // Note that this will run immediately, and call `this.requestInformBelow()`
-          let holdRec = rec.hold(val => {
-            this.sync.updRec[`${uid}`] = val;
-            this.requestInformBelow();
-          });
-          deps.add(holdRec);
-          
-          // Sync all Relations
-          this.lands.allRelationsFor(rec).forEach(rel => {
+          let ap = AccessPath(U.WobVal(rec), (dep, rec) => {
             
-            let relUid = rel.uid;
-            let holdRel = rec.relWob(rel).hold(relRec => {
-              
-              let rec2 = relRec.rec;
-              if (!this.fols.has(rec2)) return; // Don't deal with Relation unless we have both Records
-              
-              let uid2 = rec2.uid;
-              this.sync.addRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+            this.sync.addRec[`${uid}`] = rec;
+            
+            dep(rec.hold(val => {
+              this.sync.updRec[`${uid}`] = val;
               this.requestInformBelow();
+            }));
+            
+            if (this.awaitedTails.has(rec)) {
               
-              let holdRelRecShut = relRec.shut.hold(() => {
-                this.sync.remRel[`${relUid}.${U.multiKey(uid, uid2)}`] = [ relUid, uid, uid2 ];
+              // We're already a Tail with followed Heads! Need to immediately sync
+              // those relations
+              let waitingHeads = this.awaitedTails.get(rec);
+              waitingHeads.forEach(([ rel, head, relTail ]) => {
+                
+                if (relTail.rec !== rec) throw new Error('WHY???');
+                
+                // TODO: HEEERE! Fixed one test, need to test this better and check memory management
+                // E.g. after an awaited tail is added, is it no longer awaited?
+                // E.g. does shutting the head/tail unsync the relation?
+                // E.g. does unfollowing the head remove the tail from being awaited?
+                // ------------------
+                
+                let relUid = rel.uid;
+                let uid = head.uid;
+                let uid2 = relTail.rec.uid;
+                this.sync.addRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
                 this.requestInformBelow();
-                deps.delete(holdRelRecShut);
+                
+                dep({
+                  shut: () => {
+                    // Inform of the relation rem
+                    this.sync.remRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
+                    this.requestInformBelow();
+                  },
+                  shutWob: () => C.nullWob
+                });
+                
+                // ------------------
+                
               });
-              deps.add(holdRelRecShut);
+                
+              this.awaitedTails.delete(rec);
               
-            });
-            deps.add(holdRel);
+            }
+            
+            
+            dep(AccessPath(rec.relsWob(), (dep, rel) => {
+              
+              let relUid = rel.uid;
+              
+              dep(AccessPath(rec.relWob(rel), (dep, relRec) => {
+                
+                let rec2 = relRec.rec;
+                let uid2 = rec2.uid;
+                
+                if (this.fols.has(rec2)) {
+                  
+                  // Immediately send the relation!
+                  
+                  // Inform of the relation add
+                  this.sync.addRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
+                  this.requestInformBelow();
+                  
+                  dep({
+                    shut: () => {
+                      // Inform of the relation rem
+                      this.sync.remRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
+                      this.requestInformBelow();
+                    },
+                    shutWob: () => C.nullWob
+                  });
+                  
+                } else {
+                  
+                  // Tail isn't followed, so can't reveal the relation yet. Instead,
+                  // indicate that should the tail be followed, the relation ought to
+                  // be sent.
+                  
+                  if (!this.awaitedTails.has(rec2)) this.awaitedTails.set(rec2, {});
+                  let waitingHeads = this.awaitedTails.get(rec2);
+                  waitingHeads[rel.keyFor(rec, rec2)] = [ rel, rec, relRec ];
+                  
+                  dep({
+                    shut: () => {
+                      delete waitingHeads[rel.keyFor(rec, rec2)];
+                      if (waitingHeads.isEmpty()) this.awaitedTails.delete(rec2);
+                    },
+                    shutWob: () => C.nullWob
+                  });
+                  
+                }
+                
+              }));
+              
+            }));
             
           });
           
-          fol = { strength, deps };
-          this.fols.set(rec, fol);
+          this.fols.set(rec, { strength, ap });
+          return;
           
         } else if (strength0 && strength) { // UPD
           
@@ -325,11 +400,13 @@ U.buildRoom({
           // Clean up all follow-related data for the Record
           this.fols.delete(rec);
           
-          // Remove all existing holds
-          fol.deps.forEach(dep => dep.shut());
+          // Close the AccessPath
+          fol.ap.shut();
           
           // Note: No need to issue `remRel` for each of the Record's relations
           // If the Record is shut, so are its relations
+          // TODO: What if the removed Record is at the tail of a Relation?
+          // How do we signal that the head needs to remove its Relation?
           this.sync.remRec[`${rec.uid}`] = 1; // Signal that the rec is removed
           
           // Send this message Below
@@ -340,21 +417,17 @@ U.buildRoom({
       },
       followRec: function(rec) {
         
-        let str = (this.fols.get(rec) || { strength: 0 }).strength;
-        this.setRecFollowStrength(rec, str + 1);
+        this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
         
-        let isShut = false;
-        let shutWob0 = null;
-        
+        let shutWob0 = U.WobOne();
         return {
           shut: () => {
-            if (isShut) throw new Error('Already shut');
-            isShut = true;
+            if (shutWob0.wobbled()) throw new Error('Already shut');
             let str = this.fols.get(rec).strength;
-            this.setRecFollowStrength(rec, str + 1);
-            if (shutWob0) shutWob0.wobble();
+            this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1);
+            shutWob0.wobble();
           },
-          shutWob: () => shutWob0 || (shutWob0 = U.WobOne())
+          shutWob: () => shutWob0
         };
         
       },
@@ -378,14 +451,9 @@ U.buildRoom({
           this.sync.addRec[`${uid}`] = rec;
           
           this.lands.allRelationsFor(rec).forEach(rel => {
-            
             rec.relWob(rel).forEach(({ rec: rec2 }) => {
-              
-              if (!this.fols.has(rec2)) return;
-              this.sync.addRel[`${rel.uid}.${U.multiKey(uid, rec2.uid)}`] = [ rel.uid, uid, rec2.uid ];
-              
+              this.sync.addRel[`${rel.uid}:${uid}->${rec2.uid}`] = [ rel.uid, uid, rec2.uid, rel.name ];
             });
-            
           });
           
         });
@@ -538,9 +606,7 @@ U.buildRoom({
           
         });
       },
-      shut: async function() {
-        throw new Error('not implemented');
-      },
+      shut: async function() { return C.notImplemented.call(this) },
       
       tellHut: function(hut, msg) {
         if (!this.connections.has(hut.address)) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
@@ -711,65 +777,68 @@ U.buildRoom({
         
         U.Keep(k, 'communication').contain(k => {
           
-          U.Keep(k, 'getInit1', async () => {
+          let getStuff = async () => {
             
-            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+            let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
+            let Rec2 = U.inspire({ name: 'Rec2', insps: { LandsRecord } });
+            let rel = {
+              landsRec1Set: Relation(Lands, Rec1, '1M'),
+              rec1Rec2Set: Relation(Rec1, Rec2, '1M')
+            };
             
-            let way = Way({ lands, makeServer: () => server });
-            lands.ways.add(way);
+            let lands = Lands({
+              foundation,
+              commands: { test: 1 },
+              heartbeatMs: null,
+              records: [ Rec1, Rec2 ],
+              relations: [ rel.rec1Rec2Set ]
+            });
+            lands.ways.add(Way({ lands, makeServer: () => server }));
             await lands.open();
             
-            let c = server.spoofClient();
-            let resp = new Promise(r => { c.tell = r; });
+            let client = server.spoofClient();
             
-            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
+            return {
+              Rec1, Rec2, rel, lands, client,
+              getReply: msg => {
+                // TODO: Finish this then use!
+                let v = null;
+                let prm = new Promise(r => { client.tell = r; });
+                client.hear.wobble([ msg, client.tell ]);
+                return prm;
+              },
+              getNextResp: () => new Promise(r => { client.tell = r; })
+            };
             
-            resp = await resp;
+          };
+          
+          U.Keep(k, 'getInit1', async () => {
+            
+            let { client, getReply } = await getStuff();
+            let resp = await getReply({ command: 'getInit' });
             return { result: resp.hasHead('<!DOCTYPE html>') };
             
           });
           
           U.Keep(k, 'getInit2', async () => {
             
-            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
-            
-            let way = Way({ lands, makeServer: () => server });
-            lands.ways.add(way);
-            await lands.open();
-            
-            let c = server.spoofClient();
-            let resp = new Promise(r => { c.tell = r; });
-            
-            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
-            
-            resp = await resp;
+            let { client, getReply } = await getStuff();
+            let resp = await getReply({ command: 'getInit' });
             return { result: resp.has('window.global = window;') };
             
           });
           
           U.Keep(k, 'syncRec1', async () => {
             
-            let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
-            let appRel = {
-              landsRec1Set: Relation(Lands, Rec1, '1M')
-            };
+            let { lands, rel: appRel, getReply } = await getStuff();
             
-            let resp = null;
-            let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
-            lands.ways.add(Way({ lands, makeServer: () => server }));
-            await lands.open();
-            
-            U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(U.AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
               }));
             });
             
-            let c = server.spoofClient();
-            resp = new Promise(r => { c.tell = r; });
-            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
-            
-            let initResp = await resp;
+            let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
             let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
             if (!initDataMatch) return { result: null };
@@ -781,37 +850,23 @@ U.buildRoom({
           
           U.Keep(k, 'syncRec2', async () => {
             
-            let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
-            let appRel = {
-              landsRec1Set: Relation(Lands, Rec1, '1M')
-            };
+            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
             
-            let resp = null;
-            let lands = Lands({
-              foundation,
-              commands: { test: 1 },
-              heartbeatMs: null
-            });
-            lands.ways.add(Way({ lands, makeServer: () => server }));
-            await lands.open();
-            
-            U.AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(U.AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
               }));
             });
             
             let attachRec1 = lands.attach(appRel.landsRec1Set, Rec1({ lands, value: 'test' }));
             
-            let c = server.spoofClient();
-            resp = new Promise(r => { c.tell = r; });
-            c.hear.wobble([ { command: 'getInit' }, c.tell ]);
-            
-            let initResp = await resp;
+            let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
             let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
+            
+            console.log(JSON.stringify(initData, null, 2));
             
             // TODO: Next need to sync a relation. Will need all Relations in play to
             // be defined on the Lands so that for a Record, all its Relations can be
@@ -825,6 +880,215 @@ U.buildRoom({
                 && initData.content.has('addRec')
                 && initData.content.addRec.toArr(v => v).length === 1
                 && initData.content.addRec.find(v => 1)[0].value === 'test'
+            };
+            
+          });
+          
+          U.Keep(k, 'syncRel1', async () => {
+            
+            // Sync the most basic possible Relation
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                  dep(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            return {
+              result: true
+                && U.isType(initData, Object)
+                && initData.command === 'update'
+                && initData.version === 1
+                && initData.content.has('addRec')
+                && initData.content.addRec.toArr(v => v).length === 2
+                //&& initData.content.addRec.find(v => 1)[0].value === 'test'
+                && initData.content.has('addRel')
+                && initData.content.addRel.toArr(v => v).length === 1
+            };
+            
+          });
+          
+          U.Keep(k, 'syncRelUponFullFollow', async () => {
+            
+            // Sync a relation that was initially only partially followed
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            
+            let alreadySetDoFollowRec2 = false;
+            let doFollowRec2 = () => { throw new Error('incorrect'); };
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                  if (alreadySetDoFollowRec2) throw new Error('Multiple sets');
+                  alreadySetDoFollowRec2 = true;
+                  doFollowRec2 = () => dep(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            console.log('SYNCUPONFOLLOW #1:', JSON.stringify(initData, null, 2));
+            
+            let prm = new Promise(r => { client.tell = r; });
+            doFollowRec2();
+            
+            let timeout = setTimeout(() => client.tell(null), 20);
+            
+            let relResp = await prm;
+            clearTimeout(timeout);
+            
+            console.log('SYNCUPONFOLLOW #2:', JSON.stringify(relResp, null, 2));
+            
+            // console.log('CHECK 1', U.isType(initData, Object));
+            // console.log('CHECK 2', initData.command === 'update');
+            // console.log('CHECK 3', initData.version === 1);
+            // console.log('CHECK 4', initData.has('content'));
+            // console.log('CHECK 5', initData.content.has('addRec'));
+            // console.log('CHECK 6', initData.content.addRec.toArr(v => v).length === 1);
+            // console.log('CHECK 7', !initData.content.has('addRel'));
+            // console.log('CHECK 8', U.isType(relResp, Object));
+            // console.log('CHECK 9', relResp.command === 'update');
+            // console.log('CHECK 10', relResp.version === 2);
+            // console.log('CHECK 11', relResp.has('content'));
+            // console.log('CHECK 12', U.isType(relResp.content, Object));
+            // console.log('CHECK 13', relResp.content.has('addRec'));
+            // console.log('CHECK 14', U.isType(relResp.content.addRec, Object));
+            // console.log('CHECK 15', relResp.content.addRec.toArr(v => v).length === 1);
+            // console.log('CHECK 16', relRespcon//relResp.content.addRec.find(v => 1)[1].uid !== initData.content.addRec.find(v => 1)[1].uid);
+            
+            return {
+              result: true
+                && U.isType(initData, Object)
+                && initData.command === 'update'
+                && initData.version === 1
+                && initData.has('content')
+                && initData.content.has('addRec')
+                && initData.content.addRec.toArr(v => v).length === 1
+                && !initData.content.has('addRel')
+                && U.isType(relResp, Object)
+                && relResp.command === 'update'
+                && relResp.version === 2
+                && relResp.has('content')
+                && U.isType(relResp.content, Object)
+                && relResp.content.has('addRec')
+                && U.isType(relResp.content.addRec, Object)
+                && relResp.content.addRec.toArr(v => v).length === 1
+                && relResp.content.addRec.find(v => 1)[1] !== initData.content.addRec.find(v => 1)[1]
+                && relResp.content.addRec.find(v => 1)[0].uid !== initData.content.addRec.find(v => 1)[0].uid
+            };
+            
+          });
+          
+          U.Keep(k, 'noTellPartiallyFollowedRelation', async () => {
+            
+            // A Relation should not be synced if the tail isn't followed
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            console.log('INITDATA2:', JSON.stringify(initData, null, 2));
+            
+            return {
+              result: true
+                && U.isType(initData, Object)
+                && initData.command === 'update'
+                && initData.version === 1
+                && initData.content.has('addRec')
+                && initData.content.addRec.toArr(v => v).length === 2
+                //&& initData.content.addRec.find(v => 1)[0].value === 'test'
+                && !initData.content.has('addRel')
+            };
+            
+          });
+          
+          U.Keep(k, 'unfollowAndRemRecUponShut', async () => {
+            
+            // Follow and sync a Record; then shut the Record and test that
+            // the follow and sync were undone
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            
+            let doFollowRec2 = null;
+            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                  doFollowRec2 = () => dep(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            rec1.shut();
+            
+            let resp = await prm;
+            clearTimeout(timeout);
+            
+            return {
+              result: true
+                && U.isType(resp, Object)
+                && resp.has('command')
+                && resp.command === 'update'
+                && resp.has('content')
+                && U.isType(resp.content, Object)
+                && resp.content.has('remRec')
+                && U.isType(resp.content.remRec, Object)
+                && resp.content.remRec.toArr(m => m).length === 1
+                && resp.content.remRec.find(v => 1)[1] === rec1.uid
+                && !lands.relWob(rel.landsHuts).hogs.find(({ rec }) => rec.getFollowStrength(rec1) > 0)
             };
             
           });
