@@ -198,7 +198,7 @@
               srcLineInd++;
             }
             
-            roomName += '.cmp';
+            roomName += '.src';
             
           } else {
             

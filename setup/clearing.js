@@ -252,6 +252,28 @@ U.TOTAL_WOB_HOLDS = () => {
   return sum;
 };
 
+let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
+  init: function(shut) {
+    this.shutWob0 = U.WobOne();
+    if (shut) this.shut0 = shut; // Allow easy overwrite of "shut0" functionality
+  },
+  isShut: function() { return !!this.didShut; },
+  shut0: function() { /* nothing */ },
+  shut: function() {
+    if (this.didShut) {
+      console.log('OH NO, SHUT TWICE!!!');
+      console.log('TIME #1:', U.foundation.formatError(this.didShut));
+      console.log('TIME #2:', U.foundation.formatError(new Error('SHUT #2!')));
+      process.exit();
+      //throw new Error('Already shut');
+    }
+    this.didShut = new Error('SHUT #1!');
+    this.shut0();
+    this.shutWob0.wobble();
+  },
+  shutWob: function() { return this.shutWob0; }
+})});
+
 let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
   init: function() {
     this.holds = new Set();
@@ -261,44 +283,39 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
   hold: function(func) {
     if (this.holds.has(func)) throw new Error('Already held');
     this.holds.add(func);
-    
-    let shutHoldWob = null;
-    return {
-      func,
-      shut: () => this.holds.delete(func) && shutHoldWob && shutHoldWob.wobble(),
-      shutWob: () => shutHoldWob || (shutHoldWob = U.WobOne())
-    };
+    return Hog(() => this.holds.delete(func));
   },
   wobble: function(...args) { this.toHolds(...args); },
-  toHolds: function(...args) { /*!!!*/ this.holds.forEach(func => func(...args)); }
+  toHolds: function(...args) { /*!!!*/ this.holds.forEach(func => func(...args)); },
+  shut: function() {},
+  shutWob: function() { return C.nullShutWob; }
 })});
 let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function() {
+    insp.Wob.init.call(this);
+  },
   hold: function(func) {
     // If we haven't wobbled, regular `Wob` functionality
     if (this.holds) {
+      
       if (this.holds.has(func)) throw new Error('Already held');
       this.holds.add(func);
       
-      let shutHoldWob = null;
-      return {
-        func,
-        shut: () => {
-          if (this.holds) this.holds.delete(func);
-          else if (this.tmpHolds) this.tmpHolds.delete(func);
-          if (shutHoldWob) shutHoldWob.wobble();
-        },
-        shutWob: () => shutHoldWob || (shutHoldWob = U.WobOne())
-      };
+      return Hog(() => {
+        if (this.holds) this.holds.delete(func);
+        else if (this.tmpHolds) this.tmpHolds.delete(func);
+      });
 
     }
     
-    // If we've wobbled, we're either mid-wobble or done wobbling
-    if (this.tmpHolds)  this.tmpHolds.add(func);  // Mid-wobble: extend list of holds
-    else                  func();                     // Done wobbling: call func immediately
+    // If `!this.holds`, we're either mid-wobble or done wobbling
+    if (this.tmpHolds)  this.tmpHolds.add(func);  // Mid-wobble: we're already iterating `this.tmpHolds` so queue `func` and we'll get to it
+    else                func();                   // Done wobbling: call `func` immediately
     
-    return { shut: () => {}, shutWob: this };
+    // Return a duck-typed Hog which ignores shuts and wobbles as if
+    // its already been shut
+    return { shut: () => {}, shutWob: () => this };
   },
-  wobbled: function() { return !this.holds; },
   toHolds: function(...args) {
     if (!this.holds) return;
     this.tmpHolds = this.holds;
@@ -320,12 +337,11 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     return ret;
   },
   wobble: function(value=null, force=U.isType(value, Object)) {
-    // Wobbles ought to be prevented on duplicate data; impossible
-    // to detect mutation of value though, e.g. on Object props
-    // The above should generate a wobble, even though the param
-    // to `wobbly.wobble` appears to be a duplicate. Therefore the
-    // default behaviour here is to force the wobble to occur,
-    // only if the new value is an Object
+    // Wobbles ought to be prevented on duplicate data; impossible to
+    // detect mutation of value though, e.g. on Object props. The Above
+    // should generate a wobble, even though the param to `wobbly.wobble`
+    // appears to be a duplicate. Therefore the default behaviour here is
+    // to force the wobble to occur if the new value is an Object.
     let origVal = this.value;
     if (!force && value === origVal) return; // Duplicate value; no forcing
     this.setValue(value);
@@ -441,7 +457,7 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     });
   },
   addWob: function(wob) {
-    if (this.wobs.has(wob)) return; // TODO: Throw error?
+    if (this.wobs.has(wob)) return wob; // TODO: Throw error?
     
     let wobItem = { wob, vals: null };
     
@@ -494,42 +510,43 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
       // Deps alongside `hog` shut when `hog` shuts
       let addHogDep = dep => {
         
-        // If the Dep shuts first stop holding
+        // If the Dep shuts stop holding
         let depShutFirstWob = dep.shutWob().hold(() => {
           hogShutCauseDepShutHold.shut();
           apShutCauseDepShutHold.shut();
         });
         
-        // If the AccessPath or Hog shut, shut the Dep too
-        let hogShutCauseDepShutHold = hogShutWob.hold(() => {
-          apShutCauseDepShutHold.shut(); // Stop holding AccessPath
-          dep.shut()
-        });
-        let apShutCauseDepShutHold = apShutWob.hold(() => {
-          hogShutCauseDepShutHold.shut(); // Stop holding Hog
-          dep.shut();
-        });
+        // If the AccessPath or Hog shut, immediately shut `dep`
+        // Note that shutting `dep` will cause both these holds, against
+        // the Hog shutting and the AccessPath shutting, to be dropped.
+        let hogShutCauseDepShutHold = hogShutWob.hold((...args) => dep.shut(...args));
+        let apShutCauseDepShutHold = apShutWob.hold((...args) => dep.shut(...args));
         
         return dep;
       };
-      this.gen(addHogDep, hog);
+      this.gen(addHogDep, hog, this);
     });
     
   },
-  shut: function() {
+  shut: function(...args) {
     if (!this.hogWobHold) throw new Error('Already shut');
     this.hogWobHold.shut(); this.hogWobHold = null;
-    this.shutWob0.wobble();
+    this.shutWob0.wobble(...args);
   },
   shutWob: function() { return this.shutWob0; }
 })});
 
 // TODO: Oughtn't be aggregated
 let nullWob = {
-  hold: () => {},
+  hold: () => nullShutWob,
   wobble: () => {}
 };
-C.gain({ nullWob, nullShutWob: { shut: () => {}, shutWob: () => nullWob } });
+let nullShutWob = {
+  hold: () => nullShutWob,
+  shut: () => {},
+  shutWob: () => nullWob
+};
+C.gain({ nullWob, nullShutWob });
 
-U.gain({ Wob, WobOne, WobVal, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
+U.gain({ Hog, Wob, WobOne, WobVal, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
 

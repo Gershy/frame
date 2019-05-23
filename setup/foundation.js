@@ -36,6 +36,8 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       
       if (!room.built.has('test')) throw new Error(`Couldn't find "test" prop for ${this.hut}`);
       
+      U.DBG_WOBS = new Set();
+      
       let keep = U.Keep(null, 'root');
       let rootKeep = keep;
       if (true) U.addSetupKeep(keep);   // Add setup-level tests

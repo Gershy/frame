@@ -442,17 +442,13 @@ U.gain({
           dep(hog1);
           
           dep(U.AccessPath(hog1.moreHogWob1, (dep, hogFromWob1) => {
-            
             dep(hogFromWob1);
             dep(fin('root.1'));
-            
           }));
           
           dep(U.AccessPath(hog1.moreHogWob2, (dep, hogFromWob2) => {
-            
             dep(hogFromWob2);
             dep(fin('root.2'));
-            
           }));
           
         });

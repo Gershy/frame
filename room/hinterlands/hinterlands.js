@@ -1,3 +1,18 @@
+// TODO: HEEERE! Moved back to 2-way Relations and "record" and "hinterlands"
+// are 100% passing. Still a bit more housekeeping:
+// - Do a final review of "record"
+// - Do a final review of "hinterlands" (make sure static setup (like adding Ways to Lands) doesn't use Relations!)
+// - Write more hinterlands tests:
+//   - head related to tail; only head followed; don't sync rels
+//   - head related to tail; only tail followed; don't sync rels
+//   - head related to tail; both followed; rel detached; unsync relation
+//   - head related to tail; both followed; sync rels; tail shut; unsync rels
+//   - head related to tail; both followed; sync rels; head shut; unsync rels
+//   - head related to tail; both followed; sync rels; tail shut; clean up memory
+//   - head related to tail; both followed; sync rels; head shut; clean up memory
+//   - Hut syncs a bunch of deltas, then reconnects and syncs everything at once
+// - Make sure hinterlands is 100% passing!
+
 U.buildRoom({
   name: 'hinterlands',
   innerRooms: [ 'record' ],
@@ -10,7 +25,7 @@ U.buildRoom({
     // occurred.
     
     let { Record, Relation } = record;
-    let { AccessPath } = U;
+    let { Hog, AccessPath } = U;
     
     let TERMS = [];
     
@@ -33,12 +48,13 @@ U.buildRoom({
       init: function({ foundation, records=[], relations=[], commands={}, heartbeatMs=10000 }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.uidCnt = 0;
-        this.commands = commands;
+        this.commands = commands; // TODO: Doesn't need to be listed...
         this.comWobs = {};
         this.heartbeatMs = heartbeatMs;
         
         this.records = new Map();
         for (let rec of records) this.records.set(rec.name, rec);
+        
         this.relations = new Map();
         for (let rel of relations) this.relations.set(rel.uid, rel);
         
@@ -54,9 +70,7 @@ U.buildRoom({
         
         /// =BELOW}
         
-        // TODO: Whitelisting command names ahead of time might not be necessary - not likely
-        // that user input could wind up as parameter for `(Lands|Hut).prototype.comWob`
-        
+        // TODO: Clean this up when `this.commands` is removed
         // Lands have some "required" commands which are in place regardless of the current hut
         let requiredCommand = (name, effect) => {
           this.commands[name] = 1;
@@ -86,6 +100,7 @@ U.buildRoom({
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
           
+          // TODO: This is all out of date!!
           // TODO: multiKey stuff for relations needs to be changed! Relations
           // are now ordered!
           
@@ -154,16 +169,15 @@ U.buildRoom({
         /// =BELOW}
       },
       nextUid: function() {
-        /// {ABOVE=
-        return (this.uidCnt++).toString(36).padHead(8, '0');
-        /// =ABOVE} {BELOW=
-        // The "~" prefix prevents collision between local/shared Records
-        return '~' + (this.uidCnt++).toString(36).padHead(8, '0');
+        let uid = (this.uidCnt++).toString(36).padHead(8, '0');
+        /// {BELOW=
+        uid = '~' + uid; // Differentiate from Above uids (TODO: Is this ever used?)
         /// =BELOW}
+        return uid;
       },
       genUniqueTerm: function() {
-        let huts = this.relVal(rel.landsHuts);
-        for (let i = 0; i < 100; i++) {
+        let huts = this.relVal(rel.landsHuts.fwd);
+        for (let i = 0; i < 100; i++) { // TODO: This can't last. `100` is arbitrary!
           let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
           if (!huts.find(hut => hut.term === ret)) return ret;
         }
@@ -196,7 +210,10 @@ U.buildRoom({
       /// {ABOVE=
       allRelationsFor: function(rec) {
         let ret = [];
-        for (let [ uid, rel ] of this.relations) if (rec.isInspiredBy(rel.head)) ret.push(rel);
+        for (let [ uid, rel ] of this.relations) {
+          if (rec.isInspiredBy(rel.fwd.head)) ret.push(rel.fwd);
+          if (rec.isInspiredBy(rel.bak.head)) ret.push(rel.bak);
+        }
         return ret;
       },
       /// =ABOVE} {BELOW=
@@ -215,7 +232,7 @@ U.buildRoom({
         /// {ABOVE=
         TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
         /// =ABOVE} {BELOW=
-        TERMS = [ 'remote' ];
+        TERMS = [ 'remote' ]; // Below has only 1 Hut, so only 1 name needed
         /// =BELOW}
         
         await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
@@ -238,17 +255,12 @@ U.buildRoom({
         this.comWobs = {};
         
         /// {ABOVE=
+        // Keep track of which Records the Below for this Hut has followed
         this.version = 0;
         this.fols = new Map();
-        this.awaitedTails = new Map(); // Tails in a relation whose Head is followed
-        this.sync = {
-          addRec: {},
-          remRec: {},
-          updRec: {},
-          addRel: {},
-          remRel: {}
-        };
+        this.sync = [ 'addRec', 'remRec', 'updRec', 'addRel', 'remRel' ].toObj(v => [ v, {} ]);
         
+        // Keep track of whether the Below for this Hut is still communicating
         this.expiryTimeout = null;
         this.informThrottlePrm = null;
         this.refreshExpiry();
@@ -273,123 +285,76 @@ U.buildRoom({
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
       
-      getRecFollowStrength: function(rec) {
-        return (this.fols.get(rec) || { strength: 0 }).strength;
+      toSync: function(type, k, v) {
+        // TODO: Under some situations 2 related Records could both be sending
+        // "addRel" UpdateParts - for rec1 and rec2, follow rec1, then follow
+        // rec2, then relate rec1 and rec2.
+        // For MEAN validation throw error if `this.sync[type]` already has `k`!
+        if (!this.sync.has(type)) throw new Error(`Invalid type: ${type}`);
+        this.sync[type][k] = v;
+        this.requestInformBelow();
       },
+      getRecFollowStrength: function(rec) { return (this.fols.get(rec) || { strength: 0 }).strength; },
       setRecFollowStrength: function(rec, strength) {
         
         if (strength < 0) throw new Error(`Invalid strength: ${strength}`);
         
         let fol = this.fols.get(rec) || null;
-        let strength0 = fol ? fol.strength : 0;
+        let strength0 = (fol || { strength: 0 }).strength;
         if (strength === strength0) throw new Error(`Strength is already ${strength}`);
         
         if (!strength0) {                   // ADD
           
-          let uid = rec.uid;
-          
           let ap = AccessPath(U.WobVal(rec), (dep, rec) => {
             
-            this.sync.addRec[`${uid}`] = rec;
+            // Initial "addRec" UpdatePart
+            this.toSync('addRec', rec.uid, rec);
+            dep({
+              shut: () => this.toSync('remRec', rec.uid, 1),
+              shutWob: () => C.nullShutWob
+            });
             
-            dep(rec.hold(val => {
-              this.sync.updRec[`${uid}`] = val;
-              this.requestInformBelow();
-            }));
+            // Hold changes to `rec` while the Follow persists
+            dep(rec.hold(val => this.toSync('updRec', `${rec.uid}`, val)));
             
-            if (this.awaitedTails.has(rec)) {
+            // Follow every RelationHalf belonging to `rec`
+            dep(AccessPath(rec.relsWob(), (dep, relF) => {
               
-              // We're already a Tail with followed Heads! Need to immediately sync
-              // those relations
-              let waitingHeads = this.awaitedTails.get(rec);
-              waitingHeads.forEach(([ rel, head, relTail ]) => {
+              // Follow every RelRec for this RelationHalf of `rec`
+              dep(AccessPath(rec.relWob(relF), (dep, relRec) => {
                 
-                if (relTail.rec !== rec) throw new Error('WHY???');
+                // We only want to sync this RelationHalf if its tail Record is also
+                // synced - otherwise the Tail uid would refer to a non-existent
+                // Record on Below's end. We'll take advantage of the fact that for
+                // `rec` and `relRec.rec`, this point in the code is being hit twice:
+                // now when we sync rec->relRec.rec, and again in reverse. Maybe we
+                // avoid syncing this Relation because the Tail isn't Followed yet,
+                // but as soon as the Tail is Followed and the code reaches this same
+                // point in reverse, the "avoidance" won't occur (since now the tail
+                // is `rec`, and `rec` is certainly Followed!)
                 
-                // TODO: HEEERE! Fixed one test, need to test this better and check memory management
-                // E.g. after an awaited tail is added, is it no longer awaited?
-                // E.g. does shutting the head/tail unsync the relation?
-                // E.g. does unfollowing the head remove the tail from being awaited?
-                // ------------------
+                if (!this.fols.has(relRec.rec)) return;
                 
-                let relUid = rel.uid;
-                let uid = head.uid;
-                let uid2 = relTail.rec.uid;
-                this.sync.addRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
-                this.requestInformBelow();
+                let [ head, tail ] = [ rec, relRec.rec ];
+                if (relF.dir === 'bak') [ head, tail ] = [ tail, head ];
                 
+                // The uid only takes us to the Relation, not the RelationHalf
+                // It is IMPLICIT that the uid specifies `exampleRelation.fwd`
+                let uidArr = [ relF.rel.uid, head.uid, tail.uid ];
+                let uidStr = uidArr.join('/');
+                
+                this.toSync('addRel', uidStr, uidArr.concat([ relF.name ]));
                 dep({
-                  shut: () => {
-                    // Inform of the relation rem
-                    this.sync.remRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
-                    this.requestInformBelow();
-                  },
-                  shutWob: () => C.nullWob
+                  shut: () => this.toSync('remRel', uidStr, uidArr.concat([ relF.rel.fwd.name ])),
+                  shutWob: () => C.nullShutWob
                 });
-                
-                // ------------------
-                
-              });
-                
-              this.awaitedTails.delete(rec);
-              
-            }
-            
-            
-            dep(AccessPath(rec.relsWob(), (dep, rel) => {
-              
-              let relUid = rel.uid;
-              
-              dep(AccessPath(rec.relWob(rel), (dep, relRec) => {
-                
-                let rec2 = relRec.rec;
-                let uid2 = rec2.uid;
-                
-                if (this.fols.has(rec2)) {
-                  
-                  // Immediately send the relation!
-                  
-                  // Inform of the relation add
-                  this.sync.addRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
-                  this.requestInformBelow();
-                  
-                  dep({
-                    shut: () => {
-                      // Inform of the relation rem
-                      this.sync.remRel[`${relUid}:${uid}->${uid2}`] = [ relUid, uid, uid2 ];
-                      this.requestInformBelow();
-                    },
-                    shutWob: () => C.nullWob
-                  });
-                  
-                } else {
-                  
-                  // Tail isn't followed, so can't reveal the relation yet. Instead,
-                  // indicate that should the tail be followed, the relation ought to
-                  // be sent.
-                  
-                  if (!this.awaitedTails.has(rec2)) this.awaitedTails.set(rec2, {});
-                  let waitingHeads = this.awaitedTails.get(rec2);
-                  waitingHeads[rel.keyFor(rec, rec2)] = [ rel, rec, relRec ];
-                  
-                  dep({
-                    shut: () => {
-                      delete waitingHeads[rel.keyFor(rec, rec2)];
-                      if (waitingHeads.isEmpty()) this.awaitedTails.delete(rec2);
-                    },
-                    shutWob: () => C.nullWob
-                  });
-                  
-                }
                 
               }));
               
             }));
             
           });
-          
           this.fols.set(rec, { strength, ap });
-          return;
           
         } else if (strength0 && strength) { // UPD
           
@@ -397,7 +362,7 @@ U.buildRoom({
           
         } else {                            // REM
           
-          // Clean up all follow-related data for the Record
+          // Clean up all Follow-related data for the Record
           this.fols.delete(rec);
           
           // Close the AccessPath
@@ -418,17 +383,7 @@ U.buildRoom({
       followRec: function(rec) {
         
         this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
-        
-        let shutWob0 = U.WobOne();
-        return {
-          shut: () => {
-            if (shutWob0.wobbled()) throw new Error('Already shut');
-            let str = this.fols.get(rec).strength;
-            this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1);
-            shutWob0.wobble();
-          },
-          shutWob: () => shutWob0
-        };
+        return Hog(() => this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1));
         
       },
       
@@ -438,6 +393,8 @@ U.buildRoom({
         // is currently blank. Note that this method modifies our memory of the delta
         // **without calling `requestInformBelow`**!! This means that the caller needs
         // to insure the Below is eventually sent the data to bring it up to date.
+        // This function is useful if a Hut was getting sequential updates and lost
+        // track of the sequence.
         
         if (this.version === 0) return;
         
@@ -447,12 +404,13 @@ U.buildRoom({
         // Rebuild delta based on immediate state
         this.fols.forEach((fol, rec) => {
           
-          let uid = rec.uid;
-          this.sync.addRec[`${uid}`] = rec;
+          this.sync.addRec[`${rec.uid}`] = rec;
           
-          this.lands.allRelationsFor(rec).forEach(rel => {
-            rec.relWob(rel).forEach(({ rec: rec2 }) => {
-              this.sync.addRel[`${rel.uid}:${uid}->${rec2.uid}`] = [ rel.uid, uid, rec2.uid, rel.name ];
+          rec.relsWob().forEach(relF => {
+            rec.relWob(relF).forEach(({ rec: rec2 }) => {
+              let [ head, tail ] = [ rec, rec2 ];
+              if (relF.dir === 'bak') [ head, tail ] = [ tail, head ];
+              this.sync.addRel[`${relF.rel.uid}/${head.uid}/${tail.uid}`] = [ relF.rel.uid, head.uid, tail.uid, relF.rel.fwd.name ];
             });
           });
           
@@ -466,22 +424,28 @@ U.buildRoom({
         
         // 1) Sanitize our delta:
         
-        // Don't affect relations of Records being removed
-        // Don't add Records which are removed
-        if (!this.sync.remRec.isEmpty()) {
-          let r = this.remRec;
-          this.sync.addRel = this.sync.addRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
-          this.sync.remRel = this.sync.remRel.map(v => r.has(v[1]) || r.has(v[2]) ? C.skip : v);
-          this.sync.remRec.forEach((r, uid) => { delete this.sync.addRec[uid]; });
+        let sync = this.sync;
+        
+        // Don't affect relations of Records being removed; don't add Records which are removed
+        if (!sync.remRec.isEmpty()) {
+          let remRec = sync.remRec;
+          
+          // Relation changes are unecessary if either the head or tail of the Relation is removed
+          sync.addRel = sync.addRel.map(v => remRec.has(v[1]) || remRec.has(v[2]) ? C.skip : v);
+          sync.remRel = sync.remRel.map(v => remRec.has(v[1]) || remRec.has(v[2]) ? C.skip : v);
+          remRec.forEach((r, uid) => { delete sync.addRec[uid]; }); // If "addRec" and "remRec" are sent together, "remRel" wins
         }
         
+        // Prioritize "remRel" ahead of "addRel"
+        sync.remRel.forEach((r, uid) => { delete sync.addRel[uid]; });
+        
         // Don't update Records being added
-        this.sync.addRec.forEach((r, uid) => { delete this.sync.updRec[uid]; });
+        sync.addRec.forEach((r, uid) => { delete sync.updRec[uid]; });
         
-        // 2) Construct "tell" based on our delta:
+        // 2) Construct the Tell based on our delta:
         
-        let content = this.sync.map(v => v.isEmpty() ? C.skip : v);
-        this.sync = this.sync.map(v => ({}));
+        let content = sync.map(v => v.isEmpty() ? C.skip : v);
+        this.sync = sync.map(v => ({}));
         
         // TODO: Actual value calculations should be performed as late as possible?
         // Or should `genUpdateTell` just be called as late as possible?
@@ -522,7 +486,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findWay = this.relVal(rel.waysHuts.bak()).find(() => true);
+        let findWay = this.relVal(rel.waysHuts.bak).find(() => true);
         return findWay ? findWay[0] : null;
       },
       tell: async function(msg) {
@@ -597,11 +561,8 @@ U.buildRoom({
           
           // Attach the Hut to the Way and to the Lands
           U.AggWobs().complete(agg => {
-            this.attach(rel.waysHuts.fwd(), hut);
-            hut.attach(rel.waysHuts.bak(), this);
-            
-            this.lands.attach(rel.landsHuts.fwd(), hut);
-            hut.attach(rel.landsHuts.bak(), this.lands);
+            this.attach(rel.waysHuts.fwd, hut);
+            this.lands.attach(rel.landsHuts.fwd, hut);
           });
           
         });
@@ -713,7 +674,7 @@ U.buildRoom({
           let mostRecentConn = null;
           let mostRecentHear = null;
           
-          lands.relWob(rel.landsHuts).hold(({ rec }) => { mostRecentConn = rec; });
+          lands.relWob(rel.landsHuts.fwd).hold(({ rec }) => { mostRecentConn = rec; });
           lands.comWob('test').hold(({ hut }) => { mostRecentHear = hut; });
           
           for (let i = 0; i < 10; i++) {
@@ -742,7 +703,7 @@ U.buildRoom({
           let correct = false;
           
           let hut = null;
-          lands.relWob(rel.landsHuts).hold(({ rec }) => { hut = rec; });
+          lands.relWob(rel.landsHuts.fwd).hold(({ rec }) => { hut = rec; });
           
           let client = server.spoofClient();
           client.shutWob().hold(() => { correct = true; });
@@ -766,7 +727,7 @@ U.buildRoom({
           let hut = null;
           
           let client = server.spoofClient();
-          lands.relWob(rel.landsHuts).hold(({ rec: hut }) => {
+          lands.relWob(rel.landsHuts.fwd).hold(({ rec: hut }) => {
             hut.shutWob().hold(() => { correct = true; });
           });
           client.shut();
@@ -832,8 +793,8 @@ U.buildRoom({
             
             let { lands, rel: appRel, getReply } = await getStuff();
             
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
               }));
             });
@@ -852,21 +813,19 @@ U.buildRoom({
             
             let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
             
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
               }));
             });
             
-            let attachRec1 = lands.attach(appRel.landsRec1Set, Rec1({ lands, value: 'test' }));
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, Rec1({ lands, value: 'test' }));
             
             let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
             let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
-            
-            console.log(JSON.stringify(initData, null, 2));
             
             // TODO: Next need to sync a relation. Will need all Relations in play to
             // be defined on the Lands so that for a Record, all its Relations can be
@@ -890,10 +849,10 @@ U.buildRoom({
             
             let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
             
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
-                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
                   dep(hut.followRec(rec2));
                 }));
               }));
@@ -901,8 +860,8 @@ U.buildRoom({
             
             let rec1 = Rec1({ lands, value: 'test1' });
             let rec2 = Rec2({ lands, value: 'test2' });
-            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
-            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
             
             let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
@@ -932,10 +891,10 @@ U.buildRoom({
             
             let alreadySetDoFollowRec2 = false;
             let doFollowRec2 = () => { throw new Error('incorrect'); };
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
-                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
                   if (alreadySetDoFollowRec2) throw new Error('Multiple sets');
                   alreadySetDoFollowRec2 = true;
                   doFollowRec2 = () => dep(hut.followRec(rec2));
@@ -945,8 +904,8 @@ U.buildRoom({
             
             let rec1 = Rec1({ lands, value: 'test1' });
             let rec2 = Rec2({ lands, value: 'test2' });
-            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
-            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
             
             let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
@@ -954,34 +913,11 @@ U.buildRoom({
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
             
-            console.log('SYNCUPONFOLLOW #1:', JSON.stringify(initData, null, 2));
-            
             let prm = new Promise(r => { client.tell = r; });
             doFollowRec2();
-            
             let timeout = setTimeout(() => client.tell(null), 20);
-            
             let relResp = await prm;
             clearTimeout(timeout);
-            
-            console.log('SYNCUPONFOLLOW #2:', JSON.stringify(relResp, null, 2));
-            
-            // console.log('CHECK 1', U.isType(initData, Object));
-            // console.log('CHECK 2', initData.command === 'update');
-            // console.log('CHECK 3', initData.version === 1);
-            // console.log('CHECK 4', initData.has('content'));
-            // console.log('CHECK 5', initData.content.has('addRec'));
-            // console.log('CHECK 6', initData.content.addRec.toArr(v => v).length === 1);
-            // console.log('CHECK 7', !initData.content.has('addRel'));
-            // console.log('CHECK 8', U.isType(relResp, Object));
-            // console.log('CHECK 9', relResp.command === 'update');
-            // console.log('CHECK 10', relResp.version === 2);
-            // console.log('CHECK 11', relResp.has('content'));
-            // console.log('CHECK 12', U.isType(relResp.content, Object));
-            // console.log('CHECK 13', relResp.content.has('addRec'));
-            // console.log('CHECK 14', U.isType(relResp.content.addRec, Object));
-            // console.log('CHECK 15', relResp.content.addRec.toArr(v => v).length === 1);
-            // console.log('CHECK 16', relRespcon//relResp.content.addRec.find(v => 1)[1].uid !== initData.content.addRec.find(v => 1)[1].uid);
             
             return {
               result: true
@@ -1006,22 +942,22 @@ U.buildRoom({
             
           });
           
-          U.Keep(k, 'noTellPartiallyFollowedRelation', async () => {
+          U.Keep(k, 'noTellPartiallyFollowedRelation1', async () => {
             
             // A Relation should not be synced if the tail isn't followed
             
             let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
             
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
               }));
             });
             
             let rec1 = Rec1({ lands, value: 'test1' });
             let rec2 = Rec2({ lands, value: 'test2' });
-            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
-            let attachRecs = rec1.attach(appRel.rec1Rec2Set, rec2);
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
             
             let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
@@ -1029,7 +965,42 @@ U.buildRoom({
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
             
-            console.log('INITDATA2:', JSON.stringify(initData, null, 2));
+            return {
+              result: true
+                && U.isType(initData, Object)
+                && initData.command === 'update'
+                && initData.version === 1
+                && initData.content.has('addRec')
+                && initData.content.addRec.toArr(v => v).length === 1
+                && !initData.content.has('addRel')
+            };
+            
+          });
+          
+          U.Keep(k, 'noTellPartiallyFollowedRelation2', async () => {
+            
+            // A Relation should not be synced if the head isn't followed
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  dep(hut.followRec(rec2));
+                });
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
             
             return {
               result: true
@@ -1037,9 +1008,143 @@ U.buildRoom({
                 && initData.command === 'update'
                 && initData.version === 1
                 && initData.content.has('addRec')
-                && initData.content.addRec.toArr(v => v).length === 2
-                //&& initData.content.addRec.find(v => 1)[0].value === 'test'
+                && initData.content.addRec.toArr(v => v).length === 1
+                && initData.content.addRec.find(v => 1)[1] === rec2.uid
                 && !initData.content.has('addRel')
+            };
+            
+          });
+          
+          U.Keep(k, 'noTellPartiallyFollowedRelation3', async () => {
+            
+            // 1) Follow a Head, causing the Tail to become awaited
+            // 2) Forget the Head and follow the Tail
+            // 3) Ensure that the relation is not synced
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            
+            let forgetHead = null;
+            let followTail = null;
+            
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                
+                // Follow the head, allow us to unfollow later
+                dep(hut.followRec(rec1));
+                forgetHead = () => hut.setRecFollowStrength(rec1, 0);
+                
+                AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  // Don't follow the Tail, but allow us to follow it later
+                  followTail = () => dep(hut.followRec(rec2));
+                });
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            let failedEarly = false
+              || initData.content.addRec.toArr(v => v).length !== 1
+              || initData.content.has('addRel');
+            if (failedEarly) return { result: false };
+            
+            let prm = new Promise(r => { client.tell = r; });
+            forgetHead();
+            followTail();
+            let timeout = setTimeout(() => client.tell(null), 20);
+            let relResp = await prm;
+            clearTimeout(timeout);
+            
+            return {
+              result: true
+                && U.isType(relResp, Object)
+                && relResp.has('command')
+                && relResp.command === 'update'
+                && relResp.has('content')
+                && U.isType(relResp.content, Object)
+                && relResp.content.has('addRec')
+                && U.isType(relResp.content.addRec, Object)
+                && relResp.content.addRec.toArr(v => v).length === 1
+                && relResp.content.addRec.find(v => 1)[0].uid === rec2.uid
+                && relResp.content.has('remRec')
+                && U.isType(relResp.content.remRec, Object)
+                && relResp.content.remRec.toArr(v => v).length === 1
+                && relResp.content.remRec.find(v => 1)[1] === rec1.uid
+            };
+            
+          });
+          
+          U.Keep(k, 'noTellPartiallyFollowedRelation4', async () => {
+            
+            // 1) Follow a Head, causing the Tail to become awaited
+            // 2) Forget the Tail and follow the Head (opposite order from previous Keep)
+            // 3) Ensure that the relation is not synced
+            
+            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            
+            let forgetHead = null;
+            let followTail = null;
+            
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                
+                // Follow the head, allow us to unfollow later
+                dep(hut.followRec(rec1));
+                forgetHead = () => hut.setRecFollowStrength(rec1, 0);
+                
+                AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  // Don't follow the Tail, but allow us to follow it later
+                  followTail = () => dep(hut.followRec(rec2));
+                });
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRecs = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            let failedEarly = false
+              || initData.content.addRec.toArr(v => v).length !== 1
+              || initData.content.has('addRel');
+            if (failedEarly) return { result: false };
+            
+            let prm = new Promise(r => { client.tell = r; });
+            followTail();
+            forgetHead();
+            let timeout = setTimeout(() => client.tell(null), 20);
+            let relResp = await prm;
+            clearTimeout(timeout);
+            
+            return {
+              result: true
+                && U.isType(relResp, Object)
+                && relResp.has('command')
+                && relResp.command === 'update'
+                && relResp.has('content')
+                && U.isType(relResp.content, Object)
+                && relResp.content.has('addRec')
+                && U.isType(relResp.content.addRec, Object)
+                && relResp.content.addRec.toArr(v => v).length === 1
+                && relResp.content.addRec.find(v => 1)[0].uid === rec2.uid
+                && relResp.content.has('remRec')
+                && U.isType(relResp.content.remRec, Object)
+                && relResp.content.remRec.toArr(v => v).length === 1
+                && relResp.content.remRec.find(v => 1)[1] === rec1.uid
             };
             
           });
@@ -1052,17 +1157,17 @@ U.buildRoom({
             let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
             
             let doFollowRec2 = null;
-            AccessPath(lands.relWob(rel.landsHuts), (dep, { rec: hut }) => {
-              dep(AccessPath(lands.relWob(appRel.landsRec1Set), (dep, { rec: rec1 }) => {
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
                 dep(hut.followRec(rec1));
-                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set), (dep, { rec: rec2 }) => {
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
                   doFollowRec2 = () => dep(hut.followRec(rec2));
                 }));
               }));
             });
             
             let rec1 = Rec1({ lands, value: 'test1' });
-            let attachRec1 = lands.attach(appRel.landsRec1Set, rec1);
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
             
             let initResp = await getReply({ command: 'getInit' });
             let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
@@ -1088,7 +1193,7 @@ U.buildRoom({
                 && U.isType(resp.content.remRec, Object)
                 && resp.content.remRec.toArr(m => m).length === 1
                 && resp.content.remRec.find(v => 1)[1] === rec1.uid
-                && !lands.relWob(rel.landsHuts).hogs.find(({ rec }) => rec.getFollowStrength(rec1) > 0)
+                && !lands.relWob(rel.landsHuts.fwd).hogs.find(({ rec }) => rec.getFollowStrength(rec1) > 0)
             };
             
           });

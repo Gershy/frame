@@ -268,7 +268,7 @@
         
         try {
           
-          // The codepoint filename must not contain brackets or spaces
+          // The codepoint filename must not contain round/square brackets or spaces
           let codePointPcs = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/);
           let [ fileName, lineInd, charInd ] = codePointPcs.slice(1);
           
@@ -278,7 +278,7 @@
           let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
           
           if (mappedLineData) {
-            fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.cmp`;
+            fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src`;
             lineInd = mappedLineData.srcLineInd;
           } else {
             fileName = fileName.substr(rootDir.length + 1).split(path.sep).join('/');
@@ -294,20 +294,14 @@
         
       });
       
-      let fileRegex = /([^/\\]+(\/|\\))*([^/\\]+\.js):([0-9]+)/;
+      let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
       let preLen = err.constructor.name.length + 2; // The classname plus ": "
-      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, x, y, file, lineInd) => {
+      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, file, bearing, lineInd) => {
         
-        let fileNameData = file.match(/^cmp-([^-]+)-(.+)\.js/);
-        if (!fileNameData) return match;
-        
-        let colonInd = match.lastIndexOf(':');
-        let fullFileName = match.substr(0, colonInd);
-        
-        let mappedLineData = this.mapLineToSource(fullFileName, parseInt(lineInd, 10)); 
-        if (!mappedLineData) return match;
-        
-        return `twig/${mappedLineData.twigName}/${mappedLineData.twigName}.js:${mappedLineData.lineInd}`;
+        let mappedLineData = this.mapLineToSource(file, parseInt(lineInd, 10));
+        return mappedLineData
+          ? `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src:${mappedLineData.srcLineInd}`
+          : match;
         
       }).split('\n');
       
@@ -318,19 +312,6 @@
         ...(lines.length ? lines : [ 'Couldn\'t format error:', ...trace.split('\n') ]).map(ln => `||  ${ln}`)
       ].join('\n');
       
-      /*return ''
-        + '/\n'
-        + moreLines.map(ln => ` |  ${ln}`).join('\n')
-        + 
-      
-      
-      let lineAbove = '\u203E';
-      let lineBelow = '_';
-          
-      return `/${lineAbove.repeat(30)}\n` +
-        moreData.split('\n').map(ln => `| ${ln}`).join('\n') + '\n' +
-        `\\${lineBelow.repeat(30)}\n\n` +
-        content;*/
     },
     
     // Functionality

@@ -1,3 +1,130 @@
+/*
+Friend1 -> Friend2
+
+Friends = Relation('1M', Friend, Friend)
+
+Friends.link(Friend1, Friend2)
+Friends.draw(Friend1) -> [ Friend2 ]
+
+Friends.link(Friend1, Friend3)
+Friends.view(Friend1) -> [ Friend2, Friend3 ]
+Friends.view(Friend2) -> [ Friend1 ]
+Friends.view(Friend3) -> [ Friend1 ]
+
+----------------------------------------------------
+
+friendship = Relation('1M', friend, friend, LandsRecord)
+// friendship.uid === '000000'
+
+let v1 = LandsRecord({ timeBecamefriends: foundation.getMs() });
+let v2 = LandsRecord({ timeBecamefriends: foundation.getMs() });
+friendship.link(friend1, friend2, v1)
+friendship.link(friend1, friend3, v2)
+
+friend1.inner = {
+  '000000': {
+    [ U.multiKey(friend1.uid, friend2.uid, v1.uid) ]: {
+      0: friend2,
+      1: v
+    }
+  }
+};
+friend2.inner = {
+  '000000': {
+    [ U.multiKey(friend1.uid, friend2.uid, v1.uid) ]: {
+      0: friend1,
+      1: v
+    }
+  }
+};
+v.inner = {
+  '000000': {
+    [ U.multiKey(friend1.uid, friend2.uid, v1.uid) ]: {
+      0: friend1,
+      1: friend2
+    }
+  }
+};
+
+Relation.prototype.draw = rec => {
+  
+  
+  
+  
+  let key = U.multiKey(args.map(v => v.uid));
+  
+  return args[0]
+  
+};
+
+
+
+
+friendship.draw(friend1) -> [ friend2, v ]
+friendship.ward(friend2) -> [ friend1, v ]
+friendship.ward(v) -> [ friend1, friend2 ]
+
+friendship.link(friend1, friend3)
+friendship.view(friend1) -> [ friend2, friend3 ]
+friendship.view(friend2) -> [ friend1 ]
+friendship.view(friend3) -> [ friend1 ]
+*/
+
+/*
+record = {
+  inner: {
+    // Fwd xM relation
+    `Rel1Uid.Rec1Name->Rec2Name`: WobM {
+      hogs: Set {
+        RelRec {
+          rel: Rel1,
+          rec: Rec2Instance1
+        },
+        RelRec {
+          rel: Rel1,
+          rec: Rec2Instance2
+        },
+        RelRec {
+          rel: Rel1,
+          rec: Rec2Instance3
+        }
+      }
+    },
+    // Bak xM relation
+    `Rel2Uid.Rec1Name<-Rec3Name`: WobM {
+      hogs: Set {
+        RelRec {
+          rel: Rel2,
+          rec: Rec3Instance1
+        },
+        RelRec {
+          rel: Rel2,
+          rec: Rec3Instance2
+        },
+        RelRec {
+          rel: Rel2,
+          rec: Rec3Instance3
+        }
+      }
+    },
+    // Fwd x1 relation
+    `Rel3Uid.Rec1Name->Rec4Name`: Wob1 {
+      hog: RelRec {
+        rel: Rel3,
+        rec: Rec4Instance1
+      }
+    },
+    // Bak x1 relation
+    `Rel4Uid.Rec1Name<-Rec5Name`: Wob1 {
+      hog: RelRec {
+        rel: Rel4,
+        rec: Rec5Instance1
+      }
+    }
+  }
+};
+*/
+
 U.buildRoom({
   name: 'record',
   innerRooms: [],
@@ -10,7 +137,7 @@ U.buildRoom({
     // information to do this.
     // Shut-listening should probably happen in `Record.prototype.attach`!
     
-    let { Wob, WobVal } = U;
+    let { Hog, Wob, WobVal } = U;
     
     let Wob1 = U.inspire({ name: 'Wob1', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
@@ -23,17 +150,13 @@ U.buildRoom({
       },
       forEach: function(fn) { if (this.hog) fn(this.hog); },
       isEmpty: function() { return !this.hog; },
-      getValue: function() { return this.hog ? this.hog.rec : null; }, // TODO: Don't mention `rec`! (remove relVal and getValue?)
+      getValue: function() { return this.hog ? this.hog : null; }, // TODO: Don't mention `rec`! (remove relVal and getValue?)
       wobbleAdd: function(hog) {
         if (!hog) throw new Error('Invalid hog for add');
         if (this.hog) throw new Error('Already add');
         this.hog = hog;
         this.wobble(this.hog);
-      },
-      wobbleRem: function(hog) {
-        if (!hog) throw new Error('Invalid hog for rem')
-        if (hog !== this.hog) throw new Error('Already rem');
-        this.hog = null;
+        return Hog(() => { this.hog = null; });
       }
     })});
     let WobM = U.inspire({ name: 'WobM', insps: { Wob }, methods: (insp, Insp) => ({
@@ -48,19 +171,21 @@ U.buildRoom({
       },
       forEach: function(fn) { this.hogs.forEach(fn); },
       isEmpty: function() { return this.hogs.size === 0; },
+      
+      // TODO: This function shouldn't exist. It's only needed by `Record.prototype.relVal`,
+      // and `Record.prototype.relVal` shouldn't exist!
       getValue: function() {
         let ret = {};
         for (let hog of this.hogs) ret[hog.rec.uid] = hog.rec;
         return ret;
       },
       wobbleAdd: function(hog) {
+        if (!U.isType(hog.shut, Function)) throw new Error('Invalid Hog');
+        if (!U.isType(hog.shutWob, Function)) throw new Error('Invalid Hog');
         if (this.hogs.has(hog)) throw new Error('Already add');
         this.hogs.add(hog);
         this.wobble(hog);
-      },
-      wobbleRem: function(hog) {
-        if (!this.hogs.has(hog)) throw new Error('Already rem');
-        this.hogs.delete(hog);
+        return Hog(() => { this.hogs.delete(hog); });
       }
     })});
     
@@ -74,54 +199,20 @@ U.buildRoom({
         if (cardinality.length !== 2) throw new Error(`Invalid cardinality: "${cardinality}"`);
         if (cardinality.split('').find(v => !'1M'.has(v))) throw new Error(`Invalid cardinality: "${cardinality}"`);
         
-        
+        // TODO: The user should provide a unique name (using `foundation`) to ensure no clash
         this.uid = Relation.NEXT_UID++;
-        this.head = head;
-        this.tail = tail;
-        this.cardinality = cardinality;
-        this.flipped = null;
-        this.name = `${this.uid}(${this.head.name}->${this.tail.name})`;
-      },
-      fwd: function() {
-        return this;
-      },
-      bak: function() {
-        if (!this.flipped) {
-          let Cls = this.constructor;
-          this.flipped = Cls(this.tail, this.head, this.cardinality.split('').reverse().join(''));
-          this.flipped.flipped = this;
-        }
-        return this.flipped;
-      },
-      makeWob: function() { return this.cardinality[1] === '1' ? Wob1() : WobM(); },
-      attach: function(rec, relRec, agg) {
-        if (!U.isInspiredBy(rec, this.head)) throw new Error(`Can't attach: ${U.typeOf(rec)} not inspired by ${this.head.name}`);
-        if (!U.isInspiredBy(relRec.rec, this.tail)) throw new Error(`Can't attach: ${U.typeOf(relRec.rec)} not inspired by ${this.tail.name}`);
+        this.fwd = { head: head, tail: tail, name: `${this.uid}:(${head.name}->${tail.name})` };
+        this.bak = { head: tail, tail: head, name: `${this.uid}:(${tail.name}<-${head.name})` };
         
-        let wob = null;
-        if (!rec.inner.has(this.name))  wob = rec.inner[this.name] = this.makeWob();
-        else                            wob = rec.inner[this.name];
+        // Relation parts can make the correct Wob, link back to the full Relation, and validate attempts to attach
+        this.fwd.gain({ WobCls: cardinality[1] === '1' ? Wob1 : WobM, dir: 'fwd', rel: this, validate: (head, tail) => {} });
+        this.bak.gain({ WobCls: cardinality[0] === '1' ? Wob1 : WobM, dir: 'bak', rel: this, validate: (head, tail) => {} });
         
-        if (agg) agg.addWob(wob);
-        wob.wobbleAdd(relRec);
-      },
-      detach: function(rec, relRec, agg) {
-        if (!U.isInspiredBy(rec, this.head)) throw new Error(`Can't detach: ${U.typeOf(rec)} not inspired by ${this.head.name}`);
-        if (!U.isInspiredBy(relRec.rec, this.tail)) throw new Error(`Can't detach: ${U.typeOf(relRec.rec)} not inspired by ${this.tail.name}`);
-        
-        if (!rec.inner.has(this.name)) throw new Error('Can\'t detach: not attached');
-        let wob = rec.inner[this.name];
-        
-        if (agg) agg.addWob(wob);
-        wob.wobbleRem(relRec);
-      },
-      keyFor: function(head, tail) {
-        return `${this.uid}:${head.uid}->${tail.uid}`;
-      },
-      shut: function() {},
-      shutWob: function() { return C.nullWob; }
+        // Note: RelationHalves are duck-typed as Hogs so that `Record.prototype.relsWob()`
+        // appropriately wobbles Hogs
+        [ this.fwd, this.bak ].forEach(rh => rh.gain({ shut: () => {}, shutWob: () => C.nullShutWob }));
+      }
     })});
-    
     let Record = U.inspire({ name: 'Record', insps: { WobVal }, methods: (insp, Insp) => ({
       $NEXT_REC_UID: 0,
       
@@ -134,67 +225,74 @@ U.buildRoom({
       },
       
       relsWob: function() { return this.relsWob0; },
-      relWob: function(rel, direction) {
-        if (!rel || !U.isInspiredBy(rel, Relation)) throw new Error('Invalid rel provided');
-        if (!this.isInspiredBy(rel.head)) throw new Error(`Can't use rel: ${U.typeOf(this)} isn't inspired by ${rel.head.name}`);
-        if (!this.inner.has(rel.name)) this.inner[rel.name] = rel.makeWob();
-        return this.inner[rel.name];
+      relWob: function(relF) {
+        if (!relF) throw new Error(`Need to provide relation`);
+        if (U.isInspiredBy(relF, Relation)) throw new Error(`Provided Relation instead of RelationHalf`);
+        if (!U.isInspiredBy(this, relF.head)) throw new Error(`Instance of ${U.typeOf(this)} tried to use relation ${relF.name}`);
+        if (!this.inner.has(relF.name)) this.inner[relF.name] = relF.WobCls();
+        return this.inner[relF.name];
       },
-      relVal: function(rel, direction) { return this.relWob(rel, direction).getValue(); },
+      relVal: function(relF) { return this.relWob(relF).getValue(); },
       
-      attach: function(rel, rec, agg=null) {
+      attach: function(relF, rec, agg=null) {
         
-        // TODO: Attaching in a two-way manner will have interleaved validation,
-        // instead of ahead-of-time validation. E.g. the order will be:
-        // validate1, attach1, validate2, attach2,
-        // Instead of:
-        // validate1, validate2, attach1, attach2
-        // This is no good; errors could occur partway through state change!
+        // `rel` is the overall Relation, `relF` relates `this` -> `rec`, `relB` relates `rec` -> `this`
+        let rel = relF.rel;
+        let relB = rel[relF.dir === 'fwd' ? 'bak' : 'fwd'];
         
-        let relRec = null;
-        let shut = null;
+        // Get the wobs that will be to link back and forth (NOTE: this populates "inner" if necessary)
+        let wobFwd = this.relWob(relF);
+        let wobBak = rec.relWob(relB);
         
-        // If `rec` shuts before we detach - detach!
-        let holdRecShut = rec.shutWob().hold(() => shut());
+        // Simple validation
+        if (!U.isInspiredBy(this, relF.head)) throw new Error(`Tried to attach ${U.typeOf(this)}->${U.typeOf(rec)} with relation ${relF.name}`);
+        if (!U.isInspiredBy(rec,  relB.head)) throw new Error(`Tried to attach ${U.typeOf(rec)}->${U.typeOf(this)} with relation ${relB.name}`);
         
-        let shutWob0 = U.WobOne();
-        let shutWob = () => shutWob0;
-        shut = agg => {
-          if (relRec.has('isShut') && relRec.isShut) throw new Error('Already shut');
-          relRec.isShut = true;
+        // Allow Relation halves to validate
+        relF.validate(this, rec);
+        relB.validate(rec, this);
+        
+        let ap = U.AccessPath(U.WobVal(rec), (dep, rec, ap) => {
           
-          holdRecShut.shut(); // Stop listening for `rec` to shut
+          // There is always some minimum level of Aggregation, because at least 2
+          // wobbles are happening: the Head is wobbling in attachment to the Tail,
+          // and the Tail is wobbling in attachment to the Head
+          let defAgg = !agg;
+          if (defAgg) agg = U.AggWobs();
           
-          // Detach and wobble!
-          rel.detach(this, relRec, agg);
-          shutWob0.wobble();
-        };
+          // For this Relation of the present Records, Wobble (with Aggregation) the Relation into existence
+          if (!this.relsWob0.hogs.has(relF)) agg.addWob(this.relsWob0).wobbleAdd(relF);
+          if (!rec.relsWob0.hogs.has(relB)) agg.addWob(rec.relsWob0).wobbleAdd(relB);
+          
+          // Create related Records
+          let rrFwd = dep(RelRec(ap, rel, rec));
+          let rrBak = dep(RelRec(ap, rel, this));
+          
+          // The Relation definitely exists. Now show that the attachment here exists.
+          // Note that the wobbles are aggregated, and then the wobbleAdds are dependent.
+          // This means that shutting the AccessPath undoes the wobbleAdd
+          dep(agg.addWob(wobFwd).wobbleAdd(rrFwd));
+          dep(agg.addWob(wobBak).wobbleAdd(rrBak));
+          
+          // Complete the aggregation
+          if (defAgg) agg.complete();
+          
+        });
         
-        // Create a RelatedRecord
-        relRec = { rec, shut, shutWob };
-        
-        // Show that this Relation is in play for this Record
-        if (!this.relsWob0.hogs.has(rel)) this.relsWob0.wobbleAdd(rel);
-        
-        // Perform the attach!
-        rel.attach(this, relRec, agg);
-        
-        return { shut, shutWob };
+        return ap;
         
       },
-      shut: function() {
-        
-        // TODO: Consider a "shut group" - a number of Hogs being shut together, which
-        // are allowed to still be linked to each other (just not to any Hogs outside
-        // of the "shut group")
+      shut: function(agg=null) {
         
         if (this.isShut) throw new Error('Already shut');
         this.isShut = true;
         
+        
         // For all Records of all Relations, shut the RecordRelation
-        let agg = U.AggWobs();
-        this.inner.forEach(relWob => relWob.forEach(relRec => relRec.shut(agg)));
-        agg.complete();
+        let defAgg = !agg;
+        if (defAgg) agg = U.AggWobs();
+        this.relsWob0.forEach(relF => this.relWob(relF).forEach(relRec => relRec.shut(agg)));
+        if (defAgg) agg.complete();
         
         if (this.shutWob0) this.shutWob0.wobble();
         return;
@@ -204,6 +302,15 @@ U.buildRoom({
         if (!this.shutWob0) this.shutWob0 = U.WobOne();
         return this.shutWob0;
       }
+    })});
+    let RelRec = U.inspire({ name: 'RelRec', insps: {}, methods: (insp, Insp) => ({
+      init: function(relAp, relF, tail) {
+        this.relAp = relAp;
+        this.relF = relF;
+        this.rec = tail;
+      },
+      shut: function(...args) { return this.relAp.shut(...args); },
+      shutWob: function() { return this.relAp.shutWob(); }
     })});
     
     let content = { Record, Relation };
@@ -231,20 +338,16 @@ U.buildRoom({
           
           let correct1 = false;
           let correct2 = false;
-          rec1.relWob(rel.fwd()).hold(({ rec }) => { correct1 = rec === rec2; });
-          rec2.relWob(rel.bak()).hold(({ rec }) => { correct2 = rec === rec1; });
-          
-          U.AggWobs().complete(agg => {
-            rec1.attach(rel.fwd(), rec2, agg);
-            rec2.attach(rel.bak(), rec1, agg);
-          });
+          rec1.relWob(rel.fwd).hold(({ rec }) => { correct1 = rec === rec2; });
+          rec2.relWob(rel.bak).hold(({ rec }) => { correct2 = rec === rec1; });
+          rec1.attach(rel.fwd, rec2);
           
           return {
             result: true
               && correct1
               && correct2
-              && rec1.relVal(rel.fwd()) === rec2
-              && rec2.relVal(rel.bak()) === rec1
+              && rec1.relVal(rel.fwd).rec === rec2
+              && rec2.relVal(rel.bak).rec === rec1
           };
           
         });
@@ -256,8 +359,8 @@ U.buildRoom({
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel.fwd()).hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel, loopRec);
+          loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel.fwd, loopRec);
           
           return { result: correct };
           
@@ -270,12 +373,8 @@ U.buildRoom({
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = rec === loopRec; });
-          
-          U.AggWobs().complete(agg => {
-            loopRec.attach(rel.bak(), loopRec);
-            loopRec.attach(rel.fwd(), loopRec);
-          });
+          loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel.bak, loopRec);
           
           return { result: correct };
           
@@ -288,12 +387,8 @@ U.buildRoom({
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = loopRec.relVal(rel.fwd()) === rec; });
-          
-          U.AggWobs().complete(agg => {
-            loopRec.attach(rel.fwd(), loopRec, agg);
-            loopRec.attach(rel.bak(), loopRec, agg);
-          });
+          loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel.bak, loopRec);
           
           return { result: correct };
           
@@ -306,12 +401,8 @@ U.buildRoom({
           
           let loopRec = Rec({});
           let correct = false;
-          loopRec.relWob(rel.bak()).hold(({ rec }) => { correct = loopRec.relVal(rel.bak()) === rec; });
-          
-          U.AggWobs().complete(agg => {
-            loopRec.attach(rel.fwd(), loopRec, agg);
-            loopRec.attach(rel.bak(), loopRec, agg);
-          });
+          loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
+          loopRec.attach(rel.fwd, loopRec);
           
           return { result: correct };
           
@@ -321,18 +412,13 @@ U.buildRoom({
           
           let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
           let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
-          
           let rel = Relation(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
+          rec1.attach(rel.fwd, rec2);
           
-          U.AggWobs().complete(agg => {
-            rec1.attach(rel.fwd(), rec2, agg);
-            rec2.attach(rel.bak(), rec1, agg);
-          });
-          
-          return { result: rec1.relVal(rel.fwd()) === rec2 && rec2.relVal(rel.bak()) === rec1 };
+          return { result: rec1.relVal(rel.fwd).rec === rec2 && rec2.relVal(rel.bak).rec === rec1 };
           
         });
         
@@ -346,10 +432,10 @@ U.buildRoom({
           let rec1 = Rec1({});
           let rec2 = Rec2({});
           
-          rec1.attach(rel.fwd(), rec2);
+          rec1.attach(rel.fwd, rec2);
           
-          try { rec1.attach(rel.fwd(), Rec2({})); }
-          catch(err) { return { result: true }; }
+          try { rec1.attach(rel.fwd, Rec2({})); }
+          catch(err) { return { result: err.message === 'Already add' }; }
           
           return { result: false };
           
@@ -365,10 +451,10 @@ U.buildRoom({
           let rec1 = Rec1({});
           let rec2 = Rec2({});
           
-          let attach = rec1.attach(rel, rec2);
+          let attach = rec1.attach(rel.fwd, rec2);
           attach.shut();
           
-          return { result: rec1.relVal(rel) === null };
+          return { result: rec1.relVal(rel.fwd) === null };
           
         });
         
@@ -382,12 +468,37 @@ U.buildRoom({
           let rec1 = Rec1({});
           let rec2 = Rec2({});
           
-          let attach = rec1.attach(rel, rec2);
+          let attach = rec1.attach(rel.fwd, rec2);
           attach.shut();
           
           try { attach.shut(); }
-          catch(err) { return { result: true }; }
+          catch(err) { return { result: err.message === 'Already shut' }; }
           return { result: false };
+          
+        });
+        
+        U.Keep(k, 'aggAttach', () => {
+          
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
+          
+          let rel = Relation(Rec1, Rec2, '11');
+          
+          let rec1 = Rec1({});
+          let rec2 = Rec2({});
+          
+          let rec1Wobbled = false;
+          let rec2Wobbled = false;
+          
+          rec1.relWob(rel.fwd).hold(relRec => { rec1Wobbled = true; });
+          rec2.relWob(rel.bak).hold(relRec => { rec2Wobbled = true; });
+          
+          let agg = U.AggWobs();
+          rec1.attach(rel.fwd, rec2, agg);
+          if (rec1Wobbled || rec2Wobbled || !rec1.relVal(rel.fwd)) return { result: false };
+          
+          agg.complete();
+          return { result: rec1Wobbled && rec2Wobbled };
           
         });
         
@@ -402,21 +513,24 @@ U.buildRoom({
           
           let RecA = U.inspire({ name: 'RecA', insps: { Record } });
           let RecB = U.inspire({ name: 'RecB', insps: { Record } });
-          
           let rel = Relation(RecA, RecB, '1M');
           
           let recs = [];
           let recA = RecA({});
-          let holdRel = recA.relWob(rel).hold(recB => recs.push(recB.rec));
+          let holdRel = recA.relWob(rel.fwd).hold(({ rec: recB }) => recs.push(recB));
           
-          for (let i = 0; i < 3; i++) recA.attach(rel, RecB({}));
+          for (let i = 0; i < 3; i++) recA.attach(rel.fwd, RecB({}));
           
           return {
             result: true
+              // wobbled 3 times
               && recs.length === 3
-              && recA.relVal(rel.fwd()).toArr(m => m).length === 3
+              // instantaneous relVal produces 3 records
+              && recA.relVal(rel.fwd).toArr(m => m).length === 3
+              // every record is of class RecB
               && !recs.find(recB => !U.isType(recB, RecB))
-              && !recs.find(recB => recB.relVal(rel.bak()))
+              // every wobbled value can find a RecA through the reverse Relation
+              && !recs.find(recB => recB.relVal(rel.bak).rec !== recA)
           };
           
         });
@@ -430,13 +544,13 @@ U.buildRoom({
           
           let attaches = [];
           let recA = RecA({});
-          for (let i = 0; i < 3; i++) attaches.push(recA.attach(rel, RecB({})));
+          for (let i = 0; i < 3; i++) attaches.push(recA.attach(rel.fwd, RecB({})));
           
           attaches.forEach(at => at.shut());
           
           return {
             result: true
-              && recA.relVal(rel).isEmpty()
+              && recA.relVal(rel.fwd).isEmpty()
           };
           
         });
@@ -450,14 +564,14 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let attach = recA.attach(rel, recB);
+          let attach = recA.attach(rel.fwd, recB);
           
           recA.shut();
           
           return {
             result: true
-              && recA.relWob(rel.fwd()).isEmpty()
-              && recB.relWob(rel.bak()).isEmpty()
+              && recA.relWob(rel.fwd).isEmpty()
+              && recB.relWob(rel.bak).isEmpty()
           };
           
         });
@@ -473,7 +587,7 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let attach = recA.attach(rel, recB);
+          let attach = recA.attach(rel.fwd, recB);
           attach.shutWob().hold(() => { correct = true; });
           recA.shut();
           
@@ -490,12 +604,11 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let attach = recA.attach(rel, recB);
-          
+          let attach = recA.attach(rel.fwd, recB);
           recA.shut();
           
           try { attach.shut(); }
-          catch(err) { return { result: err.message.toLowerCase().has('already shut') }; }
+          catch(err) { return { result: err.message === 'Already shut' }; }
           return { result: false };
           
         });
@@ -513,7 +626,7 @@ U.buildRoom({
           for (let i = 0; i < 5; i++) {
             let recY = RecY({});
             recs.push(recY);
-            attaches.push(recX.attach(rel, recY));
+            attaches.push(recX.attach(rel.fwd, recY));
           }
           
           attaches.forEach(at => at.shut());
@@ -521,7 +634,7 @@ U.buildRoom({
           
           return {
             result: true
-              && recX.relWob(rel).isEmpty()
+              && recX.relWob(rel.fwd).isEmpty()
               && !recs.find(r => r.numHolds() > 0)
               && !recs.find(r => r.shutWob().numHolds() > 0)
               && recX.numHolds() === 0
@@ -541,10 +654,10 @@ U.buildRoom({
           let recX = RecX({});
           let recY = RecY({});
           
-          let att = recX.attach(rel, recY);
+          let att = recX.attach(rel.fwd, recY);
           recY.shut();
           
-          return { result: recX.relVal(rel).isEmpty() };
+          return { result: recX.relVal(rel.fwd).isEmpty() };
           
         });
         
@@ -558,17 +671,14 @@ U.buildRoom({
           let recX = RecX({});
           let recY = RecY({});
           
-          U.AggWobs().complete(agg => {
-            recX.attach(rel.fwd(), recY, agg);
-            recY.attach(rel.bak(), recX, agg);
-          });
+          recX.attach(rel.fwd, recY);
           
           recX.shut();
           
           return {
             result: true
-              && recX.relWob(rel.fwd()).isEmpty()
-              && recY.relWob(rel.bak()).isEmpty()
+              && recX.relWob(rel.fwd).isEmpty()
+              && recY.relWob(rel.bak).isEmpty()
           };
           
         });
@@ -583,17 +693,13 @@ U.buildRoom({
           let recX = RecX({});
           let recY = RecY({});
           
-          U.AggWobs().complete(agg => {
-            recX.attach(rel.fwd(), recY, agg);
-            recY.attach(rel.bak(), recX, agg);
-          });
-          
+          recX.attach(rel.fwd, recY);
           recY.shut();
           
           return {
             result: true
-              && recX.relWob(rel.fwd()).isEmpty()
-              && recY.relWob(rel.bak()).isEmpty()
+              && recX.relWob(rel.fwd).isEmpty()
+              && recY.relWob(rel.bak).isEmpty()
           };
           
         });
@@ -608,11 +714,11 @@ U.buildRoom({
           let interimVal = {};
           
           let recA = RecA({});
-          let holdRel = recA.relWob(rel).hold(recB => {
-            interimVal = recA.relVal(rel).map(v => v);
+          let holdRel = recA.relWob(rel.fwd).hold(recB => {
+            interimVal = recA.relVal(rel.fwd).map(v => v);
           });
           
-          recA.attach(rel, RecB({}));
+          recA.attach(rel.fwd, RecB({}));
           
           return { result: interimVal.toArr(v => v).length === 1 };
           
@@ -629,14 +735,11 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let holdRel = recB.relWob(rel.bak()).hold(recA0 => {
-            interimVal = recA.relVal(rel).map(v => v);
+          let holdRel = recB.relWob(rel.bak).hold(recA0 => {
+            interimVal = recA.relVal(rel.fwd).map(v => v);
           });
           
-          U.AggWobs().complete(agg => {
-            recA.attach(rel.fwd(), recB);
-            recB.attach(rel.bak(), recA);
-          });
+          recA.attach(rel.fwd, recB);
           
           return { result: interimVal.toArr(v => v).length === 1 };
           
@@ -653,14 +756,11 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let holdRel = recA.relWob(rel.fwd()).hold(recB => {
-            interimVal = recA.relVal(rel.fwd()).map(v => v);
+          let holdRel = recA.relWob(rel.fwd).hold(recB => {
+            interimVal = recA.relVal(rel.fwd).map(v => v);
           });
           
-          U.AggWobs().complete(agg => {
-            recA.attach(rel.fwd(), recB, agg);
-            recB.attach(rel.bak(), recA, agg);
-          });
+          recA.attach(rel.fwd, recB);
           
           return { result: interimVal.toArr(v => v).length === 1 };
           
@@ -677,14 +777,11 @@ U.buildRoom({
           
           let recA = RecA({});
           let recB = RecB({});
-          let holdRel = recB.relWob(rel.bak()).hold(recA0 => {
-            interimVal = recA.relVal(rel).map(v => v);
+          let holdRel = recB.relWob(rel.bak).hold(recA0 => {
+            interimVal = recA.relVal(rel.fwd).map(v => v);
           });
           
-          U.AggWobs().complete(agg => {
-            recA.attach(rel.fwd(), recB);
-            recB.attach(rel.bak(), recA);
-          });
+          recA.attach(rel.fwd, recB);
           
           return { result: interimVal.toArr(v => v).length === 1 };
           
@@ -721,11 +818,14 @@ U.buildRoom({
             
             let didShut = false;
             
-            U.AccessPath(recA.relWob(relAB), (dep, relRecB) => {
-              dep({ shut: () => { didShut = true; }, shutWob: () => U.Wob() });
+            U.AccessPath(recA.relWob(relAB.fwd), (dep, recB) => {
+              dep({
+                shut: () => { didShut = true; },
+                shutWob: () => C.nullShutWob
+              });
             });
             
-            recA.attach(relAB, RecB({})).shut();
+            let relRec = recA.attach(relAB.fwd, RecB({})).shut();
             
             return { result: didShut };
             
@@ -740,13 +840,11 @@ U.buildRoom({
             
             let recA = RecA({});
             
-            let ap = U.AccessPath(recA.relWob(relAB), (dep, relRecB) => {
-              dep(relRecB);
-            });
+            // Define an AccessPath which immediately "deps" everything it gets, and immediately
+            // shut that same AccessPath
+            U.AccessPath(recA.relWob(relAB.fwd), (dep, relRecB) => dep(relRecB)).shut();
             
-            ap.shut();
-            
-            return { result: recA.relWob(relAB).isEmpty() };
+            return { result: recA.relWob(relAB.fwd).isEmpty() };
             
           });
           
@@ -759,7 +857,7 @@ U.buildRoom({
             
             let recA = RecA({});
             
-            let ap = U.AccessPath(recA.relWob(relAB), (dep, relRecB) => {
+            let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, relRecB) => {
               dep(U.AccessPath(U.WobVal(relRecB), (dep, relRecB) => {
                 dep(relRecB);
               }));
@@ -767,7 +865,7 @@ U.buildRoom({
             
             ap.shut();
             
-            return { result: recA.relWob(relAB).isEmpty() };
+            return { result: recA.relWob(relAB.fwd).isEmpty() };
             
           });
           
@@ -781,11 +879,11 @@ U.buildRoom({
             let recA = RecA({});
             let recB = RecB({});
             let result = false;
-            recA.relWob(relAB).hold(relRec => {
-              result = recA.relVal(relAB) === recB;
+            recA.relWob(relAB.fwd).hold(relRec => {
+              result = recA.relVal(relAB.fwd).rec === recB;
             });
             
-            recA.attach(relAB, recB);
+            recA.attach(relAB.fwd, recB);
             
             return { result };
             
@@ -801,11 +899,11 @@ U.buildRoom({
             let recA = RecA({});
             let recB = RecB({});
             let result = false;
-            recA.relWob(relAB).hold(relRec => {
-              result = recA.relVal(relAB) === relRec.rec;
+            recA.relWob(relAB.fwd).hold(relRec => {
+              result = recA.relVal(relAB.fwd).rec === relRec.rec;
             });
             
-            recA.attach(relAB, recB);
+            recA.attach(relAB.fwd, recB);
             
             return { result };
             
@@ -821,14 +919,11 @@ U.buildRoom({
             let recA = RecA({});
             let recB = RecB({});
             let result = false;
-            recA.relWob(relAB.fwd()).hold(relRec => {
-              result = recB.relVal(relAB.bak()) === recA;
+            recA.relWob(relAB.fwd).hold(relRec => {
+              result = recB.relVal(relAB.bak).rec === recA;
             });
             
-            U.AggWobs().complete(agg => {
-              recA.attach(relAB.fwd(), recB, agg);
-              recB.attach(relAB.bak(), recA, agg);
-            });
+            recA.attach(relAB.fwd, recB);
             
             return { result };
             
@@ -844,14 +939,11 @@ U.buildRoom({
             let recA = RecA({});
             let recB = RecB({});
             let result = false;
-            recA.relWob(relAB.fwd()).hold(({ rec: recB }) => {
-              result = recB.relVal(relAB.bak()) === recA;
+            recA.relWob(relAB.fwd).hold(({ rec: recB }) => {
+              result = recB.relVal(relAB.bak).rec === recA;
             });
             
-            U.AggWobs().complete(agg => {
-              recA.attach(relAB.fwd(), recB, agg);
-              recB.attach(relAB.bak(), recA, agg);
-            });
+            recA.attach(relAB.fwd, recB);
             
             return { result };
             
