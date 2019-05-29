@@ -46,18 +46,39 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
   },
   run: async function() {
     
-    let [ result, val, err ] = [ null, null, null ];
+    let [ result, msg, err ] = [ null, null, null ];
     
     let chain = this.chain();
     for (let par of chain) if (par.sandwich.before) await par.sandwich.before();
     try {
-      let v = this.func ? await this.func() : { result: null, val: null };
-      if (!U.isType(v, Object) || !v.has('result')) throw new Error('Invalid test result format');
-      result = v.result;
-      val = v.has('val') ? v.val : null;
+      let v = this.func ? await this.func() : { result: null };
+      
+      if (U.isType(v, Array)) {
+        
+        for (let [ checkMsg, check ] of v) {
+          
+          if (check()) continue;
+          result = false;
+          msg = `Fail at: ${checkMsg}`
+          break;
+          
+        }
+        
+      } else if (U.isType(v, Object)) {
+        
+        if (!v.has('result')) throw new Error('Invalid Object format: missing "result" property');
+        result = v.result;
+        if (v.has('msg')) msg = v.msg;
+        
+      } else {
+        
+        throw new Error('Invalid test result format');
+        
+      }
+      
     } catch(err0) {
       result = false;
-      val = null;
+      msg = null;
       err = err0;
       
       let errId = this.root.errId++;
@@ -76,9 +97,9 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       let cases = {};
       
       for (let child of this.children.values()) {
-        let { result, err, childResults } = await child.run();
+        let { result, err, msg, childResults } = await child.run();
         if (result !== false) cPassed++;
-        cases[child.name] = { result, err, childResults };
+        cases[child.name] = { result, err, msg, childResults };
       }
       
       if (cPassed < cTotal) result = false;
@@ -87,6 +108,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       return {
         result: result !== false,
         err,
+        msg,
         childResults: {
           summary: { total: cTotal, passed: cPassed },
           cases
@@ -100,6 +122,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       return {
         result: result !== false,
         err,
+        msg,
         childResults: null
       };
       

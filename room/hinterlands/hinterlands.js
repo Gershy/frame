@@ -1,16 +1,7 @@
 // TODO: HEEERE! Moved back to 2-way Relations and "record" and "hinterlands"
 // are 100% passing. Still a bit more housekeeping:
-// - Do a final review of "record"
 // - Do a final review of "hinterlands" (make sure static setup (like adding Ways to Lands) doesn't use Relations!)
-// - Write more hinterlands tests:
-//   - head related to tail; only head followed; don't sync rels
-//   - head related to tail; only tail followed; don't sync rels
-//   - head related to tail; both followed; rel detached; unsync relation
-//   - head related to tail; both followed; sync rels; tail shut; unsync rels
-//   - head related to tail; both followed; sync rels; head shut; unsync rels
-//   - head related to tail; both followed; sync rels; tail shut; clean up memory
-//   - head related to tail; both followed; sync rels; head shut; clean up memory
-//   - Hut syncs a bunch of deltas, then reconnects and syncs everything at once
+// - Write those extra hinterlands tests!
 // - Make sure hinterlands is 100% passing!
 
 U.buildRoom({
@@ -589,12 +580,16 @@ U.buildRoom({
       U.Keep(k, 'lands1', () => {
         
         let lands = Lands({ foundation });
-        return { result: lands.nextUid().length === 8 };
+        return [
+          [ 'Lands makes 8-char uid',   () => lands.nextUid().length === 8 ]
+        ];
         
       });
       
       U.Keep(k, 'lands2', () => {
         
+        // TODO: Consider allowing unspecified "comWob" calls. Below should never
+        // be able to put unsanitized param into `lands.comWob(...)`
         let lands = Lands({ foundation });
         
         try {
@@ -603,7 +598,7 @@ U.buildRoom({
           return { result: true };
         }
         
-        return { result: false };
+        return { result: false, msg: 'Unspecified commands throw errors' };
         
       });
       
@@ -743,7 +738,7 @@ U.buildRoom({
             
             let Rec1 = U.inspire({ name: 'Rec1', insps: { LandsRecord } });
             let Rec2 = U.inspire({ name: 'Rec2', insps: { LandsRecord } });
-            let rel = {
+            let appRel = {
               landsRec1Set: Relation(Lands, Rec1, '1M'),
               rec1Rec2Set: Relation(Rec1, Rec2, '1M')
             };
@@ -753,7 +748,7 @@ U.buildRoom({
               commands: { test: 1 },
               heartbeatMs: null,
               records: [ Rec1, Rec2 ],
-              relations: [ rel.rec1Rec2Set ]
+              relations: [ appRel.rec1Rec2Set ]
             });
             lands.ways.add(Way({ lands, makeServer: () => server }));
             await lands.open();
@@ -761,37 +756,34 @@ U.buildRoom({
             let client = server.spoofClient();
             
             return {
-              Rec1, Rec2, rel, lands, client,
+              Rec1, Rec2, appRel, lands, client,
               getReply: msg => {
                 let v = null;
                 let prm = new Promise(r => { client.tell = r; });
                 client.hear.wobble([ msg, client.tell ]);
                 return prm;
               },
-              getNextResp: () => new Promise(r => { client.tell = r; })
+              getNextResp: () => new Promise(r => { client.tell = r; }),
+              getHut: () => new Promise(r => lands.relWob(rel.landsHuts.fwd).hold(({ rec }) => r(rec)))
             };
             
           };
           
-          U.Keep(k, 'getInit1', async () => {
+          U.Keep(k, 'getInit', async () => {
             
             let { client, getReply } = await getStuff();
             let resp = await getReply({ command: 'getInit' });
-            return { result: resp.hasHead('<!DOCTYPE html>') };
             
-          });
-          
-          U.Keep(k, 'getInit2', async () => {
-            
-            let { client, getReply } = await getStuff();
-            let resp = await getReply({ command: 'getInit' });
-            return { result: resp.has('window.global = window;') };
+            return [
+              [ 'result begins with DOCTYPE',   () => resp.hasHead('<!DOCTYPE html>') ],
+              [ 'result sets `window.global`',  () => resp.has('window.global' + ' = ' + 'window;') ]
+            ];
             
           });
           
           U.Keep(k, 'syncRec1', async () => {
             
-            let { lands, rel: appRel, getReply } = await getStuff();
+            let { lands, appRel, getReply } = await getStuff();
             
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
               dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
@@ -811,7 +803,7 @@ U.buildRoom({
           
           U.Keep(k, 'syncRec2', async () => {
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply } = await getStuff();
             
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
               dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
@@ -843,7 +835,7 @@ U.buildRoom({
             
             // Sync the most basic possible Relation
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply } = await getStuff();
             
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
               dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
@@ -883,7 +875,7 @@ U.buildRoom({
             
             // Sync a relation that was initially only partially followed
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
             
             let alreadySetDoFollowRec2 = false;
             let doFollowRec2 = () => { throw new Error('incorrect'); };
@@ -914,27 +906,23 @@ U.buildRoom({
             let timeout = setTimeout(() => client.tell(null), 20);
             let relResp = await prm;
             clearTimeout(timeout);
-              
-            return {
-              result: true
-                && U.isType(initData, Object)
-                && initData.command === 'update'
-                && initData.version === 1
-                && initData.has('content')
-                && initData.content.has('addRec')
-                && initData.content.addRec.toArr(v => v).length === 1
-                && !initData.content.has('addRel')
-                && U.isType(relResp, Object)
-                && relResp.command === 'update'
-                && relResp.version === 2
-                && relResp.has('content')
-                && U.isType(relResp.content, Object)
-                && relResp.content.has('addRec')
-                && U.isType(relResp.content.addRec, Object)
-                && relResp.content.addRec.toArr(v => v).length === 1
-                && relResp.content.addRec.find(v => 1)[1] !== initData.content.addRec.find(v => 1)[1]
-                && relResp.content.addRec.find(v => 1)[0].uid !== initData.content.addRec.find(v => 1)[0].uid
-            };
+            
+            return [
+              [ 'sync is Object',             () => U.isType(initData, Object) ],
+              [ 'sync version is 1',          () => initData.version === 1 ],
+              [ 'sync command is "update"',   () => initData.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(initData.content, Object) ],
+              [ 'sync addRec is Object',      () => U.isType(initData.content.addRec, Object) ],
+              [ 'sync adds single rec',       () => initData.content.addRec.toArr(v => v).length === 1 ],
+              [ 'sync adds no relations',     () => !initData.content.has('addRel') ],
+              [ 'sync2 is Object',            () => U.isType(relResp, Object) ],
+              [ 'sync2 is version 2',         () => relResp.version === 2 ],
+              [ 'sync2 command is "update"',  () => relResp.command === 'update' ],
+              [ 'sync2 content is Object',    () => U.isType(relResp.content, Object) ],
+              [ 'sync2 addRec is Object',     () => U.isType(relResp.content.addRec, Object) ],
+              [ 'sync2 adds single rec',      () => relResp.content.addRec.toArr(v => v).length === 1 ],
+              [ 'sync2 adds unique rec',      () => relResp.content.addRec.find(v => 1)[1] !== initData.content.addRec.find(v => 1)[1] ]
+            ];
             
           });
           
@@ -942,7 +930,7 @@ U.buildRoom({
             
             // A Relation should not be synced if the tail isn't followed
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply } = await getStuff();
             
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
               dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
@@ -977,7 +965,7 @@ U.buildRoom({
             
             // A Relation should not be synced if the head isn't followed
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply } = await getStuff();
             
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
               dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
@@ -1017,7 +1005,7 @@ U.buildRoom({
             // 2) Forget the Head and follow the Tail
             // 3) Ensure that the relation is not synced
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
             
             let forgetHead = null;
             let followTail = null;
@@ -1084,7 +1072,7 @@ U.buildRoom({
             // 2) Forget the Tail and follow the Head (opposite order from previous Keep)
             // 3) Ensure that the relation is not synced
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
             
             let forgetHead = null;
             let followTail = null;
@@ -1150,7 +1138,7 @@ U.buildRoom({
             // Follow and sync a Record; then shut the Record and test that
             // the follow and sync were undone
             
-            let { lands, Rec1, Rec2, rel: appRel, getReply, client } = await getStuff();
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
             
             let doFollowRec2 = null;
             AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
@@ -1193,6 +1181,368 @@ U.buildRoom({
             };
             
           });
+          
+          U.Keep(k, 'noFollowRelOnlyHead', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+            
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                dep(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  //dep(hut.followRec(rec2)); // Don't follow tail!
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRec2 = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(initData, Object) ],
+              [ 'sync version is 1',          () => initData.version === 1 ],
+              [ 'sync command is "update"',   () => initData.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(initData.content, Object) ],
+              [ 'sync adds no relations',     () => !initData.content.has('addRel') ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'noFollowRelOnlyTail', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+            
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+              dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                //dep(hut.followRec(rec1)); // Don't follow head!
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  dep(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRec2 = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let initData = JSON.parse(initDataMatch[1]);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(initData, Object) ],
+              [ 'sync version is 1',          () => initData.version === 1 ],
+              [ 'sync command is "update"',   () => initData.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(initData.content, Object) ],
+              [ 'sync adds no relations',     () => !initData.content.has('addRel') ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'removeRel', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+            
+            // Note that the root `dep0` is used to track Record follows
+            // We want a situation where the 2 Records persist after their
+            // Relation ends. We're looking for only the Relation, not the
+            // Records, to be removed Below
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep0, { rec: hut }) => {
+              dep0(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                dep0(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  dep0(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRec2 = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            attachRec2.shut();
+            let sync2 = await prm;
+            clearTimeout(timeout);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync1, Object) ],
+              [ 'sync version is 1',          () => sync1.version === 1 ],
+              [ 'sync command is "update"',   () => sync1.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync1.content, Object) ],
+              [ 'sync "addRel" is Object',    () => U.isType(sync1.content.addRel, Object) ],
+              [ 'sync adds single relation',  () => sync1.content.addRel.toArr(v => v).length === 1 ],
+              [ 'sync2 is Object',            () => U.isType(sync2, Object) ],
+              [ 'sync2 version is 2',         () => sync2.version === 2 ],
+              [ 'sync2 command is "update"',  () => sync2.command === 'update' ],
+              [ 'sync2 content is Object',    () => U.isType(sync2.content, Object) ],
+              [ 'sync2 has no "remRec"',      () => !sync2.content.has('remRec') ],
+              [ 'sync2 "remRel" is Object',   () => U.isType(sync2.content.remRel, Object) ],
+              [ 'sync2 rems single relation', () => sync2.content.remRel.toArr(v => v).length === 1 ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'removeHead', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+            
+            // Note that the root `dep0` is used to track Record follows
+            // We want a situation where the 2 Records persist after their
+            // Relation ends. We're looking for only the Relation, not the
+            // Records, to be removed Below
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep0, { rec: hut }) => {
+              dep0(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                dep0(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  dep0(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRec2 = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            rec1.shut();
+            let sync2 = await prm;
+            clearTimeout(timeout);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync1, Object) ],
+              [ 'sync version is 1',          () => sync1.version === 1 ],
+              [ 'sync command is "update"',   () => sync1.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync1.content, Object) ],
+              [ 'sync "addRel" is Object',    () => U.isType(sync1.content.addRel, Object) ],
+              [ 'sync adds single relation',  () => sync1.content.addRel.toArr(v => v).length === 1 ],
+              [ 'sync2 is Object',            () => U.isType(sync2, Object) ],
+              [ 'sync2 version is 2',         () => sync2.version === 2 ],
+              [ 'sync2 command is "update"',  () => sync2.command === 'update' ],
+              [ 'sync2 content is Object',    () => U.isType(sync2.content, Object) ],
+              
+              // Note it's unecessary to explicitly tell Below that the Relation is removed.
+              // Of course if the Record is removed, so are all its Relations!
+              [ 'sync2 has no "remRel"',      () => !sync2.content.has('remRel') ],
+              [ 'sync2 "remRec" is Object',   () => U.isType(sync2.content.remRec, Object) ],
+              [ 'sync2 rems single record',   () => sync2.content.remRec.toArr(v => v).length === 1 ],
+              [ 'sync2 rems rec1',            () => sync2.content.remRec.find(v => 1)[1] === rec1.uid ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'removeTail', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+            
+            // Note that the root `dep0` is used to track Record follows
+            // We want a situation where the 2 Records persist after their
+            // Relation ends. We're looking for only the Relation, not the
+            // Records, to be removed Below
+            AccessPath(lands.relWob(rel.landsHuts.fwd), (dep0, { rec: hut }) => {
+              dep0(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                dep0(hut.followRec(rec1));
+                dep(AccessPath(rec1.relWob(appRel.rec1Rec2Set.fwd), (dep, { rec: rec2 }) => {
+                  dep0(hut.followRec(rec2));
+                }));
+              }));
+            });
+            
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+            let attachRec2 = rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            rec2.shut();
+            let sync2 = await prm;
+            clearTimeout(timeout);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync1, Object) ],
+              [ 'sync version is 1',          () => sync1.version === 1 ],
+              [ 'sync command is "update"',   () => sync1.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync1.content, Object) ],
+              [ 'sync "addRel" is Object',    () => U.isType(sync1.content.addRel, Object) ],
+              [ 'sync adds single relation',  () => sync1.content.addRel.toArr(v => v).length === 1 ],
+              [ 'sync2 is Object',            () => U.isType(sync2, Object) ],
+              [ 'sync2 version is 2',         () => sync2.version === 2 ],
+              [ 'sync2 command is "update"',  () => sync2.command === 'update' ],
+              [ 'sync2 content is Object',    () => U.isType(sync2.content, Object) ],
+              [ 'sync2 has no "remRel"',      () => !sync2.content.has('remRel') ],
+              [ 'sync2 "remRec" is Object',   () => U.isType(sync2.content.remRec, Object) ],
+              [ 'sync2 rems single record',   () => sync2.content.remRec.toArr(v => v).length === 1 ],
+              [ 'sync2 rems rec2',            () => sync2.content.remRec.find(v => 1)[1] === rec2.uid ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'unfollowRefollowHead', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client, getHut } = await getStuff();
+            
+            let hut = await getHut();
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            hut.setRecFollowStrength(rec1, 100);
+            hut.setRecFollowStrength(rec2, 100);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let good1 = true
+              && U.isType(sync1, Object)
+              && sync1.version === 1
+              && sync1.command === 'update'
+              && U.isType(sync1.content, Object)
+              && U.isType(sync1.content.addRec, Object)
+              && sync1.content.addRec.toArr(v => v).length === 2
+              && U.isType(sync1.content.addRel, Object)
+              && sync1.content.addRel.toArr(v => v).length === 1;
+            if (!good1) return { result: false, msg: 'Bad 1st sync' };
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            hut.setRecFollowStrength(rec1, 0);
+            let sync2 = await prm;
+            clearTimeout(timeout);
+            
+            let good2 = true
+              && U.isType(sync2, Object)
+              && sync2.version === 2
+              && sync2.command === 'update'
+              && U.isType(sync2.content, Object)
+              && !sync2.has('remRel')
+              && U.isType(sync2.content.remRec, Object)
+              && sync2.content.remRec.toArr(v => v).length === 1;
+            if (!good2) return { result: false, msg: 'Bad 2nd sync' };
+            
+            prm = new Promise(r => { client.tell = r; });
+            timeout = setTimeout(() => client.tell(null), 20);
+            hut.setRecFollowStrength(rec1, 100);
+            let sync3 = await prm;
+            clearTimeout(timeout);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync3, Object) ],
+              [ 'sync version is 3',          () => sync3.version === 3 ],
+              [ 'sync command is "update"',   () => sync3.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync3.content, Object) ],
+              [ 'sync "addRec" is Object',    () => U.isType(sync3.content.addRec, Object) ],
+              [ 'sync adds single record',    () => sync3.content.addRec.toArr(v => v).length === 1 ],
+              [ 'sync adds rec1',             () => sync3.content.addRec.find(v => 1)[1] === rec1.uid ],
+              [ 'sync "addRel" is Object',    () => U.isType(sync3.content.addRel, Object) ],
+              [ 'sync adds single relation',  () => sync3.content.addRel.toArr(v => v).length === 1]
+            ];
+            
+          });
+          
+          U.Keep(k, 'unfollowRefollowTail', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client, getHut } = await getStuff();
+            
+            let hut = await getHut();
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            hut.setRecFollowStrength(rec1, 100);
+            hut.setRecFollowStrength(rec2, 100);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let good1 = true
+              && U.isType(sync1, Object)
+              && sync1.version === 1
+              && sync1.command === 'update'
+              && U.isType(sync1.content, Object)
+              && U.isType(sync1.content.addRec, Object)
+              && sync1.content.addRec.toArr(v => v).length === 2
+              && U.isType(sync1.content.addRel, Object)
+              && sync1.content.addRel.toArr(v => v).length === 1;
+            if (false && !good1) return { result: false, msg: 'Bad 1st sync' };
+            
+            let prm = new Promise(r => { client.tell = r; });
+            let timeout = setTimeout(() => client.tell(null), 20);
+            hut.setRecFollowStrength(rec2, 0);
+            let sync2 = await prm;
+            clearTimeout(timeout);
+            
+            let good2 = true
+              && U.isType(sync2, Object)
+              && sync2.version === 2
+              && sync2.command === 'update'
+              && U.isType(sync2.content, Object)
+              && !sync2.has('remRel')
+              && U.isType(sync2.content.remRec, Object)
+              && sync2.content.remRec.toArr(v => v).length === 1;
+            if (!good2) return { result: false, msg: 'Bad 2nd sync' };
+            
+            prm = new Promise(r => { client.tell = r; });
+            timeout = setTimeout(() => client.tell(null), 20);
+            hut.setRecFollowStrength(rec2, 100);
+            let sync3 = await prm;
+            clearTimeout(timeout);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync3, Object) ],
+              [ 'sync version is 3',          () => sync3.version === 3 ],
+              [ 'sync command is "update"',   () => sync3.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync3.content, Object) ],
+              [ 'sync "addRec" is Object',    () => U.isType(sync3.content.addRec, Object) ],
+              [ 'sync adds single record',    () => sync3.content.addRec.toArr(v => v).length === 1 ],
+              [ 'sync adds rec2',             () => sync3.content.addRec.find(v => 1)[1] === rec2.uid ],
+              [ 'sync "addRel" is Object',    () => U.isType(sync3.content.addRel, Object) ],
+              [ 'sync adds single relation',  () => sync3.content.addRel.toArr(v => v).length === 1]
+            ];
+            
+          });
+          
+          // TODO: Need to test resetVersion; a client calls "getInit" multiple times, and each
+          // time receives version 1, and the FULL dataset up until that moment
           
         });
         

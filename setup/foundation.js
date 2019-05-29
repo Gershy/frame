@@ -46,10 +46,12 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       if (U.isType(this.test, String)) keep = keep.getChild(...this.test.split('.'));
       
       let outputTest = (name, run, ind='') => {
-        let { result, err=null, childResults } = run;
+        let { result, err=null, msg=null, childResults } = run;
+        
         let { summary, cases } = childResults || { summary: null, cases: {} };
         console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
         if (err) console.log(`${ind}    TESTERROR(${err.id})`);
+        if (msg) console.log(`${ind}    "${msg}"`);
         if (cases.isEmpty()) return;
         console.log(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
         for (let [ name0, run ] of Object.entries(cases)) outputTest(`${name}.${name0}`, run, ind + '    ');

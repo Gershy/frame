@@ -37,7 +37,7 @@ protoDef(Object, 'slice', function(...props) {
     return ret;
   }
 });
-protoDef(Object, 'find', function(f) {
+protoDef(Object, 'find', function(f) { // Returns [ VAL, KEY ]
   for (let k in this) if (f(this[k], k)) return [ this[k], k ];
   return null;
 });
@@ -86,7 +86,7 @@ protoDef(Array, 'toObj', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'find', function(f) {
+protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
   for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return [ this[i], i ];
   return null;
 });
