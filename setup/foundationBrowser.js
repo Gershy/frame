@@ -212,6 +212,7 @@
           let traceLine = ln.has('(') ? ln.split('(')[1].crop(0, 1) : ln.trim().crop(3);
           
           return `${padRoom} ${padLine} (${traceLine})`;
+          
         } catch(err) {
           
           return `TRACEERR - ${err.message.split('\n').join(' ')} - "${ln}"`;

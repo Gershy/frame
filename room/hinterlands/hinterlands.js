@@ -471,9 +471,10 @@ U.buildRoom({
             
             // It's possible that in between scheduling and performing the tick,
             // this Hut has become isolated. In this case no update should occur
-            if (this.isShut) return null;
+            if (this.isShut()) return;
             
             this.informThrottlePrm = null;
+            
             let updateTell = this.genUpdateTell();
             if (updateTell) this.tell(updateTell);
             return updateTell;
@@ -736,7 +737,7 @@ U.buildRoom({
           
         });
         
-        U.Keep(k, 'communication').contain(k => {
+        U.Keep(k, 'sync').contain(k => {
           
           let getStuff = async () => {
             
@@ -762,7 +763,6 @@ U.buildRoom({
             return {
               Rec1, Rec2, rel, lands, client,
               getReply: msg => {
-                // TODO: Finish this then use!
                 let v = null;
                 let prm = new Promise(r => { client.tell = r; });
                 client.hear.wobble([ msg, client.tell ]);
@@ -826,10 +826,6 @@ U.buildRoom({
             let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
             if (!initDataMatch) return { result: null };
             let initData = JSON.parse(initDataMatch[1]);
-            
-            // TODO: Next need to sync a relation. Will need all Relations in play to
-            // be defined on the Lands so that for a Record, all its Relations can be
-            // held.
             
             return {
               result: true
@@ -918,7 +914,7 @@ U.buildRoom({
             let timeout = setTimeout(() => client.tell(null), 20);
             let relResp = await prm;
             clearTimeout(timeout);
-            
+              
             return {
               result: true
                 && U.isType(initData, Object)

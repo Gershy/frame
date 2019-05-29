@@ -131,12 +131,6 @@ U.buildRoom({
   build: (foundation) => {
     // Records are data items with a number of properties, including relational properties
     
-    // TODO: Right now `Wob1` and `WobM` support listening for shuts
-    // The problem is that shuts need to result in both sides of a relation
-    // detaching the value, and these Record-specific Wobs don't have enough
-    // information to do this.
-    // Shut-listening should probably happen in `Record.prototype.attach`!
-    
     let { Hog, Wob, WobVal } = U;
     
     let Wob1 = U.inspire({ name: 'Wob1', insps: { Wob }, methods: (insp, Insp) => ({
@@ -150,7 +144,7 @@ U.buildRoom({
       },
       forEach: function(fn) { if (this.hog) fn(this.hog); },
       isEmpty: function() { return !this.hog; },
-      getValue: function() { return this.hog ? this.hog : null; }, // TODO: Don't mention `rec`! (remove relVal and getValue?)
+      getValue: function() { return this.hog ? this.hog : null; },
       wobbleAdd: function(hog) {
         if (!hog) throw new Error('Invalid hog for add');
         if (this.hog) throw new Error('Already add');
@@ -163,7 +157,6 @@ U.buildRoom({
       init: function() {
         insp.Wob.init.call(this);
         this.hogs = new Set();
-        //this.hogs = {}; // TODO: Use `Set` instead of `{}` (it's also referenced in hinterlands.js)
       },
       hold: function(fn) {
         this.hogs.forEach(fn);
@@ -180,17 +173,12 @@ U.buildRoom({
         return ret;
       },
       wobbleAdd: function(hog) {
-        if (!U.isType(hog.shut, Function)) throw new Error('Invalid Hog');
-        if (!U.isType(hog.shutWob, Function)) throw new Error('Invalid Hog');
         if (this.hogs.has(hog)) throw new Error('Already add');
         this.hogs.add(hog);
         this.wobble(hog);
         return Hog(() => { this.hogs.delete(hog); });
       }
     })});
-    
-    let getWob1 = () => Wob1();
-    let getWobM = () => WobM();
     
     let Relation = U.inspire({ name: 'Relation', methods: (insp, Insp) => ({
       $NEXT_UID: 0,
@@ -213,15 +201,16 @@ U.buildRoom({
         [ this.fwd, this.bak ].forEach(rh => rh.gain({ shut: () => {}, shutWob: () => C.nullShutWob }));
       }
     })});
-    let Record = U.inspire({ name: 'Record', insps: { WobVal }, methods: (insp, Insp) => ({
+    let Record = U.inspire({ name: 'Record', insps: { WobVal, Hog }, methods: (insp, Insp) => ({
       $NEXT_REC_UID: 0,
       
       init: function({ uid=null, value=null }) {
         this.uid = uid !== null ? uid : Record.NEXT_REC_UID++;
         insp.WobVal.init.call(this, value);
-        this.inner = {};
-        this.shutWob0 = null;
-        this.relsWob0 = WobM();
+        insp.Hog.init.call(this);
+        
+        this.inner = {}; // Actual references to related Records
+        this.relsWob0 = WobM(); // Keep track of all Relations on this Record
       },
       
       relsWob: function() { return this.relsWob0; },
@@ -236,11 +225,11 @@ U.buildRoom({
       
       attach: function(relF, rec, agg=null) {
         
-        // `rel` is the overall Relation, `relF` relates `this` -> `rec`, `relB` relates `rec` -> `this`
+        // `rel` is the overall Relation, `relF` relates `this` -> `rec`, `relB` relates `this` <- `rec`
         let rel = relF.rel;
         let relB = rel[relF.dir === 'fwd' ? 'bak' : 'fwd'];
         
-        // Get the wobs that will be to link back and forth (NOTE: this populates "inner" if necessary)
+        // Get the wobs that will link back and forth (NOTE: this populates "inner" if necessary)
         let wobFwd = this.relWob(relF);
         let wobBak = rec.relWob(relB);
         
@@ -252,7 +241,7 @@ U.buildRoom({
         relF.validate(this, rec);
         relB.validate(rec, this);
         
-        let ap = U.AccessPath(U.WobVal(rec), (dep, rec, ap) => {
+        return U.AccessPath(U.WobVal(rec), (dep, rec, ap) => {
           
           // There is always some minimum level of Aggregation, because at least 2
           // wobbles are happening: the Head is wobbling in attachment to the Tail,
@@ -279,14 +268,8 @@ U.buildRoom({
           
         });
         
-        return ap;
-        
       },
-      shut: function(agg=null) {
-        
-        if (this.isShut) throw new Error('Already shut');
-        this.isShut = true;
-        
+      shut0: function(agg=null) {
         
         // For all Records of all Relations, shut the RecordRelation
         let defAgg = !agg;
@@ -294,13 +277,6 @@ U.buildRoom({
         this.relsWob0.forEach(relF => this.relWob(relF).forEach(relRec => relRec.shut(agg)));
         if (defAgg) agg.complete();
         
-        if (this.shutWob0) this.shutWob0.wobble();
-        return;
-        
-      },
-      shutWob: function() {
-        if (!this.shutWob0) this.shutWob0 = U.WobOne();
-        return this.shutWob0;
       }
     })});
     let RelRec = U.inspire({ name: 'RelRec', insps: {}, methods: (insp, Insp) => ({

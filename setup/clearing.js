@@ -199,7 +199,7 @@ let U = global.U = {
     
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName];
-      if (methodsAtName.length > 1) throw new Error(`Multiple method "${methodName}" for ${name}; declare a custom method`);
+      if (methodsAtName.length > 1) throw new Error(`Multiple methods "${methodName}" for ${name}; declare a custom method`);
       Insp.prototype[methodName] = methodsAtName[0]; // Length will be exactly 1 now
     }
     
@@ -259,16 +259,10 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
   },
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
-  shut: function() {
-    if (this.didShut) {
-      console.log('OH NO, SHUT TWICE!!!');
-      console.log('TIME #1:', U.foundation.formatError(this.didShut));
-      console.log('TIME #2:', U.foundation.formatError(new Error('SHUT #2!')));
-      process.exit();
-      //throw new Error('Already shut');
-    }
-    this.didShut = new Error('SHUT #1!');
-    this.shut0();
+  shut: function(...args) {
+    if (this.didShut) throw new Error('Already shut');
+    this.didShut = true;
+    this.shut0(...args);
     this.shutWob0.wobble();
   },
   shutWob: function() { return this.shutWob0; }
@@ -286,9 +280,7 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
     return Hog(() => this.holds.delete(func));
   },
   wobble: function(...args) { this.toHolds(...args); },
-  toHolds: function(...args) { /*!!!*/ this.holds.forEach(func => func(...args)); },
-  shut: function() {},
-  shutWob: function() { return C.nullShutWob; }
+  toHolds: function(...args) { this.holds.forEach(func => func(...args)); }
 })});
 let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
   init: function() {

@@ -449,8 +449,7 @@
         }
         
         // Build the "address"; use ip + innerId
-        // TODO: Is x-forwarded-for ever set?
-        let ip = this.compactIp(req.headers['x-forwarded-for'] || req.connection.remoteAddress);
+        let ip = this.compactIp(req.connection.remoteAddress);
         let cookieVal = req.headers.has('cookie') ? req.headers.cookie.trim() : '';
         let cookieVals = cookieVal ? cookieVal.split(';').toObj(v => v.trim().split('=')) : {}; // Get key-value map of cookie values
         let innerId = cookieVals.has('id') ? cookieVals.id : null;
