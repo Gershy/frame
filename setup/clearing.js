@@ -1,19 +1,26 @@
 // The "clearing" is javascript-level bootstrapping; top-level configuration
 // and extension for increased functionality and consistency
 
+// TODO: Is "writable" ok?
+let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
+
 let C = global.C = {
   skip: { SKIP: 1 },
   BaseInsp: (() => {
     let BaseInsp = function BaseInsp() {};
     BaseInsp.prototype = Object.create(null);
-    BaseInsp.prototype.isInspiredBy = function(Insp0) { return this.constructor.insps.has(Insp0.uid); };
+    protoDef(BaseInsp, 'isInspiredBy', function(Insp0) { return this.constructor.insps.has(Insp0.uid); }); 
+    protoDef(BaseInsp, 'inspClone', function(cnsProps=null, props={}) {
+      let ThisCls = this.constructor;
+      let newInst = ThisCls(...(cnsProps || []));
+      for (let k in this) newInst[k] = this[k];
+      for (let k in props) newInst[k] = props[k];
+      return newInst;
+    });
     return BaseInsp;
   })(),
   notImplemented: function() { throw new Error(`Not implemented by ${this.constructor.name}`); }
 };
-
-// TODO: Is "writable" ok?
-let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
 protoDef(Object, 'map', function(fn) {
@@ -77,7 +84,7 @@ protoDef(Array, 'map', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'toObj', function(it) {
+protoDef(Array, 'toObj', function(it) { // Return [ KEY, VAL ] from the iterator
   let ret = {};
   for (let i = 0, len = this.length; i < len; i++) {
     let v = it(this[i], i);
@@ -168,7 +175,11 @@ let U = global.U = {
     Insp.prototype = Object.create(C.BaseInsp.prototype);
     
     // Resolve all SupInsps to their prototypes
-    insps = insps.map(insp => insp.prototype ? insp.prototype : insp); // Resolve Insps as their prototypes
+    insps = insps.map(insp => {
+      if (!insp.prototype) return insp;
+      let pNames = Object.getOwnPropertyNames(insp.prototype);
+      return pNames.toObj(v => [ v, insp.prototype[v] ]);
+    }); // Resolve Insps as their prototypes
     
     // Run `methods` if necessary. Ensure it always resolves to an `Object` without a "constructor" key
     if (U.isType(methods, Function)) methods = methods(insps, Insp);
@@ -200,11 +211,10 @@ let U = global.U = {
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName];
       if (methodsAtName.length > 1) throw new Error(`Multiple methods "${methodName}" for ${name}; declare a custom method`);
-      Insp.prototype[methodName] = methodsAtName[0]; // Length will be exactly 1 now
+      protoDef(Insp, methodName, methodsAtName[0]); // `methodsAtName.length === 1`
     }
     
-    Insp.prototype.constructor = Insp;
-    //Object.freeze(Insp.prototype); // TODO: `Object.freeze` prevents `WobAggs` from spoofing `Wob.prototype.toHolds`
+    protoDef(Insp, 'constructor', Insp);
     return Insp;
   },
   isType: (val, Cls) => {

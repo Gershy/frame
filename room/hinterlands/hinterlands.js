@@ -1,7 +1,5 @@
-// TODO: HEEERE! Moved back to 2-way Relations and "record" and "hinterlands"
-// are 100% passing. Still a bit more housekeeping:
+// TODO: HEEERE!
 // - Do a final review of "hinterlands" (make sure static setup (like adding Ways to Lands) doesn't use Relations!)
-// - Write those extra hinterlands tests!
 // - Make sure hinterlands is 100% passing!
 
 U.buildRoom({
@@ -607,23 +605,15 @@ U.buildRoom({
         let makeServer = () => {
           let server = U.Wob();
           server.spoofClient = () => {
-            let isShut = false;
-            let shutWob = U.WobOne();
             
-            let client = {
-              address: (addrCnt++).toString(36).padHead(8, '0'),
-              hear: U.Wob(),
-              tell: () => {},
-              shut: () => {
-                if (isShut) throw new Error('Already shut');
-                isShut = true;
-                shutWob.wobble();
-              },
-              shutWob: () => shutWob
-            };
+            let client = Hog();
+            client.address = (addrCnt++).toString(36).padHead(8, '0');
+            client.hear = U.Wob();
+            client.tell = () => {};
             
             server.wobble(client);
             return client;
+            
           };
           return server;
         };
@@ -1541,8 +1531,53 @@ U.buildRoom({
             
           });
           
-          // TODO: Need to test resetVersion; a client calls "getInit" multiple times, and each
-          // time receives version 1, and the FULL dataset up until that moment
+          U.Keep(k, 'resetVersion', async () => {
+            
+            let { lands, Rec1, Rec2, appRel, getReply, client, getHut } = await getStuff();
+            
+            let hut = await getHut();
+            let rec1 = Rec1({ lands, value: 'test1' });
+            let rec2 = Rec2({ lands, value: 'test2' });
+            
+            hut.setRecFollowStrength(rec1, 100);
+            hut.setRecFollowStrength(rec2, 100);
+            
+            let initResp = await getReply({ command: 'getInit' });
+            let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync1 = JSON.parse(initDataMatch[1]);
+            
+            let good1 = true
+              && U.isType(sync1, Object)
+              && sync1.version === 1
+              && sync1.command === 'update'
+              && U.isType(sync1.content, Object)
+              && U.isType(sync1.content.addRec, Object)
+              && sync1.content.addRec.toArr(v => v).length === 2
+              && !sync1.content.has('addRel');
+            if (false && !good1) return { result: false, msg: 'Bad 1st sync' };
+            
+            rec1.attach(appRel.rec1Rec2Set.fwd, rec2);
+            
+            initResp = await getReply({ command: 'getInit' });
+            endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+            initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+            if (!initDataMatch) return { result: null };
+            let sync2 = JSON.parse(initDataMatch[1]);
+            
+            return [
+              [ 'sync is Object',             () => U.isType(sync2, Object) ],
+              [ 'sync version is 1',          () => sync2.version === 1 ],
+              [ 'sync command is "update"',   () => sync2.command === 'update' ],
+              [ 'sync content is Object',     () => U.isType(sync2.content, Object) ],
+              [ 'sync addRec is Object',      () => U.isType(sync2.content.addRec, Object) ],
+              [ 'sync adds 2 recs',           () => sync2.content.addRec.toArr(v => v).length === 2 ],
+              [ 'sync addRel is Object',      () => U.isType(sync2.content.addRel, Object) ],
+              [ 'sync adds 1 rel',            () => sync2.content.addRel.toArr(v => v).length === 1 ]
+            ];
+            
+          });
           
         });
         

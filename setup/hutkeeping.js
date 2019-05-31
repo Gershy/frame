@@ -130,10 +130,197 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
   }
 })});
+let Clean = U.inspire({ name: 'Clean', methods: (insp, Insp) => ({
+  init: function(validate) {
+    this.validate = validate;
+  },
+  problemFor: function(chain, v) {
+    if (this.validate) {
+      let prob = this.validate(v);
+      if (prob) return [ chain, prob ];
+    }
+    return null;
+  }
+})});
+let CleanArr = U.inspire({ name: 'CleanArr', insps: { Clean }, methods: (insp, Insp) => ({
+  init: function(innerClean, min=null, max=null) {
+    insp.Clean.init.call(this, null);
+    this.innerClean = innerClean;
+    this.min = min;
+    this.max = max;
+  },
+  problemFor: function(chain, arr) {
+    if (!U.isType(arr, Array)) return 'Value should be Array';
+    if (this.min !== null && arr.length < this.min) return [ chain, `Array has ${arr.length} elems; min is ${this.min}` ];
+    if (this.max !== null && arr.length > this.max) return [ chain, `Array has ${arr.length} elems; max is ${this.max}` ];
+    
+    let childChain = chain.concat([ this ]);
+    for (let v of arr) {
+      let prob = this.innerClean.problemFor(childChain, v);
+      if (prob) return prob;
+    }
+  }
+})});
+let CleanObj = U.inspire({ name: 'CleanObj', insps: { Clean }, methods: (insp, Insp) => ({
+  init: function(allowed, required={}, map={}) {
+    this.allowed = allowed;
+    this.required = required;
+    this.map = map;
+    this.defChildClean = map.has('*') ? map['*'] : null;
+    delete this.map['*'];
+    
+    console.log('MAP:', U.typeOf(this.map), this.map);
+  },
+  problemFor: function(chain, obj) {
+    if (!U.isType(obj, Object)) return 'Value should be Object';
+    
+    // Make sure no properties are missing
+    let missing = this.required.find(req => !obj.has(req));
+    if (missing) return [ chain, `Object missing mandatory key: ${missing[0]}` ];
+    
+    // Make sure no illegal properties are present
+    let denied = this.allowed === '*'
+      ? null
+      : obj.find((v, k) => !this.allowed.has(k) && !this.required.has(k));
+    if (denied) return [ chain, `Object has illegal key: "${denied[1]}"` ];
+    
+    let objClone = obj.map(v => v);
+    
+    let childChain = chain.concat([ this ]);
+    for (let [ k, childClean ] of Object.entries(this.map)) {
+      
+      if (!objClone.has(k)) continue;
+      
+      let prob = childClean.problemFor(chain, objClone[k])
+      if (prob) return prob;
+      
+      delete objClone[k]; // Only remaining props will go to default '*' handler
+      
+    }
+    
+    if (!this.defChildClean) return null;
+    
+    for (let [ k, v ] of Object.entries(objClone)) {
+      
+      let prob = this.defChildClean.problemFor(chain, v);
+      if (prob) return prob;
+      
+    }
+  }
+})});
 
 U.gain({
-  Keep,
+  Keep, Clean, CleanArr, CleanObj,
   addSetupKeep: rootKeep => rootKeep.contain(k => {
+    Keep(k, 'Clean').contain(k => {
+      
+      let cleanString = Clean(v => U.isType(v, String) ? null : `Expected String (got ${U.typeOf(v)})`);
+      let cleanArrStrings = CleanArr(cleanString);
+      let cleanObjStrings1 = CleanObj('*', {}, {
+        '*': cleanString
+      });
+      let cleanObjStrings2 = CleanObj([ 'fName', 'mName', 'lName' ], {}, {
+        '*': cleanString
+      });
+      
+      Keep(k, '1', () => {
+        
+        let prob = cleanString.problemFor([], 'hello');
+        return { result: !prob };
+        
+      });
+      
+      Keep(k, '2', () => {
+        
+        let prob = cleanString.problemFor([], 123)
+        return { result: prob && prob.length === 2 && U.isType(prob[1], String) };
+        
+      });
+      
+      Keep(k, '3', () => {
+        
+        let prob = cleanString.problemFor([], 123)
+        return { result: prob && prob.length === 2 && U.isType(prob[1], String) };
+        
+      });
+      
+      Keep(k, '4', () => {
+        
+        let prob = cleanArrStrings.problemFor([], [
+          'hi', 'hello', 'wassup', 'loler', 'lololer'
+        ]);
+        return { result: !prob };
+        
+      });
+      
+      Keep(k, '5', () => {
+        
+        let prob = cleanArrStrings.inspClone(null, { max: 4 }).problemFor([], [
+          'hi', 'hello', 'wassup', 'loler', 'lololer'
+        ]);
+        return { result: prob && U.isType(prob, Array) && prob.length === 2 && prob[1] === 'Array has 5 elems; max is 4' };
+        
+      });
+      
+      Keep(k, '6', () => {
+        
+        let prob = cleanArrStrings.inspClone(null, { min: 10 }).problemFor([], [
+          'hi', 'hello', 'wassup', 'loler', 'lololer'
+        ]);
+        return { result: prob && U.isType(prob, Array) && prob.length === 2 && prob[1] === 'Array has 5 elems; min is 10' };
+        
+      });
+      
+      Keep(k, '7', () => {
+        
+        let prob = cleanArrStrings.problemFor([], [
+          'hi', 'hello', 'wassup', 'loler', 7
+        ]);
+        return { result: prob && U.isType(prob, Array) && prob.length === 2 && prob[1] === 'Expected String (got Number)' };
+        
+      });
+      
+      Keep(k, '8', () => {
+        
+        let prob = cleanObjStrings1.problemFor([], {
+          fName: 'Gershom',
+          mName: 'Yonah',
+          lName: 'Maes'
+        });
+        return { result: !prob };
+        
+      });
+      
+      Keep(k, '9', () => {
+        
+        let prob = cleanObjStrings2.problemFor([], {
+          fName: 'Gershom',
+          mName: 'Yonah',
+          lName: 'Maes'
+        });
+        return { result: !prob };
+        
+      });
+      
+      Keep(k, '10', () => {
+        
+        let prob = cleanObjStrings2.problemFor([], {
+          fName: 'Gershom',
+          mName: 'Yonah',
+          lName: 'Maes',
+          faveFood: 'anchovies'
+        });
+        
+        return [
+          [ 'prob is Array',            () => U.isType(prob, Array) ],
+          [ 'prob has length 2',        () => prob.length === 2 ],
+          [ '1st elem is empty Array',  () => U.isType(prob[0], Array) && prob[0].length === 0 ],
+          [ '2nd elem has error',       () => prob[1] === 'Object has illegal key: "faveFood"' ]
+        ];
+        
+      });
+      
+    });
     Keep(k, 'U').contain(k => {
       
       Keep(k, 'overwriteWobProp1', () => {

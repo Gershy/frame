@@ -45,7 +45,7 @@ if (args.has('encodedCommand')) {
   });
 }
 
-if (args.has('test') && args.test) require('./setup/housekeeping.js');
+if (args.has('test') && args.test) require('./setup/hutkeeping.js');
 
 // Make the foundation
 let { FoundationNodejs } = U.foundationClasses;
