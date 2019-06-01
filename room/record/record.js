@@ -1,7 +1,7 @@
 /*
 Friend1 -> Friend2
 
-Friends = Relation('1M', Friend, Friend)
+Friends = Rel('1M', Friend, Friend)
 
 Friends.link(Friend1, Friend2)
 Friends.draw(Friend1) -> [ Friend2 ]
@@ -13,11 +13,11 @@ Friends.view(Friend3) -> [ Friend1 ]
 
 ----------------------------------------------------
 
-friendship = Relation('1M', friend, friend, LandsRecord)
+friendship = Rel('1M', friend, friend, LandsRec)
 // friendship.uid === '000000'
 
-let v1 = LandsRecord({ timeBecamefriends: foundation.getMs() });
-let v2 = LandsRecord({ timeBecamefriends: foundation.getMs() });
+let v1 = LandsRec({ timeBecamefriends: foundation.getMs() });
+let v2 = LandsRec({ timeBecamefriends: foundation.getMs() });
 friendship.link(friend1, friend2, v1)
 friendship.link(friend1, friend3, v2)
 
@@ -46,7 +46,7 @@ v.inner = {
   }
 };
 
-Relation.prototype.draw = rec => {
+Rel.prototype.draw = rec => {
   
   
   
@@ -129,7 +129,7 @@ U.buildRoom({
   name: 'record',
   innerRooms: [],
   build: (foundation) => {
-    // Records are data items with a number of properties, including relational properties
+    // Recs are data items with a number of properties, including relational properties
     
     let { Hog, Wob, WobVal } = U;
     
@@ -145,6 +145,7 @@ U.buildRoom({
       forEach: function(fn) { if (this.hog) fn(this.hog); },
       isEmpty: function() { return !this.hog; },
       getValue: function() { return this.hog ? this.hog : null; },
+      size: function() { return this.hog ? 1 : 0; },
       wobbleAdd: function(hog) {
         if (!hog) throw new Error('Invalid hog for add');
         if (this.hog) throw new Error('Already add');
@@ -165,13 +166,14 @@ U.buildRoom({
       forEach: function(fn) { this.hogs.forEach(fn); },
       isEmpty: function() { return this.hogs.size === 0; },
       
-      // TODO: This function shouldn't exist. It's only needed by `Record.prototype.relVal`,
-      // and `Record.prototype.relVal` shouldn't exist!
+      // TODO: This function shouldn't exist. It's only needed by `Rec.prototype.relVal`,
+      // and `Rec.prototype.relVal` shouldn't exist!
       getValue: function() {
         let ret = {};
         for (let hog of this.hogs) ret[hog.rec.uid] = hog.rec;
         return ret;
       },
+      size: function() { return this.hogs.size; },
       wobbleAdd: function(hog) {
         if (this.hogs.has(hog)) throw new Error('Already add');
         this.hogs.add(hog);
@@ -180,7 +182,7 @@ U.buildRoom({
       }
     })});
     
-    let Relation = U.inspire({ name: 'Relation', methods: (insp, Insp) => ({
+    let Rel = U.inspire({ name: 'Rel', methods: (insp, Insp) => ({
       $NEXT_UID: 0,
       
       init: function(head, tail, cardinality) {
@@ -188,35 +190,35 @@ U.buildRoom({
         if (cardinality.split('').find(v => !'1M'.has(v))) throw new Error(`Invalid cardinality: "${cardinality}"`);
         
         // TODO: The user should provide a unique name (using `foundation`) to ensure no clash
-        this.uid = Relation.NEXT_UID++;
+        this.uid = Rel.NEXT_UID++;
         this.fwd = { head: head, tail: tail, name: `${this.uid}:(${head.name}->${tail.name})` };
         this.bak = { head: tail, tail: head, name: `${this.uid}:(${tail.name}<-${head.name})` };
         
-        // Relation parts can make the correct Wob, link back to the full Relation, and validate attempts to attach
+        // Rel parts can make the correct Wob, link back to the full Rel, and validate attempts to attach
         this.fwd.gain({ WobCls: cardinality[1] === '1' ? Wob1 : WobM, dir: 'fwd', rel: this, validate: (head, tail) => {} });
         this.bak.gain({ WobCls: cardinality[0] === '1' ? Wob1 : WobM, dir: 'bak', rel: this, validate: (head, tail) => {} });
         
-        // Note: RelationHalves are duck-typed as Hogs so that `Record.prototype.relsWob()`
+        // Note: RelHalves are duck-typed as Hogs so that `Rec.prototype.relsWob()`
         // appropriately wobbles Hogs
         [ this.fwd, this.bak ].forEach(rh => rh.gain({ shut: () => {}, shutWob: () => C.nullShutWob }));
       }
     })});
-    let Record = U.inspire({ name: 'Record', insps: { WobVal, Hog }, methods: (insp, Insp) => ({
+    let Rec = U.inspire({ name: 'Rec', insps: { WobVal, Hog }, methods: (insp, Insp) => ({
       $NEXT_REC_UID: 0,
       
       init: function({ uid=null, value=null }) {
-        this.uid = uid !== null ? uid : Record.NEXT_REC_UID++;
+        this.uid = uid !== null ? uid : Rec.NEXT_REC_UID++;
         insp.WobVal.init.call(this, value);
         insp.Hog.init.call(this);
         
-        this.inner = {}; // Actual references to related Records
-        this.relsWob0 = WobM(); // Keep track of all Relations on this Record
+        this.inner = {}; // Actual references to related Recs
+        this.relsWob0 = WobM(); // Keep track of all Rels on this Rec
       },
       
       relsWob: function() { return this.relsWob0; },
       relWob: function(relF) {
         if (!relF) throw new Error(`Need to provide relation`);
-        if (U.isInspiredBy(relF, Relation)) throw new Error(`Provided Relation instead of RelationHalf`);
+        if (U.isInspiredBy(relF, Rel)) throw new Error(`Provided Rel instead of RelHalf`);
         if (!U.isInspiredBy(this, relF.head)) throw new Error(`Instance of ${U.typeOf(this)} tried to use relation ${relF.name}`);
         if (!this.inner.has(relF.name)) this.inner[relF.name] = relF.WobCls();
         return this.inner[relF.name];
@@ -225,7 +227,7 @@ U.buildRoom({
       
       attach: function(relF, rec, agg=null) {
         
-        // `rel` is the overall Relation, `relF` relates `this` -> `rec`, `relB` relates `this` <- `rec`
+        // `rel` is the overall Rel, `relF` relates `this` -> `rec`, `relB` relates `this` <- `rec`
         let rel = relF.rel;
         let relB = rel[relF.dir === 'fwd' ? 'bak' : 'fwd'];
         
@@ -237,7 +239,7 @@ U.buildRoom({
         if (!U.isInspiredBy(this, relF.head)) throw new Error(`Tried to attach ${U.typeOf(this)}->${U.typeOf(rec)} with relation ${relF.name}`);
         if (!U.isInspiredBy(rec,  relB.head)) throw new Error(`Tried to attach ${U.typeOf(rec)}->${U.typeOf(this)} with relation ${relB.name}`);
         
-        // Allow Relation halves to validate
+        // Allow Rel halves to validate
         relF.validate(this, rec);
         relB.validate(rec, this);
         
@@ -249,15 +251,15 @@ U.buildRoom({
           let defAgg = !agg;
           if (defAgg) agg = U.AggWobs();
           
-          // For this Relation of the present Records, Wobble (with Aggregation) the Relation into existence
+          // For this Rel of the present Recs, Wobble (with Aggregation) the Rel into existence
           if (!this.relsWob0.hogs.has(relF)) agg.addWob(this.relsWob0).wobbleAdd(relF);
           if (!rec.relsWob0.hogs.has(relB)) agg.addWob(rec.relsWob0).wobbleAdd(relB);
           
-          // Create related Records
+          // Create related Recs
           let rrFwd = dep(RelRec(ap, rel, rec));
           let rrBak = dep(RelRec(ap, rel, this));
           
-          // The Relation definitely exists. Now show that the attachment here exists.
+          // The Rel definitely exists. Now show that the attachment here exists.
           // Note that the wobbles are aggregated, and then the wobbleAdds are dependent.
           // This means that shutting the AccessPath undoes the wobbleAdd
           dep(agg.addWob(wobFwd).wobbleAdd(rrFwd));
@@ -271,7 +273,7 @@ U.buildRoom({
       },
       shut0: function(agg=null) {
         
-        // For all Records of all Relations, shut the RecordRelation
+        // For all Recs of all Rels, shut the RecRel
         let defAgg = !agg;
         if (defAgg) agg = U.AggWobs();
         this.relsWob0.forEach(relF => this.relWob(relF).forEach(relRec => relRec.shut(agg)));
@@ -289,7 +291,7 @@ U.buildRoom({
       shutWob: function() { return this.relAp.shutWob(); }
     })});
     
-    let content = { Record, Relation };
+    let content = { Record: Rec, Relation: Rel };
     
     /// {TEST=
     content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'record').contain(k => {
@@ -298,19 +300,19 @@ U.buildRoom({
         
         U.Keep(k, 'circular1', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          Rel(Recc, Recc, '11');
           return { result: true };
           
         });
         
         U.Keep(k, 'circular2', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          let rel = Rel(Recc, Recc, '11');
           
-          let rec1 = Rec({});
-          let rec2 = Rec({});
+          let rec1 = Recc({});
+          let rec2 = Recc({});
           
           let correct1 = false;
           let correct2 = false;
@@ -330,10 +332,10 @@ U.buildRoom({
         
         U.Keep(k, 'circular3', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          let rel = Rel(Recc, Recc, '11');
           
-          let loopRec = Rec({});
+          let loopRec = Recc({});
           let correct = false;
           loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
           loopRec.attach(rel.fwd, loopRec);
@@ -344,10 +346,10 @@ U.buildRoom({
         
         U.Keep(k, 'circular4', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          let rel = Rel(Recc, Recc, '11');
           
-          let loopRec = Rec({});
+          let loopRec = Recc({});
           let correct = false;
           loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
           loopRec.attach(rel.bak, loopRec);
@@ -358,10 +360,10 @@ U.buildRoom({
         
         U.Keep(k, 'circular5', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          let rel = Rel(Recc, Recc, '11');
           
-          let loopRec = Rec({});
+          let loopRec = Recc({});
           let correct = false;
           loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
           loopRec.attach(rel.bak, loopRec);
@@ -372,10 +374,10 @@ U.buildRoom({
         
         U.Keep(k, 'circular6', () => {
           
-          let Rec = U.inspire({ name: 'Rec', insps: { Record } });
-          let rel = Relation(Rec, Rec, '11');
+          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
+          let rel = Rel(Recc, Recc, '11');
           
-          let loopRec = Rec({});
+          let loopRec = Recc({});
           let correct = false;
           loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
           loopRec.attach(rel.fwd, loopRec);
@@ -386,9 +388,9 @@ U.buildRoom({
         
         U.Keep(k, 'attach', () => {
           
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
-          let rel = Relation(Rec1, Rec2, '11');
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
+          let rel = Rel(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -400,10 +402,10 @@ U.buildRoom({
         
         U.Keep(k, 'attachMultiFails', () => {
           
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
           
-          let rel = Relation(Rec1, Rec2, '11');
+          let rel = Rel(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -419,10 +421,10 @@ U.buildRoom({
         
         U.Keep(k, 'detach', () => {
           
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
           
-          let rel = Relation(Rec1, Rec2, '11');
+          let rel = Rel(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -436,10 +438,10 @@ U.buildRoom({
         
         U.Keep(k, 'detachMultiFails', () => {
           
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
           
-          let rel = Relation(Rec1, Rec2, '11');
+          let rel = Rel(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -455,10 +457,10 @@ U.buildRoom({
         
         U.Keep(k, 'aggAttach', () => {
           
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Record } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Record } });
+          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
+          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
           
-          let rel = Relation(Rec1, Rec2, '11');
+          let rel = Rel(Rec1, Rec2, '11');
           
           let rec1 = Rec1({});
           let rec2 = Rec2({});
@@ -487,9 +489,9 @@ U.buildRoom({
         
         U.Keep(k, 'attach', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
-          let rel = Relation(RecA, RecB, '1M');
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
+          let rel = Rel(RecA, RecB, '1M');
           
           let recs = [];
           let recA = RecA({});
@@ -505,7 +507,7 @@ U.buildRoom({
               && recA.relVal(rel.fwd).toArr(m => m).length === 3
               // every record is of class RecB
               && !recs.find(recB => !U.isType(recB, RecB))
-              // every wobbled value can find a RecA through the reverse Relation
+              // every wobbled value can find a RecA through the reverse Rel
               && !recs.find(recB => recB.relVal(rel.bak).rec !== recA)
           };
           
@@ -513,10 +515,10 @@ U.buildRoom({
         
         U.Keep(k, 'detach', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let attaches = [];
           let recA = RecA({});
@@ -533,10 +535,10 @@ U.buildRoom({
         
         U.Keep(k, 'detachWithRelShutsRel1', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let recA = RecA({});
           let recB = RecB({});
@@ -554,10 +556,10 @@ U.buildRoom({
         
         U.Keep(k, 'detachWithRelShutsRel2', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let correct = false;
           
@@ -573,10 +575,10 @@ U.buildRoom({
         
         U.Keep(k, 'detachWithRelShutsRel3', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let recA = RecA({});
           let recB = RecB({});
@@ -591,10 +593,10 @@ U.buildRoom({
         
         U.Keep(k, 'detachCleanup', () => {
           
-          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
-          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          let RecX = U.inspire({ name: 'RecX', insps: { Rec } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Rec } });
           
-          let rel = Relation(RecX, RecY, '1M');
+          let rel = Rel(RecX, RecY, '1M');
           
           let recs = [];
           let attaches = [];
@@ -622,10 +624,10 @@ U.buildRoom({
         
         U.Keep(k, 'relShutCausesDetach1', () => {
           
-          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
-          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          let RecX = U.inspire({ name: 'RecX', insps: { Rec } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Rec } });
           
-          let rel = Relation(RecX, RecY, '1M');
+          let rel = Rel(RecX, RecY, '1M');
           
           let recX = RecX({});
           let recY = RecY({});
@@ -639,10 +641,10 @@ U.buildRoom({
         
         U.Keep(k, 'relShutCausesDetach2', () => {
           
-          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
-          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          let RecX = U.inspire({ name: 'RecX', insps: { Rec } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Rec } });
           
-          let rel = Relation(RecX, RecY, '11');
+          let rel = Rel(RecX, RecY, '11');
           
           let recX = RecX({});
           let recY = RecY({});
@@ -661,10 +663,10 @@ U.buildRoom({
         
         U.Keep(k, 'relShutCausesDetach3', () => {
           
-          let RecX = U.inspire({ name: 'RecX', insps: { Record } });
-          let RecY = U.inspire({ name: 'RecY', insps: { Record } });
+          let RecX = U.inspire({ name: 'RecX', insps: { Rec } });
+          let RecY = U.inspire({ name: 'RecY', insps: { Rec } });
           
-          let rel = Relation(RecX, RecY, '11');
+          let rel = Rel(RecX, RecY, '11');
           
           let recX = RecX({});
           let recY = RecY({});
@@ -682,10 +684,10 @@ U.buildRoom({
         
         U.Keep(k, 'interimVal1', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let interimVal = {};
           
@@ -702,10 +704,10 @@ U.buildRoom({
         
         U.Keep(k, 'interimVal2', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let interimVal = {};
           
@@ -723,10 +725,10 @@ U.buildRoom({
         
         U.Keep(k, 'interimVal3', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, '1M');
+          let rel = Rel(RecA, RecB, '1M');
           
           let interimVal = {};
           
@@ -744,10 +746,10 @@ U.buildRoom({
         
         U.Keep(k, 'interimVal4', () => {
           
-          let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-          let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
           
-          let rel = Relation(RecA, RecB, 'MM');
+          let rel = Rel(RecA, RecB, 'MM');
           
           let interimVal = {};
           
@@ -771,7 +773,7 @@ U.buildRoom({
           
           U.Keep(k, 'recShutCauseDepShut', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
             let rec = RecA({});
             let didShut = false;
             
@@ -785,10 +787,10 @@ U.buildRoom({
           
           U.Keep(k, 'relShutCauseDepShut', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -809,10 +811,10 @@ U.buildRoom({
           
           U.Keep(k, 'apShutCauseRelShut1', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -826,10 +828,10 @@ U.buildRoom({
           
           U.Keep(k, 'apShutCauseRelShut2', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             
@@ -847,10 +849,10 @@ U.buildRoom({
           
           U.Keep(k, 'attachInterimValue1', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
@@ -867,10 +869,10 @@ U.buildRoom({
           
           U.Keep(k, 'attachInterimValue2', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
@@ -887,10 +889,10 @@ U.buildRoom({
           
           U.Keep(k, 'attachInterimValue3', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});
@@ -907,10 +909,10 @@ U.buildRoom({
           
           U.Keep(k, 'attachInterimValue4', () => {
             
-            let RecA = U.inspire({ name: 'RecA', insps: { Record } });
-            let RecB = U.inspire({ name: 'RecB', insps: { Record } });
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
             
-            let relAB = Relation(RecA, RecB, '11');
+            let relAB = Rel(RecA, RecB, '11');
             
             let recA = RecA({});
             let recB = RecB({});

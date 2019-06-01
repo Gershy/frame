@@ -2,6 +2,7 @@
   
   let transportDebug = true;
   
+  let { Hog } = U;
   let { Foundation } = U.foundationClasses;
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function({ hut, bearing }) {
@@ -81,13 +82,15 @@
     makeHttpServer: async function() {
       let numPendingReqs = 0;
       
-      let clientWob = {
-        ip: 'remote',
-        hear: U.Wob({}),
-        tell: U.Wob({}),
-        open: U.Wob({}),
-        shut: U.Wob({})
+      let clientWob = Hog(() => {
+        
+      });
+      clientWob.ip = 'remote';
+      clientWob.hear = U.Wob({});
+      clientWob.tell = msg => {
+        tellAndHear(msg);
       };
+      
       let serverWob = U.WobVal(clientWob);
       
       let heartbeatTimeout = null;
@@ -116,7 +119,7 @@
               rsv(JSON.parse(req.responseText));
             } catch(err) {
               tellAndHear = () => {}; // Don't make any more noise
-              clientWob.shut.wobble(true);
+              clientWob.shut();
               rjc(err);
             }
           }}));
@@ -142,10 +145,10 @@
       };
       
       // Expose our ability to communicate Above with the higher app
-      clientWob.tell.hold(msg => tellAndHear(msg));
+      //clientWob.tell.hold(msg => tellAndHear(msg));
       
       // Immediately bank a poll
-      tellAndHear({ command: 'bankPoll' });
+      clientWob.tell({ command: 'bankPoll' });
       
       // TODO: Uncommenting the following may have an issue:
       // This relies on having a good referenced value at "tellAndHear"'

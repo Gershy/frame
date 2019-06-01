@@ -59,8 +59,8 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       
       console.log('Running tests...');
       let result = await keep.run();
-      console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
       outputTest(keep.name, result);
+      console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
       console.log(`Tested ${this.hut} for ${this.getPlatformName()}`);
       process.exit(0);
       

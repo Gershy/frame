@@ -168,8 +168,6 @@ let CleanObj = U.inspire({ name: 'CleanObj', insps: { Clean }, methods: (insp, I
     this.map = map;
     this.defChildClean = map.has('*') ? map['*'] : null;
     delete this.map['*'];
-    
-    console.log('MAP:', U.typeOf(this.map), this.map);
   },
   problemFor: function(chain, obj) {
     if (!U.isType(obj, Object)) return 'Value should be Object';
@@ -456,6 +454,7 @@ U.gain({
         cntFins++;
         cntFinNames.set(name, (cntFinNames.get(name) || 0) + 1);
         
+        // TODO: Should use Hog for this
         let shutWob0 = U.WobOne();
         return {
           name,

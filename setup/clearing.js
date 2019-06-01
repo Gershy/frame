@@ -131,6 +131,11 @@ protoDef(String, 'crop', function(amtL=0, amtR=0) {
   return this.substr(amtL, this.length - amtR);
 });
 
+protoDef(Set, 'find', function(f) {
+  for (let v of this) if (f(v)) return [ v ];
+  return null;
+});
+
 Promise.allArr = Promise.all;
 Promise.allObj = async obj => {
   let result = await Promise.allArr(obj.toArr(v => v));
@@ -486,16 +491,17 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
   }
 })});
 
-let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp) => ({
-  init: function(hogWob, gen=null, open=true, dbg=false) {
+let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp, Insp) => ({
+  init: function(hogWob, gen=null, dbg=false) {
+    insp.Hog.init.call(this);
+    
     this.hogWob = hogWob;
     this.gen = gen;
     
     this.hogWobHold = null;
     this.allHogDeps = new Set();
-    this.shutWob0 = U.WobOne();
     
-    if (open) this.open();
+    this.open();
   },
   open: function() {
     
@@ -505,9 +511,6 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
       let apShutWob = this.shutWob();
       
       // Shutting the `AccessPath` shuts every accessed `Hog`
-      // If the Hog shuts first stop holding
-      // let apShutCauseHogShutHold = this.shutWob0.hold(() => hog.shut());
-      // hogShutWob.hold(() => apShutCauseHogShutHold.shut());
       
       // Deps alongside `hog` shut when `hog` shuts
       let addHogDep = dep => {
@@ -530,12 +533,7 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: {}, methods: (insp, Insp
     });
     
   },
-  shut: function(...args) {
-    if (!this.hogWobHold) throw new Error('Already shut');
-    this.hogWobHold.shut(); this.hogWobHold = null;
-    this.shutWob0.wobble(...args);
-  },
-  shutWob: function() { return this.shutWob0; }
+  shut0: function(...args) { this.hogWobHold.shut(); },
 })});
 
 // TODO: Oughtn't be aggregated

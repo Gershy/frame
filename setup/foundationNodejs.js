@@ -1,7 +1,7 @@
 (() => {
   
   let [ path, fs, http, crypto, os ] = [ 'path', 'fs', 'http', 'crypto', 'os' ].map(v => require(v));
-  let { Wob } = U;
+  let { Hog, Wob } = U;
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -502,6 +502,36 @@
         if (!connections.has(address)) {
           if (transportDebug) console.log(`++CONN ${address}`);
           
+          let conn = connections[address] = Hog(() => {
+            
+            console.log(`++EXIT ${address}`);
+            
+            // Clean up `idsAtIp`
+            if (idsAtIp.has(conn.ip) && idsAtIp[conn.ip].has(conn.innerId)) {
+              delete idsAtIp[conn.ip][conn.innerId];
+              if (idsAtIp[conn.ip].isEmpty()) delete idsAtIp[conn.ip];
+            }
+            
+            // End all pooled responses
+            conn.waitResps.forEach(res => res.end());
+            
+            // Clean up `connections`
+            delete connections[address];
+            
+          });
+          conn.ip = ip;
+          conn.address = address;
+          conn.hear = Wob({});
+          conn.tell = msg => {
+            // Send immediately if a response is available, otherwise queue
+            conn.waitResps.length
+              ? sendData(address, conn.waitResps.shift(), msg)
+              : conn.waitTells.push(msg);
+          };
+          conn.waitResps = [];
+          conn.waitTells = [];
+          
+          /*
           let conn = connections[address] = {
             ip, address,
             hear: Wob({}),
@@ -530,6 +560,8 @@
             console.log(`++EXIT ${address}`);
             delete connections[address];
           });
+          */
+          
           serverWob.wobble(conn);
           
           if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
@@ -555,7 +587,7 @@
           } else if (urlPath === '/') {
             [ body, syncReqRes ] = [ { command: 'getInit' }, true ];
           } else { // If a meaningless request is received reject it and close the connection
-            conn.shut.wobble(true);
+            conn.shut();
             res.writeHead(400);
             res.end();
             return;
@@ -574,7 +606,7 @@
             hut: true
           },
           close: {
-            transport: conn => conn.shut.wobble(true)
+            transport: conn => conn.shut()
           },
           bankPoll: {
             transport: conn => { /* do nothing */ }
@@ -844,7 +876,7 @@
           buffer = null;
           curOp = null;
           curFrames = [];
-          connectionWob.shut.wobble(true);
+          connectionWob.shut();
         });
         sokt.on('error', err => {
           console.log(`Socket error:\n${this.formatError(err)}`);

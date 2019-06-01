@@ -39,6 +39,7 @@ U.buildRoom({
       }
     })});
     
+    // TODO: Should inherit from Hog
     let Real = U.inspire({ name: 'Real', methods: (insp, Insp) => ({
       $type2Loc: {
         c:  [  0,  0 ],
@@ -52,7 +53,7 @@ U.buildRoom({
         l:  [ -1,  0 ]
       },
       init: function({ isRoot=false, flag=null }) {
-        this.dom = isRoot ? document.body.appendChild(document.createElement('div')) : document.createElement('div');
+        this.dom = isRoot ? document.body : document.createElement('div');
         
         if (flag) this.dom.classList.add(flag);
         
@@ -60,15 +61,8 @@ U.buildRoom({
         this.rot = 0;
         this.scl = [ 1, 1 ];
         this.size = [ 0, 0 ];
-        this.transitions = {};
-        this.transitionsBkp = null;
-        this.removalDelayMs = 0;
-        this.vals = {};
         
         this.dom.style.gain({
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
           overflow: 'visible',
           fontSize: '14px',
           whiteSpace: 'nowrap'
@@ -77,14 +71,15 @@ U.buildRoom({
         if (isRoot) {
           
           this.dom.style.gain({
-            width: '0px',
-            height: '0px',
-            overflow: 'visible'
+            overflow: 'hidden'
           });
           
         } else {
           
           this.dom.style.gain({
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
             width: '100px',
             height: '100px',
             lineHeight: '100px',
@@ -111,12 +106,6 @@ U.buildRoom({
           evt.stopPropagation();
           evt.preventDefault();
         });
-        
-        this.addWob = U.Wob({});
-        this.remWob = U.Wob({});
-      },
-      setRemovalDelayMs: function(ms) {
-        this.removalDelayMs = ms;
       },
       setPriority: function(amt) {
         this.dom.style.zIndex = amt === null ? '' : `${amt}`;
@@ -134,36 +123,18 @@ U.buildRoom({
         this.dom.style.color = col;
       },
       setSize: function(x, y=x) {
-        frameCb(this.transitions.has('size') ? 2 : 0, () => {
-          this.dom.style.gain({
-            width: `${Math.round(x)}px`,
-            height: `${Math.round(y)}px`,
-            lineHeight: `${y}px`,
-            marginLeft: `${-Math.round(x * 0.5)}px`,
-            marginTop: `${-Math.round(y * 0.5)}px`
-          });
+        this.dom.style.gain({
+          width: `${Math.round(x)}px`,
+          height: `${Math.round(y)}px`,
+          lineHeight: `${y}px`,
+          marginLeft: `${-Math.round(x * 0.5)}px`,
+          marginTop: `${-Math.round(y * 0.5)}px`
         });
         this.size = [ x, y ];
       },
       setLoc: function(x, y) {
         this.loc = [ x, y ];
         this.applyTransform();
-      },
-      setAgainst: function(real, type='c', wOff=0, hOff=0) {
-        if (this.dom.parentNode !== real.dom && this.dom.parentNode !== real.dom.parentNode)
-          throw new Error('Can\'t set against non-parent, non-sibling');
-        
-        if (real.dom.parentNode === this.dom.parentNode)
-          [ wOff, hOff ] = [ wOff + real.loc[0], hOff + real.loc[1] ];
-        
-        let [ w0, h0 ] = this.size;
-        let [ w1, h1 ] = real.size;
-        
-        let wd = (w0 + w1) * 0.5 + wOff;
-        let hd = (h0 + h1) * 0.5 + hOff;
-        
-        let [ x, y ] = Real.type2Loc[type];
-        this.setLoc(x * wd, y * hd);
       },
       setFeel: function(feel) {
         let [ pointerEvents, cursor ] = ({
@@ -196,9 +167,7 @@ U.buildRoom({
         this.dom.style.filter = isInv ? 'invert(100%)' : '';
       },
       setColour: function(col) {
-        frameCb(this.transitions.has('colour') ? 2 : 0, () => {
-          this.dom.style.backgroundColor = col;
-        });
+        this.dom.style.backgroundColor = col;
       },
       setBorderRadius: function(amt) {
         this.dom.style.borderRadius = `${amt * 100}%`;
@@ -222,62 +191,17 @@ U.buildRoom({
       setOpacity: function(amt) {
         this.dom.style.opacity = `${amt}`;
       },
-      setTransition: function(prop, ms, ease='smooth') {
-        if (ms === null) { delete this.transitions[prop]; return; }
-        this.transitions[prop] = { ms, ease };
-        this.applyTransition();
-      },
-      applyTransition: function() {
-        if (this.transitions.isEmpty()) { this.dom.style.transition = ''; return; }
-        
-        let prop2Css = ({
-          loc: [ 'transform' ],
-          size: [ 'width', 'height', 'margin-left', 'margin-top' ],
-          colour: [ 'background-color' ],
-          opacity: [ 'opacity' ]
-        });
-        let ease2Css = ({
-          smooth: 'ease-in-out',
-          sharp: 'linear'
-        });
-        
-        let trnStrs = [];
-        this.transitions.forEach(({ ms, ease }, prop) => {
-          prop2Css[prop].forEach(cssProp => trnStrs.push(`${cssProp} ${ms}ms ${ease2Css[ease]}`));
-        });
-        
-        this.dom.style.transition = trnStrs.join(', ');
-      },
-      skipTransition: function() {
-        // Remove/reinsert our dom element. Need to insert at our current index
-        // to avoid changing node order
-        let nextElem = this.dom.nextSibling;
-        let par = this.dom.parentNode;
-        par.removeChild(this.dom);
-        par.insertBefore(this.dom, nextElem);
-      },
       addReal: function(real) {
         this.dom.appendChild(real.dom);
-        setTimeout(() => real.addWob.wobble(), 0);
         return real;
       },
       remReal: function(real) {
         real.rem(this.dom);
         return real;
       },
-      rem: function(domPar=this.dom.parentNode) {
-        let remove = () => domPar.removeChild(this.dom);
-        if (this.removalDelayMs)  {
-          this.setFeel('airy');
-          setTimeout(remove, this.removalDelayMs);
-        } else {
-          remove();
-        }
-        return this;
-      },
       shut: function() {
-        // TODO: Consider shutting all children?
-        this.rem();
+        this.dom.parentNode.removeChild(this.dom);
+        return this;
       }
     })});
     

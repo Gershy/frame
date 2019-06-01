@@ -34,12 +34,22 @@ U.buildRoom({
        }
     })});
     let Lands = U.inspire({ name: 'Lands', insps: { Record }, methods: (insp, Insp) => ({
-      init: function({ foundation, records=[], relations=[], commands={}, heartbeatMs=10000 }) {
+      init: function({ foundation, heartbeatMs=10000, ...more }) {
         insp.Record.init.call(this, { uid: 'root' });
         this.uidCnt = 0;
-        this.commands = commands; // TODO: Doesn't need to be listed...
-        this.comWobs = {};
         this.heartbeatMs = heartbeatMs;
+        this.comWobs = {};
+        this.ways = new Set();
+        
+        /// {ABOVE=
+        
+        let { commands=[] } = more;
+        
+        this.commands = new Set(commands);
+        
+        /// =ABOVE} {BELOW=
+        
+        let { records=[], relations=[] } = more;
         
         this.records = new Map();
         for (let rec of records) this.records.set(rec.name, rec);
@@ -47,11 +57,8 @@ U.buildRoom({
         this.relations = new Map();
         for (let rel of relations) this.relations.set(rel.uid, rel);
         
-        this.ways = new Set();
-        
-        /// {BELOW=
-        
         // Some values to control transmission
+        this.commands = commands; // TODO: Doesn't need to be listed...
         this.allRecs = new Map();
         this.version = 0;
         this.heartbeatTimeout = null;
@@ -59,10 +66,12 @@ U.buildRoom({
         
         /// =BELOW}
         
-        // TODO: Clean this up when `this.commands` is removed
-        // Lands have some "required" commands which are in place regardless of the current hut
+        // Add required commands to Lands
+        
         let requiredCommand = (name, effect) => {
-          this.commands[name] = 1;
+          /// {ABOVE=
+          this.commands.add(name);
+          /// =ABOVE}
           this.comWob(name).hold(effect);
         };
         requiredCommand('error', async ({ hut, msg, reply }) => { /* nothing */ });
@@ -89,6 +98,8 @@ U.buildRoom({
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
           
+          console.log('UPDATE AGAINST:', msg);
+          
           // TODO: This is all out of date!!
           // TODO: multiKey stuff for relations needs to be changed! Relations
           // are now ordered!
@@ -108,7 +119,7 @@ U.buildRoom({
               if (!lands.records.has(type)) throw new Error(`Missing class: ${type}`);
               if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
               
-              let Cls = lands.records[type];
+              let Cls = lands.records.get(type);
               let inst = agg.addWob(Cls({ uid, lands }));
               inst.wobble(value);
             });
@@ -147,6 +158,9 @@ U.buildRoom({
                 relRec.shut();
               } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
             });
+            
+            agg.complete();
+            
           } catch(err) {
             err.message = `ABOVE CAUSED: ${err.message}`;
             throw err;
@@ -193,19 +207,10 @@ U.buildRoom({
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allObj(this.relVal(rel.landsHuts).map(hut => hut.tell(msg)));
+        return Promise.allObj(this.relVal(rel.landsHuts.fwd).map(hut => hut.tell(msg)));
       },
       
-      /// {ABOVE=
-      allRelationsFor: function(rec) {
-        let ret = [];
-        for (let [ uid, rel ] of this.relations) {
-          if (rec.isInspiredBy(rel.fwd.head)) ret.push(rel.fwd);
-          if (rec.isInspiredBy(rel.bak.head)) ret.push(rel.bak);
-        }
-        return ret;
-      },
-      /// =ABOVE} {BELOW=
+      /// {BELOW=
       resetHeartbeatTimeout: function() {
         if (!this.heartbeatMs) return;
         
@@ -217,6 +222,9 @@ U.buildRoom({
       /// =BELOW}
       
       // TODO: async functions shouldn't be named "open" and "shut"
+      addWay: function(way) {
+        this.ways.add(way)
+      },
       open: async function() {
         /// {ABOVE=
         TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
@@ -227,7 +235,7 @@ U.buildRoom({
         await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let hut = this.relVal(rel.landsHuts).find(() => true)[0];
+        let hut = this.relVal(rel.landsHuts.fwd).find(() => true)[0];
         await this.hear(hut, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
@@ -397,6 +405,7 @@ U.buildRoom({
           
           rec.relsWob().forEach(relF => {
             rec.relWob(relF).forEach(({ rec: rec2 }) => {
+              if (this.getRecFollowStrength(rec2) <= 0) return;
               let [ head, tail ] = [ rec, rec2 ];
               if (relF.dir === 'bak') [ head, tail ] = [ tail, head ];
               this.sync.addRel[`${relF.rel.uid}/${head.uid}/${tail.uid}`] = [ relF.rel.uid, head.uid, tail.uid, relF.rel.fwd.name ];
@@ -633,7 +642,7 @@ U.buildRoom({
         
         U.Keep(k, 'client1', async () => {
           
-          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          let lands = Lands({ foundation, commands: [ 'test' ], heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
           lands.ways.add(way);
@@ -651,7 +660,7 @@ U.buildRoom({
         
         U.Keep(k, 'client2', async () => {
           
-          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          let lands = Lands({ foundation, commands: [ 'test' ], heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
           lands.ways.add(way);
@@ -680,7 +689,7 @@ U.buildRoom({
         
         U.Keep(k, 'hutShutCauseConnShut', async () => {
           
-          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          let lands = Lands({ foundation, commands: [ 'test' ], heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
           lands.ways.add(way);
@@ -702,7 +711,7 @@ U.buildRoom({
         
         U.Keep(k, 'connShutCauseHutShut', async () => {
           
-          let lands = Lands({ foundation, commands: { test: 1 }, heartbeatMs: null });
+          let lands = Lands({ foundation, commands: [ 'test' ], heartbeatMs: null });
           
           let way = Way({ lands, makeServer: () => server });
           lands.ways.add(way);
@@ -733,13 +742,7 @@ U.buildRoom({
               rec1Rec2Set: Relation(Rec1, Rec2, '1M')
             };
             
-            let lands = Lands({
-              foundation,
-              commands: { test: 1 },
-              heartbeatMs: null,
-              records: [ Rec1, Rec2 ],
-              relations: [ appRel.rec1Rec2Set ]
-            });
+            let lands = Lands({ foundation, commands: [ 'test' ], heartbeatMs: null });
             lands.ways.add(Way({ lands, makeServer: () => server }));
             await lands.open();
             
@@ -1167,7 +1170,7 @@ U.buildRoom({
                 && U.isType(resp.content.remRec, Object)
                 && resp.content.remRec.toArr(m => m).length === 1
                 && resp.content.remRec.find(v => 1)[1] === rec1.uid
-                && !lands.relWob(rel.landsHuts.fwd).hogs.find(({ rec }) => rec.getFollowStrength(rec1) > 0)
+                && !lands.relWob(rel.landsHuts.fwd).hogs.find(({ rec }) => rec.getRecFollowStrength(rec1) > 0)
             };
             
           });
