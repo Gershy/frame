@@ -3,15 +3,7 @@ U.buildRoom({
   innerRooms: [ 'record' ],
   build: (foundation, record) => {
     
-    let { WobVal } = U;
-    
-    let frameCb = (frames, f) => {
-      let ff = cnt => {
-        if (cnt <= 0) return f();
-        return requestAnimationFrame(() => ff(cnt - 1));
-      };
-      ff(frames);
-    };
+    let { Wob, WobVal, Hog } = U;
     
     let Colour = U.inspire({ name: 'Colour', methods: (insp, Insp) => ({
       init: function(r, g, b, a=1) {
@@ -33,26 +25,15 @@ U.buildRoom({
         return `rgba(${Math.round(this.r * 255)}, ${Math.round(this.g * 255)}, ${Math.round(this.b * 255)}, ${this.a}`;
       }
     })});
-    
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
       init: function({}) {
       }
     })});
-    
-    // TODO: Should inherit from Hog
-    let Real = U.inspire({ name: 'Real', methods: (insp, Insp) => ({
-      $type2Loc: {
-        c:  [  0,  0 ],
-        tl: [ -1, -1 ],
-        t:  [  0, -1 ],
-        tr: [ +1, -1 ],
-        r:  [ +1,  0 ],
-        br: [ +1, +1 ],
-        b:  [  0, +1 ],
-        bl: [ -1, +1 ],
-        l:  [ -1,  0 ]
-      },
+    let Real = U.inspire({ name: 'Real', insps: { Hog }, methods: (insp, Insp) => ({
       init: function({ isRoot=false, flag=null }) {
+        
+        insp.Hog.init.call(this);
+        
         this.dom = isRoot ? document.body : document.createElement('div');
         
         if (flag) this.dom.classList.add(flag);
@@ -65,7 +46,8 @@ U.buildRoom({
         this.dom.style.gain({
           overflow: 'visible',
           fontSize: '14px',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          caretColor: 'rgba(0, 0, 0, 1)'
         });
         
         if (isRoot) {
@@ -95,17 +77,15 @@ U.buildRoom({
         
         this.applyTransform();
         
-        this.interactWob = U.WobVal(false);
-        this.dom.addEventListener('mousedown', evt => {
-          this.interactWob.wobble(true);
-          evt.stopPropagation();
-          evt.preventDefault();
-        });
-        this.dom.addEventListener('mouseup', evt => {
-          this.interactWob.wobble(false);
-          evt.stopPropagation();
-          evt.preventDefault();
-        });
+        // "Feeling" most often occurs via click
+        this.feelWob0 = null;
+        this.curFeel = null;
+        
+        // "Telling" most often occurs via text entry
+        this.tellBox = null;
+        this.tellWob0 = null;
+        
+        // "Looking" most often occurs via focus
       },
       setPriority: function(amt) {
         this.dom.style.zIndex = amt === null ? '' : `${amt}`;
@@ -169,8 +149,11 @@ U.buildRoom({
       setColour: function(col) {
         this.dom.style.backgroundColor = col;
       },
-      setBorderRadius: function(amt) {
-        this.dom.style.borderRadius = `${amt * 100}%`;
+      setBorderRadius: function(type, amt) {
+        if (![ 'hard', 'soft' ].has(type)) throw new Error(`Type should be "hard" or "soft"; got "${type}"`);
+        this.dom.style.borderRadius = type === 'hard'
+          ? `${amt}px`
+          : `${amt * 100}%`;
       },
       setBorder: function(type, w, col) {
         this.dom.style.boxShadow = type !== null
@@ -191,6 +174,82 @@ U.buildRoom({
       setOpacity: function(amt) {
         this.dom.style.opacity = `${amt}`;
       },
+      
+      feelWob: function() {
+        if (!this.feelWob0) {
+          
+          this.feelWob0 = Wob();
+          this.curFeel = null;
+          
+          this.dom.addEventListener('mousedown', evt => {
+            evt.stopPropagation();
+            evt.preventDefault();
+            
+            if (this.curFeel) this.curFeel.shut();
+            this.curFeel = Hog();
+            this.feelWob0.wobble(this.curFeel);
+          });
+          this.dom.addEventListener('mouseup', evt => {
+            evt.stopPropagation();
+            evt.preventDefault();
+            
+            if (this.curFeel) this.curFeel.shut();
+            this.curFeel = null;
+          });
+          
+          this.dom.style.gain({
+            cursor: 'pointer'
+          });
+          
+        }
+        
+        return this.feelWob0;
+      },
+      tellWob: function() {
+        if (!this.tellWob0) {
+          
+          let dom = this.dom;
+          dom.setAttribute('contentEditable', '');
+          this.tellWob0 = Wob();
+          
+          let origCol = null;
+          dom.addEventListener('focus', evt => {
+            if (!this.nextTrg) return;
+            origCol = this.nextTrg.dom.style.backgroundColor;
+            this.nextTrg.dom.style.backgroundColor = 'rgba(255, 150, 0, 0.3)';
+          });
+          dom.addEventListener('blur', evt => {
+            if (!this.nextTrg) return;
+            this.nextTrg.dom.style.backgroundColor = origCol;
+          });
+          
+          dom.addEventListener('keydown', evt => {
+            // 9: TAB
+            // console.log(evt.keyCode);
+            if (evt.keyCode === 13) {
+              evt.preventDefault();
+              if (this.nextTrg) {
+                this.nextTrg.dom.focus();
+                if (this.nextTrg.feelWob0) {
+                  let feel = Hog();
+                  this.nextTrg.feelWob0.wobble(feel);
+                  feel.shut();
+                }
+              }
+            }
+          });
+          dom.addEventListener('input', evt => {
+            let innerHtml = dom.innerHTML.replace(/&nbsp;/g, '\xA0');
+            let textContent = dom.textContent;
+            if (innerHtml !== textContent) dom.innerHTML = textContent;
+            this.tellWob0.wobble(textContent);
+          });
+          
+        }
+        
+        return this.tellWob0;
+      },
+      
       addReal: function(real) {
         this.dom.appendChild(real.dom);
         return real;
@@ -199,7 +258,7 @@ U.buildRoom({
         real.rem(this.dom);
         return real;
       },
-      shut: function() {
+      shut0: function() {
         this.dom.parentNode.removeChild(this.dom);
         return this;
       }

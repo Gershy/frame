@@ -145,6 +145,7 @@ U.buildRoom({
       forEach: function(fn) { if (this.hog) fn(this.hog); },
       isEmpty: function() { return !this.hog; },
       getValue: function() { return this.hog ? this.hog : null; },
+      toArr: function() { return this.hog ? [ this.hog ] : []; },
       size: function() { return this.hog ? 1 : 0; },
       wobbleAdd: function(hog) {
         if (!hog) throw new Error('Invalid hog for add');
@@ -170,9 +171,10 @@ U.buildRoom({
       // and `Rec.prototype.relVal` shouldn't exist!
       getValue: function() {
         let ret = {};
-        for (let hog of this.hogs) ret[hog.rec.uid] = hog.rec;
+        for (let hog of this.hogs) ret[hog.rec.uid] = hog;
         return ret;
       },
+      toArr: function() { return [ ...this.hogs ]; },
       size: function() { return this.hogs.size; },
       wobbleAdd: function(hog) {
         if (this.hogs.has(hog)) throw new Error('Already add');
@@ -224,6 +226,11 @@ U.buildRoom({
         return this.inner[relF.name];
       },
       relVal: function(relF) { return this.relWob(relF).getValue(); },
+      getRelRec: function(relF, tail) {
+        let rrs = this.relWob(relF).toArr();
+        for (let rr of rrs) if (rr.rec === tail) return rr;
+        return null;
+      },
       
       attach: function(relF, rec, agg=null) {
         

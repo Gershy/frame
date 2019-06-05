@@ -1,7 +1,6 @@
 // The "clearing" is javascript-level bootstrapping; top-level configuration
 // and extension for increased functionality and consistency
 
-// TODO: Is "writable" ok?
 let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
 let C = global.C = {
@@ -356,6 +355,52 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
   },
   modify: function(func, force) { this.wobble(func(this.getValue()), force); }
 })});
+
+let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, Insp) => ({
+  init: function(wob, flt, open=true) {
+    insp.Wob.init.call(this);
+    insp.Hog.init.call(this);
+    this.wob = wob;
+    this.flt = flt;
+    this.wobHold = null;
+    if (open) this.open();
+  },
+  open: function() {
+    
+    if (this.wobHold) throw new Error('Already open');
+    
+    this.wobHold = this.wob.hold((...args) => {
+      let flt = this.flt(...args);
+      if (flt !== C.skip) this.wobble(flt);
+    });
+    
+  },
+  shut0: function() { if (this.wobHold) this.wobHold.shut(); }
+})});
+let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function(pos='up') {
+    if (![ 'up', 'dn' ].has(pos)) throw new Error(`Param should be "up" or "dn"; got ${pos}`);
+    insp.Wob.init.call(this);
+    this.tmp = null;
+    if (pos === 'up') this.up();
+  },
+  up: function(val=null) {
+    if (this.tmp) throw new Error('Already up');
+    this.tmp = Hog(() => { this.tmp = null; });
+    this.tmp.val = val;
+    this.wobble(this.tmp);
+  },
+  dn: function() {
+    if (!this.tmp) throw new Error('Already dn');
+    this.tmp.shut();
+  },
+  hold: function(func) {
+    let ret = insp.Wob.hold.call(this, func);
+    if (this.tmp) func(this.tmp);
+    return ret;
+  }
+})});
+
 let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) => ({
   // TODO: WobFnc should almost definitely only wobble when all its children have wobbled
   init: function(wobs, calc=v=>v) {
@@ -464,7 +509,7 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     });
   },
   addWob: function(wob) {
-    if (this.wobs.has(wob)) return wob; // TODO: Throw error?
+    if (this.wobs.has(wob)) return wob; // Allowed to add the same `wob` multiple times (with no effect)
     
     let wobItem = { wob, vals: null };
     

@@ -24,16 +24,6 @@
       // current value of Above's `foundation.getMs()`
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
-      //console.log([
-      //  'TIME DIF:',
-      //  `HERE: ${now}`,
-      //  `ABOV: ${U.aboveMsAtResponseTime}`,
-      //  `TRANSPORT TOOK: ${knownLatencyMs}`,
-      //  `AHEAD BY: ${now - U.aboveMsAtResponseTime} (- ${knownLatencyMs}??)`
-      //].join('\n'));
-      //console.log(window.performance.timing);
-      //console.log(new PerformanceNavigationTiming());
-      
       let { query } = this.parseUrl(window.location.href);
       this.spoof = query.has('spoof') ? query.spoof : null;
       

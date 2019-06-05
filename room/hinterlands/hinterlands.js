@@ -28,6 +28,7 @@ U.buildRoom({
         // directly find Records by uid for update/removal. The only alternative
         // would be to form complex Record addresses, walking from the Lands
         // until the desired Record
+        if (lands.allRecs.has(this.uid)) throw new Error(`Duplicate uid: ${this.uid}`);
         lands.allRecs.set(this.uid, this);
         this.shutWob().hold(() => lands.allRecs.delete(this.uid));
         /// =BELOW}
@@ -58,7 +59,6 @@ U.buildRoom({
         for (let rel of relations) this.relations.set(rel.uid, rel);
         
         // Some values to control transmission
-        this.commands = commands; // TODO: Doesn't need to be listed...
         this.allRecs = new Map();
         this.version = 0;
         this.heartbeatTimeout = null;
@@ -98,8 +98,6 @@ U.buildRoom({
         
         requiredCommand('update', async ({ lands, hut, msg, reply }) => {
           
-          console.log('UPDATE AGAINST:', msg);
-          
           // TODO: This is all out of date!!
           // TODO: multiKey stuff for relations needs to be changed! Relations
           // are now ordered!
@@ -120,8 +118,7 @@ U.buildRoom({
               if (recs.has(uid)) throw new Error(`Add duplicate uid: ${uid}`);
               
               let Cls = lands.records.get(type);
-              let inst = agg.addWob(Cls({ uid, lands }));
-              inst.wobble(value);
+              agg.addWob(Cls({ uid, lands })).wobble(value);
             });
             updRec.forEach((v, uid) => {
               if (!recs.has(uid)) throw new Error(`Upd missing uid: ${uid}`);
@@ -129,34 +126,42 @@ U.buildRoom({
             });
             remRec.forEach((v, uid) => {
               if (!recs.has(uid)) throw new Error(`Rem missing uid: ${uid}`);
+              let rec = recs.get(uid);
               agg.addWob(rec.shutWob());
-              recs.get(uid).shut();
+              rec.shut();
             });
-            addRel.forEach(([ relUid, uid1, uid2 ]) => {
+            addRel.forEach(([ relUid, headUid, tailUid, dbg ]) => {
+              
               if (!lands.relations.has(relUid)) throw new Error(`Add relation missing uid: ${relUid}`);
               
-              if (!recs.has(uid1)) throw new Error(`Can't find a relation target for attach; uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`Can't find a relation target for attach; uid: ${uid2}`);
+              if (!recs.has(headUid)) throw new Error(`Can't find a relation target for attach; uid: ${headUid}`);
+              if (!recs.has(tailUid)) throw new Error(`Can't find a relation target for attach; uid: ${tailUid}`);
               
-              let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs.get(uid1), recs.get(uid2) ];
-              try { rec1.attach(rel, rec2, agg); } catch(err) { err.message = `Couldn't attach: ${err.message}`; throw err; }
+              let rel = lands.relations.get(relUid);
+              let [ head, tail ] = [ recs.get(headUid), recs.get(tailUid) ];
+              try {
+                agg.addWob(head.relWob(rel.fwd));
+                agg.addWob(tail.relWob(rel.bak));
+                head.attach(rel.fwd, tail, agg);
+              } catch(err) { err.message = `Couldn't attach: ${err.message}`; throw err; }
+              
             });
-            remRel.forEach(([ relUid, uid1, uid2 ]) => {
+            remRel.forEach(([ relUid, headUid, tailUid ]) => {
               if (!lands.relations.has(relUid)) throw new Error(`Rem relation missing uid: ${relUid}`);
               
-              if (!recs.has(uid1)) throw new Error(`Can't find a relation target for detach; uid: ${uid1}`);
-              if (!recs.has(uid2)) throw new Error(`Can't find a relation target for detach; uid: ${uid2}`);
+              if (!recs.has(headUid)) throw new Error(`Can't find a relation target for detach; uid: ${headUid}`);
+              if (!recs.has(tailUid)) throw new Error(`Can't find a relation target for detach; uid: ${tailUid}`);
               
-              let rel = lands.relations[relUid];
-              let [ rec1, rec2 ] = [ recs.get(uid1), recs.get(uid2) ];
+              let rel = lands.relations.get(relUid);
+              let [ head, tail ] = [ recs.get(headUid), recs.get(tailUid) ];
+              let relRec = head.getRelRec(rel.fwd, tail);
+              
+              if (!relRec) throw new Error(`Couldn't find related rec. rel: ${relUid}, head: ${headUid}, tail: ${tailUid}`);
               try {
-                // TODO: This requires understanding internal implementation
-                let wob = rec1.getWob(rel);
-                let relRec = rel.cardinality[1] === '1' ? wob.relRec : wob.relRec[rec2.uid];
                 agg.addWob(relRec.shutWob());
                 relRec.shut();
               } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
+              
             });
             
             agg.complete();
@@ -189,16 +194,22 @@ U.buildRoom({
       
       comWob: function(command) {
         if (!this.comWobs.has(command)) {
+          /// {ABOVE=
           if (!this.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
+          /// =ABOVE}
           this.comWobs[command] = U.Wob({});
         }
         return this.comWobs[command];
       },
       hear: async function(hut, msg, reply=null) {
+        
         let { command } = msg;
+        
+        /// {ABOVE=
         if (!this.commands.has(command)) {
           return hut.tell({ command: 'error', type: 'notRecognized', orig: msg });
         }
+        /// =ABOVE}
         
         this.comWob(command).wobble({ lands: this, hut, msg, reply });
         hut.comWob(command).wobble({ lands: this, hut, msg, reply });
@@ -207,7 +218,7 @@ U.buildRoom({
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allObj(this.relVal(rel.landsHuts.fwd).map(hut => hut.tell(msg)));
+        return Promise.allObj(this.relVal(rel.landsHuts.fwd).map(relHut => relHut.rec.tell(msg)));
       },
       
       /// {BELOW=
@@ -235,8 +246,8 @@ U.buildRoom({
         await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let hut = this.relVal(rel.landsHuts.fwd).find(() => true)[0];
-        await this.hear(hut, U.initData); // Lands Below immediately hear the Above's initial update
+        let relHut = this.relVal(rel.landsHuts.fwd).find(() => true)[0];
+        await this.hear(relHut.rec, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
       shut: async function() { return Promise.all([ ...this.ways ].map(w => w.shut())); }
@@ -269,7 +280,9 @@ U.buildRoom({
       },
       comWob: function(command) {
         if (!this.comWobs.has(command)) {
+          /// {ABOVE=
           if (!this.lands.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
+          /// =ABOVE}
           this.comWobs[command] = U.Wob({});
         }
         return this.comWobs[command];
@@ -485,8 +498,8 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findWay = this.relVal(rel.waysHuts.bak).find(() => true);
-        return findWay ? findWay[0] : null;
+        let findRelWay = this.relVal(rel.waysHuts.bak).find(() => true);
+        return findRelWay ? findRelWay[0].rec : null;
       },
       tell: async function(msg) {
         // Could consider making `favouredWay` async - that way if it isn't present when
