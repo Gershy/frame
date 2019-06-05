@@ -30,6 +30,9 @@
       // This value shows up in stack traces (used to isolate line number)
       this.traceUrl = window.location.slice('origin', 'pathname', 'search').toArr(v => v).join('');
       
+      // This is the root of all graphical entities
+      this.rootReal = null;
+      
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what browser-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?
@@ -59,6 +62,21 @@
         let title = head.getElementsByTagName('title')[0];
         title.innerHTML = `${title.innerHTML} (${query.title})`;
       }
+      
+    },
+    getRootReal: async function() { 
+      
+      if (!U.rooms.has('real')) return null;
+      
+      if (!this.rootReal) {
+        
+        let real = U.rooms.real.built;
+        let { Reality, Real } = real;
+        this.rootReal = Real(() => ({ dom: document.body, size: null }));
+        
+      }
+      
+      return this.rootReal;
       
     },
     

@@ -18,11 +18,12 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   getPlatformName: C.notImplemented,
   nextUid: function() { return this.uidCnt++; },
   
-  // Functionality
+  // Platform
   getMs: function() { return +new Date(); },
   queueTask: C.notImplemented,
   makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
   makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
+  getRootReal: async function() { return C.notImplemented.call(this); },
   
   // Setup
   formatError: C.notImplemeneted,
@@ -45,8 +46,11 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       
       if (U.isType(this.test, String)) keep = keep.getChild(...this.test.split('.'));
       
+      let firstErr = null;
       let outputTest = (name, run, ind='') => {
         let { result, err=null, msg=null, childResults } = run;
+        
+        if (err && !firstErr) firstErr = err;
         
         let { summary, cases } = childResults || { summary: null, cases: {} };
         console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
@@ -61,6 +65,12 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       let result = await keep.run();
       outputTest(keep.name, result);
       console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
+      
+      if (firstErr) {
+        console.log('First error encountered:');
+        console.log(U.foundation.formatError(firstErr));
+      }
+      
       console.log(`Tested ${this.hut} for ${this.getPlatformName()}`);
       process.exit(0);
       
@@ -82,8 +92,6 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       query: query.split('&').toObj(queryPc => queryPc.has('=') ? queryPc.split('=') : [ queryPc, null ])
     };
   },
-  makeHttpServer: async function(contentType) { return C.notImplemented.call(this); },
-  makeSoktServer: async function(contentType) { return C.notImplemented.call(this); }
 })});
 
 U.foundationClasses.gain({

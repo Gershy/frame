@@ -51,6 +51,8 @@ U.buildRoom({
       
       AccessPath(WobVal(lands), async (dep, lands) => {
         
+        let rootReal = await foundation.getRootReal();
+        
         /// {ABOVE=
         
         let chance = Chance(null);
@@ -117,10 +119,11 @@ U.buildRoom({
               
               // Login
               
-              if (hut.relVal(rel.hutAuthor.fwd)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', orig: msg });
+              if (hut.getRelRec(rel.hutAuthor.fwd)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', orig: msg });
               
-              let author = storyMix.relWob(rel.storyMixAuthors.fwd).toArr().find(({ rec: auth }) => auth.getValue().username === username);
-              if (!author) {
+              let author = null;
+              let relAuthor = storyMix.relWob(rel.storyMixAuthors.fwd).find(({ rec: auth }) => auth.value.username === username);
+              if (!relAuthor) {
                 
                 console.log('Create author for', hut.getTerm());
                 
@@ -131,11 +134,11 @@ U.buildRoom({
                 
               } else {
                 
-                author = author[0].rec;
+                author = relAuthor.rec;
                 
               }
               
-              if (author.relVal(rel.authorPassword.fwd).rec.getValue() !== password) return hut.tell({ command: 'error', type: 'denied', orig: msg });
+              if (author.getRec(rel.authorPassword.fwd).value !== password) return hut.tell({ command: 'error', type: 'denied', orig: msg });
               
               author.modify(v => v.gain({ term: hut.getTerm() }));
               author.attach(rel.hutAuthor.bak, hut);
@@ -146,7 +149,7 @@ U.buildRoom({
               
               // Logout
               
-              let relAuthor = hut.relVal(rel.hutAuthor.fwd);
+              let relAuthor = hut.getRelRec(rel.hutAuthor.fwd);
               if (!author) return hut.tell({ command: 'error', type: 'denied', orig: msg });
               
               console.log('Logging out', hut.getTerm());
@@ -188,7 +191,13 @@ U.buildRoom({
             
             dep(authorHut.comWob('join').hold(({ lands, hut, msg }) => {
               
-              let story = storyMix.relWob
+              if (author.getRec(rel.authorCurrentStory.fwd)) return hut.tell({ command: 'error', type: 'denied', msg: 'already in a story', orig: msg });
+              if (!msg.has('story')) return hut.tell({ command: 'error', type: 'denied', msg: 'no story specified', orig: msg });
+              
+              let story = storyMix.getRec(rel.storyMixStories.fwd, msg.story);
+              if (!story) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
+              
+              author.attach(rel.authorCurrentStory.fwd, story);
               
             }));
             
@@ -199,7 +208,7 @@ U.buildRoom({
         // Controls on Stories
         dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
           
-          let storySettings = story.getValue().settings; // Work with the actual JSON settings
+          let storySettings = story.value.settings; // Work with the actual JSON settings
           
           // Controls on Stories -> Rounds
           dep(AccessPath(story.relWob(rel.storyCurrentRound.fwd), (dep, relStoryCurrentRound) => {
@@ -230,7 +239,7 @@ U.buildRoom({
             };
             
             // Round ends because of timeout with a random Entry tied for 1st place
-            let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), storyCurrentRound.getValue().endMs - foundation.getMs());
+            let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), storyCurrentRound.value.endMs - foundation.getMs());
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
@@ -261,20 +270,20 @@ U.buildRoom({
                 // If no Round exists, a new one is spawned
                 
                 console.log('\nAUTHOR SUBMITTED')
-                console.log('Author:', storyAuthor.getValue());
+                console.log('Author:', storyAuthor.value);
                 console.log('Entry:', args);
                 console.log('');
                 
                 // TODO: If max Rounds reached, deny
                 
-                let storyCurrentRound = story.relVal(rel.storyCurrentRound.fwd);
+                let storyCurrentRound = story.getRelRec(rel.storyCurrentRound.fwd);
                 
                 if (!storyCurrentRound) {
                   
                   let ms = foundation.getMs();
                   
                   storyCurrentRound = Round({ lands, value: {
-                    roundNum: story.relWob(rel.storyRounds.fwd).getValue().toArr(v => v).length,
+                    roundNum: story.relWob(rel.storyRounds.fwd).size(),
                     startMs: ms,
                     endMs: ms + storySettings.roundMs
                   }});
@@ -284,6 +293,10 @@ U.buildRoom({
                   
                   console.log('BEGAN NEW ROUND');
                   
+                } else {
+                  
+                  storyCurrentRound = storyCurrentRound.rec;
+                  
                 }
                 
                 // TODO: If already submitted, deny
@@ -292,7 +305,7 @@ U.buildRoom({
               
               dep(storyAuthorHut.comWob('vote').hold((...args) => {
                 console.log('\nAUTHOR VOTED')
-                console.log('Author:', storyAuthor.getValue());
+                console.log('Author:', storyAuthor.value);
                 console.log('Vote:', args);
                 console.log('');
               }));
@@ -309,6 +322,7 @@ U.buildRoom({
         
         let size = v => Math.round(v * 7);
         
+        /*
         // NOTE: Consider `real.ForParW`, `real.ForParH`, `real.ForParSize`
         // Can these be made intelligent enough to generate CSS for some
         // properties? Consider the following:
@@ -365,12 +379,9 @@ U.buildRoom({
         //     }))
         //   ]
         // });
+        */
         
-        let rootReal = Real({ isRoot: true, flag: 'root' });
-        rootReal.setColour('rgba(230, 230, 230, 1)');
-        dep(Hog(() => rootReal.shut()));
-        
-        let scaleReal = rootReal.addReal(Real({}));
+        let scaleReal = rootReal.addReal(Real());
         scaleReal.setSize(size(100));
         scaleReal.setColour('rgba(255, 255, 255, 1)');
         // This scaling makes blinking cursors look funny :(
@@ -392,7 +403,7 @@ U.buildRoom({
         
         dep(AccessPath(storyMix ? WobVal(storyMix) : Wob(), (dep, storyMix) => {
           
-          let titleReal = dep(scaleReal.addReal(Real({})));
+          let titleReal = dep(scaleReal.addReal(Real()));
           titleReal.setSize(size(100), size(8));
           titleReal.setLoc(size(0), size(-46));
           titleReal.setColour('rgba(0, 0, 0, 0.2)')
@@ -400,34 +411,34 @@ U.buildRoom({
           titleReal.setText('Story Mix');
           
           let myAuthorWob = dep(WobFlt(storyMix.relWob(rel.storyMixAuthors.fwd), relAuthor => {
-            return relAuthor.rec.getValue().term === U.hutTerm ? relAuthor : C.skip;
+            return relAuthor.rec.value.term === U.hutTerm ? relAuthor : C.skip;
           }));
           let noAuthorWob = WobTmp('up');
           
           dep(AccessPath(noAuthorWob, dep => {
             
-            let loginReal = dep(scaleReal.addReal(Real({})));
+            let loginReal = dep(scaleReal.addReal(Real()));
             loginReal.setSize(size(50));
             loginReal.setColour('rgba(255, 255, 255, 1)');
             loginReal.setBorder('outer', size(0.5), 'rgba(0, 0, 0, 1)');
             
-            let userTitleReal = loginReal.addReal(Real({}));
+            let userTitleReal = loginReal.addReal(Real());
             userTitleReal.setText('User:');
             userTitleReal.setColour('rgba(255, 255, 255, 1)');
             
-            let userReal = loginReal.addReal(Real({}));
+            let userReal = loginReal.addReal(Real());
             userReal.setBorder('inner', size(0.5), 'rgba(0, 0, 0, 0.4)');
             userReal.setColour('rgba(255, 255, 255, 1)');
             
-            let passTitleReal = loginReal.addReal(Real({}));
+            let passTitleReal = loginReal.addReal(Real());
             passTitleReal.setText('Pass:');
             passTitleReal.setColour('rgba(255, 255, 255, 1)');
             
-            let passReal = loginReal.addReal(Real({}));
+            let passReal = loginReal.addReal(Real());
             passReal.setBorder('inner', size(0.5), 'rgba(0, 0, 0, 0.4)');
             passReal.setColour('rgba(255, 255, 255, 1)');
             
-            let submitReal = loginReal.addReal(Real({}));
+            let submitReal = loginReal.addReal(Real());
             submitReal.setColour('rgba(235, 235, 235, 1)');
             submitReal.setText('Login!');
             
@@ -469,19 +480,19 @@ U.buildRoom({
             
             dep(AccessPath(noCurStoryWob, dep => {
               
-              let joinReal = dep(scaleReal.addReal(Real({})));
+              let joinReal = dep(scaleReal.addReal(Real()));
               joinReal.setSize(size(100), size(92));
               joinReal.setLoc(size(0), size(4));
               joinReal.setColour('rgba(255, 255, 255, 0)');
               
-              let enterTitleReal = joinReal.addReal(Real({}));
+              let enterTitleReal = joinReal.addReal(Real());
               enterTitleReal.setSize(size(50), size(6));
               enterTitleReal.setLoc(size(-25), size(-43));
               enterTitleReal.setColour('rgba(150, 150, 255)')
               enterTitleReal.setTextSize(size(4));
               enterTitleReal.setText('Join Story');
               
-              let enterReal = joinReal.addReal(Real({}));
+              let enterReal = joinReal.addReal(Real());
               enterReal.setSize(size(50), size(86));
               enterReal.setLoc(size(-25), size(3));
               enterReal.setColour('rgba(0, 0, 0, 0)');
@@ -494,17 +505,17 @@ U.buildRoom({
               };
               dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
                 
-                let storyReal = dep(enterReal.addReal(Real({})));
+                let storyReal = dep(enterReal.addReal(Real()));
                 storyReal.setSize(size(50 - 3), size(10));
                 storyReal.setColour('rgba(200, 200, 255, 1)');
                 
-                let storyNameReal = storyReal.addReal(Real({}));
+                let storyNameReal = storyReal.addReal(Real());
                 storyNameReal.setSize(size(40), size(5));
                 storyNameReal.setLoc(size(0), size(-2.5));
                 storyNameReal.setColour('rgba(0, 0, 0, 0)');
                 storyNameReal.setTextSize(size(3));
                 
-                let storyDescReal = storyReal.addReal(Real({}));
+                let storyDescReal = storyReal.addReal(Real());
                 storyDescReal.setSize(size(50 - 3), size(4));
                 storyDescReal.setLoc(size(0), size(2));
                 storyDescReal.setColour('rgba(0, 0, 0, 0)');
@@ -515,7 +526,8 @@ U.buildRoom({
                   storyDescReal.setText(v.desc);
                 }));
                 
-                dep(storyReal.feelWob().hold( () => lands.tell({ command: 'join', storyUid: story.uid }) ));
+                // TODO: Automatically convert Records to their uids in cases like this??
+                dep(storyReal.feelWob().hold( () => lands.tell({ command: 'join', story: story.uid }) ));
                 
                 storyReals.add(storyReal);
                 dep(Hog(() => storyReals.delete(storyReal)));
@@ -525,14 +537,14 @@ U.buildRoom({
                 
               }));
               
-              let createTitleReal = joinReal.addReal(Real({}));
+              let createTitleReal = joinReal.addReal(Real());
               createTitleReal.setSize(size(50), size(6));
               createTitleReal.setLoc(size(25), size(-43));
               createTitleReal.setColour('rgba(150, 170, 255)');
               createTitleReal.setTextSize(size(4));
               createTitleReal.setText('Create Story');
               
-              let createReal = joinReal.addReal(Real({}));
+              let createReal = joinReal.addReal(Real());
               createReal.setSize(size(50), size(86));
               createReal.setLoc(size(25), size(3));
               createReal.setColour('rgba(0, 0, 0, 0)');
@@ -541,14 +553,14 @@ U.buildRoom({
               // Create Story form
               let makeField = (par, cnt, name, type) => {
                 
-                let title = par.addReal(Real({}));
+                let title = par.addReal(Real());
                 title.setSize(size(40), size(4));
                 title.setLoc(size(0), size(-40 + 1 + cnt.val * 10));
                 title.setColour('rgba(125, 125, 125, 1)');
                 title.setTextSize(size(3));
                 title.setText(name);
                 
-                let field = par.addReal(Real({}));
+                let field = par.addReal(Real());
                 field.setSize(size(40), size(5));
                 field.setLoc(size(0), size(-40 + 5.5 + cnt.val * 10));
                 field.setColour('rgba(0, 0, 0, 0)');
@@ -593,7 +605,7 @@ U.buildRoom({
                 maxAuthors: [ 'Max Authors', 'int' ]
               });
               
-              let createSubmitReal = createReal.addReal(Real({}));
+              let createSubmitReal = createReal.addReal(Real());
               createSubmitReal.setSize(size(40), size(7));
               createSubmitReal.setLoc(size(0), size(10));
               createSubmitReal.setTextSize(size(4));
@@ -609,36 +621,20 @@ U.buildRoom({
               
               prev.nextTrg = createSubmitReal;
               
-              //let createNameTitleReal = createReal.addReal(Real({}));
-              //createNameTitleReal.setText('Story Name');
-              //
-              //let createNameReal = createReal.addReal(Real({}));
-              //
-              //let createDescTitleReal = createReal.addReal(Real({}));
-              //createDescTitleReal.setText('Description');
-              //
-              //let createDescReal = createReal.addReal(Real({}));
-              //
-              //let createRoundMsTitleReal = createReal.addReal(Real({}));
-              //createRoundMsTitleReal.setText('Round Duration');
-              //
-              //let createRoundMsReal = createReal.addReal(Real({}));
-              //
-              //let createMaxAuthorsTitleReal = createReal.addReal(Real({}));
-              //createMaxAuthorsTitleReal.setText('Max Authors');
-              //
-              //let createMaxAuthorsReal = createReal.addReal(Real({}));
-              //
-              //let testCreateStoryReal = createReal.addReal(Real({}));
-              //testCreateStoryReal.setSize(size(40), size(40));
-              //testCreateStoryReal.setColour('rgba(0, 0, 0, 1)');
-              //testCreateStoryReal.setText('Create!');
-              
-              //dep(testCreateStoryReal.feelWob().hold( () => lands.tell({ command: 'story', test: true }) ));
-              
             }));
             
             dep(AccessPath(author.relWob(rel.authorCurrentStory.fwd), (dep, { rec: authorCurStory }) => {
+              
+              let storyReal = dep(scaleReal.addReal(Real()));
+              storyReal.setSize(size(100), size(92));
+              storyReal.setLoc(size(0), size(4));
+              storyReal.setColour('rgba(0, 0, 0, 0)');  
+              
+              let storyTitleReal = storyReal.addReal(Real());
+              storyTitleReal.setSize(size(100), size(6));
+              storyTitleReal.setLoc(size(0), size(-43));
+              storyTitleReal.setTextSize(size(4));
+              dep(authorCurStory.hold(v => storyTitleReal.setText(`Story: ${v.name}`)));
               
               noCurStoryWob.dn();
               dep(Hog(() => noCurStoryWob.up()));

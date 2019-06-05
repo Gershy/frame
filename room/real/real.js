@@ -30,51 +30,35 @@ U.buildRoom({
       }
     })});
     let Real = U.inspire({ name: 'Real', insps: { Hog }, methods: (insp, Insp) => ({
-      init: function({ isRoot=false, flag=null }) {
+      $defSetup: function(real) {
+        
+        let dom = document.createElement('div');
+        dom.style.gain({
+          position: 'absolute',
+          left: '50%', top: '50%',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          textAlign: 'center',
+          color: 'rgba(255, 255, 255, 1)'
+        });
+        
+        return { dom };
+        
+      },
+      
+      init: function(setup=Real.defSetup) {
         
         insp.Hog.init.call(this);
         
-        this.dom = isRoot ? document.body : document.createElement('div');
+        let { dom, loc=[ 0, 0 ], rot=0, scale=[ 1, 1 ], size=[ 100, 100 ] } = setup();
         
-        if (flag) this.dom.classList.add(flag);
+        this.dom = dom;
         
-        this.loc = [ 0, 0 ];
-        this.rot = 0;
-        this.scl = [ 1, 1 ];
-        this.size = [ 0, 0 ];
+        this.size = size;
+        if (this.size) this.setSize(...size);
         
-        this.dom.style.gain({
-          overflow: 'visible',
-          fontSize: '14px',
-          whiteSpace: 'nowrap',
-          caretColor: 'rgba(0, 0, 0, 1)'
-        });
-        
-        if (isRoot) {
-          
-          this.dom.style.gain({
-            overflow: 'hidden'
-          });
-          
-        } else {
-          
-          this.dom.style.gain({
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: '100px',
-            height: '100px',
-            lineHeight: '100px',
-            marginLeft: '-50px',
-            marginTop: '-50px',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            textAlign: 'center',
-            color: 'rgba(255, 255, 255, 1)'
-          });
-          this.size = [ 100, 100 ];
-          
-        }
-        
+        this.loc = loc;
+        this.rot = rot;
+        this.scl = scale;
         this.applyTransform();
         
         // "Feeling" most often occurs via click
@@ -86,6 +70,8 @@ U.buildRoom({
         this.tellWob0 = null;
         
         // "Looking" most often occurs via focus
+        this.lookWob0 = null; // TODO: Does WobTmp work here? And can it simplify "curFeel"?
+        
       },
       setPriority: function(amt) {
         this.dom.style.zIndex = amt === null ? '' : `${amt}`;
@@ -112,10 +98,6 @@ U.buildRoom({
         });
         this.size = [ x, y ];
       },
-      setLoc: function(x, y) {
-        this.loc = [ x, y ];
-        this.applyTransform();
-      },
       setFeel: function(feel) {
         let [ pointerEvents, cursor ] = ({
           airy:   [ 'none', '' ],
@@ -128,6 +110,10 @@ U.buildRoom({
           cursor
         });
       },
+      setLoc: function(x, y) {
+        this.loc = [ x, y ];
+        this.applyTransform();
+      },
       setRot: function(rot) {
         this.rot = rot;
         this.applyTransform();
@@ -137,11 +123,11 @@ U.buildRoom({
         this.applyTransform();
       },
       applyTransform: function() {
-        this.dom.style.transform = [
-          `translate(${this.loc[0]}px, ${this.loc[1]}px)`,
-          `rotate(${this.rot}deg)`,
-          `scale(${this.scl[0]}, ${this.scl[1]})`
-        ].join(' ');
+        let trn = [];
+        if (this.loc[0] || this.loc[1]) trn.push(`translate(${this.loc[0]}px, ${this.loc[1]}px)`);
+        if (this.rot) trn.push(`rotate(${this.rot}deg)`);
+        if (this.scl[0] !== 1 || this.scl[1] !== 1) trn.push(`scale(${this.scl[0]}, ${this.scl[1]})`);
+        this.dom.style.transform = trn.join(' ');
       },
       setColoursInverted: function(isInv) {
         this.dom.style.filter = isInv ? 'invert(100%)' : '';

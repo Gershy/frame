@@ -335,11 +335,9 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     insp.Wob.init.call(this);
     this.value = value;
   },
-  setValue: function(value) { this.value = value; },
-  getValue: function() { return this.value; },
   hold: function(func, hasty=true) {
     let ret = insp.Wob.hold.call(this, func);
-    if (hasty) func(this.getValue(), null);
+    if (hasty) func(this.value, null);
     return ret;
   },
   wobble: function(value=null, force=U.isType(value, Object)) {
@@ -350,13 +348,15 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     // to force the wobble to occur if the new value is an Object.
     let origVal = this.value;
     if (!force && value === origVal) return; // Duplicate value; no forcing
-    this.setValue(value);
+    this.value = value;
     this.toHolds(value, origVal);
   },
-  modify: function(func, force) { this.wobble(func(this.getValue()), force); }
+  modify: function(func, force) { this.wobble(func(this.value), force); }
 })});
-
 let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, Insp) => ({
+  
+  // Wob Filter
+  
   init: function(wob, flt, open=true) {
     insp.Wob.init.call(this);
     insp.Hog.init.call(this);
@@ -378,6 +378,9 @@ let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, In
   shut0: function() { if (this.wobHold) this.wobHold.shut(); }
 })});
 let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) => ({
+  
+  // Wob Temporary
+  
   init: function(pos='up') {
     if (![ 'up', 'dn' ].has(pos)) throw new Error(`Param should be "up" or "dn"; got ${pos}`);
     insp.Wob.init.call(this);
@@ -398,102 +401,6 @@ let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) =
     let ret = insp.Wob.hold.call(this, func);
     if (this.tmp) func(this.tmp);
     return ret;
-  }
-})});
-
-let WobFnc = U.inspire({ name: 'WobFnc', insps: { Wob }, methods: (insp, Insp) => ({
-  // TODO: WobFnc should almost definitely only wobble when all its children have wobbled
-  init: function(wobs, calc=v=>v) {
-    if (!U.isType(wobs, Array)) wobs = [ wobs ];
-    if (!wobs.length) throw new Error('Must provide at least one child Wob');
-    wobs.forEach(wob => { if (!wob) throw new Error('Provided null child Wob'); });
-    
-    insp.Wob.init.call(this);
-    
-    this.wobs = wobs.map(wob => ({ wob, val: null, holdHog: null }));
-    this.calc = calc;
-    
-    // TODO: Should a wobble be owed when one of our Wobs has wobbled, or only when ALL have?
-    this.wobOwed = false; // Detects if a wobble occurs when holding child Wobs upon construction
-    this.open();
-  },
-  childWob: function(item, ...vals) {
-    item.val = vals[0]; // NOTE: Omitting all params past the 1st (e.g. for relation11, would omit "old" value)
-    this.wobble();
-  },
-  getValue: function() { return this.calc(...this.wobs.map(wob => wob.val)); },
-  wobble: function() {
-    // Wobbles are skippable by calculating `C.skip`
-    let val = this.getValue();
-    if (val !== C.skip) this.toHolds(val);
-  },
-  hold: function(func, hasty=this.wobOwed) {
-    let ret = insp.Wob.hold.call(this, func);
-    if (hasty) { let v = this.getValue(); if (v !== C.skip) func(v); } // We implement our own hastiness, controlled with `C.skip`
-    return ret;
-  },
-  open: function() {
-    if (this.wobs[0].holdHog) throw new Error(`${this.constructor.name} is already open`);
-    
-    // Any wobbles resulting from these holds will be prevented, and instead we'll
-    // remember that we owe a wobble
-    this.wobOwed = false;
-    this['toHolds'] = () => { this.wobOwed = true; };
-    
-    this.wobs.forEach(wobItem => {
-      wobItem.val = null;
-      wobItem.holdHog = wobItem.wob.hold((...args) => this.childWob(wobItem, ...args));
-    });
-    
-    // Allow wobbles once more
-    delete this['toHolds'];
-  },
-  shut: function() {
-    if (!this.wobs[0].holdHog) throw new Error(`${this.constructor.name} is already shut`);
-    
-    insp.Wob.shut.call(this);
-    this.wobs.forEach(wobItem => {
-      wobItem.val = null;
-      wobItem.holdHog.shut();
-      wobItem.holdHog = null;
-    });
-  }
-})});
-let WobRep = U.inspire({ name: 'WobRep', insps: { Wob }, methods: (insp, Insp) => ({
-  init: function(ms, open=true) {
-    insp.Wob.init.call(this);
-    if (ms <= 0) throw new Error('Tried to repeat infinitely quickly');
-    this.ms = ms;
-    this.interval = null;
-    if (open) this.open();
-  },
-  open: function() {
-    if (this.interval !== null) throw new Error('Already open');
-    this.interval = setInterval(() => this.toHolds(), this.ms);
-  },
-  shut: function() {
-    if (this.interval === null) throw new Error('Already shut');
-    clearInterval(this.interval); this.interval = null;
-  }
-})});
-let WobDel = U.inspire({ name: 'WobDel', insps: { WobOne }, methods: (insp, Insp) => ({
-  init: function(ms, open=true) {
-    insp.WobOne.init.call(this);
-    this.ms = ms;
-    this.timeout = null;
-    if (open) this.open();
-  },
-  open: function() {
-    if (this.timeout !== null) throw new Error('Already open');
-    if (this.ms > 0) {
-      this.timeout = setTimeout(() => this.toHolds(), this.ms);
-    } else {
-      this.timeout = 'immediate'; this.toHolds();
-    }
-  },
-  shut: function() {
-    if (this.timeout === null) throw new Error('Already shut');
-    clearTimeout(this.timeout); this.timeout = null;
   }
 })});
 
@@ -593,5 +500,5 @@ let nullShutWob = {
 };
 C.gain({ nullWob, nullShutWob });
 
-U.gain({ Hog, Wob, WobOne, WobVal, WobFnc, WobRep, WobDel, AccessPath, AggWobs });
+U.gain({ Hog, Wob, WobOne, WobVal, AccessPath, AggWobs });
 

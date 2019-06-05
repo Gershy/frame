@@ -314,7 +314,7 @@
       
     },
     
-    // Functionality
+    // Platform
     queueTask: function(func) { process.nextTick(func); },
     getMemUsage: function() {
       let usage1 = process.memoryUsage();
@@ -346,6 +346,7 @@
         }
       };
     },
+    getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
     getStaticIps: function(pref=[]) {
       return os.networkInterfaces()
         .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))

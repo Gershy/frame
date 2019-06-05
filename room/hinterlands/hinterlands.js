@@ -184,7 +184,7 @@ U.buildRoom({
         return uid;
       },
       genUniqueTerm: function() {
-        let huts = this.relVal(rel.landsHuts.fwd);
+        let huts = this.relWob(rel.landsHuts.fwd).toArr();
         for (let i = 0; i < 100; i++) { // TODO: This can't last. `100` is arbitrary!
           let ret = TERMS[Math.floor(Math.random() * TERMS.length)];
           if (!huts.find(hut => hut.term === ret)) return ret;
@@ -218,7 +218,7 @@ U.buildRoom({
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allObj(this.relVal(rel.landsHuts.fwd).map(relHut => relHut.rec.tell(msg)));
+        return Promise.allArr(this.relWob(rel.landsHuts.fwd).toArr().map(relHut => relHut.rec.tell(msg)));
       },
       
       /// {BELOW=
@@ -246,7 +246,7 @@ U.buildRoom({
         await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
         
         /// {BELOW=
-        let relHut = this.relVal(rel.landsHuts.fwd).find(() => true)[0];
+        let relHut = this.relWob(rel.landsHuts.fwd).toArr().find(() => true)[0];
         await this.hear(relHut.rec, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
@@ -463,7 +463,7 @@ U.buildRoom({
         if (content.has('addRec')) content.addRec = content.addRec.map(rec => ({
           uid: rec.uid,
           type: rec.constructor.name,
-          value: rec.getValue()
+          value: rec.value
         }));
         
         if (content.isEmpty()) return null;
@@ -472,6 +472,7 @@ U.buildRoom({
         return { command: 'update', version: this.version, content }
       },
       requestInformBelow: function() {
+        
         // Implements inform-below-throttling. Schedules a new request to inform
         // our Below if there is not already a request to do so.
         
@@ -498,7 +499,7 @@ U.buildRoom({
       /// =ABOVE}
       
       favouredWay: function() {
-        let findRelWay = this.relVal(rel.waysHuts.bak).find(() => true);
+        let findRelWay = this.relWob(rel.waysHuts.bak).toArr().find(() => true);
         return findRelWay ? findRelWay[0].rec : null;
       },
       tell: async function(msg) {
