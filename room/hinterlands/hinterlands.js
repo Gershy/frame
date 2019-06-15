@@ -1,7 +1,3 @@
-// TODO: HEEERE!
-// - Do a final review of "hinterlands" (make sure static setup (like adding Ways to Lands) doesn't use Relations!)
-// - Make sure hinterlands is 100% passing!
-
 U.buildRoom({
   name: 'hinterlands',
   innerRooms: [ 'record' ],
@@ -221,7 +217,13 @@ U.buildRoom({
         return Promise.allArr(this.relWob(rel.landsHuts.fwd).toArr().map(relHut => relHut.rec.tell(msg)));
       },
       
+      
       /// {BELOW=
+      getInitRec: async function(Cls) {
+        await new Promise(r => setTimeout(r, 0));
+        for (let [ k, rec ] of this.allRecs) if (rec.isInspiredBy(Cls)) { return rec; }
+        return null;
+      },
       resetHeartbeatTimeout: function() {
         if (!this.heartbeatMs) return;
         
@@ -574,8 +576,8 @@ U.buildRoom({
           
           // Attach the Hut to the Way and to the Lands
           U.AggWobs().complete(agg => {
-            this.attach(rel.waysHuts.fwd, hut);
-            this.lands.attach(rel.landsHuts.fwd, hut);
+            this.attach(rel.waysHuts.fwd, hut, agg);
+            this.lands.attach(rel.landsHuts.fwd, hut, agg);
           });
           
         });

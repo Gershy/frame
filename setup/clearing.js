@@ -158,6 +158,9 @@ let U = global.U = {
     }
     return U.dbgCntMap[name];
   },
+  dbgVar: obj => {
+    for (let k in obj) console.log(k.upper(), obj[k]);
+  },
   int32: Math.pow(2, 32),
   intUpperBound: Math.pow(2, 32),
   intLowerBound: -Math.pow(2, 32),
@@ -381,11 +384,20 @@ let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) =
   
   // Wob Temporary
   
-  init: function(pos='up') {
+  init: function(pos='up', val=null) {
     if (![ 'up', 'dn' ].has(pos)) throw new Error(`Param should be "up" or "dn"; got ${pos}`);
     insp.Wob.init.call(this);
     this.tmp = null;
-    if (pos === 'up') this.up();
+    if (pos === 'up') this.up(val);
+  },
+  inverse: function() {
+    if (!this.inverse0) {
+      this.inverse0 = WobTmp(this.pos === 'up' ? 'dn' : 'up');
+      this.inverse0.inverse0 = this;
+      this.hold(() => (!this.tmp == !this.inverse0.tmp) && this.inverse0[this.tmp ? 'dn' : 'up']());
+      this.inverse0.hold(() => (!this.inverse0.tmp == !this.tmp) && this[this.tmp ? 'dn' : 'up']());
+    }
+    return this.inverse0;
   },
   up: function(val=null) {
     if (this.tmp) throw new Error('Already up');
@@ -401,7 +413,8 @@ let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) =
     let ret = insp.Wob.hold.call(this, func);
     if (this.tmp) func(this.tmp);
     return ret;
-  }
+  },
+  wobble: function(...args) { return insp.Wob.wobble.call(this, this.tmp, ...args); }
 })});
 
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
@@ -467,8 +480,13 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
       // Deps alongside `hog` shut when `hog` shuts
       let addHogDep = dep => {
         
+        if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.typeOf(dep)}`);
+        let depShutWob = dep.shutWob();
+        
+        if (!depShutWob || !depShutWob.hold) throw new Error(`Mis-implemented shutWob: ${U.typeOf(dep)}`);
+        
         // If the Dep shuts stop holding
-        let depShutFirstWob = dep.shutWob().hold(() => {
+        let depShutFirstWob = depShutWob.hold(() => {
           hogShutCauseDepShutHold.shut();
           apShutCauseDepShutHold.shut();
         });
@@ -488,7 +506,6 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
   shut0: function(...args) { this.hogWobHold.shut(); },
 })});
 
-// TODO: Oughtn't be aggregated
 let nullWob = {
   hold: () => nullShutWob,
   wobble: () => {}
@@ -499,6 +516,5 @@ let nullShutWob = {
   shutWob: () => nullWob
 };
 C.gain({ nullWob, nullShutWob });
-
 U.gain({ Hog, Wob, WobOne, WobVal, AccessPath, AggWobs });
 

@@ -72,7 +72,7 @@
         
         let real = U.rooms.real.built;
         let { Reality, Real } = real;
-        this.rootReal = Real(() => ({ dom: document.body, size: null }));
+        this.rootReal = Real({ nameChain: 'root', setup: () => ({ dom: document.body }) });
         
       }
       

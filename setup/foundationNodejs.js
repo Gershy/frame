@@ -5,6 +5,7 @@
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
+  let tempDir = path.join(rootDir, 'temp');
   
   let transportDebug = true;
   
@@ -85,10 +86,13 @@
       
       this.ip = ip;
       this.port = port;
-      
-      this.addMountFile('favicon.ico', 'setup/favicon.ico', 'image/x-icon');
-      
       this.usage0 = process.memoryUsage().map(v => v);
+      
+      // Make sure our tempDir exists!
+      try { fs.mkdirSync(tempDir); } catch(err) {}
+      
+      this.addMountFile('favicon.ico', 'image/x-icon', 'setup/favicon.ico');
+      
     },
     
     // Compilation
@@ -324,15 +328,21 @@
         heapUsed: usage1.heapUsed - this.usage0.heapUsed
       };
     },
-    addMountFile: function(name, src, type=null) {
+    addMountFile: function(name, type, src) {
       let nativeDir = path.join(rootDir, src);
       try { fs.statSync(nativeDir); }
       catch(err) { throw new Error(`Couldn't add file ${name}: ${src}`); }
       this.mountedFiles[name] = { type, nativeDir };
     },
+    addMountDataAsFile: function(name, type, data) {
+      let nativeDir = path.join(tempDir, name);
+      fs.writeFileSync(nativeDir, data);
+      this.mountedFiles[name] = { type, nativeDir };
+    },
     getMountFile: function(name) {
       if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
-      let { type, nativeDir } = this.mountedFiles[name];
+      let { method, type, nativeDir } = this.mountedFiles[name];
+      
       return {
         ISFILE: true, type,
         name,
@@ -345,6 +355,10 @@
           return new Promise((rsv, rjc) => fs.stat(nativeDir, (err, nb) => err ? rjc(err) : rsv(nb.size)));
         }
       };
+    },
+    remMountFile: function(name) {
+      if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+      delete this.mountedFiles[name];
     },
     getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
     getStaticIps: function(pref=[]) {
@@ -976,10 +990,8 @@
       mainStyle.setText([
         'html, body {',
         '  position: absolute;',
-        '  left: 0; top: 0;',
-        '  width: 100%; height: 100%;',
-        '  margin: 0;',
-        '  padding: 0;',
+        '  left: 0; top: 0; width: 100%; height: 100%;',
+        '  margin: 0; padding: 0;',
         '  background-color: #eaeaf2;',
         '  font-family: monospace;',
         '  overflow: hidden;',

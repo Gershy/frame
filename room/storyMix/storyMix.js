@@ -8,6 +8,7 @@ U.buildRoom({
     let { Chance } = chance;
     let { Record, Relation } = record;
     let { Lands, LandsRecord, Way, Hut, rel: landsRel } = hinterlands;
+    let { Reality, Real } = real;
     
     let heartbeatMs = 3 * 60 * 1000;
     
@@ -29,6 +30,7 @@ U.buildRoom({
       storyAuthors:           Relation(Story, Author, 'MM'), // Participating Authors
       storyRounds:            Relation(Story, Round, '1M'),
       storyCurrentRound:      Relation(Story, Round, '1M'),
+      // storyCurrentEntry:      Relation(Author, Story, Round, '1M1'),
       roundEntries:           Relation(Round, Entry, '1M'),
       storyEntries:           Relation(Story, Entry, '1M'),
       entryAuthor:            Relation(Entry, Author, '1M'),
@@ -51,8 +53,6 @@ U.buildRoom({
       
       AccessPath(WobVal(lands), async (dep, lands) => {
         
-        let rootReal = await foundation.getRootReal();
-        
         /// {ABOVE=
         
         let chance = Chance(null);
@@ -63,8 +63,6 @@ U.buildRoom({
         // Follows
         dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {
           
-          console.log('======= FOLLOWING HUT');
-          
           dep(hut.followRec(storyMix));
           
           dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
@@ -74,8 +72,6 @@ U.buildRoom({
           }));
           
           dep(AccessPath(hut.relWob(rel.hutAuthor.fwd), (dep, { rec: author }) => {
-            
-            console.log('======= FOLLOWING HUT AUTHOR');
             
             hut.followRec(author);
             
@@ -170,7 +166,12 @@ U.buildRoom({
             
             dep(authorHut.comWob('story').hold(({ lands, hut, msg }) => {
               
-              let { name, desc, roundMs, maxAuthors } = msg.params;
+              let { name, desc, roundMs, maxAuthors } = msg;
+              
+              if (!U.isType(name, String)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
+              if (!U.isType(desc, String)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
+              if (!U.isType(roundMs, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
+              if (!U.isType(maxAuthors, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               
               let newStory = Story({ lands, value: {
                 name,
@@ -316,99 +317,218 @@ U.buildRoom({
           
         }));
         
-        /// =ABOVE} {BELOW=
+        /// =ABOVE}
         
-        let { Reality, Real } = real;
-        
-        let size = v => Math.round(v * 7);
-        
-        /*
-        // NOTE: Consider `real.ForParW`, `real.ForParH`, `real.ForParSize`
-        // Can these be made intelligent enough to generate CSS for some
-        // properties? Consider the following:
-        //
-        // Reality({
-        //   'par': [
-        //     real.ForViewport((w, h) => ({
-        //       size: [ w, h ]
-        //     }))
-        //   ],
-        //   'par.child': [
-        //     real.ForParSize((w, h) => ({
-        //       size: [ w * 0.2, h * 0.2 ],
-        //       textSize: w * 0.01
-        //     }))
-        //   ]
-        // });
-        //
-        // We'll need javascript to apply "fontSize", as it can't be
-        // specified as a percentage of the parent dimensions - only in
-        // terms of parent's "fontSize"! But width and height can be set
-        // as percentages. We can do CSS: `{ width: 20%; height: 20%; }`
-        // But the rest is javascript:
-        //
-        // dep(parent.resizeWob().hold( (w, h) => child.setFontSize(w * 0.01) ))
-        //
-        // We'd need to determine that the float value "w"; SizeHorzUnits; doesn't
-        // translate nicely into TextSizeUnits.
-        // 
-        // TODO: THIS MAY ACTUALLY WORK FOR **ANY** DISPLAY TECHNOLOGY!!
-        // let reality = Reality({
-        //   'root': [
-        //     real.ForAlways(() => ({
-        //       isRoot: true,
-        //       colour: 'rgba(0, 0, 0, 1)'
-        //     }))
-        //   ],
-        //   'root.scale': [
-        //     real.ForAlways(() => ({
-        //       size: 100,
-        //       colour: 'rgba(255, 255, 255, 1)'
-        //     })),
-        //     real.ForViewport((w, h) => {
-        //       return { scale: Math.min(w, h) * scaleFac };
-        //     })
-        //   ],
-        //   'root.scale.title': [
-        //     real.ForAlways(() => ({
-        //       size: [ 100, 8 ],
-        //       loc: [ 0, -46 ],
-        //       colour: 'rgba(0, 0, 0, 0.2)',
-        //       textSize: 5,
-        //       text: 'Story Mix'
-        //     }))
-        //   ]
-        // });
-        */
-        
-        let scaleReal = rootReal.addReal(Real());
-        scaleReal.setSize(size(100));
-        scaleReal.setColour('rgba(255, 255, 255, 1)');
-        // This scaling makes blinking cursors look funny :(
-        //let scaleFac = 1 / size(100);
-        //let scaleFunc = () => {
-        //  let { width, height } = document.body.getBoundingClientRect();
-        //  let scaleAmt = (width <= height ? width : height) * scaleFac;
-        //  scaleReal.setScale(scaleAmt);
-        //};
-        //window.addEventListener('resize', scaleFunc);
-        //scaleFunc();
-        
-        // TODO: `Lands` needs to be a LandsRecord, or needs an always-related LandsRecord
-        // to serve as an entrypoint for Below
-        // E.g. AccessPath(lands.clearing.relWob(appRel.relClearingStoryMix), (dep, { rec: storyMix }) => { /* ... */ })
-        await new Promise(r => setTimeout(r, 0));
-        let storyMix = null;
-        for (let [ k, rec ] of lands.allRecs) if (rec.isInspiredBy(StoryMix)) { storyMix = rec; break; }
-        
-        dep(AccessPath(storyMix ? WobVal(storyMix) : Wob(), (dep, storyMix) => {
+        let s = { w: real.UnitPx(100), h: real.UnitPx(100) };
+        let reality = Reality('storyMix', {
           
-          let titleReal = dep(scaleReal.addReal(Real()));
-          titleReal.setSize(size(100), size(8));
-          titleReal.setLoc(size(0), size(-46));
-          titleReal.setColour('rgba(0, 0, 0, 0.2)')
-          titleReal.setTextSize(size(5));
-          titleReal.setText('Story Mix');
+          // TODO: Should layout and slots be condition-able? If they were conditional,
+          // it would make things like responsive grid-layout with javascript-fallback
+          // trivial. Super tricky to implement though!
+          
+          'main': ({ slots, viewport }) => ({
+            layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
+            slots: real.slots.Titled({ size: [ null, null ], titleExt: real.UnitPx(53) }),
+            decals: {
+              colour: 'rgba(255, 255, 255, 1)'
+            }
+          }),
+          'main.title': ({ slots }) => ({
+            layout: slots.layout('title'),
+            decals: {
+              colour: 'rgba(0, 0, 0, 0.2)',
+              textOrigin: 'center',
+              textSize: real.UnitPx(24)
+            }
+          }),
+          'main.loggedOut': ({ slots }) => ({
+            layout: slots.layout('content'),
+            slots: real.slots.Justified(),
+            decals: {
+              colour: 'rgba(255, 220, 220, 1)'
+            }
+          }),
+          'main.loggedOut.form': ({ slots }) => ({
+            layout: slots.layout('item'), // real.layout.Free({ w: real.UnitPc(60), h: real.UnitPc(60) }),
+            slots: real.slots.FillV({}),
+            decals: {
+              size: [ real.UnitPc(60), null ]
+            }
+          }),
+          'main.loggedOut.form.item': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.Titled({ size: [ real.UnitPc(100), real.UnitPx(50) ], titleExt: real.UnitPx(20) })
+          }),
+          'main.loggedOut.form.item.title': ({ slots }) => ({
+            layout: slots.layout('title')
+          }),
+          'main.loggedOut.form.item.field': ({ slots }) => ({
+            layout: slots.layout('content'),
+            decals: {
+              colour: 'rgba(255, 255, 255, 1)',
+              textColour: 'rgba(0, 0, 0, 1)',
+              textLining: { type: 'single', pad: real.UnitPx(5) }
+            }
+          }),
+          'main.loggedOut.form.submit': ({ slots }) => ({
+            layout: slots.layout('item'),
+            decals: {
+              colour: '#d0d0d0',
+              size: [ real.UnitPc(100), real.UnitPx(30) ],
+              textLining: { type: 'single' },
+              textOrigin: 'center',
+              textSize: real.UnitPx(22),
+              _css: { main: {
+                marginTop: real.UnitPx(20)
+              }}
+            }
+          }),
+          
+          'main.loggedIn': ({ slots }) => ({
+            layout: slots.layout('content'),
+            decals: {
+              colour: 'rgba(220, 255, 220, 1)'
+            }
+          }),
+          'main.loggedIn.storyOut': ({ slots }) => ({
+            layout: real.layout.Fill({}), //real.layout.Free({ w: real.UnitPc(100), h: real.UnitPc(100) }),
+            slots: real.slots.FillH({})
+          }),
+          'main.loggedIn.storyOut.storyList': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.FillV({ pad: real.UnitPx(5) }),
+            decals: {
+              size: [ real.UnitPc(50), real.UnitPc(100) ],
+              border: { w: real.UnitPx(2), colour: '#00ff00' }
+            }
+          }),
+          'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.Titled({ size: [ null, real.UnitPx(50) ], titleExt: real.UnitPx(30) }),
+            decals: {
+              colour: 'rgba(0, 100, 0, 0.1)',
+              hover: {
+                colour: 'rgba(0, 150, 0, 0.2)'
+              }
+            }
+          }),
+          'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
+            layout: slots.layout('title'),
+            decals: {
+              textSize: real.UnitPx(22)
+            }
+          }),
+          'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
+            layout: slots.layout('content'),
+            decals: {
+              textSize: real.UnitPx(14)
+            }
+          }),
+          
+          'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.Justified(),
+            decals: {
+              size: [ real.UnitPc(50), real.UnitPc(100) ],
+              border: { w: real.UnitPx(2), colour: '#00c8a0' }
+            }
+          }),
+          'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.FillV({}),
+            decals: {
+              size: [ real.UnitPc(80), null ]
+            }
+          }),
+          'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
+            layout: slots.layout('item'),
+            slots: real.slots.Titled({ size: [ null, real.UnitPx(50) ], titleExt: real.UnitPx(20) })
+          }),
+          'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
+            layout: slots.layout('title')
+          }),
+          'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
+            layout: slots.layout('content'),
+            decals: {
+              colour: '#ffffff',
+              textColour: '#000000',
+              textLining:  { type: 'single', pad: real.UnitPx(5) }
+            }
+          }),
+          'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
+            layout: slots.layout('item'),
+            decals: {
+              size: [ null, real.UnitPx(30) ],
+              colour: '#d0d0d0',
+              textLining: { type: 'single' },
+              textOrigin: 'center',
+              textSize: real.UnitPx(22),
+              
+              _css: { main: {
+                marginTop: real.UnitPx(20)
+              }}
+              
+              
+              //_css: { main: {
+              //  height: real.UnitPx(30),
+              //  lineHeight: real.UnitPx(30),
+              //  marginTop: real.UnitPx(20),
+              //  fontSize: real.UnitPx(22),
+              //  textAlign: 'center',
+              //  backgroundColor: '#d0d0d0'
+              //}}
+            }
+          }),
+          
+          'main.loggedIn.storyIn': ({ slots }) => ({
+            layout: real.layout.Fill({}),
+            slots: real.slots.FillV({})
+          }),
+          'main.loggedIn.storyIn.entries': ({ slots }) => ({
+            layout: slots.layout('item'),
+            decals: {
+              size: [ null, real.UnitPc(50) ]
+            }
+          }),
+          'main.loggedIn.storyIn.controls': ({ slots }) => ({
+            layout: slots.layout('item'),
+            decals: {
+              size: [ null, real.UnitPc(50) ]
+            }
+          }),
+          'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
+            layout: real.layout.Fill({}),
+            slots: real.slots.Titled({ side: 'b', titleExt: real.UnitPx(50) })
+          }),
+          'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
+            layout: slots.layout('content'),
+            decals: {
+              colour: 'rgba(255, 255, 255, 1)'
+            }
+          }),
+          'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
+            layout: slots.layout('title'),
+            decals: {
+              colour: 'rgba(120, 200, 120, 1)'
+            }
+          }),
+          
+          
+        });
+        
+        let rootReal = await foundation.getRootReal();
+        dep(reality.contain(foundation, rootReal)); // Need to contain the root even if it's `null`
+        
+        /// {BELOW=
+        
+        storyMix = await lands.getInitRec(StoryMix); // TODO: This barely works :P
+        
+        let main = rootReal.addReal('main');
+        
+        dep(AccessPath(WobVal(storyMix), (dep, storyMix) => {
+          
+          let title = main.addReal('title');
+          title.setText('Story Mix');
           
           let myAuthorWob = dep(WobFlt(storyMix.relWob(rel.storyMixAuthors.fwd), relAuthor => {
             return relAuthor.rec.value.term === U.hutTerm ? relAuthor : C.skip;
@@ -417,227 +537,137 @@ U.buildRoom({
           
           dep(AccessPath(noAuthorWob, dep => {
             
-            let loginReal = dep(scaleReal.addReal(Real()));
-            loginReal.setSize(size(50));
-            loginReal.setColour('rgba(255, 255, 255, 1)');
-            loginReal.setBorder('outer', size(0.5), 'rgba(0, 0, 0, 1)');
+            let loggedOutReal = dep(main.addReal('loggedOut'));
             
-            let userTitleReal = loginReal.addReal(Real());
-            userTitleReal.setText('User:');
-            userTitleReal.setColour('rgba(255, 255, 255, 1)');
-            
-            let userReal = loginReal.addReal(Real());
-            userReal.setBorder('inner', size(0.5), 'rgba(0, 0, 0, 0.4)');
-            userReal.setColour('rgba(255, 255, 255, 1)');
-            
-            let passTitleReal = loginReal.addReal(Real());
-            passTitleReal.setText('Pass:');
-            passTitleReal.setColour('rgba(255, 255, 255, 1)');
-            
-            let passReal = loginReal.addReal(Real());
-            passReal.setBorder('inner', size(0.5), 'rgba(0, 0, 0, 0.4)');
-            passReal.setColour('rgba(255, 255, 255, 1)');
-            
-            let submitReal = loginReal.addReal(Real());
-            submitReal.setColour('rgba(235, 235, 235, 1)');
-            submitReal.setText('Login!');
-            
-            [ userTitleReal, userReal, passTitleReal, passReal, submitReal ].forEach((r, n) => {
-              r.setSize(size(50), size(10));
-              r.setLoc(size(0), size(-20 + n * 10));
-              r.setTextSize(size(4));
-              r.setTextColour('rgba(0, 0, 0, 1)');
-            });
-            
-            userReal.nextTrg = passReal;
-            passReal.nextTrg = submitReal;
-            
-            let username = '';
-            dep(userReal.tellWob().hold(v => { username = v; }));
-            
-            let password = '';
-            dep(passReal.tellWob().hold(v => { password = v; }));
-            
-            submitReal.feelWob().hold(() => {
-              
-              console.log('LOGGING IN:', username, password);
-              lands.tell({
-                command: 'author',
-                username: username,
-                password: password
-              });
-              
+            let loginForm = loggedOutReal.addReal('form');
+            let form = loginForm.form('Login', dep, v => form.clear() && lands.tell({ command: 'author', ...v }), {
+              username: { type: 'str', desc: 'Username' },
+              password: { type: 'str', desc: 'Password' }
             });
             
           }));
-          
-          dep(AccessPath(myAuthorWob, (dep, { rec: author }) => {
+          dep(AccessPath(myAuthorWob, (dep, { rec: myAuthor }) => {
             
             noAuthorWob.dn();
             dep(Hog(() => noAuthorWob.up()));
             
-            let noCurStoryWob = WobTmp('up');
+            let loggedInReal = dep(main.addReal('loggedIn'));
             
-            dep(AccessPath(noCurStoryWob, dep => {
+            let noStoryWob = WobTmp('up');
+            
+            dep(AccessPath(noStoryWob, dep => {
               
-              let joinReal = dep(scaleReal.addReal(Real()));
-              joinReal.setSize(size(100), size(92));
-              joinReal.setLoc(size(0), size(4));
-              joinReal.setColour('rgba(255, 255, 255, 0)');
+              let noStoryReal = dep(loggedInReal.addReal('storyOut'));
               
-              let enterTitleReal = joinReal.addReal(Real());
-              enterTitleReal.setSize(size(50), size(6));
-              enterTitleReal.setLoc(size(-25), size(-43));
-              enterTitleReal.setColour('rgba(150, 150, 255)')
-              enterTitleReal.setTextSize(size(4));
-              enterTitleReal.setText('Join Story');
-              
-              let enterReal = joinReal.addReal(Real());
-              enterReal.setSize(size(50), size(86));
-              enterReal.setLoc(size(-25), size(3));
-              enterReal.setColour('rgba(0, 0, 0, 0)');
-              enterReal.setBorder('inner', size(0.5), 'rgba(175, 175, 255)');
-              
-              let storyReals = new Set();
-              let reflowStoryReals = () => {
-                let cnt = 0;
-                for (storyReal of storyReals) storyReal.setLoc(size(0), size(-43 + 0.5 + 6 + (cnt++) * 11));
-              };
+              let storyList = noStoryReal.addReal('storyList');
               dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
                 
-                let storyReal = dep(enterReal.addReal(Real()));
-                storyReal.setSize(size(50 - 3), size(10));
-                storyReal.setColour('rgba(200, 200, 255, 1)');
-                
-                let storyNameReal = storyReal.addReal(Real());
-                storyNameReal.setSize(size(40), size(5));
-                storyNameReal.setLoc(size(0), size(-2.5));
-                storyNameReal.setColour('rgba(0, 0, 0, 0)');
-                storyNameReal.setTextSize(size(3));
-                
-                let storyDescReal = storyReal.addReal(Real());
-                storyDescReal.setSize(size(50 - 3), size(4));
-                storyDescReal.setLoc(size(0), size(2));
-                storyDescReal.setColour('rgba(0, 0, 0, 0)');
-                storyDescReal.setTextSize(size(2));
+                let joinStory = dep(storyList.addReal('item'));
+                let joinStoryName = joinStory.addReal('name');
+                let joinStoryDesc = joinStory.addReal('desc');
                 
                 dep(story.hold(v => {
-                  storyNameReal.setText(v.name);
-                  storyDescReal.setText(v.desc);
+                  joinStoryName.setText(v.name);
+                  joinStoryDesc.setText(v.desc);
                 }));
-                
-                // TODO: Automatically convert Records to their uids in cases like this??
-                dep(storyReal.feelWob().hold( () => lands.tell({ command: 'join', story: story.uid }) ));
-                
-                storyReals.add(storyReal);
-                dep(Hog(() => storyReals.delete(storyReal)));
-                
-                reflowStoryReals();
-                dep(Hog(reflowStoryReals));
+                dep(joinStory.feelWob().hold(() => lands.tell({ command: 'join', story: story.uid })));
                 
               }));
               
-              let createTitleReal = joinReal.addReal(Real());
-              createTitleReal.setSize(size(50), size(6));
-              createTitleReal.setLoc(size(25), size(-43));
-              createTitleReal.setColour('rgba(150, 170, 255)');
-              createTitleReal.setTextSize(size(4));
-              createTitleReal.setText('Create Story');
+              let storyCreate = noStoryReal.addReal('storyCreate');
               
-              let createReal = joinReal.addReal(Real());
-              createReal.setSize(size(50), size(86));
-              createReal.setLoc(size(25), size(3));
-              createReal.setColour('rgba(0, 0, 0, 0)');
-              createReal.setBorder('inner', size(0.5), 'rgba(200, 225, 255)');
-              
-              // Create Story form
-              let makeField = (par, cnt, name, type) => {
-                
-                let title = par.addReal(Real());
-                title.setSize(size(40), size(4));
-                title.setLoc(size(0), size(-40 + 1 + cnt.val * 10));
-                title.setColour('rgba(125, 125, 125, 1)');
-                title.setTextSize(size(3));
-                title.setText(name);
-                
-                let field = par.addReal(Real());
-                field.setSize(size(40), size(5));
-                field.setLoc(size(0), size(-40 + 5.5 + cnt.val * 10));
-                field.setColour('rgba(0, 0, 0, 0)');
-                field.setBorder('inner', size(0.25), 'rgba(125, 125, 125, 1)');
-                field.setTextSize(size(3));
-                field.setTextColour('rgba(125, 125, 125, 1)');
-                
-                cnt.val++;
-                
-                return { title, field, valWob: field.tellWob() };
-                
-              };
-              let makeFields = (dep, par, vals) => {
-                
-                let fullVal = {};
-                let cnt = { val: 0 };
-                let prev = null;
-                
-                vals.forEach(([ name, type ], k) => {
-                  
-                  fullVal[k] = null;
-                  let { field, valWob } = makeField(par, cnt, name, type);
-                  
-                  if (prev) prev.nextTrg = field;
-                  prev = field;
-                  
-                  dep(valWob.hold(v => { fullVal[k] = v; }));
-                  
-                });
-                
-                return {
-                  prev,
-                  getFullVal: () => fullVal
-                };
-                
-              };
-              
-              let { prev, getFullVal } = makeFields(dep, createReal, {
-                name: [ 'Story Name', 'string' ],
-                desc: [ 'Description', 'string' ],
-                roundMs: [ 'Round Duration', 'int' ],
-                maxAuthors: [ 'Max Authors', 'int' ]
+              let storyForm = storyCreate.addReal('form');
+              let form = storyForm.form('Create!', dep, v => form.clear() && lands.tell({ command: 'story', ...v }), {
+                name:       { type: 'str', desc: 'Name' },
+                desc:       { type: 'str', desc: 'Description' },
+                roundMs:    { type: 'int', desc: 'Round Timer' },
+                maxAuthors: { type: 'int', desc: 'Max Authors' }
               });
               
-              let createSubmitReal = createReal.addReal(Real());
-              createSubmitReal.setSize(size(40), size(7));
-              createSubmitReal.setLoc(size(0), size(10));
-              createSubmitReal.setTextSize(size(4));
-              createSubmitReal.setText('Create Story!');
-              dep(createSubmitReal.feelWob().hold(() => {
+            }));
+            dep(AccessPath(myAuthor.relWob(rel.authorCurrentStory.fwd), (dep, { rec: myStory }) => {
+              
+              noStoryWob.dn();
+              dep(Hog(() => noStoryWob.up()));
+              
+              let storyReal = dep(loggedInReal.addReal('storyIn'));
+              
+              // Show all the Story's entries
+              let entriesPane = storyReal.addReal('entries');
+              dep(AccessPath(myStory.relWob(rel.storyEntries.fwd), (dep, { rec: entry }) => {
+                let entryReal = dep(entriesPane.addReal('entry'));
+                dep(entry.hold(v => entryReal.setText(v.text)));
+              }));
+              
+              // Gives access to create and vote on Round Entries
+              let roundPane = storyReal.addReal('controls');
+              
+              // Calculate the current entry wob.
+              let myCurrentEntryWob = WobTmp('dn');
+              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
-                lands.tell({
-                  command: 'story',
-                  params: getFullVal()
-                });
+                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
+                  
+                  let authorFlt = WobFlt(entry.relWob(entryAuthor.fwd), author => author === myAuthor ? author : C.skip);
+                  dep(AccessPath(authorFlt, (dep, { rec: author }) => {
+                    myCurrentEntryWob.up(entry);
+                    dep(Hog(() => myCurrentEntryWob.dn()));
+                  }));
+                  
+                }));
                 
               }));
               
-              prev.nextTrg = createSubmitReal;
+              // Entries can be submitted if we have no current Entry. So either:
+              // 1 - No Round exists
+              // 2 - Round exists, but no Entry submitted by our Author
+              dep(AccessPath(myCurrentEntryWob.inverse(), dep => {
+                let entryWritePane = dep(roundPane.addReal('write'));
+                let entryWriteField = entryWritePane.addReal('field');
+                let entryWriteSubmit = entryWritePane.addReal('submit');
+                
+                let val = '';
+                dep(entryWriteField.tellWob().hold(v => { val = v; }));
+                
+                entryWriteSubmit.setText('Submit!');
+                dep(entryWriteSubmit.feelWob().hold(() => console.log('SUBMIT:', val)));
+              }));
               
-            }));
-            
-            dep(AccessPath(author.relWob(rel.authorCurrentStory.fwd), (dep, { rec: authorCurStory }) => {
-              
-              let storyReal = dep(scaleReal.addReal(Real()));
-              storyReal.setSize(size(100), size(92));
-              storyReal.setLoc(size(0), size(4));
-              storyReal.setColour('rgba(0, 0, 0, 0)');  
-              
-              let storyTitleReal = storyReal.addReal(Real());
-              storyTitleReal.setSize(size(100), size(6));
-              storyTitleReal.setLoc(size(0), size(-43));
-              storyTitleReal.setTextSize(size(4));
-              dep(authorCurStory.hold(v => storyTitleReal.setText(`Story: ${v.name}`)));
-              
-              noCurStoryWob.dn();
-              dep(Hog(() => noCurStoryWob.up()));
+              // Show all Round stuff
+              let noRoundWob = WobTmp('up');
+              dep(AccessPath(noRoundWob, dep => true || dep(roundPane.addReal('empty'))));
+              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
+                
+                noRoundWob.dn();
+                dep(Hog(() => noRoundWob.up()));
+                
+                let entriesPane = dep(roundPane.addReal('entries'));
+                dep(AccessPath(currentRound.relWob(rel.roundEntries), (dep, { rec: roundEntry }) => {
+                  
+                  let roundEntryReal = dep(entriesPane.addReal('entry'));
+                  let roundEntryAuthorReal = roundEntryReal.addReal('author');
+                  let roundEntryTextReal = roundEntryReal.addReal('text');
+                  
+                  // Show the Entry's text
+                  dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
+                  
+                  // Show the username of the Entry's Author
+                  dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
+                    dep(entryAuthor.hold(v => roundEntryAuthorReal.setText(v.username)));
+                  }));
+                  
+                  // Show each Vote for the Entry
+                  let roundEntryVotes = roundEntryReal.addReal('votes');
+                  dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                    
+                    let vote = dep(roundEntryVotes.addReal('vote'));
+                    dep(voteAuthor.hold(v => vote.setText(v.username)));
+                    
+                  }));
+                  
+                }));
+                
+              }));
               
             }));
             
@@ -649,8 +679,7 @@ U.buildRoom({
         
       });
       
-      let way = Way({ lands, makeServer: () => foundation.makeHttpServer() });
-      lands.addWay(way);
+      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer() }));
       await lands.open();
     };
     

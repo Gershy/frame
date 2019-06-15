@@ -1,0 +1,309 @@
+#storyMix > .main {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 90vmin;
+  margin-left: -45vmin;
+  height: 90vmin;
+  margin-top: -45vmin;
+  box-sizing: border-box;
+  padding-top: 53px;
+  background-color: rgba(255, 255, 255, 1);
+  transform: translate(0px, 0px);
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .title {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 53px;
+  line-height: 53px;
+  background-color: rgba(0, 0, 0, 0.2);
+  text-align: center;
+  font-size: 24px;
+}
+#storyMix > .main > .loggedOut {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  text-align: center;
+  background-color: rgba(255, 220, 220, 1);
+  font-size: 13px;
+}
+#storyMix > .main > .loggedOut::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 100%;
+  vertical-align: middle;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedOut > .form {
+  display: inline-block;
+  vertical-align: middle;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 60%;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedOut > .form > .item {
+  position: relative;
+  box-sizing: border-box;
+  padding-top: 20px;
+  width: 100%;
+  height: 50px;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedOut > .form > .item > .title {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 20px;
+  line-height: 20px;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedOut > .form > .item > .field {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 30px;
+  background-color: rgba(255, 255, 255, 1);
+  color: rgba(0, 0, 0, 1);
+  white-space: nowrap;
+  box-sizing: border-box;
+  padding-left: 5px;
+  padding-right: 5px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 30px;
+}
+#storyMix > .main > .loggedOut > .form > .submit {
+  position: relative;
+  background-color: #d0d0d0;
+  width: 100%;
+  height: 30px;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 22px;
+  margin-top: 20px;
+  line-height: 30px;
+}
+#storyMix > .main > .loggedIn {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(220, 255, 220, 1);
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyList {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 5px;
+  width: 50%;
+  height: 100%;
+  box-shadow: inset 0 0 0 2px #00ff00;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyList > .item {
+  position: relative;
+  box-sizing: border-box;
+  padding-top: 30px;
+  height: 50px;
+  background-color: rgba(0, 100, 0, 0.1);
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyList > .item:hover {
+  background-color: rgba(0, 150, 0, 0.2);
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyList > .item > .name {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 30px;
+  line-height: 30px;
+  font-size: 22px;
+  text-align: left;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyList > .item > .desc {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 20px;
+  font-size: 14px;
+  text-align: left;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  text-align: center;
+  width: 50%;
+  height: 100%;
+  box-shadow: inset 0 0 0 2px #00c8a0;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 100%;
+  vertical-align: middle;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate > .form {
+  display: inline-block;
+  vertical-align: middle;
+  overflow-x: hidden;
+  overflow-y: auto;
+  width: 80%;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate > .form > .item {
+  position: relative;
+  box-sizing: border-box;
+  padding-top: 20px;
+  height: 50px;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate > .form > .item > .title {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 20px;
+  line-height: 20px;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate > .form > .item > .field {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 30px;
+  background-color: #ffffff;
+  color: #000000;
+  white-space: nowrap;
+  box-sizing: border-box;
+  padding-left: 5px;
+  padding-right: 5px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 30px;
+}
+#storyMix > .main > .loggedIn > .storyOut > .storyCreate > .form > .submit {
+  position: relative;
+  height: 30px;
+  background-color: #d0d0d0;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 22px;
+  margin-top: 20px;
+  line-height: 30px;
+}
+#storyMix > .main > .loggedIn > .storyIn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyIn > .entries {
+  position: relative;
+  height: 50%;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyIn > .controls {
+  position: relative;
+  height: 50%;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyIn > .controls > .write {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding-bottom: 50px;
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyIn > .controls > .write > .field {
+  display: block;
+  position: relative;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 1);
+  text-align: left;
+  font-size: 13px;
+}
+#storyMix > .main > .loggedIn > .storyIn > .controls > .write > .submit {
+  display: block;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 50px;
+  line-height: 50px;
+  background-color: rgba(120, 200, 120, 1);
+  text-align: left;
+  font-size: 13px;
+}
