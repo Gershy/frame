@@ -4,7 +4,7 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'chance', 'record', 'real' ],
   build: (foundation, hinterlands, chance, record, real) => {
     
-    let { AccessPath, Wob, WobVal, AggWobs } = U;
+    let { AccessPath, Hog, Wob, WobVal, AggWobs } = U;
     let { Chance } = chance;
     let { Record, Relation } = record;
     let { Lands, LandsRecord, Way, Hut, rel: landsRel } = hinterlands;
@@ -31,8 +31,8 @@ U.buildRoom({
       storyRounds:            Relation(Story, Round, '1M'),
       storyCurrentRound:      Relation(Story, Round, '1M'),
       // storyCurrentEntry:      Relation(Author, Story, Round, '1M1'),
-      roundEntries:           Relation(Round, Entry, '1M'),
       storyEntries:           Relation(Story, Entry, '1M'),
+      roundEntries:           Relation(Round, Entry, '1M'),
       entryAuthor:            Relation(Entry, Author, '1M'),
       roundEntryVoteAuthors:  Relation(Entry, Author, '1M')
     };
@@ -60,25 +60,44 @@ U.buildRoom({
         let storyMix = dep(StoryMix({ lands }));
         lands.attach(rel.landsStoryMix.fwd, storyMix);
         
+        let testAuthor = Author({ lands, value: { username: 'admin' } });
+        let testStory = Story({ lands, value: {
+          name: 'test',
+          desc: 'test story',
+          startMs: foundation.getMs(),
+          endMs: null,
+          settings: {
+            roundMs: 1000 * 60 * 60, // 1hr
+            maxAuthors: 10
+          }
+        }});
+        
+        testStory.attach(rel.storyCreatorAuthor.fwd, testAuthor);
+        storyMix.attach(rel.storyMixStories.fwd, testStory);
+        
         // Follows
         dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {
           
           dep(hut.followRec(storyMix));
           
+          // StoryMix -> Story
           dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
             
             dep(hut.followRec(story));
             
           }));
           
+          // StoryMix -> Author
           dep(AccessPath(hut.relWob(rel.hutAuthor.fwd), (dep, { rec: author }) => {
             
             hut.followRec(author);
             
+            // StoryMix -> Author -> CurrentStory
             dep(AccessPath(author.relWob(rel.authorCurrentStory.fwd), (dep, { rec: currentStory }) => {
               
               hut.followRec(currentStory);
               
+              // StoryMix -> Author -> CurrentStory -> CurrentRound
               dep(AccessPath(currentStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
                 hut.followRec(currentRound);
@@ -198,6 +217,10 @@ U.buildRoom({
               let story = storyMix.getRec(rel.storyMixStories.fwd, msg.story);
               if (!story) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
               
+              try {
+                author.attach(rel.storyAuthors.bak, story);
+              } catch(err) {}
+              
               author.attach(rel.authorCurrentStory.fwd, story);
               
             }));
@@ -228,18 +251,24 @@ U.buildRoom({
               // Return all Entries tied for first in votes
               
               // TODO: Implement!
-              return null;
+              return [];
             };
             let endRound = (reason, entry) => {
               
-              // Add the Entry to the Story.
+              if (entry) {
+                // Add the Entry to the Story.
+                story.attach(rel.storyEntries.fwd, entry);
+              } else {
+                console.log('Round ended without entry :(');
+              }
+              
               // Detach the current Round
-              story.attach(rel.storyEntries.fwd, entry);
               relStoryCurrentRound.shut();
               
             };
             
             // Round ends because of timeout with a random Entry tied for 1st place
+            console.log('TIMEOUT DURATION:', storyCurrentRound.value.endMs - foundation.getMs());
             let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), storyCurrentRound.value.endMs - foundation.getMs());
             dep(Hog(() => clearTimeout(timeout)));
             
@@ -265,14 +294,14 @@ U.buildRoom({
             
             dep(AccessPath(storyAuthor.relWob(rel.hutAuthor.bak), (dep, { rec: storyAuthorHut }) => {
               
-              dep(storyAuthorHut.comWob('entry').hold((...args) => {
+              dep(storyAuthorHut.comWob('entry').hold(({ lands, hut, msg }) => {
                 
                 // User adds a new Entry to the Round.
                 // If no Round exists, a new one is spawned
                 
                 console.log('\nAUTHOR SUBMITTED')
                 console.log('Author:', storyAuthor.value);
-                console.log('Entry:', args);
+                console.log('Entry:', msg.text);
                 console.log('');
                 
                 // TODO: If max Rounds reached, deny
@@ -301,6 +330,10 @@ U.buildRoom({
                 }
                 
                 // TODO: If already submitted, deny
+                
+                let entry = Entry({ lands, value: { text: msg.text } });
+                entry.attach(rel.roundEntries.bak, storyCurrentRound);
+                entry.attach(rel.entryAuthor.fwd, storyAuthor);
                 
               }));
               
@@ -391,7 +424,7 @@ U.buildRoom({
             }
           }),
           'main.loggedIn.storyOut': ({ slots }) => ({
-            layout: real.layout.Fill({}), //real.layout.Free({ w: real.UnitPc(100), h: real.UnitPc(100) }),
+            layout: real.layout.Fill({}),
             slots: real.slots.FillH({})
           }),
           'main.loggedIn.storyOut.storyList': ({ slots }) => ({
@@ -509,10 +542,26 @@ U.buildRoom({
           'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
             layout: slots.layout('title'),
             decals: {
-              colour: 'rgba(120, 200, 120, 1)'
+              colour: 'rgba(120, 200, 120, 1)',
+              textOrigin: 'center'
             }
           }),
           
+          'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
+            layout: real.layout.Fill({ pad: real.UnitPx(5) }),
+            slots: real.slots.FillV({})
+          }),
+          'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
+            layout: slots.layout('item'),
+            decals: {
+              colour: '#ffffff',
+              border: { w: real.UnitPx(2), colour: '#000000' }
+            }
+          }),
+          'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
+          'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
+          'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
+          'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
           
         });
         
@@ -521,7 +570,7 @@ U.buildRoom({
         
         /// {BELOW=
         
-        storyMix = await lands.getInitRec(StoryMix); // TODO: This barely works :P
+        storyMix = await lands.getInitRec(StoryMix); // TODO: `Lands.prototype.getInitRec` barely works :P
         
         let main = rootReal.addReal('main');
         
@@ -602,13 +651,14 @@ U.buildRoom({
               // Gives access to create and vote on Round Entries
               let roundPane = storyReal.addReal('controls');
               
-              // Calculate the current entry wob.
+              // Calculate the current entry wob. For the current round, check all RoundEntries, and
+              // then the RoundEntry's EntryAuthor.
               let myCurrentEntryWob = WobTmp('dn');
               dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
                   
-                  let authorFlt = WobFlt(entry.relWob(entryAuthor.fwd), author => author === myAuthor ? author : C.skip);
+                  let authorFlt = WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => relAuthor.rec === myAuthor ? relAuthor : C.skip);
                   dep(AccessPath(authorFlt, (dep, { rec: author }) => {
                     myCurrentEntryWob.up(entry);
                     dep(Hog(() => myCurrentEntryWob.dn()));
@@ -626,11 +676,12 @@ U.buildRoom({
                 let entryWriteField = entryWritePane.addReal('field');
                 let entryWriteSubmit = entryWritePane.addReal('submit');
                 
-                let val = '';
-                dep(entryWriteField.tellWob().hold(v => { val = v; }));
+                // TODO: Should use "form" stuff here
+                let entryText = '';
+                dep(entryWriteField.tellWob().hold(v => { entryText = v; }));
                 
                 entryWriteSubmit.setText('Submit!');
-                dep(entryWriteSubmit.feelWob().hold(() => console.log('SUBMIT:', val)));
+                dep(entryWriteSubmit.feelWob().hold( () => lands.tell({ command: 'entry', text: entryText }) ));
               }));
               
               // Show all Round stuff
@@ -641,17 +692,23 @@ U.buildRoom({
                 noRoundWob.dn();
                 dep(Hog(() => noRoundWob.up()));
                 
+                // Show all votable Entries for current Round
                 let entriesPane = dep(roundPane.addReal('entries'));
-                dep(AccessPath(currentRound.relWob(rel.roundEntries), (dep, { rec: roundEntry }) => {
+                
+                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
                   
+                  console.log('GOT A ROUNDENTRY!!', roundEntry.uid);
+                  dep(Hog(() => console.log('Lost roundEntry')));
+                  
+                  // A Real for the whole Entry
                   let roundEntryReal = dep(entriesPane.addReal('entry'));
-                  let roundEntryAuthorReal = roundEntryReal.addReal('author');
-                  let roundEntryTextReal = roundEntryReal.addReal('text');
                   
                   // Show the Entry's text
+                  let roundEntryTextReal = roundEntryReal.addReal('text');
                   dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
                   
                   // Show the username of the Entry's Author
+                  let roundEntryAuthorReal = roundEntryReal.addReal('author');
                   dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
                     dep(entryAuthor.hold(v => roundEntryAuthorReal.setText(v.username)));
                   }));
@@ -660,8 +717,8 @@ U.buildRoom({
                   let roundEntryVotes = roundEntryReal.addReal('votes');
                   dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
                     
-                    let vote = dep(roundEntryVotes.addReal('vote'));
-                    dep(voteAuthor.hold(v => vote.setText(v.username)));
+                    let voteReal = dep(roundEntryVotes.addReal('vote'));
+                    dep(voteAuthor.hold(v => voteReal.setText(v.username)));
                     
                   }));
                   

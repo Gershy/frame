@@ -152,7 +152,6 @@ U.buildRoom({
         let processNode = (parCtx, chain, ctxsNode) => {
           
           // TODO: Could recursively propagate new contexts - it'd be more elegant?
-          
           let fullCtx = ({}).gain(genericCtx).gain(parCtx);
           let { layout, slots=null, decals=null } = ctxsNode.ctxsFunc(fullCtx);
           
@@ -770,6 +769,7 @@ U.buildRoom({
         },
         layout: function(type) {
           // TODO: `type` should be specific! So not "item", but "justifiedItem"
+          // Or even different method names; `slots.justifiedItemLayout()`
           if (type !== 'item') throw new Error(`Invalid layout type: "${type}"`);
           return JustifiedItem(this);
         }

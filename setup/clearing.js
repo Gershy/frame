@@ -291,45 +291,40 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
     if (U.DBG_WOBS) U.DBG_WOBS.add(this);
   },
   numHolds: function() { return this.holds ? this.holds.size : 0; },
-  hold: function(func) {
-    if (this.holds.has(func)) throw new Error('Already held');
-    this.holds.add(func);
-    return Hog(() => this.holds.delete(func));
+  hold: function(holdFn) {
+    if (this.holds.has(holdFn)) throw new Error('Already held');
+    this.holds.add(holdFn);
+    return Hog(() => this.shutHolder(holdFn)); // holds.delete(func));
   },
-  wobble: function(...args) { this.toHolds(...args); },
-  toHolds: function(...args) { this.holds.forEach(func => func(...args)); }
+  shutHolder: function(holdFn) { this.holds.delete(holdFn); },
+  wobble: function(...args) { this.holds.forEach(holdFn => this.toHold(holdFn, ...args)); },
+  toHold: function(holdFn, ...args) { holdFn(...args); }
 })});
 let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
   init: function() {
     insp.Wob.init.call(this);
   },
-  hold: function(func) {
+  hold: function(holdFn) {
     // If we haven't wobbled, regular `Wob` functionality
-    if (this.holds) {
-      
-      if (this.holds.has(func)) throw new Error('Already held');
-      this.holds.add(func);
-      
-      return Hog(() => {
-        if (this.holds) this.holds.delete(func);
-        else if (this.tmpHolds) this.tmpHolds.delete(func);
-      });
-
-    }
+    if (this.holds) return insp.Wob.hold.call(this, holdFn);
     
-    // If `!this.holds`, we're either mid-wobble or done wobbling
-    if (this.tmpHolds)  this.tmpHolds.add(func);  // Mid-wobble: we're already iterating `this.tmpHolds` so queue `func` and we'll get to it
-    else                func();                   // Done wobbling: call `func` immediately
+    // If `!this.holds`, we're either mid-wobble or done wobbling:
+    if (this.tmpHolds)  this.tmpHolds.add(holdFn);  // Mid-wobble: we're already iterating `this.tmpHolds` so queue `holdFn` and we'll get to it
+    else                this.toHold(holdFn);        // Done wobbling: call `holdFn` immediately with no args
     
     // Return a duck-typed Hog which ignores shuts and wobbles as if
     // its already been shut
     return { shut: () => {}, shutWob: () => this };
   },
-  toHolds: function(...args) {
-    if (!this.holds) return;
+  shutHolder: function(holdFn) {
+    if (this.holds) this.holds.delete(holdFn);
+    else if (this.tmpHolds) this.tmpHolds.delete(holdFn);
+  },
+  wobble: function(...args) {
+    if (!this.holds) return; // Can only wobble once; the 1st time is detected by `!!this.holds`
     this.tmpHolds = this.holds;
     this.holds = null;
-    this.tmpHolds.forEach(func => func(...args));
+    this.tmpHolds.forEach(holdFn => this.toHold(holdFn, ...args));
     delete this.tmpHolds;
   }
 })});
@@ -338,9 +333,9 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     insp.Wob.init.call(this);
     this.value = value;
   },
-  hold: function(func, hasty=true) {
-    let ret = insp.Wob.hold.call(this, func);
-    if (hasty) func(this.value, null);
+  hold: function(holdFn, hasty=true) {
+    let ret = insp.Wob.hold.call(this, holdFn);
+    if (hasty) this.toHold(holdFn, this.value, null);
     return ret;
   },
   wobble: function(value=null, force=U.isType(value, Object)) {
@@ -352,7 +347,7 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     let origVal = this.value;
     if (!force && value === origVal) return; // Duplicate value; no forcing
     this.value = value;
-    this.toHolds(value, origVal);
+    insp.Wob.wobble.call(this, value, origVal);
   },
   modify: function(func, force) { this.wobble(func(this.value), force); }
 })});
@@ -409,9 +404,9 @@ let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) =
     if (!this.tmp) throw new Error('Already dn');
     this.tmp.shut();
   },
-  hold: function(func) {
-    let ret = insp.Wob.hold.call(this, func);
-    if (this.tmp) func(this.tmp);
+  hold: function(holdFn) {
+    let ret = insp.Wob.hold.call(this, holdFn);
+    if (this.tmp) this.toHold(holdFn, this.tmp);
     return ret;
   },
   wobble: function(...args) { return insp.Wob.wobble.call(this, this.tmp, ...args); }
@@ -419,40 +414,75 @@ let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) =
 
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
   init: function(...wobs) {
-    this.wobs = new Map(); // Maps a `Wob` to its related WobItem
-    wobs.forEach(wob => this.addWob(wobs));
+    this.wobs = new Set(); // Maps a `Wob` to its related WobItem
+    wobs.forEach(wob => this.addWob(wob));
     
     this.err = new Error('');
-    U.foundation.queueTask(() => {
+    U.foundation.queueTask(() => { // TODO: Better name for "queueTask" should simply imply that the task occurs after serial processing is done
       if (this.wobs) { this.err.message = 'INCOMPLETE AGG'; throw this.err; }
       delete this.err;
     });
   },
   addWob: function(wob) {
+    
     if (this.wobs.has(wob)) return wob; // Allowed to add the same `wob` multiple times (with no effect)
+    this.wobs.add(wob);
     
-    let wobItem = { wob, vals: null };
+    // For each Wob there are many Holds. Each Hold may be contacted multiple times,
+    // with different values each time. These values could be simple literals, or
+    // could also be Hogs. Each of the Wob's Holds should be wobbled once for every
+    // received value, EXCEPTING any values which were Hogs, and are shut at the
+    // present instant.
     
-    wob.numAggs = wob.numAggs ? wob.numAggs + 1 : 1;
-    if (wob.numAggs > 1) console.log(U.foundation.formatError(new Error('Multiple aggs')));
-    if (wob.numAggs === 1) wob['toHolds'] = (...vals) => { wobItem.vals = vals; };
+    wob.aggCnt = wob.aggCnt ? wob.aggCnt + 1 : 1; // TODO: No more "numAggs"!
     
-    this.wobs.set(wob, wobItem);
+    // This should be indicated. AggWobs should probably not compound. If anything, there
+    // should be a heirarchy of AggWobs (e.g. `agg1.addWob(agg2)`)
+    if (wob.aggCnt > 1) console.log(U.foundation.formatError(new Error('Multiple aggs')));
+    
+    // Only the 1st AggWobs gets to mask the Wob's "toHold" function:
+    if (wob.aggCnt === 1) {
+      
+      let m = wob.aggMapHoldToArgsSet = new Map();
+      wob['toHold'] = (holdFn, ...args) => {
+        
+        if (!m.has(holdFn)) m.set(holdFn, new Set());
+        
+        // From the Wob, get a particular Hold, and add a set of arguments for it.
+        m.get(holdFn).add(args);
+        
+      };
+      
+    }
     
     return wob;
   },
   complete: function(fnc=null) {
-    if (fnc) fnc(this);
-    this.wobs.forEach(wobItem => {
-      delete wobItem.wob.toHolds;
-      if (wobItem.wob.numAggs > 1) {
-        wobItem.wob.numAggs--;
-      } else {
-        delete wobItem.wob.numAggs;
-        if (wobItem.vals) wobItem.wob.toHolds(...wobItem.vals);
-      }
+    
+    if (fnc) fnc(this); // TODO: This should go! (grep `complete\([^)]`)
+    
+    // Apply all wobbles that happened while aggregated!
+    this.wobs.forEach(wob => {
+      if (wob.aggCnt > 1) { wob.aggCnt--; return; } // There are still more AggWobs holding `wob`
+      
+      // Get reference to needed data, then clean up our "toHold" mask and other "agg*" props
+      let mapHoldsToArgsSet = wob.aggMapHoldToArgsSet;
+      delete wob['toHold'];
+      delete wob.aggCnt;
+      delete wob.aggMapHoldToArgsSet;
+      
+      // Now we have Holds mapped to a set of Args. Each Hold should be called with every
+      // related instance of Args:
+      mapHoldsToArgsSet.forEach((argsSet, holdFn) => {
+        argsSet.forEach(args => {
+          let argsIsShutHog = args.length === 1 && U.isInspiredBy(args[0], Hog) && args[0].isShut();
+          if (!argsIsShutHog) holdFn(...args); // Unless the shut-Hog exception applies, wobble the Holder!
+        });
+      });
     });
-    this.wobs = null;
+    
+    this.wobs = null; // Prevent adding any new wobs. `AggWobs` can only complete once!
+    
   }
 })});
 

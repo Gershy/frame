@@ -10,6 +10,7 @@ U.buildRoom({
       cont: function() { return Math.random(); },
       disc: function(p) {
         let [ max, min ] = p.find(v => 1);
+        min = parseInt(min, 10);
         return min + Math.floor(this.cont() * (max - min));
       },
       elem: function(arr) {

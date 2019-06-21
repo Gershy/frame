@@ -325,7 +325,7 @@ U.gain({
         
         let wob = U.Wob();
         
-        return { result: wob.toHolds === U.Wob.prototype.toHolds };
+        return { result: wob.toHold === U.Wob.prototype.toHold };
         
       });
       
@@ -333,8 +333,38 @@ U.gain({
         
         let wob = U.Wob();
         let repl = () => 'hi';
-        wob.toHolds = repl;
-        return { result: wob.toHolds === repl };
+        wob.toHold = repl;
+        return { result: wob.toHold === repl };
+        
+      });
+      
+      Keep(k, 'simpleWob1', () => {
+        
+        let wob = U.Wob();
+        
+        let count = 0;
+        let hold = v => { count++; };
+        wob.toHold(hold);
+        wob.toHold(hold);
+        
+        return [
+          [ 'toHold causes Hold to run', () => count === 2 ]
+        ];
+        
+      });
+      
+      Keep(k, 'simpleWob2', () => {
+        
+        let wob = U.Wob();
+        
+        let count = 0;
+        wob.hold(v => { count++; });
+        wob.wobble();
+        wob.wobble();
+        
+        return [
+          [ 'Wobbles cause Holds to run', () => count === 2 ]
+        ];
         
       });
       
@@ -343,14 +373,15 @@ U.gain({
         let wob = U.Wob();
         
         let numOrigCalls = 0;
-        let numReplCalls = 0;
-        
         wob.hold(v => { numOrigCalls++; });
         wob.wobble();
         
-        wob.toHolds = () => { numReplCalls++; };
+        let numReplCalls = 0;
+        wob.toHold = () => { numReplCalls++; };
         wob.wobble();
         wob.wobble();
+        
+        console.log(numOrigCalls, numReplCalls);
         
         return {
           result: true
@@ -365,16 +396,15 @@ U.gain({
         let wob = U.Wob();
         
         let numOrigCalls = 0;
-        let numReplCalls = 0;
-        
         wob.hold(v => { numOrigCalls++; });
         wob.wobble();
         
-        wob.toHolds = () => { numReplCalls++; };
+        let numReplCalls = 0;
+        wob.toHold = () => { numReplCalls++; };
         wob.wobble();
         wob.wobble();
         
-        delete wob.toHolds;
+        delete wob.toHold;
         wob.wobble();
         wob.wobble();
         

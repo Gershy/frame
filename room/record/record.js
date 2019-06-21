@@ -11,9 +11,9 @@ U.buildRoom({
         insp.Wob.init.call(this);
         this.hog = null;
       },
-      hold: function(fn) {
-        if (this.hog) fn(this.hog); // Call immediately
-        return insp.Wob.hold.call(this, fn);
+      hold: function(holdFn) {
+        if (this.hog) this.toHold(holdFn, this.hog); // Call immediately
+        return insp.Wob.hold.call(this, holdFn);
       },
       forEach: function(fn) { if (this.hog) fn(this.hog); },
       isEmpty: function() { return !this.hog; },
@@ -33,9 +33,9 @@ U.buildRoom({
         insp.Wob.init.call(this);
         this.hogs = new Set();
       },
-      hold: function(fn) {
-        this.hogs.forEach(fn);
-        return insp.Wob.hold.call(this, fn);
+      hold: function(holdFn) {
+        this.hogs.forEach(hog => this.toHold(holdFn, hog));
+        return insp.Wob.hold.call(this, holdFn);
       },
       forEach: function(fn) { this.hogs.forEach(fn); },
       isEmpty: function() { return this.hogs.size === 0; },
@@ -58,9 +58,9 @@ U.buildRoom({
         this.hogs = new Map();
         this.getKey = getKey;
       },
-      hold: function(fn) {
-        this.hogs.forEach(fn);
-        return insp.Wob.hold.call(this, fn);
+      hold: function(holdFn) {
+        this.hogs.forEach(hog => this.toHold(holdFn, hog));
+        return insp.Wob.hold.call(this, holdFn);
       },
       forEach: function(fn) { this.hogs.forEach(fn); },
       isEmpty: function() { return this.hogs.size === 0; },
@@ -127,13 +127,10 @@ U.buildRoom({
         return this.inner[relF.name];
       },
       
-      // SHOULD USE "getRelRec" INSTEAD OF "relVal"
       getRelRec: function(relF, uid=null) {
         let wob = this.relWob(relF);
         return uid !== null ? wob.hogs.get(uid) || null : wob.hog;
       },
-      
-      // PLEASE USE "getRec"
       getRec: function(relF, uid=null) {
         let relRec = this.getRelRec(relF, uid);
         return relRec ? relRec.rec : null;
@@ -843,6 +840,94 @@ U.buildRoom({
             return { result };
             
           });
+          
+        });
+        
+      });
+      
+      U.Keep(k, 'AggWobs').contain(k => {
+        
+        U.Keep(k, 'defersWobbleOnHold', () => {
+          
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
+          
+          let relAB = Rel(RecA, RecB, '11');
+          
+          let recA = RecA({});
+          let recB = RecB({});
+          
+          let agg = U.AggWobs();
+          
+          recA.attach(relAB.fwd, recB, agg);
+          
+          let cnt = 0;
+          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+            cnt++;
+          });
+          
+          if (cnt > 0) return [
+            [ 'Wobble on hold deferred by aggregation', () => false ]
+          ];
+          
+          agg.complete();
+          
+          return [
+            [ 'Exactly one wobble in total', () => cnt === 1 ]
+          ];
+          
+        });
+        
+        U.Keep(k, 'parentWithChild1', () => {
+          
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
+          
+          let relAB = Rel(RecA, RecB, '11');
+          
+          let recA = RecA({});
+          let recB = RecB({});
+          
+          let agg = U.AggWobs();
+          
+          recA.attach(relAB.fwd, recB, agg);
+          agg.complete();
+          
+          let cnt = 0;
+          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+            cnt++;
+          });
+          
+          return [
+            [ 'Exactly one wobble in total', () => cnt === 1 ]
+          ];
+          
+        });
+        
+        U.Keep(k, 'parentWithChild2', () => {
+          
+          let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+          let RecB = U.inspire({ name: 'RecB', insps: { Rec } });
+          
+          let relAB = Rel(RecA, RecB, '11');
+          
+          let recA = RecA({});
+          let recB = RecB({});
+          
+          let agg = U.AggWobs();
+          
+          recA.attach(relAB.fwd, recB, agg);
+          
+          let cnt = 0;
+          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+            cnt++;
+          });
+          
+          agg.complete();
+          
+          return [
+            [ 'Exactly one wobble in total', () => cnt === 1 ]
+          ];
           
         });
         
