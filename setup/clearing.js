@@ -1,6 +1,8 @@
 // The "clearing" is javascript-level bootstrapping; top-level configuration
 // and extension for increased functionality and consistency
 
+Error.stackTraceLimit = Infinity;
+
 let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
 let C = global.C = {
@@ -277,8 +279,11 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
   shut: function(...args) {
-    if (this.didShut) throw new Error('Already shut');
-    this.didShut = true;
+    if (this.didShut) {
+      console.log('FIRST SHUT:', U.foundation.formatError(this.didShut));
+      throw new Error(`Already shut`);
+    }
+    this.didShut = new Error('First shut');
     this.shut0(...args);
     this.shutWob0.wobble();
   },
@@ -375,7 +380,7 @@ let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, In
   },
   shut0: function() { if (this.wobHold) this.wobHold.shut(); }
 })});
-let WobTmp = U.inspire({ name: 'WobOpt', insps: { Wob }, methods: (insp, Insp) => ({
+let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) => ({
   
   // Wob Temporary
   
@@ -515,17 +520,26 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
         
         if (!depShutWob || !depShutWob.hold) throw new Error(`Mis-implemented shutWob: ${U.typeOf(dep)}`);
         
+        let [ hogShutCauseDepShutHold, apShutCauseDepShutHold ] = [ null, null ];
+        let finished = false;
+        
         // If the Dep shuts stop holding
         let depShutFirstWob = depShutWob.hold(() => {
-          hogShutCauseDepShutHold.shut();
-          apShutCauseDepShutHold.shut();
+          if (hogShutCauseDepShutHold) hogShutCauseDepShutHold.shut();
+          if (apShutCauseDepShutHold) apShutCauseDepShutHold.shut();
+          finished = true;
         });
         
-        // If the AccessPath or Hog shut, immediately shut `dep`
-        // Note that shutting `dep` will cause both these holds, against
-        // the Hog shutting and the AccessPath shutting, to be dropped.
-        let hogShutCauseDepShutHold = hogShutWob.hold((...args) => dep.shut(...args));
-        let apShutCauseDepShutHold = apShutWob.hold((...args) => dep.shut(...args));
+        // It's possible that `depShutWob` wobbles immediately, before
+        // `hogShutCauseDepShutHold` and `apShutCauseDepShutHold` are even
+        // initialized. If that occurs, shouldn't even initialize them!
+        if (!finished) {
+          // If the AccessPath or Hog shut, immediately shut `dep`
+          // Note that shutting `dep` will cause both these holds, against
+          // the Hog shutting and the AccessPath shutting, to be dropped.
+          hogShutCauseDepShutHold = hogShutWob.hold((...args) => dep.shut(...args));
+          apShutCauseDepShutHold = apShutWob.hold((...args) => dep.shut(...args));
+        }
         
         return dep;
       };

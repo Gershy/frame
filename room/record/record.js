@@ -128,8 +128,17 @@ U.buildRoom({
       },
       
       getRelRec: function(relF, uid=null) {
+        
+        // TODO: Inconsistent behaviour? If M, finds rec at `uid`. Otherwise,
+        // validates that the 1 single `rec` matches the `uid`.
+        // Overall trying to encourage omitting `uid` for 1-type relationships
+        
         let wob = this.relWob(relF);
-        return uid !== null ? wob.hogs.get(uid) || null : wob.hog;
+        let c = wob.hogs ? 'M' : '1'
+        if (c === 'M' && uid === null) throw new Error(`Relation is M, but no uid provided`);
+        if (c === '1' && uid !== null && wob.hog && wob.hog.rec.uid !== uid) throw new Error(`Incorrect uid ${uid} didn't match ${wob.hog.rec.uid}`);
+        return c === 'M' ? (wob.hogs.get(uid) || null) : wob.hog;
+        
       },
       getRec: function(relF, uid=null) {
         let relRec = this.getRelRec(relF, uid);

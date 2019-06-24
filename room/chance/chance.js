@@ -5,7 +5,7 @@ U.buildRoom({
     
     let Chance = U.inspire({ name: 'Chance', methods: (insp, Insp) => ({
       init: function(seed=null) {
-        if (seed !== null) throw new Error(`${U.typeOf(this)} isn't prepared to deal with seeds yet`);
+        if (seed !== null) throw new Error(`${U.typeOf(this)} can't deal with seeds yet`);
       },
       cont: function() { return Math.random(); },
       disc: function(p) {

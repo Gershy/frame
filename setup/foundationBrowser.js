@@ -4,6 +4,7 @@
   
   let { Hog } = U;
   let { Foundation } = U.foundationClasses;
+  
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function({ hut, bearing }) {
       insp.Foundation.init.call(this, { hut, bearing });
@@ -226,7 +227,7 @@
           
         } catch(err) {
           
-          return `TRACEERR - ${err.message.split('\n').join(' ')} - "${ln}"`;
+          return `TRACEERR - "${ln}" - ${err.message.split('\n').join(' ')}`;
           
         }
       });
@@ -235,9 +236,7 @@
       
     }
   })});
-
-  U.foundationClasses.gain({
-    FoundationBrowser
-  });
+  
+  U.foundationClasses.gain({ FoundationBrowser });
   
 })();

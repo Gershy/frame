@@ -1,3 +1,4 @@
+// - Factor Users into its own hut. It should be easily integrated into any other Hut!
 
 U.buildRoom({
   name: 'storyMix',
@@ -19,6 +20,7 @@ U.buildRoom({
     let Round = U.inspire({ name: 'Round', insps: { LandsRecord } });
     let Entry = U.inspire({ name: 'Entry', insps: { LandsRecord } });
     
+    // TODO: Relation should receive cardinality as 1st param
     let rel = {
       landsStoryMix:          Relation(Lands, StoryMix, '11'),
       storyMixStories:        Relation(StoryMix, Story, '1M'),
@@ -29,8 +31,7 @@ U.buildRoom({
       storyCreatorAuthor:     Relation(Story, Author, 'M1'), // Author who created
       storyAuthors:           Relation(Story, Author, 'MM'), // Participating Authors
       storyRounds:            Relation(Story, Round, '1M'),
-      storyCurrentRound:      Relation(Story, Round, '1M'),
-      // storyCurrentEntry:      Relation(Author, Story, Round, '1M1'),
+      storyCurrentRound:      Relation(Story, Round, '11'),
       storyEntries:           Relation(Story, Entry, '1M'),
       roundEntries:           Relation(Round, Entry, '1M'),
       entryAuthor:            Relation(Entry, Author, '1M'),
@@ -240,18 +241,48 @@ U.buildRoom({
             let storyCurrentRound = relStoryCurrentRound.rec;
             
             let unbeatableEntry = () => {
+              
               // Sum up votes for all Entries. Figure out how many Authors haven't voted.
               // If not enough Authors remain to tip the balance to another Entry, return
               // the unbeatable Entry
               
-              // TODO: Implement!
-              return null;
+              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr();
+              if (entries.isEmpty()) return null;
+              if (entries.length === 1) return entries[0].rec;
+              
+              let entriesWithVotes = [];
+              let numVotesRemaining = story.relWob(rel.storyAuthors.fwd).size(); // Initialize 1 vote per author in story; we'll subtract over time
+              entries.forEach(({ rec: entry }) => {
+                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
+                numVotesRemaining -= votes;
+                entriesWithVotes.push({ entry, votes });
+              });
+              
+              let [ place1, place2 ] = entriesWithVotes.sort((a, b) => b.votes - a.votes);
+              let numAuthors = story.relWob(rel.storyAuthors.fwd).size();
+              
+              // If `place1` is unbeatable, return it - otherwise, `null`
+              return ((place1.votes - place2.votes) > numVotesRemaining)
+                ? place1.entry
+                : null;
+              
             };
             let bestEntries = () => {
               // Return all Entries tied for first in votes
               
-              // TODO: Implement!
-              return [];
+              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr();
+              let mostVotes = 0;
+              
+              entries.forEach(({ rec: entry }) => {
+                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
+                if (votes > mostVotes) mostVotes = votes;
+              });
+              
+              return entries.map(({ rec: entry }) => {
+                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
+                return votes === mostVotes ? entry : C.skip;
+              });
+              
             };
             let endRound = (reason, entry) => {
               
@@ -268,8 +299,9 @@ U.buildRoom({
             };
             
             // Round ends because of timeout with a random Entry tied for 1st place
-            console.log('TIMEOUT DURATION:', storyCurrentRound.value.endMs - foundation.getMs());
-            let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), storyCurrentRound.value.endMs - foundation.getMs());
+            let timeoutDur = storyCurrentRound.value.endMs - foundation.getMs();
+            console.log('TIMEOUT DURATION:', timeoutDur);
+            let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), timeoutDur);
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
@@ -277,9 +309,10 @@ U.buildRoom({
               
               dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: roundEntryVoteAuthor }) => {
                 
-                // Another Vote just happened on an Entry! See if any Entry is unbeatable.
+                // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
-                if (winningEntry) endRound('winner', entry);
+                console.log('Vote happened; unbeatable Entry?', winningEntry);
+                if (winningEntry) endRound('winner', winningEntry);
                 
               }));
               
@@ -296,18 +329,12 @@ U.buildRoom({
               
               dep(storyAuthorHut.comWob('entry').hold(({ lands, hut, msg }) => {
                 
-                // User adds a new Entry to the Round.
-                // If no Round exists, a new one is spawned
-                
-                console.log('\nAUTHOR SUBMITTED')
-                console.log('Author:', storyAuthor.value);
-                console.log('Entry:', msg.text);
-                console.log('');
+                // If no Round exists, a new one is begun.
+                // Then the Author adds a new Entry to the Round.
                 
                 // TODO: If max Rounds reached, deny
                 
-                let storyCurrentRound = story.getRelRec(rel.storyCurrentRound.fwd);
-                
+                let storyCurrentRound = story.getRec(rel.storyCurrentRound.fwd);
                 if (!storyCurrentRound) {
                   
                   let ms = foundation.getMs();
@@ -321,12 +348,6 @@ U.buildRoom({
                   story.attach(rel.storyRounds.fwd, storyCurrentRound);
                   story.attach(rel.storyCurrentRound.fwd, storyCurrentRound);
                   
-                  console.log('BEGAN NEW ROUND');
-                  
-                } else {
-                  
-                  storyCurrentRound = storyCurrentRound.rec;
-                  
                 }
                 
                 // TODO: If already submitted, deny
@@ -337,11 +358,14 @@ U.buildRoom({
                 
               }));
               
-              dep(storyAuthorHut.comWob('vote').hold((...args) => {
-                console.log('\nAUTHOR VOTED')
-                console.log('Author:', storyAuthor.value);
-                console.log('Vote:', args);
-                console.log('');
+              dep(storyAuthorHut.comWob('vote').hold(({ lands, hut, msg }) => {
+                
+                let storyCurrentRound = story.getRec(rel.storyCurrentRound.fwd);
+                if (!storyCurrentRound) return hut.tell({ command: 'error', type: 'denied', msg: 'no round', orig: msg });
+                
+                let entry = storyCurrentRound.getRec(rel.roundEntries.fwd, msg.entry);
+                entry.attach(rel.roundEntryVoteAuthors.fwd, storyAuthor);
+                
               }));
               
             }));
@@ -361,13 +385,13 @@ U.buildRoom({
           
           'main': ({ slots, viewport }) => ({
             layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
-            slots: real.slots.Titled({ size: [ null, null ], titleExt: real.UnitPx(53) }),
+            slots: real.slots.Titled({ titleExt: real.UnitPx(53) }),
             decals: {
               colour: 'rgba(255, 255, 255, 1)'
             }
           }),
           'main.title': ({ slots }) => ({
-            layout: slots.layout('title'),
+            layout: slots.insertTitle(),
             decals: {
               colour: 'rgba(0, 0, 0, 0.2)',
               textOrigin: 'center',
@@ -375,28 +399,28 @@ U.buildRoom({
             }
           }),
           'main.loggedOut': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             slots: real.slots.Justified(),
             decals: {
               colour: 'rgba(255, 220, 220, 1)'
             }
           }),
           'main.loggedOut.form': ({ slots }) => ({
-            layout: slots.layout('item'), // real.layout.Free({ w: real.UnitPc(60), h: real.UnitPc(60) }),
+            layout: slots.insertJustifiedItem(), // real.layout.Free({ w: real.UnitPc(60), h: real.UnitPc(60) }),
             slots: real.slots.FillV({}),
             decals: {
               size: [ real.UnitPc(60), null ]
             }
           }),
           'main.loggedOut.form.item': ({ slots }) => ({
-            layout: slots.layout('item'),
-            slots: real.slots.Titled({ size: [ real.UnitPc(100), real.UnitPx(50) ], titleExt: real.UnitPx(20) })
+            layout: slots.insertVItem({ size: [ real.UnitPc(100), real.UnitPx(50) ] }),
+            slots: real.slots.Titled({ titleExt: real.UnitPx(20) })
           }),
           'main.loggedOut.form.item.title': ({ slots }) => ({
-            layout: slots.layout('title')
+            layout: slots.insertTitle()
           }),
           'main.loggedOut.form.item.field': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             decals: {
               colour: 'rgba(255, 255, 255, 1)',
               textColour: 'rgba(0, 0, 0, 1)',
@@ -404,7 +428,7 @@ U.buildRoom({
             }
           }),
           'main.loggedOut.form.submit': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertVItem(),
             decals: {
               colour: '#d0d0d0',
               size: [ real.UnitPc(100), real.UnitPx(30) ],
@@ -418,7 +442,7 @@ U.buildRoom({
           }),
           
           'main.loggedIn': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             decals: {
               colour: 'rgba(220, 255, 220, 1)'
             }
@@ -428,7 +452,7 @@ U.buildRoom({
             slots: real.slots.FillH({})
           }),
           'main.loggedIn.storyOut.storyList': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertHItem(),
             slots: real.slots.FillV({ pad: real.UnitPx(5) }),
             decals: {
               size: [ real.UnitPc(50), real.UnitPc(100) ],
@@ -436,8 +460,8 @@ U.buildRoom({
             }
           }),
           'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
-            layout: slots.layout('item'),
-            slots: real.slots.Titled({ size: [ null, real.UnitPx(50) ], titleExt: real.UnitPx(30) }),
+            layout: slots.insertVItem({ size: [ null, real.UnitPx(50) ] }),
+            slots: real.slots.Titled({ titleExt: real.UnitPx(30) }),
             decals: {
               colour: 'rgba(0, 100, 0, 0.1)',
               hover: {
@@ -446,20 +470,20 @@ U.buildRoom({
             }
           }),
           'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
-            layout: slots.layout('title'),
+            layout: slots.insertTitle(),
             decals: {
               textSize: real.UnitPx(22)
             }
           }),
           'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             decals: {
               textSize: real.UnitPx(14)
             }
           }),
           
           'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertHItem(),
             slots: real.slots.Justified(),
             decals: {
               size: [ real.UnitPc(50), real.UnitPc(100) ],
@@ -467,21 +491,21 @@ U.buildRoom({
             }
           }),
           'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertJustifiedItem(),
             slots: real.slots.FillV({}),
             decals: {
               size: [ real.UnitPc(80), null ]
             }
           }),
           'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
-            layout: slots.layout('item'),
-            slots: real.slots.Titled({ size: [ null, real.UnitPx(50) ], titleExt: real.UnitPx(20) })
+            layout: slots.insertVItem({ size: [ null, real.UnitPx(50) ] }),
+            slots: real.slots.Titled({ titleExt: real.UnitPx(20) })
           }),
           'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
-            layout: slots.layout('title')
+            layout: slots.insertTitle()
           }),
           'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             decals: {
               colour: '#ffffff',
               textColour: '#000000',
@@ -489,7 +513,7 @@ U.buildRoom({
             }
           }),
           'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertVItem(),
             decals: {
               size: [ null, real.UnitPx(30) ],
               colour: '#d0d0d0',
@@ -518,13 +542,13 @@ U.buildRoom({
             slots: real.slots.FillV({})
           }),
           'main.loggedIn.storyIn.entries': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertVItem(),
             decals: {
               size: [ null, real.UnitPc(50) ]
             }
           }),
           'main.loggedIn.storyIn.controls': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertVItem(),
             decals: {
               size: [ null, real.UnitPc(50) ]
             }
@@ -534,13 +558,13 @@ U.buildRoom({
             slots: real.slots.Titled({ side: 'b', titleExt: real.UnitPx(50) })
           }),
           'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
-            layout: slots.layout('content'),
+            layout: slots.insertContent(),
             decals: {
               colour: 'rgba(255, 255, 255, 1)'
             }
           }),
           'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
-            layout: slots.layout('title'),
+            layout: slots.insertTitle(),
             decals: {
               colour: 'rgba(120, 200, 120, 1)',
               textOrigin: 'center'
@@ -552,7 +576,7 @@ U.buildRoom({
             slots: real.slots.FillV({})
           }),
           'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
-            layout: slots.layout('item'),
+            layout: slots.insertVItem(),
             decals: {
               colour: '#ffffff',
               border: { w: real.UnitPx(2), colour: '#000000' }
@@ -571,12 +595,10 @@ U.buildRoom({
         /// {BELOW=
         
         storyMix = await lands.getInitRec(StoryMix); // TODO: `Lands.prototype.getInitRec` barely works :P
-        
-        let main = rootReal.addReal('main');
-        
+        let mainReal = rootReal.addReal('main');
         dep(AccessPath(WobVal(storyMix), (dep, storyMix) => {
           
-          let title = main.addReal('title');
+          let title = mainReal.addReal('title');
           title.setText('Story Mix');
           
           let myAuthorWob = dep(WobFlt(storyMix.relWob(rel.storyMixAuthors.fwd), relAuthor => {
@@ -586,7 +608,7 @@ U.buildRoom({
           
           dep(AccessPath(noAuthorWob, dep => {
             
-            let loggedOutReal = dep(main.addReal('loggedOut'));
+            let loggedOutReal = dep(mainReal.addReal('loggedOut'));
             
             let loginForm = loggedOutReal.addReal('form');
             let form = loginForm.form('Login', dep, v => form.clear() && lands.tell({ command: 'author', ...v }), {
@@ -600,7 +622,7 @@ U.buildRoom({
             noAuthorWob.dn();
             dep(Hog(() => noAuthorWob.up()));
             
-            let loggedInReal = dep(main.addReal('loggedIn'));
+            let loggedInReal = dep(mainReal.addReal('loggedIn'));
             
             let noStoryWob = WobTmp('up');
             
@@ -658,10 +680,45 @@ U.buildRoom({
                 
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
                   
-                  let authorFlt = WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => relAuthor.rec === myAuthor ? relAuthor : C.skip);
+                  let authorFlt = dep(WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => relAuthor.rec === myAuthor ? relAuthor : C.skip));
                   dep(AccessPath(authorFlt, (dep, { rec: author }) => {
                     myCurrentEntryWob.up(entry);
                     dep(Hog(() => myCurrentEntryWob.dn()));
+                  }));
+                  
+                }));
+                
+              }));
+              
+              // "AccessPath" -> "Moment"? "Setting" (as in, a movie setting)? "Theater"? "Arena"? "Scene"?
+              // "Cause"?
+              
+              //  let myCurrentVotedEntryWob = dep(accessSearch('Story', myStory)) // Adds Story to chain
+              //    .rel('Round', rel.storyCurrentRound.fwd)          // Adds Round to chain
+              //    .rel('Entry', rel.roundEntries.fwd)               // Adds Entry to chain
+              //    .rel('VoteAuthor', rel.roundEntryVoteAuthors.fwd) // Adds VoteAuthor to chain
+              //    .filter(auth => auth.rec === myAuthor); // Doesn't add anything to the chain
+              //  
+              //  dep(AccessPath(myCurrentVotedEntryWob, (dep, [ myAuthor, entry, round, story ]) => {
+              //    
+              //  }));
+              
+              // Calculate the current voted Entry. For the current round, check all RoundEntries,
+              // then  filter the RoundEntry's VoteAuthors, searching for our Author.
+              let myCurrentVotedEntryWob = WobTmp('dn');
+              dep(myCurrentVotedEntryWob.hold(tmp => {
+                console.log('GOT CURRENT VOTED ENTRY!');
+                dep(tmp.shutWob().hold(() => console.log('LOST current VOTED ENTRY')));
+              }));
+              
+              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
+                
+                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
+                  
+                  let authorFlt = dep(WobFlt(entry.relWob(rel.roundEntryVoteAuthors.fwd), relVoteAuthor => relVoteAuthor.rec === myAuthor ? relVoteAuthor : C.skip));
+                  dep(AccessPath(authorFlt, (dep, { rec: author }) => {
+                    myCurrentVotedEntryWob.up(entry);
+                    dep(Hog(() => myCurrentVotedEntryWob.dn()));
                   }));
                   
                 }));
@@ -686,7 +743,7 @@ U.buildRoom({
               
               // Show all Round stuff
               let noRoundWob = WobTmp('up');
-              dep(AccessPath(noRoundWob, dep => true || dep(roundPane.addReal('empty'))));
+              //dep(AccessPath(noRoundWob, dep => dep(roundPane.addReal('empty'))));
               dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
                 noRoundWob.dn();
@@ -697,15 +754,21 @@ U.buildRoom({
                 
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
                   
-                  console.log('GOT A ROUNDENTRY!!', roundEntry.uid);
-                  dep(Hog(() => console.log('Lost roundEntry')));
-                  
                   // A Real for the whole Entry
                   let roundEntryReal = dep(entriesPane.addReal('entry'));
                   
                   // Show the Entry's text
                   let roundEntryTextReal = roundEntryReal.addReal('text');
                   dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
+                  
+                  // Before we vote, show an option to vote on Entries
+                  dep(AccessPath(myCurrentVotedEntryWob.inverse(), dep => {
+                    
+                    let roundEntryVoteReal = dep(roundEntryReal.addReal('doVote'));
+                    roundEntryVoteReal.setText('Vote!');
+                    roundEntryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: roundEntry.uid }));
+                    
+                  }));
                   
                   // Show the username of the Entry's Author
                   let roundEntryAuthorReal = roundEntryReal.addReal('author');
@@ -737,6 +800,7 @@ U.buildRoom({
       });
       
       lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer() }));
+      U.lands = lands;
       await lands.open();
     };
     

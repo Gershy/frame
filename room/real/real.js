@@ -237,6 +237,10 @@ U.buildRoom({
             
           };
           
+          // Transfer knowledge of size from Layout to Slots
+          // NOTE: Slots will ALWAYS have a "layoutSize" property before having `getCss` called!
+          if (slots) slots.layoutSize = (layout && layout.size) || [ null, null ];
+          
           let zoneCss = {};
           mergeZoneCss(zoneCss, layout ? layout.getCss() : {});
           mergeZoneCss(zoneCss, slots ? slots.getCss() : {}); // Apply css to SlotProvider
@@ -659,48 +663,34 @@ U.buildRoom({
       
     })();
     
+    // Dedicated to Slots: boxSizing, padding*
+    // Dedicated to Layouts: width, height, left, right, top, bottom
+    
     let slots = (() => {
       
       let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
         init: function({}) {
-        },
-        layout: C.notImplemented
+        }
       })});
       
       let Titled = U.inspire({ name: 'Titled', methods: (insp, Insp) => ({
-        init: function({ side='t', titleExt, size=[ null, null ] }) {
+        init: function({ side='t', titleExt }) {
           // TODO: Awkward that size needs to be declared here. It's like after
           // we've finished resolving the css for a particular element, we can
           // take an additional Step of applying the resolved width/height,
           // regardless of where it came from, to our slotted children...
           this.side = side;
           this.titleExt = titleExt;
-          this.size = size;
         },
         getCss: function() {
           
-          let paddingCssProp = ({
-            l: 'paddingLeft', r: 'paddingRight', t: 'paddingTop', b: 'paddingBottom'
-          })[this.side];
-          
-          let main = {
-            boxSizing: 'border-box',
-            [paddingCssProp]: this.titleExt.getCss()
-          };
-          
-          if (this.size[0] !== null) main.width = this.size[0];
-          if (this.size[1] !== null) main.height = this.size[1];
-          
+          let paddingCssProp = ({ l: 'paddingLeft', r: 'paddingRight', t: 'paddingTop', b: 'paddingBottom' })[this.side];
+          let main = { boxSizing: 'border-box', [paddingCssProp]: this.titleExt.getCss() };
           return { main };
           
         },
-        layout: function(type) {
-          
-          if (type === 'title') return TitledTitle(this);
-          if (type === 'content') return TitledContent(this);
-          throw new Error(`Invalid layout type: "${type}"`);
-          
-        }
+        insertTitle: function() { return TitledTitle(this); },
+        insertContent: function() { return TitledContent(this); }
       })});
       let TitledTitle = U.inspire({ name: 'TitledTitle', methods: (insp, Insp) => ({
         init: function(par) { this.par = par; },
@@ -725,7 +715,7 @@ U.buildRoom({
           let cssH = null;
           let cssV = null;
           
-          let [ sizeH, sizeV ] = this.par.size;
+          let [ sizeH, sizeV ] = this.par.layoutSize;
           
           if ([ 'l', 'r' ].has(this.par.side)) { // Horizontal title
             
@@ -767,20 +757,18 @@ U.buildRoom({
             }
           };
         },
-        layout: function(type) {
-          // TODO: `type` should be specific! So not "item", but "justifiedItem"
-          // Or even different method names; `slots.justifiedItemLayout()`
-          if (type !== 'item') throw new Error(`Invalid layout type: "${type}"`);
-          return JustifiedItem(this);
-        }
+        insertJustifiedItem: function(args={}) { return JustifiedItem(this, args); }
       })});
       let JustifiedItem = U.inspire({ name: 'JustifiedItem', methods: (insp, Insp) => ({
-        init: function() {},
+        init: function(par, { size=[ null, null ] }) {
+          this.par = par;
+          this.size = size;
+        },
         getCss: function() {
-          return { main: {
-            display: 'inline-block',
-            verticalAlign: 'middle'
-          }};
+          let main = { display: 'inline-block', verticalAlign: 'middle' };
+          if (this.size[0] !== null) main.width = this.size[0];
+          if (this.size[1] !== null) main.height = this.size[1];
+          return { main };
         }
       })});
       
@@ -789,27 +777,22 @@ U.buildRoom({
           this.pad = pad;
         },
         getCss: function() {
-          let main = {
-            overflowX: 'hidden',
-            overflowY: 'auto'
-          };
-          
+          let main = { overflowX: 'hidden', overflowY: 'auto' };
           if (this.pad) main.gain({ boxSizing: 'border-box', padding: this.pad });
-          
           return { main };
         },
-        layout: function(type) {
-          if (type !== 'item') throw new Error(`Invalid layout type: "${type}"`);
-          return FillVItem(this);
-        }
+        insertVItem: function(args={}) { return FillVItem(this, args); }
       })});
       let FillVItem = U.inspire({ name: 'FillVItem', methods: (insp, Insp) => ({
-        init: function(par) {
+        init: function(par, { size=[ null, null ] }) {
+          this.par = par;
+          this.size = size;
         },
         getCss: function() {
-          return { main: {
-            position: 'relative'
-          }};
+          let main = { position: 'relative' };
+          if (this.size[0] !== null) main.width = this.size[0];
+          if (this.size[1] !== null) main.height = this.size[1];
+          return { main };
         }
       })});
       
@@ -829,21 +812,18 @@ U.buildRoom({
           
           return { main };
         },
-        layout: function(type) {
-          if (type !== 'item') throw new Error(`Invalid layout type: "${type}"`);
-          return FillHItem(this);
-        }
+        insertHItem: function(args={}) { return FillHItem(this, args); }
       })});
       let FillHItem = U.inspire({ name: 'FillHItem', methods: (insp, Insp) => ({
-        init: function(par) {
+        init: function(par, { size=[ null, null ] }) {
           this.par = par;
+          this.size = size;
         },
         getCss: function() {
-          return { main: {
-            position: 'relative',
-            display: 'inline-block',
-            verticalAlign: 'middle'
-          }};
+          let main = { position: 'relative', display: 'inline-block', verticalAlign: 'middle' };
+          if (this.size[0] !== null) main.width = this.size[0];
+          if (this.size[1] !== null) main.height = this.size[1];
+          return { main };
         }
       })});
       

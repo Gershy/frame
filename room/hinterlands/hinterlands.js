@@ -150,11 +150,14 @@ U.buildRoom({
               
               let rel = lands.relations.get(relUid);
               let [ head, tail ] = [ recs.get(headUid), recs.get(tailUid) ];
-              let relRec = head.getRelRec(rel.fwd, tail);
+              let relRec = head.getRelRec(rel.fwd, tail.uid);
               
               if (!relRec) throw new Error(`Couldn't find related rec. rel: ${relUid}, head: ${headUid}, tail: ${tailUid}`);
               try {
-                agg.addWob(relRec.shutWob());
+                // TODO: Have to think about aggregating the shuts along with all the other
+                // changes. At the moment, it results in `shut` being called multiple times
+                // on the same Hogs.
+                //agg.addWob(relRec.shutWob());
                 relRec.shut();
               } catch(err) { err.message = `Couldn't detach: ${err.message}`; throw err; }
               

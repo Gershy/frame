@@ -94,6 +94,4 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
 })});
 
-U.foundationClasses.gain({
-  Foundation
-});
+U.foundationClasses.gain({ Foundation });

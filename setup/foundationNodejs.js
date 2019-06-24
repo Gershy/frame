@@ -1015,8 +1015,6 @@
     }
   })});
   
-  U.foundationClasses.gain({
-    FoundationNodejs
-  });
+  U.foundationClasses.gain({ FoundationNodejs });
   
 })();

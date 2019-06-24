@@ -6,8 +6,6 @@
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
 
-Error.stackTraceLimit = Infinity;
-
 // Do setup
 require('./setup/clearing.js');
 require('./setup/foundation.js');
