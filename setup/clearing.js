@@ -228,6 +228,8 @@ let U = global.U = {
   },
   isType: (val, Cls) => {
     try { return val.constructor === Cls; } catch (err) {}
+    if (Cls === null) return val === null;
+    if (Cls === undefined) return val === undefined;
     return false;
   },
   isInspiredBy: (Insp1, Insp2) => {
@@ -279,11 +281,8 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
   shut: function(...args) {
-    if (this.didShut) {
-      console.log('FIRST SHUT:', U.foundation.formatError(this.didShut));
-      throw new Error(`Already shut`);
-    }
-    this.didShut = new Error('First shut');
+    if (this.didShut) throw new Error(`Already shut`);
+    this.didShut = true;
     this.shut0(...args);
     this.shutWob0.wobble();
   },
@@ -354,7 +353,11 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     this.value = value;
     insp.Wob.wobble.call(this, value, origVal);
   },
-  modify: function(func, force) { this.wobble(func(this.value), force); }
+  modify: function(func, force) {
+    let v = func(this.value);
+    if (U.isType(v, undefined)) v = this.value;
+    this.wobble(v, force);
+  }
 })});
 let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, Insp) => ({
   
@@ -391,13 +394,35 @@ let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) =
     if (pos === 'up') this.up(val);
   },
   inverse: function() {
+    
+    // TODO: Need to test WobTmp.prototype.inverse
+    
     if (!this.inverse0) {
       this.inverse0 = WobTmp(this.pos === 'up' ? 'dn' : 'up');
       this.inverse0.inverse0 = this;
-      this.hold(() => (!this.tmp == !this.inverse0.tmp) && this.inverse0[this.tmp ? 'dn' : 'up']());
-      this.inverse0.hold(() => (!this.inverse0.tmp == !this.tmp) && this[this.tmp ? 'dn' : 'up']());
+      
+      // let origUp = this.up;
+      // let origDn = this.dn;
+      // this.up = (...args) => {
+      //   let ret = origUp.call(this, ...args);
+      //   this.inverse0.dn();
+      //   return ret;
+      // };
+      // this.dn = (...args) => {
+      //   let ret = origDn.call(this, ...args);
+      //   this.inverse0.up();
+      //   return ret;
+      // };
+      
+      // Now, forever, wobbles on us have an inverse effect on `this.inverse0`
+      this.hold(tmp => {
+        this.inverse0.dn(); // Us going up puts our inverse down
+        tmp.shutWob().hold(() => this.inverse0.up()); // TODO: Would pass `tmp.val` here if `this.inverse0` were initializable with a value
+      });
+      
     }
     return this.inverse0;
+    
   },
   up: function(val=null) {
     if (this.tmp) throw new Error('Already up');

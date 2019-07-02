@@ -176,8 +176,9 @@ U.buildRoom({
           if (!rec.relsWob0.hogs.has(relB)) agg.addWob(rec.relsWob0).wobbleAdd(relB);
           
           // Create related Recs
-          let rrFwd = dep(RelRec(ap, rel, rec));
-          let rrBak = dep(RelRec(ap, rel, this));
+          let sharedRelData = {};
+          let rrFwd = dep(RelRec(ap, rel, rec, sharedRelData));
+          let rrBak = dep(RelRec(ap, rel, this, sharedRelData));
           
           // The Rel definitely exists. Now show that the attachment here exists.
           // Note that the wobbles are aggregated, and then the wobbleAdds are dependent.
@@ -202,10 +203,11 @@ U.buildRoom({
       }
     })});
     let RelRec = U.inspire({ name: 'RelRec', insps: {}, methods: (insp, Insp) => ({
-      init: function(relAp, relF, tail) {
+      init: function(relAp, relF, tail, relData=null) {
         this.relAp = relAp;
         this.relF = relF;
         this.rec = tail;
+        this.relData = relData;
       },
       shut: function(...args) { return this.relAp.shut(...args); },
       shutWob: function() { return this.relAp.shutWob(); }

@@ -381,8 +381,6 @@ U.gain({
         wob.wobble();
         wob.wobble();
         
-        console.log(numOrigCalls, numReplCalls);
-        
         return {
           result: true
             && numOrigCalls === 1

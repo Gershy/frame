@@ -1,4 +1,33 @@
-// - Factor Users into its own hut. It should be easily integrated into any other Hut!
+// [ ] Aggregate info into Round - can store max votes and num votes remaining
+// [ ] Show metadata in Submission/Voting stage - timer, votes submitted, votes remaining
+// [ ] Editable StoryEntries - all users suggest edits; only the original author accepts
+// [ ] Make everything look nice!!
+// [ ] Factor Users into its own hut. Should be possible to easily integrate into any Hut!
+
+// "Scenario" -> A trail of occurrences leading to a particular moment
+// "AccessPath" -> "Reflex" -> Accompanying effects occurring in a scenario
+
+//  // This is more realistic, and agnostic of how Records work
+//  let myCurrentVotedEntryWob = dep(Scenario('Story', myStory)) // Adds Story to chain
+//    .to('Round', ({ rec: story }) => story.relWob(rel.storyCurrentRound.fwd))
+//    .to('Entry', ({ rec: round }) => round.relWob(rel.roundEntries.fwd))
+//    .to('VoteAuthor', ({ rec: entry }) => entry.relWob(rel.roundEntryVote.fwd))
+//    .filter(relAuthor => relAuthor.rec === myAuthor); // Doesn't add to result
+//
+//  let myCurrentVotedEntryWob = dep(Scenario('Story', myStory))
+//    .rel('Round', rel.storyCurrentRound.fwd)          // Adds Round to chain
+//    .rel('Entry', rel.roundEntries.fwd)               // Adds Entry to chain
+//    .rel('VoteAuthor', rel.roundEntryVoteAuthors.fwd) // Adds VoteAuthor to chain
+//    .filter(auth => auth.rec === myAuthor); // Doesn't add anything to the chain
+//  
+//  dep(myCurrentVotedEntryWob.hold(([ myAuthor, entry, round, story ]) => {
+//    // ...
+//  }));
+//
+//  dep(AccessPath(myCurrentVotedEntryWob, (dep, [ myAuthor, entry, round, story ]) => {
+//    
+//  }));
+
 
 U.buildRoom({
   name: 'storyMix',
@@ -27,15 +56,15 @@ U.buildRoom({
       storyMixAuthors:        Relation(StoryMix, Author, '1M'),
       hutAuthor:              Relation(Hut, Author, '11'),
       authorPassword:         Relation(Author, Password, '11'),
-      authorCurrentStory:     Relation(Author, Story, '11'),
+      authorCurrentStory:     Relation(Author, Story, 'M1'),
       storyCreatorAuthor:     Relation(Story, Author, 'M1'), // Author who created
       storyAuthors:           Relation(Story, Author, 'MM'), // Participating Authors
       storyRounds:            Relation(Story, Round, '1M'),
       storyCurrentRound:      Relation(Story, Round, '11'),
       storyEntries:           Relation(Story, Entry, '1M'),
       roundEntries:           Relation(Round, Entry, '1M'),
-      entryAuthor:            Relation(Entry, Author, '1M'),
-      roundEntryVoteAuthors:  Relation(Entry, Author, '1M')
+      entryAuthor:            Relation(Entry, Author, 'M1'),
+      roundEntryVoteAuthors:  Relation(Entry, Author, 'MM')
     };
     
     let open = async () => {
@@ -91,20 +120,33 @@ U.buildRoom({
           // StoryMix -> Author
           dep(AccessPath(hut.relWob(rel.hutAuthor.fwd), (dep, { rec: author }) => {
             
-            hut.followRec(author);
+            dep(hut.followRec(author));
             
             // StoryMix -> Author -> CurrentStory
             dep(AccessPath(author.relWob(rel.authorCurrentStory.fwd), (dep, { rec: currentStory }) => {
               
-              hut.followRec(currentStory);
+              dep(hut.followRec(currentStory));
               
               // StoryMix -> Author -> CurrentStory -> CurrentRound
               dep(AccessPath(currentStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
-                hut.followRec(currentRound);
+                dep(hut.followRec(currentRound));
+                
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
                   
-                  hut.followRec(roundEntry);
+                  dep(hut.followRec(roundEntry));
+                  
+                  dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
+                    
+                    dep(hut.followRec(entryAuthor));
+                    
+                  }));
+                  
+                  dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                    
+                    dep(hut.followRec(voteAuthor));
+                    
+                  }));
                   
                 }));
                 
@@ -112,10 +154,9 @@ U.buildRoom({
               
               dep(AccessPath(currentStory.relWob(rel.storyEntries.fwd), (dep, { rec: storyEntry }) => {
                 
-                hut.followRec(storyEntry);
+                dep(hut.followRec(storyEntry));
                 
               }));
-              
               
             }));
             
@@ -143,7 +184,7 @@ U.buildRoom({
                 
                 console.log('Create author for', hut.getTerm());
                 
-                author = Author({ lands, value: { username } });
+                author = Author({ lands, value: { username, term: hut.getTerm() } });
                 let pass = Password({ lands, value: password });
                 author.attach(rel.authorPassword.fwd, pass);
                 storyMix.attach(rel.storyMixAuthors.fwd, author);
@@ -233,8 +274,6 @@ U.buildRoom({
         // Controls on Stories
         dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
           
-          let storySettings = story.value.settings; // Work with the actual JSON settings
-          
           // Controls on Stories -> Rounds
           dep(AccessPath(story.relWob(rel.storyCurrentRound.fwd), (dep, relStoryCurrentRound) => {
             
@@ -286,6 +325,11 @@ U.buildRoom({
             };
             let endRound = (reason, entry) => {
               
+              console.log(`Round ending with reason "${reason}"`);
+              
+              // Detach the current Round
+              relStoryCurrentRound.shut();
+              
               if (entry) {
                 // Add the Entry to the Story.
                 story.attach(rel.storyEntries.fwd, entry);
@@ -293,15 +337,12 @@ U.buildRoom({
                 console.log('Round ended without entry :(');
               }
               
-              // Detach the current Round
-              relStoryCurrentRound.shut();
-              
             };
             
             // Round ends because of timeout with a random Entry tied for 1st place
             let timeoutDur = storyCurrentRound.value.endMs - foundation.getMs();
             console.log('TIMEOUT DURATION:', timeoutDur);
-            let timeout = setTimeout(() => endRound('timeout', chance.elem(bestEntries())), timeoutDur);
+            let timeout = setTimeout(() => endRound('deadline', chance.elem(bestEntries())), timeoutDur);
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
@@ -312,7 +353,28 @@ U.buildRoom({
                 // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
                 console.log('Vote happened; unbeatable Entry?', winningEntry);
-                if (winningEntry) endRound('winner', winningEntry);
+                if (winningEntry) endRound('outcomeKnown', winningEntry);
+                
+              }));
+              
+            }));
+            
+            // Round ends because all Votes are exhausted
+            dep(AccessPath(storyCurrentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
+              
+              dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: roundEntryVoteAuthor }) => {
+                
+                // 1 vote per Author
+                let numVotesAvailable = story.relWob(rel.storyAuthors.fwd).size();
+                
+                let numVotes = 0;
+                storyCurrentRound.relWob(rel.roundEntries.fwd).forEach(relEntry => {
+                  relEntry.rec.relWob(rel.roundEntryVoteAuthors.fwd).forEach(relVoteAuthor => {
+                    numVotes++;
+                  });
+                });
+                
+                if (numVotes >= numVotesAvailable) endRound('noMoreVotes', chance.elem(bestEntries()));
                 
               }));
               
@@ -342,7 +404,7 @@ U.buildRoom({
                   storyCurrentRound = Round({ lands, value: {
                     roundNum: story.relWob(rel.storyRounds.fwd).size(),
                     startMs: ms,
-                    endMs: ms + storySettings.roundMs
+                    endMs: ms + story.value.settings.roundMs
                   }});
                   
                   story.attach(rel.storyRounds.fwd, storyCurrentRound);
@@ -670,9 +732,6 @@ U.buildRoom({
                 dep(entry.hold(v => entryReal.setText(v.text)));
               }));
               
-              // Gives access to create and vote on Round Entries
-              let roundPane = storyReal.addReal('controls');
-              
               // Calculate the current entry wob. For the current round, check all RoundEntries, and
               // then the RoundEntry's EntryAuthor.
               let myCurrentEntryWob = WobTmp('dn');
@@ -680,7 +739,15 @@ U.buildRoom({
                 
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
                   
-                  let authorFlt = dep(WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => relAuthor.rec === myAuthor ? relAuthor : C.skip));
+                  let authorFlt = dep(WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => {
+                    //console.log('Checking author of entry:', relAuthor.rec.getRec(rel.hutAuthor.bak).value.getTerm());
+                    console.log('NEED:', myAuthor.uid, 'CHECK:', relAuthor.rec);
+                    return relAuthor.rec === myAuthor ? relAuthor : C.skip;
+                    //relAuthor.rec === myAuthor ? relAuthor : C.skip));
+                  }));
+                  
+                  
+                  
                   dep(AccessPath(authorFlt, (dep, { rec: author }) => {
                     myCurrentEntryWob.up(entry);
                     dep(Hog(() => myCurrentEntryWob.dn()));
@@ -690,27 +757,9 @@ U.buildRoom({
                 
               }));
               
-              // "AccessPath" -> "Moment"? "Setting" (as in, a movie setting)? "Theater"? "Arena"? "Scene"?
-              // "Cause"?
-              
-              //  let myCurrentVotedEntryWob = dep(accessSearch('Story', myStory)) // Adds Story to chain
-              //    .rel('Round', rel.storyCurrentRound.fwd)          // Adds Round to chain
-              //    .rel('Entry', rel.roundEntries.fwd)               // Adds Entry to chain
-              //    .rel('VoteAuthor', rel.roundEntryVoteAuthors.fwd) // Adds VoteAuthor to chain
-              //    .filter(auth => auth.rec === myAuthor); // Doesn't add anything to the chain
-              //  
-              //  dep(AccessPath(myCurrentVotedEntryWob, (dep, [ myAuthor, entry, round, story ]) => {
-              //    
-              //  }));
-              
               // Calculate the current voted Entry. For the current round, check all RoundEntries,
               // then  filter the RoundEntry's VoteAuthors, searching for our Author.
               let myCurrentVotedEntryWob = WobTmp('dn');
-              dep(myCurrentVotedEntryWob.hold(tmp => {
-                console.log('GOT CURRENT VOTED ENTRY!');
-                dep(tmp.shutWob().hold(() => console.log('LOST current VOTED ENTRY')));
-              }));
-              
               dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                 
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
@@ -725,10 +774,15 @@ U.buildRoom({
                 
               }));
               
-              // Entries can be submitted if we have no current Entry. So either:
-              // 1 - No Round exists
-              // 2 - Round exists, but no Entry submitted by our Author
+              // Will hold controls for creating and voting on Round Entries
+              let roundPane = storyReal.addReal('controls');
+              
+              // If no current Entry (potentially even before Round begins), show the writing pane
               dep(AccessPath(myCurrentEntryWob.inverse(), dep => {
+                
+                // Entries submittable if no current Entry. So at this stage either:
+                // 1 - No Round exists
+                // 2 - Round exists, but no Entry submitted by our Author
                 let entryWritePane = dep(roundPane.addReal('write'));
                 let entryWriteField = entryWritePane.addReal('field');
                 let entryWriteSubmit = entryWritePane.addReal('submit');
@@ -739,49 +793,50 @@ U.buildRoom({
                 
                 entryWriteSubmit.setText('Submit!');
                 dep(entryWriteSubmit.feelWob().hold( () => lands.tell({ command: 'entry', text: entryText }) ));
+                
               }));
               
-              // Show all Round stuff
-              let noRoundWob = WobTmp('up');
-              //dep(AccessPath(noRoundWob, dep => dep(roundPane.addReal('empty'))));
-              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
+              // If an Entry has been submitted, show the list of votable Entries
+              dep(AccessPath(myCurrentEntryWob, dep => {
                 
-                noRoundWob.dn();
-                dep(Hog(() => noRoundWob.up()));
-                
-                // Show all votable Entries for current Round
-                let entriesPane = dep(roundPane.addReal('entries'));
-                
-                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
+                // Show all Round stuff
+                dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
                   
-                  // A Real for the whole Entry
-                  let roundEntryReal = dep(entriesPane.addReal('entry'));
+                  // Show all votable Entries for current Round
+                  let entriesPane = dep(roundPane.addReal('entries'));
                   
-                  // Show the Entry's text
-                  let roundEntryTextReal = roundEntryReal.addReal('text');
-                  dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
-                  
-                  // Before we vote, show an option to vote on Entries
-                  dep(AccessPath(myCurrentVotedEntryWob.inverse(), dep => {
+                  dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
                     
-                    let roundEntryVoteReal = dep(roundEntryReal.addReal('doVote'));
-                    roundEntryVoteReal.setText('Vote!');
-                    roundEntryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: roundEntry.uid }));
+                    // A Real for the whole Entry
+                    let roundEntryReal = dep(entriesPane.addReal('entry'));
                     
-                  }));
-                  
-                  // Show the username of the Entry's Author
-                  let roundEntryAuthorReal = roundEntryReal.addReal('author');
-                  dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
-                    dep(entryAuthor.hold(v => roundEntryAuthorReal.setText(v.username)));
-                  }));
-                  
-                  // Show each Vote for the Entry
-                  let roundEntryVotes = roundEntryReal.addReal('votes');
-                  dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                    // Show the Entry's text
+                    let roundEntryTextReal = roundEntryReal.addReal('text');
+                    dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
                     
-                    let voteReal = dep(roundEntryVotes.addReal('vote'));
-                    dep(voteAuthor.hold(v => voteReal.setText(v.username)));
+                    // Before we vote, show an option to vote on Entries
+                    dep(AccessPath(myCurrentVotedEntryWob.inverse(), dep => {
+                      
+                      let roundEntryVoteReal = dep(roundEntryReal.addReal('doVote'));
+                      roundEntryVoteReal.setText('Vote!');
+                      roundEntryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: roundEntry.uid }));
+                      
+                    }));
+                    
+                    // Show the username of the Entry's Author
+                    let roundEntryAuthorReal = roundEntryReal.addReal('author');
+                    dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
+                      dep(entryAuthor.hold(v => roundEntryAuthorReal.setText(v.username)));
+                    }));
+                    
+                    // Show each Vote for the Entry
+                    let roundEntryVotes = roundEntryReal.addReal('votes');
+                    dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                      
+                      let voteReal = dep(roundEntryVotes.addReal('vote'));
+                      dep(voteAuthor.hold(v => voteReal.setText(v.username)));
+                      
+                    }));
                     
                   }));
                   

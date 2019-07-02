@@ -31,7 +31,6 @@ U.buildRoom({
     })});
     
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
-    let css = (main, more) => ({ main, ...more });
     
     let vals = (() => {
       let RealVal = U.inspire({ name: 'RealVal', insps: {}, methods: (insp, Insp) => ({

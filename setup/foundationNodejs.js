@@ -75,7 +75,7 @@
           console.log(`In absence of ipPref using "${staticIps[0].type}"`);
           ip = staticIps[0].address;
         } else {
-          ip = staticIps.find(({ type }) => type.lower() === ipPref.lower());
+          ip = staticIps.find(({ type }) => type.lower().replace(/[^A-Za-z0-9]/g, '') === ipPref.lower());
           if (!ip) throw new Error(`Couldn't match static ip ${ipPref}`);
           ip = ip[0].address;
         }
