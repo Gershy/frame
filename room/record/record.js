@@ -170,7 +170,7 @@ U.buildRoom({
           // and the Tail is wobbling in attachment to the Head
           let defAgg = !agg;
           if (defAgg) agg = U.AggWobs();
-          
+            
           // For this Rel of the present Recs, Wobble (with Aggregation) the Rel into existence
           if (!this.relsWob0.hogs.has(relF)) agg.addWob(this.relsWob0).wobbleAdd(relF);
           if (!rec.relsWob0.hogs.has(relB)) agg.addWob(rec.relsWob0).wobbleAdd(relB);
@@ -209,6 +209,7 @@ U.buildRoom({
         this.rec = tail;
         this.relData = relData;
       },
+      isShut: function() { return this.relAp.isShut(); },
       shut: function(...args) { return this.relAp.shut(...args); },
       shutWob: function() { return this.relAp.shutWob(); }
     })});

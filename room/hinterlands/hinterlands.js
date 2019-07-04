@@ -75,11 +75,11 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        requiredCommand('getInit', async ({ hut, msg, reply }) => {
+        requiredCommand('getInit', async ({ absConn, hut, msg, reply }) => {
           // Reset the hut to reflect a blank Below; then send update data
           hut.resetVersion();
           let update = hut.genUpdateTell();
-          let initBelow = await foundation.genInitBelow('text/html', hut.getTerm(), update);
+          let initBelow = await foundation.genInitBelow('text/html', absConn, hut.getTerm(), [], update);
           reply(initBelow);
         });
         requiredCommand('getFile', async ({ hut, msg, reply }) => {
@@ -167,6 +167,7 @@ U.buildRoom({
             
           } catch(err) {
             err.message = `ABOVE CAUSED: ${err.message}`;
+            console.error(err.message);
             throw err;
           }
           lands.version = version;
@@ -200,7 +201,7 @@ U.buildRoom({
         }
         return this.comWobs[command];
       },
-      hear: async function(hut, msg, reply=null) {
+      hear: async function(absConn, hut, msg, reply=null) {
         
         let { command } = msg;
         
@@ -210,16 +211,15 @@ U.buildRoom({
         }
         /// =ABOVE}
         
-        this.comWob(command).wobble({ lands: this, hut, msg, reply });
-        hut.comWob(command).wobble({ lands: this, hut, msg, reply });
+        this.comWob(command).wobble({ lands: this, absConn, hut, msg, reply });
+        hut.comWob(command).wobble({ lands: this, absConn, hut, msg, reply });
       },
       tell: async function(msg) {
         /// {BELOW=
         this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
         /// =BELOW}
-        return Promise.allArr(this.relWob(rel.landsHuts.fwd).toArr().map(relHut => relHut.rec.tell(msg)));
+        this.relWob(rel.landsHuts.fwd).forEach(relHut => relHut.rec.tell(msg));
       },
-      
       
       /// {BELOW=
       getInitRec: async function(Cls) {
@@ -231,9 +231,9 @@ U.buildRoom({
         if (!this.heartbeatMs) return;
         
         // After exactly `this.heartbeatMs` millis Above will shut us down
-        // Therefore we need to be quicker; wait a percentage of the overall time
+        // Therefore we need to be quicker - wait less millis than `this.heartbeatMs`
         clearTimeout(this.heartbeatTimeout);
-        this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.heartbeatMs * 0.8);
+        this.heartbeatTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), Math.min(this.heartbeatMs * 0.8, this.heartbeatMs - 2000));
       },
       /// =BELOW}
       
@@ -252,7 +252,7 @@ U.buildRoom({
         
         /// {BELOW=
         let relHut = this.relWob(rel.landsHuts.fwd).toArr().find(() => true)[0];
-        await this.hear(relHut.rec, U.initData); // Lands Below immediately hear the Above's initial update
+        await this.hear(null, relHut.rec, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
       shut: async function() { return Promise.all([ ...this.ways ].map(w => w.shut())); }
@@ -296,6 +296,7 @@ U.buildRoom({
       /// {ABOVE=
       refreshExpiry: function(ms=this.lands.heartbeatMs) {
         if (!ms) return;
+        
         clearTimeout(this.expiryTimeout);
         this.expiryTimeout = setTimeout(() => this.shut(), ms);
       },
@@ -324,10 +325,7 @@ U.buildRoom({
             
             // Initial "addRec" UpdatePart
             this.toSync('addRec', rec.uid, rec);
-            dep({
-              shut: () => this.toSync('remRec', rec.uid, 1),
-              shutWob: () => C.nullShutWob
-            });
+            dep(Hog(() => this.toSync('remRec', rec.uid, 1)));
             
             // Hold changes to `rec` while the Follow persists
             dep(rec.hold(val => this.toSync('updRec', `${rec.uid}`, val)));
@@ -354,15 +352,12 @@ U.buildRoom({
                 if (relF.dir === 'bak') [ head, tail ] = [ tail, head ];
                 
                 // The uid only takes us to the Relation, not the RelationHalf
-                // It is IMPLICIT that the uid specifies `exampleRelation.fwd`
+                // The uid IMPLICITLY specifies `exampleRelation.fwd`
                 let uidArr = [ relF.rel.uid, head.uid, tail.uid ];
                 let uidStr = uidArr.join('/');
                 
                 this.toSync('addRel', uidStr, uidArr.concat([ relF.name ]));
-                dep({
-                  shut: () => this.toSync('remRel', uidStr, uidArr.concat([ relF.rel.fwd.name ])),
-                  shutWob: () => C.nullShutWob
-                });
+                dep(Hog( () => this.toSync('remRel', uidStr, uidArr.concat([ relF.rel.fwd.name ])) ));
                 
               }));
               
@@ -385,8 +380,6 @@ U.buildRoom({
           
           // Note: No need to issue `remRel` for each of the Record's relations
           // If the Record is shut, so are its relations
-          // TODO: What if the removed Record is at the tail of a Relation?
-          // How do we signal that the head needs to remove its Relation?
           this.sync.remRec[`${rec.uid}`] = 1; // Signal that the rec is removed
           
           // Send this message Below
@@ -403,6 +396,9 @@ U.buildRoom({
       },
       
       resetVersion: function() {
+        
+        console.log(`${this.getTerm()}: reset version`);
+        
         // Clears memory of current delta and generates a new delta which would bring
         // a blank Below up to date. Resets this Hut's version to 0 to reflect the Below
         // is currently blank. Note that this method modifies our memory of the delta
@@ -481,25 +477,22 @@ U.buildRoom({
         // Implements inform-below-throttling. Schedules a new request to inform
         // our Below if there is not already a request to do so.
         
-        if (!this.informThrottlePrm) {
-          
-          this.informThrottlePrm = (async () => {
-            await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
-            
-            // It's possible that in between scheduling and performing the tick,
-            // this Hut has become isolated. In this case no update should occur
-            if (this.isShut()) return;
-            
-            this.informThrottlePrm = null;
-            
-            let updateTell = this.genUpdateTell();
-            if (updateTell) this.tell(updateTell);
-            return updateTell;
-          })();
-          
-        }
+        if (this.informThrottlePrm) return;
         
-        return this.informThrottlePrm;
+        this.informThrottlePrm = (async () => {
+          await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
+          
+          this.informThrottlePrm = null;
+          
+          // It's possible that in between scheduling and performing the tick,
+          // this Hut has become isolated. In this case no update should occur
+          if (this.isShut()) return;
+          
+          let updateTell = this.genUpdateTell();
+          if (updateTell) this.tell(updateTell);
+          return updateTell;
+        })();
+        
       },
       /// =ABOVE}
       
@@ -507,15 +500,13 @@ U.buildRoom({
         let findRelWay = this.relWob(rel.waysHuts.bak).toArr().find(() => true);
         return findRelWay ? findRelWay[0].rec : null;
       },
-      tell: async function(msg) {
-        // Could consider making `favouredWay` async - that way if it isn't present when
-        // we call this method, it could become present eventually
+      tell: function(msg) {
+        
+        console.log(`${this.getTerm()}: TELL:`, JSON.stringify(msg, null, 2));
+        
         let way = this.favouredWay();
-        if (!way) {
-          console.log('Couldn\'t tell:', this.getTerm(), msg);
-          throw new Error(`Hut ${this.address} has no Ways`);
-        }
-        await way.tellHut(this, msg);
+        if (!way) throw new Error(`Hut ${this.address} has no Ways`);
+        way.tellHut(this, msg);
       }
     })});
     let Way = U.inspire({ name: 'Way', insps: { Record }, methods: (insp, Insp) => ({
@@ -570,7 +561,7 @@ U.buildRoom({
           
           // Pass anything heard on to our Lands
           absConn.hear.hold(([ msg, reply=null ]) => {
-            this.lands.hear(hut, msg, reply);
+            this.lands.hear(absConn, hut, msg, reply);
             
             /// {ABOVE=
             hut.refreshExpiry(); // Any amount of communication refreshes expiry

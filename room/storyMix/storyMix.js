@@ -90,21 +90,6 @@ U.buildRoom({
         let storyMix = dep(StoryMix({ lands }));
         lands.attach(rel.landsStoryMix.fwd, storyMix);
         
-        let testAuthor = Author({ lands, value: { username: 'admin' } });
-        let testStory = Story({ lands, value: {
-          name: 'test',
-          desc: 'test story',
-          startMs: foundation.getMs(),
-          endMs: null,
-          settings: {
-            roundMs: 1000 * 60 * 60, // 1hr
-            maxAuthors: 10
-          }
-        }});
-        
-        testStory.attach(rel.storyCreatorAuthor.fwd, testAuthor);
-        storyMix.attach(rel.storyMixStories.fwd, testStory);
-        
         // Follows
         dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {
           
@@ -132,16 +117,19 @@ U.buildRoom({
                 
                 dep(hut.followRec(currentRound));
                 
+                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntries
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
                   
                   dep(hut.followRec(roundEntry));
                   
+                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryAuthor
                   dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
                     
                     dep(hut.followRec(entryAuthor));
                     
                   }));
                   
+                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> VoteAuthors
                   dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
                     
                     dep(hut.followRec(voteAuthor));
@@ -152,8 +140,13 @@ U.buildRoom({
                 
               }));
               
+              // StoryMix -> Author -> CurrentStory -> StoryEntries
+              console.log('HUT', hut.getTerm(), 'entries PLURAL +++');
+              dep(Hog(() => console.log('HUT', hut.getTerm(), 'entries PLURAL ---')));
               dep(AccessPath(currentStory.relWob(rel.storyEntries.fwd), (dep, { rec: storyEntry }) => {
                 
+                console.log('HUT', hut.getTerm(), 'entries SINGLE +++');
+                dep(Hog(() => console.log('HUT', hut.getTerm(), 'entries SINGLE ---')));
                 dep(hut.followRec(storyEntry));
                 
               }));
@@ -239,13 +232,26 @@ U.buildRoom({
                 desc,
                 startMs: foundation.getMs(),
                 endMs: null,
+                numAuthors: 0,
                 settings: {
                   roundMs,
+                  // TODO: minAuthors (can't start a Round until this many Authors have joined)
                   maxAuthors
+                  // TODO: minEntryLength
+                  // TODO: maxEntryLength
+                  // TODO: showRoundEntryAuthor
+                  // TODO: showStoryEntryAuthor
+                  // TODO: showRoundEntryVotes  // (hidden|amount|authors) - show amount, but not who voted?
+                  // TODO: maxRounds
                 }
               }});
+              let ap = AccessPath(newStory.relWob(rel.storyAuthors.fwd), (dep, relAuthor) => {
+                newStory.modify(v => { v.numAuthors++; return v; });
+                dep(Hog(() => newStory.modify(v => { v.numAuthors--; return v; })));
+              });
+              let attachStoryMixStory = newStory.attach(rel.storyMixStories.bak, storyMix);
+              attachStoryMixStory.shutWob().hold(() => ap.shut());
               
-              newStory.attach(rel.storyMixStories.bak, storyMix);
               newStory.attach(rel.storyCreatorAuthor.fwd, author);
               newStory.attach(rel.storyAuthors.fwd, author);
               
@@ -259,10 +265,10 @@ U.buildRoom({
               let story = storyMix.getRec(rel.storyMixStories.fwd, msg.story);
               if (!story) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
               
-              try {
-                author.attach(rel.storyAuthors.bak, story);
-              } catch(err) {}
+              // If the Author has never joined this Story, attach!
+              if (!story.getRec(rel.storyAuthors.fwd, author.uid)) author.attach(rel.storyAuthors.bak, story);
               
+              // Always set this Story as the Author's CurrentStory
               author.attach(rel.authorCurrentStory.fwd, story);
               
             }));
@@ -285,54 +291,55 @@ U.buildRoom({
               // If not enough Authors remain to tip the balance to another Entry, return
               // the unbeatable Entry
               
-              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr();
-              if (entries.isEmpty()) return null;
-              if (entries.length === 1) return entries[0].rec;
+              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr().map(relRec => relRec.rec);
+              if (entries.length === 0) return null;
+              if (entries.length === 1) return entries[0];
               
-              let entriesWithVotes = [];
-              let numVotesRemaining = story.relWob(rel.storyAuthors.fwd).size(); // Initialize 1 vote per author in story; we'll subtract over time
-              entries.forEach(({ rec: entry }) => {
-                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
-                numVotesRemaining -= votes;
-                entriesWithVotes.push({ entry, votes });
-              });
-              
-              let [ place1, place2 ] = entriesWithVotes.sort((a, b) => b.votes - a.votes);
-              let numAuthors = story.relWob(rel.storyAuthors.fwd).size();
+              let numVotesRemaining = story.value.numAuthors - storyCurrentRound.value.numVotes;
+              let [ place1, place2 ] = entries.sort((a, b) => b.value.numVotes - a.value.numVotes);
               
               // If `place1` is unbeatable, return it - otherwise, `null`
-              return ((place1.votes - place2.votes) > numVotesRemaining)
-                ? place1.entry
-                : null;
+              return ((place1.value.numVotes - place2.value.numVotes) > numVotesRemaining) ? place1 : null;
               
             };
             let bestEntries = () => {
               // Return all Entries tied for first in votes
               
               let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr();
+              
               let mostVotes = 0;
+              entries.forEach( ({ rec: entry }) => mostVotes = Math.max(mostVotes, entry.value.numVotes) );
               
-              entries.forEach(({ rec: entry }) => {
-                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
-                if (votes > mostVotes) mostVotes = votes;
-              });
-              
-              return entries.map(({ rec: entry }) => {
-                let votes = entry.relWob(rel.roundEntryVoteAuthors.fwd).size();
-                return votes === mostVotes ? entry : C.skip;
-              });
+              return entries.map( ({ rec: entry }) => entry.value.numVotes === mostVotes ? entry : C.skip );
               
             };
+            let bestEntry = () => chance.elem(bestEntries());
             let endRound = (reason, entry) => {
               
+              // TODO: A pity this check is needed! Ideally any further round-end-detection
+              // would be disabled by `relStoryCurrentRound.shut()` removing all additional
+              // checks via `dep`
+              if (relStoryCurrentRound.isShut()) return;
+              
               console.log(`Round ending with reason "${reason}"`);
+              
+              // NOTE: It's possible that a Follow will decrement and increment
+              // in the same tick here: `relStoryCurrentRound.shut()` will kill
+              // the AccessPath leading to the Entry through the CurrentRound,
+              // while `story.attach(..., entry)` will re-follow it through
+              // following the Story's list of all Entries. Unfortunately this
+              // results in the same Record being present in `hut.sync.addRec`
+              // and `hut.sync.remRec`, and this will be resolved by preferring
+              // "remRec". The solution should probably be to give preference
+              // to the latest operation - if rem comes last, it should win. If
+              // add comes last, *it* should win.
               
               // Detach the current Round
               relStoryCurrentRound.shut();
               
               if (entry) {
                 // Add the Entry to the Story.
-                story.attach(rel.storyEntries.fwd, entry);
+                setTimeout(() => story.attach(rel.storyEntries.fwd, entry), 1000);
               } else {
                 console.log('Round ended without entry :(');
               }
@@ -341,8 +348,8 @@ U.buildRoom({
             
             // Round ends because of timeout with a random Entry tied for 1st place
             let timeoutDur = storyCurrentRound.value.endMs - foundation.getMs();
-            console.log('TIMEOUT DURATION:', timeoutDur);
-            let timeout = setTimeout(() => endRound('deadline', chance.elem(bestEntries())), timeoutDur);
+            console.log('DURATION:', timeoutDur);
+            let timeout = setTimeout(() => endRound('deadline', bestEntry()), timeoutDur);
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
@@ -352,33 +359,18 @@ U.buildRoom({
                 
                 // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
-                console.log('Vote happened; unbeatable Entry?', winningEntry);
                 if (winningEntry) endRound('outcomeKnown', winningEntry);
                 
               }));
               
             }));
             
-            // Round ends because all Votes are exhausted
-            dep(AccessPath(storyCurrentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
-              
-              dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: roundEntryVoteAuthor }) => {
-                
-                // 1 vote per Author
-                let numVotesAvailable = story.relWob(rel.storyAuthors.fwd).size();
-                
-                let numVotes = 0;
-                storyCurrentRound.relWob(rel.roundEntries.fwd).forEach(relEntry => {
-                  relEntry.rec.relWob(rel.roundEntryVoteAuthors.fwd).forEach(relVoteAuthor => {
-                    numVotes++;
-                  });
-                });
-                
-                if (numVotes >= numVotesAvailable) endRound('noMoreVotes', chance.elem(bestEntries()));
-                
-              }));
-              
-            }));
+            // Round ends because there's at least one Vote, and Votes are exhausted
+            // Note that 2 factors determine this: total votes available, and total votes cast.
+            // We only listen for changes in total votes cast to trigger the round-end-due-to-exhaustion event though.
+            dep(storyCurrentRound.hold(
+              ({ numVotes }) => (numVotes >= story.value.numAuthors) && endRound('noMoreVotes', bestEntry())
+            ));
             
           }));
           
@@ -404,8 +396,16 @@ U.buildRoom({
                   storyCurrentRound = Round({ lands, value: {
                     roundNum: story.relWob(rel.storyRounds.fwd).size(),
                     startMs: ms,
-                    endMs: ms + story.value.settings.roundMs
+                    endMs: ms + story.value.settings.roundMs,
+                    numVotes: 0
                   }});
+                  let ap = AccessPath(storyCurrentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
+                    dep(AccessPath(entry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, relVoteAuthor) => {
+                      storyCurrentRound.modify(v => { v.numVotes++; return v; });
+                      dep(Hog(() => storyCurrentRound.modify(v => { v.numVotes--; return v; })));
+                    }));
+                  });
+                  storyCurrentRound.shutWob().hold(() => ap.shut());
                   
                   story.attach(rel.storyRounds.fwd, storyCurrentRound);
                   story.attach(rel.storyCurrentRound.fwd, storyCurrentRound);
@@ -414,8 +414,15 @@ U.buildRoom({
                 
                 // TODO: If already submitted, deny
                 
-                let entry = Entry({ lands, value: { text: msg.text } });
-                entry.attach(rel.roundEntries.bak, storyCurrentRound);
+                let entry = Entry({ lands, value: { text: msg.text, numVotes: 0 } });
+                let ap = AccessPath(entry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                  entry.modify(v => { v.numVotes++; return v; });
+                  dep(Hog(() => entry.modify(v => { v.numVotes--; return v; })));
+                });
+                
+                let entryAttachRound = entry.attach(rel.roundEntries.bak, storyCurrentRound);
+                entryAttachRound.shutWob().hold(() => ap.shut());
+                
                 entry.attach(rel.entryAuthor.fwd, storyAuthor);
                 
               }));
@@ -711,10 +718,10 @@ U.buildRoom({
               
               let storyForm = storyCreate.addReal('form');
               let form = storyForm.form('Create!', dep, v => form.clear() && lands.tell({ command: 'story', ...v }), {
-                name:       { type: 'str', desc: 'Name' },
-                desc:       { type: 'str', desc: 'Description' },
-                roundMs:    { type: 'int', desc: 'Round Timer' },
-                maxAuthors: { type: 'int', desc: 'Max Authors' }
+                name:       { type: 'str', desc: 'Name', v: 'test' },
+                desc:       { type: 'str', desc: 'Description', v: 'TEST TEST' },
+                roundMs:    { type: 'int', desc: 'Round Timer', v: '10000000' },
+                maxAuthors: { type: 'int', desc: 'Max Authors', v: '10' }
               });
               
             }));
@@ -740,13 +747,8 @@ U.buildRoom({
                 dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
                   
                   let authorFlt = dep(WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => {
-                    //console.log('Checking author of entry:', relAuthor.rec.getRec(rel.hutAuthor.bak).value.getTerm());
-                    console.log('NEED:', myAuthor.uid, 'CHECK:', relAuthor.rec);
                     return relAuthor.rec === myAuthor ? relAuthor : C.skip;
-                    //relAuthor.rec === myAuthor ? relAuthor : C.skip));
                   }));
-                  
-                  
                   
                   dep(AccessPath(authorFlt, (dep, { rec: author }) => {
                     myCurrentEntryWob.up(entry);

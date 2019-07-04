@@ -47,8 +47,6 @@ U.foundation = FoundationNodejs({
   variantDefs: {
     above: { above: 1, below: 0 },
     below: { above: 0, below: 1 }
-    //between: { above: 1, below: 1 },
-    //alone: { above: 0, below: 0 }
   }
 });
 

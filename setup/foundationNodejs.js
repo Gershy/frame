@@ -5,9 +5,9 @@
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
-  let tempDir = path.join(rootDir, 'temp');
+  let tempDir = path.join(rootDir, 'mill');
   
-  let transportDebug = true;
+  let transportDebug = false;
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -48,7 +48,7 @@
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function({ hut, bearing, variantDefs={}, ip='static', port=80, transportDebug=true, ...moreOpts }) {
       
-      let { httpFullDebug=false, spoofEnabled=false } = moreOpts;
+      let { cmd=null, httpFullDebug=false, spoofEnabled=false } = moreOpts;
       
       if (ip === 'help') {
         console.log('IP OPTIONS:', this.getStaticIps());
@@ -379,11 +379,11 @@
         return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
       }));
     },
-    compactIp: function(ipVerbose) {
+    compactIp: function(verboseIp) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
-      if (ipVerbose === 'localhost') ipVerbose = '127.0.0.1';
-      let pcs = ipVerbose.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Invalid ip: "${ipVerbose}"`);
+      if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
+      let pcs = verboseIp.split(',')[0].trim().split('.');
+      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Invalid ip: "${verboseIp}"`);
       return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
     },
     makeHttpServer: async function(ip=this.ip, port=this.port) {
@@ -510,7 +510,8 @@
         let address = `${ip}/${innerId}`;
         if (this.spoofEnabled && query.has('spoof')) {
           let [ ip, innerId ] = query.spoof.split('/');
-          address = `${this.compactIp(ip)}/${parseInt(innerId || 0, 36).toString(36).padHead(4, '0')}`;
+          if (ip.has('.')) ip = this.compactIp(ip);
+          address = `${ip}/${parseInt(innerId || 0, 36).toString(36).padHead(4, '0')}`;
         }
         
         // Create a new connection if this address hasn't been seen before
@@ -546,37 +547,6 @@
           conn.waitResps = [];
           conn.waitTells = [];
           
-          /*
-          let conn = connections[address] = {
-            ip, address,
-            hear: Wob({}),
-            tell: Wob({}),
-            shut: Wob({}),
-            waitResps: [],
-            waitTells: [],
-            isShut: false
-          };
-          conn.tell.hold(msg => {
-            conn.waitResps.length
-              ? sendData(address, conn.waitResps.shift(), msg)
-              : conn.waitTells.push(msg);
-          });
-          conn.shut.hold(() => {
-            if (conn.isShut) return; // Don't shut multiple times
-            conn.isShut = true;
-            
-            // Clean up `idsAtIp`
-            if (idsAtIp.has(conn.ip) && idsAtIp[conn.ip].has(conn.innerId)) {
-              delete idsAtIp[conn.ip][conn.innerId];
-              if (idsAtIp[conn.ip].isEmpty()) delete idsAtIp[conn.ip];
-            }
-            
-            conn.waitResps.forEach(res => res.end());
-            console.log(`++EXIT ${address}`);
-            delete connections[address];
-          });
-          */
-          
           serverWob.wobble(conn);
           
           if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
@@ -598,7 +568,10 @@
         // initial request to a page (which has no http body!)
         if (body.isEmpty()) {
           if (urlPath.hasHead('/!')) {
-            if (urlPath.hasHead('/!FILE/')) { body = { command: 'getFile', path: urlPath.substr(7) }; syncReqRes = true; }
+            if (urlPath.hasHead('/!FILE/')) {
+              body = { command: 'getFile', path: urlPath.substr(7) }; // `7` strips off "/!FILE/"
+              syncReqRes = true;
+            }
           } else if (urlPath === '/') {
             [ body, syncReqRes ] = [ { command: 'getInit' }, true ];
           } else { // If a meaningless request is received reject it and close the connection
@@ -624,9 +597,11 @@
             transport: conn => conn.shut()
           },
           bankPoll: {
-            transport: conn => { /* do nothing */ }
+            transport: conn => { /* empty transport-level action */ }
           }
         };
+        
+        // If no ComType found, default to Hut-level command!
         let comTypes = comTypesMap.has(body.command) ? comTypesMap[body.command] : { hut: true };
         
         // Run transport-level actions
@@ -905,7 +880,21 @@
     },
     
     getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
-    genInitBelow: async function(contentType, hutTerm, initContent={}) {
+    genInitBelow: async function(contentType, absConn, hutTerm, urlResources, initContent={}) {
+      
+      let urlFn = this.spoofEnabled
+        ? fp => `/!FILE${fp}?spoof=${absConn.address}`
+        : fp => `/!FILE${fp}`;
+      
+      let cssUrls = [];
+      let jsUrls = [];
+      let otherUrls = [];
+      
+      urlResources.forEach(({ type, url }) => {
+        if (type === 'text/css')              cssUrls.push(url);
+        else if (type === 'text/javascript')  jsUrls.push(url);
+        else                                  otherUrls.push(url);
+      });
       
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
@@ -919,11 +908,17 @@
       let head = html.add(XmlElement('head', 'container'));
       let title = head.add(XmlElement('title', 'text', `${this.hut.upper()}`));
       
-      // If spoofing is allowed don't issue an unspoofed favicon request; instead disable favicon
       let favicon = head.add(XmlElement('link', 'singleton'));
       favicon.setProp('rel', 'shortcut icon');
-      favicon.setProp('href', this.spoofEnabled ? 'data:image/x-icon;,' : '/!FILE/favicon.ico');
       favicon.setProp('type', 'image/x-icon');
+      favicon.setProp('href', urlFn('/favicon.ico'));
+      
+      cssUrls.forEach(cssUrl => {
+        let link = head.add(XmlElement('link', 'singleton'));
+        link.setProp('rel', 'stylesheet');
+        link.setProp('type', 'text/css');
+        link.setProp('href', urlFn(cssUrl));
+      });
       
       // Make a `global` value available to browsers
       let setupScript = head.add(XmlElement('script', 'text'));
@@ -931,6 +926,12 @@
       setupScript.setText('window.global = window;');
       
       let mainScript = head.add(XmlElement('script', 'text'));
+      
+      jsUrls.forEach(cssUrl => {
+        let script = head.add(XmlElement('script', 'text'));
+        link.setProp('type', 'text/javascript');
+        link.setProp('src', urlFn(cssUrl));
+      });
       
       // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
       // TODO: Could memoize the static portion of the script

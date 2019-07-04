@@ -7,11 +7,9 @@
 
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function({ hut=null, bearing=null, test=false }) {
-    if (!hut) throw new Error('Missing "hut" param');
-    if (!bearing) throw new Error('Missing "bearing" param');
     if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw new Error(`Invalid bearing: "${bearing}"`);
     this.uidCnt = 0;
-    this.hut = hut; // A hut is technically a room; it's the biggest room encompassing all others!
+    this.hut = hut;
     this.bearing = bearing;
     this.test = test;
   },
@@ -28,6 +26,9 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   // Setup
   formatError: C.notImplemeneted,
   install: async function() {
+    
+    if (!hut) throw new Error('Missing "hut" param');
+    if (!bearing) throw new Error('Missing "bearing" param');
     
     await this.installFoundation();
     
@@ -87,6 +88,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   genInitBelow: async function(contentType) { return C.notImplemented.call(this); },
   parseUrl: function(url) {
     let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
+    if (!path.hasHead('/')) path = `/${path}`;
     return {
       protocol, host, port, path,
       query: query.split('&').toObj(queryPc => queryPc.has('=') ? queryPc.split('=') : [ queryPc, null ])

@@ -1,5 +1,6 @@
 node_modules/
 .old/
+mill/
 *.above.js
 *.below.js
 *.between.js

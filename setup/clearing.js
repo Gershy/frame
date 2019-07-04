@@ -227,9 +227,8 @@ let U = global.U = {
     return Insp;
   },
   isType: (val, Cls) => {
-    try { return val.constructor === Cls; } catch (err) {}
-    if (Cls === null) return val === null;
-    if (Cls === undefined) return val === undefined;
+    // Unboxed values (`null` and `undefined` are tested in the `catch`
+    try { return val.constructor === Cls; } catch (err) { return val === Cls; }
     return false;
   },
   isInspiredBy: (Insp1, Insp2) => {
@@ -240,8 +239,7 @@ let U = global.U = {
       //return (U.isType(Insp1, Function) ? Insp1 : Insp1.constructor).insps.has(Insp2.uid);
     } catch(err) { return false; }
   },
-  getConstructor: obj => { try { return obj.constructor; } catch(err) { return null; } },
-  typeOf: obj => { return obj === null ? '<NULL>' : obj === undefined ? '<UNDEF>' : U.getConstructor(obj).name; },
+  typeOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
   
   buildRoom: ({ name, innerRooms=[], build }) => {
     
@@ -353,11 +351,7 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     this.value = value;
     insp.Wob.wobble.call(this, value, origVal);
   },
-  modify: function(func, force) {
-    let v = func(this.value);
-    if (U.isType(v, undefined)) v = this.value;
-    this.wobble(v, force);
-  }
+  modify: function(func, force) { this.wobble(func(this.value), force); }
 })});
 let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, Insp) => ({
   

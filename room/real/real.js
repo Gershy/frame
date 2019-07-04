@@ -344,11 +344,15 @@ U.buildRoom({
         /// =ABOVE} {BELOW=
         
         // TODO: This should be inline in the initial html response
+        // TODO: Shouldn't need to manage spoofing here (or anywhere outside of Foundations!)
+        
+        let { query } = U.foundation.parseUrl(window.location.toString());
+        
         let styleElem = document.createElement('link');
         styleElem.setAttribute('rel', 'stylesheet');
         styleElem.setAttribute('type', 'text/css');
         styleElem.setAttribute('media', 'screen');
-        styleElem.setAttribute('href', `/!FILE/${this.name}.css`);
+        styleElem.setAttribute('href', `/!FILE/${this.name}.css${query.has('spoof') ? `?spoof=${query.spoof}` : ''}`);
         document.head.appendChild(styleElem);
         
         real.dom.id = `${this.name}`;
@@ -494,7 +498,7 @@ U.buildRoom({
         
         let vals = items.map(v => null);
         let fields = [];
-        items.forEach(({ type, desc }, k) => {
+        items.forEach(({ type, desc, v=null }, k) => {
           
           // TODO: Stop ignoring `type`
           
@@ -509,6 +513,11 @@ U.buildRoom({
             dep(field.tellWob().hold(v => { vals[k] = v; }));
           } else if (type === 'int') {
             dep(field.tellWob().hold(v => { vals[k] = parseInt(v, 10) || null; }));
+          }
+          
+          if (v !== null) {
+            field.setText(v);
+            field.tellWob().wobble(v);
           }
           
         });
