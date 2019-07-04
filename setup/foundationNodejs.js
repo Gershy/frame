@@ -7,7 +7,14 @@
   let roomDir = path.join(rootDir, 'room');
   let tempDir = path.join(rootDir, 'mill');
   
-  let transportDebug = false;
+  let fsDeleteSync = f => {
+    let stat = U.safe(() => fs.statSync(f), () => null);
+    if (!stat) return;
+    if (stat.isFile()) { fs.unlinkSync(f); return; }
+    let names = fs.readdirSync(f);
+    for (let name of names) fsDeleteSync(path.join(f, name));
+    fs.rmdirSync(f);
+  };
   
   let { Foundation } = U.foundationClasses;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -46,52 +53,32 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing, variantDefs={}, ip='static', port=80, transportDebug=true, ...moreOpts }) {
+    init: function() {
       
-      let { cmd=null, httpFullDebug=false, spoofEnabled=false } = moreOpts;
+      insp.Foundation.init.call(this);
       
-      if (ip === 'help') {
-        console.log('IP OPTIONS:', this.getStaticIps());
-        return process.exit(0);
-      }
-      
-      insp.Foundation.init.call(this, { hut, bearing, ...moreOpts });
-      
+      this.variantDefs = {};
       this.roomsInOrder = [];
-      this.variantDefs = variantDefs.map(v => v.gain({ test: this.test }));
       this.compilationData = {};
       this.mountedFiles = {};
-      this.httpFullDebug = httpFullDebug;
-      this.spoofEnabled = spoofEnabled;
       
-      if (ip.hasHead('static')) {
-        
-        let [ _, ipPref=null ] = ip.split(':');
-        
-        let staticIps = this.getStaticIps();
-        if (staticIps.isEmpty()) throw new Error('No static ip available!');
-        
-        if (!ipPref) {
-          console.log(`In absence of ipPref using "${staticIps[0].type}"`);
-          ip = staticIps[0].address;
-        } else {
-          ip = staticIps.find(({ type }) => type.lower().replace(/[^A-Za-z0-9]/g, '') === ipPref.lower());
-          if (!ip) throw new Error(`Couldn't match static ip ${ipPref}`);
-          ip = ip[0].address;
-        }
-        
-      } else if (ip === 'local') {
-        ip = '127.0.0.1';
-      }
+      this.transportDebug = false;
+      this.httpFullDebug = false;
+      this.spoofEnabled = false;
       
-      this.ip = ip;
-      this.port = port;
+      this.ip = null;
+      this.port = null;
       this.usage0 = process.memoryUsage().map(v => v);
       
-      // Make sure our tempDir exists!
-      try { fs.mkdirSync(tempDir); } catch(err) {}
+      // These directories get purged (TODO: should happen when hut *ends*, not *begins*)
+      fsDeleteSync(path.join(tempDir, 'storage'));
+      fsDeleteSync(path.join(tempDir, 'room'));
       
-      this.addMountFile('favicon.ico', 'image/x-icon', 'setup/favicon.ico');
+      // Create all necessary directories
+      U.safe(() => fs.mkdirSync(tempDir));
+      U.safe(() => fs.mkdirSync(path.join(tempDir, 'habit')));
+      U.safe(() => fs.mkdirSync(path.join(tempDir, 'room')));
+      U.safe(() => fs.mkdirSync(path.join(tempDir, 'storage')));
       
     },
     
@@ -335,7 +322,7 @@
       this.mountedFiles[name] = { type, nativeDir };
     },
     addMountDataAsFile: function(name, type, data) {
-      let nativeDir = path.join(tempDir, name);
+      let nativeDir = path.join(tempDir, 'storage', name);
       fs.writeFileSync(nativeDir, data);
       this.mountedFiles[name] = { type, nativeDir };
     },
@@ -365,7 +352,7 @@
       return os.networkInterfaces()
         .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
         .to(arr => Array.combine(...arr))
-        .map(v => v.family === 'IPv4' && v.address !== '127.0.0.1' ? v : C.skip);
+        .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
     readFile: async function(name, options='utf8') {
       let err0 = new Error('');
@@ -398,7 +385,7 @@
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        if (transportDebug) console.log(`--TELL ${address}:`, ({
+        if (this.transportDebug) console.log(`--TELL ${address}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
@@ -516,7 +503,7 @@
         
         // Create a new connection if this address hasn't been seen before
         if (!connections.has(address)) {
-          if (transportDebug) console.log(`++CONN ${address}`);
+          if (this.transportDebug) console.log(`++CONN ${address}`);
           
           let conn = connections[address] = Hog(() => {
             
@@ -549,7 +536,7 @@
           
           serverWob.wobble(conn);
           
-          if (transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
+          if (this.transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
         }
         
         if (!connections.has(address)) throw new Error(`No connection at address: ${address}`);
@@ -879,6 +866,92 @@
       return serverWob;
     },
     
+    decide: function(args) {
+      
+      let cmd = (args.has('cmd') ? args.cmd : 'version').split('.');
+      
+      if (args.has('habit')) {
+        
+        if (!U.isType(args.habit, Object)) throw new Error('Invalid "habit" param');
+        
+        let mode = null;
+        for (let k in args.habit) { mode = k; break; }
+        if (!mode) throw new Error('Invalid "habit" param');
+        
+        // If only suppled "--habit.set", we get `{ habit: { set: true } }`
+        let habit = args.habit[mode] !== true ? args.habit[mode] : 'default';
+        let habitPath = path.join(tempDir, 'habit', `${habit}.json`);
+        
+        if (mode === 'add') {
+          delete args.habit;
+          let jsonArgs = JSON.stringify(args, null, 2);
+          console.log(`Saved habit "${habit}"; args:`, jsonArgs);
+          return fs.writeFileSync(habitPath, jsonArgs);
+        } else if (mode === 'rem') {
+          fs.unlinkSync(habitPath);
+          console.log(`Removed habit "${habit}"`);
+          return;
+        } else if (mode === 'use') {
+          delete args.habit;
+          args = { ...JSON.parse(fs.readFileSync(habitPath)), ...args };
+          console.log(`With habit "${habit}", full args are:`, JSON.stringify(args, null, 2));
+          console.log('');
+          return this.decide(args);
+        } else if (mode === 'all') {
+          let habits = fs.readdirSync(path.join(tempDir, 'habit'));
+          console.log('Available habits:');
+          if (habits.length) {
+            habits.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
+          } else {
+            console.log('  -- none --');
+          }
+          return;
+        }
+        
+      }
+      
+      if (cmd[0] === 'version') return console.log('Version 0.0.1');
+      if (cmd[0] === 'help') {
+        
+        if (cmd[1] === 'ip') return console.log('IP OPTIONS:', JSON.stringify(this.getStaticIps(), null, 2));
+        
+      }
+      
+      // Initialize ip+port
+      if (args.has('ip')) {
+        
+        let ip = args.ip;
+        if (ip === 'local') ip = '127.0.0.1';
+        this.ip = ip;
+        this.port = args.has('port') ? args.port : 80;
+        
+      }
+      
+      // Initialize variantDefs
+      this.variantDefs = args.has('variantDefs') ? args.variantDefs : {
+        above: { above: 1, below: 0 },
+        below: { above: 0, below: 1 }
+      };
+      
+      // Initialize network options
+      this.transportDebug = args.has('transportDebug') ? args.transportDebug : false;
+      this.httpFullDebug = args.has('httpFullDebug') ? args.httpFullDebug : false;
+      this.spoofEnabled = args.has('spoofEnabled') ? args.spoofEnabled : false;
+      
+      // Initialize certain settings in case we're testing
+      if (cmd[0] === 'test') {
+        
+        // Keep all {TEST= =TEST} blocks when compiling
+        this.variantDefs = this.variantDefs.map(v => v.gain({ test: 1 }));
+        
+        // Initialize hutkeeping
+        require('./hutkeeping.js');
+        
+      }
+      
+      return insp.Foundation.decide.call(this, args);
+      
+    },
     getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
     genInitBelow: async function(contentType, absConn, hutTerm, urlResources, initContent={}) {
       
@@ -979,8 +1052,8 @@
         `U.initData = ${JSON.stringify(initContent)};`,
         `U.debugLineData = ${JSON.stringify(debugLineData)};`,
         'let { FoundationBrowser } = U.foundationClasses;',
-        `U.foundation = FoundationBrowser({ hut: '${this.hut}', bearing: 'below' });`,
-        'U.foundation.install();'
+        `U.foundation = FoundationBrowser();`,
+        `U.foundation.decide({ hut: '${this.hut}', bearing: 'below' });`
       ].join('\n');
       
       mainScript.setProp('type', 'text/javascript');
@@ -1003,16 +1076,33 @@
       
       return doc.toString();
     },
-    installFoundation: async function() {
+    establishHut: async function({ hut=null, bearing=null }) {
+      
+      if (!hut) throw new Error('Missing "hut" param');
+      if (!bearing) throw new Error('Missing "bearing" param');
+      if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw new Error(`Invalid bearing: "${bearing}"`);
+      
+      // We're establishing with known params! So set them on `this`
+      this.hut = hut;
+      this.bearing = bearing;
+      
       // Overwrite the original "buildRoom" logic
       let origBuildRoom = U.buildRoom;
       U.buildRoom = (...args) => origBuildRoom(...args)();
       
+      // Compile everything!
+      this.roomsInOrder = await this.compileRecursive(this.hut);
+      
+      // As soon as we're compiled we can install useful cmp->src exception handlers
       process.on('uncaughtException', err => console.log(this.formatError(err)));
       process.on('unhandledRejection', err => console.log(this.formatError(err)));
       
-      this.roomsInOrder = await this.compileRecursive(this.hut);
+      // Require all rooms nodejs-style
       this.roomsInOrder.forEach(roomName => require(`../room/${roomName}/${roomName}.${this.bearing}.js`));
+      
+      // The final Room is our Hut!
+      return U.rooms[this.hut];
+      
     }
   })});
   

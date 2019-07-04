@@ -6,8 +6,8 @@
   let { Foundation } = U.foundationClasses;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function({ hut, bearing }) {
-      insp.Foundation.init.call(this, { hut, bearing });
+    init: function() {
+      insp.Foundation.init.call(this);
       
       // GOAL: Determine how long since Above generated `U.aboveMsAtResponseTime`
       // - `firstContactMs` is our earliest timing of server response
@@ -42,8 +42,14 @@
       
     },
     getPlatformName: function() { return 'browser'; },
-    installFoundation: async function() {
+    establishHut: async function(args) {
       
+      if (!args.has('hut')) throw new Error('Missing "hut" param');
+      
+      // Build all Rooms
+      U.rooms.forEach(room => room());
+      
+      // Catch exceptions after building all Rooms
       window.addEventListener('unhandledrejection', evt => {
         console.log(this.formatError(evt.reason));
         evt.preventDefault();
@@ -53,16 +59,17 @@
         evt.preventDefault();
       });
       
-      // Build all rooms
-      U.rooms.forEach(room => room());
-      let { query } = this.parseUrl(window.location.href);
+      // Hold everything back until the Window loads
       await new Promise(r => { window.onload = r; });
       
+      let { query } = this.parseUrl(window.location.href);
       if (query.has('title')) {
         let head = document.getElementsByTagName('head')[0];
         let title = head.getElementsByTagName('title')[0];
         title.innerHTML = `${title.innerHTML} (${query.title})`;
       }
+      
+      return U.rooms[args.hut];
       
     },
     getRootReal: async function() { 

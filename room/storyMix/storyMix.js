@@ -339,6 +339,7 @@ U.buildRoom({
               
               if (entry) {
                 // Add the Entry to the Story.
+                // TODO: No delay should be necessary! Need to fix sync-addRec-remRec-conflict bug!!
                 setTimeout(() => story.attach(rel.storyEntries.fwd, entry), 1000);
               } else {
                 console.log('Round ended without entry :(');
@@ -348,7 +349,6 @@ U.buildRoom({
             
             // Round ends because of timeout with a random Entry tied for 1st place
             let timeoutDur = storyCurrentRound.value.endMs - foundation.getMs();
-            console.log('DURATION:', timeoutDur);
             let timeout = setTimeout(() => endRound('deadline', bestEntry()), timeoutDur);
             dep(Hog(() => clearTimeout(timeout)));
             

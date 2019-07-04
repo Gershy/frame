@@ -397,8 +397,6 @@ U.buildRoom({
       
       resetVersion: function() {
         
-        console.log(`${this.getTerm()}: reset version`);
-        
         // Clears memory of current delta and generates a new delta which would bring
         // a blank Below up to date. Resets this Hut's version to 0 to reflect the Below
         // is currently blank. Note that this method modifies our memory of the delta
@@ -407,7 +405,7 @@ U.buildRoom({
         // This function is useful if a Hut was getting sequential updates and lost
         // track of the sequence.
         
-        if (this.version === 0) return;
+        if (this.version === 0) return; // Nothing to reset if we're still at version 0
         
         // Clear current delta...
         this.sync = this.sync.map(v => ({}));
@@ -501,9 +499,6 @@ U.buildRoom({
         return findRelWay ? findRelWay[0].rec : null;
       },
       tell: function(msg) {
-        
-        console.log(`${this.getTerm()}: TELL:`, JSON.stringify(msg, null, 2));
-        
         let way = this.favouredWay();
         if (!way) throw new Error(`Hut ${this.address} has no Ways`);
         way.tellHut(this, msg);

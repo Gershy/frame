@@ -6,15 +6,9 @@
 // TODO: Write classes for transports
 
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
-  init: function({ hut=null, bearing=null, test=false }) {
-    if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw new Error(`Invalid bearing: "${bearing}"`);
-    this.uidCnt = 0;
-    this.hut = hut;
-    this.bearing = bearing;
-    this.test = test;
+  init: function() {
   },
   getPlatformName: C.notImplemented,
-  nextUid: function() { return this.uidCnt++; },
   
   // Platform
   getMs: function() { return +new Date(); },
@@ -22,68 +16,71 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
   makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
   getRootReal: async function() { return C.notImplemented.call(this); },
+  formatError: C.notImplemeneted,
   
   // Setup
-  formatError: C.notImplemeneted,
-  install: async function() {
+  decide: function(args) {
     
-    if (!hut) throw new Error('Missing "hut" param');
-    if (!bearing) throw new Error('Missing "bearing" param');
+    let cmd = (args.has('cmd') ? args.cmd : 'establish').split('.');
     
-    await this.installFoundation();
-    
-    let room = U.rooms[this.hut];
-    
-    if (this.test) {
+    if (cmd[0] === 'establish') {
       
-      if (!room.built.has('test')) throw new Error(`Couldn't find "test" prop for ${this.hut}`);
+      (async () => {
+        let rootRoom = await this.establishHut(args);
+        await rootRoom.built.open();
+        console.log(`Established ${args.hut} for ${this.getPlatformName()}`);
+      })();
       
-      U.DBG_WOBS = new Set();
+    } else if (cmd[0] === 'test') {
       
-      let keep = U.Keep(null, 'root');
-      let rootKeep = keep;
-      if (true) U.addSetupKeep(keep);   // Add setup-level tests
-      await room.built.test(keep);      // Add room-level tests
-      
-      if (U.isType(this.test, String)) keep = keep.getChild(...this.test.split('.'));
-      
-      let firstErr = null;
-      let outputTest = (name, run, ind='') => {
-        let { result, err=null, msg=null, childResults } = run;
+      (async () => {
+        let rootRoom = await this.establishHut(args);
+        if (!rootRoom.built.has('test')) throw new Error(`Couldn\'t find "test" prop for ${args.hut}`);
         
-        if (err && !firstErr) firstErr = err;
+        U.DBG_WOBS = new Set();
         
-        let { summary, cases } = childResults || { summary: null, cases: {} };
-        console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
-        if (err) console.log(`${ind}    TESTERROR(${err.id})`);
-        if (msg) console.log(`${ind}    "${msg}"`);
-        if (cases.isEmpty()) return;
-        console.log(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
-        for (let [ name0, run ] of Object.entries(cases)) outputTest(`${name}.${name0}`, run, ind + '    ');
-      };
-      
-      console.log('Running tests...');
-      let result = await keep.run();
-      outputTest(keep.name, result);
-      console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
-      
-      if (firstErr) {
-        console.log('First error encountered:');
-        console.log(U.foundation.formatError(firstErr));
-      }
-      
-      console.log(`Tested ${this.hut} for ${this.getPlatformName()}`);
-      process.exit(0);
-      
-    } else {
-      
-      if (!room.built.has('open')) throw new Error(`Couldn't find "open" prop for ${this.hut}`);
-      await room.built.open();
-      console.log(`Built ${this.hut} for ${this.getPlatformName()}`);
+        let keep = U.Keep(null, 'root');
+        let rootKeep = keep;              // Don't lose reference to root Keep
+        if (true) U.addSetupKeep(keep);   // Add setup-level tests
+        await rootRoom.built.test(keep);  // Add room-level tests
+        
+        // Dive down to a specific test category if needed (defined from "--cmd test.cat.subcat...")
+        if (cmd.length > 1) keep = keep.getChild(...cmd.slice(1));
+        
+        let firstErr = null;
+        let outputTest = (name, run, ind='') => {
+          let { result, err=null, msg=null, childResults } = run;
+          
+          // If no `firstErr` yet, `firstErr` becomes `err`
+          if (err && !firstErr) firstErr = err;
+          
+          // Show the single result, with optional error and failure-message
+          let { summary, cases } = childResults || { summary: null, cases: {} };
+          console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
+          if (err) console.log(`${ind}    TESTERROR(${err.id})`);
+          if (msg) console.log(`${ind}    "${msg}"`);
+          if (cases.isEmpty()) return;
+          
+          // Show all child results
+          console.log(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
+          for (let [ name0, run ] of Object.entries(cases)) outputTest(`${name}.${name0}`, run, ind + '    ');
+        };
+        
+        console.log('Running tests...');
+        let result = await keep.run();
+        outputTest(keep.name, result); // Print all keep results with nice formatting
+        console.log(`Overall: Passed ${rootKeep.passed} / ${rootKeep.total} (${Math.round((rootKeep.passed / rootKeep.total) * 100)}%)`);
+        
+        // For convenience show the first error last
+        if (firstErr) console.log('First error encountered:\n', U.foundation.formatError(firstErr));
+        
+        console.log(`Tested ${args.hut} for ${this.getPlatformName()}`);
+      })();
       
     }
     
   },
+  establishHut: async function(args) { return C.notImplemented.call(this); },
   installFoundation: C.notImplemented,
   genInitBelow: async function(contentType) { return C.notImplemented.call(this); },
   parseUrl: function(url) {

@@ -11,20 +11,25 @@ require('./setup/clearing.js');
 require('./setup/foundation.js');
 require('./setup/foundationNodejs.js');
 
-// Process args
+// Process args:
 let args = process.argv.slice(2).join(' ');
-
 if (args[0] === '{') {
   args = eval(`(${args})`);
 } else {
-  args = args.split('-').toObj(a => {
-    if (!a) return C.skip;
+  let orig = args;
+  args = {};
+  orig.split('-').forEach(a => {
+    if (!a) return;
     let [ k, ...v ] = a.trim().split(' ');
-    return [ k, v.join(' ') || true ];
+    let ptr = args;
+    let pcs = k.split('.');
+    let last = pcs.pop();
+    pcs.forEach(p => { if (!ptr.has(p)) ptr[p] = {}; ptr = ptr[p]; });
+    ptr[last] = v.join(' ') || true;
   });
 }
 
-// PowerShell and other terminals may pass "encodedCommand"
+// Some terminals may pass "encodedCommand" with "inputFormat" and "outputFormat"
 if (args.has('encodedCommand')) {
   // Decode from base64; strip all 0-bytes
   let encoded = Buffer.from(args.encodedCommand, 'base64').toString('utf8')
@@ -38,16 +43,7 @@ if (args.has('encodedCommand')) {
   });
 }
 
-if (args.has('test') && args.test) require('./setup/hutkeeping.js');
-
 // Make the foundation
 let { FoundationNodejs } = U.foundationClasses;
-U.foundation = FoundationNodejs({
-  ...args,
-  variantDefs: {
-    above: { above: 1, below: 0 },
-    below: { above: 0, below: 1 }
-  }
-});
-
-U.foundation.install();
+U.foundation = FoundationNodejs();
+U.foundation.decide(args);
