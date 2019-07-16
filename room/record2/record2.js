@@ -6,75 +6,40 @@ U.buildRoom({
     
     let { Hog, Wob, WobVal, AggWobs } = U;
     
-    let WobRecVal = U.inspire({ name: 'WobRecVal', insps: { Wob }, methods: (insp, Insp) => ({
+    let WobRecCrd1 = U.inspire({ name: 'WobRecCrd1', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.hog = null;
+        this.rec = null;
       },
       hold: function(holdFn) {
-        if (this.hog) this.toHold(holdFn, this.hog); // Call immediately
+        if (this.rec) this.toHold(holdFn, this.rec); // Call immediately
         return insp.Wob.hold.call(this, holdFn);
       },
-      forEach: function(fn) { if (this.hog) fn(this.hog); },
-      isEmpty: function() { return !this.hog; },
-      toArr: function() { return this.hog ? [ this.hog ] : []; },
-      find: function(fn) { return (this.hog && fn(this.hog)) ? this.hog : null; },
-      size: function() { return this.hog ? 1 : 0; },
-      wobbleAdd: function(hog) {
-        if (!hog) throw new Error('Invalid hog for add');
-        if (this.hog) throw new Error('Already add');
-        this.hog = hog;
-        this.wobble(this.hog, ...this.hog.members);
-        return Hog(() => { this.hog = null; });
-      }
+      wobbleAdd: function(rec) {
+        if (!rec) throw new Error('Invalid rec for add');
+        if (this.rec) throw new Error('Already add');
+        this.rec = rec;
+        this.wobble(this.rec, ...this.rec.members);
+        return Hog(() => { this.rec = null; });
+      },
+      size: function() { return this.hog ? 1 : 0; }
     })});
-    let WobRecArr = U.inspire({ name: 'WobRecArr', insps: { Wob }, methods: (insp, Insp) => ({
+    let WobRecCrdM = U.inspire({ name: 'WobRecCrdM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.hogs = new Set();
+        this.recs = new Map();
       },
       hold: function(holdFn) {
-        this.hogs.forEach(hog => this.toHold(holdFn, hog));
+        this.recs.forEach(rec => this.toHold(holdFn, rec));
         return insp.Wob.hold.call(this, holdFn);
       },
-      forEach: function(fn) { this.hogs.forEach(fn); },
-      isEmpty: function() { return this.hogs.size === 0; },
-      toArr: function() { return [ ...this.hogs ]; },
-      find: function(fn) {
-        for (let hog of this.hogs) if (fn(hog)) return hog;
-        return null;
+      wobbleAdd: function(rec) {
+        if (this.recs.has(rec.uid)) throw new Error('Already add');
+        this.recs.set(rec.uid, rec);
+        this.wobble(rec, ...rec.members);
+        return Hog(() => { this.recs.delete(rec.uid); });
       },
-      size: function() { return this.hogs.size; },
-      wobbleAdd: function(hog) {
-        if (this.hogs.has(hog)) throw new Error('Already add');
-        this.hogs.add(hog);
-        this.wobble(hog);
-        return Hog(() => { this.hogs.delete(hog); });
-      }
-    })});
-    let WobRecObj = U.inspire({ name: 'WobRecObj', insps: { Wob }, methods: (insp, Insp) => ({
-      init: function() {
-        insp.Wob.init.call(this);
-        this.hogs = new Map();
-      },
-      hold: function(holdFn) {
-        this.hogs.forEach(hog => this.toHold(holdFn, hog));
-        return insp.Wob.hold.call(this, holdFn);
-      },
-      forEach: function(fn) { this.hogs.forEach(fn); },
-      isEmpty: function() { return this.hogs.size === 0; },
-      toArr: function() { return [ ...this.hogs.values() ]; },
-      find: function(fn) {
-        for (let hog of this.hogs.values()) if (fn(hog)) return hog;
-        return null;
-      },
-      size: function() { return this.hogs.size; },
-      wobbleAdd: function(hog) {
-        if (this.hogs.has(hog.uid)) throw new Error('Already add');
-        this.hogs.set(hog.uid, hog);
-        this.wobble(hog, ...hog.members);
-        return Hog(() => { this.hogs.delete(hog.uid); });
-      }
+      size: function() { return this.recs.size; }
     })});
     
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
@@ -91,6 +56,8 @@ U.buildRoom({
       },
       create: function(members=[], params={} /* uid, value... */, agg=null) {
         
+        members = members.toArr(v => v); // Will be handed off by reference. TODO: Is cloning necessary?
+        
         if (members.length !== this.memberTypes.length)
           throw new Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${deps.length}`);
         
@@ -98,8 +65,7 @@ U.buildRoom({
           if (members[i].type !== this.memberTypes[i])
             throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${deps.map(d => d.type.name).join(', ')}]`);
         
-        let relRec = Rec({ ...params, type: this });
-        relRec.members = members.toArr(v => v); // TODO: Cloning is always safer, but is it necessary?
+        let relRec = Rec({ ...params, type: this, members });
         
         let defAgg = !agg;
         if (defAgg) agg = AggWobs();
@@ -121,7 +87,7 @@ U.buildRoom({
       
       $NEXT_UID: 0,
       
-      init: function({ type, uid=Rec.NEXT_UID++, value=null }) {
+      init: function({ type, uid=Rec.NEXT_UID++, value=null, members=[] }) {
         
         if (!type) throw new Error(`Missing "type"`);
         if (uid === null) throw new Error(`Missing "uid"`);
@@ -133,7 +99,12 @@ U.buildRoom({
         this.uid = uid;
         
         this.relWobs = {};
-        this.members = []; // CompoundRecs are linked to all Child Recs
+        this.members = members; // CompoundRecs are linked to all Child Recs
+        
+        // Any MemberRec shutting causes `this` GroupRec to shut
+        // `this` GroupRec shutting releases all holds on the MemberRecs
+        let holds = members.map(m => m.shutWob().hold(() => this.shut()));
+        this.shutWob().hold(() => holds.forEach(hold.shut()));
         
       },
       relWob: function(recType, ind=null) {
@@ -151,7 +122,7 @@ U.buildRoom({
           
           if (this.type !== recType.memberTypes[ind]) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
           let crd = recType.crd[1 - ind]; // Note that `WobRec*` class is determined by OTHER type's cardinality
-          this.relWobs[key] = crd === 'M' ? WobRecObj(v => v.uid) : WobRecVal();
+          this.relWobs[key] = crd === 'M' ? WobRecCrdM() : WobRecCrd1();
           
         }
         
