@@ -34,6 +34,9 @@
       // This is the root of all graphical entities
       this.rootReal = null;
       
+      // Hold everything else back until the Window loads
+      this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
+      
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what browser-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?
@@ -59,9 +62,6 @@
         evt.preventDefault();
       });
       
-      // Hold everything back until the Window loads
-      await new Promise(r => { window.onload = r; });
-      
       let { query } = this.parseUrl(window.location.href);
       if (query.has('title')) {
         let head = document.getElementsByTagName('head')[0];
@@ -78,6 +78,7 @@
       
       if (!this.rootReal) {
         
+        await this.domAvailablePromise;
         let real = U.rooms.real.built;
         let { Reality, Real } = real;
         this.rootReal = Real({ nameChain: 'root', setup: () => ({ dom: document.body }) });

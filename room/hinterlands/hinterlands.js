@@ -10,7 +10,7 @@ U.buildRoom({
     // occurred.
     
     let { Record, Relation } = record;
-    let { Hog, AccessPath } = U;
+    let { Hog, WobTmp, AccessPath } = U;
     
     let TERMS = [];
     
@@ -167,7 +167,6 @@ U.buildRoom({
             
           } catch(err) {
             err.message = `ABOVE CAUSED: ${err.message}`;
-            console.error(err.message);
             throw err;
           }
           lands.version = version;
@@ -306,8 +305,63 @@ U.buildRoom({
         // "addRel" UpdateParts - for rec1 and rec2, follow rec1, then follow
         // rec2, then relate rec1 and rec2.
         // For MEAN validation throw error if `this.sync[type]` already has `k`!
+        
+        // Normalizing Syncs involves simplifying multiple SyncParts. Not only
+        // does this process have intricacies, but depending on the situation
+        // simplification occurs in one of two places:
+        // SyncNormImmediate: When we are initially informed of the SyncPart
+        // SyncNormFinal: Right before the entire Sync is shipped to our Below
+        
+        // SyncNormImmediate occurs here, in `Hut.prototype.toSync`. Concerns:
+        // - UNFOLLOWED -> "addRec" -> "remRec" cancels out fully
+        // - FOLLOWED -> "addRec" -> "remRec" results in only "remRec"
+        // - FOLLOWED -> "remRec" -> "addRec" cancels out fully
+        
+        // SyncNormFinal occurs in `Hut.prototype.genUpdateTell`.
+        
         if (!this.sync.has(type)) throw new Error(`Invalid type: ${type}`);
-        this.sync[type][k] = v;
+        
+        // Note that if we determine the current SyncItem requested is
+        // redundant, the correct option is to `return`. This will also skip
+        // the call to `this.requestInformBelow`.
+        
+        if (type === 'addRec') {
+          
+          if (this.sync.remRec.has(k)) {
+            delete this.sync.remRec[k];
+            // TODO: If Record with uid `k` isn't followed, Below will crash at
+            // the attempt to delete a non-existant Record...
+          }
+          if (this.sync.updRec.has(k)) delete this.sync.updRec[k];
+          this.sync.addRec[k] = v;
+          
+        } else if (type === 'updRec') {
+          
+          if (this.sync.addRec.has(k)) return;
+          if (this.sync.remRec.has(k)) throw new Error('Can\'t update Record - it isn\'t added!');
+          this.sync.updRec[k] = v;
+          
+        } else if (type === 'remRec') {
+          
+          if (this.sync.addRec.has(k)) {
+            delete this.sync.addRec[k];
+            // TODO: If Record with uid `k` isn't followed, just return??
+          }
+          // Note: DON'T delete from `this.sync.updRec` - we want an update to
+          // be able to occur alongside Record deletion (for animation, etc.)
+          
+        } else if (type === 'addRel') {
+          
+        } else if (type === 'remRel') {
+          
+        }
+        
+        
+        //this.sync[type][k] = v;
+        
+        
+        
+        
         this.requestInformBelow();
       },
       getRecFollowStrength: function(rec) { return (this.fols.get(rec) || { strength: 0 }).strength; },
@@ -380,7 +434,7 @@ U.buildRoom({
           
           // Note: No need to issue `remRel` for each of the Record's relations
           // If the Record is shut, so are its relations
-          this.sync.remRec[`${rec.uid}`] = 1; // Signal that the rec is removed
+          this.toSync('remRec', rec.uid, 1); // Signal that the rec is removed
           
           // Send this message Below
           this.requestInformBelow();
@@ -413,14 +467,14 @@ U.buildRoom({
         // Rebuild delta based on immediate state
         this.fols.forEach((fol, rec) => {
           
-          this.sync.addRec[`${rec.uid}`] = rec;
+          this.toSync('addRec', rec.uid, rec);
           
           rec.relsWob().forEach(relF => {
             rec.relWob(relF).forEach(({ rec: rec2 }) => {
               if (this.getRecFollowStrength(rec2) <= 0) return;
-              let [ head, tail ] = [ rec, rec2 ];
+              let { rec: head, rec2: tail } = { rec, rec2 };
               if (relF.dir === 'bak') [ head, tail ] = [ tail, head ];
-              this.sync.addRel[`${relF.rel.uid}/${head.uid}/${tail.uid}`] = [ relF.rel.uid, head.uid, tail.uid, relF.rel.fwd.name ];
+              this.toSync('addRel', `${relF.rel.uid}/${head.uid}/${tail.uid}`, [ relF.rel.uid, head.uid, tail.uid, relF.rel.fwd.name ]);
             });
           });
           
@@ -443,7 +497,7 @@ U.buildRoom({
           // Relation changes are unecessary if either the head or tail of the Relation is removed
           sync.addRel = sync.addRel.map(v => remRec.has(v[1]) || remRec.has(v[2]) ? C.skip : v);
           sync.remRel = sync.remRel.map(v => remRec.has(v[1]) || remRec.has(v[2]) ? C.skip : v);
-          remRec.forEach((r, uid) => { delete sync.addRec[uid]; }); // If "addRec" and "remRec" are sent together, "remRel" wins
+          remRec.forEach((r, uid) => { delete sync.addRec[uid]; }); // If "addRec" and "remRec" are sent together, "remRec" wins
         }
         
         // Prioritize "remRel" ahead of "addRel"
@@ -564,10 +618,10 @@ U.buildRoom({
           });
           
           // Attach the Hut to the Way and to the Lands
-          U.AggWobs().complete(agg => {
-            this.attach(rel.waysHuts.fwd, hut, agg);
-            this.lands.attach(rel.landsHuts.fwd, hut, agg);
-          });
+          let agg = AggWobs();
+          this.attach(rel.waysHuts.fwd, hut, agg);
+          this.lands.attach(rel.landsHuts.fwd, hut, agg);
+          agg.complete();
           
         });
       },
@@ -1103,7 +1157,7 @@ U.buildRoom({
             let failedEarly = false
               || initData.content.addRec.toArr(v => v).length !== 1
               || initData.content.has('addRel');
-            if (failedEarly) return { result: false };
+            if (failedEarly) return { msg: 'prereq working', result: false };
             
             let prm = new Promise(r => { client.tell = r; });
             followTail();
@@ -1584,6 +1638,198 @@ U.buildRoom({
               [ 'sync addRel is Object',      () => U.isType(sync2.content.addRel, Object) ],
               [ 'sync adds 1 rel',            () => sync2.content.addRel.toArr(v => v).length === 1 ]
             ];
+            
+          });
+          
+          U.Keep(k, 'priority').contain(k => {
+            
+            // In terms of Follows, if a Record is both Added and Removed
+            // before a sync is sent, the *later* operation should take
+            // precedence.
+            
+            U.Keep(k, 'unfollowedAddRem', async() => {
+              
+              // Order is UNFOLLOWED -> addRec -> remRec -> SYNC
+              
+              let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+              
+              let doFollowRec2 = () => { throw new Error('incorrect'); };
+              let tmp = WobTmp('dn');
+              AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+                dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                  dep(AccessPath(tmp, dep => dep(hut.followRec(rec1))));
+                }));
+              });
+              
+              let rec1 = Rec1({ lands, value: 'test1' });
+              let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+              
+              // Produce addRec and remRec events immediately after each other
+              tmp.up(); tmp.dn();
+              
+              let initResp = await getReply({ command: 'getInit' });
+              let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+              let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+              if (!initDataMatch) return { result: null };
+              let initData = JSON.parse(initDataMatch[1]);
+              
+              return [
+                [ 'sync data is null', () => initData === null ],
+              ];
+              
+            });
+            
+            U.Keep(k, 'followedAddRem1', async() => {
+              
+              let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+              
+              // Order is UNFOLLOWED -> addRec -> addRec -> remRec -> SYNC
+              
+              let doFollowRec2 = () => { throw new Error('incorrect'); };
+              let tmp = WobTmp('dn');
+              AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+                dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                  hut.followRec(rec1);
+                  dep(AccessPath(tmp, dep => dep(hut.followRec(rec1))));
+                }));
+              });
+              
+              let rec1 = Rec1({ lands, value: 'test1' });
+              let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);
+              
+              // Produce addRec and remRec events immediately after each other
+              tmp.up(); tmp.dn();
+              
+              let initResp = await getReply({ command: 'getInit' });
+              let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+              let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+              if (!initDataMatch) return { result: null };
+              let initData = JSON.parse(initDataMatch[1]);
+              
+              return [
+                [ 'sync data is Object', () => U.isType(initData, Object) ],
+                [ 'sync content is Object', () => U.isType(initData.content, Object) ],
+                [ 'sync content has 1 key', () => initData.content.toArr(v => v).length === 1 ],
+                [ 'sync content has "addRec"', () => initData.content.has('addRec') ],
+                [ 'sync "addRec" is Object', () => U.isType(initData.content.addRec, Object) ],
+                [ 'sync "addRec" syncs 1 Record', () => initData.content.addRec.toArr(v => v).length === 1 ],
+                [ 'sync "addRec" syncs rec1', () => initData.content.addRec.has(rec1.uid) ]
+              ];
+              
+            });
+            
+            U.Keep(k, 'followedAddRem2', async() => {
+              
+              let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+              
+              // Order is UNFOLLOWED -> addRec -> remRec -> addRec -> SYNC
+              
+              let doFollowRec2 = () => { throw new Error('incorrect'); };
+              AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+                dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                  dep(hut.followRec(rec1));
+                }));
+              });
+              
+              let rec1 = Rec1({ lands, value: 'test1' });
+              let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1); // addRec
+              attachRec1.shut();                                            // remRec
+              attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1);     // addRec
+              
+              let initResp = await getReply({ command: 'getInit' });
+              let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+              let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+              if (!initDataMatch) return { result: null };
+              let initData = JSON.parse(initDataMatch[1]);
+              
+              // TODO: Somehow "updRec" is sneaking into `initData.content`
+              
+              return [
+                [ 'sync data is Object', () => U.isType(initData, Object) ],
+                [ 'sync content is Object', () => U.isType(initData.content, Object) ],
+                [ 'sync content has 1 key', () => initData.content.toArr(v => v).length === 1 ],
+                [ 'sync content has "addRec"', () => initData.content.has('addRec') ],
+                [ 'sync "addRec" is Object', () => U.isType(initData.content.addRec, Object) ],
+                [ 'sync "addRec" syncs 1 Record', () => initData.content.addRec.toArr(v => v).length === 1 ],
+                [ 'sync "addRec" syncs rec1', () => initData.content.addRec.has(rec1.uid) ]
+              ];
+              
+            });
+            
+            U.Keep(k, 'followedAddRem3', async() => {
+              
+              let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+              
+              // Order is UNFOLLOWED -> addRec -> SYNC -> addRec -> remRec
+              
+              let doFollowRec2 = () => { throw new Error('incorrect'); };
+              let tmp = WobTmp('dn');
+              AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+                dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                  dep(hut.followRec(rec1));
+                  dep(AccessPath(tmp, dep => dep(hut.followRec(rec1))));
+                }));
+              });
+              
+              let rec1 = Rec1({ lands, value: 'test1' });
+              let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1); // addRec
+              
+              let initResp = await getReply({ command: 'getInit' });
+              let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+              let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+              if (!initDataMatch) return { result: null };
+              let initData = JSON.parse(initDataMatch[1]);
+              
+              if (!initData.content.addRec.has(rec1.uid)) return { msg: 'initial sync works', result: false };
+              
+              let prm = new Promise(r => { client.tell = r; });
+              tmp.up(); tmp.dn();
+              let timeout = setTimeout(() => client.tell('timed out'), 20);
+              let relResp = await prm;
+              clearTimeout(timeout);
+              
+              return relResp === 'timed out'
+                ? { result: true }
+                : { msg: 'no response received', result: false };
+              
+            });
+            
+            U.Keep(k, 'followedAddRem4', async() => {
+              
+              let { lands, Rec1, Rec2, appRel, getReply, client } = await getStuff();
+              
+              // Order is UNFOLLOWED -> addRec -> SYNC -> remRec -> addRec
+              
+              let doFollowRec2 = () => { throw new Error('incorrect'); };
+              AccessPath(lands.relWob(rel.landsHuts.fwd), (dep, { rec: hut }) => {
+                dep(AccessPath(lands.relWob(appRel.landsRec1Set.fwd), (dep, { rec: rec1 }) => {
+                  dep(hut.followRec(rec1));
+                }));
+              });
+              
+              let rec1 = Rec1({ lands, value: 'test1' });
+              let attachRec1 = lands.attach(appRel.landsRec1Set.fwd, rec1); // addRec
+              
+              let initResp = await getReply({ command: 'getInit' });
+              let endBit = initResp.substr(initResp.indexOf('// ==== File:' + ' hut.js'));
+              let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+              if (!initDataMatch) return { result: null };
+              let initData = JSON.parse(initDataMatch[1]);
+              
+              if (!initData.content.addRec.has(rec1.uid)) return { msg: 'initial sync works', result: false };
+              
+              let prm = new Promise(r => { client.tell = r; });
+              attachRec1.shut();
+              lands.attach(appRel.landsRec1Set.fwd, rec1);
+              let timeout = setTimeout(() => client.tell('timed out'), 20);
+              let relResp = await prm;
+              clearTimeout(timeout);
+              
+              return relResp === 'timed out'
+                ? { result: true }
+                : { msg: 'no response received', result: false };
+              
+            });
             
           });
           

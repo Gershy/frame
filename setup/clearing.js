@@ -132,10 +132,29 @@ protoDef(String, 'crop', function(amtL=0, amtR=0) {
   return this.substr(amtL, this.length - amtR);
 });
 
-protoDef(Set, 'find', function(f) {
+let SetOrig = Set;
+Set = global.Set = function Set(...args) { return new SetOrig(...args); };
+protoDef(SetOrig, 'toArr', function(fn) {
+  let ret = [];
+  for (let v of this) { v = fn(v); if (v !== C.skip) ret.push(v); }
+  return ret;
+});
+protoDef(SetOrig, 'find', function(f) {
   for (let v of this) if (f(v)) return [ v ];
   return null;
 });
+protoDef(SetOrig, 'isEmpty', function() { return !this.size; });
+protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
+
+let MapOrig = Map;
+Map = global.Map = function Map(...args) { return new MapOrig(...args); };
+protoDef(MapOrig, 'toObj', function(fn) {
+  let ret = {};
+  for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
+  return ret;
+});
+protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
+protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 
 Promise.allArr = Promise.all;
 Promise.allObj = async obj => {
@@ -236,7 +255,6 @@ let U = global.U = {
     try {
       if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;
       return Insp1.has('insps') && Insp1.insps.has(Insp2.uid);
-      //return (U.isType(Insp1, Function) ? Insp1 : Insp1.constructor).insps.has(Insp2.uid);
     } catch(err) { return false; }
   },
   typeOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
@@ -272,7 +290,7 @@ U.TOTAL_WOB_HOLDS = () => {
 };
 
 let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
-  init: function(shut) {
+  init: function(shut=null) {
     this.shutWob0 = U.WobOne();
     if (shut) this.shut0 = shut; // Allow easy overwrite of "shut0" functionality
   },
@@ -436,6 +454,34 @@ let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) =
   wobble: function(...args) { return insp.Wob.wobble.call(this, this.tmp, ...args); }
 })});
 
+let WobMemVal = U.inspire({ name: 'WobMemVal', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function() { insp.Wob.init.call(this); this.val = null; },
+  hold: function(holdFn) {
+    if (this.val) this.toHold(holdFn, this.val);
+    return insp.Wob.hold.call(this, holdFn);
+  },
+  gain: function(val) {
+    if (!val) throw new Error(`Invalid val ${U.typeOf(val)} resolves to false`);
+    if (this.val) throw new Error('Already add');
+    this.val = val;
+    this.wobble(this.val);
+    return Hog(() => { this.val = null; });
+  }
+})});
+let WobMemSet = U.inspire({ name: 'WobMemSet', insps: { Wob }, methods: (insp, Insp) => ({
+  init: function() { insp.Wob.init.call(this); this.vals = Set(); },
+  hold: function(holdFn) {
+    this.vals.forEach(v => this.toHold(holdFn, v));
+    return insp.Wob.hold.call(this, holdFn);
+  },
+  gain: function(val) {
+    if (this.vals.has(val)) throw new Error('Already add');
+    this.vals.add(val);
+    this.wobble(val);
+    return Hog(() => this.vals.delete(val));
+  }
+})});
+
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
   init: function(...wobs) {
     this.wobs = new Set(); // Maps a `Wob` to its related WobItem
@@ -481,28 +527,30 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     
     return wob;
   },
-  complete: function(fnc=null) {
-    
-    if (fnc) fnc(this); // TODO: This should go! (grep `complete\([^)]`)
+  complete: function(err=null) {
     
     // Apply all wobbles that happened while aggregated!
     this.wobs.forEach(wob => {
+      
       if (wob.aggCnt > 1) { wob.aggCnt--; return; } // There are still more AggWobs holding `wob`
       
       // Get reference to needed data, then clean up our "toHold" mask and other "agg*" props
-      let mapHoldsToArgsSet = wob.aggMapHoldToArgsSet;
+      let mapHoldsToArgsSet = err || wob.aggMapHoldToArgsSet;
       delete wob['toHold'];
       delete wob.aggCnt;
       delete wob.aggMapHoldToArgsSet;
       
-      // Now we have Holds mapped to a set of Args. Each Hold should be called with every
-      // related instance of Args:
-      mapHoldsToArgsSet.forEach((argsSet, holdFn) => {
-        argsSet.forEach(args => {
-          let argsIsShutHog = args.length === 1 && U.isInspiredBy(args[0], Hog) && args[0].isShut();
-          if (!argsIsShutHog) holdFn(...args); // Unless the shut-Hog exception applies, wobble the Holder!
+      if (!err) {
+        // Now we have Holds mapped to a set of Args. Each Hold should be called with every
+        // related instance of Args:
+        mapHoldsToArgsSet.forEach((argsSet, holdFn) => {
+          argsSet.forEach(args => {
+            let argsIsShutHog = args.length === 1 && U.isInspiredBy(args[0], Hog) && args[0].isShut();
+            if (!argsIsShutHog) holdFn(...args); // Unless the shut-Hog exception applies, wobble the Holder!
+          });
         });
-      });
+      }
+      
     });
     
     this.wobs = null; // Prevent adding any new wobs. `AggWobs` can only complete once!
@@ -563,6 +611,7 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
         return dep;
       };
       this.gen(addHogDep, hog, this);
+      
     });
     
   },
@@ -579,5 +628,5 @@ let nullShutWob = {
   shutWob: () => nullWob
 };
 C.gain({ nullWob, nullShutWob });
-U.gain({ Hog, Wob, WobOne, WobVal, AccessPath, AggWobs });
+U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, AccessPath, AggWobs });
 

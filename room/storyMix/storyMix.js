@@ -34,7 +34,7 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'chance', 'record', 'real' ],
   build: (foundation, hinterlands, chance, record, real) => {
     
-    let { AccessPath, Hog, Wob, WobVal, AggWobs } = U;
+    let { AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Chance } = chance;
     let { Record, Relation } = record;
     let { Lands, LandsRecord, Way, Hut, rel: landsRel } = hinterlands;

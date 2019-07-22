@@ -55,14 +55,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       
       if (U.isType(v, Array)) {
         
-        for (let [ checkMsg, check ] of v) {
-          
-          if (check()) continue;
-          result = false;
-          msg = `Fail at: ${checkMsg}`
-          break;
-          
-        }
+        for (let [ checkMsg, check ] of v) if (!check()) { result = false; msg = checkMsg; break; }
         
       } else if (U.isType(v, Object)) {
         
@@ -86,6 +79,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       err.id = errId;
       console.log(U.foundation.formatError(err));
     }
+    
     for (let par of chain) if (par.sandwich.after) await par.sandwich.after();
     
     this.root.total++;

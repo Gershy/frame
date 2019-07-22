@@ -33,6 +33,9 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       
     } else if (cmd[0] === 'test') {
       
+      // TODO: Should probably move this into a method like "testHut", and factor
+      // out much of it into subclasses. This code shouldn't appear Below...
+      
       (async () => {
         let rootRoom = await this.establishHut(args);
         if (!rootRoom.built.has('test')) throw new Error(`Couldn\'t find "test" prop for ${args.hut}`);
@@ -58,7 +61,8 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
           let { summary, cases } = childResults || { summary: null, cases: {} };
           console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
           if (err) console.log(`${ind}    TESTERROR(${err.id})`);
-          if (msg) console.log(`${ind}    "${msg}"`);
+          if (!result && msg)  console.log(`${ind}    Fail at: "${msg}"`);
+          //else if (msg)       console.log(`${ind}    "${msg}"`);
           if (cases.isEmpty()) return;
           
           // Show all child results

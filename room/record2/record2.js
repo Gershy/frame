@@ -22,7 +22,8 @@ U.buildRoom({
         this.wobble(this.rec, ...this.rec.members);
         return Hog(() => { this.rec = null; });
       },
-      size: function() { return this.hog ? 1 : 0; }
+      size: function() { return this.hog ? 1 : 0; },
+      toArr: function(fn) { return this.hog ? [ this.hog ].map(fn) : []; }
     })});
     let WobRecCrdM = U.inspire({ name: 'WobRecCrdM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
@@ -39,34 +40,41 @@ U.buildRoom({
         this.wobble(rec, ...rec.members);
         return Hog(() => { this.recs.delete(rec.uid); });
       },
-      size: function() { return this.recs.size; }
+      size: function() { return this.recs.size; },
+      toArr: function(fn) { return this.recs.toArr(fn); }
     })});
     
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       
-      init: function(name, crd=null, ...memberTypes) {
+      init: function(name, RecCls=Rec, crd=null, ...memberTypes) {
         
         if (crd && crd.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${crd}"`);
         if (crd && crd.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${crd}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
         
+        if (RecCls === Rec) {
+          RecCls = U.inspire({ name: `${name[0].upper()}${name.slice(1)}Rec`, insps: { Rec }, methods: (insp, Insp) => ({}) })
+        }
+        
         this.name = name;
+        this.RecCls = RecCls;
         this.crd = crd;
         this.memberTypes = memberTypes;
         
       },
-      create: function(members=[], params={} /* uid, value... */, agg=null) {
+      create: function(params={}, ...members) {
         
         members = members.toArr(v => v); // Will be handed off by reference. TODO: Is cloning necessary?
         
         if (members.length !== this.memberTypes.length)
-          throw new Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${deps.length}`);
+          throw new Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${members.length}`);
         
         for (let i = 0; i < members.length; i++)
           if (members[i].type !== this.memberTypes[i])
             throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${deps.map(d => d.type.name).join(', ')}]`);
         
-        let relRec = Rec({ ...params, type: this, members });
+        let relRec = this.RecCls({ ...params, type: this, members });
         
+        let agg = params.has('agg') ? params.agg : null;
         let defAgg = !agg;
         if (defAgg) agg = AggWobs();
         
@@ -75,7 +83,6 @@ U.buildRoom({
           wobs.forEach(w => agg.addWob(w)); // Add all Wobs to AggWobs
           wobs.forEach(w => w.wobbleAdd(relRec)); // Wobble all Wobs
         });
-        
         agg.complete(err);
         
         return relRec;
@@ -87,9 +94,9 @@ U.buildRoom({
       
       $NEXT_UID: 0,
       
-      init: function({ type, uid=Rec.NEXT_UID++, value=null, members=[] }) {
+      init: function({ value=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
         
-        if (!type) throw new Error(`Missing "type"`);
+        if (type === null) throw new Error(`Missing "type"`);
         if (uid === null) throw new Error(`Missing "uid"`);
         
         insp.Hog.init.call(this);
@@ -99,12 +106,12 @@ U.buildRoom({
         this.uid = uid;
         
         this.relWobs = {};
-        this.members = members; // CompoundRecs are linked to all Child Recs
+        this.members = members; // GroupRecs link to all MemberRecs
         
         // Any MemberRec shutting causes `this` GroupRec to shut
-        // `this` GroupRec shutting releases all holds on the MemberRecs
+        // `this` GroupRec shutting releases all holds on MemberRecs
         let holds = members.map(m => m.shutWob().hold(() => this.shut()));
-        this.shutWob().hold(() => holds.forEach(hold.shut()));
+        this.shutWob().hold(() => holds.forEach(h => h.shut()));
         
       },
       relWob: function(recType, ind=null) {
@@ -129,29 +136,34 @@ U.buildRoom({
         return this.relWobs[key];
         
       },
-      relRec: function(recType, ind) {
-        
+      shut0: function(agg=null) {
+        // Shutting us also shuts all GroupRecs of which we are a MemberRec
+        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(hog => hog.shut()));
       }
       
     })});
+    let recTyper = () => {
+      let rt = {};
+      let add = (name, ...args) => rt[name] = RecType(name, ...args);
+      return { rt, add };
+    };
+    
+    return { RecType, Rec, recTyper };
     
     return {
       open: async () => {
         
-        let rt = {};
-        let add = (name, ...args) => { rt[name] = RecType(name, ...args); }
-        add('story');
-        add('author');
-        add('entry');
-        add('storyAuthor',              'MM', rt.story,         rt.author);
-        add('storyAuthorCurEntry',      '11', rt.storyAuthor,   rt.entry);
-        add('storyAuthorCurVotedEntry', '11', rt.storyAuthor,   rt.entry);
+        let { rt, add } = recTyper();
+        add('story',        Rec),
+        add('author',       Rec),
+        add('entry',        Rec),
+        add('storyAuthor',  Rec, 'MM', rt.story,         rt.author);
         
         let story = rt.story.create();
         let author = rt.author.create();
-        let storyAuthor = rt.storyAuthor.create([ story, author ]);
+        let storyAuthor = rt.storyAuthor.create({}, story, author);
         
-        // Wobbles occur with the CompoundRec first, and then all its MemberRecs
+        // Wobbles occur with the GroupRec first, and then all its MemberRecs
         story.relWob(rt.storyAuthor).hold(({ members: [ _, author ] }) => {
           console.log('STORY GOT AUTHOR:', author);
         });
@@ -159,7 +171,6 @@ U.buildRoom({
         author.relWob(rt.storyAuthor).hold(({ members: [ story, _ ] }) => {
           console.log('AUTHOR GOT STORY:', story);
         });
-        
         
       }
     };
