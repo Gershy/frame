@@ -4,409 +4,423 @@ U.buildRoom({
   build: (foundation) => {
     // Recs are data items with a number of properties, including relational properties
     
-    let { Hog, Wob, WobVal } = U;
+    let { Hog, Wob, WobVal, AggWobs } = U;
     
-    let WobRecVal = U.inspire({ name: 'WobRecVal', insps: { Wob }, methods: (insp, Insp) => ({
+    let WobRecCrd1 = U.inspire({ name: 'WobRecCrd1', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.hog = null;
+        this.rec = null;
       },
       hold: function(holdFn) {
-        if (this.hog) this.toHold(holdFn, this.hog); // Call immediately
+        if (this.rec) this.toHold(holdFn, this.rec); // Call immediately
         return insp.Wob.hold.call(this, holdFn);
       },
-      forEach: function(fn) { if (this.hog) fn(this.hog); },
-      isEmpty: function() { return !this.hog; },
-      toArr: function() { return this.hog ? [ this.hog ] : []; },
-      find: function(fn) { return (this.hog && fn(this.hog)) ? this.hog : null; },
+      wobbleAdd: function(rec) {
+        if (!rec) throw new Error('Invalid rec for add');
+        if (this.rec) throw new Error('Already add');
+        this.rec = rec;
+        this.wobble(this.rec, ...this.rec.members);
+        return Hog(() => { this.rec = null; });
+      },
       size: function() { return this.hog ? 1 : 0; },
-      wobbleAdd: function(hog) {
-        if (!hog) throw new Error('Invalid hog for add');
-        if (this.hog) throw new Error('Already add');
-        this.hog = hog;
-        this.wobble(this.hog);
-        return Hog(() => { this.hog = null; });
-      }
+      toArr: function(fn) { return this.hog ? [ this.hog ].map(fn) : []; }
     })});
-    let WobRecArr = U.inspire({ name: 'WobRecArr', insps: { Wob }, methods: (insp, Insp) => ({
+    let WobRecCrdM = U.inspire({ name: 'WobRecCrdM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
         insp.Wob.init.call(this);
-        this.hogs = new Set();
+        this.recs = Map();
       },
       hold: function(holdFn) {
-        this.hogs.forEach(hog => this.toHold(holdFn, hog));
+        this.recs.forEach(rec => this.toHold(holdFn, rec));
         return insp.Wob.hold.call(this, holdFn);
       },
-      forEach: function(fn) { this.hogs.forEach(fn); },
-      isEmpty: function() { return this.hogs.size === 0; },
-      toArr: function() { return [ ...this.hogs ]; },
-      find: function(fn) {
-        for (let hog of this.hogs) if (fn(hog)) return hog;
-        return null;
+      wobbleAdd: function(rec) {
+        if (this.recs.has(rec.uid)) throw new Error('Already add');
+        this.recs.set(rec.uid, rec);
+        this.wobble(rec, ...rec.members);
+        return Hog(() => { this.recs.delete(rec.uid); });
       },
-      size: function() { return this.hogs.size; },
-      wobbleAdd: function(hog) {
-        if (this.hogs.has(hog)) throw new Error('Already add');
-        this.hogs.add(hog);
-        this.wobble(hog);
-        return Hog(() => { this.hogs.delete(hog); });
-      }
-    })});
-    let WobRecObj = U.inspire({ name: 'WobRecObj', insps: { Wob }, methods: (insp, Insp) => ({
-      init: function(getKey) {
-        insp.Wob.init.call(this);
-        this.hogs = new Map();
-        this.getKey = getKey;
-      },
-      hold: function(holdFn) {
-        this.hogs.forEach(hog => this.toHold(holdFn, hog));
-        return insp.Wob.hold.call(this, holdFn);
-      },
-      forEach: function(fn) { this.hogs.forEach(fn); },
-      isEmpty: function() { return this.hogs.size === 0; },
-      toArr: function() { return [ ...this.hogs.values() ]; },
-      find: function(fn) {
-        for (let hog of this.hogs.values()) if (fn(hog)) return hog;
-        return null;
-      },
-      size: function() { return this.hogs.size; },
-      wobbleAdd: function(hog) {
-        let key = this.getKey(hog);
-        if (this.hogs.has(key)) throw new Error('Already add');
-        this.hogs.set(key, hog);
-        this.wobble(hog);
-        return Hog(() => { this.hogs.delete(key); });
-      }
+      size: function() { return this.recs.size; },
+      toArr: function(fn) { return this.recs.toArr(fn); }
     })});
     
-    let Rel = U.inspire({ name: 'Rel', methods: (insp, Insp) => ({
-      $NEXT_UID: 0,
-      $makeWobVal: () => WobRecVal(),
-      $makeWobObj: () => WobRecObj(relRec => relRec.rec.uid),
+    let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       
-      init: function(head, tail, cardinality) {
-        if (cardinality.length !== 2) throw new Error(`Invalid cardinality: "${cardinality}"`);
-        if (cardinality.split('').find(v => !'1M'.has(v))) throw new Error(`Invalid cardinality: "${cardinality}"`);
+      init: function(name, RecCls=Rec, crd=null, ...memberTypes) {
         
-        // TODO: The user should provide a unique name (using `foundation`) to ensure no clash
-        this.uid = Rel.NEXT_UID++;
-        this.fwd = { head: head, tail: tail, name: `${this.uid}:(${head.name}->${tail.name})` };
-        this.bak = { head: tail, tail: head, name: `${this.uid}:(${tail.name}<-${head.name})` };
+        if (crd && crd.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${crd}"`);
+        if (crd && crd.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${crd}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
         
-        // Rel parts can link back to the full Rel, and validate attempts to attach
-        this.fwd.gain({ dir: 'fwd', rel: this, validate: (head, tail) => {} });
-        this.bak.gain({ dir: 'bak', rel: this, validate: (head, tail) => {} });
+        if (RecCls === Rec) {
+          RecCls = U.inspire({ name: `${name[0].upper()}${name.slice(1)}Rec`, insps: { Rec }, methods: (insp, Insp) => ({}) })
+        }
         
-        // Rel parts can generate the correct Wob
-        this.fwd.gain({ makeWob: cardinality[1] === '1' ? Rel.makeWobVal : Rel.makeWobObj });
-        this.bak.gain({ makeWob: cardinality[0] === '1' ? Rel.makeWobVal : Rel.makeWobObj });
-        
-        // Note: RelHalves are duck-typed as Hogs so that `Rec.prototype.relsWob()`
-        // appropriately wobbles Hogs
-        [ this.fwd, this.bak ].forEach(rh => rh.gain({ shut: () => {}, shutWob: () => C.nullShutWob }));
-      }
-    })});
-    let Rec = U.inspire({ name: 'Rec', insps: { WobVal, Hog }, methods: (insp, Insp) => ({
-      $NEXT_REC_UID: 0,
-      
-      init: function({ uid=null, value=null }) {
-        this.uid = uid !== null ? uid : Rec.NEXT_REC_UID++;
-        insp.WobVal.init.call(this, value);
-        insp.Hog.init.call(this);
-        
-        this.inner = {}; // Actual references to related Recs
-        this.relsWob0 = WobRecArr(); // Keep track of all Rels on this Rec
-      },
-      
-      relsWob: function() { return this.relsWob0; },
-      relWob: function(relF) {
-        if (!relF) throw new Error(`Need to provide relation`);
-        if (U.isInspiredBy(relF, Rel)) throw new Error(`Provided Rel instead of RelHalf`);
-        if (!U.isInspiredBy(this, relF.head)) throw new Error(`Instance of ${U.typeOf(this)} tried to use relation ${relF.name}`);
-        if (!this.inner.has(relF.name)) this.inner[relF.name] = relF.makeWob();
-        return this.inner[relF.name];
-      },
-      
-      getRelRec: function(relF, uid=null) {
-        
-        // TODO: Inconsistent behaviour? If M, finds rec at `uid`. Otherwise,
-        // validates that the 1 single `rec` matches the `uid`.
-        // Overall trying to encourage omitting `uid` for 1-type relationships
-        
-        let wob = this.relWob(relF);
-        let c = wob.hogs ? 'M' : '1'
-        if (c === 'M' && uid === null) throw new Error(`Relation is M, but no uid provided`);
-        if (c === '1' && uid !== null && wob.hog && wob.hog.rec.uid !== uid) throw new Error(`Incorrect uid ${uid} didn't match ${wob.hog.rec.uid}`);
-        return c === 'M' ? (wob.hogs.get(uid) || null) : wob.hog;
+        this.name = name;
+        this.RecCls = RecCls;
+        this.crd = crd;
+        this.memberTypes = memberTypes;
         
       },
-      getRec: function(relF, uid=null) {
-        let relRec = this.getRelRec(relF, uid);
-        return relRec ? relRec.rec : null;
-      },
-      
-      attach: function(relF, rec, agg=null) {
+      create: function(params={}, ...members) {
         
-        // `rel` is the overall Rel, `relF` relates `this` -> `rec`, `relB` relates `this` <- `rec`
-        let rel = relF.rel;
-        let relB = rel[relF.dir === 'fwd' ? 'bak' : 'fwd'];
+        members = members.toArr(v => v); // Will be handed off by reference. TODO: Is cloning necessary?
         
-        // Get the wobs that will link back and forth (NOTE: this populates "inner" if necessary)
-        let wobFwd = this.relWob(relF);
-        let wobBak = rec.relWob(relB);
+        if (members.length !== this.memberTypes.length)
+          throw new Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${members.length}`);
         
-        // Simple validation
-        if (!U.isInspiredBy(this, relF.head)) throw new Error(`Tried to attach ${U.typeOf(this)}->${U.typeOf(rec)} with relation ${relF.name}`);
-        if (!U.isInspiredBy(rec,  relB.head)) throw new Error(`Tried to attach ${U.typeOf(rec)}->${U.typeOf(this)} with relation ${relB.name}`);
+        for (let i = 0; i < members.length; i++)
+          if (members[i].type !== this.memberTypes[i])
+            throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${deps.map(d => d.type.name).join(', ')}]`);
         
-        // Allow Rel halves to validate
-        relF.validate(this, rec);
-        relB.validate(rec, this);
+        let relRec = this.RecCls({ ...params, type: this, members });
         
-        return U.AccessPath(U.WobVal(rec), (dep, rec, ap) => {
+        let agg = params.has('agg') ? params.agg : null;
+        let defAgg = !agg;
+        if (defAgg) agg = AggWobs();
+        
+        let wobs = members.map((m, ind) => m.relWob(this, ind));
+        let err = U.safe(() => {
           
-          // There is always some minimum level of Aggregation, because at least 2
-          // wobbles are happening: the Head is wobbling in attachment to the Tail,
-          // and the Tail is wobbling in attachment to the Head
-          let defAgg = !agg;
-          if (defAgg) agg = U.AggWobs();
+          // Add all Wobs to AggWobs
+          wobs.forEach(w => agg.addWob(w));
+          
+          // Wobble all Wobs
+          wobs.forEach(w => {
+            // Add the Rec
+            let addHog = w.wobbleAdd(relRec);
             
-          // For this Rel of the present Recs, Wobble (with Aggregation) the Rel into existence
-          if (!this.relsWob0.hogs.has(relF)) agg.addWob(this.relsWob0).wobbleAdd(relF);
-          if (!rec.relsWob0.hogs.has(relB)) agg.addWob(rec.relsWob0).wobbleAdd(relB);
-          
-          // Create related Recs
-          let sharedRelData = {};
-          let rrFwd = dep(RelRec(ap, rel, rec, sharedRelData));
-          let rrBak = dep(RelRec(ap, rel, this, sharedRelData));
-          
-          // The Rel definitely exists. Now show that the attachment here exists.
-          // Note that the wobbles are aggregated, and then the wobbleAdds are dependent.
-          // This means that shutting the AccessPath undoes the wobbleAdd
-          dep(agg.addWob(wobFwd).wobbleAdd(rrFwd));
-          dep(agg.addWob(wobBak).wobbleAdd(rrBak));
-          
-          // Complete the aggregation
-          if (defAgg) agg.complete();
+            // When the Rec shuts, un-add the Rec
+            let holdShut = relRec.shutWob().hold(() => addHog.shut());
+            
+            // If the Rec is un-added, stop holding the Rec shut
+            addHog.shutWob().hold(() => holdShut.shut());
+          });
           
         });
         
-      },
-      shut0: function(agg=null) {
+        // Release all aggregated wobs, error or not
+        if (defAgg) agg.complete(err);
         
-        // For all Recs of all Rels, shut the RecRel
-        let defAgg = !agg;
-        if (defAgg) agg = U.AggWobs();
-        this.relsWob0.forEach(relF => this.relWob(relF).forEach(relRec => relRec.shut(agg)));
-        if (defAgg) agg.complete();
+        // If an error occurred it needs to be thrown
+        if (err) throw err;
+        
+        return relRec;
         
       }
+      
     })});
-    let RelRec = U.inspire({ name: 'RelRec', insps: {}, methods: (insp, Insp) => ({
-      init: function(relAp, relF, tail, relData=null) {
-        this.relAp = relAp;
-        this.relF = relF;
-        this.rec = tail;
-        this.relData = relData;
+    let Rec = U.inspire({ name: 'Rec', insps: { Hog, WobVal }, methods: (insp, Insp) => ({
+      
+      $NEXT_UID: 0,
+      
+      init: function({ value=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
+        
+        if (type === null) throw new Error(`Missing "type"`);
+        if (uid === null) throw new Error(`Missing "uid"`);
+        
+        insp.Hog.init.call(this);
+        insp.WobVal.init.call(this, value);
+        
+        this.type = type;
+        this.uid = uid;
+        
+        this.relWobs = {};
+        this.members = members; // GroupRecs link to all MemberRecs
+        
+        // Any MemberRec shutting causes `this` GroupRec to shut
+        // `this` GroupRec shutting releases all holds on MemberRecs
+        let holds = members.map(m => m.shutWob().hold(() => this.shut()));
+        this.shutWob().hold(() => holds.forEach(h => h.shut()));
+        
       },
-      isShut: function() { return this.relAp.isShut(); },
-      shut: function(...args) { return this.relAp.shut(...args); },
-      shutWob: function() { return this.relAp.shutWob(); }
+      relWob: function(recType, ind=null) {
+        
+        // `ind` is our index in `recType.memberTypes`
+        // If no `ind` is given, return the first index matching our type
+        if (ind === null) {
+          let findMatchingType = recType.memberTypes.find(m => m === this.type);
+          if (!findMatchingType) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
+          ind = findMatchingType[1];
+        }
+        
+        let key = `${recType.name}.${ind}`;
+        if (!this.relWobs.has(key)) {
+          
+          if (this.type !== recType.memberTypes[ind]) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
+          let crd = recType.crd[1 - ind]; // Note that `WobRec*` class is determined by OTHER type's cardinality
+          this.relWobs[key] = crd === 'M' ? WobRecCrdM() : WobRecCrd1();
+          
+        }
+        
+        return this.relWobs[key];
+        
+      },
+      relRecs: function(recType, ind=null) {
+        
+        return this.relWob(recType, ind).toArr(v => v);
+        
+      },
+      shut0: function(depth=0) {
+        // Shutting us also shuts all GroupRecs of which we are a MemberRec
+        // Note that any double-shuts encountered this way are tolerated
+        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(depth + 1)));
+      }
+      
     })});
     
-    let content = { Record: Rec, Relation: Rel };
+    let recTyper = () => {
+      let rt = {};
+      let add = (name, ...args) => rt[name] = RecType(name, ...args);
+      return { rt, add };
+    };
+    
+    let content = { RecType, Rec, recTyper };
     
     /// {TEST=
     content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'record').contain(k => {
       
       U.Keep(k, 'rel11').contain(k => {
         
-        U.Keep(k, 'circular1', () => {
-          
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          Rel(Recc, Recc, '11');
-          return { result: true };
-          
-        });
+        let setup = () => {
+          let { rt, add } = recTyper();
+          add('rec', Rec);
+          add('lnk', Rec, '11', rt.rec, rt.rec);
+          return rt;
+        };
         
-        U.Keep(k, 'circular2', () => {
+        U.Keep(k, 'circular').contain(k => {
           
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          let rel = Rel(Recc, Recc, '11');
+          U.Keep(k, 'attach1', () => {
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec1);
+            return { msg: 'no error', result: true };
+          });
           
-          let rec1 = Recc({});
-          let rec2 = Recc({});
+          U.Keep(k, 'attach2', () => {
+            
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            
+            let wobRec1 = null;
+            let wobRec2 = null;
+            rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
+            rec1.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
+            
+            let lnk = rt.lnk.create({}, rec1, rec1);
+            
+            return [
+              [ 'index 0 wobbled', () => !!wobRec1 ],
+              [ 'index 1 wobbled', () => !!wobRec2 ],
+              [ 'index 0 correct', () => wobRec1 === lnk ],
+              [ 'index 1 correct', () => wobRec2 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec1 ]
+            ];
+            
+          });
           
-          let correct1 = false;
-          let correct2 = false;
-          rec1.relWob(rel.fwd).hold(({ rec }) => { correct1 = rec === rec2; });
-          rec2.relWob(rel.bak).hold(({ rec }) => { correct2 = rec === rec1; });
-          rec1.attach(rel.fwd, rec2);
+          U.Keep(k, 'attach3', () => {
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            return { msg: 'no error', result: true };
+          });
           
-          return {
-            result: true
-              && correct1
-              && correct2
-              && rec1.getRec(rel.fwd) === rec2
-              && rec2.getRec(rel.bak) === rec1
-          };
+          U.Keep(k, 'attach4', () => {
+            
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            
+            let rec1Ind0 = null;
+            let rec1Ind1 = null;
+            let rec2Ind0 = null;
+            let rec2Ind1 = null;
+            
+            rec1.relWob(rt.lnk, 0).hold(rec => rec1Ind0 = rec);
+            rec1.relWob(rt.lnk, 1).hold(rec => rec1Ind1 = rec);
+            rec2.relWob(rt.lnk, 0).hold(rec => rec2Ind0 = rec);
+            rec2.relWob(rt.lnk, 1).hold(rec => rec2Ind1 = rec);
+            
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            return [
+              [ 'rec1 ind0 wobbled', () => !!rec1Ind0 ],
+              [ 'rec1 ind1 untouched', () => !rec1Ind1 ],
+              [ 'rec2 ind0 untouched', () => !rec2Ind0 ],
+              [ 'rec2 ind1 wobbled', () => !!rec2Ind1 ],
+              [ 'rec1 ind0 correct', () => rec1Ind0 === lnk ],
+              [ 'rec2 ind1 correct', () => rec2Ind1 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec2 ]
+            ];
+            
+          });
           
-        });
-        
-        U.Keep(k, 'circular3', () => {
+          U.Keep(k, 'detach1', () => {
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec1);
+            
+            let didWobShut = false;
+            lnk.shutWob().hold(() => didWobShut = true);
+            
+            lnk.shut();
+            
+            return [
+              [ 'link is shut', () => lnk.isShut() ],
+              [ 'shut wobbled', () => didWobShut ],
+              [ 'rec1 ind 0 no rel', () => rec1.relWob(rt.lnk, 0).toArr(v => v).isEmpty() ],
+              [ 'rec1 ind 1 no rel', () => rec1.relWob(rt.lnk, 1).toArr(v => v).isEmpty() ]
+            ];
+            
+          });
           
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          let rel = Rel(Recc, Recc, '11');
+          U.Keep(k, 'detach2', () => {
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            let didWobShut = false;
+            lnk.shutWob().hold(() => didWobShut = true);
+            
+            lnk.shut();
+            
+            return [
+              [ 'link is shut', () => lnk.isShut() ],
+              [ 'shut wobbled', () => didWobShut ],
+              [ 'rec1 ind 0 no rel', () => rec1.relWob(rt.lnk, 0).toArr(v => v).isEmpty() ],
+              [ 'rec1 ind 1 no rel', () => rec1.relWob(rt.lnk, 1).toArr(v => v).isEmpty() ],
+              [ 'rec2 ind 0 no rel', () => rec2.relWob(rt.lnk, 0).toArr(v => v).isEmpty() ],
+              [ 'rec2 ind 1 no rel', () => rec2.relWob(rt.lnk, 1).toArr(v => v).isEmpty() ]
+            ];
+          });
           
-          let loopRec = Recc({});
-          let correct = false;
-          loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel.fwd, loopRec);
+          U.Keep(k, 'enforceCardinality1', () => {
+            
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            
+            let wobRec1 = null;
+            let wobRec2 = null;
+            rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
+            rec1.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
+            
+            let lnk = rt.lnk.create({}, rec1, rec1);
+            
+            try {
+              let lnk2 = rt.lnk.create({}, rec1, rec1);
+              return { msg: 'cardinality enforced', result: false };
+            } catch(err) {}
+            
+            return [
+              [ 'index 0 wobbled', () => !!wobRec1 ],
+              [ 'index 1 wobbled', () => !!wobRec2 ],
+              [ 'index 0 correct', () => wobRec1 === lnk ],
+              [ 'index 1 correct', () => wobRec2 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec1 ]
+            ];
+            
+          });
           
-          return { result: correct };
+          U.Keep(k, 'enforceCardinality2', () => {
+            
+            let rt = setup();
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            
+            let rec1Ind0 = null;
+            let rec1Ind1 = null;
+            let rec2Ind0 = null;
+            let rec2Ind1 = null;
+            
+            rec1.relWob(rt.lnk, 0).hold(rec => rec1Ind0 = rec);
+            rec1.relWob(rt.lnk, 1).hold(rec => rec1Ind1 = rec);
+            rec2.relWob(rt.lnk, 0).hold(rec => rec2Ind0 = rec);
+            rec2.relWob(rt.lnk, 1).hold(rec => rec2Ind1 = rec);
+            
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            try {
+              let lnk = rt.lnk.create({}, rec1, rec2);
+              return { msg: 'cardinality enforced', result: false };
+            } catch(err) {}
+            
+            return [
+              [ 'rec1 ind0 wobbled', () => !!rec1Ind0 ],
+              [ 'rec1 ind1 untouched', () => !rec1Ind1 ],
+              [ 'rec2 ind0 untouched', () => !rec2Ind0 ],
+              [ 'rec2 ind1 wobbled', () => !!rec2Ind1 ],
+              [ 'rec1 ind0 correct', () => rec1Ind0 === lnk ],
+              [ 'rec2 ind1 correct', () => rec2Ind1 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec2 ]
+            ];
+            
+          });
           
-        });
-        
-        U.Keep(k, 'circular4', () => {
+          U.Keep(k, 'agg1', () => {
+            
+            let rt = setup();
+            
+            let wobRec1 = null;
+            let wobRec2 = null;
+            
+            let rec1 = rt.rec.create();
+            rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
+            rec1.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
+            
+            let agg = U.AggWobs();
+            let lnk = rt.lnk.create({ agg }, rec1, rec1);
+            
+            if (wobRec1 || wobRec2) return { msg: 'agg prevents wobble', result: false };
+            
+            agg.complete();
+            
+            return [
+              [ 'index 0 wobbled', () => !!wobRec1 ],
+              [ 'index 1 wobbled', () => !!wobRec2 ],
+              [ 'index 0 correct', () => wobRec1 === lnk ],
+              [ 'index 1 correct', () => wobRec2 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec1 ]
+            ];
+            
+          });
           
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          let rel = Rel(Recc, Recc, '11');
-          
-          let loopRec = Recc({});
-          let correct = false;
-          loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel.bak, loopRec);
-          
-          return { result: correct };
-          
-        });
-        
-        U.Keep(k, 'circular5', () => {
-          
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          let rel = Rel(Recc, Recc, '11');
-          
-          let loopRec = Recc({});
-          let correct = false;
-          loopRec.relWob(rel.fwd).hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel.bak, loopRec);
-          
-          return { result: correct };
-          
-        });
-        
-        U.Keep(k, 'circular6', () => {
-          
-          let Recc = U.inspire({ name: 'Recc', insps: { Rec } });
-          let rel = Rel(Recc, Recc, '11');
-          
-          let loopRec = Recc({});
-          let correct = false;
-          loopRec.relWob(rel.bak).hold(({ rec }) => { correct = rec === loopRec; });
-          loopRec.attach(rel.fwd, loopRec);
-          
-          return { result: correct };
-          
-        });
-        
-        U.Keep(k, 'attach', () => {
-          
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
-          let rel = Rel(Rec1, Rec2, '11');
-          
-          let rec1 = Rec1({});
-          let rec2 = Rec2({});
-          rec1.attach(rel.fwd, rec2);
-          
-          return { result: true
-            && rec1.getRec(rel.fwd) === rec2
-            && rec2.getRec(rel.bak) === rec1
-          };
-          
-        });
-        
-        U.Keep(k, 'attachMultiFails', () => {
-          
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
-          
-          let rel = Rel(Rec1, Rec2, '11');
-          
-          let rec1 = Rec1({});
-          let rec2 = Rec2({});
-          
-          rec1.attach(rel.fwd, rec2);
-          
-          try { rec1.attach(rel.fwd, Rec2({})); }
-          catch(err) { return { result: err.message === 'Already add' }; }
-          
-          return { result: false };
-          
-        });
-        
-        U.Keep(k, 'detach', () => {
-          
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
-          
-          let rel = Rel(Rec1, Rec2, '11');
-          
-          let rec1 = Rec1({});
-          let rec2 = Rec2({});
-          
-          let attach = rec1.attach(rel.fwd, rec2);
-          attach.shut();
-          
-          return { result: rec1.getRelRec(rel.fwd) === null };
-          
-        });
-        
-        U.Keep(k, 'detachMultiFails', () => {
-          
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
-          
-          let rel = Rel(Rec1, Rec2, '11');
-          
-          let rec1 = Rec1({});
-          let rec2 = Rec2({});
-          
-          let attach = rec1.attach(rel.fwd, rec2);
-          attach.shut();
-          
-          try { attach.shut(); }
-          catch(err) { return { result: err.message === 'Already shut' }; }
-          return { result: false };
-          
-        });
-        
-        U.Keep(k, 'aggAttach', () => {
-          
-          let Rec1 = U.inspire({ name: 'Rec1', insps: { Rec } });
-          let Rec2 = U.inspire({ name: 'Rec2', insps: { Rec } });
-          
-          let rel = Rel(Rec1, Rec2, '11');
-          
-          let rec1 = Rec1({});
-          let rec2 = Rec2({});
-          
-          let rec1Wobbled = false;
-          let rec2Wobbled = false;
-          
-          rec1.relWob(rel.fwd).hold(relRec => { rec1Wobbled = true; });
-          rec2.relWob(rel.bak).hold(relRec => { rec2Wobbled = true; });
-          
-          let agg = U.AggWobs();
-          rec1.attach(rel.fwd, rec2, agg);
-          if (rec1Wobbled || rec2Wobbled || !rec1.getRelRec(rel.fwd)) return { result: false };
-          
-          agg.complete();
-          return { result: rec1Wobbled && rec2Wobbled };
+          U.Keep(k, 'agg2', () => {
+            
+            let rt = setup();
+            
+            let wobRec1 = null;
+            let wobRec2 = null;
+            
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
+            rec2.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
+            
+            let agg = U.AggWobs();
+            let lnk = rt.lnk.create({ agg }, rec1, rec2);
+            
+            if (wobRec1 || wobRec2) return { msg: 'agg prevents wobble', result: false };
+            
+            agg.complete();
+            
+            return [
+              [ 'index 0 wobbled', () => !!wobRec1 ],
+              [ 'index 1 wobbled', () => !!wobRec2 ],
+              [ 'index 0 correct', () => wobRec1 === lnk ],
+              [ 'index 1 correct', () => wobRec2 === lnk ],
+              [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec2 ]
+            ];
+            
+          });
           
         });
         
       });
+      
+      return; // TODO: translate all remaining tests from old record!
       
       U.Keep(k, 'relWob').contain(k => {
         
@@ -949,5 +963,6 @@ U.buildRoom({
     /// =TEST}
     
     return content;
+    
   }
 });

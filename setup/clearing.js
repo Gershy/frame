@@ -10,13 +10,10 @@ let C = global.C = {
   BaseInsp: (() => {
     let BaseInsp = function BaseInsp() {};
     BaseInsp.prototype = Object.create(null);
-    protoDef(BaseInsp, 'isInspiredBy', function(Insp0) { return this.constructor.insps.has(Insp0.uid); }); 
-    protoDef(BaseInsp, 'inspClone', function(cnsProps=null, props={}) {
-      let ThisCls = this.constructor;
-      let newInst = ThisCls(...(cnsProps || []));
-      for (let k in this) newInst[k] = this[k];
-      for (let k in props) newInst[k] = props[k];
-      return newInst;
+    protoDef(BaseInsp, 'isInspiredBy', function(Insp0) { return this.constructor.allInsps.has(Insp0.uid); }); 
+    protoDef(BaseInsp, 'inspReborn', function(cnsProps=[]) { return this.constructor.call(null, ...cnsProps); }); 
+    protoDef(BaseInsp, 'inspClone', function(cnsProps=[], props={}) {
+      return ({}).gain.call(this.inspReborn(cnsProps), { ...this, ...props });
     });
     return BaseInsp;
   })(),
@@ -85,7 +82,7 @@ protoDef(Array, 'map', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'toObj', function(it) { // Return [ KEY, VAL ] from the iterator
+protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
   let ret = {};
   for (let i = 0, len = this.length; i < len; i++) {
     let v = it(this[i], i);
@@ -99,7 +96,7 @@ protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
   return null;
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
-protoDef(Array, 'isEmpty', function() { return this.length === 0; });
+protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
@@ -134,6 +131,7 @@ protoDef(String, 'crop', function(amtL=0, amtR=0) {
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
+Set.prototype = SetOrig.prototype;
 protoDef(SetOrig, 'toArr', function(fn) {
   let ret = [];
   for (let v of this) { v = fn(v); if (v !== C.skip) ret.push(v); }
@@ -148,9 +146,15 @@ protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
 
 let MapOrig = Map;
 Map = global.Map = function Map(...args) { return new MapOrig(...args); };
-protoDef(MapOrig, 'toObj', function(fn) {
+Map.prototype = MapOrig.prototype;
+protoDef(MapOrig, 'toObj', function(fn) { // Iterator returns [ KEY, VAL ] pairs
   let ret = {};
   for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
+  return ret;
+});
+protoDef(MapOrig, 'toArr', function(fn) {
+  let ret = [];
+  for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
@@ -167,9 +171,7 @@ Promise.allObj = async obj => {
 
 let U = global.U = {
   INSP_UID: 0,
-  Obj: Object,
-  Arr: Array,
-  Str: String,
+  Obj: Object, Arr: Array, Str: String,
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
     if (!U.dbgCntMap.has(name)) {
@@ -185,53 +187,62 @@ let U = global.U = {
   int32: Math.pow(2, 32),
   intUpperBound: Math.pow(2, 32),
   intLowerBound: -Math.pow(2, 32),
-  empty: obj => { for (let k in obj) return false; return true; },
-  multiKey: (...keys) => keys.sort().join('|'),
   safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
   inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
+    
+    let parInsps = insps;
+    parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw new Error(`Invalid Insp: "${k}"`); });
     
     let Insp = eval(`let Insp = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
     Object.defineProperty(Insp, 'name', { value: name });
     
-    // Calculate a map of all inspirations for `isInspiredBy` testing
-    Insp.uid = U.INSP_UID++;
-    Insp.insps = { [Insp.uid]: Insp };
-    Insp.isInspiredBy = Insp0 => Insp.insps.has(Insp0.uid);
-    insps.forEach(SupInsp => Insp.insps.gain(U.isType(SupInsp, Function) && SupInsp.has('uid') ? SupInsp.insps : {}));
+    // Calculate a Set of all inspirations for `isInspiredBy` testing
+    let inheritedInsps = [ Insp ];
+    parInsps.forEach(ParInsp => inheritedInsps.gain(ParInsp.allInsps.toArr(v => v)));
+    Insp.allInsps = Set(inheritedInsps);
     
     // Initialize prototype
     Insp.prototype = Object.create(C.BaseInsp.prototype);
     
     // Resolve all SupInsps to their prototypes
-    insps = insps.map(insp => {
-      if (!insp.prototype) return insp;
-      let pNames = Object.getOwnPropertyNames(insp.prototype);
-      return pNames.toObj(v => [ v, insp.prototype[v] ]);
-    }); // Resolve Insps as their prototypes
+    parInsps = parInsps.map(ParInsp => {
+      // `protoDef` sets prototype properties, making them non-enumerable
+      // Iterate non-enumerable props with `Object.getOwnPropertyNames`
+      let proto = ParInsp.prototype;
+      let pNames = Object.getOwnPropertyNames(proto);
+      return pNames.toObj(v => [ v, proto[v] ]);
+    });
     
-    // Run `methods` if necessary. Ensure it always resolves to an `Object` without a "constructor" key
-    if (U.isType(methods, Function)) methods = methods(insps, Insp);
+    // If `methods` is a function it becomes the result of its own call
+    if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
+    
+    // Ensure we have valid "methods"
     if (!U.isType(methods, Object)) throw new Error('Couldn\'t resolve "methods" to Object');
-    if (methods.has('constructor')) throw new Error('Invalid "constructor" key');
     
+    // Ensure reserved property names haven't been used
+    if (methods.has('constructor')) throw new Error('Used reserved "constructor" key');
+    
+    // Collect all inherited methods
     let methodsByName = {};
-    insps.forEach((insp, inspName) => {
-      // Can`t do `insp.forEach`; `insp` may be prototypeless
-      for (let [ methodName, method ] of Object.entries(insp)) {
-        // `insp` is likely a prototype and contains a "constructor" property that needs to be skipped
+    parInsps.forEach((inspProto, inspName) => {
+      // Can`t do `inspProto.forEach` - `inspProto` is prototype-less!
+      for (let [ methodName, method ] of Object.entries(inspProto)) {
+        // `inspProto` contains a "constructor" property that needs to be skipped
         if (methodName === 'constructor') continue;
         if (!methodsByName.has(methodName)) methodsByName[methodName] = [];
         methodsByName[methodName].push(method);
       }
     });
     
+    // Collect all methods for this particular Insp
     for (let methodName in methods) {
       let method = methods[methodName];
-      if (methodName[0] === '$') {
-        Insp[methodName.substr(1)] = method;
-      } else {
-        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
-      }
+      
+      // Dollar-sign indicates class-level property
+      // All methods here are the single method of their name!
+      // They may call inherited methods of the same name (or not)
+      if (methodName[0] === '$')  Insp[methodName.crop(1, 0)] = method; 
+      else                        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
     }
     
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
@@ -251,10 +262,9 @@ let U = global.U = {
     return false;
   },
   isInspiredBy: (Insp1, Insp2) => {
-    if (!Insp2.has('uid')) throw new Error(`${U.typeOf(Insp2)} has no "uid"!`);
     try {
       if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;
-      return Insp1.has('insps') && Insp1.insps.has(Insp2.uid);
+      return Insp1.has('allInsps') && Insp1.allInsps.has(Insp2);
     } catch(err) { return false; }
   },
   typeOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
@@ -269,7 +279,7 @@ let U = global.U = {
       
       return U.rooms[name] = {
         name,
-        built: build(U.foundation, ...innerRooms.map(roomName => U.rooms[roomName].built))
+        built: build(U.foundation, ...innerRooms.map(rn => U.rooms[rn].built))
       };
       
     };
@@ -297,10 +307,10 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
   shut: function(...args) {
-    if (this.didShut) throw new Error(`Already shut`);
+    if (this.didShut) throw new Error('Second shut');
     this.didShut = true;
     this.shut0(...args);
-    this.shutWob0.wobble();
+    this.shutWob0.wobble(...args);
   },
   shutWob: function() { return this.shutWob0; }
 })});
@@ -326,7 +336,7 @@ let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) =
   },
   hold: function(holdFn) {
     // If we haven't wobbled, regular `Wob` functionality
-    if (this.holds) return insp.Wob.hold.call(this, holdFn);
+    if (this.holds)     return insp.Wob.hold.call(this, holdFn);
     
     // If `!this.holds`, we're either mid-wobble or done wobbling:
     if (this.tmpHolds)  this.tmpHolds.add(holdFn);  // Mid-wobble: we're already iterating `this.tmpHolds` so queue `holdFn` and we'll get to it
@@ -629,4 +639,3 @@ let nullShutWob = {
 };
 C.gain({ nullWob, nullShutWob });
 U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, AccessPath, AggWobs });
-

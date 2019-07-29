@@ -100,9 +100,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       if (result !== false) this.root.passed++;
       
       return {
-        result: result !== false,
-        err,
-        msg,
+        result: result !== false, err, msg,
         childResults: {
           summary: { total: cTotal, passed: cPassed },
           cases
@@ -247,7 +245,7 @@ U.gain({
       
       Keep(k, '5', () => {
         
-        let prob = cleanArrStrings.inspClone(null, { max: 4 }).problemFor([], [
+        let prob = cleanArrStrings.inspClone([], { max: 4 }).problemFor([], [
           'hi', 'hello', 'wassup', 'loler', 'lololer'
         ]);
         return { result: prob && U.isType(prob, Array) && prob.length === 2 && prob[1] === 'Array has 5 elems; max is 4' };
@@ -256,7 +254,7 @@ U.gain({
       
       Keep(k, '6', () => {
         
-        let prob = cleanArrStrings.inspClone(null, { min: 10 }).problemFor([], [
+        let prob = cleanArrStrings.inspClone([], { min: 10 }).problemFor([], [
           'hi', 'hello', 'wassup', 'loler', 'lololer'
         ]);
         return { result: prob && U.isType(prob, Array) && prob.length === 2 && prob[1] === 'Array has 5 elems; min is 10' };
