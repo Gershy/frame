@@ -15,8 +15,23 @@
     for (let name of names) fsDeleteSync(path.join(f, name));
     fs.rmdirSync(f);
   };
+  let fsUpdFile = (cmps, v) => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't upd file "${f}"`);
+    return Promise((rsv, rjc) => fs.writeFile(f, v, err0 => err0 ? rjc(err) : rsv()));
+  };
+  let fsGetFile = cmps => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't get file "${f}"`);
+    return Promise((rsv, rjc) => fs.readFile(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
+  };
+  let fsRemFile = cmps => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't rem file "${f}"`);
+    return Promise((rsv, rjc) => fs.unlink(f, err0 => err0 ? rjc(err) : rsv()));
+  };
   
-  let { Foundation } = U.foundationClasses;
+  let { Foundation } = U.setup;
   let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
     init: function(tagName, type, text='') {
       if (![ 'root', 'singleton', 'container', 'text' ].has(type)) throw new Error(`Invalid type; ${type}`);
@@ -57,10 +72,14 @@
       
       insp.Foundation.init.call(this);
       
-      this.variantDefs = {};
       this.roomsInOrder = [];
       this.compilationData = {};
       this.mountedFiles = {};
+      
+      this.variantDefs = {
+        above: { above: 1, below: 0 },
+        below: { above: 0, below: 1 }
+      };
       
       this.transportDebug = false;
       this.httpFullDebug = false;
@@ -81,6 +100,130 @@
       U.safe(() => fs.mkdirSync(path.join(tempDir, 'storage')));
       
     },
+    defaultGoals: function() {
+      
+      let { Goal } = U.setup;
+      
+      let habitGoal = Goal({
+        name: 'habit',
+        desc: 'Deal with tasks that are done regularly',
+        detect: args => args.has('habit'),
+        enact: async (foundation, args) => {}
+      });
+      
+      habitGoal.add(Goal({
+        name: 'all',
+        desc: 'List all habits',
+        detect: args => U.isType(args.habit, Object) && args.habit.has('all'),
+        enact: async (foundation, args) => {
+          
+          let habits = fs.readdirSync(path.join(tempDir, 'habit'));
+          if (habits.length) {
+            console.log('Available habits:');
+            habits.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
+          } else {
+            console.log('No habits available!');
+          }
+          
+        }
+      }));
+      
+      habitGoal.add(Goal({
+        name: 'add',
+        desc: 'Add a new habit',
+        detect: args => U.isType(args.habit, Object) && args.habit.has('add'),
+        enact: async (foundation, args) => {
+          
+          let habitName = args.habit.add;
+          
+          if (!habitName) throw new Error('Need to provide name for habit');
+          
+          let habitData = ({ ...args }).gain({ habit: C.skip });
+          let jsonArgs = JSON.stringify(habitData, null, 2);
+          await fsUpdFile([ tempDir, 'habit', `${habitName}.json` ], jsonArgs);
+          console.log(`Saved habit "${habitName}"; args:`, jsonArgs);
+          
+        }
+      }));
+      
+      habitGoal.add(Goal({
+        name: 'rem',
+        desc: 'Remove an existing habit',
+        detect: args => U.isType(args.habit, Object) && args.habit.has('rem'),
+        enact: async (foundation, args) => {
+          
+          let habitName = args.habit.rem.split('.');
+          
+          if (!habitName) throw new Error('Need to provide name for habit');
+          
+          try {
+            await fsRemFile([ tempDir, 'habit', `${habitName}.json` ]);
+            console.log(`Removed habit "${habitName}"`);
+          } catch(err) {
+            console.log(`No habit named "${habitName}"`);
+          }
+          
+        }
+      }));
+      
+      habitGoal.add(Goal({
+        name: 'use',
+        desc: 'Repeat an existing habit',
+        detect: args => U.isType(args.habit, Object) && args.habit.has('use'),
+        enact: async (foundation, args) => {
+          
+          let habitName = args.habit.use.split('.');
+          
+          if (!habitName) throw new Error('Need to provide name for habit');
+          
+          let data = JSON.parse(await fsGetFile([ tempDir, 'habit', `${habitName}.json` ]));
+          let newArgs = ({ ...data, ...args }).gain({ habit: C.skip });
+          
+          await foundation.rouse(newArgs);
+          
+        }
+      }));
+      
+      let versionGoal = Goal({
+        name: 'version',
+        desc: 'Show version information',
+        detect: args => args.has('version') && args.version,
+        enact: async (foundation, args) => {
+          console.log('Version 0.0.1');
+          console.log('Developed by Gershom Maes');
+          console.log('Email: gershom.maes@gmail.com');
+        }
+      });
+      
+      let helpGoal = Goal({
+        name: 'help',
+        desc: 'Show help information',
+        detect: args => args.has('help') && args.help,
+        enact: async (foundation, args) => {
+          
+          let helpWithGoal = (goal, depth=0, pref=[]) => {
+            
+            pref.push(goal.name);
+            let indent = ' '.repeat(depth * 2);
+            let name = pref.join('.');
+            console.log(`${indent}${name.upper()}:`);
+            console.log(`${indent}"${goal.desc}"`);
+            
+            for (let child of goal.children) {
+              helpWithGoal(child, depth + 1, [ ...pref ]);
+            }
+            
+          };
+          
+          for (let goal of foundation.goals) helpWithGoal(goal);
+          
+        }
+      });
+      
+      // Make sure habits have precendence!
+      return [ habitGoal, ...insp.Foundation.defaultGoals.call(this), versionGoal, helpGoal ];
+      
+    },
     
     // Compilation
     parsedDependencies: async function(roomName) {
@@ -92,45 +235,40 @@
         ? depStr.split(',').map(v => { v = v.trim(); return v.substr(1, v.length - 2); })
         : [];
     },
+    
     compileRecursive: async function(roomName, alreadyParsed={}, list=[]) {
-      // Compiles `roomName`, ensuring that all its inner rooms are compiled beforehand
-      // Inner rooms are determined by simple file parsing
       
-      if (alreadyParsed.has(roomName)) return alreadyParsed[roomName];
-      let [ rsv, rjc ] = [ null, null ];
-      let prm = new Promise((rsv0, rjc0) => { [ rsv, rjc ] = [ rsv0, rjc0 ]; });
-      alreadyParsed[roomName] = { rsv, rjc, prm };
+      if (alreadyParsed.has(roomName)) return list;
+      alreadyParsed[roomName] = true;
       
-      // Cause inner-room-compilation to run for all inner rooms
       let innerRoomNames = await this.parsedDependencies(roomName);
-      innerRoomNames.forEach(irName => this.compileRecursive(irName, alreadyParsed, list)); // Don't await here!
+      await Promise.allArr(innerRoomNames.map(rn => this.compileRecursive(rn, alreadyParsed, list)));
       
-      // Wait for all inner rooms to finish compiling
-      await Promise.all(innerRoomNames.map(irName => alreadyParsed[irName].prm));
-      
-      // Now that all dependencies are done, compile and add us to the list
       await this.compile(roomName);
-      alreadyParsed[roomName].rsv('Compiled!');
-      list.push(roomName);
       
-      return list;
+      return list.gain([ roomName ]);
+      
     },
     compile: async function(roomName) {
+      
       // Compile a single room; generate a new file for each variant
       
       let contentLines = await this.readFile(path.join(roomDir, roomName, `${roomName}.js`));
       contentLines = contentLines.split('\n');
-      
       this.compilationData[roomName] = {};
       
       for (let variantName in this.variantDefs) {
+        
         let compiledFileName = path.join(roomDir, roomName, `${roomName}.${variantName}.js`);
         let { content: compiledContent, offsets } = this.compileContent(variantName, contentLines);
         await this.writeFile(compiledFileName, compiledContent, { flag: 'w', encoding: 'utf8' }); // Contents are written to disk
+        
         this.compilationData[roomName][variantName] = { fileName: compiledFileName, offsets }; // Filename and offsets are kept
       }
+      
     },
     compileContent: function(variantName, contentLines) {
+      
       // Compile file content; filter based on variant tags
       
       if (U.isType(contentLines, String)) contentLines = contentLines.split('\n');
@@ -866,93 +1004,11 @@
       return serverWob;
     },
     
-    decide: function(args) {
-      
-      let cmd = (args.has('cmd') ? args.cmd : 'version').split('.');
-      
-      if (args.has('habit')) {
-        
-        if (!U.isType(args.habit, Object)) throw new Error('Invalid "habit" param');
-        
-        let mode = null;
-        for (let k in args.habit) { mode = k; break; }
-        if (!mode) throw new Error('Invalid "habit" param');
-        
-        // If only suppled "--habit.set", we get `{ habit: { set: true } }`
-        let habit = args.habit[mode] !== true ? args.habit[mode] : 'default';
-        let habitPath = path.join(tempDir, 'habit', `${habit}.json`);
-        
-        if (mode === 'add') {
-          delete args.habit;
-          let jsonArgs = JSON.stringify(args, null, 2);
-          console.log(`Saved habit "${habit}"; args:`, jsonArgs);
-          return fs.writeFileSync(habitPath, jsonArgs);
-        } else if (mode === 'rem') {
-          fs.unlinkSync(habitPath);
-          console.log(`Removed habit "${habit}"`);
-          return;
-        } else if (mode === 'use') {
-          delete args.habit;
-          args = { ...JSON.parse(fs.readFileSync(habitPath)), ...args };
-          console.log(`With habit "${habit}", full args are:`, JSON.stringify(args, null, 2));
-          console.log('');
-          return this.decide(args);
-        } else if (mode === 'all') {
-          let habits = fs.readdirSync(path.join(tempDir, 'habit'));
-          console.log('Available habits:');
-          if (habits.length) {
-            habits.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
-          } else {
-            console.log('  -- none --');
-          }
-          return;
-        }
-        
-      }
-      
-      if (cmd[0] === 'version') return console.log('Version 0.0.1');
-      if (cmd[0] === 'help') {
-        
-        if (cmd[1] === 'ip') return console.log('IP OPTIONS:', JSON.stringify(this.getStaticIps(), null, 2));
-        
-      }
-      
-      // Initialize ip+port
-      if (args.has('ip')) {
-        
-        let ip = args.ip;
-        if (ip === 'local') ip = '127.0.0.1';
-        this.ip = ip;
-        this.port = args.has('port') ? args.port : 80;
-        
-      }
-      
-      // Initialize variantDefs
-      this.variantDefs = args.has('variantDefs') ? args.variantDefs : {
-        above: { above: 1, below: 0 },
-        below: { above: 0, below: 1 }
-      };
-      
-      // Initialize network options
-      this.transportDebug = args.has('transportDebug') ? args.transportDebug : false;
-      this.httpFullDebug = args.has('httpFullDebug') ? args.httpFullDebug : false;
-      this.spoofEnabled = args.has('spoofEnabled') ? args.spoofEnabled : false;
-      
-      // Initialize certain settings in case we're testing
-      if (cmd[0] === 'test') {
-        
-        // Keep all {TEST= =TEST} blocks when compiling
-        this.variantDefs = this.variantDefs.map(v => v.gain({ test: 1 }));
-        
-        // Initialize hutkeeping
-        require('./hutkeeping.js');
-        
-      }
-      
-      return insp.Foundation.decide.call(this, args);
-      
+    prepareForTests: function() {
+      require('./hutkeeping.js');
+      this.variantDefs.forEach(vd => vd.gain({ test: 1 }));
     },
-    getPlatformName: function() { return `nodejs @ ${this.ip}:${this.port}`; },
+    getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
     genInitBelow: async function(contentType, absConn, hutTerm, urlResources, initContent={}) {
       
       let urlFn = this.spoofEnabled
@@ -1051,9 +1107,9 @@
         `U.aboveMsAtResponseTime = ${this.getMs()};`,
         `U.initData = ${JSON.stringify(initContent)};`,
         `U.debugLineData = ${JSON.stringify(debugLineData)};`,
-        'let { FoundationBrowser } = U.foundationClasses;',
+        'let { FoundationBrowser } = U.setup;',
         `U.foundation = FoundationBrowser();`,
-        `U.foundation.decide({ hut: '${this.hut}', bearing: 'below' });`
+        `U.foundation.rouse({ hut: '${this.hut}', bearing: 'below' });`
       ].join('\n');
       
       mainScript.setProp('type', 'text/javascript');
@@ -1076,7 +1132,7 @@
       
       return doc.toString();
     },
-    establishHut: async function({ hut=null, bearing=null }) {
+    establishHut: async function({ hut=null, bearing=null, ip=null, port=null }) {
       
       if (!hut) throw new Error('Missing "hut" param');
       if (!bearing) throw new Error('Missing "bearing" param');
@@ -1085,6 +1141,11 @@
       // We're establishing with known params! So set them on `this`
       this.hut = hut;
       this.bearing = bearing;
+      
+      // TODO: A FoundationNodejs instance may have multiple ips+ports!
+      // Imagine of a single Foundation supports multiple servers!
+      if (ip) { this.ip = ip === 'local' ? '127.0.0.1' : ip; this.port = 80; }
+      if (port) { this.port = port; }
       
       // Overwrite the original "buildRoom" logic
       let origBuildRoom = U.buildRoom;
@@ -1106,6 +1167,6 @@
     }
   })});
   
-  U.foundationClasses.gain({ FoundationNodejs });
+  U.setup.gain({ FoundationNodejs });
   
 })();

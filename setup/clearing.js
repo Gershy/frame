@@ -128,6 +128,13 @@ protoDef(String, 'lower', String.prototype.toLowerCase);
 protoDef(String, 'crop', function(amtL=0, amtR=0) {
   return this.substr(amtL, this.length - amtR);
 });
+protoDef(String, 'polish', function(c=null) {
+  if (c === null) return this.trim();
+  let [ ind0, ind1 ] = [ 0, this.length - 1 ];
+  while (this[ind0] === c[0]) ind0++;
+  while (this[ind1] === c[0]) ind1--;
+  return this.substr(ind0, ind1 + 1);
+});
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
@@ -160,7 +167,10 @@ protoDef(MapOrig, 'toArr', function(fn) {
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
 protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 
-Promise.allArr = Promise.all;
+let PromiseOrig = Promise;
+Promise = global.Promise = function Promise(...args) { return new PromiseOrig(...args); };
+Promise.prototype = PromiseOrig.prototype;
+Promise.allArr = arr => PromiseOrig.all(arr);
 Promise.allObj = async obj => {
   let result = await Promise.allArr(obj.toArr(v => v));
   let ind = 0;
@@ -286,17 +296,9 @@ let U = global.U = {
     
   },
   
-  foundationClasses: {},
+  setup: {}, // Gains items used for setup
   foundation: null,
   rooms: {}
-};
-
-// TODO: VERY draining on performance! Take this out!!!
-U.DBG_WOBS = null;
-U.TOTAL_WOB_HOLDS = () => {
-  let sum = 0;
-  for (let wob of U.DBG_WOBS) sum += (wob.holds ? wob.holds.size : 0);
-  return sum;
 };
 
 let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
@@ -316,10 +318,7 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
 })});
 
 let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
-  init: function() {
-    this.holds = new Set();
-    if (U.DBG_WOBS) U.DBG_WOBS.add(this);
-  },
+  init: function() { this.holds = new Set(); },
   numHolds: function() { return this.holds ? this.holds.size : 0; },
   hold: function(holdFn) {
     if (this.holds.has(holdFn)) throw new Error('Already held');

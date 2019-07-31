@@ -51,10 +51,6 @@ U.buildRoom({
         if (crd && crd.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${crd}"`);
         if (crd && crd.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${crd}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
         
-        if (RecCls === Rec) {
-          RecCls = U.inspire({ name: `${name[0].upper()}${name.slice(1)}Rec`, insps: { Rec }, methods: (insp, Insp) => ({}) })
-        }
-        
         this.name = name;
         this.RecCls = RecCls;
         this.crd = crd;
@@ -177,7 +173,7 @@ U.buildRoom({
     let content = { RecType, Rec, recTyper };
     
     /// {TEST=
-    content.test = rootKeep => rootKeep.contain(k => U.Keep(k, 'record').contain(k => {
+    content.test = rootKeep => rootKeep.contain(k => {
       
       U.Keep(k, 'rel11').contain(k => {
         
@@ -421,6 +417,8 @@ U.buildRoom({
       });
       
       return; // TODO: translate all remaining tests from old record!
+      
+      // NOTE: U.DBG_WOBS + U.TOTAL_WOB_HOLDS has been removed
       
       U.Keep(k, 'relWob').contain(k => {
         
@@ -959,7 +957,7 @@ U.buildRoom({
         
       });
       
-    }));
+    });
     /// =TEST}
     
     return content;

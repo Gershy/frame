@@ -240,14 +240,14 @@ U.buildRoom({
         TERMS = [ 'remote' ]; // Below has only 1 Hut, so only 1 name needed
         /// =BELOW}
         
-        await Promise.all([ ...this.ways ].map(w => w.open())); // Open all Ways
+        await Promise.allArr([ ...this.ways ].map(w => w.open())); // Open all Ways
         
         /// {BELOW=
         let hut = this.getAllHuts().find(() => true)[0];
         await this.hear(null, hut, U.initData); // Lands Below immediately hear the Above's initial update
         /// =BELOW}
       },
-      shut: async function() { return Promise.all([ ...this.ways ].map(w => w.shut())); }
+      shut: async function() { return Promise.allArr([ ...this.ways ].map(w => w.shut())); }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({
       

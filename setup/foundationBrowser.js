@@ -3,7 +3,7 @@
   let transportDebug = true;
   
   let { Hog } = U;
-  let { Foundation } = U.foundationClasses;
+  let { Foundation } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function() {
@@ -245,6 +245,6 @@
     }
   })});
   
-  U.foundationClasses.gain({ FoundationBrowser });
+  U.setup.gain({ FoundationBrowser });
   
 })();

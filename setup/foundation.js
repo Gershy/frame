@@ -5,50 +5,77 @@
 
 // TODO: Write classes for transports
 
+let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
+  
+  init: function({ name, desc, detect, enact }) {
+    this.name = name;
+    this.desc = desc;
+    this.detect = detect;
+    this.enact = enact;
+    this.children = Set();
+  },
+  add: function(goal) {
+    this.children.add(goal);
+    return goal
+  },
+  attempt: async function(foundation, args, level=0) {
+    
+    if (!this.detect(args)) return false;
+    
+    await this.enact(foundation, args);
+    for (let child of this.children) await child.attempt(foundation, args, level + 1);
+    return true;
+    
+  }
+  
+})});
+
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function() {
+    this.goals = this.defaultGoals();
   },
-  getPlatformName: C.notImplemented,
-  
-  // Platform
-  getMs: function() { return +new Date(); },
-  queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead!
-  makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
-  makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
-  getRootReal: async function() { return C.notImplemented.call(this); },
-  formatError: C.notImplemeneted,
-  
-  // Setup
-  decide: function(args) {
+  defaultGoals: function() {
     
-    let cmd = (args.has('cmd') ? args.cmd : 'establish').split('.');
-    
-    if (cmd[0] === 'establish') {
-      
-      (async () => {
-        let rootRoom = await this.establishHut(args);
+    let inhabitGoal = Goal({
+      name: 'settle',
+      desc: 'Settle our Hut down',
+      detect: args => args.has('settle'),
+      enact: async (foundation, args) => {
+        let [ hut=null, bearing=null ] = args.settle.split('.');
+        
+        if (hut && args.has('hut') && hut !== args.hut) throw new Error(`Conflicting "hut" values "${hut}" and "${args.hut}"`);
+        if (bearing && args.has('bearing') && bearing !== args.bearing) throw new Error(`Conflicting "bearing" values "${bearing}" and "${args.bearing}"`);
+        
+        let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
+        if (!rootRoom.built.has('open')) throw new Error(`Room "${rootRoom.name}" isn't setup for settling`);
+        
         await rootRoom.built.open();
-        console.log(`Established ${args.hut} for ${this.getPlatformName()}`);
-      })();
-      
-    } else if (cmd[0] === 'test') {
-      
-      // TODO: Should probably move this into a method like "testHut", and factor
-      // out much of it into subclasses. This code shouldn't appear Below...
-      
-      (async () => {
-        let rootRoom = await this.establishHut(args);
-        if (!rootRoom.built.has('test')) throw new Error(`Couldn\'t find "test" prop for ${args.hut}`);
+        console.log(`Settled ${rootRoom.name} on ${this.getPlatformName()}`);
+      }
+    });
+    
+    let testGoal = Goal({
+      name: 'test',
+      desc: 'Test everything is ok with our Hut',
+      detect: args => args.has('test'),
+      enact: async (foundation, args) => {
         
-        U.DBG_WOBS = new Set();
+        let [ hut=null, bearing=null ] = args.test.split('.');
+        if (hut && args.has('hut') && hut !== args.hut) throw new Error(`Conflicting "hut" values "${hut}" and "${args.hut}"`);
         
-        let keep = U.Keep(null, 'root');
-        let rootKeep = keep;              // Don't lose reference to root Keep
-        if (true) U.addSetupKeep(keep);   // Add setup-level tests
-        await rootRoom.built.test(keep);  // Add room-level tests
+        let suitePcs = args.has('suite') ? args.suit.split('.') : [];
         
-        // Dive down to a specific test category if needed (defined from "--cmd test.cat.subcat...")
-        if (cmd.length > 1) keep = keep.getChild(...cmd.slice(1));
+        foundation.prepareForTests();
+        
+        let rootRoom = await this.establishHut({ hut, bearing, ...args });
+        if (!rootRoom.built.has('test')) throw new Error(`Room "${rootRoom.name}" isn't setup for testing`);
+        
+        let keep = U.Keep(null, rootRoom.name); // Initialize a primary Keep
+        let rootKeep = keep;                    // Don't lose track of the root
+        await rootRoom.built.test(keep);        // Add room-level tests
+        
+        // Drill down to a specific suite
+        if (!suitePcs.isEmpty()) keep = keep.getChild(...suitePcs);
         
         let firstErr = null;
         let outputTest = (name, run, ind='') => {
@@ -78,10 +105,29 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
         // For convenience show the first error last
         if (firstErr) console.log('First error encountered:\n', U.foundation.formatError(firstErr));
         
-        console.log(`Tested ${args.hut} for ${this.getPlatformName()}`);
-      })();
-      
-    }
+      }
+    });
+    
+    return [ inhabitGoal, testGoal ];
+    
+  },
+  getPlatformName: C.notImplemented,
+  
+  // Platform
+  getMs: function() { return +new Date(); },
+  queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead!
+  makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
+  makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
+  getRootReal: async function() { return C.notImplemented.call(this); },
+  formatError: C.notImplemented,
+  
+  // Setup
+  rouse: async function(args) {
+    
+    let goalAchieved = false;
+    for (let goal of this.goals) if (await goal.attempt(this, args)) { goalAchieved = goal; break; }
+    
+    if (!goalAchieved)  console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(args, null, 2)}`);
     
   },
   establishHut: async function(args) { return C.notImplemented.call(this); },
@@ -97,4 +143,4 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
 })});
 
-U.foundationClasses.gain({ Foundation });
+U.setup.gain({ Foundation, Goal });
