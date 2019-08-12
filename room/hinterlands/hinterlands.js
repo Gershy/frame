@@ -7,7 +7,102 @@ U.buildRoom({
     // TODO: Lands, Huts, and Ways are setup wrong. A Hut should be able to
     //  connect through multiple Ways!
     // TODO: Could use a nice big high-level comment explaining why Huts are
-    //  Recs, but Lands and Ways are not (although `myLands.gate` is a Rec!)
+    //  Recs, but Lands and Ways are not (although `myLands.arch` is a Rec!)
+    
+    // TODO: HEEERE! Use this one function both for Below, and for Tests!
+    // Right now the Test's Below-update-logic is still a corrupt copy-paste
+    // This function should be used instead. This function should exist in
+    // EITHER "BELOW" or "TEST" modes - no capability to do that at present!
+    let doUpdate = (lands, msg) => {
+      
+      let { version, content } = msg;
+      if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
+      
+      let agg = U.AggWobs();
+      let err = U.safe(() => {
+        
+        // Apply all operations
+        let { addRec={}, remRec={}, updRec={} } = content;
+        
+        // "head" Recs existed before the current update. "tail" Recs are Recs
+        // whose existence results from the update. A Rec coming into existence
+        // may have member references to both HeadRecs and TailRecs
+        let headRecs = lands.allRecs;
+        let tailRecs = Map();
+        let getHeadOrTailRec = uid => {
+          if (headRecs.has(uid)) return headRecs.get(uid);
+          if (tailRecs.has(uid)) return tailRecs.get(uid);
+          return null;
+        };
+        
+        // Add new Recs with dependency churning
+        let waiting = addRec.toArr((v, uid) => v.gain({ uid }));
+        while (waiting.length) {
+          
+          let attempt = waiting;
+          waiting = [];
+          
+          for (let addVals of attempt) {
+          
+            let { type, value, members, uid } = addVals;
+            
+            // Convert all members from uid to Rec
+            members = members.map(uid => getHeadOrTailRec(uid));
+            
+            // If a member couldn't be converted wait for a later churn
+            if (members.find(m => !m)) { waiting.push(addVals); continue; }
+            
+            // All members are available - create the Rec!
+            let newRec = lands.createRec(type, { uid, value, agg }, ...members);
+            tailRecs.set(uid, newRec);
+            
+          }
+          
+          if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
+            console.log(headRecs);
+            console.log(JSON.stringify(content, null, 2));
+            throw new Error(`Unresolvable Rec dependencies`);
+          }
+          
+        }
+        
+        // Update Recs directly
+        updRec.forEach((newValue, uid) => {
+          if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
+          let rec = lands.allRecs.get(uid);
+          agg.addWob(rec);
+          rec.wobble(newValue);
+        });
+        
+        // Remove Recs directly
+        let shutGroup = Set(); // TODO: THE AGGWOBS CAN PROVIDE THE "shutGroup"??? (overall it links a bunch of wobbles together)
+        remRec.forEach((val, uid) => {
+          if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
+          let rec = lands.allRecs.get(uid);
+          
+          // Tolerate double-shuts which occur here (can easily happen when
+          // GroupRecs shut due to their MemberRecs shutting, and then are
+          // also shut directly)
+          if (!rec.isShut()) { /*agg.addWob(rec.shutWob());*/ rec.shut(shutGroup); }
+        });
+        
+        // Include all TailRecs in global set
+        tailRecs.forEach((rec, uid) => {
+          lands.allRecs.set(uid, rec);
+          rec.shutWob().hold(() => lands.allRecs.rem(uid));
+        });
+        
+      });
+      
+      // Do aggregated wobbles
+      agg.complete(err);
+      
+      if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
+      
+      // We've successfully moved to our next version!
+      lands.version = version;
+      
+    };
     
     let { Rec, Rel } = record;
     let { Hog, WobTmp, WobMemSet, AccessPath } = U;
@@ -16,6 +111,7 @@ U.buildRoom({
     
     let Lands = U.inspire({ name: 'Lands', methods: () => ({
       init: function({ foundation, heartbeatMs=10000, recTypes={}, ...more }) {
+        
         this.uidCnt = 0;
         this.heartbeatMs = heartbeatMs;
         this.comWobs = {};
@@ -23,6 +119,10 @@ U.buildRoom({
         this.recTypes = recTypes;
         
         this.arch = rt.arch.create({ uid: '!arch' });
+        
+        // Connection stuff
+        this.pool = U.setup.CpuPool();
+        this.hutsBelow = Map();   // Map cpuId to Hut
         
         /// {ABOVE=
         
@@ -80,89 +180,9 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        requiredCommand('update', async ({ lands, hut, msg, reply }) => {
+        requiredCommand('update', ({ lands, hut, msg, reply }) => {
           
-          let { version, content } = msg;
-          if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
-          
-          try {
-            
-            let agg = U.AggWobs();
-            
-            // Apply all operations
-            let { addRec={}, remRec={}, updRec={} } = content;
-            
-            // "head" Recs existed before the current update. "tail" Recs are Recs
-            // whose existence results from the update. A Rec coming into existence
-            // may have member reference to both HeadRecs and TailRecs
-            let headRecs = this.allRecs;
-            let tailRecs = Map();
-            let getHeadOrTailRec = uid => {
-              if (headRecs.has(uid)) return headRecs.get(uid);
-              if (tailRecs.has(uid)) return tailRecs.get(uid);
-              return null;
-            };
-            
-            // Add new Recs with dependency churning
-            let waiting = addRec.toArr(v => v);
-            while (waiting.length) {
-              
-              let attempt = waiting;
-              waiting = [];
-              for (let recData of attempt) {
-                
-                let { uid, type, value=null, members=[] } = recData;
-                
-                // Convert all members from uid to Rec
-                members = members.map(uid => getHeadOrTailRec(uid));
-                
-                // If a member couldn't be converted wait for a later churn
-                if (members.find(m => !m)) { waiting.push(recData); continue; }
-                
-                let newRec = this.createRec(type, { uid, value, agg }, ...members);
-                tailRecs.set(uid, newRec);
-                
-              }
-              
-              if (waiting.length === attempt.length) throw new Error(`Unresolvable Rec dependencies`);
-              
-            }
-            
-            // Update Recs directly
-            updRec.forEach((newValue, uid) => {
-              if (!this.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
-              let rec = this.allRecs.get(uid);
-              agg.addWob(rec);
-              rec.wobble(newValue);
-            });
-            
-            // Remove Recs directly
-            remRec.forEach((val, uid) => {
-              if (!this.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
-              let rec = this.allRecs.get(uid);
-              
-              // Tolerate double-shuts which occur here (can easily happen when
-              // GroupRecs shut due to their MemberRecs shutting, and then are
-              // also shut directly)
-              if (!rec.isShut()) { agg.addWob(rec.shutWob()); rec.shut(); }
-            });
-            
-            // Do aggregated wobbles
-            agg.complete();
-            
-            // Include all TailRecs in global set
-            tailRecs.forEach((rec, uid) => {
-              this.allRecs.set(uid, rec);
-              rec.shutWob().hold(() => this.allRecs.rem(uid));
-            });
-            
-            // We've successfully moved to our next version!
-            lands.version = version;
-            
-          } catch(err) {
-            err.message = `ABOVE CAUSED: ${err.message}`;
-            throw err;
-          }
+          doUpdate(lands, msg);
           
         });
         
@@ -182,6 +202,7 @@ U.buildRoom({
         throw new Error('Too many huts! Not enough terms!! AHHHH!!!');
       },
       
+      // TODO: Useless? Most Recs don't need a "lands" param...
       createRec: function(name, params={}, ...args) {
         if (!this.recTypes.has(name)) throw new Error(`Invalid RecType name: "${name}"`)
         if (!params.has('uid')) params.uid = this.nextUid();
@@ -199,6 +220,8 @@ U.buildRoom({
       },
       hear: async function(absConn, hut, msg, reply=null) {
         
+        if (msg === null) return;
+        
         let { command } = msg;
         
         /// {ABOVE=
@@ -209,10 +232,11 @@ U.buildRoom({
         
         this.comWob(command).wobble({ lands: this, absConn, hut, msg, reply });
         hut.comWob(command).wobble({ lands: this, absConn, hut, msg, reply });
+        
       },
       tell: async function(msg) {
         /// {BELOW=
-        this.resetHeartbeatTimeout(); // Only need to send heartbeats when we haven't sent anything for a while
+        this.resetHeartbeatTimeout(); // Already sending a sign of life; defer next heartbeat
         /// =BELOW}
         this.getAllHuts().forEach(hut => hut.tell(msg));
       },
@@ -251,13 +275,14 @@ U.buildRoom({
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({
       
-      init: function({ lands, address, ...supArgs }) {
+      init: function({ lands, cpuId, ...supArgs }) {
         
         if (!lands) throw new Error('Missing "lands"');
+        if (!cpuId) throw new Error('Missing "cpuId"');
         
         insp.Rec.init.call(this, supArgs);
         this.lands = lands;
-        this.address = address;
+        this.cpuId = cpuId;
         this.term = null;
         this.comWobs = {};
         this.ways = Set();
@@ -344,18 +369,28 @@ U.buildRoom({
         
         if (this.syncThrottlePrm) return;
         
+        let err = new Error('');
+        
         this.syncThrottlePrm = (async () => {
           
-          // await this.genSyncThrottlePrm();
-          await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
-          
-          this.syncThrottlePrm = null;
-          
-          // Hut may have been shut between scheduling and executing sync
-          if (this.isShut()) return;
-          
-          let updateTell = this.genSyncTell();
-          if (updateTell) this.tell(updateTell);
+          try {
+            
+            // await this.genSyncThrottlePrm();
+            await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
+            
+            this.syncThrottlePrm = null;
+            
+            // Hut may have been shut between scheduling and executing sync
+            if (this.isShut()) return;
+            
+            let updateTell = this.genSyncTell();
+            if (updateTell) this.tell(updateTell);
+            
+          } catch(err0) {
+            throw err0;
+            err.message = `Error doing sync: ${err0.message}`;
+            throw err;
+          }
           
         })();
         
@@ -434,6 +469,7 @@ U.buildRoom({
         
       },
       followRec: function(rec) {
+        // TODO: Automatically follow `rec.members`?
         this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
         return Hog(() => this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1));
       },
@@ -465,8 +501,7 @@ U.buildRoom({
         this.server = null;
         this.serverFunc = null
         
-        // TODO: Should be in Lands (e.g. a single Hut connected by 2 Ways)
-        this.connections = {};
+        this.lands.ways.add(this); // TODO: I prefer `lands.addWay(Way(...));`
       },
       
       open: async function() {
@@ -477,51 +512,62 @@ U.buildRoom({
           // 1) FundamentalConnection (HTTP protocol, SOKT protocol, etc.)
           // 2) AbstractConnection (here, `absConn`):
           //    - Provides connection events; provides state for stateless
-          //      FundamentalConnections. Unifies FundamentalConnections
+          //      FundamentalConnections. Common interface across different
+          //      FundamentalConnections
+          //    - Patches a number of Fundamental connections together
           // 3) Connected Hut (the thing generated by this function):
           //    - A Rec which lives for the duration of its
           //      AbstractConnection 
           
-          // Get the address; ensure it isn't already connected
-          let { address } = absConn;
-          if (this.connections.has(address)) throw new Error(`Multiple Huts at address ${address} - makeServer is likely flawed`);
+          // Get the cpuId; ensure it isn't already connected
+          let { cpuId } = absConn;
+          //if (this.lands.pool.getConn(cpuId, this.server)) throw new Error(`Server "${this.server.desc}" gave duplicate cpuId "${cpuId}" - makeServer may be flawed`);
           
-          // Create the Hut, and reference by address
-          // TODO: The same machine connecting through multiple Ways will result in
-          // multiple Hut instances
-          let hut = this.lands.createRec('hut', { address });
-          this.connections[address] = { absConn, hut };
+          // It's possible this is the first Way through which the Hut is connecting
+          let hut = this.lands.hutsBelow.get(cpuId);
+          if (!hut) {
+            hut = this.lands.createRec('hut', { cpuId }); // Create a hut for the cpu...
+            
+            // Remember the Hut so long as it lives
+            this.lands.hutsBelow.set(cpuId, hut);
+            hut.shutWob().hold(() => this.lands.hutsBelow.rem(cpuId));
+          }
           
-          // AbstractConnection and Hut open and shut together
-          let holdConnShut = absConn.shutWob().hold(() => {
-            holdHutShut.shut();
-            delete this.connections[address];
-            hut.shut();
+          // TODO: Can Ways shut? Like if the server loses its ability to perform
+          // SOKT connections? Let's assume "no" for now...
+          
+          hut.ways.add(this);
+          hut.shutWob().hold(group => absConn.isShut() || absConn.shut(group));
+          
+          absConn.shutWob().hold(group => {
+            // Disconnect the Hut from `this` Way. If the Hut has no more Ways,
+            // shut the Hut!
+            hut.ways.rem(this);
+            if (!hut.isShut() && hut.ways.toArr(v => v).isEmpty()) hut.shut(group);
           });
-          let holdHutShut = hut.shutWob().hold(() => {
-            holdConnShut.shut();
-            delete this.connections[address];
-            absConn.shut();
-          });
-          
-          // Pass anything heard on to our Lands
-          absConn.hear.hold(([ msg, reply=null ]) => this.lands.hear(absConn, hut, msg, reply));
           
           /// {ABOVE=
           absConn.hear.hold(() => hut.refreshExpiry()); // Any communication refreshes expiry
           /// =ABOVE}
           
+          // Pass anything heard on to our Lands
+          absConn.hear.hold(([ msg, reply=null ]) => this.lands.hear(absConn, hut, msg, reply));
+          
           // Attach the Hut to the Way and to the Lands
-          hut.ways.add(this);
+          // TODO: Right now the lands tracks the Hut both through `hutsBelow` and
+          // through `archHut`... ideally only one should be used! I think we can't
+          // create the ArchHut too early in this function, or else initial holders
+          // will receive a Hut that is lacking some functionality
           this.lands.createRec('archHut', {}, this.lands.arch, hut);
           
         });
       },
-      shut: async function() { this.serverFunc.shut(); /* TODO: detach from all connected huts?? */ },
+      shut: async function() { this.serverFunc.shut(); },
       
       tellHut: function(hut, msg) {
-        if (!this.connections.has(hut.address)) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
-        this.connections[hut.address].absConn.tell(msg);
+        let conn = this.lands.pool.getConn(hut.cpuId, this.server);
+        if (!conn) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
+        conn.tell(msg);
       }
     })});
     
@@ -546,7 +592,7 @@ U.buildRoom({
       let testData = null;
       k.sandwich.before = async () => {
         
-        let addrCnt = 0;
+        let cpuIdCnt = 0;
         
         let { rt: trt, add } = record.recTyper();
         add('loc',        Rec);
@@ -562,14 +608,17 @@ U.buildRoom({
         add('archMan',    Rec, '1M', rt.arch,     trt.man);
         add('archStore',  Rec, '1M', rt.arch,     trt.store);
         
+        let lands = Lands({ foundation, recTypes: { ...rt, ...trt } });
+        
         let clients = Set();
         
         let server = U.Wob();
-        server.spoofClient = (addr=null) => {
-          if (addr === null) addr = (addrCnt++).toString(36).padHead(8, '0');
+        server.desc = 'Spoofy server for hinterlands tests';
+        server.spoofClient = () => {
+          let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
           
           let client = Hog();
-          client.address = addr;
+          client.cpuId = cpuId;
           client.hear = U.Wob();
           client.tellWob = U.Wob();
           client.tell = (...args) => {
@@ -580,7 +629,7 @@ U.buildRoom({
             let prm = new Promise(rsv => {
               hold = client.tellWob.hold(v => rsv(v));
             });
-            (async () => { await prm; hold.shut(); })();
+            prm.then(() => hold.shut());
             
             let hut = way.hutForClient(client);
             
@@ -592,6 +641,7 @@ U.buildRoom({
             return tellVal;
           };
           
+          lands.pool.addConn(client.cpuId, server, client);
           server.wobble(client);
           
           clients.add(client);
@@ -600,10 +650,8 @@ U.buildRoom({
           return client;
         };
         
-        let lands = Lands({ foundation, recTypes: { ...rt, ...trt } });
         let way = Way({ lands, makeServer: () => server });
-        way.hutForClient = client => way.connections[client.address].hut;
-        lands.ways.add(way);
+        way.hutForClient = client => way.lands.hutsBelow.get(client.cpuId);
         
         await lands.open();
         
@@ -611,10 +659,12 @@ U.buildRoom({
         
       };
       k.sandwich.after = () => {
+        let shutGroup = Set();
+        
         // If these aren't explicitly shut timeouts may cause
         // the program to persist after all tests are complete
-        testData.clients.forEach(client => client.shut());
-        testData.lands.shut();
+        testData.clients.forEach(client => client.shut(shutGroup));
+        testData.lands.shut(shutGroup);
       };
       
       U.Keep(k, 'landsGenUid', () => {
@@ -661,6 +711,7 @@ U.buildRoom({
       
       U.Keep(k, 'connectionSucceeds', async () => {
         let { trt, server, lands, way } = testData;
+        
         let client = server.spoofClient();
         return { result: !!client };
       });
@@ -1173,13 +1224,13 @@ U.buildRoom({
             // Combine hinterlands RecTypes (`rt`) along with RecTypes for tests (`trt`)
             let state = { version: 0, recTypes: { ...rt, ...trt }, server: null, holds: [] };
             
-            let addrCnt = 0;
+            let cpuIdCnt = 0;
             let serverBelow = state.server = U.Wob();
-            serverBelow.spoofClient = (addr=null) => {
-              if (addr === null) addr = (addrCnt++).toString(36).padHead(8, '0');
+            serverBelow.spoofClient = () => {
+              let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
               
               let aboveClient = Hog();
-              aboveClient.address = addr;
+              aboveClient.cpuId = cpuId;
               aboveClient.hear = U.Wob();
               aboveClient.tellWob = U.Wob();
               aboveClient.tell = (...args) => {
@@ -1191,19 +1242,20 @@ U.buildRoom({
                 let hold = null;
                 let prm = new Promise(rsv => {
                   hold = aboveClient.hear.hold(rsv);
-                  timeout = setTimeout(() => rsv({ force }), 20);
+                  timeout = setTimeout(() => rsv([ { force }, () => { throw new Error('Bad!'); } ]), 20);
                 });
                 
                 if (fn) fn();
                 
-                let result = await prm;
+                let [ msg, reply ] = await prm; // We ignore "reply" here
                 hold.shut();
                 clearTimeout(timeout);
                 
-                return result;
+                return msg;
                 
               };
               
+              lands.pool.addConn(aboveClient.cpuId, serverBelow, aboveClient);
               serverBelow.wobble(aboveClient);
               
               return aboveClient;
@@ -1229,10 +1281,10 @@ U.buildRoom({
               };
               
               // Here's how messages from Above hit Below...
-              state.holds.push(aboveClient.tellWob.hold((...args) => belowClient.hear.wobble(...args)));
+              state.holds.push(aboveClient.tellWob.hold(msg => belowClient.hear.wobble([ msg, () => { throw new Error('No reply available'); } ])));
               
               // And here's how messages from Below hit Above
-              state.holds.push(belowClient.tellWob.hold((...args) => aboveClient.hear.wobble(...args)));
+              state.holds.push(belowClient.tellWob.hold(msg => aboveClient.hear.wobble([ msg, () => { throw new Error('No reply available'); } ])));
               
               return [ aboveClient, belowClient ];
               
@@ -1399,7 +1451,7 @@ U.buildRoom({
             mock2PartyData.addMockedClientBelow = name => {
               
               return mock2PartyData.addClientBelow(name, state => {
-                state.server.hold(client => client.hear.hold(msg => {
+                state.server.hold(client => client.hear.hold(([ msg, reply ]) => {
                   
                   // This happens whenever the Below hears anything
                   
@@ -1420,9 +1472,13 @@ U.buildRoom({
                         
                         processSync(state, msg);
                         
+                      } else if (msg.command === 'getInit') {
+                        
+                        console.log('GETINIT??');
+                        
                       } else {
                         
-                        console.log('NOT SURE WHAT TO DO WITH COMMAND:', cmd);
+                        console.log('NOT SURE WHAT TO DO WITH COMMAND:', msg.command);
                         
                       }
                       
@@ -1689,6 +1745,7 @@ U.buildRoom({
       });
       
     }));
+    
     /// =TEST}
     
     return content;

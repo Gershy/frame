@@ -14,29 +14,89 @@ let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
     this.enact = enact;
     this.children = Set();
   },
-  add: function(goal) {
-    this.children.add(goal);
-    return goal
-  },
-  attempt: async function(foundation, args, level=0) {
+  attempt: async function(foundation, args) {
     
     if (!this.detect(args)) return false;
     
     await this.enact(foundation, args);
-    for (let child of this.children) await child.attempt(foundation, args, level + 1);
+    for (let child of this.children) await child.attempt(foundation, args);
     return true;
     
   }
   
 })});
+let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
+  init: function() {
+    this.cpus = {};
+    this.dbgLimit = 150;
+  },
+  dbgItem: function(item) {
+    let ret = JSON.stringify(item);
+    return (ret.length > this.dbgLimit) ? ret.substr(0, this.dbgLimit - 3) + '...' : ret;
+  },
+  addConn: function(cpuId, server, conn) {
+    
+    if (!conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.typeOf(conn));
+    
+    if (!this.cpus.has(cpuId)) {
+      
+      this.cpus[cpuId] = { cpuId, addedMs: U.foundation.getMs(), conns: Map() };
+      if (doNetworkDbg) console.log(`>>JOIN ${cpuId}`);
+    }
+    
+    // Track connection
+    this.cpus[cpuId].conns.set(server, conn);
+    if (doNetworkDbg) console.log(`>-HOLD ${cpuId} on ${server.desc}`);
+    
+    if (doNetworkDbg) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${cpuId}: ${this.dbgItem(msg)}`));
+    
+    //conn.hear.hold(
+    //  ([ msg, reply ]) => 
+    //    console.log(
+    //      `--HEAR ${cpuId}: ${this.dbgItem(msg)}`));
+    
+    let origTell = conn.tell;
+    if (doNetworkDbg) conn.tell = (...args) => {
+      console.log(`--TELL ${cpuId}: ${this.dbgItem(args[0])}`);
+      return origTell(...args);
+    };
+    
+    // If connection shuts, untrack connection. If no connections left,
+    // untrack entire cpu!
+    conn.shutWob().hold(() => {
+      this.cpus[cpuId].conns.rem(server);
+      if (doNetworkDbg) console.log(`<-DROP ${cpuId} on ${server.desc}`);
+      
+      if (this.cpus[cpuId].conns.toArr(v => v).isEmpty()) {
+        delete this.cpus[cpuId];
+        if (doNetworkDbg) console.log(`<<EXIT ${cpuId}`);
+      }
+      
+    });
+    
+    return conn;
+  },
+  getConn: function(cpuId, server) {
+    if (!this.cpus.has(cpuId)) return null;
+    return this.cpus[cpuId].conns.get(server);
+  },
+  remConn: function(cpuId, server) {
+    if (!this.cpus.has(cpuId)) throw new Error(`Can't rem conn; no cpu at id "${cpuId}"`);
+    if (!this.cpus[cpuId].conns.has(server)) throw new Error(`Can't rem conn; cpu at id "${cpuId}" has no conn for server "${server.desc}"`);
+    this.cpus[cpuId].conns.rem(server);
+  }
+})});
+
+let doNetworkDbg = false;
 
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function() {
     this.goals = this.defaultGoals();
+    this.raiseArgs = {};
   },
   defaultGoals: function() {
     
-    let inhabitGoal = Goal({
+    let settleGoal = Goal({
       name: 'settle',
       desc: 'Settle our Hut down',
       detect: args => args.has('settle'),
@@ -87,8 +147,8 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
           // Show the single result, with optional error and failure-message
           let { summary, cases } = childResults || { summary: null, cases: {} };
           console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
-          if (err) console.log(`${ind}    TESTERROR(${err.id})`);
-          if (!result && msg)  console.log(`${ind}    Fail at: "${msg}"`);
+          if (err)              console.log(`${ind}    TESTERROR(${err.id})`);
+          if (!result && msg)   console.log(`${ind}    Fail at: "${msg}"`);
           //else if (msg)       console.log(`${ind}    "${msg}"`);
           if (cases.isEmpty()) return;
           
@@ -108,7 +168,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
       }
     });
     
-    return [ inhabitGoal, testGoal ];
+    return [ settleGoal, testGoal ];
     
   },
   getPlatformName: C.notImplemented,
@@ -116,18 +176,19 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   // Platform
   getMs: function() { return +new Date(); },
   queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead!
-  makeHttpServer: async function(host, port) { return C.notImplemented.call(this); },
-  makeSoktServer: async function(host, port) { return C.notImplemented.call(this); },
+  makeHttpServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
+  makeSoktServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
   getRootReal: async function() { return C.notImplemented.call(this); },
   formatError: C.notImplemented,
   
   // Setup
-  rouse: async function(args) {
+  raise: async function(raiseArgs) {
+    
+    this.raiseArgs = raiseArgs;
     
     let goalAchieved = false;
-    for (let goal of this.goals) if (await goal.attempt(this, args)) { goalAchieved = goal; break; }
-    
-    if (!goalAchieved)  console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(args, null, 2)}`);
+    for (let goal of this.goals) if (await goal.attempt(this, raiseArgs)) { goalAchieved = true; break; }
+    if (!goalAchieved)  console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(raiseArgs, null, 2)}`);
     
   },
   establishHut: async function(args) { return C.notImplemented.call(this); },
@@ -143,4 +204,4 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
 })});
 
-U.setup.gain({ Foundation, Goal });
+U.setup.gain({ Foundation, Goal, CpuPool });

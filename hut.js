@@ -70,5 +70,6 @@ if (args[0] === '{') {     // Process object literal
 // Make the foundation
 let { FoundationNodejs } = U.setup;
 U.foundation = FoundationNodejs();
-U.foundation.rouse(args)
+U.foundation.addMountFile('favicon.ico', 'image/x-icon', 'setup/favicon.ico');
+U.foundation.raise(args)
   .catch(err => console.log(U.foundation.formatError(err)));

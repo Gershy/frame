@@ -1,7 +1,5 @@
 (() => {
   
-  let transportDebug = true;
-  
   let { Hog } = U;
   let { Foundation } = U.setup;
   
@@ -58,7 +56,7 @@
         evt.preventDefault();
       });
       window.addEventListener('error', evt => {
-        console.log(this.formatError(evt.reason));
+        console.log(this.formatError(evt.error || evt.reason));
         evt.preventDefault();
       });
       
@@ -96,24 +94,10 @@
     getMountFile: function(name) {
       return { ISFILE: true, name, url: this.spoof ? `!FILE/${name}?spoof=${this.spoof}` : `!FILE/${name}` };
     },
-    makeHttpServer: async function() {
+    makeHttpServer: async function(pool, ip, port) {
       let numPendingReqs = 0;
       
-      let clientWob = Hog(() => {
-        
-      });
-      clientWob.ip = 'remote';
-      clientWob.hear = U.Wob({});
-      clientWob.tell = msg => {
-        tellAndHear(msg);
-      };
-      
-      let serverWob = U.WobVal(clientWob);
-      
-      let heartbeatTimeout = null;
       let tellAndHear = async msg => {
-        
-        if (transportDebug) console.log(`--TELL remote:`, msg);
         
         // Do XHR
         let req = new XMLHttpRequest();
@@ -130,21 +114,21 @@
           // Listen for the request to result in a JSON response
           let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
             if (req.readyState !== 4) return;
-            try {
-              if (req.status === 0) throw new Error('Got HTTP response 0');
-              if (req.responseText.length === 0) throw new Error('Above sent empty message');
-              rsv(JSON.parse(req.responseText));
-            } catch(err) {
-              tellAndHear = () => {}; // Don't make any more noise
-              clientWob.shut();
-              rjc(err);
-            }
+            if (req.status === 0) return rjc(new Error('Got HTTP status 0'));
+            //if (req.responseText.length === 0) return rjc(new Error('Above sent empty message'));
+            
+            try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
+            catch(err) {  return rjc(new Error('Malformed JSON')); }
           }}));
           
           // If any data was received, process it at a higher level
           if (res) {
-            if (transportDebug) console.log('--HEAR remote:', res);
-            clientWob.hear.wobble([ res, null ]);
+            try {
+              conn.hear.wobble([ res, null ]);
+            } catch(err) {
+              console.log('TRANSMISSION HEARD:', JSON.stringify(res));
+              console.log('ERROR RESULTING:\n', this.formatError(err));
+            }
           }
           
         } catch(err) {
@@ -159,13 +143,23 @@
         
         // Always have 1 pending req
         if (!numPendingReqs) tellAndHear({ command: 'bankPoll' });
+        
       };
       
-      // Expose our ability to communicate Above with the higher app
-      //clientWob.tell.hold(msg => tellAndHear(msg));
+      
+      let conn = Hog();
+      conn.cpuId = 'remote';
+      conn.hear = U.Wob({});
+      conn.tell = tellAndHear;
+      
+      let serverWob = U.WobVal(null);
+      serverWob.desc = `HTTP @ ${ip}:${port}`;
+      
+      pool.addConn(conn.cpuId, serverWob, conn);
+      serverWob.wobble(conn);
       
       // Immediately bank a poll
-      clientWob.tell({ command: 'bankPoll' });
+      conn.tell({ command: 'bankPoll' });
       
       // TODO: Uncommenting the following may have an issue:
       // This relies on having a good referenced value at "tellAndHear"'
@@ -187,6 +181,8 @@
       let lines = trace.split('\n').map(ln => {
         try {
           let [ pre, suf ] = ln.split(this.traceUrl);
+          if (!suf) return C.skip;
+          
           let [ full, lineInd, charInd ] = suf.match(/([0-9]+):([0-9]+)/);
           
           lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document

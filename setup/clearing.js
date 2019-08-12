@@ -170,7 +170,7 @@ protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 let PromiseOrig = Promise;
 Promise = global.Promise = function Promise(...args) { return new PromiseOrig(...args); };
 Promise.prototype = PromiseOrig.prototype;
-Promise.allArr = arr => PromiseOrig.all(arr);
+Promise.allArr = (...args) => PromiseOrig.all(...args);
 Promise.allObj = async obj => {
   let result = await Promise.allArr(obj.toArr(v => v));
   let ind = 0;
@@ -178,7 +178,7 @@ Promise.allObj = async obj => {
   for (let k in obj) ret[k] = result[ind++];
   return ret;
 };
-
+Promise.resolve = PromiseOrig.resolve;
 let U = global.U = {
   INSP_UID: 0,
   Obj: Object, Arr: Array, Str: String,
@@ -308,10 +308,13 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
   },
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
-  shut: function(...args) {
-    if (this.didShut) throw new Error('Second shut');
-    this.didShut = true;
-    this.shut0(...args);
+  shut: function(group=Set(), ...args) {
+    if (group.has(this)) return; // Double-shut is excused!
+    group.add(this);
+    
+    if (this.didShut) { console.log(U.foundation.formatError(this.didShut)); throw new Error('Second shut'); }
+    this.didShut = new Error('First shut');
+    this.shut0(group, ...args);
     this.shutWob0.wobble(...args);
   },
   shutWob: function() { return this.shutWob0; }
@@ -402,7 +405,7 @@ let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, In
     });
     
   },
-  shut0: function() { if (this.wobHold) this.wobHold.shut(); }
+  shut0: function(group=Set(), ...args) { if (this.wobHold) this.wobHold.shut(group, ...args); }
 })});
 let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) => ({
   
@@ -491,6 +494,9 @@ let WobMemSet = U.inspire({ name: 'WobMemSet', insps: { Wob }, methods: (insp, I
   }
 })});
 
+// TODO: AggWobs doesn't need to add any properties to Hogs! Just map the goddang
+// Hog to a set of wobbles, and when complete is called wobble every Hog for each
+// mapped wobble
 let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
   init: function(...wobs) {
     this.wobs = new Set(); // Maps a `Wob` to its related WobItem
@@ -539,7 +545,7 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
   complete: function(err=null) {
     
     // Apply all wobbles that happened while aggregated!
-    this.wobs.forEach(wob => {
+    for (let wob of this.wobs) {
       
       if (wob.aggCnt > 1) { wob.aggCnt--; return; } // There are still more AggWobs holding `wob`
       
@@ -549,18 +555,14 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
       delete wob.aggCnt;
       delete wob.aggMapHoldToArgsSet;
       
-      if (!err) {
-        // Now we have Holds mapped to a set of Args. Each Hold should be called with every
-        // related instance of Args:
-        mapHoldsToArgsSet.forEach((argsSet, holdFn) => {
-          argsSet.forEach(args => {
-            let argsIsShutHog = args.length === 1 && U.isInspiredBy(args[0], Hog) && args[0].isShut();
-            if (!argsIsShutHog) holdFn(...args); // Unless the shut-Hog exception applies, wobble the Holder!
-          });
-        });
-      }
+      // In the case of an error we want to do no more than clean up the Wobs.
+      // Avoid calling any Holds.
+      if (err) continue;
       
-    });
+      // Call each Hold once for every set of arguments it is meant to be called with
+      mapHoldsToArgsSet.forEach((argsSet, holdFn) => argsSet.forEach(args => holdFn(...args)));
+      
+    }
     
     this.wobs = null; // Prevent adding any new wobs. `AggWobs` can only complete once!
     
@@ -582,6 +584,10 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
   open: function() {
     
     this.hogWobHold = this.hogWob.hold(hog => {
+      
+      // If somehow an already-shut Hog is wobbled, ignore it. This can
+      // happen when using AggWobs!
+      if (hog.isShut()) return;
       
       let hogShutWob = hog.shutWob();
       let apShutWob = this.shutWob();
@@ -624,7 +630,7 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
     });
     
   },
-  shut0: function(...args) { this.hogWobHold.shut(); },
+  shut0: function(group=Set(), ...args) { this.hogWobHold.shut(group, ...args); },
 })});
 
 let nullWob = {

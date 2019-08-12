@@ -7,14 +7,16 @@
   let roomDir = path.join(rootDir, 'room');
   let tempDir = path.join(rootDir, 'mill');
   
-  let fsDeleteSync = f => {
+  // TODO: Shouldn't need sync file functions!
+  let fsRemTreeSync = f => {
     let stat = U.safe(() => fs.statSync(f), () => null);
     if (!stat) return;
     if (stat.isFile()) { fs.unlinkSync(f); return; }
     let names = fs.readdirSync(f);
-    for (let name of names) fsDeleteSync(path.join(f, name));
+    for (let name of names) fsRemTreeSync(path.join(f, name));
     fs.rmdirSync(f);
   };
+  
   let fsUpdFile = (cmps, v) => {
     let f = path.join(...cmps);
     let err = new Error(`Couldn't upd file "${f}"`);
@@ -25,10 +27,44 @@
     let err = new Error(`Couldn't get file "${f}"`);
     return Promise((rsv, rjc) => fs.readFile(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
   };
+  let fsGetChildren = cmps => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't get children for "${f}"`);
+    return Promise((rsv, rjc) => fs.readdir(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
+  };
   let fsRemFile = cmps => {
     let f = path.join(...cmps);
     let err = new Error(`Couldn't rem file "${f}"`);
     return Promise((rsv, rjc) => fs.unlink(f, err0 => err0 ? rjc(err) : rsv()));
+  };
+  let fsRemDir = cmps => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't rem dir "${f}"`);
+    return Promise((rsv, rjc) => fs.rmdir(f, err0 => err0 ? rjc(err) : rsv()));
+  };
+  let fsRemTree = async cmps => {
+    
+    let meta = null;
+    try         { meta = await fs.getFileMetadata(cmps); }
+    catch(err)  { return; }
+    
+    // Files are easy
+    if (meta.isFile()) return await fsRemFile(cmps);
+    
+    // Directories require more work
+    let names = fsGetChildren(cmps);
+    await Promise.allArr(names.map(n => fsRemTree([ ...cmps, n ])));
+    await fsRemDir(cmps);
+    
+  };
+  let fsGetFileMetadata = cmps => {
+    let f = path.join(...cmps);
+    let err = new Error(`Couldn't check file "${f}"`);
+    return Promise((rsv, rjc) => fs.stat(f, (err0, stat) => err0 ? rjc(err0) : rsv(stat)));
+  };
+  let fsGetFileSize = async cmps => {
+    let meta = await fsGetFileMetadata(cmps);
+    return meta.size;
   };
   
   let { Foundation } = U.setup;
@@ -74,24 +110,22 @@
       
       this.roomsInOrder = [];
       this.compilationData = {};
-      this.mountedFiles = {};
+      this.mountedFiles = {}; // TODO: with MANY files could save this in its own file
       
       this.variantDefs = {
         above: { above: 1, below: 0 },
         below: { above: 0, below: 1 }
       };
       
-      this.transportDebug = false;
+      this.transportDebug = true;
       this.httpFullDebug = false;
       this.spoofEnabled = false;
       
-      this.ip = null;
-      this.port = null;
       this.usage0 = process.memoryUsage().map(v => v);
       
       // These directories get purged (TODO: should happen when hut *ends*, not *begins*)
-      fsDeleteSync(path.join(tempDir, 'storage'));
-      fsDeleteSync(path.join(tempDir, 'room'));
+      fsRemTreeSync(path.join(tempDir, 'storage'));
+      fsRemTreeSync(path.join(tempDir, 'room'));
       
       // Create all necessary directories
       U.safe(() => fs.mkdirSync(tempDir));
@@ -111,7 +145,7 @@
         enact: async (foundation, args) => {}
       });
       
-      habitGoal.add(Goal({
+      habitGoal.children.add(Goal({
         name: 'all',
         desc: 'List all habits',
         detect: args => U.isType(args.habit, Object) && args.habit.has('all'),
@@ -128,7 +162,7 @@
         }
       }));
       
-      habitGoal.add(Goal({
+      habitGoal.children.add(Goal({
         name: 'add',
         desc: 'Add a new habit',
         detect: args => U.isType(args.habit, Object) && args.habit.has('add'),
@@ -146,7 +180,7 @@
         }
       }));
       
-      habitGoal.add(Goal({
+      habitGoal.children.add(Goal({
         name: 'rem',
         desc: 'Remove an existing habit',
         detect: args => U.isType(args.habit, Object) && args.habit.has('rem'),
@@ -166,7 +200,7 @@
         }
       }));
       
-      habitGoal.add(Goal({
+      habitGoal.children.add(Goal({
         name: 'use',
         desc: 'Repeat an existing habit',
         detect: args => U.isType(args.habit, Object) && args.habit.has('use'),
@@ -179,7 +213,7 @@
           let data = JSON.parse(await fsGetFile([ tempDir, 'habit', `${habitName}.json` ]));
           let newArgs = ({ ...data, ...args }).gain({ habit: C.skip });
           
-          await foundation.rouse(newArgs);
+          await foundation.raise(newArgs);
           
         }
       }));
@@ -220,8 +254,25 @@
         }
       });
       
+      let environmentGoal = Goal({
+        name: 'env',
+        desc: 'Query environment information',
+        detect: args => args.has('env') && args.env,
+        enact: async (foundation, args) => {}
+      });
+      
+      environmentGoal.children.add(Goal({
+        name: 'network',
+        desc: 'Show network information',
+        detect: args => args.env === 'network',
+        enact: async (foundation, args) => {
+          console.log('Network info:');
+          console.log(JSON.stringify(foundation.getStaticIps(), null, 2));
+        }
+      }));
+      
       // Make sure habits have precendence!
-      return [ habitGoal, ...insp.Foundation.defaultGoals.call(this), versionGoal, helpGoal ];
+      return [ habitGoal, ...insp.Foundation.defaultGoals.call(this), versionGoal, environmentGoal, helpGoal ];
       
     },
     
@@ -236,17 +287,45 @@
         : [];
     },
     
-    compileRecursive: async function(roomName, alreadyParsed={}, list=[]) {
+    compileRecursive: async function(roomName, compiledPrms={}, precedence=[]) {
       
-      if (alreadyParsed.has(roomName)) return list;
-      alreadyParsed[roomName] = true;
+      // Note that we deal with only the names of rooms instead of full-fledged
+      // room-data, because no room is being brought to life here. We are only
+      // compiling source code at this stage.
       
-      let innerRoomNames = await this.parsedDependencies(roomName);
-      await Promise.allArr(innerRoomNames.map(rn => this.compileRecursive(rn, alreadyParsed, list)));
+      // Note there are two separate containers for room names:
+      // - `compiledPrms` keeps track of every room currently compiling. It
+      //   also tells us which rooms are done compiling, as opposed to those
+      //   still in progress (via pending/resolved state of the promise).
+      // - `precedence` is extended whenever a room becomes fully compiled.
+      //   this function will ensure that a room can only fully compile not
+      //   only when all its dependencies are *in the process of compiling*,
+      //   but are *fully compiled*! This means that rooms will always be
+      //   added to `precedence` such that a added earlier never depends on
+      //   a room added later.
       
+      if (compiledPrms.has(roomName)) return compiledPrms[roomName];
+      
+      let rsv = null, rjc = null, prm = Promise((rsv0, rjc0) => { rsv = rsv0; rjc = rjc0; });
+      compiledPrms[roomName] = prm;
+      
+      // Get dependency room names
+      let depNames = await this.parsedDependencies(roomName);
+      
+      // Don't continue until all dependencies are compiled! Even if we
+      // know that our dependencies are already under compilation, we
+      // need to wait for them to finish. This will ensure that rooms
+      // compile in order of dependency-precedence
+      await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
+      
+      // All dependencies are compiled!
       await this.compile(roomName);
       
-      return list.gain([ roomName ]);
+      // There may be other rooms waiting on our compilation. Notify
+      // them by resolving our promise!
+      rsv(precedence.gain([ roomName ]));
+      
+      return precedence;
       
     },
     compile: async function(roomName) {
@@ -469,16 +548,13 @@
       let { method, type, nativeDir } = this.mountedFiles[name];
       
       return {
-        ISFILE: true, type,
-        name,
-        getContent: async () => {
+        ISFILE: true, type, name,
+        getContent: async () => { 
           if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
           this.readFile(nativeDir)
         },
         getPipe: () => fs.createReadStream(nativeDir),
-        getNumBytes: async () => {
-          return new Promise((rsv, rjc) => fs.stat(nativeDir, (err, nb) => err ? rjc(err) : rsv(nb.size)));
-        }
+        getNumBytes: async () => (await fsGetFileMetadata([ nativeDir ])).size
       };
     },
     remMountFile: function(name) {
@@ -504,26 +580,28 @@
         return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
       }));
     },
-    compactIp: function(verboseIp) {
+    compactIp: function(verboseIp, verbosePort) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
       if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
       let pcs = verboseIp.split(',')[0].trim().split('.');
       if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Invalid ip: "${verboseIp}"`);
-      return pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
+      let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
+      return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    makeHttpServer: async function(ip=this.ip, port=this.port) {
-      let connections = {};
-      let idsAtIp = {};
+    makeHttpServer: async function(pool, ip, port) {
       let serverWob = Wob({});
-      serverWob.idsAtIp = idsAtIp;
-      let sendData = (address, res, msg) => {
+      
+      // Translates a javascript value `msg` into http content type and payload
+      let sendData = (res, msg) => {
+        
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
           throw new Error(`Unknown type for ${U.typeOf(msg)}`);
         })();
         
-        if (this.transportDebug) console.log(`--TELL ${address}:`, ({
+        // TODO: This is nice content-type-dependent information!
+        if (false && this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
@@ -554,29 +632,24 @@
             msg.getPipe().pipe(res);
           }
         })[type]();
+        
       };
       let server = http.createServer(async (req, res) => {
         
         // TODO: connections should be Hogs - with "shut" and "shutWob" methods
         // Right now they have "shut" set to `U.Wob()`
         
-        // TODO: connections should have "tell" as a method, not a Wob
-        // Would never want to do `conn.tell.hold(...)`
-        
-        // TODO: Implement a "multi" command for executing multiple commands at once
-        // This will be nice when there are several pending Tells but only 1 available
-        // Response. Should be easy to implement too!
-        
         // Stream the body
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
         
-        // `body` is either JSON or the empty string
+        // `body` is either JSON or the empty string (TODO: For now!)
         try { body = body.length ? JSON.parse(body) : {}; }
         catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
+        
         if (this.httpFullDebug) {
           console.log('\n\n' + [
             '==== INCOMING REQUEST ====',
@@ -588,99 +661,36 @@
           ].join('\n'));
         }
         
+        let [ ip, port ] = (this.spoofEnabled && query.has('spoof'))
+          ? query.spoof.split('/')
+          : [ req.connection.remoteAddress, 80 /*req.connection.remotePort*/ ];
+        
         // Build the "address"; use ip + innerId
-        let ip = this.compactIp(req.connection.remoteAddress);
-        let cookieVal = req.headers.has('cookie') ? req.headers.cookie.trim() : '';
-        let cookieVals = cookieVal ? cookieVal.split(';').toObj(v => v.trim().split('=')) : {}; // Get key-value map of cookie values
-        let innerId = cookieVals.has('id') ? cookieVals.id : null;
+        // TODO: Rename "compactIp" -> "uniqueCpuId"?
+        let cpuId = this.compactIp(ip, port);
         
-        if (innerId === null || !idsAtIp.has(ip) || !idsAtIp[ip].has(innerId)) {
-          
-          // TODO: Even with innerId, collisions could STILL happen if the server is ever restarted
-          // 1) user1 + user2 both at same IP 67.67.67.67
-          // 2) user1 requests and gets user1.innerId === eeee
-          // 3) server restarts
-          // 4) server's list of innerIds is now empty, "eeee" may be assigned
-          // 5) user2 requests and gets user2.innerId === 'eeee'
-          // 6) user1 comes back, browser sends user1.innerId === 'eeee', server
-          //    thinks that eeee is a valid innerId @ user1's IP
-          // Overall there's a (very small) collision chance for 2 users at the same IP
-          
-          innerId = null;
-          let ids = idsAtIp.has(ip) ? idsAtIp[ip] : {};
-          
-          let maxId = 36 * 36 * 36 * 36;
-          for (let i = 0; i < 100; i++) {
-            let tryId = Math.floor(Math.random() * maxId).toString(36).padHead(4, '0');
-            if (!ids.has(tryId)) { innerId = tryId; break; }
-          }
-          
-          if (innerId === null) {
-            console.log(`Couldn't find an inner id at IP ${ip}! :S`);
-            let msg = `Your IP (${ip}) has a dense number of innerIds`;
-            res.writeHead(400, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-            return;
-          }
-          
-          // TODO: It's important not to hit errors between here and `conn.shut.hold`
-          // If the flow is interrupted between these points, `idsAtIp` will never be
-          // cleaned up.
-          if (!idsAtIp.has(ip)) idsAtIp[ip] = {};
-          idsAtIp[ip][innerId] = 1;
-          res.setHeader('Set-Cookie', `id=${innerId}`);
-          
-        }
+        // Get the connection from the pool
+        let conn = pool.getConn(cpuId, serverWob);
         
-        let address = `${ip}/${innerId}`;
-        if (this.spoofEnabled && query.has('spoof')) {
-          let [ ip, innerId ] = query.spoof.split('/');
-          if (ip.has('.')) ip = this.compactIp(ip);
-          address = `${ip}/${parseInt(innerId || 0, 36).toString(36).padHead(4, '0')}`;
-        }
-        
-        // Create a new connection if this address hasn't been seen before
-        if (!connections.has(address)) {
-          if (this.transportDebug) console.log(`++CONN ${address}`);
+        if (!conn) {
           
-          let conn = connections[address] = Hog(() => {
-            
-            console.log(`++EXIT ${address}`);
-            
-            // Clean up `idsAtIp`
-            if (idsAtIp.has(conn.ip) && idsAtIp[conn.ip].has(conn.innerId)) {
-              delete idsAtIp[conn.ip][conn.innerId];
-              if (idsAtIp[conn.ip].isEmpty()) delete idsAtIp[conn.ip];
-            }
-            
-            // End all pooled responses
+          conn = Hog(() => {
+            // Fizzle all remaining polls
             conn.waitResps.forEach(res => res.end());
-            
-            // Clean up `connections`
-            delete connections[address];
-            
           });
-          conn.ip = ip;
-          conn.address = address;
+          conn.cpuId = cpuId;
+          conn.ipPort = [ ip, port ];
           conn.hear = Wob({});
-          conn.tell = msg => {
-            // Send immediately if a response is available, otherwise queue
-            conn.waitResps.length
-              ? sendData(address, conn.waitResps.shift(), msg)
-              : conn.waitTells.push(msg);
-          };
+          conn.tell = msg => conn.waitResps.length // Send immediately if possible, otherwise queue!
+            ? sendData(conn.waitResps.shift(), msg)
+            : conn.waitTells.push(msg);
           conn.waitResps = [];
           conn.waitTells = [];
           
+          pool.addConn(conn.cpuId, serverWob, conn);
           serverWob.wobble(conn);
           
-          if (this.transportDebug) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${address}:`, msg));
         }
-        
-        if (!connections.has(address)) throw new Error(`No connection at address: ${address}`);
-        
-        // Get the current connection for this ip
-        let conn = connections[address];
         
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
@@ -688,9 +698,9 @@
         
         // We are receiving http Requests, but need to work with hut-style Commands
         // The http body should be a Command in json format, but if it's empty
-        // we'll translate the other features of the Request into a Command
-        // This is necessary for interpreting core http functionality, like the
-        // initial request to a page (which has no http body!)
+        // we'll translate the other features of the Request into a Command. This
+        // is necessary for accommodating unavoidable http functionality, like the
+        // initial request to a page (which is always a simple, body-less GET!)
         if (body.isEmpty()) {
           if (urlPath.hasHead('/!')) {
             if (urlPath.hasHead('/!FILE/')) {
@@ -702,8 +712,7 @@
           } else { // If a meaningless request is received reject it and close the connection
             conn.shut();
             res.writeHead(400);
-            res.end();
-            return;
+            return res.end();
           }
         }
         
@@ -734,19 +743,21 @@
         
         // Synced requests end here - `conn.hear.wobble` MUST result in a response
         // TODO: Could consider a timeout to deal with careless, responseless usage
-        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(address, res, msg) ]);
+        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(res, msg) ]);
         
         // Run hut-level actions
         if (comTypes.has('hut')) conn.hear.wobble([ body, null ]);
         
+        // TODO: Only a single longpoll is held - no need for an Array of longpolls!
         // HTTP POLLING MANAGEMENT; We now have an unspent, generic-purpose poll available:
         // If there are any tells send the oldest, otherwise keep ahold of the response
         // If we have multiple polls available, return all but one
         // (Can't hold too many polls - most browsers limit http connections per site)
-        conn.waitTells.length ? sendData(address, res, conn.waitTells.shift()) : conn.waitResps.push(res);
-        while (conn.waitResps.length > 1) sendData(address, conn.waitResps.shift(), { command: 'fizzle' });
+        conn.waitTells.length ? sendData(res, conn.waitTells.shift()) : conn.waitResps.push(res);
+        while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
         
       });
+      serverWob.desc = `HTTP @ ${ip}:${port}`;
       
       await new Promise(r => server.listen(port, ip, 511, r));
       return serverWob;
@@ -756,9 +767,9 @@
       let server = net.createServer(sokt => {
         
         let connectionWob = {
-          ip: this.compactIp(sokt.remoteAddress),
+          ip: this.compactIp(sokt.remoteAddress, sokt.remotePort),
           hear: Wob({}),
-          tell: Wob({}),
+          tell: Wob({}), // TODO: Should be a function
           shut: Wob({})
         };
         
@@ -1109,7 +1120,7 @@
         `U.debugLineData = ${JSON.stringify(debugLineData)};`,
         'let { FoundationBrowser } = U.setup;',
         `U.foundation = FoundationBrowser();`,
-        `U.foundation.rouse({ hut: '${this.hut}', bearing: 'below' });`
+        `U.foundation.raise({ settle: '${this.hut}.below' });`
       ].join('\n');
       
       mainScript.setProp('type', 'text/javascript');
@@ -1141,11 +1152,6 @@
       // We're establishing with known params! So set them on `this`
       this.hut = hut;
       this.bearing = bearing;
-      
-      // TODO: A FoundationNodejs instance may have multiple ips+ports!
-      // Imagine of a single Foundation supports multiple servers!
-      if (ip) { this.ip = ip === 'local' ? '127.0.0.1' : ip; this.port = 80; }
-      if (port) { this.port = port; }
       
       // Overwrite the original "buildRoom" logic
       let origBuildRoom = U.buildRoom;

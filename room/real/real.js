@@ -5,7 +5,7 @@
 U.buildRoom({
   name: 'real',
   innerRooms: [ 'record' ],
-  build: (foundation, record) => {
+  build: (foundation) => {
     
     let { Wob, WobVal, Hog } = U;
     

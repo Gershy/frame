@@ -131,6 +131,8 @@ U.buildRoom({
       },
       relWob: function(recType, ind=null) {
         
+        if (!recType) throw new Error(`Passed null recType`);
+        
         // `ind` is our index in `recType.memberTypes`
         // If no `ind` is given, return the first index matching our type
         if (ind === null) {
@@ -156,10 +158,10 @@ U.buildRoom({
         return this.relWob(recType, ind).toArr(v => v);
         
       },
-      shut0: function(depth=0) {
+      shut0: function(group=Set(), ...args) {
         // Shutting us also shuts all GroupRecs of which we are a MemberRec
         // Note that any double-shuts encountered this way are tolerated
-        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(depth + 1)));
+        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(group, ...args)));
       }
       
     })});

@@ -8,7 +8,7 @@ U.buildRoom({
         if (seed !== null) throw new Error(`${U.typeOf(this)} can't deal with seeds yet`);
       },
       cont: function() { return Math.random(); },
-      disc: function(p) {
+      disc: function(p) { // Sneakily use an object for notation (e.g. `{0:100}`)
         let [ max, min ] = p.find(v => 1);
         min = parseInt(min, 10);
         return min + Math.floor(this.cont() * (max - min));
