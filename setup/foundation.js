@@ -123,7 +123,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
         let [ hut=null, bearing=null ] = args.test.split('.');
         if (hut && args.has('hut') && hut !== args.hut) throw new Error(`Conflicting "hut" values "${hut}" and "${args.hut}"`);
         
-        let suitePcs = args.has('suite') ? args.suit.split('.') : [];
+        let suitePcs = args.has('suite') ? args.suite.split('.') : [];
         
         foundation.prepareForTests();
         
