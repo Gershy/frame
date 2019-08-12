@@ -4,7 +4,7 @@ U.buildRoom({
   build: (foundation) => {
     // Recs are data items with a number of properties, including relational properties
     
-    let { Hog, Wob, WobVal, AggWobs } = U;
+    let { Hog, Wob, WobVal, WobSquad } = U;
     
     let WobRecCrd1 = U.inspire({ name: 'WobRecCrd1', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
@@ -15,11 +15,11 @@ U.buildRoom({
         if (this.rec) this.toHold(holdFn, this.rec); // Call immediately
         return insp.Wob.hold.call(this, holdFn);
       },
-      wobbleAdd: function(rec) {
+      wobble: function(rec) {
         if (!rec) throw new Error('Invalid rec for add');
         if (this.rec) throw new Error('Already add');
         this.rec = rec;
-        this.wobble(this.rec, ...this.rec.members);
+        insp.Wob.wobble.call(this, this.rec, ...this.rec.members);
         return Hog(() => { this.rec = null; });
       },
       size: function() { return this.hog ? 1 : 0; },
@@ -34,10 +34,10 @@ U.buildRoom({
         this.recs.forEach(rec => this.toHold(holdFn, rec));
         return insp.Wob.hold.call(this, holdFn);
       },
-      wobbleAdd: function(rec) {
+      wobble: function(rec) {
         if (this.recs.has(rec.uid)) throw new Error('Already add');
         this.recs.set(rec.uid, rec);
-        this.wobble(rec, ...rec.members);
+        insp.Wob.wobble.call(this, rec, ...rec.members);
         return Hog(() => { this.recs.delete(rec.uid); });
       },
       size: function() { return this.recs.size; },
@@ -70,20 +70,17 @@ U.buildRoom({
         
         let relRec = this.RecCls({ ...params, type: this, members });
         
-        let agg = params.has('agg') ? params.agg : null;
-        let defAgg = !agg;
-        if (defAgg) agg = AggWobs();
+        let squad = params.has('squad') ? params.squad : null;
+        let defAgg = !squad;
+        if (defAgg) squad = WobSquad();
         
         let wobs = members.map((m, ind) => m.relWob(this, ind));
         let err = U.safe(() => {
           
-          // Add all Wobs to AggWobs
-          wobs.forEach(w => agg.addWob(w));
-          
           // Wobble all Wobs
           wobs.forEach(w => {
             // Add the Rec
-            let addHog = w.wobbleAdd(relRec);
+            let addHog = squad.wobble(w, relRec);
             
             // When the Rec shuts, un-add the Rec
             let holdShut = relRec.shutWob().hold(() => addHog.shut());
@@ -94,8 +91,8 @@ U.buildRoom({
           
         });
         
-        // Release all aggregated wobs, error or not
-        if (defAgg) agg.complete(err);
+        // Complete squad
+        if (defAgg) squad.complete(err);
         
         // If an error occurred it needs to be thrown
         if (err) throw err;
@@ -158,10 +155,10 @@ U.buildRoom({
         return this.relWob(recType, ind).toArr(v => v);
         
       },
-      shut0: function(group=Set(), ...args) {
+      shut0: function(group=Set()) {
         // Shutting us also shuts all GroupRecs of which we are a MemberRec
         // Note that any double-shuts encountered this way are tolerated
-        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(group, ...args)));
+        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(group)));
       }
       
     })});
@@ -357,7 +354,7 @@ U.buildRoom({
             
           });
           
-          U.Keep(k, 'agg1', () => {
+          U.Keep(k, 'squad1', () => {
             
             let rt = setup();
             
@@ -368,12 +365,12 @@ U.buildRoom({
             rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
             rec1.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
             
-            let agg = U.AggWobs();
-            let lnk = rt.lnk.create({ agg }, rec1, rec1);
+            let squad = U.WobSquad();
+            let lnk = rt.lnk.create({ squad }, rec1, rec1);
             
-            if (wobRec1 || wobRec2) return { msg: 'agg prevents wobble', result: false };
+            if (wobRec1 || wobRec2) return { msg: 'squad prevents wobble', result: false };
             
-            agg.complete();
+            squad.complete();
             
             return [
               [ 'index 0 wobbled', () => !!wobRec1 ],
@@ -385,7 +382,7 @@ U.buildRoom({
             
           });
           
-          U.Keep(k, 'agg2', () => {
+          U.Keep(k, 'squad2', () => {
             
             let rt = setup();
             
@@ -397,12 +394,12 @@ U.buildRoom({
             rec1.relWob(rt.lnk, 0).hold(rec => wobRec1 = rec);
             rec2.relWob(rt.lnk, 1).hold(rec => wobRec2 = rec);
             
-            let agg = U.AggWobs();
-            let lnk = rt.lnk.create({ agg }, rec1, rec2);
+            let squad = U.WobSquad();
+            let lnk = rt.lnk.create({ squad }, rec1, rec2);
             
-            if (wobRec1 || wobRec2) return { msg: 'agg prevents wobble', result: false };
+            if (wobRec1 || wobRec2) return { msg: 'squad prevents wobble', result: false };
             
-            agg.complete();
+            squad.complete();
             
             return [
               [ 'index 0 wobbled', () => !!wobRec1 ],
@@ -871,7 +868,7 @@ U.buildRoom({
         
       });
       
-      U.Keep(k, 'AggWobs').contain(k => {
+      U.Keep(k, 'WobSquad').contain(k => {
         
         U.Keep(k, 'defersWobbleOnHold', () => {
           
@@ -883,9 +880,9 @@ U.buildRoom({
           let recA = RecA({});
           let recB = RecB({});
           
-          let agg = U.AggWobs();
+          let squad = U.WobSquad();
           
-          recA.attach(relAB.fwd, recB, agg);
+          recA.attach(relAB.fwd, recB, squad);
           
           let cnt = 0;
           let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
@@ -893,10 +890,10 @@ U.buildRoom({
           });
           
           if (cnt > 0) return [
-            [ 'Wobble on hold deferred by aggregation', () => false ]
+            [ 'Wobble on hold deferred by squad', () => false ]
           ];
           
-          agg.complete();
+          squad.complete();
           
           return [
             [ 'Exactly one wobble in total', () => cnt === 1 ]
@@ -914,10 +911,10 @@ U.buildRoom({
           let recA = RecA({});
           let recB = RecB({});
           
-          let agg = U.AggWobs();
+          let squad = U.WobSquad();
           
-          recA.attach(relAB.fwd, recB, agg);
-          agg.complete();
+          recA.attach(relAB.fwd, recB, squad);
+          squad.complete();
           
           let cnt = 0;
           let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
@@ -940,16 +937,16 @@ U.buildRoom({
           let recA = RecA({});
           let recB = RecB({});
           
-          let agg = U.AggWobs();
+          let squad = U.WobSquad();
           
-          recA.attach(relAB.fwd, recB, agg);
+          recA.attach(relAB.fwd, recB, squad);
           
           let cnt = 0;
           let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
             cnt++;
           });
           
-          agg.complete();
+          squad.complete();
           
           return [
             [ 'Exactly one wobble in total', () => cnt === 1 ]

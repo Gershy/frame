@@ -5,6 +5,8 @@
 
 // TODO: Write classes for transports
 
+let doNetworkDbg = true;
+
 let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
   
   init: function({ name, desc, detect, enact }) {
@@ -86,8 +88,6 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     this.cpus[cpuId].conns.rem(server);
   }
 })});
-
-let doNetworkDbg = false;
 
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function() {
@@ -175,7 +175,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   
   // Platform
   getMs: function() { return +new Date(); },
-  queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead!
+  queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead! // TODO: Better name for "queueTask" should simply imply that the task occurs after serial processing is done
   makeHttpServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
   makeSoktServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
   getRootReal: async function() { return C.notImplemented.call(this); },

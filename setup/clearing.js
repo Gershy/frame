@@ -494,20 +494,23 @@ let WobMemSet = U.inspire({ name: 'WobMemSet', insps: { Wob }, methods: (insp, I
   }
 })});
 
-// TODO: AggWobs doesn't need to add any properties to Hogs! Just map the goddang
-// Hog to a set of wobbles, and when complete is called wobble every Hog for each
-// mapped wobble
-let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => ({
-  init: function(...wobs) {
+let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) => ({
+  // Added Wobs have "toHolds" intercepted, and repurposed to collect a mapping of
+  // all args going to all holds of the Wob
+  // Shut Wobs are simply collected.
+  
+  init: function() {
     this.wobs = new Set(); // Maps a `Wob` to its related WobItem
-    wobs.forEach(wob => this.addWob(wob));
+    this.shuts = new Set();
     
     this.err = new Error('');
-    U.foundation.queueTask(() => { // TODO: Better name for "queueTask" should simply imply that the task occurs after serial processing is done
+    U.foundation.queueTask(() => {
       if (this.wobs) { this.err.message = 'INCOMPLETE AGG'; throw this.err; }
       delete this.err;
     });
   },
+  wobble: function(rec, ...args) { this.addWob(rec); return rec.wobble(...args); },
+  shut: function(rec) { this.shuts.add(rec); },
   addWob: function(wob) {
     
     if (this.wobs.has(wob)) return wob; // Allowed to add the same `wob` multiple times (with no effect)
@@ -515,56 +518,53 @@ let AggWobs = U.inspire({ name: 'AggWobs', insps: {}, methods: (insp, Insp) => (
     
     // For each Wob there are many Holds. Each Hold may be contacted multiple times,
     // with different values each time. These values could be simple literals, or
-    // could also be Hogs. Each of the Wob's Holds should be wobbled once for every
-    // received value, EXCEPTING any values which were Hogs, and are shut at the
-    // present instant.
+    // could also be Hogs.
     
-    wob.aggCnt = wob.aggCnt ? wob.aggCnt + 1 : 1; // TODO: No more "numAggs"!
+    wob.squadCnt = wob.squadCnt ? wob.squadCnt + 1 : 1;
+    if (wob.squadCnt > 1) console.log(U.foundation.formatError(new Error('Multiple squads'))); // TODO: Bad?
     
-    // This should be indicated. AggWobs should probably not compound. If anything, there
-    // should be a heirarchy of AggWobs (e.g. `agg1.addWob(agg2)`)
-    if (wob.aggCnt > 1) console.log(U.foundation.formatError(new Error('Multiple aggs')));
-    
-    // Only the 1st AggWobs gets to mask the Wob's "toHold" function:
-    if (wob.aggCnt === 1) {
+    if (wob.squadCnt !== 1) return wob; // WobSquads past the first don't mask any functions
       
-      let m = wob.aggMapHoldToArgsSet = new Map();
-      wob['toHold'] = (holdFn, ...args) => {
-        
-        if (!m.has(holdFn)) m.set(holdFn, new Set());
-        
-        // From the Wob, get a particular Hold, and add a set of arguments for it.
-        m.get(holdFn).add(args);
-        
-      };
+    let m = wob.squadMapHoldToArgsSet = Map();
+    wob['toHold'] = (holdFn, ...args) => {
+      // From the Wob, get a particular Hold, and add a set of arguments for it.
+      if (!m.has(holdFn)) m.set(holdFn, Set());
+      m.get(holdFn).add(args);
+    };
       
-    }
-    
     return wob;
   },
   complete: function(err=null) {
     
-    // Apply all wobbles that happened while aggregated!
-    for (let wob of this.wobs) {
+    let wobs = this.wobs;
+    let shuts = this.shuts;
+    this.wobs = null;
+    this.shuts = null;
+    
+    // Catch up on buffered wobbles!
+    for (let wob of wobs) {
       
-      if (wob.aggCnt > 1) { wob.aggCnt--; return; } // There are still more AggWobs holding `wob`
+      if (wob.squadCnt > 1) { wob.squadCnt--; return; } // There are still more WobSquad holding `wob`
       
-      // Get reference to needed data, then clean up our "toHold" mask and other "agg*" props
-      let mapHoldsToArgsSet = err || wob.aggMapHoldToArgsSet;
+      // Get reference to needed data, then clean up our "toHold" mask and other "squad*" props
+      let holdsToArgsSet = err || wob.squadMapHoldToArgsSet;
       delete wob['toHold'];
-      delete wob.aggCnt;
-      delete wob.aggMapHoldToArgsSet;
+      delete wob.squadCnt;
+      delete wob.squadMapHoldToArgsSet;
       
-      // In the case of an error we want to do no more than clean up the Wobs.
-      // Avoid calling any Holds.
+      // In the case of an error skip calling any Holds!
       if (err) continue;
       
       // Call each Hold once for every set of arguments it is meant to be called with
-      mapHoldsToArgsSet.forEach((argsSet, holdFn) => argsSet.forEach(args => holdFn(...args)));
+      holdsToArgsSet.forEach((argsSet, holdFn) => argsSet.forEach(args => holdFn(...args)));
       
     }
     
-    this.wobs = null; // Prevent adding any new wobs. `AggWobs` can only complete once!
+    // Catch up on buffered shuts!
+    if (!err) {
+      let shutGroup = Set();
+      for (let hog of shuts) hog.shut(shutGroup);
+    }
     
   }
 })});
@@ -586,7 +586,7 @@ let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp,
     this.hogWobHold = this.hogWob.hold(hog => {
       
       // If somehow an already-shut Hog is wobbled, ignore it. This can
-      // happen when using AggWobs!
+      // happen when using WobSquad!
       if (hog.isShut()) return;
       
       let hogShutWob = hog.shutWob();
@@ -643,4 +643,4 @@ let nullShutWob = {
   shutWob: () => nullWob
 };
 C.gain({ nullWob, nullShutWob });
-U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, AccessPath, AggWobs });
+U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, AccessPath, WobSquad });

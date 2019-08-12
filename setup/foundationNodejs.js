@@ -523,7 +523,7 @@
     },
     
     // Platform
-    queueTask: function(func) { process.nextTick(func); },
+    queueTask: process.nextTick, //function(func) { process.nextTick(func); },
     getMemUsage: function() {
       let usage1 = process.memoryUsage();
       return {

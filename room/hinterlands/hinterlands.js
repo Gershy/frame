@@ -18,7 +18,7 @@ U.buildRoom({
       let { version, content } = msg;
       if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
       
-      let agg = U.AggWobs();
+      let squad = U.WobSquad();
       let err = U.safe(() => {
         
         // Apply all operations
@@ -53,7 +53,7 @@ U.buildRoom({
             if (members.find(m => !m)) { waiting.push(addVals); continue; }
             
             // All members are available - create the Rec!
-            let newRec = lands.createRec(type, { uid, value, agg }, ...members);
+            let newRec = lands.createRec(type, { uid, value, squad }, ...members);
             tailRecs.set(uid, newRec);
             
           }
@@ -70,20 +70,15 @@ U.buildRoom({
         updRec.forEach((newValue, uid) => {
           if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
           let rec = lands.allRecs.get(uid);
-          agg.addWob(rec);
-          rec.wobble(newValue);
+          squad.wobble(rec, newValue);
         });
         
         // Remove Recs directly
-        let shutGroup = Set(); // TODO: THE AGGWOBS CAN PROVIDE THE "shutGroup"??? (overall it links a bunch of wobbles together)
+        //let shutGroup = Set();
         remRec.forEach((val, uid) => {
           if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
           let rec = lands.allRecs.get(uid);
-          
-          // Tolerate double-shuts which occur here (can easily happen when
-          // GroupRecs shut due to their MemberRecs shutting, and then are
-          // also shut directly)
-          if (!rec.isShut()) { /*agg.addWob(rec.shutWob());*/ rec.shut(shutGroup); }
+          squad.shut(rec);
         });
         
         // Include all TailRecs in global set
@@ -94,8 +89,7 @@ U.buildRoom({
         
       });
       
-      // Do aggregated wobbles
-      agg.complete(err);
+      squad.complete(err);
       
       if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
       
@@ -376,7 +370,7 @@ U.buildRoom({
           try {
             
             // await this.genSyncThrottlePrm();
-            await new Promise(r => process.nextTick(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
+            await new Promise(r => foundation.queueTask(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
             
             this.syncThrottlePrm = null;
             
