@@ -28,6 +28,7 @@ let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
   
 })});
 let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
+  // TODO: CpuPool should probably written into hinterlands.Lands...
   init: function() {
     this.cpus = {};
     this.dbgLimit = 150;
@@ -52,11 +53,6 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     
     if (doNetworkDbg) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${cpuId}: ${this.dbgItem(msg)}`));
     
-    //conn.hear.hold(
-    //  ([ msg, reply ]) => 
-    //    console.log(
-    //      `--HEAR ${cpuId}: ${this.dbgItem(msg)}`));
-    
     let origTell = conn.tell;
     if (doNetworkDbg) conn.tell = (...args) => {
       console.log(`--TELL ${cpuId}: ${this.dbgItem(args[0])}`);
@@ -73,7 +69,6 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
         delete this.cpus[cpuId];
         if (doNetworkDbg) console.log(`<<EXIT ${cpuId}`);
       }
-      
     });
     
     return conn;
@@ -130,9 +125,9 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
         let rootRoom = await this.establishHut({ hut, bearing, ...args });
         if (!rootRoom.built.has('test')) throw new Error(`Room "${rootRoom.name}" isn't setup for testing`);
         
-        let keep = U.Keep(null, rootRoom.name); // Initialize a primary Keep
-        let rootKeep = keep;                    // Don't lose track of the root
-        await rootRoom.built.test(keep);        // Add room-level tests
+        let rootKeep = U.Keep(null, rootRoom.name); // Initialize a primary Keep
+        let keep = rootKeep;                        // Don't lose track of the root
+        await rootRoom.built.test(keep);            // Add room-level tests
         
         // Drill down to a specific suite
         if (!suitePcs.isEmpty()) keep = keep.getChild(...suitePcs);

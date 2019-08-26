@@ -99,7 +99,7 @@ U.buildRoom({
     };
     
     let { Rec, Rel } = record;
-    let { Hog, WobTmp, WobMemSet, AccessPath } = U;
+    let { Hog, WobTmp, HorzScope } = U;
     
     let TERMS = [];
     
@@ -432,10 +432,10 @@ U.buildRoom({
         
         if (!strength0) {                  // ADD
           
-          // This AccessPath depends on `rec`. That means if `rec` shuts for
+          // This HorzScope depends on `rec`. That means if `rec` shuts for
           // any reason, we will stop following it! We can also explicitly
           // cease following `rec` by calling `ap.shut()`
-          AccessPath(U.WobVal(rec), (dep, rec, ap) => {
+          HorzScope(U.WobVal(rec), (dep, rec, ap) => {
             
             // Keep track of the follow
             this.fols.set(rec, { strength, ap });
@@ -456,7 +456,7 @@ U.buildRoom({
           
         } else {                           // REM
           
-          // Close the AccessPath
+          // Close the HorzScope
           fol.ap.shut();
           
         }
@@ -607,7 +607,7 @@ U.buildRoom({
         let clients = Set();
         
         let server = U.Wob();
-        server.desc = 'Spoofy server for hinterlands tests';
+        server.desc = 'Spoofy Above server for hinterlands tests';
         server.spoofClient = () => {
           let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
           
@@ -675,7 +675,7 @@ U.buildRoom({
         let { trt, server, lands, way } = testData;
         
         let wobbledItem = null;
-        AccessPath(lands.arch.relWob(trt.archItem, 0), (dep, { members: [ _, item ] }) => { wobbledItem = item; });
+        HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, { members: [ _, item ] }) => { wobbledItem = item; });
         
         let item = lands.createRec('item', { value: 'item!' });
         let archItem = lands.createRec('archItem', {}, lands.arch, item);
@@ -694,7 +694,7 @@ U.buildRoom({
         let archItem = lands.createRec('archItem', {}, lands.arch, item)
         
         let wobbledItem = null;
-        AccessPath(lands.arch.relWob(trt.archItem, 0), (dep, { members: [ _, item ] }) => { wobbledItem = item; });
+        HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, { members: [ _, item ] }) => { wobbledItem = item; });
         
         return [
           [ 'relWob returns item', () => !!wobbledItem ],
@@ -714,7 +714,7 @@ U.buildRoom({
         let { trt, server, lands, way } = testData;
         
         let wobbledHut = null;
-        AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
         
         let client = server.spoofClient();
         
@@ -731,7 +731,7 @@ U.buildRoom({
         let client = server.spoofClient();
         
         let wobbledHut = null;
-        AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
         
         return [
           [ 'relWob returns item', () => !!wobbledHut ],
@@ -747,7 +747,7 @@ U.buildRoom({
         let client = server.spoofClient();
         
         let wobbledHut = null;
-        AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
           wobbledHut = hut;
         });
         
@@ -764,7 +764,7 @@ U.buildRoom({
         let client = server.spoofClient();
         
         let wobbledHut = null;
-        AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
         
         client.shut();
         
@@ -793,8 +793,8 @@ U.buildRoom({
           
           let { trt, server, lands, way } = testData;
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
-            dep(AccessPath(lands.arch.relWob(trt.archItem, 0), (dep, archItem) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
+            dep(HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, archItem) => {
               hut.followRec(archItem);
               hut.followRec(archItem.members[1]);
             }));
@@ -831,11 +831,11 @@ U.buildRoom({
           
           let { trt, server, lands, way } = testData;
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             
             let [ arch, hut ] = archHut.members;
             
-            dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
               
               let [ arch, item ] = archItem.members;
               
@@ -878,11 +878,11 @@ U.buildRoom({
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             
             let [ arch, hut ] = archHut.members;
             
-            dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
               
               let [ arch, item ] = archItem.members;
               
@@ -913,9 +913,9 @@ U.buildRoom({
           
           let { trt, server, lands, way } = testData;
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
               let [ arch, item ] = archItem.members;
               hut.followRec(archItem);
               hut.followRec(item);
@@ -951,11 +951,11 @@ U.buildRoom({
           
           let { trt, server, lands, way } = testData;
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             
             let [ arch, hut ] = archHut.members;
             
-            dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
               
               let [ arch, item ] = archItem.members;
               
@@ -995,11 +995,11 @@ U.buildRoom({
           
           let { trt, server, lands, way } = testData;
           
-          AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             
             let [ arch, hut ] = archHut.members;
             
-            dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
               
               let [ arch, item ] = archItem.members;
               
@@ -1048,9 +1048,9 @@ U.buildRoom({
             
             let { trt, server, lands, way } = testData;
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ arch, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1093,9 +1093,9 @@ U.buildRoom({
             
             let { trt, server, lands, way } = testData;
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ arch, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1133,9 +1133,9 @@ U.buildRoom({
             
             let { trt, server, lands, way } = testData;
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ arch, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1168,9 +1168,9 @@ U.buildRoom({
             
             let { trt, server, lands, way } = testData;
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ arch, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1223,6 +1223,7 @@ U.buildRoom({
             
             let cpuIdCnt = 0;
             let serverBelow = state.server = U.Wob();
+            serverBelow.desc = 'Spoofy Below server for hinterlands tests';
             serverBelow.spoofClient = () => {
               let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
               
@@ -1425,10 +1426,10 @@ U.buildRoom({
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             let [ aboveClient, belowClient ] = below1.fresh();
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 
                 let [ _, item ] = archItem.members;
                 hut.followRec(archItem);
@@ -1464,9 +1465,9 @@ U.buildRoom({
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             let [ aboveClient, belowClient ] = below1.fresh();
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ _, item ] = archItem.members;
                 hut.followRec(archItem);
                 hut.followRec(item);
@@ -1499,9 +1500,9 @@ U.buildRoom({
             let { trt, server: serverAbove, lands, way } = mock2PartyData.above;
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ _, item ] = archItem.members;
                 hut.followRec(archItem);
                 hut.followRec(item);
@@ -1537,9 +1538,9 @@ U.buildRoom({
             let { trt, server: serverAbove, lands, way } = mock2PartyData.above;
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ _, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1575,9 +1576,9 @@ U.buildRoom({
             let { trt, server: serverAbove, lands, way } = mock2PartyData.above;
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ _, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);
@@ -1615,9 +1616,9 @@ U.buildRoom({
             let { trt, server: serverAbove, lands, way } = mock2PartyData.above;
             let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
             
-            AccessPath(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
               let [ arch, hut ] = archHut.members;
-              dep(AccessPath(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
                 let [ _, item ] = archItem.members;
                 hut.followRec(item);
                 hut.followRec(archItem);

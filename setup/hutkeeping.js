@@ -172,7 +172,7 @@ let CleanObj = U.inspire({ name: 'CleanObj', insps: { Clean }, methods: (insp, I
     let denied = this.allowed === '*'
       ? null
       : obj.find((v, k) => !this.allowed.has(k) && !this.required.has(k));
-    if (denied) return [ chain, `Object has illegal key: "${denied[1]}"` ];
+    if (denied) return [ chain, `Object has unexpected key: "${denied[1]}"` ];
     
     let objClone = obj.map(v => v);
     

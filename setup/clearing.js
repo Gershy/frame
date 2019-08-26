@@ -306,16 +306,31 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
     this.shutWob0 = U.WobOne();
     if (shut) this.shut0 = shut; // Allow easy overwrite of "shut0" functionality
   },
+  shutCondAny: function(...wobs) {
+    if (this.shutAnyWobs) throw new Error('Already have a "shutCondAny" condition');
+    
+    let holds = Set();
+    let fn = () => {
+      if (!holds) return;
+      let holds0 = holds;
+      holds = null;
+      holds0.forEach(h => h.shut());
+      this.shut();
+    };
+    wobs.forEach(wob => holds.add(wob.hold(fn)));
+    
+    return Hog(() => holds.forEach(h => h.shut()));
+  },
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
-  shut: function(group=Set(), ...args) {
+  shut: function(group=Set()) {
     if (group.has(this)) return; // Double-shut is excused!
     group.add(this);
     
     if (this.didShut) { console.log(U.foundation.formatError(this.didShut)); throw new Error('Second shut'); }
     this.didShut = new Error('First shut');
-    this.shut0(group, ...args);
-    this.shutWob0.wobble(...args);
+    this.shut0(group);
+    this.shutWob0.wobble();
   },
   shutWob: function() { return this.shutWob0; }
 })});
@@ -405,7 +420,7 @@ let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, In
     });
     
   },
-  shut0: function(group=Set(), ...args) { if (this.wobHold) this.wobHold.shut(group, ...args); }
+  shut0: function(group=Set()) { if (this.wobHold) this.wobHold.shut(group); }
 })});
 let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) => ({
   
@@ -496,7 +511,7 @@ let WobMemSet = U.inspire({ name: 'WobMemSet', insps: { Wob }, methods: (insp, I
 
 let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) => ({
   // Added Wobs have "toHolds" intercepted, and repurposed to collect a mapping of
-  // all args going to all holds of the Wob
+  // all args going to all holds of the Wob.
   // Shut Wobs are simply collected.
   
   init: function() {
@@ -524,14 +539,14 @@ let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) =>
     if (wob.squadCnt > 1) console.log(U.foundation.formatError(new Error('Multiple squads'))); // TODO: Bad?
     
     if (wob.squadCnt !== 1) return wob; // WobSquads past the first don't mask any functions
-      
+    
     let m = wob.squadMapHoldToArgsSet = Map();
     wob['toHold'] = (holdFn, ...args) => {
       // From the Wob, get a particular Hold, and add a set of arguments for it.
       if (!m.has(holdFn)) m.set(holdFn, Set());
       m.get(holdFn).add(args);
     };
-      
+    
     return wob;
   },
   complete: function(err=null) {
@@ -569,78 +584,125 @@ let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) =>
   }
 })});
 
-let AccessPath = U.inspire({ name: 'AccessPath', insps: { Hog }, methods: (insp, Insp) => ({
+let shutDependence = (dep, srcShutWobs) => {
+  
+  // Sets up a bunch of holds to implement shut dependence, such that
+  // if any SrcHog shuts, `dep`, the TrgHog, will shut as well!
+  // Note that setting up such a dependence creates many Hogs. Shutting
+  // these Hogs can't be accomplished directly - this function returns
+  // the SrcHog, and no explicit way of undoing the shut-dependence.
+  // It may sound workable to add an extra Hog into `srcShutWobs`, and
+  // shut it when the dependence should be undone - but note this will
+  // also shut `dep`! At the moment there is no way to remove the
+  // dependence without shutting `dep`.
+  
+  // Note that our SrcShuts aren't a list of Hogs, but rather Wobs -
+  // which can be produced via `theHog.shutWob()`. This gives us more
+  // freedom - we can pass Wobs that aren't specifically ShutWobs, and
+  // tie `dep`'s dependence to these Wobs as well!
+  
+  if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.typeOf(dep)}`);
+  if (srcShutWobs.find(w => !w.hold)) throw new Error(`Invalid srcShutWobs: [ ${srcShutWobs.map(U.typeOf).join(', ')} ]`);
+  
+  // A set of all SrcHolds which will cause `dep` (the TrgHold) to shut
+  let srcShutCauseDepShutHolds = null;
+  
+  // When Dep shuts immediately stop holding
+  let depShutFirstWob = dep.shutWob().hold(() => {
+    let holdsToDrop = srcShutCauseDepShutHolds;
+    srcShutCauseDepShutHolds = null;
+    
+    // Shut every non-null src hold
+    let shutGroup = Set();
+    holdsToDrop.forEach(hold => hold && hold.shut(shutGroup));
+  });
+  
+  // It's possible that `dep.shutWob()` has wobbled before any
+  // `srcShutCauseDepShutHolds` are initialized.
+  if (!srcShutCauseDepShutHolds) {
+    // If the HorzScope or Hog shut, immediately shut all src holds!
+    // Note that shutting `dep` will cause all such holds to be dropped
+    
+    srcShutCauseDepShutHolds = [];
+    for (let srcShut of srcShutWobs) {
+      if (!srcShutCauseDepShutHolds) break; // Cut short if everything has shut
+      srcShutCauseDepShutHolds.push(srcShut.hold((...args) => dep.shut(...args)));
+    }
+  }
+  
+  return dep;
+  
+};
+
+let HorzScope = U.inspire({ name: 'HorzScope', insps: { Hog }, methods: (insp, Insp) => ({
   init: function(hogWob, gen=null, dbg=false) {
     insp.Hog.init.call(this);
     
-    this.hogWob = hogWob;
     this.gen = gen;
-    
     this.hogWobHold = null;
-    this.allHogDeps = new Set();
-    
-    this.open();
+    this.open(hogWob);
   },
-  open: function() {
+  open: function(hogWob) {
     
-    this.hogWobHold = this.hogWob.hold(hog => {
+    this.hogWobHold = hogWob.hold(hog => {
       
       // If somehow an already-shut Hog is wobbled, ignore it. This can
-      // happen when using WobSquad!
+      // happen when using WobSquads, for example!
       if (hog.isShut()) return;
       
-      let hogShutWob = hog.shutWob();
-      let apShutWob = this.shutWob();
-      
-      // Shutting the `AccessPath` shuts every accessed `Hog`
-      
-      // Deps alongside `hog` shut when `hog` shuts
-      let addHogDep = dep => {
-        
-        if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.typeOf(dep)}`);
-        let depShutWob = dep.shutWob();
-        
-        if (!depShutWob || !depShutWob.hold) throw new Error(`Mis-implemented shutWob: ${U.typeOf(dep)}`);
-        
-        let [ hogShutCauseDepShutHold, apShutCauseDepShutHold ] = [ null, null ];
-        let finished = false;
-        
-        // If the Dep shuts stop holding
-        let depShutFirstWob = depShutWob.hold(() => {
-          if (hogShutCauseDepShutHold) hogShutCauseDepShutHold.shut();
-          if (apShutCauseDepShutHold) apShutCauseDepShutHold.shut();
-          finished = true;
-        });
-        
-        // It's possible that `depShutWob` wobbles immediately, before
-        // `hogShutCauseDepShutHold` and `apShutCauseDepShutHold` are even
-        // initialized. If that occurs, shouldn't even initialize them!
-        if (!finished) {
-          // If the AccessPath or Hog shut, immediately shut `dep`
-          // Note that shutting `dep` will cause both these holds, against
-          // the Hog shutting and the AccessPath shutting, to be dropped.
-          hogShutCauseDepShutHold = hogShutWob.hold((...args) => dep.shut(...args));
-          apShutCauseDepShutHold = apShutWob.hold((...args) => dep.shut(...args));
-        }
-        
-        return dep;
-      };
+      // Whatever the user passes as a Dep will be tied to `hog`
+      let addHogDep = dep => { shutDependence(dep, [ hog.shutWob(), this.shutWob() ]); return dep; };
       this.gen(addHogDep, hog, this);
       
     });
     
   },
-  shut0: function(group=Set(), ...args) { this.hogWobHold.shut(group, ...args); },
+  shut0: function(group=Set()) { this.hogWobHold.shut(group); },
+})});
+let VertScope = U.inspire({ name: 'VertScope', insps: { Wob, Hog }, methods: (insp, Insp) => ({
+  init: function(wob=null) {
+    insp.Wob.init.call(this);
+    insp.Hog.init.call(this);
+    this.genSubWob = null;
+    this.children = Set();  // All our sub-states
+  },
+  trackWob: function(wob, depHog=null, path=[]) { // TODO: Consider adding an "squad" param?
+    
+    // `wob` is a Rec wobbled by our mainWob
+    
+    if (wob.isShut()) return; // Skip Wobs which are somehow already shut
+    
+    // `trackHog` lives so long as this `VertScope` is tracking `wob`
+    let trackHog = Hog();
+    let deps = [ this.shutWob(), wob.shutWob() ];
+    if (depHog) deps.push(depHog.shutWob());
+    shutDependence(trackHog, deps);
+    
+    let addHogDep = dep => { shutDependence(dep, [ trackHog.shutWob() ]); return dep; };
+    let fullPath = [ wob, ...path ];
+    this.wobble(addHogDep, fullPath);
+    
+    this.children.forEach(child => {
+      
+      // Generate some new `Wob` derived from `Wob`
+      let relWob = child.genSubWob(wob);
+      
+      // Wobble `tWobs` ("TrackWobs") when `relWob` wobbles!
+      // Derived Wobs wobble "TrackWobs". All the VertScope's children
+      // are informed of a new TrackWob.
+      let holdRelWob = relWob.hold(tWob => child.trackWob(tWob, trackHog, fullPath));
+      shutDependence(holdRelWob, [ trackHog.shutWob() ]);
+      
+    });
+    
+  },
+  dive: function(genSubWob) {
+    let childVertScope = VertScope();
+    childVertScope.genSubWob = genSubWob;
+    this.children.add(childVertScope);
+    return childVertScope;
+  },
+  shut0: function(...args) { this.children.forEach(child => child.shut(...args)); }
 })});
 
-let nullWob = {
-  hold: () => nullShutWob,
-  wobble: () => {}
-};
-let nullShutWob = {
-  hold: () => nullShutWob,
-  shut: () => {},
-  shutWob: () => nullWob
-};
-C.gain({ nullWob, nullShutWob });
-U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, AccessPath, WobSquad });
+U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, HorzScope, VertScope, WobSquad });

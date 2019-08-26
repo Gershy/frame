@@ -122,8 +122,8 @@ U.buildRoom({
         
         // Any MemberRec shutting causes `this` GroupRec to shut
         // `this` GroupRec shutting releases all holds on MemberRecs
-        let holds = members.map(m => m.shutWob().hold(() => this.shut()));
-        this.shutWob().hold(() => holds.forEach(h => h.shut()));
+        let holds = members.map(m => m.shutWob().hold(g => this.shut(g)));
+        this.shutWob().hold(g => holds.forEach(h => h.shut(g)));
         
       },
       relWob: function(recType, ind=null) {
@@ -180,6 +180,12 @@ U.buildRoom({
           let { rt, add } = recTyper();
           add('rec', Rec);
           add('lnk', Rec, '11', rt.rec, rt.rec);
+          add('recX', Rec);
+          add('recY', Rec);
+          add('recZ', Rec);
+          add('lnkXY', Rec, '11', rt.recX, rt.recY);
+          add('lnkYZ', Rec, '11', rt.recY, rt.recZ);
+          add('lnkZX', Rec, '11', rt.recZ, rt.recX);
           return rt;
         };
         
@@ -407,6 +413,681 @@ U.buildRoom({
               [ 'index 0 correct', () => wobRec1 === lnk ],
               [ 'index 1 correct', () => wobRec2 === lnk ],
               [ 'rel is correct', () => lnk.members[0] === rec1 && lnk.members[1] === rec2 ]
+            ];
+            
+          });
+          
+        });
+        
+        U.Keep(k, 'VertScope').contain(k => {
+          
+          U.Keep(k, 'trackRecWobble', () => {
+            
+            let rt = setup();
+            let rec = rt.rec.create();
+            let didWobble = false;
+            
+            let recScope = U.VertScope();
+            recScope.hold(() => didWobble = true);
+            recScope.trackWob(rec);
+            
+            return { result: didWobble };
+            
+          });
+          
+          U.Keep(k, 'trackShutRecNoWobble', () => {
+            
+            let rt = setup();
+            let rec = rt.rec.create();
+            rec.shut();
+            let didWobble = false;
+            
+            let recScope = U.VertScope();
+            recScope.hold(() => didWobble = true);
+            recScope.trackWob(rec);
+            
+            return { result: !didWobble };
+            
+          });
+          
+          U.Keep(k, 'dive1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(rec => rec.relWob(rt.lnk, 0));
+            
+            let didWobble = false;
+            scp2.hold(() => didWobble = true);
+            
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            scp1.trackWob(rec1);
+            
+            return { result: didWobble };
+            
+          });
+          
+          U.Keep(k, 'dive2', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(rec => rec.relWob(rt.lnk, 0));
+            
+            let didWobble = false;
+            scp2.hold(() => didWobble = true);
+            
+            let rec1 = rt.rec.create();
+            scp1.trackWob(rec1);
+            
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            return { result: didWobble };
+            
+          });
+          
+          U.Keep(k, 'dive3', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(rec => rec.relWob(rt.lnk, 0));
+            let scp3 = scp2.dive(lnk => U.WobVal(lnk.members[1]));
+            
+            let wobbledVal = null;
+            scp3.hold((dep, val) => wobbledVal = val);
+            
+            let rec1 = rt.rec.create();
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            scp1.trackWob(rec1);
+            
+            return { result: wobbledVal[0] === rec2 };
+            
+          });
+          
+          U.Keep(k, 'dive4', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(rec => rec.relWob(rt.lnk, 0));
+            let scp3 = scp2.dive(lnk => U.WobVal(lnk.members[1]));
+            
+            let wobbledVal = null;
+            scp3.hold((dep, val) => wobbledVal = val);
+            
+            let rec1 = rt.rec.create();
+            scp1.trackWob(rec1);
+            
+            let rec2 = rt.rec.create();
+            let lnk = rt.lnk.create({}, rec1, rec2);
+            
+            return { result: wobbledVal[0] === rec2 };
+            
+          });
+          
+          U.Keep(k, 'dive5', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            scp1.trackWob(recX);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'dive6', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            scp1.trackWob(recX);
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'dive7', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'shut1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let didWobble = false;
+            scp5.hold(() => didWobble = true);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            lnkXY.shut(); // Cut off the VertScope chain
+            
+            let recZ = rt.recZ.create();
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            
+            return { result: !didWobble };
+            
+          });
+          
+          U.Keep(k, 'shut2', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let didWobble = false;
+            scp5.hold(() => didWobble = true);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            recY.shut(); // Cut off the VertScope chain
+            
+            let recZ = rt.recZ.create();
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            
+            return { result: !didWobble };
+            
+          });
+          
+          U.Keep(k, 'depShut1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let didShutDep = false;
+            scp5.hold((dep, val) => dep(Hog(() => didShutDep = true)));
+            
+            let recX = rt.recX.create();
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            
+            scp1.trackWob(recX);
+            
+            if (didShutDep) return { result: false, msg: 'didn\'t shut too early' };
+            
+            lnkXY.shut();
+            
+            return { result: didShutDep, msg: 'dep was shut' };
+            
+          });
+          
+        });
+        
+      });
+      
+      U.Keep(k, 'rel1M').contain(k => {
+        
+        let setup = () => {
+          let { rt, add } = recTyper();
+          add('rec', Rec);
+          add('lnk', Rec, '1M', rt.rec, rt.rec);
+          add('recX', Rec);
+          add('recY', Rec);
+          add('recZ', Rec);
+          add('lnkXY', Rec, '1M', rt.recX, rt.recY);
+          add('lnkYZ', Rec, '1M', rt.recY, rt.recZ);
+          add('lnkZX', Rec, '1M', rt.recZ, rt.recX);
+          return rt;
+        };
+        
+        U.Keep(k, 'VertScope').contain(k => {
+          
+          U.Keep(k, 'dive1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            scp1.trackWob(recX);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'dive2', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            scp1.trackWob(recX);
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'dive3', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            let scp6 = scp5.dive(recZ => recZ.relWob(rt.lnkZX, 0));
+            let scp7 = scp6.dive(lnkZX => U.WobVal(lnkZX.members[1]));
+            
+            let wobbledVal = null;
+            scp7.hold((dep, val) => wobbledVal = val);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let recZ = rt.recZ.create();
+            let recXFin = rt.recX.create();
+            
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            let lnkZX = rt.lnkZX.create({}, recZ, recXFin);
+            
+            return { result: wobbledVal[0] === recXFin };
+            
+          });
+          
+          U.Keep(k, 'shut1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let didWobble = false;
+            scp5.hold(() => didWobble = true);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            lnkXY.shut(); // Cut off the VertScope chain
+            
+            let recZ = rt.recZ.create();
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            
+            return { result: !didWobble };
+            
+          });
+          
+          U.Keep(k, 'shut2', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let didWobble = false;
+            scp5.hold(() => didWobble = true);
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY = rt.recY.create();
+            let lnkXY = rt.lnkXY.create({}, recX, recY);
+            recY.shut(); // Cut off the VertScope chain
+            
+            let recZ = rt.recZ.create();
+            let lnkYZ = rt.lnkYZ.create({}, recY, recZ);
+            
+            return { result: !didWobble };
+            
+          });
+          
+          U.Keep(k, 'depShut1', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let wobbledRecs = Set();
+            let shutRecs = Set();
+            scp5.hold((dep, [ rec ]) => { wobbledRecs.add(rec); dep(Hog(() => shutRecs.add(rec))); });
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY1 = rt.recY.create();
+            let recY2 = rt.recY.create();
+            let recY3 = rt.recY.create();
+            
+            let recZ1 = rt.recZ.create();
+            let recZ2 = rt.recZ.create();
+            let recZ3 = rt.recZ.create();
+            
+            let lnkXY1 = rt.lnkXY.create({}, recX, recY1);
+            let lnkXY2 = rt.lnkXY.create({}, recX, recY2);
+            let lnkXY3 = rt.lnkXY.create({}, recX, recY3);
+            
+            let lnkYZ1 = rt.lnkYZ.create({}, recY1, recZ1);
+            let lnkYZ2 = rt.lnkYZ.create({}, recY2, recZ2);
+            let lnkYZ3 = rt.lnkYZ.create({}, recY3, recZ3);
+            
+            lnkXY1.shut();
+            lnkYZ2.shut();
+            
+            return [
+              [ 'wobbled 3 recs', () => wobbledRecs.size === 3 ],
+              [ 'recZ1 deps shut', () => shutRecs.has(recZ1) ],
+              [ 'recZ2 deps shut', () => shutRecs.has(recZ2) ],
+              [ 'recZ3 deps still open', () => !shutRecs.has(recZ3) ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'depShut2', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let wobbledRecs = Set();
+            let shutRecs = Set();
+            scp5.hold((dep, [ rec ]) => { wobbledRecs.add(rec); dep(Hog(() => shutRecs.add(rec))); });
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY1 = rt.recY.create();
+            let recY2 = rt.recY.create();
+            let recY3 = rt.recY.create();
+            
+            let recZ1 = rt.recZ.create();
+            let recZ2 = rt.recZ.create();
+            let recZ3 = rt.recZ.create();
+            
+            let lnkYZ1 = rt.lnkYZ.create({}, recY1, recZ1);
+            let lnkYZ2 = rt.lnkYZ.create({}, recY2, recZ2);
+            let lnkYZ3 = rt.lnkYZ.create({}, recY3, recZ3);
+            
+            let lnkXY1 = rt.lnkXY.create({}, recX, recY1);
+            let lnkXY2 = rt.lnkXY.create({}, recX, recY2);
+            let lnkXY3 = rt.lnkXY.create({}, recX, recY3);
+            
+            recY1.shut();
+            recZ2.shut();
+            
+            return [
+              [ 'wobbled 3 recs', () => wobbledRecs.size === 3 ],
+              [ 'recZ1 deps shut', () => shutRecs.has(recZ1) ],
+              [ 'recZ2 deps shut', () => shutRecs.has(recZ2) ],
+              [ 'recZ3 deps still open', () => !shutRecs.has(recZ3) ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'depShut3', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let wobbledRecs = Set();
+            let shutRecs = Set();
+            scp5.hold((dep, [ rec ]) => { wobbledRecs.add(rec); dep(Hog(() => shutRecs.add(rec))); });
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY1 = rt.recY.create();
+            let recY2 = rt.recY.create();
+            let recY3 = rt.recY.create();
+            
+            let recZ1 = rt.recZ.create();
+            let recZ2 = rt.recZ.create();
+            let recZ3 = rt.recZ.create();
+            
+            let lnkYZ1 = rt.lnkYZ.create({}, recY1, recZ1);
+            let lnkYZ2 = rt.lnkYZ.create({}, recY2, recZ2);
+            let lnkYZ3 = rt.lnkYZ.create({}, recY3, recZ3);
+            
+            let lnkXY1 = rt.lnkXY.create({}, recX, recY1);
+            let lnkXY2 = rt.lnkXY.create({}, recX, recY2);
+            let lnkXY3 = rt.lnkXY.create({}, recX, recY3);
+            
+            recX.shut();
+            
+            return [
+              [ 'wobbled 3 recs', () => wobbledRecs.size === 3 ],
+              [ 'recZ1 deps shut', () => shutRecs.has(recZ1) ],
+              [ 'recZ2 deps shut', () => shutRecs.has(recZ2) ],
+              [ 'recZ3 deps shut', () => shutRecs.has(recZ3) ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'depShut4', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let wobbledRecs = Set();
+            let shutRecs = Set();
+            scp5.hold((dep, [ rec ]) => { wobbledRecs.add(rec); dep(Hog(() => shutRecs.add(rec))); });
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY1 = rt.recY.create();
+            let recY2 = rt.recY.create();
+            let recY3 = rt.recY.create();
+            
+            let recZ1 = rt.recZ.create();
+            let recZ2 = rt.recZ.create();
+            let recZ3 = rt.recZ.create();
+            
+            let lnkYZ1 = rt.lnkYZ.create({}, recY1, recZ1);
+            let lnkYZ2 = rt.lnkYZ.create({}, recY2, recZ2);
+            let lnkYZ3 = rt.lnkYZ.create({}, recY3, recZ3);
+            
+            let lnkXY1 = rt.lnkXY.create({}, recX, recY1);
+            let lnkXY2 = rt.lnkXY.create({}, recX, recY2);
+            let lnkXY3 = rt.lnkXY.create({}, recX, recY3);
+            
+            scp3.shut();
+            
+            return [
+              [ 'wobbled 3 recs', () => wobbledRecs.size === 3 ],
+              [ 'recZ1 deps shut', () => shutRecs.has(recZ1) ],
+              [ 'recZ2 deps shut', () => shutRecs.has(recZ2) ],
+              [ 'recZ3 deps shut', () => shutRecs.has(recZ3) ]
+            ];
+            
+          });
+          
+          U.Keep(k, 'depShut5', () => {
+            
+            let rt = setup();
+            
+            let scp1 = U.VertScope();
+            let scp2 = scp1.dive(recX => recX.relWob(rt.lnkXY, 0));
+            let scp3 = scp2.dive(lnkXY => U.WobVal(lnkXY.members[1]));
+            let scp4 = scp3.dive(recY => recY.relWob(rt.lnkYZ, 0));
+            let scp5 = scp4.dive(lnkYZ => U.WobVal(lnkYZ.members[1]));
+            
+            let wobbledRecs = Set();
+            let shutRecs = Set();
+            scp5.hold((dep, [ rec ]) => { wobbledRecs.add(rec); dep(Hog(() => shutRecs.add(rec))); });
+            
+            let recX = rt.recX.create();
+            scp1.trackWob(recX);
+            
+            let recY1 = rt.recY.create();
+            let recY2 = rt.recY.create();
+            let recY3 = rt.recY.create();
+            
+            let recZ1 = rt.recZ.create();
+            let recZ2 = rt.recZ.create();
+            let recZ3 = rt.recZ.create();
+            
+            let lnkYZ1 = rt.lnkYZ.create({}, recY1, recZ1);
+            let lnkYZ2 = rt.lnkYZ.create({}, recY2, recZ2);
+            let lnkYZ3 = rt.lnkYZ.create({}, recY3, recZ3);
+            
+            let lnkXY1 = rt.lnkXY.create({}, recX, recY1);
+            let lnkXY2 = rt.lnkXY.create({}, recX, recY2);
+            let lnkXY3 = rt.lnkXY.create({}, recX, recY3);
+            
+            scp1.shut();
+            
+            return [
+              [ 'wobbled 3 recs', () => wobbledRecs.size === 3 ],
+              [ 'recZ1 deps shut', () => shutRecs.has(recZ1) ],
+              [ 'recZ2 deps shut', () => shutRecs.has(recZ2) ],
+              [ 'recZ3 deps shut', () => shutRecs.has(recZ3) ]
             ];
             
           });
@@ -704,7 +1385,7 @@ U.buildRoom({
         
       });
       
-      U.Keep(k, 'AccessPath').contain(k => {
+      U.Keep(k, 'HorzScope').contain(k => {
         
         U.Keep(k, 'rel11').contain(k => {
           
@@ -714,7 +1395,7 @@ U.buildRoom({
             let rec = RecA({});
             let didShut = false;
             
-            U.AccessPath(U.WobVal(rec), (dep, hog) => dep({ shut: () => { didShut = true; }, shutWob: () => U.Wob() }));
+            U.HorzScope(U.WobVal(rec), (dep, hog) => dep({ shut: () => { didShut = true; }, shutWob: () => U.Wob() }));
             
             rec.shut();
             
@@ -733,7 +1414,7 @@ U.buildRoom({
             
             let didShut = false;
             
-            U.AccessPath(recA.relWob(relAB.fwd), (dep, recB) => {
+            U.HorzScope(recA.relWob(relAB.fwd), (dep, recB) => {
               dep({
                 shut: () => { didShut = true; },
                 shutWob: () => C.nullShutWob
@@ -755,9 +1436,9 @@ U.buildRoom({
             
             let recA = RecA({});
             
-            // Define an AccessPath which immediately "deps" everything it gets, and immediately
-            // shut that same AccessPath
-            U.AccessPath(recA.relWob(relAB.fwd), (dep, relRecB) => dep(relRecB)).shut();
+            // Define a HorzScope which immediately "deps" everything it gets, and immediately
+            // shut that same HorzScope
+            U.HorzScope(recA.relWob(relAB.fwd), (dep, relRecB) => dep(relRecB)).shut();
             
             return { result: recA.relWob(relAB.fwd).isEmpty() };
             
@@ -772,8 +1453,8 @@ U.buildRoom({
             
             let recA = RecA({});
             
-            let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, relRecB) => {
-              dep(U.AccessPath(U.WobVal(relRecB), (dep, relRecB) => {
+            let ap = U.HorzScope(recA.relWob(relAB.fwd), (dep, relRecB) => {
+              dep(U.HorzScope(U.WobVal(relRecB), (dep, relRecB) => {
                 dep(relRecB);
               }));
             });
@@ -868,6 +1549,43 @@ U.buildRoom({
         
       });
       
+      U.Keep(k, 'VertScope').contain(k => {
+        
+        U.Keep(k, 'rel11').contain(k => {
+          
+          U.Keep(k, 'trackRecWobble', () => {
+            
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let rec = RecA({});
+            let didWobble = false;
+            
+            let recScope = U.VertScope();
+            recScope.hold(() => didWobble = true);
+            recScope.trackWob(rec);
+            
+            return { result: didWobble };
+            
+          });
+          
+          U.Keep(k, 'trackRecWobble', () => {
+            
+            let RecA = U.inspire({ name: 'RecA', insps: { Rec } });
+            let rec = RecA({});
+            rec.shut();
+            let didWobble = false;
+            
+            let recScope = U.VertScope();
+            recScope.hold(() => didWobble = true);
+            recScope.trackWob(rec);
+            
+            return { result: !didWobble };
+            
+          });
+          
+        });
+        
+      });
+      
       U.Keep(k, 'WobSquad').contain(k => {
         
         U.Keep(k, 'defersWobbleOnHold', () => {
@@ -885,7 +1603,7 @@ U.buildRoom({
           recA.attach(relAB.fwd, recB, squad);
           
           let cnt = 0;
-          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+          let ap = U.HorzScope(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
             cnt++;
           });
           
@@ -917,7 +1635,7 @@ U.buildRoom({
           squad.complete();
           
           let cnt = 0;
-          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+          let ap = U.HorzScope(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
             cnt++;
           });
           
@@ -942,7 +1660,7 @@ U.buildRoom({
           recA.attach(relAB.fwd, recB, squad);
           
           let cnt = 0;
-          let ap = U.AccessPath(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
+          let ap = U.HorzScope(recA.relWob(relAB.fwd), (dep, { rec: recB }) => {
             cnt++;
           });
           
