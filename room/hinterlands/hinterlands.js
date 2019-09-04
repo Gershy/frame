@@ -183,6 +183,10 @@ U.buildRoom({
         /// =BELOW}
         
       },
+      addWay: function(way) {
+        way.lands = this;
+        this.ways.add(way);
+      },
       nextUid: function() { return (this.uidCnt++).toString(36).padHead(8, '0'); },
       genUniqueTerm: function() {
         // If we used `getTerm` we could get an infinite loop! Simply exclude
@@ -196,7 +200,6 @@ U.buildRoom({
         throw new Error('Too many huts! Not enough terms!! AHHHH!!!');
       },
       
-      // TODO: Useless? Most Recs don't need a "lands" param...
       createRec: function(name, params={}, ...args) {
         if (!this.recTypes.has(name)) throw new Error(`Invalid RecType name: "${name}"`)
         if (!params.has('uid')) params.uid = this.nextUid();
@@ -486,16 +489,13 @@ U.buildRoom({
       }
     })});
     let Way = U.inspire({ name: 'Way', methods: (insp, Insp) => ({
-      init: function({ lands, makeServer }) {
-        if (!lands) throw new Error('Missing "lands"');
+      init: function({ makeServer }) {
         if (!makeServer) throw new Error('Missing "makeServer"');
         
-        this.lands = lands;
+        this.lands = null;
         this.makeServer = makeServer;
         this.server = null;
         this.serverFunc = null
-        
-        this.lands.ways.add(this); // TODO: I prefer `lands.addWay(Way(...));`
       },
       
       open: async function() {
@@ -644,7 +644,8 @@ U.buildRoom({
           return client;
         };
         
-        let way = Way({ lands, makeServer: () => server });
+        let way = Way({ makeServer: () => server });
+        lands.addWay(way);
         way.hutForClient = client => way.lands.hutsBelow.get(client.cpuId);
         
         await lands.open();
@@ -1412,6 +1413,12 @@ U.buildRoom({
             let [ aboveClient, belowClient ] = below1.fresh();
             
             let heardData = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+            
+            if (!U.isType(heardData, String)) {
+              console.log('DAFUQ??', U.typeOf(heardData));
+              console.log(heardData);
+              throw new Error(`Unexpected non-String in test: ${U.typeOf(heardData)} ${JSON.stringify(heardData, null, 2)}`);
+            }
             
             return [
               [ 'response is String', () => U.isType(heardData, String) ],

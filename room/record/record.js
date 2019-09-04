@@ -150,11 +150,8 @@ U.buildRoom({
         return this.relWobs[key];
         
       },
-      relRecs: function(recType, ind=null) {
-        
-        return this.relWob(recType, ind).toArr(v => v);
-        
-      },
+      relRecs: function(recType, ind=null) { return this.relWob(recType, ind).toArr(v => v); }, // TODO: Inefficient!
+      relRec: function(recType, ind=null) { return this.relRecs(recType, ind)[0] || null; }, // TODO: Inefficient!
       shut0: function(group=Set()) {
         // Shutting us also shuts all GroupRecs of which we are a MemberRec
         // Note that any double-shuts encountered this way are tolerated

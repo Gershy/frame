@@ -7,26 +7,11 @@
 // "Scenario" -> A trail of occurrences leading to a particular moment
 // "AccessPath" -> "Reflex" -> Accompanying effects occurring in a scenario
 
-//  // This is more realistic, and agnostic of how Records work
-//  let myCurrentVotedEntryWob = dep(Scenario('Story', myStory)) // Adds Story to chain
-//    .to('Round', ({ rec: story }) => story.relWob(rel.storyCurrentRound.fwd))
-//    .to('Entry', ({ rec: round }) => round.relWob(rel.roundEntries.fwd))
-//    .to('VoteAuthor', ({ rec: entry }) => entry.relWob(rel.roundEntryVote.fwd))
-//    .filter(relAuthor => relAuthor.rec === myAuthor); // Doesn't add to result
-//
-//  let myCurrentVotedEntryWob = dep(Scenario('Story', myStory))
-//    .rel('Round', rel.storyCurrentRound.fwd)          // Adds Round to chain
-//    .rel('Entry', rel.roundEntries.fwd)               // Adds Entry to chain
-//    .rel('VoteAuthor', rel.roundEntryVoteAuthors.fwd) // Adds VoteAuthor to chain
-//    .filter(auth => auth.rec === myAuthor); // Doesn't add anything to the chain
-//  
-//  dep(myCurrentVotedEntryWob.hold(([ myAuthor, entry, round, story ]) => {
-//    // ...
-//  }));
-//
-//  dep(AccessPath(myCurrentVotedEntryWob, (dep, [ myAuthor, entry, round, story ]) => {
-//    
-//  }));
+// TODO: If every Hog threw an Error upon initialization, it could implicitly pass itself
+// to any containing scope - e.g. a Rec created inside of an AccessPath could automatically
+// be seen by the AccessPath if Rec calls `insp.Hog.init.call(this, ...)`, and Hog init
+// throws an error. In this case, though, only 1 Rec could be created inside of an
+// AccessPath - the first would short-circuit the flow of the AccessPath's "gen" function
 
 
 U.buildRoom({
@@ -34,105 +19,259 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'chance', 'record', 'real' ],
   build: (foundation, hinterlands, chance, record, real) => {
     
-    let { AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
+    let { HorzScope: AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Chance } = chance;
-    let { Record, Relation } = record;
+    let { Rec, recTyper } = record;
     let { Lands, LandsRecord, Way, Hut, rel: landsRel } = hinterlands;
     let { Reality, Real } = real;
     
-    let heartbeatMs = 3 * 60 * 1000;
+    let { rt, add } = recTyper();
+    add('storyMix', Rec);
+    add('author', Rec);
+    add('password', Rec);
+    add('story', Rec);
+    add('round', Rec);
+    add('entry', Rec);
     
-    let StoryMix = U.inspire({ name: 'StoryMix', insps: { LandsRecord } });
-    let Author = U.inspire({ name: 'Author', insps: { LandsRecord } });
-    let Password = U.inspire({ name: 'Password', insps: { LandsRecord } });
-    let Story = U.inspire({ name: 'Story', insps: { LandsRecord } });
-    let Round = U.inspire({ name: 'Round', insps: { LandsRecord } });
-    let Entry = U.inspire({ name: 'Entry', insps: { LandsRecord } });
-    
-    // TODO: Relation should receive cardinality as 1st param
-    let rel = {
-      landsStoryMix:          Relation(Lands, StoryMix, '11'),
-      storyMixStories:        Relation(StoryMix, Story, '1M'),
-      storyMixAuthors:        Relation(StoryMix, Author, '1M'),
-      hutAuthor:              Relation(Hut, Author, '11'),
-      authorPassword:         Relation(Author, Password, '11'),
-      authorCurrentStory:     Relation(Author, Story, 'M1'),
-      storyCreatorAuthor:     Relation(Story, Author, 'M1'), // Author who created
-      storyAuthors:           Relation(Story, Author, 'MM'), // Participating Authors
-      storyRounds:            Relation(Story, Round, '1M'),
-      storyCurrentRound:      Relation(Story, Round, '11'),
-      storyEntries:           Relation(Story, Entry, '1M'),
-      roundEntries:           Relation(Round, Entry, '1M'),
-      entryAuthor:            Relation(Entry, Author, 'M1'),
-      roundEntryVoteAuthors:  Relation(Entry, Author, 'MM')
-    };
+    add('archStoryMix',       Rec, '11', hinterlands.rt.arch, rt.storyMix);
+    add('storyMixStory',      Rec, '1M', rt.storyMix,         rt.story);
+    add('storyMixAuthor',     Rec, '1M', rt.storyMix,         rt.author);
+    add('hutAuthor',          Rec, '11', hinterlands.rt.hut,  rt.author);
+    add('authorPassword',     Rec, '11', rt.author,           rt.password);
+    add('authorCurStory',     Rec, 'M1', rt.author,           rt.story);
+    add('storyCreatorAuthor', Rec, 'M1', rt.story,            rt.author);
+    add('storyAuthor',        Rec, 'MM', rt.story,            rt.author);
+    add('storyRound',         Rec, '1M', rt.story,            rt.round);
+    add('storyCurRound',      Rec, '11', rt.story,            rt.round);
+    add('storyEntry',         Rec, '1M', rt.story,            rt.entry);
+    add('roundEntry',         Rec, '1M', rt.round,            rt.entry);
+    add('entryAuthor',        Rec, 'M1', rt.entry,            rt.author);
+    add('entryVoterAuthor',   Rec, 'MM', rt.entry,            rt.author);
     
     let open = async () => {
+      
       console.log('Init storyMix...');
       
-      let lands = U.lands = Lands({
-        foundation,
-        heartbeatMs,
-        /// {ABOVE=
-        commands: [ 'author', 'story', 'join', 'entry', 'vote' ],
-        /// =ABOVE} {BELOW=
-        records: [ StoryMix, Author, Story, Round, Entry ],
-        relations: rel.toArr(v => v),
-        /// =BELOW}
-      });
+      let recTypes = { ...hinterlands.rt, ...rt }; // TODO: Collisions could occur...
+      let commands = [ 'author', 'story', 'join', 'entry', 'vote' ];
+      let heartbeatMs = 10 * 60 * 1000;
+      let lands = U.lands = Lands({ foundation, recTypes, commands, heartbeatMs });
+      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, 'localhost', 80) }));
       
-      AccessPath(WobVal(lands), async (dep, lands) => {
+      /// {ABOVE=
+      
+      let rootScope = AccessPath(WobVal(lands.arch), (dep, arch) => {
         
-        /// {ABOVE=
-        
+        // Initialize StoryMix
         let chance = Chance(null);
         
-        let storyMix = dep(StoryMix({ lands }));
-        lands.attach(rel.landsStoryMix.fwd, storyMix);
+        let storyMix = lands.createRec('storyMix', {
+          value: {
+            version: '0.0.1',
+            description: 'Collaborate with other authors to write stories that belong to everyone!'
+          }
+        });
+        let archStoryMix = lands.createRec('archStoryMix', {}, lands.arch, storyMix);
         
         // Follows
-        dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {
+        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+          
+          let hut = archHut.members[1];
+          dep(hut.followRec(archStoryMix));
+          dep(hut.followRec(storyMix));
+          
+          dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
+            
+            let author = hutAuthor.members[1];
+            dep(hut.followRec(author));
+            dep(hut.followRec(author.relWob(rt.storyMixAuthor).toArr(v => v)[0]));
+            
+            dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+              
+              let curStory = authorCurStory.members[1];
+              dep(hut.followRec(curStory));
+              dep(hut.followRec(authorCurStory));
+              
+              dep(AccessPath(curStory.relWob(rt.storyEntry), (dep, storyEntry) => {
+                
+                let entry = storyEntry.members[1];
+                dep(hut.followRec(entry));
+                dep(hut.followRec(storyEntry));
+                
+                dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                  
+                  let author = entryAuthor.members[1];
+                  dep(hut.followRec(author));
+                  dep(hut.followRec(entryAuthor));
+                  
+                }));
+                
+              }));
+              
+              dep(AccessPath(curStory.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+                
+                let curRound = storyCurRound.members[1];
+                dep(hut.followRec(curRound));
+                dep(hut.followRec(storyCurRound));
+                
+                dep(AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
+                  
+                  let entry = roundEntry.members[1];
+                  dep(hut.followRec(entry));
+                  dep(hut.followRec(roundEntry));
+                  
+                  dep(AccessPath(roundEntry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                    
+                    let author = entryAuthor.members[1];
+                    dep(hut.followRec(author));
+                    dep(hut.followRec(entryAuthor));
+                    
+                  }));
+                  
+                  dep(AccessPath(roundEntry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                    
+                    let voterAuthor = entryVoterAuthor.members[1];
+                    dep(hut.followRec(voterAuthor));
+                    dep(hut.followRec(entryVoterAuthor));
+                    
+                  }));
+                  
+                }));
+                
+              }));
+              
+            }));
+            
+          }));
+          
+          dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+            
+            let story = storyMixStory.members[1];
+            dep(hut.followRec(story));
+            dep(hut.followRec(storyMixStory));
+            
+          }));
+          
+        }));
+        
+        // Controls on Huts
+        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+          
+          let hut = archHut.members[1];
+          
+          dep(hut.comWob('author').hold(({ lands, hut, msg }) => {
+            
+            let { username, password } = msg;
+            
+            // If `username` is given, login - otherwise logout!
+            
+            if (username !== null) {
+              
+              if (hut.relRec(rel.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', org: msg });
+              
+              // Find an author by that username
+              let author = null;
+              let allAuthors = storyMix.relRecs(rel.storyMixAuthor).map(sma => sma.members[1]);
+              let author = allAuthors.find(auth => auth.value.username === username);
+              
+              if (!author) {
+                
+                console.log('Create author for', hut.getTerm());
+                
+                author = lands.createRec('author', { value: { username, term: null } });
+                let pass = lands.createRec('password', { value: password });
+                
+                lands.createRec('storyMixAuthor', {}, storyMix, author);
+                lands.createRec('authorPassword', {}, author, pass);
+                
+              }
+              
+              if (author.relRec(rel.authorPassword).value !== password) return hut.tell({ command: 'error', type: 'denied', msg: 'incorrect password', orig: msg });
+              
+            }
+            
+          });
+          
+        }));
+        
+      });
+      
+      
+      /// =ABOVE}
+      
+      if (false) AccessPath(WobVal(lands.arch), async (dep, arch) => {
+        
+        /// {ABOVE=
+        
+        /*
+        let chance = Chance(null);
+        
+        let storyMix = dep(lands.createRec('storyMix', {
+          value: {
+            version: '0.0.1',
+            description: 'Collaborate with other authors to write stories that belong to everyone!'
+          }
+        }));
+        lands.createRec('archStoryMix', {}, arch, storyMix);
+        
+        // Follows
+        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+          
+          let hut = archHut.members[1]; // TODO: "members" should almost definitely be an Object, not an Array
           
           dep(hut.followRec(storyMix));
           
           // StoryMix -> Story
-          dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
+          dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
             
+            let story = storyMixStory.members[1];
             dep(hut.followRec(story));
             
           }));
           
           // StoryMix -> Author
-          dep(AccessPath(hut.relWob(rel.hutAuthor.fwd), (dep, { rec: author }) => {
+          dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
             
+            let author = hutAuthor.members[1];
+            dep(hut.followRec(hutAuthor));
             dep(hut.followRec(author));
             
             // StoryMix -> Author -> CurrentStory
-            dep(AccessPath(author.relWob(rel.authorCurrentStory.fwd), (dep, { rec: currentStory }) => {
+            dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
               
-              dep(hut.followRec(currentStory));
+              let curStory = authorCurStory.members[1];
+              dep(hut.followRec(authorCurStory));
+              dep(hut.followRec(curStory));
               
               // StoryMix -> Author -> CurrentStory -> CurrentRound
-              dep(AccessPath(currentStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
+              dep(AccessPath(curStory.relWob(rt.storyCurRound), (dep, storyCurRound) => {
                 
-                dep(hut.followRec(currentRound));
+                let curRound = storyCurRound.members[1];
+                dep(hut.followRec(storyCurRound));
+                dep(hut.followRec(curRound));
                 
                 // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntries
-                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
+                dep(AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
                   
+                  let entry = roundEntry.members[1];
                   dep(hut.followRec(roundEntry));
+                  dep(hut.followRec(entry));
                   
-                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryAuthor
-                  dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
+                  // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryAuthor
+                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
                     
+                    let author = entryAuthor.members[1];
                     dep(hut.followRec(entryAuthor));
+                    dep(hut.followRec(author));
                     
                   }));
                   
-                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> VoteAuthors
-                  dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
+                  // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryVoteAuthors
+                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
                     
-                    dep(hut.followRec(voteAuthor));
+                    let voterAuthor = entryVoterAuthor.members[1];
+                    dep(hut.followRec(entryVoterAuthor));
+                    dep(hut.followRec(voterAuthor));
                     
                   }));
                   
@@ -156,6 +295,7 @@ U.buildRoom({
           }));
           
         }));
+        */
         
         // Controls on Huts
         dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {

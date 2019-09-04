@@ -5,7 +5,7 @@
 
 // TODO: Write classes for transports
 
-let doNetworkDbg = true;
+let doNetworkDbg = false;
 
 let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
   
