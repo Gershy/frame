@@ -17,13 +17,13 @@ U.buildRoom({
       },
       wobble: function(rec) {
         if (!rec) throw new Error('Invalid rec for add');
-        if (this.rec) throw new Error('Already add');
+        if (this.rec) throw new Error(`Already add: ${this.rec.type.name}`);
         this.rec = rec;
         insp.Wob.wobble.call(this, this.rec, ...this.rec.members);
         return Hog(() => { this.rec = null; });
       },
-      size: function() { return this.hog ? 1 : 0; },
-      toArr: function(fn) { return this.hog ? [ this.hog ].map(fn) : []; }
+      size: function() { return this.rec ? 1 : 0; },
+      toArr: function(fn) { return this.rec ? [ this.rec ].map(fn) : []; }
     })});
     let WobRecCrdM = U.inspire({ name: 'WobRecCrdM', insps: { Wob }, methods: (insp, Insp) => ({
       init: function() {
@@ -35,7 +35,7 @@ U.buildRoom({
         return insp.Wob.hold.call(this, holdFn);
       },
       wobble: function(rec) {
-        if (this.recs.has(rec.uid)) throw new Error('Already add');
+        if (this.recs.has(rec.uid)) throw new Error(`Already add: ${this.recs.get(rec.uid).type.name}`);
         this.recs.set(rec.uid, rec);
         insp.Wob.wobble.call(this, rec, ...rec.members);
         return Hog(() => { this.recs.delete(rec.uid); });
@@ -66,7 +66,7 @@ U.buildRoom({
         
         for (let i = 0; i < members.length; i++)
           if (members[i].type !== this.memberTypes[i])
-            throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${deps.map(d => d.type.name).join(', ')}]`);
+            throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${members.map(m => m.type.name).join(', ')}]`);
         
         let relRec = this.RecCls({ ...params, type: this, members });
         
@@ -126,6 +126,7 @@ U.buildRoom({
         this.shutWob().hold(g => holds.forEach(h => h.shut(g)));
         
       },
+      //m: function(ind) { return this.members[ind]; },
       relWob: function(recType, ind=null) {
         
         if (!recType) throw new Error(`Passed null recType`);

@@ -5,7 +5,7 @@
 
 // TODO: Write classes for transports
 
-let doNetworkDbg = false;
+let doNetworkDbg = 1;
 
 let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
   
@@ -29,9 +29,9 @@ let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
 })});
 let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
   // TODO: CpuPool should probably written into hinterlands.Lands...
-  init: function() {
+  init: function(dbgLimit=1000) {
     this.cpus = {};
-    this.dbgLimit = 150;
+    this.dbgLimit = dbgLimit;
   },
   dbgItem: function(item) {
     let ret = JSON.stringify(item);

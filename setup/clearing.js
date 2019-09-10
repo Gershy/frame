@@ -426,11 +426,11 @@ let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) =
   
   // Wob Temporary
   
-  init: function(pos='up', val=null) {
+  init: function(pos='up', value=null) {
     if (![ 'up', 'dn' ].has(pos)) throw new Error(`Param should be "up" or "dn"; got ${pos}`);
     insp.Wob.init.call(this);
     this.tmp = null;
-    if (pos === 'up') this.up(val);
+    if (pos === 'up') this.up(value);
   },
   inverse: function() {
     
@@ -440,34 +440,22 @@ let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) =
       this.inverse0 = WobTmp(this.pos === 'up' ? 'dn' : 'up');
       this.inverse0.inverse0 = this;
       
-      // let origUp = this.up;
-      // let origDn = this.dn;
-      // this.up = (...args) => {
-      //   let ret = origUp.call(this, ...args);
-      //   this.inverse0.dn();
-      //   return ret;
-      // };
-      // this.dn = (...args) => {
-      //   let ret = origDn.call(this, ...args);
-      //   this.inverse0.up();
-      //   return ret;
-      // };
-      
       // Now, forever, wobbles on us have an inverse effect on `this.inverse0`
       this.hold(tmp => {
         this.inverse0.dn(); // Us going up puts our inverse down
-        tmp.shutWob().hold(() => this.inverse0.up()); // TODO: Would pass `tmp.val` here if `this.inverse0` were initializable with a value
+        tmp.shutWob().hold(() => this.inverse0.up()); // TODO: Would pass `tmp.value` here if `this.inverse0` were initializable with a value
       });
       
     }
     return this.inverse0;
     
   },
-  up: function(val=null) {
+  up: function(value=null) {
     if (this.tmp) throw new Error('Already up');
     this.tmp = Hog(() => { this.tmp = null; });
-    this.tmp.val = val;
+    this.tmp.value = value;
     this.wobble(this.tmp);
+    return Hog(() => this.dn());
   },
   dn: function() {
     if (!this.tmp) throw new Error('Already dn');

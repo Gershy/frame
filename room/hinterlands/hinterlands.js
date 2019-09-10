@@ -193,7 +193,7 @@ U.buildRoom({
         // any Huts that don't yet have a term
         let terms = Set(this.getAllHuts().map(h => h.term || C.skip));
         
-        for (let i = 0; i < 100; i++) { // TODO: This can't last. `100` is arbitrary!
+        for (let i = 0; i < 100; i++) { // TODO: This is no good - `100` is arbitrary!
           let ret = TERMS[Math.floor(Math.random() * TERMS.length)]; // TODO: Should use chance room
           if (!terms.has(ret)) return ret;
         }
@@ -201,6 +201,8 @@ U.buildRoom({
       },
       
       createRec: function(name, params={}, ...args) {
+        // If we didn't need Lands to get a uid, we wouldn't need
+        // `Lands.prototype.createRec`!!
         if (!this.recTypes.has(name)) throw new Error(`Invalid RecType name: "${name}"`)
         if (!params.has('uid')) params.uid = this.nextUid();
         params.lands = this;
@@ -422,10 +424,10 @@ U.buildRoom({
       getRecFollowStrength: function(rec) { return (this.fols.get(rec) || { strength: 0 }).strength; },
       setRecFollowStrength: function(rec, strength) {
         
-        if (strength < 0) throw new Error(`Invalid strength: ${strength}`);
+        if (strength < 0) throw new Error(`Invalid strength ${strength} for ${rec.type.name}`);
         
-        let fol = this.fols.get(rec) || null;               // The current Follow
-        let strength0 = (fol || { strength: 0 }).strength;  // The current FollowStrength
+        let fol = this.fols.get(rec) || null;     // The current Follow
+        let strength0 = fol ? fol.strength : 0;   // The current FollowStrength
         if (strength === strength0) throw new Error(`Strength is already ${strength}`);
         
         // Our FollowStrength of `rec` is changing! There are 3 possibilities:
@@ -433,16 +435,19 @@ U.buildRoom({
         // 2 - Strength moving from >0 to >0 : DO NOTHING!
         // 3 - Strength moving from >0 to =0 : REM REC!
         
-        if (!strength0) {                  // ADD
+        if (!strength0) {                   // ADD
           
           // This HorzScope depends on `rec`. That means if `rec` shuts for
           // any reason, we will stop following it! We can also explicitly
           // cease following `rec` by calling `ap.shut()`
           HorzScope(U.WobVal(rec), (dep, rec, ap) => {
             
-            // Keep track of the follow
+            // Keep track of the follow. Note that this is NOT cleaned up
+            // `dep` - e.g., if `rec` shuts, this entry in `this.fols`
+            // still persists. The application designer must ensure that
+            // `setRecFollowStrength` properly decrements to 0 (probably
+            // by using `dep(hut.followRec(...))`)
             this.fols.set(rec, { strength, ap });
-            dep(Hog(() => this.fols.delete(rec)));
             
             // Send a sync
             this.toSync('addRec', rec);
@@ -457,10 +462,11 @@ U.buildRoom({
           
           fol.strength = strength;
           
-        } else {                           // REM
+        } else {                            // REM
           
           // Close the HorzScope
           fol.ap.shut();
+          this.fols.delete(rec);
           
         }
         

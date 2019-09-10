@@ -52,11 +52,11 @@
       
       // Catch exceptions after building all Rooms
       window.addEventListener('unhandledrejection', evt => {
-        console.log(this.formatError(evt.reason));
+        console.error(this.formatError(evt.reason));
         evt.preventDefault();
       });
       window.addEventListener('error', evt => {
-        console.log(this.formatError(evt.error || evt.reason));
+        console.error(this.formatError(evt.error || evt.reason));
         evt.preventDefault();
       });
       

@@ -35,7 +35,6 @@ U.buildRoom({
     let vals = (() => {
       let RealVal = U.inspire({ name: 'RealVal', insps: {}, methods: (insp, Insp) => ({
         init: function() {},
-        cmpValues: C.notImplemented,
         getCss: C.notImplemented
       })});
       let Unit = U.inspire({ name: 'Unit', insps: { RealVal }, methods: (insp, Insp) => ({
@@ -44,13 +43,12 @@ U.buildRoom({
           insp.RealVal.init.call(this);
           this.amt = amt;
         },
-        cmpValues: function() { return []; },
         isAbsolute: function() { return false; },
         suff: C.notImplemented,
         add: function(n) { let Cls = this.constructor; return Cls(this.amt + n); },
         mult: function(n) { let Cls = this.constructor; return Cls(this.amt * n); },
         round: function() { let Cls = this.constructor; return Cls(Math.round(this.amt)); },
-        getCss: function() { return `${this.amt}${this.suff()}`; }
+        getCss: function() { return `${this.isAbsolute() ? this.amt : (this.amt * 100)}${this.suff()}`; }
       })});
       return {
         RealVal,
@@ -58,7 +56,7 @@ U.buildRoom({
           isAbsolute: function() { return true; },
           suff: function() { return 'px'; }
         })}),
-        UnitPc: U.inspire({ name: 'UnitPx', insps: { Unit }, methods: (insp, Insp) => ({
+        UnitPc: U.inspire({ name: 'UnitPc', insps: { Unit }, methods: (insp, Insp) => ({
           suff: function() { return '%'; }
         })}),
         UnitParW: U.inspire({ name: 'UnitParW', insps: { Unit }, methods: (insp, Insp) => ({
@@ -140,7 +138,7 @@ U.buildRoom({
       getCssControls: function() {
         
         let genericCtx = {
-          viewport: { w: vals.ViewportW(100), h: vals.ViewportH(100), min: vals.ViewportMin(100), max: vals.ViewportMax(100) }
+          viewport: { w: vals.ViewportW(1), h: vals.ViewportH(1), min: vals.ViewportMin(1), max: vals.ViewportMax(1) }
         };
         
         let cmpRules = [];
@@ -316,7 +314,7 @@ U.buildRoom({
               
               return [
                 `${selector} {`,
-                ...css.toArr((v, k) => `  ${camelToKebab(k)}: ${U.isInspiredBy(v, vals.RealVal) ? v.getCss() : v};`),
+                ...css.toArr((v, k) => `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : v.getCss()};`),
                 '}'
               ].join('\n'); // Join together all lines of a CssBlock
               
@@ -346,7 +344,7 @@ U.buildRoom({
         // TODO: This should be inline in the initial html response
         // TODO: Shouldn't need to manage spoofing here (or anywhere outside of Foundations!)
         
-        let { query } = U.foundation.parseUrl(window.location.toString());
+        let { query } = foundation.parseUrl(window.location.toString());
         
         let styleElem = document.createElement('link');
         styleElem.setAttribute('rel', 'stylesheet');
@@ -500,7 +498,7 @@ U.buildRoom({
         let fields = [];
         items.forEach(({ type, desc, v=null }, k) => {
           
-          // TODO: Stop ignoring `type`
+          // TODO: More types?
           
           let item = this.addReal('item');
           let title = item.addReal('title');
@@ -632,9 +630,14 @@ U.buildRoom({
       
       return {
         Free: U.inspire({ name: 'Free', methods: (insp, Insp) => ({
-          init: function({ x=vals.UnitPx(0), y=vals.UnitPx(0), w=null, h=null }) {
-            this.x = x;
-            this.y = y;
+          init: function({ w, h, x=w.mult(0), y=h.mult(0) }) {
+            if (!w) throw new Error('Missing "w" param');
+            if (!h) throw new Error('Missing "h" param');
+            if (x.constructor !== w.constructor) throw new Error('Mixing horz values');
+            if (y.constructor !== h.constructor) throw new Error('Mixing vert values');
+            
+            this.x = x; // Horizontal offset from center
+            this.y = y; // Vertical offset from center
             this.w = w;
             this.h = h;
           },
@@ -643,12 +646,51 @@ U.buildRoom({
             let main = {
               display: 'block',
               position: 'absolute',
-              left: vals.UnitPc(50), top: vals.UnitPc(50),
-              'transform.translate': [ this.x, this.y ]
+              //left: vals.UnitPc(0.5), top: vals.UnitPc(0.5)
             };
             
-            if (this.w) main.gain({ width: this.w, marginLeft: this.w.mult(-0.5) });
-            if (this.h) main.gain({ height: this.h, marginTop: this.h.mult(-0.5) });
+            let absH = this.x.isAbsolute();
+            let absV = this.y.isAbsolute();
+            let trn = [ null, null ];
+            
+            if (absH) {
+              
+              main.gain({
+                left: vals.UnitPc(0.5),         // Put our left in par's mid
+                width: this.w,                  // Extend forward by `w`
+                marginLeft: this.w.mult(-0.5),  // Move back by half `w`
+              });
+              trn[0] = this.x;
+              
+            } else {
+              
+              main.gain({
+                // Move into center, then subtract half the extent
+                left: this.x.add(0.5 - (this.w.amt * 0.5)),
+                width: this.w
+              });
+              
+            }
+            
+            if (absV) {
+              
+              main.gain({
+                top: vals.UnitPc(0.5),        // Put our top in par's mid
+                height: this.h,               // Extend forward by `h`
+                marginTop: this.h.mult(-0.5)  // Move back by half `h`
+              });
+              trn[1] = this.y;
+              
+            } else {
+              
+              main.gain({
+                top: this.y.add(0.5 - (this.h.amt * 0.5)),  // Relative to center
+                height: this.h
+              });
+              
+            }
+            
+            if (trn.find(v => v)) main['transform.translate'] = trn.map(v => v || real.UnitPx(0));
             
             return { main };
             
@@ -704,10 +746,10 @@ U.buildRoom({
         init: function(par) { this.par = par; },
         getCss: function() {
           let cssProps = ({
-            l: { left: '0',  top: '0',    width: this.par.titleExt, height: vals.UnitPc(100) },
-            r: { right: '0', top: '0',    width: this.par.titleExt, height: vals.UnitPc(100) },
-            t: { left: '0', top: '0',     width: vals.UnitPc(100), height: this.par.titleExt, lineHeight: this.par.titleExt },
-            b: { left: '0', bottom: '0',  width: vals.UnitPc(100), height: this.par.titleExt, lineHeight: this.par.titleExt }
+            l: { left: '0',  top: '0',    width: this.par.titleExt, height: vals.UnitPc(1) },
+            r: { right: '0', top: '0',    width: this.par.titleExt, height: vals.UnitPc(1) },
+            t: { left: '0', top: '0',     width: vals.UnitPc(1), height: this.par.titleExt, lineHeight: this.par.titleExt },
+            b: { left: '0', bottom: '0',  width: vals.UnitPc(1), height: this.par.titleExt, lineHeight: this.par.titleExt }
           })[this.par.side];
           
           return { main: {
@@ -725,14 +767,14 @@ U.buildRoom({
           
           let [ sizeH, sizeV ] = this.par.layoutSize;
           
-          if ([ 'l', 'r' ].has(this.par.side)) { // Horizontal title
+          if ([ 'l', 'r' ].has(this.par.side)) {  // Horizontal title
             
             // Both horizontal size and horizontal title size need to be of the same class
             // so they can be safely subtracted.
             if (sizeH && sizeH.isAbsolute() && U.isType(sizeH, this.par.titleExt.constructor)) cssH = sizeH.add(-this.par.titleExt.amt);
             if (sizeV && sizeV.isAbsolute()) cssV = sizeV;
             
-          } else { // Vertical title
+          } else {                                // Vertical title
             
             // Both vertical size and vertical title size need to be of the same class
             // so they can be safely subtracted.
@@ -744,13 +786,16 @@ U.buildRoom({
           return { main: {
             display: 'block', position: 'relative',
             left: '0', top: '0',
-            width: cssH || vals.UnitPc(100),
-            height: cssV || vals.UnitPc(100)
+            width: cssH || vals.UnitPc(1),
+            height: cssV || vals.UnitPc(1)
           }};
         }
       })});
       
       let Justified = U.inspire({ name: 'Justified', methods: (insp, Insp) => ({
+        
+        // Provides a single slot that will center any Real within
+        
         init: function() {},
         getCss: function() {
           return {

@@ -60,7 +60,7 @@ U.buildRoom({
       
       /// {ABOVE=
       
-      let rootScope = AccessPath(WobVal(lands.arch), (dep, arch) => {
+      let rootAboveScope = AccessPath(WobVal(lands.arch), (dep, arch) => {
         
         // Initialize StoryMix
         let chance = Chance(null);
@@ -76,15 +76,17 @@ U.buildRoom({
         // Follows
         dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           
+          
           let hut = archHut.members[1];
           dep(hut.followRec(archStoryMix));
           dep(hut.followRec(storyMix));
           
           dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
             
+            // Follow the Author through `rt.storyMixAuthor`, not `rt.hutAuthor`
             let author = hutAuthor.members[1];
             dep(hut.followRec(author));
-            dep(hut.followRec(author.relWob(rt.storyMixAuthor).toArr(v => v)[0]));
+            dep(hut.followRec(author.relRec(rt.storyMixAuthor)));
             
             dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
               
@@ -120,7 +122,7 @@ U.buildRoom({
                   dep(hut.followRec(entry));
                   dep(hut.followRec(roundEntry));
                   
-                  dep(AccessPath(roundEntry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
                     
                     let author = entryAuthor.members[1];
                     dep(hut.followRec(author));
@@ -128,7 +130,7 @@ U.buildRoom({
                     
                   }));
                   
-                  dep(AccessPath(roundEntry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
                     
                     let voterAuthor = entryVoterAuthor.members[1];
                     dep(hut.followRec(voterAuthor));
@@ -163,18 +165,19 @@ U.buildRoom({
             
             let { username, password } = msg;
             
-            // If `username` is given, login - otherwise logout!
+            // The truthiness of `username` determines if we're logging
+            // in or logging out.
             
             if (username !== null) {
               
-              if (hut.relRec(rel.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', org: msg });
+              if (hut.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', org: msg });
               
               // Find an author by that username
+              let allAuthors = storyMix.relRecs(rt.storyMixAuthor).map(sma => sma.members[1]);
               let author = null;
-              let allAuthors = storyMix.relRecs(rel.storyMixAuthor).map(sma => sma.members[1]);
-              let author = allAuthors.find(auth => auth.value.username === username);
+              let findAuthor = allAuthors.find(auth => auth.value.username === username);
               
-              if (!author) {
+              if (!findAuthor) {
                 
                 console.log('Create author for', hut.getTerm());
                 
@@ -184,167 +187,24 @@ U.buildRoom({
                 lands.createRec('storyMixAuthor', {}, storyMix, author);
                 lands.createRec('authorPassword', {}, author, pass);
                 
-              }
-              
-              if (author.relRec(rel.authorPassword).value !== password) return hut.tell({ command: 'error', type: 'denied', msg: 'incorrect password', orig: msg });
-              
-            }
-            
-          });
-          
-        }));
-        
-      });
-      
-      
-      /// =ABOVE}
-      
-      if (false) AccessPath(WobVal(lands.arch), async (dep, arch) => {
-        
-        /// {ABOVE=
-        
-        /*
-        let chance = Chance(null);
-        
-        let storyMix = dep(lands.createRec('storyMix', {
-          value: {
-            version: '0.0.1',
-            description: 'Collaborate with other authors to write stories that belong to everyone!'
-          }
-        }));
-        lands.createRec('archStoryMix', {}, arch, storyMix);
-        
-        // Follows
-        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
-          
-          let hut = archHut.members[1]; // TODO: "members" should almost definitely be an Object, not an Array
-          
-          dep(hut.followRec(storyMix));
-          
-          // StoryMix -> Story
-          dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
-            
-            let story = storyMixStory.members[1];
-            dep(hut.followRec(story));
-            
-          }));
-          
-          // StoryMix -> Author
-          dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
-            
-            let author = hutAuthor.members[1];
-            dep(hut.followRec(hutAuthor));
-            dep(hut.followRec(author));
-            
-            // StoryMix -> Author -> CurrentStory
-            dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
-              
-              let curStory = authorCurStory.members[1];
-              dep(hut.followRec(authorCurStory));
-              dep(hut.followRec(curStory));
-              
-              // StoryMix -> Author -> CurrentStory -> CurrentRound
-              dep(AccessPath(curStory.relWob(rt.storyCurRound), (dep, storyCurRound) => {
-                
-                let curRound = storyCurRound.members[1];
-                dep(hut.followRec(storyCurRound));
-                dep(hut.followRec(curRound));
-                
-                // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntries
-                dep(AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
-                  
-                  let entry = roundEntry.members[1];
-                  dep(hut.followRec(roundEntry));
-                  dep(hut.followRec(entry));
-                  
-                  // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryAuthor
-                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
-                    
-                    let author = entryAuthor.members[1];
-                    dep(hut.followRec(entryAuthor));
-                    dep(hut.followRec(author));
-                    
-                  }));
-                  
-                  // StoryMix -> Author -> CurrentStory -> CurrentRound -> RoundEntry -> EntryVoteAuthors
-                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
-                    
-                    let voterAuthor = entryVoterAuthor.members[1];
-                    dep(hut.followRec(entryVoterAuthor));
-                    dep(hut.followRec(voterAuthor));
-                    
-                  }));
-                  
-                }));
-                
-              }));
-              
-              // StoryMix -> Author -> CurrentStory -> StoryEntries
-              console.log('HUT', hut.getTerm(), 'entries PLURAL +++');
-              dep(Hog(() => console.log('HUT', hut.getTerm(), 'entries PLURAL ---')));
-              dep(AccessPath(currentStory.relWob(rel.storyEntries.fwd), (dep, { rec: storyEntry }) => {
-                
-                console.log('HUT', hut.getTerm(), 'entries SINGLE +++');
-                dep(Hog(() => console.log('HUT', hut.getTerm(), 'entries SINGLE ---')));
-                dep(hut.followRec(storyEntry));
-                
-              }));
-              
-            }));
-            
-          }));
-          
-        }));
-        */
-        
-        // Controls on Huts
-        dep(AccessPath(lands.relWob(landsRel.landsHuts.fwd), (dep, { rec: hut }) => {
-          
-          // Enable Hut actions: 1) login; 2) logout
-          dep(hut.comWob('author').hold(({ lands, hut, msg }) => {
-            
-            let { username, password } = msg;
-            
-            if (username !== null) {
-              
-              // Login
-              
-              if (hut.getRelRec(rel.hutAuthor.fwd)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', orig: msg });
-              
-              let author = null;
-              let relAuthor = storyMix.relWob(rel.storyMixAuthors.fwd).find(({ rec: auth }) => auth.value.username === username);
-              if (!relAuthor) {
-                
-                console.log('Create author for', hut.getTerm());
-                
-                author = Author({ lands, value: { username, term: hut.getTerm() } });
-                let pass = Password({ lands, value: password });
-                author.attach(rel.authorPassword.fwd, pass);
-                storyMix.attach(rel.storyMixAuthors.fwd, author);
-                
               } else {
                 
-                author = relAuthor.rec;
+                author = findAuthor[0];
                 
               }
               
-              if (author.getRec(rel.authorPassword.fwd).value !== password) return hut.tell({ command: 'error', type: 'denied', orig: msg });
+              if (author.relRec(rt.authorPassword).members[1].value !== password) return hut.tell({ command: 'error', type: 'denied', msg: 'incorrect password', orig: msg });
               
+              // Set `author` as currently controlled by `hut`
               author.modify(v => v.gain({ term: hut.getTerm() }));
-              author.attach(rel.hutAuthor.bak, hut);
-              
-              console.log('Authenticated! Logging in', hut.getTerm());
+              lands.createRec('hutAuthor', {}, hut, author);
               
             } else {
               
-              // Logout
-              
-              let relAuthor = hut.getRelRec(rel.hutAuthor.fwd);
-              if (!author) return hut.tell({ command: 'error', type: 'denied', orig: msg });
-              
-              console.log('Logging out', hut.getTerm());
-              relAuthor.rec.modify(v => v.gain({ term: C.skip }));
-              relAuthor.shut();
+              // Shut the AuthorHut
+              let hutAuthor = hut.relRec(rt.hutAuthor);
+              hutAuthor.members[1].modify(v => v.gain({ term: null }));
+              hutAuthor.shut();
               
             }
             
@@ -353,12 +213,16 @@ U.buildRoom({
         }));
         
         // Controls on Authors
-        dep(AccessPath(storyMix.relWob(rel.storyMixAuthors.fwd), (dep, { rec: author }) => {
+        dep(AccessPath(storyMix.relWob(rt.storyMixAuthor), (dep, storyMixAuthor) => {
+          
+          let author = storyMixAuthor.members[1];
           
           // Enable Author actions: 1) create story 2) join story
-          dep(AccessPath(author.relWob(rel.hutAuthor.bak), (dep, { rec: authorHut }) => {
+          dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
             
-            dep(authorHut.comWob('story').hold(({ lands, hut, msg }) => {
+            let hut = hutAuthor.members[0];
+            
+            dep(hut.comWob('story').hold(({ msg }) => {
               
               let { name, desc, roundMs, maxAuthors } = msg;
               
@@ -367,7 +231,7 @@ U.buildRoom({
               if (!U.isType(roundMs, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               if (!U.isType(maxAuthors, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               
-              let newStory = Story({ lands, value: {
+              let newStory = lands.createRec('story', { value: {
                 name,
                 desc,
                 startMs: foundation.getMs(),
@@ -385,31 +249,135 @@ U.buildRoom({
                   // TODO: maxRounds
                 }
               }});
-              let ap = AccessPath(newStory.relWob(rel.storyAuthors.fwd), (dep, relAuthor) => {
-                newStory.modify(v => { v.numAuthors++; return v; });
-                dep(Hog(() => newStory.modify(v => { v.numAuthors--; return v; })));
-              });
-              let attachStoryMixStory = newStory.attach(rel.storyMixStories.bak, storyMix);
-              attachStoryMixStory.shutWob().hold(() => ap.shut());
               
-              newStory.attach(rel.storyCreatorAuthor.fwd, author);
-              newStory.attach(rel.storyAuthors.fwd, author);
+              // Liven up `newStory.value.numAuthors`
+              let ap = AccessPath(newStory.relWob(rt.storyAuthor), (dep, relAuthor) => {
+                newStory.modify(v => (v.numAuthors++, v));
+                dep(Hog(() => newStory.modify(v => (v.numAuthors--, v))));
+              });
+              
+              let storyMixStory = lands.createRec('storyMixStory', {}, storyMix, newStory);
+              storyMixStory.shutWob().hold(() => ap.shut()); // Stop counting authors if relation breaks
+              
+              let storyCreatorAuthor = lands.createRec('storyCreatorAuthor', {}, newStory, author);
+              let storyAuthor = lands.createRec('storyAuthor', {}, newStory, author);
               
             }));
             
-            dep(authorHut.comWob('join').hold(({ lands, hut, msg }) => {
+            dep(hut.comWob('join').hold(({ msg }) => {
               
-              if (author.getRec(rel.authorCurrentStory.fwd)) return hut.tell({ command: 'error', type: 'denied', msg: 'already in a story', orig: msg });
               if (!msg.has('story')) return hut.tell({ command: 'error', type: 'denied', msg: 'no story specified', orig: msg });
               
-              let story = storyMix.getRec(rel.storyMixStories.fwd, msg.story);
-              if (!story) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
+              if (msg.story !== null) {
+                
+                if (author.relRec(rt.authorCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'already in a story', orig: msg });
+                
+                let findStory = storyMix.relRecs(rt.storyMixStory).find(sms => sms.members[1].uid === msg.story);
+                if (!findStory) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
+                
+                // We found the Story! Reference it.
+                let story = findStory[0].members[1];
+                
+                // Try to find if the Author has already joined the story...
+                let findAuthorInStory = story.relRecs(rt.storyAuthor).find(sa => sa.members[1] === author);
+                
+                // Group Author and Story if not already grouped!
+                if (!findAuthorInStory) lands.createRec('storyAuthor', {}, story, author);
+                
+                // Always set this Story as the Author's CurrentStory
+                lands.createRec('authorCurStory', {}, author, story);
+                
+              } else {
+                
+                if (!author.relRec(rt.authorCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'not in a story', orig: msg });
+                
+                author.relRec(rt.authorCurStory).shut();
+                
+              }
               
-              // If the Author has never joined this Story, attach!
-              if (!story.getRec(rel.storyAuthors.fwd, author.uid)) author.attach(rel.storyAuthors.bak, story);
+            }));
+            
+          }));
+          
+          // Controls on Author -> CurStory
+          dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+            
+            let story = authorCurStory.members[1];
+            
+            // Enable Author actions: 1) submit Entry; 2) submit Vote
+            dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
               
-              // Always set this Story as the Author's CurrentStory
-              author.attach(rel.authorCurrentStory.fwd, story);
+              let hut = hutAuthor.members[0];
+              
+              dep(hut.comWob('entry').hold(({ msg }) => {
+                
+                // If no Round exists, a new one begins
+                
+                // TODO: If max Rounds reached, deny
+                
+                let storyCurRound = story.relRec(rt.storyCurRound);
+                let curRound = null;
+                if (!storyCurRound) {
+                  
+                  let ms = foundation.getMs();
+                  
+                  curRound = lands.createRec('round', { value: {
+                    roundNum: story.relRecs(rt.storyRound).length,
+                    startMs: ms,
+                    endMs: ms + story.value.settings.roundMs,
+                    numVotes: 0
+                  }});
+                  
+                  // Liven up `curRound.value.numVotes`
+                  let scope = AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
+                    let entry = roundEntry.members[1];
+                    dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                      curRound.modify(v => (v.numVotes++, v));
+                      dep(Hog(() => curRound.modify(v => (v.numVotes--, v))));
+                    }));
+                  });
+                  curRound.shutWob().hold(() => scope.shut());
+                  
+                  lands.createRec('storyCurRound', {}, story, curRound);
+                  
+                } else {
+                  
+                  curRound = storyCurRound.members[1];
+                  
+                }
+                
+                let entry = lands.createRec('entry', { value: { text: msg.text, numVotes: 0 } });
+                
+                // Liven up `entry.value.numVotes`
+                let scope = AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                  entry.modify(v => (v.numVotes++, v));
+                  dep(Hog(() => entry.modify(v => (v.numVotes--, v))));
+                });
+                
+                // Connect Entry to Author
+                let entryAuthor = lands.createRec('entryAuthor', {}, entry, author);
+                
+                // Connect Entry to Round
+                let roundEntry = lands.createRec('roundEntry', {}, curRound, entry);
+                roundEntry.shutWob().hold(() => scope.shut());
+                
+              }));
+              
+              dep(hut.comWob('vote').hold(({ msg }) => {
+                
+                let storyCurRound = story.relRec(rt.storyCurRound);
+                if (!storyCurRound) return hut.tell({ command: 'error', type: 'denied', msg: 'no round', orig: msg });
+                
+                let curRound = storyCurRound.members[1];
+                let entries = curRound.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
+                
+                let findEntry = entries.find(entry => entry.uid === msg.entry);
+                
+                if (!findEntry) return hut.tell({ command: 'error', type: 'denied', msg: `Invalid Entry uid: ${msg.entry}`, orig: msg });
+                
+                lands.createRec('entryVoterAuthor', {}, findEntry[0], author);
+                
+              }));
               
             }));
             
@@ -418,12 +386,14 @@ U.buildRoom({
         }));
         
         // Controls on Stories
-        dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
+        dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+          
+          let story = storyMixStory.members[1];
           
           // Controls on Stories -> Rounds
-          dep(AccessPath(story.relWob(rel.storyCurrentRound.fwd), (dep, relStoryCurrentRound) => {
+          dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
             
-            let storyCurrentRound = relStoryCurrentRound.rec;
+            let round = storyCurRound.members[1];
             
             let unbeatableEntry = () => {
               
@@ -431,11 +401,11 @@ U.buildRoom({
               // If not enough Authors remain to tip the balance to another Entry, return
               // the unbeatable Entry
               
-              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr().map(relRec => relRec.rec);
+              let entries = round.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
               if (entries.length === 0) return null;
-              if (entries.length === 1) return entries[0];
+              if (entries.length === 1) return entries[0]; // TODO: A lone Entry is unbeatable??
               
-              let numVotesRemaining = story.value.numAuthors - storyCurrentRound.value.numVotes;
+              let numVotesRemaining = story.value.numAuthors - round.value.numVotes;
               let [ place1, place2 ] = entries.sort((a, b) => b.value.numVotes - a.value.numVotes);
               
               // If `place1` is unbeatable, return it - otherwise, `null`
@@ -443,63 +413,61 @@ U.buildRoom({
               
             };
             let bestEntries = () => {
+              
               // Return all Entries tied for first in votes
               
-              let entries = storyCurrentRound.relWob(rel.roundEntries.fwd).toArr();
+              let entries = round.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
               
               let mostVotes = 0;
-              entries.forEach( ({ rec: entry }) => mostVotes = Math.max(mostVotes, entry.value.numVotes) );
+              entries.forEach(entry => mostVotes = Math.max(mostVotes, entry.value.numVotes));
               
-              return entries.map( ({ rec: entry }) => entry.value.numVotes === mostVotes ? entry : C.skip );
+              return entries.map(entry => entry.value.numVotes === mostVotes ? entry : C.skip);
               
             };
-            let bestEntry = () => chance.elem(bestEntries());
+            let bestEntry = () => chance.elem(bestEntries()); // Randomly select a top Entry
             let endRound = (reason, entry) => {
               
-              // TODO: A pity this check is needed! Ideally any further round-end-detection
-              // would be disabled by `relStoryCurrentRound.shut()` removing all additional
-              // checks via `dep`
-              if (relStoryCurrentRound.isShut()) return;
+              // TODO: Multiple shuts can occur if "insurmountableEntry"
+              // and "noMoreVotes" occur at the same time (and generally
+              // if two end conditions aren't mutually exclusive). We'd
+              // expect `dep` to ensure only one condition occurs: this
+              // whole scope is reliant on `storyCurRound`, and
+              // therefore shutting `storyCurRound` should close all
+              // `deps`, including the `dep` listening for the 2nd end
+              // condition.
+              // In the meantime, need this stupid `if` to prevent
+              // multiple shuts of `storyCurRound`.
+              
+              if (storyCurRound.isShut()) return;
               
               console.log(`Round ending with reason "${reason}"`);
+              console.log(`Message: "${entry.value.text}"`);
               
-              // NOTE: It's possible that a Follow will decrement and increment
-              // in the same tick here: `relStoryCurrentRound.shut()` will kill
-              // the AccessPath leading to the Entry through the CurrentRound,
-              // while `story.attach(..., entry)` will re-follow it through
-              // following the Story's list of all Entries. Unfortunately this
-              // results in the same Record being present in `hut.sync.addRec`
-              // and `hut.sync.remRec`, and this will be resolved by preferring
-              // "remRec". The solution should probably be to give preference
-              // to the latest operation - if rem comes last, it should win. If
-              // add comes last, *it* should win.
+              // Mark Round as no longer the current Round
+              storyCurRound.shut();
               
-              // Detach the current Round
-              relStoryCurrentRound.shut();
+              // Add Round into the Story's history of Rounds
+              lands.createRec('storyRound', {}, story, round);
               
-              if (entry) {
-                // Add the Entry to the Story.
-                // TODO: No delay should be necessary! Need to fix sync-addRec-remRec-conflict bug!!
-                setTimeout(() => story.attach(rel.storyEntries.fwd, entry), 1000);
-              } else {
-                console.log('Round ended without entry :(');
-              }
+              // Add Entry into the Story
+              lands.createRec('storyEntry', {}, story, entry);
               
             };
             
             // Round ends because of timeout with a random Entry tied for 1st place
-            let timeoutDur = storyCurrentRound.value.endMs - foundation.getMs();
+            let timeoutDur = round.value.endMs - foundation.getMs();
             let timeout = setTimeout(() => endRound('deadline', bestEntry()), timeoutDur);
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
-            dep(AccessPath(storyCurrentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
+            dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
               
-              dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: roundEntryVoteAuthor }) => {
+              let entry = roundEntry.members[1];
+              dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
                 
                 // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
-                if (winningEntry) endRound('outcomeKnown', winningEntry);
+                if (winningEntry) endRound('insurmountableEntry', winningEntry);
                 
               }));
               
@@ -508,497 +476,560 @@ U.buildRoom({
             // Round ends because there's at least one Vote, and Votes are exhausted
             // Note that 2 factors determine this: total votes available, and total votes cast.
             // We only listen for changes in total votes cast to trigger the round-end-due-to-exhaustion event though.
-            dep(storyCurrentRound.hold(
-              ({ numVotes }) => (numVotes >= story.value.numAuthors) && endRound('noMoreVotes', bestEntry())
-            ));
+            // TODO: This assumes that total votes available can never decrement
+            dep(round.hold(v => {
+              if (v.numVotes >= story.value.numAuthors) endRound('noMoreVotes', bestEntry());
+            }));
             
           }));
           
+          /*
           // Controls on Stories -> Authors
-          dep(AccessPath(story.relWob(rel.storyAuthors.fwd), (dep, { rec: storyAuthor }) => {
+          dep(AccessPath(story.relWob(rt.storyAuthor), (dep, storyAuthor) => {
+            
+            let author = storyAuthor.members[1];
             
             // Enable Author actions: 1) submit Entry; 2) submit Vote
-            
-            dep(AccessPath(storyAuthor.relWob(rel.hutAuthor.bak), (dep, { rec: storyAuthorHut }) => {
+            dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
               
-              dep(storyAuthorHut.comWob('entry').hold(({ lands, hut, msg }) => {
+              let hut = hutAuthor.members[0];
+              
+              dep(hut.comWob('entry').hold(({ msg }) => {
                 
-                // If no Round exists, a new one is begun.
-                // Then the Author adds a new Entry to the Round.
+                // If no Round exists, a new one begins
                 
                 // TODO: If max Rounds reached, deny
                 
-                let storyCurrentRound = story.getRec(rel.storyCurrentRound.fwd);
-                if (!storyCurrentRound) {
+                let storyCurRound = story.relRec(rt.storyCurRound);
+                let curRound = null;
+                if (!storyCurRound) {
                   
                   let ms = foundation.getMs();
                   
-                  storyCurrentRound = Round({ lands, value: {
-                    roundNum: story.relWob(rel.storyRounds.fwd).size(),
+                  curRound = lands.createRec('round', { value: {
+                    roundNum: story.relRecs(rt.storyRound).length,
                     startMs: ms,
                     endMs: ms + story.value.settings.roundMs,
                     numVotes: 0
                   }});
-                  let ap = AccessPath(storyCurrentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
-                    dep(AccessPath(entry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, relVoteAuthor) => {
-                      storyCurrentRound.modify(v => { v.numVotes++; return v; });
-                      dep(Hog(() => storyCurrentRound.modify(v => { v.numVotes--; return v; })));
+                  
+                  // Liven up `curRound.value.numVotes`
+                  let scope = AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
+                    let entry = roundEntry.members[1];
+                    dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                      curRound.modify(v => (v.numVotes++, v));
+                      dep(Hog(() => curRound.modify(v => (v.numVotes--, v))));
                     }));
                   });
-                  storyCurrentRound.shutWob().hold(() => ap.shut());
+                  curRound.shutWob().hold(() => scope.shut());
                   
-                  story.attach(rel.storyRounds.fwd, storyCurrentRound);
-                  story.attach(rel.storyCurrentRound.fwd, storyCurrentRound);
+                  lands.createRec('storyCurRound', {}, story, curRound);
+                  
+                } else {
+                  
+                  curRound = storyCurRound.members[1];
                   
                 }
                 
-                // TODO: If already submitted, deny
+                let entry = lands.createRec('entry', { value: { text: msg.text, numVotes: 0 } });
                 
-                let entry = Entry({ lands, value: { text: msg.text, numVotes: 0 } });
-                let ap = AccessPath(entry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
-                  entry.modify(v => { v.numVotes++; return v; });
-                  dep(Hog(() => entry.modify(v => { v.numVotes--; return v; })));
+                // Liven up `entry.value.numVotes`
+                let scope = AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                  entry.modify(v => (v.numVotes++, v));
+                  dep(Hog(() => entry.modify(v => (v.numVotes--, v))));
                 });
                 
-                let entryAttachRound = entry.attach(rel.roundEntries.bak, storyCurrentRound);
-                entryAttachRound.shutWob().hold(() => ap.shut());
+                // Connect Entry to Author
+                let entryAuthor = lands.createRec('entryAuthor', {}, entry, author);
                 
-                entry.attach(rel.entryAuthor.fwd, storyAuthor);
+                // Connect Entry to Round
+                let roundEntry = lands.createRec('roundEntry', {}, curRound, entry);
+                roundEntry.shutWob().hold(() => scope.shut());
                 
               }));
               
-              dep(storyAuthorHut.comWob('vote').hold(({ lands, hut, msg }) => {
+              dep(hut.comWob('vote').hold(({ msg }) => {
                 
-                let storyCurrentRound = story.getRec(rel.storyCurrentRound.fwd);
-                if (!storyCurrentRound) return hut.tell({ command: 'error', type: 'denied', msg: 'no round', orig: msg });
+                let storyCurRound = story.relRec(rt.storyCurRound);
+                if (!storyCurRound) return hut.tell({ command: 'error', type: 'denied', msg: 'no round', orig: msg });
                 
-                let entry = storyCurrentRound.getRec(rel.roundEntries.fwd, msg.entry);
-                entry.attach(rel.roundEntryVoteAuthors.fwd, storyAuthor);
+                let curRound = storyCurRound.members[1];
+                let entries = curRound.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
+                
+                let findEntry = entries.find(entry => entry.uid === msg.entry);
+                
+                if (!findEntry) return hut.tell({ command: 'error', type: 'denied', msg: `Invalid Entry uid: ${msg.entry}`, orig: msg });
+                
+                lands.createRec('entryVoterAuthor', {}, findEntry[0], author);
                 
               }));
               
             }));
             
           }));
+          */
           
         }));
-        
-        /// =ABOVE}
-        
-        let s = { w: real.UnitPx(100), h: real.UnitPx(100) };
-        let reality = Reality('storyMix', {
-          
-          // TODO: Should layout and slots be condition-able? If they were conditional,
-          // it would make things like responsive grid-layout with javascript-fallback
-          // trivial. Super tricky to implement though!
-          
-          'main': ({ slots, viewport }) => ({
-            layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
-            slots: real.slots.Titled({ titleExt: real.UnitPx(53) }),
-            decals: {
-              colour: 'rgba(255, 255, 255, 1)'
-            }
-          }),
-          'main.title': ({ slots }) => ({
-            layout: slots.insertTitle(),
-            decals: {
-              colour: 'rgba(0, 0, 0, 0.2)',
-              textOrigin: 'center',
-              textSize: real.UnitPx(24)
-            }
-          }),
-          'main.loggedOut': ({ slots }) => ({
-            layout: slots.insertContent(),
-            slots: real.slots.Justified(),
-            decals: {
-              colour: 'rgba(255, 220, 220, 1)'
-            }
-          }),
-          'main.loggedOut.form': ({ slots }) => ({
-            layout: slots.insertJustifiedItem(), // real.layout.Free({ w: real.UnitPc(60), h: real.UnitPc(60) }),
-            slots: real.slots.FillV({}),
-            decals: {
-              size: [ real.UnitPc(60), null ]
-            }
-          }),
-          'main.loggedOut.form.item': ({ slots }) => ({
-            layout: slots.insertVItem({ size: [ real.UnitPc(100), real.UnitPx(50) ] }),
-            slots: real.slots.Titled({ titleExt: real.UnitPx(20) })
-          }),
-          'main.loggedOut.form.item.title': ({ slots }) => ({
-            layout: slots.insertTitle()
-          }),
-          'main.loggedOut.form.item.field': ({ slots }) => ({
-            layout: slots.insertContent(),
-            decals: {
-              colour: 'rgba(255, 255, 255, 1)',
-              textColour: 'rgba(0, 0, 0, 1)',
-              textLining: { type: 'single', pad: real.UnitPx(5) }
-            }
-          }),
-          'main.loggedOut.form.submit': ({ slots }) => ({
-            layout: slots.insertVItem(),
-            decals: {
-              colour: '#d0d0d0',
-              size: [ real.UnitPc(100), real.UnitPx(30) ],
-              textLining: { type: 'single' },
-              textOrigin: 'center',
-              textSize: real.UnitPx(22),
-              _css: { main: {
-                marginTop: real.UnitPx(20)
-              }}
-            }
-          }),
-          
-          'main.loggedIn': ({ slots }) => ({
-            layout: slots.insertContent(),
-            decals: {
-              colour: 'rgba(220, 255, 220, 1)'
-            }
-          }),
-          'main.loggedIn.storyOut': ({ slots }) => ({
-            layout: real.layout.Fill({}),
-            slots: real.slots.FillH({})
-          }),
-          'main.loggedIn.storyOut.storyList': ({ slots }) => ({
-            layout: slots.insertHItem(),
-            slots: real.slots.FillV({ pad: real.UnitPx(5) }),
-            decals: {
-              size: [ real.UnitPc(50), real.UnitPc(100) ],
-              border: { w: real.UnitPx(2), colour: '#00ff00' }
-            }
-          }),
-          'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
-            layout: slots.insertVItem({ size: [ null, real.UnitPx(50) ] }),
-            slots: real.slots.Titled({ titleExt: real.UnitPx(30) }),
-            decals: {
-              colour: 'rgba(0, 100, 0, 0.1)',
-              hover: {
-                colour: 'rgba(0, 150, 0, 0.2)'
-              }
-            }
-          }),
-          'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
-            layout: slots.insertTitle(),
-            decals: {
-              textSize: real.UnitPx(22)
-            }
-          }),
-          'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
-            layout: slots.insertContent(),
-            decals: {
-              textSize: real.UnitPx(14)
-            }
-          }),
-          
-          'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
-            layout: slots.insertHItem(),
-            slots: real.slots.Justified(),
-            decals: {
-              size: [ real.UnitPc(50), real.UnitPc(100) ],
-              border: { w: real.UnitPx(2), colour: '#00c8a0' }
-            }
-          }),
-          'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
-            layout: slots.insertJustifiedItem(),
-            slots: real.slots.FillV({}),
-            decals: {
-              size: [ real.UnitPc(80), null ]
-            }
-          }),
-          'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
-            layout: slots.insertVItem({ size: [ null, real.UnitPx(50) ] }),
-            slots: real.slots.Titled({ titleExt: real.UnitPx(20) })
-          }),
-          'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
-            layout: slots.insertTitle()
-          }),
-          'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
-            layout: slots.insertContent(),
-            decals: {
-              colour: '#ffffff',
-              textColour: '#000000',
-              textLining:  { type: 'single', pad: real.UnitPx(5) }
-            }
-          }),
-          'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
-            layout: slots.insertVItem(),
-            decals: {
-              size: [ null, real.UnitPx(30) ],
-              colour: '#d0d0d0',
-              textLining: { type: 'single' },
-              textOrigin: 'center',
-              textSize: real.UnitPx(22),
-              
-              _css: { main: {
-                marginTop: real.UnitPx(20)
-              }}
-              
-              
-              //_css: { main: {
-              //  height: real.UnitPx(30),
-              //  lineHeight: real.UnitPx(30),
-              //  marginTop: real.UnitPx(20),
-              //  fontSize: real.UnitPx(22),
-              //  textAlign: 'center',
-              //  backgroundColor: '#d0d0d0'
-              //}}
-            }
-          }),
-          
-          'main.loggedIn.storyIn': ({ slots }) => ({
-            layout: real.layout.Fill({}),
-            slots: real.slots.FillV({})
-          }),
-          'main.loggedIn.storyIn.entries': ({ slots }) => ({
-            layout: slots.insertVItem(),
-            decals: {
-              size: [ null, real.UnitPc(50) ]
-            }
-          }),
-          'main.loggedIn.storyIn.controls': ({ slots }) => ({
-            layout: slots.insertVItem(),
-            decals: {
-              size: [ null, real.UnitPc(50) ]
-            }
-          }),
-          'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
-            layout: real.layout.Fill({}),
-            slots: real.slots.Titled({ side: 'b', titleExt: real.UnitPx(50) })
-          }),
-          'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
-            layout: slots.insertContent(),
-            decals: {
-              colour: 'rgba(255, 255, 255, 1)'
-            }
-          }),
-          'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
-            layout: slots.insertTitle(),
-            decals: {
-              colour: 'rgba(120, 200, 120, 1)',
-              textOrigin: 'center'
-            }
-          }),
-          
-          'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
-            layout: real.layout.Fill({ pad: real.UnitPx(5) }),
-            slots: real.slots.FillV({})
-          }),
-          'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
-            layout: slots.insertVItem(),
-            decals: {
-              colour: '#ffffff',
-              border: { w: real.UnitPx(2), colour: '#000000' }
-            }
-          }),
-          'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
-          'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
-          'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
-          'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
-          
-        });
-        
-        let rootReal = await foundation.getRootReal();
-        dep(reality.contain(foundation, rootReal)); // Need to contain the root even if it's `null`
-        
-        /// {BELOW=
-        
-        storyMix = await lands.getInitRec(StoryMix); // TODO: `Lands.prototype.getInitRec` barely works :P
-        let mainReal = rootReal.addReal('main');
-        dep(AccessPath(WobVal(storyMix), (dep, storyMix) => {
-          
-          let title = mainReal.addReal('title');
-          title.setText('Story Mix');
-          
-          let myAuthorWob = dep(WobFlt(storyMix.relWob(rel.storyMixAuthors.fwd), relAuthor => {
-            return relAuthor.rec.value.term === U.hutTerm ? relAuthor : C.skip;
-          }));
-          let noAuthorWob = WobTmp('up');
-          
-          dep(AccessPath(noAuthorWob, dep => {
-            
-            let loggedOutReal = dep(mainReal.addReal('loggedOut'));
-            
-            let loginForm = loggedOutReal.addReal('form');
-            let form = loginForm.form('Login', dep, v => form.clear() && lands.tell({ command: 'author', ...v }), {
-              username: { type: 'str', desc: 'Username' },
-              password: { type: 'str', desc: 'Password' }
-            });
-            
-          }));
-          dep(AccessPath(myAuthorWob, (dep, { rec: myAuthor }) => {
-            
-            noAuthorWob.dn();
-            dep(Hog(() => noAuthorWob.up()));
-            
-            let loggedInReal = dep(mainReal.addReal('loggedIn'));
-            
-            let noStoryWob = WobTmp('up');
-            
-            dep(AccessPath(noStoryWob, dep => {
-              
-              let noStoryReal = dep(loggedInReal.addReal('storyOut'));
-              
-              let storyList = noStoryReal.addReal('storyList');
-              dep(AccessPath(storyMix.relWob(rel.storyMixStories.fwd), (dep, { rec: story }) => {
-                
-                let joinStory = dep(storyList.addReal('item'));
-                let joinStoryName = joinStory.addReal('name');
-                let joinStoryDesc = joinStory.addReal('desc');
-                
-                dep(story.hold(v => {
-                  joinStoryName.setText(v.name);
-                  joinStoryDesc.setText(v.desc);
-                }));
-                dep(joinStory.feelWob().hold(() => lands.tell({ command: 'join', story: story.uid })));
-                
-              }));
-              
-              let storyCreate = noStoryReal.addReal('storyCreate');
-              
-              let storyForm = storyCreate.addReal('form');
-              let form = storyForm.form('Create!', dep, v => form.clear() && lands.tell({ command: 'story', ...v }), {
-                name:       { type: 'str', desc: 'Name', v: 'test' },
-                desc:       { type: 'str', desc: 'Description', v: 'TEST TEST' },
-                roundMs:    { type: 'int', desc: 'Round Timer', v: '10000000' },
-                maxAuthors: { type: 'int', desc: 'Max Authors', v: '10' }
-              });
-              
-            }));
-            dep(AccessPath(myAuthor.relWob(rel.authorCurrentStory.fwd), (dep, { rec: myStory }) => {
-              
-              noStoryWob.dn();
-              dep(Hog(() => noStoryWob.up()));
-              
-              let storyReal = dep(loggedInReal.addReal('storyIn'));
-              
-              // Show all the Story's entries
-              let entriesPane = storyReal.addReal('entries');
-              dep(AccessPath(myStory.relWob(rel.storyEntries.fwd), (dep, { rec: entry }) => {
-                let entryReal = dep(entriesPane.addReal('entry'));
-                dep(entry.hold(v => entryReal.setText(v.text)));
-              }));
-              
-              // Calculate the current entry wob. For the current round, check all RoundEntries, and
-              // then the RoundEntry's EntryAuthor.
-              let myCurrentEntryWob = WobTmp('dn');
-              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
-                
-                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
-                  
-                  let authorFlt = dep(WobFlt(entry.relWob(rel.entryAuthor.fwd), relAuthor => {
-                    return relAuthor.rec === myAuthor ? relAuthor : C.skip;
-                  }));
-                  
-                  dep(AccessPath(authorFlt, (dep, { rec: author }) => {
-                    myCurrentEntryWob.up(entry);
-                    dep(Hog(() => myCurrentEntryWob.dn()));
-                  }));
-                  
-                }));
-                
-              }));
-              
-              // Calculate the current voted Entry. For the current round, check all RoundEntries,
-              // then  filter the RoundEntry's VoteAuthors, searching for our Author.
-              let myCurrentVotedEntryWob = WobTmp('dn');
-              dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
-                
-                dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: entry }) => {
-                  
-                  let authorFlt = dep(WobFlt(entry.relWob(rel.roundEntryVoteAuthors.fwd), relVoteAuthor => relVoteAuthor.rec === myAuthor ? relVoteAuthor : C.skip));
-                  dep(AccessPath(authorFlt, (dep, { rec: author }) => {
-                    myCurrentVotedEntryWob.up(entry);
-                    dep(Hog(() => myCurrentVotedEntryWob.dn()));
-                  }));
-                  
-                }));
-                
-              }));
-              
-              // Will hold controls for creating and voting on Round Entries
-              let roundPane = storyReal.addReal('controls');
-              
-              // If no current Entry (potentially even before Round begins), show the writing pane
-              dep(AccessPath(myCurrentEntryWob.inverse(), dep => {
-                
-                // Entries submittable if no current Entry. So at this stage either:
-                // 1 - No Round exists
-                // 2 - Round exists, but no Entry submitted by our Author
-                let entryWritePane = dep(roundPane.addReal('write'));
-                let entryWriteField = entryWritePane.addReal('field');
-                let entryWriteSubmit = entryWritePane.addReal('submit');
-                
-                // TODO: Should use "form" stuff here
-                let entryText = '';
-                dep(entryWriteField.tellWob().hold(v => { entryText = v; }));
-                
-                entryWriteSubmit.setText('Submit!');
-                dep(entryWriteSubmit.feelWob().hold( () => lands.tell({ command: 'entry', text: entryText }) ));
-                
-              }));
-              
-              // If an Entry has been submitted, show the list of votable Entries
-              dep(AccessPath(myCurrentEntryWob, dep => {
-                
-                // Show all Round stuff
-                dep(AccessPath(myStory.relWob(rel.storyCurrentRound.fwd), (dep, { rec: currentRound }) => {
-                  
-                  // Show all votable Entries for current Round
-                  let entriesPane = dep(roundPane.addReal('entries'));
-                  
-                  dep(AccessPath(currentRound.relWob(rel.roundEntries.fwd), (dep, { rec: roundEntry }) => {
-                    
-                    // A Real for the whole Entry
-                    let roundEntryReal = dep(entriesPane.addReal('entry'));
-                    
-                    // Show the Entry's text
-                    let roundEntryTextReal = roundEntryReal.addReal('text');
-                    dep(roundEntry.hold(v => roundEntryTextReal.setText(v.text)));
-                    
-                    // Before we vote, show an option to vote on Entries
-                    dep(AccessPath(myCurrentVotedEntryWob.inverse(), dep => {
-                      
-                      let roundEntryVoteReal = dep(roundEntryReal.addReal('doVote'));
-                      roundEntryVoteReal.setText('Vote!');
-                      roundEntryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: roundEntry.uid }));
-                      
-                    }));
-                    
-                    // Show the username of the Entry's Author
-                    let roundEntryAuthorReal = roundEntryReal.addReal('author');
-                    dep(AccessPath(roundEntry.relWob(rel.entryAuthor.fwd), (dep, { rec: entryAuthor }) => {
-                      dep(entryAuthor.hold(v => roundEntryAuthorReal.setText(v.username)));
-                    }));
-                    
-                    // Show each Vote for the Entry
-                    let roundEntryVotes = roundEntryReal.addReal('votes');
-                    dep(AccessPath(roundEntry.relWob(rel.roundEntryVoteAuthors.fwd), (dep, { rec: voteAuthor }) => {
-                      
-                      let voteReal = dep(roundEntryVotes.addReal('vote'));
-                      dep(voteAuthor.hold(v => voteReal.setText(v.username)));
-                      
-                    }));
-                    
-                  }));
-                  
-                }));
-                
-              }));
-              
-            }));
-            
-          }));
-          
-        }));
-        
-        /// =BELOW}
         
       });
       
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer() }));
-      U.lands = lands;
+      /// =ABOVE}
+      
+      let { UnitPx, UnitPc, layout, slots } = real;
+      let reality = Reality('storyMix', {
+        
+        // TODO: Should layout and slots be condition-able? If they were conditional,
+        // it would make things like responsive grid-layout with javascript-fallback
+        // trivial. Super tricky to implement though!
+        
+        'main': ({ slots, viewport }) => ({
+          layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
+          slots: real.slots.Titled({ titleExt: UnitPx(53) }),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.header': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            colour: 'rgba(0, 0, 0, 0.2)'
+          }
+        }),
+        'main.header.title': ({ slots }) => ({
+          layout: real.layout.Free({ w: UnitPc(0.5), h: UnitPc(1) }),
+          decals: {
+            textOrigin: 'center',
+            textSize: UnitPx(24),
+            colour: 'rgba(0, 0, 0, 0.2)'
+          }
+        }),
+        'main.header.back': ({ slots }) => ({
+          layout: real.layout.Free({ w: UnitPc(0.1), h: UnitPc(1), x: UnitPc(0.45), y: UnitPc(0) }),
+          decals: {
+            textOrigin: 'center',
+            textSize: UnitPx(20),
+            colour: 'rgba(0, 0, 0, 0.5)',
+            textColour: '#ffffff'
+          }
+        }),
+        'main.loggedOut': ({ slots }) => ({
+          layout: slots.insertContent(),
+          slots: real.slots.Justified(),
+          decals: {
+            colour: 'rgba(255, 220, 220, 1)'
+          }
+        }),
+        'main.loggedOut.form': ({ slots }) => ({
+          layout: slots.insertJustifiedItem(), // real.layout.Free({ w: UnitPc(0.6), h: UnitPc(0.6) }),
+          slots: real.slots.FillV({}),
+          decals: {
+            size: [ UnitPc(0.6), null ]
+          }
+        }),
+        'main.loggedOut.form.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ UnitPc(1), UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(20) })
+        }),
+        'main.loggedOut.form.item.title': ({ slots }) => ({
+          layout: slots.insertTitle()
+        }),
+        'main.loggedOut.form.item.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)',
+            textColour: 'rgba(0, 0, 0, 1)',
+            textLining: { type: 'single', pad: UnitPx(5) }
+          }
+        }),
+        'main.loggedOut.form.submit': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            colour: '#d0d0d0',
+            size: [ UnitPc(1), UnitPx(30) ],
+            textLining: { type: 'single' },
+            textOrigin: 'center',
+            textSize: UnitPx(22),
+            _css: { main: {
+              marginTop: UnitPx(20)
+            }}
+          }
+        }),
+        
+        'main.loggedIn': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(220, 255, 220, 1)'
+          }
+        }),
+        'main.loggedIn.storyOut': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.FillH({})
+        }),
+        'main.loggedIn.storyOut.storyList': ({ slots }) => ({
+          layout: slots.insertHItem(),
+          slots: real.slots.FillV({ pad: UnitPx(5) }),
+          decals: {
+            size: [ UnitPc(0.5), UnitPc(1) ],
+            border: { w: UnitPx(2), colour: '#00ff00' }
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(30) }),
+          decals: {
+            colour: 'rgba(0, 100, 0, 0.1)',
+            hover: {
+              colour: 'rgba(0, 150, 0, 0.2)'
+            }
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            textSize: UnitPx(22)
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            textSize: UnitPx(14)
+          }
+        }),
+        
+        'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
+          layout: slots.insertHItem(),
+          slots: real.slots.Justified(),
+          decals: {
+            size: [ UnitPc(0.5), UnitPc(1) ],
+            border: { w: UnitPx(2), colour: '#00c8a0' }
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
+          layout: slots.insertJustifiedItem(),
+          slots: real.slots.FillV({}),
+          decals: {
+            size: [ UnitPc(0.8), null ]
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(20) })
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
+          layout: slots.insertTitle()
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: '#ffffff',
+            textColour: '#000000',
+            textLining:  { type: 'single', pad: UnitPx(5) }
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPx(30) ],
+            colour: '#d0d0d0',
+            textLining: { type: 'single' },
+            textOrigin: 'center',
+            textSize: UnitPx(22),
+            
+            _css: { main: {
+              marginTop: UnitPx(20)
+            }}
+            
+            
+            //_css: { main: {
+            //  height: UnitPx(30),
+            //  lineHeight: UnitPx(30),
+            //  marginTop: UnitPx(20),
+            //  fontSize: UnitPx(22),
+            //  textAlign: 'center',
+            //  backgroundColor: '#d0d0d0'
+            //}}
+          }
+        }),
+        
+        'main.loggedIn.storyIn': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.FillV({})
+        }),
+        'main.loggedIn.storyIn.entries': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPc(0.5) ]
+          }
+        }),
+        'main.loggedIn.storyIn.controls': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPc(0.5) ]
+          }
+        }),
+        'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.Titled({ side: 'b', titleExt: UnitPx(50) })
+        }),
+        'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            colour: 'rgba(120, 200, 120, 1)',
+            textOrigin: 'center'
+          }
+        }),
+        
+        'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
+          layout: real.layout.Fill({ pad: UnitPx(5) }),
+          slots: real.slots.FillV({})
+        }),
+        'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            colour: '#ffffff',
+            border: { w: UnitPx(2), colour: '#000000' }
+          }
+        }),
+        'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
+        
+      });
+      
+      let rootReal = await foundation.getRootReal();
+      reality.contain(foundation, rootReal); // Need to contain the root even if it's `null` (TODO: `.contain` should go into `dep` once there's a single root HorzScope!)
+      
+      /// {BELOW=
+      
+      let rootBelowScope = AccessPath(lands.arch.relWob(rt.archStoryMix), (dep, archStoryMix) => {
+        
+        let storyMix = archStoryMix.members[1];
+        
+        let mainReal = rootReal.addReal('main');
+        let headerReal = mainReal.addReal('header');
+        let titleReal = headerReal.addReal('title');
+        titleReal.setText('StoryMix');
+        
+        // Some fancy footwork: only listen to do `myAuthorWob.up(...)`
+        // when `myAuthorWob` is dn!
+        let myAuthorWob = WobTmp('dn');
+        dep(AccessPath(storyMix.relWob(rt.storyMixAuthor), (dep, storyMixAuthor) => {
+          let author = storyMixAuthor.members[1];
+          if (author.value.term === U.hutTerm) dep(myAuthorWob.up(author));
+        }));
+        
+        dep(AccessPath(myAuthorWob.inverse(), dep => {
+          
+          let loggedOutReal = dep(mainReal.addReal('loggedOut'));
+          let loginForm = loggedOutReal.addReal('form');
+          let form = loginForm.form('Login', dep,
+            v => form.clear() && lands.tell({ command: 'author', ...v }),
+            {
+              username: { type: 'str', desc: 'Username' },
+              password: { type: 'str', desc: 'Password' }
+            }
+          );
+          
+        }));
+        
+        dep(AccessPath(myAuthorWob, (dep, { value: author }) => {
+          
+          let loggedInReal = dep(mainReal.addReal('loggedIn'));
+          
+          let myStoryWob = WobTmp('dn');
+          dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+            
+            console.log('GOT STORY!!', authorCurStory.members[1].uid);
+            
+            let curStory = authorCurStory.members[1];
+            dep(myStoryWob.up(curStory));
+            
+          }));
+          
+          dep(AccessPath(myStoryWob.inverse(), dep => {
+            
+            console.log('NO STORY!!!');
+            
+            let noStoryReal = dep(loggedInReal.addReal('storyOut'));
+            
+            let storyList = noStoryReal.addReal('storyList');
+            dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+              
+              let story = storyMixStory.members[1];
+              
+              let joinStory = dep(storyList.addReal('item'));
+              let joinStoryName = joinStory.addReal('name');
+              let joinStoryDesc = joinStory.addReal('desc');
+              
+              dep(story.hold(({ name, desc }) => {
+                joinStoryName.setText(name);
+                joinStoryDesc.setText(desc);
+              }));
+              joinStory.feelWob().hold(() => lands.tell({ command: 'join', story: story.uid }));
+              
+            }));
+            
+            let storyCreate = noStoryReal.addReal('storyCreate');
+            let storyForm = storyCreate.addReal('form');
+            let form = storyForm.form('Create!', dep, v => form.clear() && lands.tell({ command: 'story', ...v }), {
+              name:       { type: 'str', desc: 'Name', v: 'test' },
+              desc:       { type: 'str', desc: 'Description', v: 'TEST TEST' },
+              roundMs:    { type: 'int', desc: 'Round Timer', v: '10000000' },
+              maxAuthors: { type: 'int', desc: 'Max Authors', v: '10' }
+            });
+            
+          }));
+          
+          dep(AccessPath(myStoryWob, (dep, { value: story }) => {
+            
+            let backReal = dep(headerReal.addReal('back'));
+            backReal.setText('Back');
+            backReal.feelWob().hold(() => lands.tell({ command: 'join', story: null }));
+            
+            let storyReal = dep(loggedInReal.addReal('storyIn'));
+            
+            let entriesReal = storyReal.addReal('entries');
+            dep(AccessPath(story.relWob(rt.storyEntry), (dep, storyEntry) => {
+              
+              let entry = storyEntry.members[1];
+              let entryReal = dep(entriesReal.addReal('entry'));
+              dep(entry.hold(v => entryReal.setText(v.text)));
+              
+            }));
+            
+            let myCurEntryWob = WobTmp('dn');
+            let myCurVotedEntryWob = WobTmp('dn');
+            dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+              
+              let round = storyCurRound.members[1];
+              dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
+                
+                let entry = roundEntry.members[1];
+                
+                // Look at "entryAuthor" to establish current Entry
+                dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                  
+                  let authorOfEntry = entryAuthor.members[1];
+                  if (authorOfEntry === author) dep(myCurEntryWob.up(entry));
+                  
+                }));
+                
+                // Look at "entryVoterAuthor" to establish current voted Entry
+                dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                  
+                  let voterAuthor = entryVoterAuthor.members[1];
+                  if (voterAuthor === author) dep(myCurVotedEntryWob.up(entry));
+                  
+                }));
+                
+              }));
+              
+            }));
+            
+            /*
+            // TODO: This also works to liven up `myCurEntryWob` and
+            // `myCurVotedEntryWob`!
+            let storyScope = VertScope();
+            let entryWob = storyScope
+              .dive(story =>          story.relWob(rt.storyCurRound))
+              .dive(storyCurRound =>  WobVal(storyCurRound.members[1]))
+              .dive(round =>          round.relWob(rt.roundEntry))
+              .dive(roundEntry =>     WobVal(roundEntry.members[1]));
+            
+            let authorOfEntryWob = entryWob
+              .dive(entry => entry.relWob(rt.entryAuthor))
+              .dive(entryAuthor => WobVal(entryAuthor.members[1]));
+            
+            let voterAuthorOfEntryWob = entryWob
+              .dive(entry => entry.relWob(rt.entryVoterAuthor))
+              .dive(entryVoterAuthor => WobVal(entryVoterAuthor.members[1]));
+            
+            dep(authorOfEntryWob.hold((dep, [ authorOfEntry, _, entry ]) => {
+              if (authorOfEntry === author) dep(myCurEntryWob.up(entry));
+            }));
+            
+            dep(voterAuthorOfEntryWob.hold((dep, [ voterAuthor, _, entry ]) => {
+              if (voterAuthor === author) dep(myCurVotedEntryWob.up(entry));
+            }));
+            
+            storyScope.trackWob(story);
+            */
+            
+            let roundReal = storyReal.addReal('controls');
+            
+            dep(AccessPath(myCurEntryWob.inverse(), dep => {
+              
+              let writeReal = dep(roundReal.addReal('write'));
+              let writeFieldReal = writeReal.addReal('field');
+              let writeSubmitReal = writeReal.addReal('submit');
+              
+              let entryText = '';
+              writeFieldReal.tellWob().hold(v => entryText = v);
+              
+              writeSubmitReal.setText('Submit!');
+              writeSubmitReal.feelWob().hold(() => lands.tell({ command: 'entry', text: entryText }));
+              
+            }));
+            
+            dep(AccessPath(myCurEntryWob, dep => {
+              
+              dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+                
+                let round = storyCurRound.members[1];
+                
+                let entriesReal = dep(roundReal.addReal('entries'));
+                
+                dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
+                  
+                  let entry = roundEntry.members[1];
+                  
+                  let entryReal = dep(entriesReal.addReal('entry'));
+                  
+                  let entryTextReal = entryReal.addReal('text');
+                  dep(entry.hold(v => entryTextReal.setText(v.text)));
+                  
+                  dep(AccessPath(myCurVotedEntryWob.inverse(), dep => {
+                    let entryVoteReal = dep(entryReal.addReal('doVote'));
+                    entryVoteReal.setText('Vote!');
+                    entryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: entry.uid }));
+                  }));
+                  
+                  let entryAuthorReal = entryReal.addReal('author');
+                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                    let author = entryAuthor.members[1];
+                    dep(author.hold(v => entryAuthorReal.setText(v.username)));
+                  }));
+                  
+                  let entryVotesReal = entryReal.addReal('votes');
+                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                    let voterAuthor = entryVoterAuthor.members[1];
+                    let voterAuthorReal = entryVotesReal.addReal('vote');
+                    dep(voterAuthor.hold(v => voterAuthorReal.setText(v.username)));
+                  }));
+                  
+                }));
+                
+              }));
+              
+            }));
+            
+          }));
+          
+        }));
+        
+      });
+      
+      /// =BELOW}
+      
       await lands.open();
+      
     };
     
     return { open };

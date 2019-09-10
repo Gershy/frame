@@ -117,7 +117,7 @@
         below: { above: 0, below: 1 }
       };
       
-      this.transportDebug = true;
+      this.transportDebug = false;
       this.httpFullDebug = false;
       this.spoofEnabled = false;
       
@@ -601,7 +601,7 @@
         })();
         
         // TODO: This is nice content-type-dependent information!
-        if (false && this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
+        if (this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
           text: () => ({ ISTEXT: true, val: msg }),
           html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
@@ -654,6 +654,7 @@
           console.log('\n\n' + [
             '==== INCOMING REQUEST ====',
             `IP: ${req.connection.remoteAddress}`,
+            `METHOD: ${req.method}`,
             `REQURL: ${req.url}`,
             `REQQRY: ${JSON.stringify(query, null, 2)}`,
             `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
@@ -661,13 +662,17 @@
           ].join('\n'));
         }
         
-        let [ ip, port ] = (this.spoofEnabled && query.has('spoof'))
-          ? query.spoof.split('/')
+        let isSpoofed = this.spoofEnabled && query.has('spoof');
+        
+        let [ ip, port ] = isSpoofed
+          ? query.spoof.split(':')
           : [ req.connection.remoteAddress, 80 /*req.connection.remotePort*/ ];
         
-        // Build the "address"; use ip + innerId
-        // TODO: Rename "compactIp" -> "uniqueCpuId"?
-        let cpuId = this.compactIp(ip, port);
+        let cpuId = ip.has('.') ? this.compactIp(ip, port) : `${ip}:${port}`;
+        
+        // // Build the "cpuId"; use ip + innerId
+        // // TODO: Rename "compactIp" -> "uniqueCpuId"?
+        // let cpuId = this.compactIp(ip, port);
         
         // Get the connection from the pool
         let conn = pool.getConn(cpuId, serverWob);
@@ -679,6 +684,7 @@
             conn.waitResps.forEach(res => res.end());
           });
           conn.cpuId = cpuId;
+          conn.isSpoofed = isSpoofed;
           conn.ipPort = [ ip, port ];
           conn.hear = Wob({});
           conn.tell = msg => conn.waitResps.length // Send immediately if possible, otherwise queue!
@@ -1023,7 +1029,7 @@
     genInitBelow: async function(contentType, absConn, hutTerm, urlResources, initContent={}) {
       
       let urlFn = this.spoofEnabled
-        ? fp => `/!FILE${fp}?spoof=${absConn.address}`
+        ? fp => `/!FILE${fp}?spoof=${absConn.cpuId}` // TODO: Even if `absConn` isn't spoofing, this will occur
         : fp => `/!FILE${fp}`;
       
       let cssUrls = [];
@@ -1143,7 +1149,7 @@
       
       return doc.toString();
     },
-    establishHut: async function({ hut=null, bearing=null, ip=null, port=null }) {
+    establishHut: async function({ hut=null, bearing=null, ip=null, port=null, spoofEnabled=false }) {
       
       if (!hut) throw new Error('Missing "hut" param');
       if (!bearing) throw new Error('Missing "bearing" param');
@@ -1152,8 +1158,10 @@
       // We're establishing with known params! So set them on `this`
       this.hut = hut;
       this.bearing = bearing;
+      this.spoofEnabled = spoofEnabled;
       
-      // Overwrite the original "buildRoom" logic
+      // Overwrite the original "buildRoom" logic such that building a
+      // Room immediately executes that Room
       let origBuildRoom = U.buildRoom;
       U.buildRoom = (...args) => origBuildRoom(...args)();
       
@@ -1161,8 +1169,8 @@
       this.roomsInOrder = await this.compileRecursive(this.hut);
       
       // As soon as we're compiled we can install useful cmp->src exception handlers
-      process.on('uncaughtException', err => console.log(this.formatError(err)));
-      process.on('unhandledRejection', err => console.log(this.formatError(err)));
+      process.on('uncaughtException', err => console.error(this.formatError(err)));
+      process.on('unhandledRejection', err => console.error(this.formatError(err)));
       
       // Require all rooms nodejs-style
       this.roomsInOrder.forEach(roomName => require(`../room/${roomName}/${roomName}.${this.bearing}.js`));
