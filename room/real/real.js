@@ -43,12 +43,50 @@ U.buildRoom({
           insp.RealVal.init.call(this);
           this.amt = amt;
         },
-        isAbsolute: function() { return false; },
+        isAbsolute: function() {
+          // Indicates whether the final length indicated by the unit is
+          // known without any context. For example, pixel-units are
+          // always absolute, since, e.g., "53 pixels" has a known size
+          // regardless of any context. In contrast, the final length as
+          // a result of percentage units isn't known without knowing
+          // the size of the containing Real.
+          return false;
+        },
+        isRelativeToAxis: function(axis /* 'x' | 'y' */) {
+          // Indicates whether or not the unit is always proportional to
+          // the given axis.
+          
+          // TODO: With css, it isn't enough to know what type of unit
+          // is in use - we also need to know which property that unit
+          // is applied to :( - for example, UnitParH is relative to the
+          // x-axis when used for the css "height" property, but NOT for
+          // "margin-top" :(((
+          if (![ 'x', 'y' ].has(axis)) throw new Error(`Invalid axis: "${axis}"`);
+          return !this.isAbsolute();
+        },
         suff: C.notImplemented,
         add: function(n) { let Cls = this.constructor; return Cls(this.amt + n); },
         mult: function(n) { let Cls = this.constructor; return Cls(this.amt * n); },
         round: function() { let Cls = this.constructor; return Cls(Math.round(this.amt)); },
         getCss: function() { return `${this.isAbsolute() ? this.amt : (this.amt * 100)}${this.suff()}`; }
+      })});
+      let Calc = U.inspire({ name: 'Calc', insps: { RealVal }, methods: (insp, Insp) => ({
+        init: function(...units) {
+          if (units.find(u => !U.isType(u.amt, Number))) throw new Error('Provided Unit without "amt"');
+          this.units = units.map(u => u.amt ? u : C.skip);
+          this.UniformCls = (this.units.length && !units.find(u => u.constructor !== this.units[0].constructor))
+            ? this.units[0].constructor
+            : null;
+        },
+        op: C.notImplemented,
+        cssCalcSymbol: C.notImplemented,
+        getCss: function() {
+          if (!this.units.length) return '0';
+          if (this.UniformCls) {
+            return this.UniformCls(this.op(...this.units.map(u => u.amt))).getCss();
+          }
+          return `calc(${this.units.map(u => u.getCss()).join(` ${this.cssCalcSymbol()} `)})`;
+        }
       })});
       return {
         RealVal,
@@ -60,22 +98,36 @@ U.buildRoom({
           suff: function() { return '%'; }
         })}),
         UnitParW: U.inspire({ name: 'UnitParW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return '%'; }
+          suff: function() { return '%'; },
+          isRelativeToAxis: function(axis) { return axis === 'x'; }
         })}),
         UnitParH: U.inspire({ name: 'UnitParW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return '%'; }
+          suff: function() { return '%'; },
+          isRelativeToAxis: function(axis) { return axis === 'y'; }
         })}),
         ViewportW: U.inspire({ name: 'ViewportW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vw'; }
+          suff: function() { return 'vw'; },
+          isRelativeToAxis: function(axis) { return axis === 'x'; }
         })}),
         ViewportH: U.inspire({ name: 'ViewportH', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vh'; }
+          suff: function() { return 'vh'; },
+          isRelativeToAxis: function(axis) { return axis === 'x'; }
         })}),
         ViewportMin: U.inspire({ name: 'ViewportMin', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vmin'; }
+          suff: function() { return 'vmin'; },
+          isRelativeToAxis: function(axis) { return false; }
         })}),
         ViewportMax: U.inspire({ name: 'ViewportMax', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vmax'; }
+          suff: function() { return 'vmax'; },
+          isRelativeToAxis: function(axis) { return false; }
+        })}),
+        CalcAdd: U.inspire({ name: 'CalcAdd', insps: { Calc }, methods: (insp, Insp) => ({
+          op: function(...vals) { let v = 0; for (let vv of vals) v += vv; return v; },
+          cssCalcSymbol: function() { return '+'; },
+        })}),
+        CalcMult: U.inspire({ name: 'CalcMult', insps: { Calc }, methods: (insp, Insp) => ({
+          op: function(...vals) { let v = 1; for (let vv of vals) v *= vv; return v; },
+          cssCalcSymbol: function() { return '*'; },
         })})
       };
     })();
@@ -135,14 +187,102 @@ U.buildRoom({
         
       },
       /// {ABOVE=
+      decalsToCss: function(chain, decals) {
+        
+        if (!decals) return {};
+        
+        let mapping = {
+          colour: 'backgroundColor',
+          textSize: 'fontSize',
+          textOrigin: 'textAlign',
+          textColour: 'color',
+          size: v => {
+            let ret = {};
+            if (v[0] !== null) ret.width = v[0];
+            if (v[1] !== null) ret.height = v[1];
+            return ret;
+          },
+          text: v => { return { /* tricky! */ }; },
+          textLining: lining => {
+            if (!lining.has('type')) throw new Error('Invalid lining');
+            if (lining.type === 'single') {
+              let ret = {
+                whiteSpace: 'nowrap',
+                'resolveLast.applyFullLineHeight': 1
+              };
+              if (lining.has('pad')) ret.gain({ boxSizing: 'border-box', paddingLeft: lining.pad, paddingRight: lining.pad });
+              return ret;
+            }
+            throw new Error(`Invalid lining type: "${v.type}"`);
+          },
+          border: ({ type='in', w, colour }) => {
+            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${w.getCss()} ${colour}` }
+          }
+        };
+        
+        let directCss = {};
+        if (decals.has('_css')) { directCss = decals._css; delete decals._css; }
+        
+        let zoneDecals = { main: decals };
+        if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
+        if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
+        
+        // Zones are the same between css and Decals... for now
+        let zoneCss = zoneDecals.map((decals, zone) => {
+          
+          let css = {};
+          decals.forEach((decVal, decKey) => {
+            
+            if (!mapping.has(decKey)) throw new Error(`Invalid decal name: "${decKey}"`);
+            let m = mapping[decKey];
+            
+            if (U.isType(m, Function)) m = m(decVal); // Resolve function if necessary
+            
+            if (U.isType(m, String)) m = { [m]: decVal }; // Strings imply 1-1 prop mapping
+            
+            m.forEach((cssVal, cssKey) => {
+              if (css.has(cssKey)) throw new Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
+              css[cssKey] = cssVal;
+            });
+            
+          });
+          return css;
+          
+        });
+        
+        this.mergeZoneCss(chain, zoneCss, directCss);
+        
+        return zoneCss;
+        
+      },
+      mergeZoneCss: function(chain, cur, add) {
+        
+        // Zone is "main", "before", "after", "focus", "hover", etc.
+        add.forEach((css, zone) => {
+          
+          if (!cur.has(zone)) cur[zone] = {};
+          
+          css.forEach((cssVal, cssKey) => {
+            if (cur[zone].has(cssKey)) throw new Error(`Elem ${chain.join('.')} zone "${zone}" has conflicting "${cssKey}" css props`);
+            cur[zone][cssKey] = U.isType(cssVal, Number) ? vals.UnitPx(cssVal) : cssVal; // Allow numeric shorthand
+          });
+          
+        });
+        
+      },
       getCssControls: function() {
+        
+        // Generates everything needed to govern the UIX of Below. This
+        // includes stylesheet text, to govern static display rules, and
+        // javascript controls on an element-by-element basis, to govern
+        // any dynamic UIX features.
         
         let genericCtx = {
           viewport: { w: vals.ViewportW(1), h: vals.ViewportH(1), min: vals.ViewportMin(1), max: vals.ViewportMax(1) }
         };
         
-        let cmpRules = [];
-        let runRules = [];
+        let cmpRules = []; // Compile-time rules: for static UIX (css)
+        let runRules = []; // Run-time rules: for dynamic UIX (js)
         
         // Iterate over ctxsNodes and determine Ctxs in terms of Conditions
         // Return results in flat format
@@ -152,75 +292,11 @@ U.buildRoom({
           let fullCtx = ({}).gain(genericCtx).gain(parCtx);
           let { layout, slots=null, decals=null } = ctxsNode.ctxsFunc(fullCtx);
           
-          let decalsToCss = decals => {
-            if (!decals) return {};
-            
-            let mapping = {
-              colour: 'backgroundColor',
-              textSize: 'fontSize',
-              textOrigin: 'textAlign',
-              textColour: 'color',
-              size: v => {
-                let ret = {};
-                if (v[0] !== null) ret.width = v[0];
-                if (v[1] !== null) ret.height = v[1];
-                return ret;
-              },
-              text: v => { return { /* tricky! */ }; },
-              textLining: lining => {
-                if (!lining.has('type')) throw new Error('Invalid lining');
-                if (lining.type === 'single') {
-                  let ret = {
-                    whiteSpace: 'nowrap',
-                    'resolveLast.applyFullLineHeight': 1
-                  };
-                  if (lining.has('pad')) ret.gain({ boxSizing: 'border-box', paddingLeft: lining.pad, paddingRight: lining.pad });
-                  return ret;
-                }
-                throw new Error(`Invalid lining type: "${v.type}"`);
-              },
-              border: ({ type='in', w, colour }) => {
-                return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${w.getCss()} ${colour}` }
-              }
-            };
-            
-            let directCss = {};
-            if (decals.has('_css')) { directCss = decals._css; delete decals._css; }
-            
-            let zoneDecals = { main: decals };
-            if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
-            if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
-            
-            // Zones are the same between css and Decals... for now
-            let zoneCss = zoneDecals.map((decals, zone) => {
-              
-              let css = {};
-              decals.forEach((decVal, decKey) => {
-                
-                if (!mapping.has(decKey)) throw new Error(`Invalid decal name: "${decKey}"`);
-                let m = mapping[decKey];
-                
-                if (U.isType(m, Function)) m = m(decVal); // Resolve function if necessary
-                
-                if (U.isType(m, String)) m = { [m]: decVal }; // Strings imply 1-1 prop mapping
-                
-                m.forEach((cssVal, cssKey) => {
-                  if (css.has(cssKey)) throw new Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
-                  css[cssKey] = cssVal;
-                });
-                
-              });
-              return css;
-              
-            });
-            
-            mergeZoneCss(zoneCss, directCss);
-            
-            return zoneCss;
-          };
-          let mergeZoneCss = (cur, add) => {
+          let mergeZoneCss = (chain, cur, add) => {
             
             // Zone is "main", "before", "after", "focus", "hover", etc.
+            // At this level, we're still working in Units - we're not
+            // yet resolving anything to final css values.
             add.forEach((css, zone) => {
               
               if (!cur.has(zone)) cur[zone] = {};
@@ -239,9 +315,9 @@ U.buildRoom({
           if (slots) slots.layoutSize = (layout && layout.size) || [ null, null ];
           
           let zoneCss = {};
-          mergeZoneCss(zoneCss, layout ? layout.getCss() : {});
-          mergeZoneCss(zoneCss, slots ? slots.getCss() : {}); // Apply css to SlotProvider
-          mergeZoneCss(zoneCss, decalsToCss(decals));
+          this.mergeZoneCss(chain, zoneCss, layout ? layout.getCss() : {});
+          this.mergeZoneCss(chain, zoneCss, slots ? slots.getCss() : {}); // Apply css to SlotProvider
+          this.mergeZoneCss(chain, zoneCss, this.decalsToCss(chain, decals));
           
           zoneCss.forEach((css, zone) => {
             
@@ -633,66 +709,81 @@ U.buildRoom({
           init: function({ w, h, x=w.mult(0), y=h.mult(0) }) {
             if (!w) throw new Error('Missing "w" param');
             if (!h) throw new Error('Missing "h" param');
-            if (x.constructor !== w.constructor) throw new Error('Mixing horz values');
-            if (y.constructor !== h.constructor) throw new Error('Mixing vert values');
             
             this.x = x; // Horizontal offset from center
             this.y = y; // Vertical offset from center
             this.w = w;
             this.h = h;
           },
+          cssAxisTechnique: function(off, ext, cssDirP, cssMrgDirP, cssExtP) {
+            
+            // cssDirP: left/top
+            // cssMrgDirP: marginLeft/marginTop
+            // cssExtP: width/height
+            
+            // WE NEED TO AVOID NON-ABSOLUTE MARGIN-TOP!
+            //
+            // abs X, abs W:  { left: 50%, margin-left: X:px - 0.5W:px, width: W:px }
+            //                { left: calc(50% + X:px), margin-left: -0.5W:px, width: W:px }
+            // abs Y, abs H:  { top: 50%, margin-top: Y:px - 0.5H:px, height: H:px }
+            //                { top: calc(50%, Y:px), margin-top: -0.5H:px, height: H:px }
+            //
+            // abs X, rel W:  { left: 50% - 0.5W:%, margin-left: X:px, width: W:% }
+            // abs Y, rel H:  { top: 50% - 0.5H:%, margin-top: Y:px, height: H:% }
+            //
+            // rel X, abs W:  { left: 50% + X:%, margin-left: -0.5W:px, width: W:px }
+            // rel Y, abs H:  { top: 50% + Y:%, margin-top: -0.5H:px, height: H:px }
+            //
+            // rel X, rel W:  { left: 50% + X:% - 0.5W:%, width: W:% }
+            // rel Y, rel H:  { top: 50% + Y:% - 0.5H:%, height: H:% }
+            
+            let absOff = off.isAbsolute();
+            let absExt = ext.isAbsolute();
+            
+            if (absOff && absExt) {
+              
+              return {
+                [cssDirP]: vals.UnitPc(0.5),
+                [cssMrgDirP]: vals.CalcAdd(off, ext.mult(-0.5)),
+                [cssExtP]: ext
+              };
+              
+            } else if (absOff && !absExt) {
+              
+              return {
+                [cssDirP]: vals.CalcAdd(UnitPc(0.5), ext.mult(-0.5)),
+                [cssMrgDirP]: off,
+                [cssExtP]: ext
+              }
+              
+            } else if (!absOff && absExt) {
+              
+              return {
+                [cssDirP]: vals.CalcAdd(UnitPc(0.5), off),
+                [cssMrgDirP]: ext.mult(-0.5),
+                [cssExtP]: ext
+              }
+              
+            } else if (!absOff && !absExt) {
+              
+              return {
+                [cssDirP]: vals.CalcAdd(vals.UnitPc(0.5), off, ext.mult(-0.5)),
+                [cssExtP]: ext
+              }
+              
+            }
+            
+          },
           getCss: function() {
             
-            let main = {
+            // let main =
+            
+            return { main: {
               display: 'block',
               position: 'absolute',
-              //left: vals.UnitPc(0.5), top: vals.UnitPc(0.5)
-            };
-            
-            let absH = this.x.isAbsolute();
-            let absV = this.y.isAbsolute();
-            let trn = [ null, null ];
-            
-            if (absH) {
-              
-              main.gain({
-                left: vals.UnitPc(0.5),         // Put our left in par's mid
-                width: this.w,                  // Extend forward by `w`
-                marginLeft: this.w.mult(-0.5),  // Move back by half `w`
-              });
-              trn[0] = this.x;
-              
-            } else {
-              
-              main.gain({
-                // Move into center, then subtract half the extent
-                left: this.x.add(0.5 - (this.w.amt * 0.5)),
-                width: this.w
-              });
-              
-            }
-            
-            if (absV) {
-              
-              main.gain({
-                top: vals.UnitPc(0.5),        // Put our top in par's mid
-                height: this.h,               // Extend forward by `h`
-                marginTop: this.h.mult(-0.5)  // Move back by half `h`
-              });
-              trn[1] = this.y;
-              
-            } else {
-              
-              main.gain({
-                top: this.y.add(0.5 - (this.h.amt * 0.5)),  // Relative to center
-                height: this.h
-              });
-              
-            }
-            
-            if (trn.find(v => v)) main['transform.translate'] = trn.map(v => v || real.UnitPx(0));
-            
-            return { main };
+              ...this.cssAxisTechnique(this.x, this.w, 'left', 'marginLeft', 'width'),
+              ...this.cssAxisTechnique(this.y, this.h, 'top', 'marginTop', 'height')
+            }};
             
           }
         })}),
@@ -725,19 +816,13 @@ U.buildRoom({
       
       let Titled = U.inspire({ name: 'Titled', methods: (insp, Insp) => ({
         init: function({ side='t', titleExt }) {
-          // TODO: Awkward that size needs to be declared here. It's like after
-          // we've finished resolving the css for a particular element, we can
-          // take an additional Step of applying the resolved width/height,
-          // regardless of where it came from, to our slotted children...
           this.side = side;
           this.titleExt = titleExt;
         },
         getCss: function() {
-          
           let paddingCssProp = ({ l: 'paddingLeft', r: 'paddingRight', t: 'paddingTop', b: 'paddingBottom' })[this.side];
           let main = { boxSizing: 'border-box', [paddingCssProp]: this.titleExt.getCss() };
           return { main };
-          
         },
         insertTitle: function() { return TitledTitle(this); },
         insertContent: function() { return TitledContent(this); }

@@ -29,7 +29,7 @@ let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
 })});
 let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
   // TODO: CpuPool should probably written into hinterlands.Lands...
-  init: function(dbgLimit=1000) {
+  init: function(dbgLimit=150) {
     this.cpus = {};
     this.dbgLimit = dbgLimit;
   },

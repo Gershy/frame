@@ -35,6 +35,17 @@
       // Hold everything else back until the Window loads
       this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
       
+      // TODO: Reflow the whole dom on resize?? Very ugly!!!
+      let waitingToReflow = false;
+      window.addEventListener('resize', () => {
+        if (waitingToReflow) return;
+        waitingToReflow = true;
+        requestAnimationFrame(() => {
+          document.body.style.display = 'inline-block';
+          requestAnimationFrame(() => { document.body.style.display = ''; waitingToReflow = false; });
+        });
+      });
+      
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what browser-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?

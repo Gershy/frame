@@ -1,19 +1,8 @@
-// [ ] Aggregate info into Round - can store max votes and num votes remaining
-// [ ] Show metadata in Submission/Voting stage - timer, votes submitted, votes remaining
-// [ ] Editable StoryEntries - all users suggest edits; only the original author accepts
-// [ ] Make everything look nice!!
-// [ ] Factor Users into its own hut. Should be possible to easily integrate into any Hut!
-
 // "Scenario" -> A trail of occurrences leading to a particular moment
 // "AccessPath" -> "Reflex" -> Accompanying effects occurring in a scenario
 
-// TODO: If every Hog threw an Error upon initialization, it could implicitly pass itself
-// to any containing scope - e.g. a Rec created inside of an AccessPath could automatically
-// be seen by the AccessPath if Rec calls `insp.Hog.init.call(this, ...)`, and Hog init
-// throws an error. In this case, though, only 1 Rec could be created inside of an
-// AccessPath - the first would short-circuit the flow of the AccessPath's "gen" function
-
-
+// TODO: If an AccessPath accepted a GeneratorFunction as its `gen` param,
+// the GeneratorFunction could `yield` every dependent Hog.
 U.buildRoom({
   name: 'storyMix',
   innerRooms: [ 'hinterlands', 'chance', 'record', 'real' ],
@@ -59,23 +48,260 @@ U.buildRoom({
       lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, 'localhost', 80) }));
       
       /// {ABOVE=
+      let storyMix = lands.createRec('storyMix', {
+        value: {
+          version: '0.0.1',
+          description: 'Collaborate with other authors to write stories that belong to everyone!'
+        }
+      });
+      let archStoryMix = lands.createRec('archStoryMix', {}, lands.arch, storyMix);
+      /// =ABOVE}
       
-      let rootAboveScope = AccessPath(WobVal(lands.arch), (dep, arch) => {
+      // Reality
+      let { UnitPx, UnitPc, layout, slots } = real;
+      let reality = Reality('storyMix', {
         
-        // Initialize StoryMix
+        // TODO: Should layout and slots be condition-able? If they were conditional,
+        // it would make things like responsive grid-layout with javascript-fallback
+        // trivial. Super tricky to implement though!
+        
+        // TODO: Does all this code need to appear Below??
+        
+        'main': ({ slots, viewport }) => ({
+          layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
+          slots: real.slots.Titled({ titleExt: UnitPx(53) }),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.header': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            colour: 'rgba(0, 0, 0, 0.2)'
+          }
+        }),
+        'main.header.title': ({ slots }) => ({
+          layout: real.layout.Free({ w: UnitPc(0.5), h: UnitPc(1) }),
+          decals: {
+            textOrigin: 'center',
+            textSize: UnitPx(24),
+            colour: 'rgba(0, 0, 0, 0.2)'
+          }
+        }),
+        'main.header.back': ({ slots }) => ({
+          layout: real.layout.Free({ w: UnitPc(0.1), h: UnitPc(1), x: UnitPc(0.45), y: UnitPc(0) }),
+          decals: {
+            textOrigin: 'center',
+            textSize: UnitPx(20),
+            colour: 'rgba(0, 0, 0, 0.5)',
+            textColour: '#ffffff'
+          }
+        }),
+        'main.loggedOut': ({ slots }) => ({
+          layout: slots.insertContent(),
+          slots: real.slots.Justified(),
+          decals: {
+            colour: 'rgba(255, 220, 220, 1)'
+          }
+        }),
+        'main.loggedOut.form': ({ slots }) => ({
+          layout: slots.insertJustifiedItem(), // real.layout.Free({ w: UnitPc(0.6), h: UnitPc(0.6) }),
+          slots: real.slots.FillV({}),
+          decals: {
+            size: [ UnitPc(0.6), null ]
+          }
+        }),
+        'main.loggedOut.form.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ UnitPc(1), UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(20) })
+        }),
+        'main.loggedOut.form.item.title': ({ slots }) => ({
+          layout: slots.insertTitle()
+        }),
+        'main.loggedOut.form.item.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)',
+            textColour: 'rgba(0, 0, 0, 1)',
+            textLining: { type: 'single', pad: UnitPx(5) }
+          }
+        }),
+        'main.loggedOut.form.submit': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            colour: '#d0d0d0',
+            size: [ UnitPc(1), UnitPx(30) ],
+            textLining: { type: 'single' },
+            textOrigin: 'center',
+            textSize: UnitPx(22),
+            _css: { main: {
+              marginTop: UnitPx(20)
+            }}
+          }
+        }),
+        
+        'main.loggedIn': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(220, 255, 220, 1)'
+          }
+        }),
+        'main.loggedIn.storyOut': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.FillH({})
+        }),
+        'main.loggedIn.storyOut.storyList': ({ slots }) => ({
+          layout: slots.insertHItem(),
+          slots: real.slots.FillV({ pad: UnitPx(5) }),
+          decals: {
+            size: [ UnitPc(0.5), UnitPc(1) ],
+            border: { w: UnitPx(2), colour: '#00ff00' }
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(30) }),
+          decals: {
+            colour: 'rgba(0, 100, 0, 0.1)',
+            hover: {
+              colour: 'rgba(0, 150, 0, 0.2)'
+            }
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            textSize: UnitPx(22)
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            textSize: UnitPx(14)
+          }
+        }),
+        
+        'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
+          layout: slots.insertHItem(),
+          slots: real.slots.Justified(),
+          decals: {
+            size: [ UnitPc(0.5), UnitPc(1) ],
+            border: { w: UnitPx(2), colour: '#00c8a0' }
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
+          layout: slots.insertJustifiedItem(),
+          slots: real.slots.FillV({}),
+          decals: {
+            size: [ UnitPc(0.8), null ]
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
+          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
+          slots: real.slots.Titled({ titleExt: UnitPx(20) })
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
+          layout: slots.insertTitle()
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: '#ffffff',
+            textColour: '#000000',
+            textLining:  { type: 'single', pad: UnitPx(5) }
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPx(30) ],
+            colour: '#d0d0d0',
+            textLining: { type: 'single' },
+            textOrigin: 'center',
+            textSize: UnitPx(22),
+            
+            _css: { main: {
+              marginTop: UnitPx(20)
+            }}
+            
+            
+            //_css: { main: {
+            //  height: UnitPx(30),
+            //  lineHeight: UnitPx(30),
+            //  marginTop: UnitPx(20),
+            //  fontSize: UnitPx(22),
+            //  textAlign: 'center',
+            //  backgroundColor: '#d0d0d0'
+            //}}
+          }
+        }),
+        
+        'main.loggedIn.storyIn': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.FillV({})
+        }),
+        'main.loggedIn.storyIn.entries': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPc(0.5) ]
+          }
+        }),
+        'main.loggedIn.storyIn.controls': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            size: [ null, UnitPc(0.5) ]
+          }
+        }),
+        'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
+          layout: real.layout.Fill({}),
+          slots: real.slots.Titled({ side: 'b', titleExt: UnitPx(50) })
+        }),
+        'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
+          layout: slots.insertContent(),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
+          layout: slots.insertTitle(),
+          decals: {
+            colour: 'rgba(120, 200, 120, 1)',
+            textOrigin: 'center'
+          }
+        }),
+        
+        'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
+          layout: real.layout.Fill({ pad: UnitPx(5) }),
+          slots: real.slots.FillV({})
+        }),
+        'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
+          layout: slots.insertVItem(),
+          decals: {
+            colour: '#ffffff',
+            border: { w: UnitPx(2), colour: '#000000' }
+          }
+        }),
+        'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
+        'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
+        
+      });
+      
+      let rootReal = await foundation.getRootReal();
+      
+      let rootScope = AccessPath(lands.arch.relWob(rt.archStoryMix), async (dep, archStoryMix) => {
+        
+        dep(reality.contain(foundation, rootReal));
+        
+        let storyMix = archStoryMix.members[1];
+        
+        /// {ABOVE=
+        
         let chance = Chance(null);
         
-        let storyMix = lands.createRec('storyMix', {
-          value: {
-            version: '0.0.1',
-            description: 'Collaborate with other authors to write stories that belong to everyone!'
-          }
-        });
-        let archStoryMix = lands.createRec('archStoryMix', {}, lands.arch, storyMix);
-        
         // Follows
-        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
-          
+        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           
           let hut = archHut.members[1];
           dep(hut.followRec(archStoryMix));
@@ -157,7 +383,7 @@ U.buildRoom({
         }));
         
         // Controls on Huts
-        dep(AccessPath(arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           
           let hut = archHut.members[1];
           
@@ -483,334 +709,9 @@ U.buildRoom({
             
           }));
           
-          /*
-          // Controls on Stories -> Authors
-          dep(AccessPath(story.relWob(rt.storyAuthor), (dep, storyAuthor) => {
-            
-            let author = storyAuthor.members[1];
-            
-            // Enable Author actions: 1) submit Entry; 2) submit Vote
-            dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
-              
-              let hut = hutAuthor.members[0];
-              
-              dep(hut.comWob('entry').hold(({ msg }) => {
-                
-                // If no Round exists, a new one begins
-                
-                // TODO: If max Rounds reached, deny
-                
-                let storyCurRound = story.relRec(rt.storyCurRound);
-                let curRound = null;
-                if (!storyCurRound) {
-                  
-                  let ms = foundation.getMs();
-                  
-                  curRound = lands.createRec('round', { value: {
-                    roundNum: story.relRecs(rt.storyRound).length,
-                    startMs: ms,
-                    endMs: ms + story.value.settings.roundMs,
-                    numVotes: 0
-                  }});
-                  
-                  // Liven up `curRound.value.numVotes`
-                  let scope = AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
-                    let entry = roundEntry.members[1];
-                    dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
-                      curRound.modify(v => (v.numVotes++, v));
-                      dep(Hog(() => curRound.modify(v => (v.numVotes--, v))));
-                    }));
-                  });
-                  curRound.shutWob().hold(() => scope.shut());
-                  
-                  lands.createRec('storyCurRound', {}, story, curRound);
-                  
-                } else {
-                  
-                  curRound = storyCurRound.members[1];
-                  
-                }
-                
-                let entry = lands.createRec('entry', { value: { text: msg.text, numVotes: 0 } });
-                
-                // Liven up `entry.value.numVotes`
-                let scope = AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
-                  entry.modify(v => (v.numVotes++, v));
-                  dep(Hog(() => entry.modify(v => (v.numVotes--, v))));
-                });
-                
-                // Connect Entry to Author
-                let entryAuthor = lands.createRec('entryAuthor', {}, entry, author);
-                
-                // Connect Entry to Round
-                let roundEntry = lands.createRec('roundEntry', {}, curRound, entry);
-                roundEntry.shutWob().hold(() => scope.shut());
-                
-              }));
-              
-              dep(hut.comWob('vote').hold(({ msg }) => {
-                
-                let storyCurRound = story.relRec(rt.storyCurRound);
-                if (!storyCurRound) return hut.tell({ command: 'error', type: 'denied', msg: 'no round', orig: msg });
-                
-                let curRound = storyCurRound.members[1];
-                let entries = curRound.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
-                
-                let findEntry = entries.find(entry => entry.uid === msg.entry);
-                
-                if (!findEntry) return hut.tell({ command: 'error', type: 'denied', msg: `Invalid Entry uid: ${msg.entry}`, orig: msg });
-                
-                lands.createRec('entryVoterAuthor', {}, findEntry[0], author);
-                
-              }));
-              
-            }));
-            
-          }));
-          */
-          
         }));
         
-      });
-      
-      /// =ABOVE}
-      
-      let { UnitPx, UnitPc, layout, slots } = real;
-      let reality = Reality('storyMix', {
-        
-        // TODO: Should layout and slots be condition-able? If they were conditional,
-        // it would make things like responsive grid-layout with javascript-fallback
-        // trivial. Super tricky to implement though!
-        
-        'main': ({ slots, viewport }) => ({
-          layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
-          slots: real.slots.Titled({ titleExt: UnitPx(53) }),
-          decals: {
-            colour: 'rgba(255, 255, 255, 1)'
-          }
-        }),
-        'main.header': ({ slots }) => ({
-          layout: slots.insertTitle(),
-          decals: {
-            colour: 'rgba(0, 0, 0, 0.2)'
-          }
-        }),
-        'main.header.title': ({ slots }) => ({
-          layout: real.layout.Free({ w: UnitPc(0.5), h: UnitPc(1) }),
-          decals: {
-            textOrigin: 'center',
-            textSize: UnitPx(24),
-            colour: 'rgba(0, 0, 0, 0.2)'
-          }
-        }),
-        'main.header.back': ({ slots }) => ({
-          layout: real.layout.Free({ w: UnitPc(0.1), h: UnitPc(1), x: UnitPc(0.45), y: UnitPc(0) }),
-          decals: {
-            textOrigin: 'center',
-            textSize: UnitPx(20),
-            colour: 'rgba(0, 0, 0, 0.5)',
-            textColour: '#ffffff'
-          }
-        }),
-        'main.loggedOut': ({ slots }) => ({
-          layout: slots.insertContent(),
-          slots: real.slots.Justified(),
-          decals: {
-            colour: 'rgba(255, 220, 220, 1)'
-          }
-        }),
-        'main.loggedOut.form': ({ slots }) => ({
-          layout: slots.insertJustifiedItem(), // real.layout.Free({ w: UnitPc(0.6), h: UnitPc(0.6) }),
-          slots: real.slots.FillV({}),
-          decals: {
-            size: [ UnitPc(0.6), null ]
-          }
-        }),
-        'main.loggedOut.form.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ UnitPc(1), UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(20) })
-        }),
-        'main.loggedOut.form.item.title': ({ slots }) => ({
-          layout: slots.insertTitle()
-        }),
-        'main.loggedOut.form.item.field': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            colour: 'rgba(255, 255, 255, 1)',
-            textColour: 'rgba(0, 0, 0, 1)',
-            textLining: { type: 'single', pad: UnitPx(5) }
-          }
-        }),
-        'main.loggedOut.form.submit': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            colour: '#d0d0d0',
-            size: [ UnitPc(1), UnitPx(30) ],
-            textLining: { type: 'single' },
-            textOrigin: 'center',
-            textSize: UnitPx(22),
-            _css: { main: {
-              marginTop: UnitPx(20)
-            }}
-          }
-        }),
-        
-        'main.loggedIn': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            colour: 'rgba(220, 255, 220, 1)'
-          }
-        }),
-        'main.loggedIn.storyOut': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.FillH({})
-        }),
-        'main.loggedIn.storyOut.storyList': ({ slots }) => ({
-          layout: slots.insertHItem(),
-          slots: real.slots.FillV({ pad: UnitPx(5) }),
-          decals: {
-            size: [ UnitPc(0.5), UnitPc(1) ],
-            border: { w: UnitPx(2), colour: '#00ff00' }
-          }
-        }),
-        'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(30) }),
-          decals: {
-            colour: 'rgba(0, 100, 0, 0.1)',
-            hover: {
-              colour: 'rgba(0, 150, 0, 0.2)'
-            }
-          }
-        }),
-        'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
-          layout: slots.insertTitle(),
-          decals: {
-            textSize: UnitPx(22)
-          }
-        }),
-        'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            textSize: UnitPx(14)
-          }
-        }),
-        
-        'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
-          layout: slots.insertHItem(),
-          slots: real.slots.Justified(),
-          decals: {
-            size: [ UnitPc(0.5), UnitPc(1) ],
-            border: { w: UnitPx(2), colour: '#00c8a0' }
-          }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
-          layout: slots.insertJustifiedItem(),
-          slots: real.slots.FillV({}),
-          decals: {
-            size: [ UnitPc(0.8), null ]
-          }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(20) })
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
-          layout: slots.insertTitle()
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            colour: '#ffffff',
-            textColour: '#000000',
-            textLining:  { type: 'single', pad: UnitPx(5) }
-          }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            size: [ null, UnitPx(30) ],
-            colour: '#d0d0d0',
-            textLining: { type: 'single' },
-            textOrigin: 'center',
-            textSize: UnitPx(22),
-            
-            _css: { main: {
-              marginTop: UnitPx(20)
-            }}
-            
-            
-            //_css: { main: {
-            //  height: UnitPx(30),
-            //  lineHeight: UnitPx(30),
-            //  marginTop: UnitPx(20),
-            //  fontSize: UnitPx(22),
-            //  textAlign: 'center',
-            //  backgroundColor: '#d0d0d0'
-            //}}
-          }
-        }),
-        
-        'main.loggedIn.storyIn': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.FillV({})
-        }),
-        'main.loggedIn.storyIn.entries': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            size: [ null, UnitPc(0.5) ]
-          }
-        }),
-        'main.loggedIn.storyIn.controls': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            size: [ null, UnitPc(0.5) ]
-          }
-        }),
-        'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.Titled({ side: 'b', titleExt: UnitPx(50) })
-        }),
-        'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            colour: 'rgba(255, 255, 255, 1)'
-          }
-        }),
-        'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
-          layout: slots.insertTitle(),
-          decals: {
-            colour: 'rgba(120, 200, 120, 1)',
-            textOrigin: 'center'
-          }
-        }),
-        
-        'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
-          layout: real.layout.Fill({ pad: UnitPx(5) }),
-          slots: real.slots.FillV({})
-        }),
-        'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            colour: '#ffffff',
-            border: { w: UnitPx(2), colour: '#000000' }
-          }
-        }),
-        'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
-        
-      });
-      
-      let rootReal = await foundation.getRootReal();
-      reality.contain(foundation, rootReal); // Need to contain the root even if it's `null` (TODO: `.contain` should go into `dep` once there's a single root HorzScope!)
-      
-      /// {BELOW=
-      
-      let rootBelowScope = AccessPath(lands.arch.relWob(rt.archStoryMix), (dep, archStoryMix) => {
-        
-        let storyMix = archStoryMix.members[1];
+        /// =ABOVE} {BELOW=
         
         let mainReal = rootReal.addReal('main');
         let headerReal = mainReal.addReal('header');
@@ -1024,9 +925,9 @@ U.buildRoom({
           
         }));
         
+        /// =BELOW}
+        
       });
-      
-      /// =BELOW}
       
       await lands.open();
       
