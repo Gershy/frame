@@ -58,233 +58,326 @@ U.buildRoom({
       /// =ABOVE}
       
       // Reality
-      let { UnitPx, UnitPc, layout, slots } = real;
+      let { UnitPx, UnitPc, sizing, slots } = real;
       let reality = Reality('storyMix', {
         
         // TODO: Should layout and slots be condition-able? If they were conditional,
         // it would make things like responsive grid-layout with javascript-fallback
         // trivial. Super tricky to implement though!
-        
         // TODO: Does all this code need to appear Below??
+        // NOTE: There are only 4 different sizings: null, WrapChildren, FillParent, and ShowText
         
-        'main': ({ slots, viewport }) => ({
-          layout: real.layout.Free({ w: viewport.min.mult(0.9), h: viewport.min.mult(0.9) }),
-          slots: real.slots.Titled({ titleExt: UnitPx(53) }),
+        'main': par => ({
+          slot: par.slots.insertViewPortItem(),
+          size: null,
+          slots: real.slots.AxisSections({ axis: 'y', cuts: [ UnitPx(50) ] }),
           decals: {
-            colour: 'rgba(255, 255, 255, 1)'
+            colour: 'rgba(0, 0, 0, 1)'
           }
         }),
-        'main.header': ({ slots }) => ({
-          layout: slots.insertTitle(),
+        'main.header': par => ({
+          slot: par.slots.insertSectionItem(0),
+          size: null,
+          slots: real.slots.AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3), UnitPc(1/6) ] }),
           decals: {
-            colour: 'rgba(0, 0, 0, 0.2)'
+            colour: 'rgba(100, 255, 30, 0.75)',
+            textColour: 'rgba(255, 255, 255, 1)'
           }
         }),
-        'main.header.title': ({ slots }) => ({
-          layout: real.layout.Free({ w: UnitPc(0.5), h: UnitPc(1) }),
+        'main.header.title': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: real.sizing.ShowText({ origin: 'center' }),
+          slots: null,
           decals: {
-            textOrigin: 'center',
             textSize: UnitPx(24),
-            colour: 'rgba(0, 0, 0, 0.2)'
           }
         }),
-        'main.header.back': ({ slots }) => ({
-          layout: real.layout.Free({ w: UnitPc(0.1), h: UnitPc(1), x: UnitPc(0.45), y: UnitPc(0) }),
+        'main.header.right2': par => ({
+          slot: par.slots.insertSectionItem(3),
+          size: real.sizing.ShowText({ origin: 'center' }),
+          slots: null,
           decals: {
-            textOrigin: 'center',
             textSize: UnitPx(20),
-            colour: 'rgba(0, 0, 0, 0.5)',
-            textColour: '#ffffff'
+            border: { ext: UnitPx(2), colour: 'rgba(255, 255, 255, 1)' }
           }
-        }),
-        'main.loggedOut': ({ slots }) => ({
-          layout: slots.insertContent(),
-          slots: real.slots.Justified(),
+        }), // TODO: Separate the next items as a new section
+        
+        'main.loggedOut': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: null,
+          slots: real.slots.CenteredSlot(),
           decals: {
-            colour: 'rgba(255, 220, 220, 1)'
+            colour: 'rgba(200, 200, 200, 1)'
           }
         }),
-        'main.loggedOut.form': ({ slots }) => ({
-          layout: slots.insertJustifiedItem(), // real.layout.Free({ w: UnitPc(0.6), h: UnitPc(0.6) }),
-          slots: real.slots.FillV({}),
+        'main.loggedOut.form': par => ({
+          slot: par.slots.insertCenteredItem(),
+          size: real.sizing.WrapChildren({ pad: UnitPx(10), padB: UnitPx(50) }), //null, //real.sizing.FillParent({ par, shrinkL: UnitPc(0.2), shrinkR: UnitPc(0.2) }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' })
+        }),
+        'main.loggedOut.form.item': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.WrapChildren({ padB: UnitPx(8) }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' })
+        }),
+        'main.loggedOut.form.item.title': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(2) }),
+          slots: null,
           decals: {
-            size: [ UnitPc(0.6), null ]
+            textSize: UnitPx(30)
           }
         }),
-        'main.loggedOut.form.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ UnitPc(1), UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(20) })
-        }),
-        'main.loggedOut.form.item.title': ({ slots }) => ({
-          layout: slots.insertTitle()
-        }),
-        'main.loggedOut.form.item.field': ({ slots }) => ({
-          layout: slots.insertContent(),
+        'main.loggedOut.form.item.field': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4) }),
+          slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
-            textColour: 'rgba(0, 0, 0, 1)',
-            textLining: { type: 'single', pad: UnitPx(5) }
+            textSize: UnitPx(20)
           }
         }),
-        'main.loggedOut.form.submit': ({ slots }) => ({
-          layout: slots.insertVItem(),
+        'main.loggedOut.form.submit': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ padV: UnitPx(4), origin: 'center' }),
+          slots: null,
           decals: {
-            colour: '#d0d0d0',
-            size: [ UnitPc(1), UnitPx(30) ],
-            textLining: { type: 'single' },
-            textOrigin: 'center',
-            textSize: UnitPx(22),
-            _css: { main: {
-              marginTop: UnitPx(20)
-            }}
+            colour: 'rgba(255, 180, 0, 0.8)',
+            textSize: UnitPx(30)
           }
         }),
         
-        'main.loggedIn': ({ slots }) => ({
-          layout: slots.insertContent(),
+        'main.loggedIn': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: null,
+          slots: null
+        }),
+        'main.loggedIn.storyOut': par => ({
+          slot: null,
+          size: real.sizing.FillParent({ par }),
+          slots: real.slots.AxisSections({ axis: 'x', cuts: [ UnitPc(0.5) ] })
+        }),
+        'main.loggedIn.storyOut.storyList': par => ({
+          slot: par.slots.insertSectionItem(0),
+          size: null,
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
-            colour: 'rgba(220, 255, 220, 1)'
+            colour: 'rgba(170, 255, 170, 0.9)'
           }
         }),
-        'main.loggedIn.storyOut': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.FillH({})
+        'main.loggedIn.storyOut.storyList.item': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.WrapChildren({ pad: UnitPx(5) }),
+          slots: null
         }),
-        'main.loggedIn.storyOut.storyList': ({ slots }) => ({
-          layout: slots.insertHItem(),
-          slots: real.slots.FillV({ pad: UnitPx(5) }),
+        'main.loggedIn.storyOut.storyList.item.content': par => ({
+          slot: null,
+          size: real.sizing.WrapChildren({}),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
-            size: [ UnitPc(0.5), UnitPc(1) ],
-            border: { w: UnitPx(2), colour: '#00ff00' }
+            colour: 'rgba(0, 120, 0, 0.8)'
           }
         }),
-        'main.loggedIn.storyOut.storyList.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(30) }),
+        'main.loggedIn.storyOut.storyList.item.content.name': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4) }),
+          slots: null,
           decals: {
-            colour: 'rgba(0, 100, 0, 0.1)',
+            textSize: UnitPx(25),
+            textColour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.loggedIn.storyOut.storyList.item.content.desc': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4) }),
+          slots: null,
+          decals: {
+            textSize: UnitPx(16),
+            textColour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        
+        'main.loggedIn.storyOut.storyCreate': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: null,
+          slots: real.slots.CenteredSlot({}),
+          decals: {
+            colour: 'rgba(200, 255, 200, 1)'
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form': par => ({
+          slot: par.slots.insertCenteredItem(),
+          size: real.sizing.WrapChildren({ pad: UnitPx(5) }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' })
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.WrapChildren({ padB: UnitPx(8) }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' })
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.title': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(2) }),
+          slots: null,
+          decals: {
+            textSize: UnitPx(20)
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.item.field': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4) }),
+          slots: null,
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)',
+            textSize: UnitPx(18)
+          }
+        }),
+        'main.loggedIn.storyOut.storyCreate.form.submit': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4), origin: 'center' }),
+          slots: null,
+          decals: {
+            colour: 'rgba(0, 100, 0, 1)',
+            textColour: 'rgba(255, 255, 255, 1)',
+            textSize: 25
+          }
+        }),
+        
+        'main.loggedIn.storyIn': par => ({
+          slot: null,
+          size: real.sizing.FillParent({ par }),
+          slots: real.slots.AxisSections({ axis: 'y', cuts: [ UnitPc(0.5) ] })
+        }),
+        'main.loggedIn.storyIn.upperPane': par => ({
+          slot: par.slots.insertSectionItem(0),
+          size: null,
+          slots: real.slots.AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(30) ] })
+        }),
+        'main.loggedIn.storyIn.lowerPane': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: null,
+          slots: null
+        }),
+        
+        'main.loggedIn.storyIn.upperPane.meta': par => ({
+          slot: par.slots.insertSectionItem(0),
+          size: null,
+          slots: real.slots.AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3) ] }),
+          decals: {
+            colour: 'rgba(0, 0, 0, 1)',
+            textColour: 'rgba(255, 255, 255, 1)'
+          }
+        }),
+        'main.loggedIn.storyIn.upperPane.meta.clock': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: real.sizing.ShowText({ origin: 'center' }),
+          slots: null,
+          decals: {
+            textSize: UnitPx(18)
+          }
+        }),
+        
+        'main.loggedIn.storyIn.upperPane.entries': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: real.sizing.WrapChildren({ pad: UnitPx(6) }),
+          slots: real.slots.TextFlowSlots({ gap: UnitPx(4), lineHeight: UnitPx(22) }),
+          decals: {
+            colour: 'rgba(255, 255, 255, 1)',
+            border: { ext: UnitPx(4), colour: 'rgba(177, 232, 177, 1)' }
+          }
+        }),
+        'main.loggedIn.storyIn.upperPane.entries.entry': par => ({
+          slot: par.slots.insertTextFlowItem(),
+          size: null,
+          slots: null,
+          decals: {
+            colour: 'rgba(0, 80, 0, 0.074)',
+            textSize: UnitPx(16),
             hover: {
-              colour: 'rgba(0, 150, 0, 0.2)'
+              colour: 'rgba(0, 80, 0, 0.8)',
+              textSize: UnitPx(16),
+              textColour: 'rgba(255, 255, 255, 1)'
             }
           }
         }),
-        'main.loggedIn.storyOut.storyList.item.name': ({ slots }) => ({
-          layout: slots.insertTitle(),
+        
+        'main.loggedIn.storyIn.lowerPane.writing': par => ({
+          slot: null,
+          size: real.sizing.FillParent({ par }),
+          slots: real.slots.AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(50) ] })
+        }),
+        'main.loggedIn.storyIn.lowerPane.writing.submit': par => ({
+          slot: par.slots.insertSectionItem(0),
+          size: real.sizing.ShowText({ origin: 'center' }),
+          slots: null,
           decals: {
-            textSize: UnitPx(22)
+            colour: 'rgba(150, 255, 130, 1)',
+            textSize: UnitPx(24)
           }
         }),
-        'main.loggedIn.storyOut.storyList.item.desc': ({ slots }) => ({
-          layout: slots.insertContent(),
+        'main.loggedIn.storyIn.lowerPane.writing.field': par => ({
+          slot: par.slots.insertSectionItem(1),
+          size: real.sizing.ShowText({ multiLine: true, pad: UnitPx(4) }),
+          slots: null,
+          //dbg: true,
           decals: {
-            textSize: UnitPx(14)
+            colour: 'rgba(255, 255, 255, 1)',
+            textSize: UnitPx(16)
           }
         }),
         
-        'main.loggedIn.storyOut.storyCreate': ({ slots }) => ({
-          layout: slots.insertHItem(),
-          slots: real.slots.Justified(),
+        'main.loggedIn.storyIn.lowerPane.voting': par => ({
+          slot: null,
+          size: real.sizing.FillParent({ par }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
-            size: [ UnitPc(0.5), UnitPc(1) ],
-            border: { w: UnitPx(2), colour: '#00c8a0' }
+            colour: 'rgba(175, 200, 175, 1)'
           }
         }),
-        'main.loggedIn.storyOut.storyCreate.form': ({ slots }) => ({
-          layout: slots.insertJustifiedItem(),
-          slots: real.slots.FillV({}),
+        'main.loggedIn.storyIn.lowerPane.voting.entry': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.WrapChildren({ pad: UnitPx(8), padB: UnitPx(0) }),
+          slots: real.slots.LinearSlots({ axis: 'y', dir: '+' })
+        }),
+        'main.loggedIn.storyIn.lowerPane.voting.entry.author': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4), origin: 'left' }),
+          slots: null,
           decals: {
-            size: [ UnitPc(0.8), null ]
+            colour: 'rgba(0, 150, 0, 1)',
+            textSize: UnitPx(14),
+            textColour: 'rgba(255, 255, 255, 1)'
           }
         }),
-        'main.loggedIn.storyOut.storyCreate.form.item': ({ slots }) => ({
-          layout: slots.insertVItem({ size: [ null, UnitPx(50) ] }),
-          slots: real.slots.Titled({ titleExt: UnitPx(20) })
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.title': ({ slots }) => ({
-          layout: slots.insertTitle()
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.field': ({ slots }) => ({
-          layout: slots.insertContent(),
+        'main.loggedIn.storyIn.lowerPane.voting.entry.text': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(10), multiLine: true, origin: 'left' }),
+          slots: null,
           decals: {
-            colour: '#ffffff',
-            textColour: '#000000',
-            textLining:  { type: 'single', pad: UnitPx(5) }
+            colour: 'rgba(255, 255, 255, 1)',
+            textSize: UnitPx(16),
+            textFont: 'serif',
+            border: { ext: UnitPx(8), colour: 'rgba(0, 150, 0, 1)' }
           }
         }),
-        'main.loggedIn.storyOut.storyCreate.form.submit': ({ slots }) => ({
-          layout: slots.insertVItem(),
+        'main.loggedIn.storyIn.lowerPane.voting.entry.votes': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.WrapChildren({ pad: UnitPx(4) }),
+          slots: real.slots.LinearSlots({ axis: 'x', dir: '+' }),
           decals: {
-            size: [ null, UnitPx(30) ],
-            colour: '#d0d0d0',
-            textLining: { type: 'single' },
-            textOrigin: 'center',
-            textSize: UnitPx(22),
-            
-            _css: { main: {
-              marginTop: UnitPx(20)
-            }}
-            
-            
-            //_css: { main: {
-            //  height: UnitPx(30),
-            //  lineHeight: UnitPx(30),
-            //  marginTop: UnitPx(20),
-            //  fontSize: UnitPx(22),
-            //  textAlign: 'center',
-            //  backgroundColor: '#d0d0d0'
-            //}}
+            colour: 'rgba(0, 100, 0, 1)'
           }
         }),
-        
-        'main.loggedIn.storyIn': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.FillV({})
-        }),
-        'main.loggedIn.storyIn.entries': ({ slots }) => ({
-          layout: slots.insertVItem(),
+        'main.loggedIn.storyIn.lowerPane.voting.entry.votes.vote': par => ({
+          slot: par.slots.insertLinearItem(),
+          size: real.sizing.ShowText({ pad: UnitPx(4) }),
+          slots: null,
           decals: {
-            size: [ null, UnitPc(0.5) ]
+            colour: 'rgba(0, 150, 0, 1)',
+            textColour: 'rgba(255, 255, 255, 1)',
+            border: { ext: UnitPx(1), colour: 'rgba(255, 255, 255, 1)' }
           }
-        }),
-        'main.loggedIn.storyIn.controls': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            size: [ null, UnitPc(0.5) ]
-          }
-        }),
-        'main.loggedIn.storyIn.controls.write': ({ slots }) => ({
-          layout: real.layout.Fill({}),
-          slots: real.slots.Titled({ side: 'b', titleExt: UnitPx(50) })
-        }),
-        'main.loggedIn.storyIn.controls.write.field': ({ slots }) => ({
-          layout: slots.insertContent(),
-          decals: {
-            colour: 'rgba(255, 255, 255, 1)'
-          }
-        }),
-        'main.loggedIn.storyIn.controls.write.submit': ({ slots }) => ({
-          layout: slots.insertTitle(),
-          decals: {
-            colour: 'rgba(120, 200, 120, 1)',
-            textOrigin: 'center'
-          }
-        }),
-        
-        'main.loggedIn.storyIn.controls.entries': ({ slots }) => ({
-          layout: real.layout.Fill({ pad: UnitPx(5) }),
-          slots: real.slots.FillV({})
-        }),
-        'main.loggedIn.storyIn.controls.entries.entry': ({ slots }) => ({
-          layout: slots.insertVItem(),
-          decals: {
-            colour: '#ffffff',
-            border: { w: UnitPx(2), colour: '#000000' }
-          }
-        }),
-        'main.loggedIn.storyIn.controls.entries.entry.author': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.text': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.votes': ({ slots }) => ({}),
-        'main.loggedIn.storyIn.controls.entries.entry.votes.vote': ({ slots }) => ({})
+        })
         
       });
       
@@ -747,16 +840,12 @@ U.buildRoom({
           let myStoryWob = WobTmp('dn');
           dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
             
-            console.log('GOT STORY!!', authorCurStory.members[1].uid);
-            
             let curStory = authorCurStory.members[1];
             dep(myStoryWob.up(curStory));
             
           }));
           
           dep(AccessPath(myStoryWob.inverse(), dep => {
-            
-            console.log('NO STORY!!!');
             
             let noStoryReal = dep(loggedInReal.addReal('storyOut'));
             
@@ -766,12 +855,13 @@ U.buildRoom({
               let story = storyMixStory.members[1];
               
               let joinStory = dep(storyList.addReal('item'));
-              let joinStoryName = joinStory.addReal('name');
-              let joinStoryDesc = joinStory.addReal('desc');
+              let joinStoryContent = joinStory.addReal('content');
+              let joinStoryContentName = joinStoryContent.addReal('name');
+              let joinStoryContentDesc = joinStoryContent.addReal('desc');
               
               dep(story.hold(({ name, desc }) => {
-                joinStoryName.setText(name);
-                joinStoryDesc.setText(desc);
+                joinStoryContentName.setText(name);
+                joinStoryContentDesc.setText(desc);
               }));
               joinStory.feelWob().hold(() => lands.tell({ command: 'join', story: story.uid }));
               
@@ -790,26 +880,32 @@ U.buildRoom({
           
           dep(AccessPath(myStoryWob, (dep, { value: story }) => {
             
-            let backReal = dep(headerReal.addReal('back'));
+            let backReal = dep(headerReal.addReal('right2'));
             backReal.setText('Back');
             backReal.feelWob().hold(() => lands.tell({ command: 'join', story: null }));
             
             let storyReal = dep(loggedInReal.addReal('storyIn'));
+            let storyUpperReal = storyReal.addReal('upperPane');
+            let storyLowerReal = storyReal.addReal('lowerPane');
             
-            let entriesReal = storyReal.addReal('entries');
+            let entriesReal = storyUpperReal.addReal('entries');
             dep(AccessPath(story.relWob(rt.storyEntry), (dep, storyEntry) => {
-              
               let entry = storyEntry.members[1];
               let entryReal = dep(entriesReal.addReal('entry'));
               dep(entry.hold(v => entryReal.setText(v.text)));
-              
             }));
+            
+            let metaReal = storyUpperReal.addReal('meta');
+            let clockReal = metaReal.addReal('clock');
             
             let myCurEntryWob = WobTmp('dn');
             let myCurVotedEntryWob = WobTmp('dn');
+            let myCurRoundWob = WobTmp('dn');
             dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
               
               let round = storyCurRound.members[1];
+              dep(myCurRoundWob.up(round));
+              
               dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
                 
                 let entry = roundEntry.members[1];
@@ -863,11 +959,23 @@ U.buildRoom({
             storyScope.trackWob(story);
             */
             
-            let roundReal = storyReal.addReal('controls');
+            dep(AccessPath(myCurRoundWob.inverse(), dep => {
+              clockReal.setText('---');
+            }));
+            dep(AccessPath(myCurRoundWob, (dep, { value: round }) => {
+              
+              let updTime = () => {
+                let diff = round.value.endMs - foundation.getMs();
+                clockReal.setText(`${Math.floor(diff / 1000)}s`);
+              };
+              let clockInterval = setInterval(updTime, 500); updTime();
+              dep(Hog(() => clearInterval(clockInterval)));
+              
+            }));
             
             dep(AccessPath(myCurEntryWob.inverse(), dep => {
               
-              let writeReal = dep(roundReal.addReal('write'));
+              let writeReal = dep(storyLowerReal.addReal('writing'));
               let writeFieldReal = writeReal.addReal('field');
               let writeSubmitReal = writeReal.addReal('submit');
               
@@ -885,31 +993,33 @@ U.buildRoom({
                 
                 let round = storyCurRound.members[1];
                 
-                let entriesReal = dep(roundReal.addReal('entries'));
+                let entriesReal = dep(storyLowerReal.addReal('voting'));
                 
                 dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
                   
                   let entry = roundEntry.members[1];
                   
                   let entryReal = dep(entriesReal.addReal('entry'));
-                  
+                  let entryAuthorReal = entryReal.addReal('author');
                   let entryTextReal = entryReal.addReal('text');
                   dep(entry.hold(v => entryTextReal.setText(v.text)));
                   
+                  // Listen for clicks when we haven't voted
                   dep(AccessPath(myCurVotedEntryWob.inverse(), dep => {
-                    let entryVoteReal = dep(entryReal.addReal('doVote'));
-                    entryVoteReal.setText('Vote!');
-                    entryVoteReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: entry.uid }));
+                    dep(entryReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: entry.uid })));
                   }));
                   
-                  let entryAuthorReal = entryReal.addReal('author');
+                  
                   dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
                     let author = entryAuthor.members[1];
                     dep(author.hold(v => entryAuthorReal.setText(v.username)));
                   }));
                   
-                  let entryVotesReal = entryReal.addReal('votes');
+                  let entryVotesReal = null;
                   dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                    // TODO: BAD!
+                    if (!entryVotesReal) entryVotesReal = entryReal.addReal('votes');
+                    
                     let voterAuthor = entryVoterAuthor.members[1];
                     let voterAuthorReal = entryVotesReal.addReal('vote');
                     dep(voterAuthor.hold(v => voterAuthorReal.setText(v.username)));

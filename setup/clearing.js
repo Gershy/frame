@@ -33,12 +33,13 @@ protoDef(Object, 'toArr', function(it) {
 });
 protoDef(Object, 'slice', function(...props) {
   if (props.length === 1 && U.isType(props[0], Object)) {
-    let map = props[0];
-    for (let k in map) map[k] = this[map[k]];
-    return map;
+    let map = props[0]; // Maps existingKey -> newKeyName
+    let ret = {};
+    for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]];
+    return ret;
   } else {
     let ret = {};
-    props.forEach(p => { ret[p] = this[p]; });
+    for (let p of props) if (this.has(p)) ret[p] = this[p];
     return ret;
   }
 });
@@ -180,7 +181,6 @@ Promise.allObj = async obj => {
 };
 Promise.resolve = PromiseOrig.resolve;
 let U = global.U = {
-  INSP_UID: 0,
   Obj: Object, Arr: Array, Str: String,
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
@@ -278,6 +278,7 @@ let U = global.U = {
     } catch(err) { return false; }
   },
   typeOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
+  inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   
   buildRoom: ({ name, innerRooms=[], build }) => {
     

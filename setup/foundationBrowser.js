@@ -32,22 +32,11 @@
       // This is the root of all graphical entities
       this.rootReal = null;
       
-      // Hold everything else back until the Window loads
+      // We'll hold everything else back until the Window loads
       this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
       
-      // TODO: Reflow the whole dom on resize?? Very ugly!!!
-      let waitingToReflow = false;
-      window.addEventListener('resize', () => {
-        if (waitingToReflow) return;
-        waitingToReflow = true;
-        requestAnimationFrame(() => {
-          document.body.style.display = 'inline-block';
-          requestAnimationFrame(() => { document.body.style.display = ''; waitingToReflow = false; });
-        });
-      });
-      
       // We want to be able to react when the browser is closed
-      // TODO: Still need to qualify what browser-closing signifies...
+      // TODO: Still need to qualify what page-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?
       this.unloadWob = U.Wob({});
       window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
@@ -83,14 +72,15 @@
     },
     getRootReal: async function() { 
       
-      if (!U.rooms.has('real')) return null;
-      
       if (!this.rootReal) {
         
+        let room = U.rooms.real || U.rooms.real2;
+        if (!room) return null;
+        
         await this.domAvailablePromise;
-        let real = U.rooms.real.built;
+        let real = room.built;
         let { Reality, Real } = real;
-        this.rootReal = Real({ nameChain: 'root', setup: () => ({ dom: document.body }) });
+        this.rootReal = Real({ nameChain: [ 'root' ], makeDom: () => document.body });
         
       }
       
@@ -172,10 +162,8 @@
       // Immediately bank a poll
       conn.tell({ command: 'bankPoll' });
       
-      // TODO: Uncommenting the following may have an issue:
-      // This relies on having a good referenced value at "tellAndHear"'
-      // Not the case if a transmission errored (`tellAndHear = () => {}`)
-      //this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
+      // TODO: What about this?
+      // this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
       
       return serverWob;
     },

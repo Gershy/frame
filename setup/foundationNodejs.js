@@ -277,7 +277,7 @@
     },
     
     // Compilation
-    parsedDependencies: async function(roomName) {
+    parseDependencies: async function(roomName) {
       // Determine the inner rooms of `roomName` by parsing the file for the "innerRooms" property
       
       let roomFileContents = await this.readFile(path.join(roomDir, roomName, `${roomName}.js`));
@@ -310,12 +310,12 @@
       compiledPrms[roomName] = prm;
       
       // Get dependency room names
-      let depNames = await this.parsedDependencies(roomName);
+      let depNames = await this.parseDependencies(roomName);
       
       // Don't continue until all dependencies are compiled! Even if we
       // know that our dependencies are already under compilation, we
       // need to wait for them to finish. This will ensure that rooms
-      // compile in order of dependency-precedence
+      // compile in order of dependency-precedence.
       await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
       
       // All dependencies are compiled!

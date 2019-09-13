@@ -2,6 +2,9 @@
 // the same name as all the classes here, except everything is nicely separated
 // for Above/Below??
 
+// TODO:  UnitPx -> UnitAbs??
+//        UnitPc -> UnitRel???
+
 U.buildRoom({
   name: 'real',
   innerRooms: [ 'record' ],
@@ -32,6 +35,11 @@ U.buildRoom({
     
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
     
+    let cssTech = {
+      vAlignChild: { display: 'inline-block', verticalAlign: 'middle' },
+      vAlignBefore: { display: 'inline-block', verticalAlign: 'middle', content: '\'\'', width: '0', height: '100%' },
+    };
+    
     let vals = (() => {
       let RealVal = U.inspire({ name: 'RealVal', insps: {}, methods: (insp, Insp) => ({
         init: function() {},
@@ -52,18 +60,6 @@ U.buildRoom({
           // the size of the containing Real.
           return false;
         },
-        isRelativeToAxis: function(axis /* 'x' | 'y' */) {
-          // Indicates whether or not the unit is always proportional to
-          // the given axis.
-          
-          // TODO: With css, it isn't enough to know what type of unit
-          // is in use - we also need to know which property that unit
-          // is applied to :( - for example, UnitParH is relative to the
-          // x-axis when used for the css "height" property, but NOT for
-          // "margin-top" :(((
-          if (![ 'x', 'y' ].has(axis)) throw new Error(`Invalid axis: "${axis}"`);
-          return !this.isAbsolute();
-        },
         suff: C.notImplemented,
         add: function(n) { let Cls = this.constructor; return Cls(this.amt + n); },
         mult: function(n) { let Cls = this.constructor; return Cls(this.amt * n); },
@@ -72,19 +68,29 @@ U.buildRoom({
       })});
       let Calc = U.inspire({ name: 'Calc', insps: { RealVal }, methods: (insp, Insp) => ({
         init: function(...units) {
-          if (units.find(u => !U.isType(u.amt, Number))) throw new Error('Provided Unit without "amt"');
-          this.units = units.map(u => u.amt ? u : C.skip);
-          this.UniformCls = (this.units.length && !units.find(u => u.constructor !== this.units[0].constructor))
-            ? this.units[0].constructor
-            : null;
+          let unitsByType = Map();
+          for (let unit of units) {
+            if (!U.isType(unit.amt, Number)) throw new Error(`Provided invalid unit: ${U.typeOf(unit)}`);
+            let UnitCls = unit.constructor;
+            if (!unitsByType.has(UnitCls)) unitsByType.set(UnitCls, []);
+            unitsByType.get(UnitCls).push(unit);
+          }
+          
+          let uniqueUnits = [];
+          for (let [ UnitCls, units ] of unitsByType) {
+            let totalAmt = this.op(...units.map(u => u.amt));
+            if (totalAmt) uniqueUnits.push(UnitCls(totalAmt));
+          }
+          
+          if (uniqueUnits.length === 0) return vals.UnitPx(0);
+          if (uniqueUnits.length === 1) return uniqueUnits[0];
+          
+          this.units = uniqueUnits;
         },
         op: C.notImplemented,
         cssCalcSymbol: C.notImplemented,
+        isAbsolute: function() { return false; },
         getCss: function() {
-          if (!this.units.length) return '0';
-          if (this.UniformCls) {
-            return this.UniformCls(this.op(...this.units.map(u => u.amt))).getCss();
-          }
           return `calc(${this.units.map(u => u.getCss()).join(` ${this.cssCalcSymbol()} `)})`;
         }
       })});
@@ -98,32 +104,26 @@ U.buildRoom({
           suff: function() { return '%'; }
         })}),
         UnitParW: U.inspire({ name: 'UnitParW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return '%'; },
-          isRelativeToAxis: function(axis) { return axis === 'x'; }
+          suff: function() { return '%'; }
         })}),
         UnitParH: U.inspire({ name: 'UnitParW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return '%'; },
-          isRelativeToAxis: function(axis) { return axis === 'y'; }
+          suff: function() { return '%'; }
         })}),
-        ViewportW: U.inspire({ name: 'ViewportW', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vw'; },
-          isRelativeToAxis: function(axis) { return axis === 'x'; }
+        ViewPortW: U.inspire({ name: 'ViewPortW', insps: { Unit }, methods: (insp, Insp) => ({
+          suff: function() { return 'vw'; }
         })}),
-        ViewportH: U.inspire({ name: 'ViewportH', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vh'; },
-          isRelativeToAxis: function(axis) { return axis === 'x'; }
+        ViewPortH: U.inspire({ name: 'ViewPortH', insps: { Unit }, methods: (insp, Insp) => ({
+          suff: function() { return 'vh'; }
         })}),
-        ViewportMin: U.inspire({ name: 'ViewportMin', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vmin'; },
-          isRelativeToAxis: function(axis) { return false; }
+        ViewPortMin: U.inspire({ name: 'ViewPortMin', insps: { Unit }, methods: (insp, Insp) => ({
+          suff: function() { return 'vmin'; }
         })}),
-        ViewportMax: U.inspire({ name: 'ViewportMax', insps: { Unit }, methods: (insp, Insp) => ({
-          suff: function() { return 'vmax'; },
-          isRelativeToAxis: function(axis) { return false; }
+        ViewPortMax: U.inspire({ name: 'ViewPortMax', insps: { Unit }, methods: (insp, Insp) => ({
+          suff: function() { return 'vmax'; }
         })}),
         CalcAdd: U.inspire({ name: 'CalcAdd', insps: { Calc }, methods: (insp, Insp) => ({
           op: function(...vals) { let v = 0; for (let vv of vals) v += vv; return v; },
-          cssCalcSymbol: function() { return '+'; },
+          cssCalcSymbol: function() { return '+'; }
         })}),
         CalcMult: U.inspire({ name: 'CalcMult', insps: { Calc }, methods: (insp, Insp) => ({
           op: function(...vals) { let v = 1; for (let vv of vals) v *= vv; return v; },
@@ -132,43 +132,274 @@ U.buildRoom({
       };
     })();
     
-    let Ctx = U.inspire({ name: 'Ctx', methods: (insp, Insp) => ({
-      init: function(func) {
-        this.func = func;
-      },
-      cmpCondition: C.notImplemented,
-      cmpParams: C.notImplemented,
-      runParams: function(...args) { return C.notImplemented.call(this); }
-    })});
-    let CtxAlways = U.inspire({ name: 'CtxAlways', insps: { Ctx }, methods: (insp, Insp) => ({
-      cmpCondition: function() { return 'always'; },
-      cmpParams: function() { return []; },
-      runParams: function(real) { return []; },
-    })});
-    let CtxViewport = U.inspire({ name: 'CtxViewport', insps: { Ctx }, methods: (insp, Insp) => ({
-      cmpCondition: function() { return 'always'; },
-      cmpParams: function(p='UnitViewport') { return vals.slice(`${p}W`, `${p}H`, `${p}Min`, `${p}Max`).toArr(v => v(100)); }, //   return [ vals.RealViewportExtW(), vals.RealViewportExtH(), vals.RealViewport ]; },
-      runParams: function(real) { return []; },
-    })});
-    let CtxState = U.inspire({ name: 'CtxState', insps: { Ctx }, methods: (insp, Insp) => ({
-      init: function(state, func) {
-        insp.Ctx.init.call(this, func);
-        this.state = state;
-      },
-      cmpCondition: function() { return this.state; },
-      cmpParams: function() { return []; },
-      runParams: function(real) { return []; }
-    })});
-    let CtxPar = U.inspire({ name: 'CtxPar', insps: { Ctx }, methods: (insp, Insp) => ({
-      cmpCondition: function() { return 'always'; },
-      cmpParams: function() { return [ vals.UnitParW(100), vals.UnitParH(100) ]; }
-    })});
+    let sizing = (() => {
+      
+      let FillParent = U.inspire({ name: 'FillParent', methods: (insp, Insp) => ({
+        init: function({ shrink=vals.UnitPx(0), shrinkH=shrink, shrinkV=shrink, shrinkL=shrinkH, shrinkR=shrinkH, shrinkT=shrinkV, shrinkB=shrinkV }) {
+          this.shrinkL = shrinkL;
+          this.shrinkR = shrinkR;
+          this.shrinkT = shrinkT;
+          this.shrinkB = shrinkB;
+        },
+        getCss: function() {
+          return { main: {
+            display: 'block', position: 'absolute',
+            left: this.shrinkL, right: this.shrinkR,
+            top: this.shrinkT, bottom: this.shrinkB
+          }};
+        }
+      })});
+      let WrapChildren = U.inspire({ name: 'WrapChildren', methods: (insp, Insp) => ({
+        init: function({ pad=vals.UnitPx(0), padH=pad, padV=pad, padL=padH, padR=padH, padT=padV, padB=padV }) {
+          this.padL = padL;
+          this.padR = padR;
+          this.padT = padT;
+          this.padB = padB;
+        },
+        getCss: function(parCtx) {
+          return { main: {
+            boxSizing: (parCtx.slots && parCtx.slots.fixesChildSizes()) ? 'border-box' : 'initial',
+            ...(this.padL.amt ? { paddingLeft: this.padL } : {}),
+            ...(this.padR.amt ? { paddingRight: this.padR } : {}),
+            ...(this.padT.amt ? { paddingTop: this.padT } : {}),
+            ...(this.padB.amt ? { paddingBottom: this.padB } : {})
+          }};
+        }
+      })});
+      let ShowText = U.inspire({ name: 'ShowText', methods: (insp, Insp) => ({
+        init: function(opts) {
+          let { pad=vals.UnitPx(0), padH=pad, padV=pad, padL=padH, padR=padH, padT=padV, padB=padV } = opts;
+          this.padL = padL;
+          this.padR = padR;
+          this.padT = padT;
+          this.padB = padB;
+          
+          // NOTE: Text origin has really wonky handling. Originally it
+          // could be specified in decals, and now it should only be
+          // provided to `ShowText` - but specifying to decals was
+          // advantageous: decals are applied after geometry is complete
+          // and after all other css. `ShowText` doesn't have knowledge
+          // of the total geometry of its target, so it can't make the
+          // same decisions (especially regarding line-height, with
+          // centered text) as "textOrigin" could as a decal. So instead
+          // of trying to get knowledge of the full geometry, we've just
+          // maintained the "textOrigin" decal, even though it shouldn't
+          // be used by anyone except `ShowText`. We set the
+          // "lateDecals" zone, and include "textOrigin" there, so the
+          // "textOrigin" value can finally apply when geometry is fully
+          // understood.
+          
+          let { multiLine=false, origin='left' } = opts;
+          this.multiLine = multiLine;
+          this.origin = origin;
+        },
+        getCss: function(parCtx) {
+          return {
+            main: {
+              whiteSpace: this.multiLine ? 'initial' : 'nowrap',
+              boxSizing: (parCtx.slots && parCtx.slots.fixesChildSizes()) ? 'border-box' : 'initial',
+              ...(!this.multiLine ? { textOverflow: 'ellipsis' } : {}),
+              ...(this.padL.amt ? { paddingLeft: this.padL } : {}),
+              ...(this.padR.amt ? { paddingRight: this.padR } : {}),
+              ...(this.padT.amt ? { paddingTop: this.padT } : {}),
+              ...(this.padB.amt ? { paddingBottom: this.padB } : {})
+            },
+            before: { content: '\'\\200B\'', fontSize: 'inherit' }, // Force text height
+            lateDecals: {
+              textOrigin: this.origin
+            }
+          };
+        }
+      })});
+      
+      return { FillParent, WrapChildren, ShowText };
+      
+    })();
+    
+    let slots = (() => {
+      
+      let RootViewStyles = U.inspire({ name: 'RootViewStyles', methods: (insp, Insp) => ({
+        
+        init: function() {},
+        insertViewPortItem: function() { return RootViewPortItem(); },
+        insertPageItem: function() { return RootPageItem(); },
+        fixesChildSizes: function() { return true; },
+        getCss: function() {
+          return {
+            main: {
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+              fontSize: '0'
+            },
+            before: cssTech.vAlignBefore
+          };
+        }
+        
+      })});
+      // TODO: capitalize "P" in "viewPort"?
+      let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', methods: (insp, Insp) => ({
+        init: function() {},
+        getCss: function() {
+          return { main: { ...cssTech.vAlignChild, position: 'relative', width: vals.ViewPortMin(1), height: vals.ViewPortMin(1), overflow: 'auto', fontSize: '13px' } };
+        }
+      })});
+      let RootPageItem = U.inspire({ name: 'RootPageItem', methods: (insp, Insp) => ({
+        init: function() {},
+        getCss: function() {
+          return { main: {
+            position: 'absolute', display: 'block',
+            left: '0', right: '0', top: '0', bottom: '0',
+            overflowX: 'hidden', overflowY: 'auto',
+            fontSize: '13px'
+          }};
+        }
+      })});
+      
+      let AxisSections = U.inspire({ name: 'AxisSections', methods: (insp, Insp) => ({
+        init: function({ axis, dir='+', cuts }) {
+          if (!axis) throw new Error('Missing "axis" param');
+          if (!cuts) throw new Error('Missing "cuts" param');
+          if (![ '+', '-' ].has(dir)) throw new Error('Invalid "dir" param');
+          if (![ 'x', 'y' ].has(axis)) throw new Error('Invalid "axis" param');
+          
+          this.axis = axis;
+          this.dir = dir;
+          this.cuts = cuts;
+        },
+        insertSectionItem: function(index) { return AxisSectionItem(this, index); },
+        fixesChildSizes: function() { return true; },
+        getCss: function() { return { main: {} }; } // TODO: Need to articulate "`position: relative;` if not `position: absolute`"
+      })});
+      let AxisSectionItem = U.inspire({ name: 'AxisSectionItem', methods: (insp, Insp) => ({
+        init: function(par, index) {
+          this.par = par;
+          this.index = index;
+        },
+        getCut: function(index) {
+          if (index < 0) return vals.UnitPc(0);
+          if (index >= this.par.cuts.length) return vals.UnitPc(1); // TODO: Use parent dimensions
+          return this.par.cuts[index];
+        },
+        getCss: function(parCtx) {
+          
+          let { cuts, axis, dir } = this.par;
+          
+          let off = vals.CalcAdd(...cuts.slice(0, this.index));
+          let ext = (this.index === cuts.length)
+            ? vals.CalcAdd(parCtx[axis === 'x' ? 'w' : 'h'], ...cuts.map(u => u.mult(-1)))
+            : cuts[this.index];
+          
+          let h = axis === 'x'; // "horizontal"
+          let f = dir === '+';  // "forwards"
+          return { main: {
+            position: 'absolute',
+            
+            // Spanning offset (is always 0)
+            [h ? 'top' : 'left']:                                   vals.UnitPx(0),
+            
+            // Spanning extent (is always the parent's full extent)
+            [h ? 'height' : 'width']:                               h ? parCtx.h : parCtx.w,
+            
+            // Partial offset (depends on axis AND direction)
+            [h ? (f ? 'left' : 'right') : (f ? 'top' : 'bottom')]:  off,
+            
+            // Partial extent
+            [h ? 'width' : 'height']:                               ext
+          }};
+          
+        }
+      })});
+      
+      let LinearSlots = U.inspire({ name: 'LinearSlots', methods: (insp, Insp) => ({
+        init: function({ axis, dir='+' /*, initPad=vals.UnitPx(0)*/ }) {
+          if (!axis) throw new Error('Missing "axis" param');
+          if (![ '+', '-' ].has(dir)) throw new Error('Invalid "dir" param');
+          if (![ 'x', 'y' ].has(axis)) throw new Error('Invalid "axis" param');
+          this.axis = axis;
+          this.dir = dir;
+        },
+        insertLinearItem: function() { return LinearItem(this); },
+        fixesChildSizes: function() { return false; },
+        getCss: function() {
+          if (this.axis === 'x') {
+            return {
+              main: { whiteSpace: 'nowrap', overflowX: 'auto', overflowY: 'hidden' },
+              before: cssTech.vAlignBefore
+            };
+          } else {
+            return { main: { overflowX: 'hidden', overflowY: 'auto' } };
+          }
+        }
+      })});
+      let LinearItem = U.inspire({ name: 'LinearItem', methods: (insp, Insp) => ({
+        init: function(par) {
+          this.par = par;
+        },
+        getCss: function() {
+          if (this.par.axis === 'x') {
+            return { main: cssTech.vAlignChild };
+          } else {
+            return { main: { position: 'relative' } };
+          }
+        }
+      })});
+      
+      let CenteredSlot = U.inspire({ name: 'CenteredSlot', methods: (insp, Insp) => ({
+        init: function() {},
+        insertCenteredItem: function() { return CenteredItem(this); },
+        fixesChildSizes: function() { return false; },
+        getCss: function() {
+          return {
+            main: {
+              textAlign: 'center'
+            },
+            before: cssTech.vAlignBefore
+          }
+        }
+      })});
+      let CenteredItem = U.inspire({ name: 'CenteredItem', methods: (insp, Insp) => ({
+        init: function(par) {
+          this.par = par;
+        },
+        getCss: function() {
+          return { main: cssTech.vAlignChild };
+        }
+      })});
+      
+      let TextFlowSlots = U.inspire({ name: 'TextFlowSlots', methods: (insp, Insp) => ({
+        init: function({ gap=vals.UnitPx(0), lineHeight=null }) {
+          this.gap = gap;
+          this.lineHeight = lineHeight;
+        },
+        insertTextFlowItem: function() { return TextFlowItem(this); },
+        fixesChildSizes: function() { return false; },
+        getCss: function() {
+          return { main: {} };
+        }
+      })});
+      let TextFlowItem = U.inspire({ name: 'TextFlowItem', methods: (insp, Insp) => ({
+        init: function(par) {
+          this.par = par;
+        },
+        getCss: function() {
+          return { main: {
+            display: 'inline',
+            whiteSpace: 'initial',
+            ...(this.par.gap.amt ? { marginRight: this.par.gap } : {}),
+            ...(this.par.lineHeight ? { lineHeight: this.par.lineHeight } : {})
+          }};
+        }
+      })});
+      
+      return { RootViewStyles, AxisSections, LinearSlots, CenteredSlot, TextFlowSlots };
+      
+    })();
     
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
       init: function(name, ctxsByNameFlat) {
         this.name = name;
         
-        this.rootCtxsNode = { ctxsFunc: () => [], children: {} };
+        this.rootCtxsNode = { ctxsFunc: () => ({ slots: slots.RootViewStyles({}) }), children: {} };
         
         ctxsByNameFlat.forEach((ctxsFunc, chainName) => {
           
@@ -187,36 +418,34 @@ U.buildRoom({
         
       },
       /// {ABOVE=
-      decalsToCss: function(chain, decals) {
+      decalsToCss: function(parCtx, curMainCss, chain, decals) {
         
         if (!decals) return {};
         
         let mapping = {
           colour: 'backgroundColor',
           textSize: 'fontSize',
-          textOrigin: 'textAlign',
+          textOrigin: origin => {
+            if (origin !== 'center') return { textAlign: origin };
+            
+            if (curMainCss.has('height') && !curMainCss.height.isAbsolute())
+              throw new Error('Can\'t center css text for relative-height element');
+            
+            let ret = { textAlign: 'center' };
+            if (curMainCss.has('height')) ret.lineHeight = curMainCss.height;
+            return ret;
+          },
           textColour: 'color',
+          textFont: 'font-family',
           size: v => {
             let ret = {};
             if (v[0] !== null) ret.width = v[0];
             if (v[1] !== null) ret.height = v[1];
             return ret;
           },
-          text: v => { return { /* tricky! */ }; },
-          textLining: lining => {
-            if (!lining.has('type')) throw new Error('Invalid lining');
-            if (lining.type === 'single') {
-              let ret = {
-                whiteSpace: 'nowrap',
-                'resolveLast.applyFullLineHeight': 1
-              };
-              if (lining.has('pad')) ret.gain({ boxSizing: 'border-box', paddingLeft: lining.pad, paddingRight: lining.pad });
-              return ret;
-            }
-            throw new Error(`Invalid lining type: "${v.type}"`);
-          },
-          border: ({ type='in', w, colour }) => {
-            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${w.getCss()} ${colour}` }
+          text: v => { return { /* tricky! need to set javascript on the element */ }; },
+          border: ({ type='in', ext, colour }) => {
+            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${ext.getCss()} ${colour}` }
           }
         };
         
@@ -263,8 +492,20 @@ U.buildRoom({
           if (!cur.has(zone)) cur[zone] = {};
           
           css.forEach((cssVal, cssKey) => {
-            if (cur[zone].has(cssKey)) throw new Error(`Elem ${chain.join('.')} zone "${zone}" has conflicting "${cssKey}" css props`);
-            cur[zone][cssKey] = U.isType(cssVal, Number) ? vals.UnitPx(cssVal) : cssVal; // Allow numeric shorthand
+            if (U.isType(cssVal, Number)) cssVal = vals.UnitPx(cssVal); // Allow numeric shorthand
+            
+            if (cur[zone].has(cssKey)) {
+              let cssVal0 = cur[zone][cssKey];
+              
+              let inspMatch = U.inspOf(cssVal) === U.inspOf(cssVal0);
+              let sameVal = inspMatch
+                ? (U.isInspiredBy(cssVal, vals.RealVal) && cssVal.amt === cssVal0.amt) || cssVal === cssVal0
+                : false;
+              
+              if (!sameVal) throw new Error(`Elem ${chain.join('.')} zone "${zone}" has conflicting "${cssKey}" css props`);
+            }
+            
+            cur[zone][cssKey] = cssVal; // Allow numeric shorthand
           });
           
         });
@@ -277,10 +518,6 @@ U.buildRoom({
         // javascript controls on an element-by-element basis, to govern
         // any dynamic UIX features.
         
-        let genericCtx = {
-          viewport: { w: vals.ViewportW(1), h: vals.ViewportH(1), min: vals.ViewportMin(1), max: vals.ViewportMax(1) }
-        };
-        
         let cmpRules = []; // Compile-time rules: for static UIX (css)
         let runRules = []; // Run-time rules: for dynamic UIX (js)
         
@@ -288,88 +525,107 @@ U.buildRoom({
         // Return results in flat format
         let processNode = (parCtx, chain, ctxsNode) => {
           
-          // TODO: Could recursively propagate new contexts - it'd be more elegant?
-          let fullCtx = ({}).gain(genericCtx).gain(parCtx);
-          let { layout, slots=null, decals=null } = ctxsNode.ctxsFunc(fullCtx);
-          
-          let mergeZoneCss = (chain, cur, add) => {
+          try {
             
-            // Zone is "main", "before", "after", "focus", "hover", etc.
-            // At this level, we're still working in Units - we're not
-            // yet resolving anything to final css values.
-            add.forEach((css, zone) => {
-              
-              if (!cur.has(zone)) cur[zone] = {};
-              
-              css.forEach((cssVal, cssKey) => {
-                if (cur[zone].has(cssKey)) throw new Error(`Elem ${chain.join('.')} zone "${zone}" has conflicting "${cssKey}" css props`);
-                cur[zone][cssKey] = U.isType(cssVal, Number) ? vals.UnitPx(cssVal) : cssVal;
-              });
-              
-            });
+            // TODO: Could recursively propagate new contexts - it'd be more elegant?
+            let { slot=null, size=null, slots=null, decals=null, dbg=false } = ctxsNode.ctxsFunc(parCtx);
             
-          };
-          
-          // Transfer knowledge of size from Layout to Slots
-          // NOTE: Slots will ALWAYS have a "layoutSize" property before having `getCss` called!
-          if (slots) slots.layoutSize = (layout && layout.size) || [ null, null ];
-          
-          let zoneCss = {};
-          this.mergeZoneCss(chain, zoneCss, layout ? layout.getCss() : {});
-          this.mergeZoneCss(chain, zoneCss, slots ? slots.getCss() : {}); // Apply css to SlotProvider
-          this.mergeZoneCss(chain, zoneCss, this.decalsToCss(chain, decals));
-          
-          zoneCss.forEach((css, zone) => {
-            
-            // Clean up compound properties
-            css.forEach((v, k) => {
+            let dbgShow = cssZones => JSON.stringify(cssZones, (k, v) => U.safe(() => v.getCss(), () => v), 2);
+            if (dbg) {
               
-              if (!k.has('.')) return;
               
-              delete css[k];
-              k = k.split('.');
-              
-              let ptr = css;
-              while (k.length > 1) {
-                let n = k.shift();
-                if (!ptr.has(n)) ptr[n] = {};
-                ptr = ptr[n];
-              }
-              
-              ptr[k[0]] = v;
-              
-            });
-            
-            // Apply text
-            if (css.has('text')) true; // TODO: Should apply javascript! For dom elems should set innerHTML; for "before"/"after" should set css "content" property!
-            
-            // Reset any inappropriately inherited values
-            if (!css.has('textAlign')) css.textAlign = 'left';
-            if (!css.has('fontSize')) css.fontSize = '13px';
-            
-            // Interpret "transform" prop
-            if (css.has('transform')) css.transform = css.transform.toArr((v, k) => `${k}(${v.map(w => w.getCss()).join(', ')})`).join(' ');
-            
-            // Interpret other compound props (e.g. padding, margin? (padding-left, padding-right...), gradient, ...)
-            
-            // Interpret "resolveLast" props
-            if (css.has('resolveLast')) {
-              
-              // TODO: This only works if `css.height` is specified in absolute units!
-              if (css.resolveLast.has('applyFullLineHeight')) css.lineHeight = css.height;
-              
-              delete css.resolveLast;
+              console.log('DBG BEFORE:', chain.join('.'));
+              console.log('SLOT:', U.typeOf(slot), slot && dbgShow(slot.getCss(parCtx)));
+              console.log('SIZE:', U.typeOf(size), size && dbgShow(size.getCss(parCtx)));
+              console.log('SLOTS:', U.typeOf(slots), slots && dbgShow(slots.getCss(parCtx)));
               
             }
             
-          });
-          
-          cmpRules.push({ chain, zoneCss });
-          
-          ctxsNode.children.forEach((node, name) => processNode({ slots }, chain.concat([ name ]), node));
+            let zoneCss = { main: {} };
+            this.mergeZoneCss(chain, zoneCss, slot ? slot.getCss(parCtx) : {});
+            this.mergeZoneCss(chain, zoneCss, size ? size.getCss(parCtx) : {});
+            this.mergeZoneCss(chain, zoneCss, slots ? slots.getCss(parCtx) : {});
+            this.mergeZoneCss(chain, zoneCss, this.decalsToCss(parCtx, zoneCss.main, chain, decals));
+            
+            if (zoneCss.has('lateDecals')) {
+              this.mergeZoneCss(chain, zoneCss, this.decalsToCss(parCtx, zoneCss.main, chain, zoneCss.lateDecals));
+              
+              // NOTE: It isn't impossible that the "late" addition of
+              // decals will try to schedule ANOTHER late addition. If
+              // that happens it's ignored: "lateDecals" is deleted
+              delete zoneCss.lateDecals;
+            }
+            
+            zoneCss.forEach((css, zone) => {
+              
+              // Clean up compound properties
+              css.forEach((v, k) => {
+                
+                if (!k.has('.')) return;
+                
+                delete css[k];
+                k = k.split('.');
+                
+                let ptr = css;
+                while (k.length > 1) {
+                  let n = k.shift();
+                  if (!ptr.has(n)) ptr[n] = {};
+                  ptr = ptr[n];
+                }
+                
+                ptr[k[0]] = v;
+                
+              });
+              
+              // Apply text
+              if (css.has('text')) true; // TODO: Should apply javascript! For dom elems should set innerHTML; for "before"/"after" should set css "content" property!
+              
+              // Reset any inappropriately inherited values
+              if (!css.has('textAlign')) css.textAlign = 'left';
+              if (!css.has('fontSize')) css.fontSize = '13px';
+              if (css.fontSize === 'inherit') delete css.fontSize; // `font-size: inherit;` is redundant!
+              
+              // Interpret "transform" prop
+              if (css.has('transform')) css.transform = css.transform.toArr((v, k) => `${k}(${v.map(w => w.getCss()).join(', ')})`).join(' ');
+              
+              // Simplify compound props? (e.g. padding, margin? (padding-left, padding-right...), gradient, ...)
+              
+            });
+            
+            if (dbg) {
+              console.log('DBG AFTER:', chain.join('.'));
+              console.log(dbgShow(zoneCss));
+            }
+            
+            cmpRules.push({ chain, zoneCss });
+            
+            let { w=null, h=null } = zoneCss.main.slice({ w: 'width', h: 'height' });
+            
+            // TODO: These aren't used now, but could be helpful. Tells
+            // if the parent had actual size-governing attributes.
+            // TODO: An Extent can be determined in ways that don't
+            // involve "width" or "height": e.g. having "top" and
+            // "bottom" determined, determines "height" as well!
+            let determW = !!w, determH = !!h;
+            
+            if (!w || !w.isAbsolute()) w = vals.UnitPc(1);
+            if (!h || !h.isAbsolute()) h = vals.UnitPc(1);
+            
+            let nextParCtx = { slots, w, h, determW, determH };
+            ctxsNode.children.forEach((node, name) => processNode(nextParCtx, chain.concat([ name ]), node));
+            
+          } catch(err) {
+            
+            if (err.message[0] === '!') throw err;
+            
+            err.message = `!Chain err: [${chain.join('.')}]: ${err.message}`;
+            throw err;
+            
+          }
           
         };
-        processNode({}, [], this.rootCtxsNode);
+        
+        processNode({ slots: null, w: vals.UnitPc(1), h: vals.UnitPc(1) }, [], this.rootCtxsNode);
         
         return {
           cmp: cmpRules.map(({ chain, zoneCss }) => {
@@ -404,6 +660,10 @@ U.buildRoom({
       /// =ABOVE}
       contain: function(foundation, real) {
         
+        // NOTE: Right now all Real rules are buffered, transformed to be
+        // heirarchical, and then processed at once. Could we skip the
+        // buffering step? The main reason is simpler stack traces.
+        
         if (real) {
           if (real.reality) throw new Error('The Real is already contained');
           real.reality = this;
@@ -435,16 +695,9 @@ U.buildRoom({
         /// =BELOW}
         
       },
-      create: function(nameChain, ...altNames) {
-        return Real({ nameChain, altNames, reality: this });
-      }
     })});
     let Real = U.inspire({ name: 'Real', insps: { Hog }, methods: (insp, Insp) => ({
-      $defSetup: function(real) {
-        return { dom: document.createElement('div') };
-      },
-      
-      init: function({ reality=null, nameChain=null, altNames=[], setup=Real.defSetup }={}) {
+      init: function({ reality=null, nameChain=null, altNames=[], makeDom=()=>document.createElement('div') }={}) {
         
         insp.Hog.init.call(this);
         
@@ -452,21 +705,15 @@ U.buildRoom({
         this.reality = reality;
         
         // The list of names to specify our role
-        if (nameChain === null) nameChain = [];
-        else if (U.isType(nameChain, String)) nameChain = [ nameChain ];
-        if (nameChain.find(v => v.has('.'))) throw new Error(`Invalid Real name: [${nameChain.join(',')}]`);
+        if (nameChain === null) throw new Error('Missing "nameChain" param');
+        if (nameChain.find(v => v.has('.'))) throw new Error(`Invalid Real name: [${nameChain.join(', ')}]`);
         this.nameChain = nameChain;
         
-        // Alternative names for additional roles
-        this.altNames = new Set(altNames);
-        
         // Get dom element
-        let { dom } = setup();
-        this.dom = dom;
+        this.dom = makeDom();
         
-        // Add main name and alt names to dom
+        // Add main name to dom
         if (nameChain.length) this.dom.classList.add(nameChain[nameChain.length - 1]);
-        this.altNames.forEach(n => console.log('ALT:', n) || dom.classList.add(n));
         
         // "Feeling" most often occurs via click
         this.feelWob0 = null;
@@ -478,6 +725,8 @@ U.buildRoom({
         
         // "Looking" most often occurs via focus
         this.lookWob0 = null; // TODO: Does WobTmp work here? And can it simplify "curFeel"?
+        
+        console.log('MADE:', this.dom);
         
       },
       setPriority: function(amt) {
@@ -686,8 +935,9 @@ U.buildRoom({
       
       addReal: function(real) {
         if (U.isType(real, String)) {
+          // Resolve String to Real
           if (!this.reality) throw new Error('Can\'t create Real from String without Reality set');
-          real = this.reality.create(this.nameChain.concat([ real ]));
+          real = Real({ nameChain: this.nameChain.concat([ real ]), reality: this.reality });
         }
         this.dom.appendChild(real.dom);
         return real;
@@ -702,278 +952,12 @@ U.buildRoom({
       }
     })});
     
-    let layout = (() => {
-      
-      return {
-        Free: U.inspire({ name: 'Free', methods: (insp, Insp) => ({
-          init: function({ w, h, x=w.mult(0), y=h.mult(0) }) {
-            if (!w) throw new Error('Missing "w" param');
-            if (!h) throw new Error('Missing "h" param');
-            
-            this.x = x; // Horizontal offset from center
-            this.y = y; // Vertical offset from center
-            this.w = w;
-            this.h = h;
-          },
-          cssAxisTechnique: function(off, ext, cssDirP, cssMrgDirP, cssExtP) {
-            
-            // cssDirP: left/top
-            // cssMrgDirP: marginLeft/marginTop
-            // cssExtP: width/height
-            
-            // WE NEED TO AVOID NON-ABSOLUTE MARGIN-TOP!
-            //
-            // abs X, abs W:  { left: 50%, margin-left: X:px - 0.5W:px, width: W:px }
-            //                { left: calc(50% + X:px), margin-left: -0.5W:px, width: W:px }
-            // abs Y, abs H:  { top: 50%, margin-top: Y:px - 0.5H:px, height: H:px }
-            //                { top: calc(50%, Y:px), margin-top: -0.5H:px, height: H:px }
-            //
-            // abs X, rel W:  { left: 50% - 0.5W:%, margin-left: X:px, width: W:% }
-            // abs Y, rel H:  { top: 50% - 0.5H:%, margin-top: Y:px, height: H:% }
-            //
-            // rel X, abs W:  { left: 50% + X:%, margin-left: -0.5W:px, width: W:px }
-            // rel Y, abs H:  { top: 50% + Y:%, margin-top: -0.5H:px, height: H:px }
-            //
-            // rel X, rel W:  { left: 50% + X:% - 0.5W:%, width: W:% }
-            // rel Y, rel H:  { top: 50% + Y:% - 0.5H:%, height: H:% }
-            
-            let absOff = off.isAbsolute();
-            let absExt = ext.isAbsolute();
-            
-            if (absOff && absExt) {
-              
-              return {
-                [cssDirP]: vals.UnitPc(0.5),
-                [cssMrgDirP]: vals.CalcAdd(off, ext.mult(-0.5)),
-                [cssExtP]: ext
-              };
-              
-            } else if (absOff && !absExt) {
-              
-              return {
-                [cssDirP]: vals.CalcAdd(UnitPc(0.5), ext.mult(-0.5)),
-                [cssMrgDirP]: off,
-                [cssExtP]: ext
-              }
-              
-            } else if (!absOff && absExt) {
-              
-              return {
-                [cssDirP]: vals.CalcAdd(UnitPc(0.5), off),
-                [cssMrgDirP]: ext.mult(-0.5),
-                [cssExtP]: ext
-              }
-              
-            } else if (!absOff && !absExt) {
-              
-              return {
-                [cssDirP]: vals.CalcAdd(vals.UnitPc(0.5), off, ext.mult(-0.5)),
-                [cssExtP]: ext
-              }
-              
-            }
-            
-          },
-          getCss: function() {
-            
-            // let main =
-            
-            return { main: {
-              display: 'block',
-              position: 'absolute',
-              ...this.cssAxisTechnique(this.x, this.w, 'left', 'marginLeft', 'width'),
-              ...this.cssAxisTechnique(this.y, this.h, 'top', 'marginTop', 'height')
-            }};
-            
-          }
-        })}),
-        Fill: U.inspire({ name: 'Fill', methods: (insp, Insp) => ({
-          init: function({ pad=null }) {
-            this.pad = pad;
-          },
-          getCss: function() {
-            let main = { position: 'absolute' };
-            main.gain(this.pad
-              ? { left: this.pad, right: this.pad, top: this.pad, bottom: this.pad }
-              : { left: '0', top: '0', width: '100%', height: '100%' }
-            );
-            return { main };
-          }
-        })})
-      };
-      
-    })();
-    
-    // Dedicated to Slots: boxSizing, padding*
-    // Dedicated to Layouts: width, height, left, right, top, bottom
-    
-    let slots = (() => {
-      
-      let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
-        init: function({}) {
-        }
-      })});
-      
-      let Titled = U.inspire({ name: 'Titled', methods: (insp, Insp) => ({
-        init: function({ side='t', titleExt }) {
-          this.side = side;
-          this.titleExt = titleExt;
-        },
-        getCss: function() {
-          let paddingCssProp = ({ l: 'paddingLeft', r: 'paddingRight', t: 'paddingTop', b: 'paddingBottom' })[this.side];
-          let main = { boxSizing: 'border-box', [paddingCssProp]: this.titleExt.getCss() };
-          return { main };
-        },
-        insertTitle: function() { return TitledTitle(this); },
-        insertContent: function() { return TitledContent(this); }
-      })});
-      let TitledTitle = U.inspire({ name: 'TitledTitle', methods: (insp, Insp) => ({
-        init: function(par) { this.par = par; },
-        getCss: function() {
-          let cssProps = ({
-            l: { left: '0',  top: '0',    width: this.par.titleExt, height: vals.UnitPc(1) },
-            r: { right: '0', top: '0',    width: this.par.titleExt, height: vals.UnitPc(1) },
-            t: { left: '0', top: '0',     width: vals.UnitPc(1), height: this.par.titleExt, lineHeight: this.par.titleExt },
-            b: { left: '0', bottom: '0',  width: vals.UnitPc(1), height: this.par.titleExt, lineHeight: this.par.titleExt }
-          })[this.par.side];
-          
-          return { main: {
-            display: 'block', position: 'absolute',
-            ...cssProps
-          }};
-        }
-      })});
-      let TitledContent = U.inspire({ name: 'TitledContent', methods: (insp, Insp) => ({
-        init: function(par) { this.par = par; },
-        getCss: function() {
-          
-          let cssH = null;
-          let cssV = null;
-          
-          let [ sizeH, sizeV ] = this.par.layoutSize;
-          
-          if ([ 'l', 'r' ].has(this.par.side)) {  // Horizontal title
-            
-            // Both horizontal size and horizontal title size need to be of the same class
-            // so they can be safely subtracted.
-            if (sizeH && sizeH.isAbsolute() && U.isType(sizeH, this.par.titleExt.constructor)) cssH = sizeH.add(-this.par.titleExt.amt);
-            if (sizeV && sizeV.isAbsolute()) cssV = sizeV;
-            
-          } else {                                // Vertical title
-            
-            // Both vertical size and vertical title size need to be of the same class
-            // so they can be safely subtracted.
-            if (sizeH && sizeH.isAbsolute()) cssH = sizeH;
-            if (sizeV && sizeV.isAbsolute() && U.isType(sizeV, this.par.titleExt.constructor)) cssV = sizeV.add(-this.par.titleExt.amt);
-            
-          }
-          
-          return { main: {
-            display: 'block', position: 'relative',
-            left: '0', top: '0',
-            width: cssH || vals.UnitPc(1),
-            height: cssV || vals.UnitPc(1)
-          }};
-        }
-      })});
-      
-      let Justified = U.inspire({ name: 'Justified', methods: (insp, Insp) => ({
-        
-        // Provides a single slot that will center any Real within
-        
-        init: function() {},
-        getCss: function() {
-          return {
-            main: {
-              textAlign: 'center'
-            },
-            after: {
-              content: '""',
-              display: 'inline-block',
-              width: '0', height: '100%',
-              verticalAlign: 'middle'
-            }
-          };
-        },
-        insertJustifiedItem: function(args={}) { return JustifiedItem(this, args); }
-      })});
-      let JustifiedItem = U.inspire({ name: 'JustifiedItem', methods: (insp, Insp) => ({
-        init: function(par, { size=[ null, null ] }) {
-          this.par = par;
-          this.size = size;
-        },
-        getCss: function() {
-          let main = { display: 'inline-block', verticalAlign: 'middle' };
-          if (this.size[0] !== null) main.width = this.size[0];
-          if (this.size[1] !== null) main.height = this.size[1];
-          return { main };
-        }
-      })});
-      
-      let FillV = U.inspire({ name: 'FillV', methods: (insp, Insp) => ({
-        init: function({ pad=null }) {
-          this.pad = pad;
-        },
-        getCss: function() {
-          let main = { overflowX: 'hidden', overflowY: 'auto' };
-          if (this.pad) main.gain({ boxSizing: 'border-box', padding: this.pad });
-          return { main };
-        },
-        insertVItem: function(args={}) { return FillVItem(this, args); }
-      })});
-      let FillVItem = U.inspire({ name: 'FillVItem', methods: (insp, Insp) => ({
-        init: function(par, { size=[ null, null ] }) {
-          this.par = par;
-          this.size = size;
-        },
-        getCss: function() {
-          let main = { position: 'relative' };
-          if (this.size[0] !== null) main.width = this.size[0];
-          if (this.size[1] !== null) main.height = this.size[1];
-          return { main };
-        }
-      })});
-      
-      let FillH = U.inspire({ name: 'FillH', methods: (insp, Insp) => ({
-        init: function({ pad=null }) {
-          this.pad = pad;
-        },
-        getCss: function() {
-          let main = {
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            overflowX: 'auto',
-            overflowY: 'hidden'
-          };
-          
-          if (this.pad) main.gain({ boxSizing: 'border-box', padding: this.pad });
-          
-          return { main };
-        },
-        insertHItem: function(args={}) { return FillHItem(this, args); }
-      })});
-      let FillHItem = U.inspire({ name: 'FillHItem', methods: (insp, Insp) => ({
-        init: function(par, { size=[ null, null ] }) {
-          this.par = par;
-          this.size = size;
-        },
-        getCss: function() {
-          let main = { position: 'relative', display: 'inline-block', verticalAlign: 'middle' };
-          if (this.size[0] !== null) main.width = this.size[0];
-          if (this.size[1] !== null) main.height = this.size[1];
-          return { main };
-        }
-      })});
-      
-      return { Titled, Justified, FillV, FillH };
-      
-    })();
-    
     return {
-      layout, slots,
-      UnitPx: vals.UnitPx, UnitPc: vals.UnitPc,
-      CtxAlways, CtxViewport, CtxState, CtxPar,
+      
+      sizing, slots,
+      ...vals.slice('UnitPx', 'UnitPc'),
       Colour, Reality, Real
+      
     };
     
   }
