@@ -1,3 +1,54 @@
+/*
+The hut can run on any platform that supports javascript
+  - E.g. redhat, digitalocean, heroku, etc.
+
+The hut can have multiple unrelated servers
+
+A server can support unrelated apps(??) (e.g. both chess2 and storyMix)
+
+Multiple BelowHuts can connect to an AboveHut
+
+Each BelowHut->AboveHut connection can occur over multiple Ways
+
+BelowHut->AboveHut connections can occur using multiple Realities
+  - The Foundation may determine the Reality! E.g. FoundationBrowser
+    should always determine the Reality to be HtmlCssReality
+  - E.g. html+css, html+canvas, html+css+noJs, electron, native app, etc.
+  - Just seeing an HTTP request isn't enough to know that we need to
+    respond with html - what if it's HTTP+NativeApp? That doesn't need
+    HTML (I think)
+  - Hinterlands needs to think harder when it receives an "initBelow"
+    command
+  - Similar to `lands.addWay(Way({ ... }))`, should be able to do:
+    `lands.addReality(Reality({ ... }))`
+  - The HtmlCss Reality could include a `addCompileTimeCss` method which
+    results in the stylesheet String being included in `genInitBelow`.
+
+The base Realities provides essential layout utilities, but it should be
+extensible to allow
+
+  |     lands.addReality(HtmlCssReality('storyMix', realityLayouts));
+  |     
+  |     HtmlCssReality.prototype.fulfillsRequest = function(hut, msg) {
+  |       return msg.supportedRealities.has('htmlCss');
+  |     };
+  |     
+  |     // ** within `Lands.prototype.addDefaultCommands`**
+  |     requiredCommand('getInit', async ({ absConn, hut, msg, reply }) => {
+  |       
+  |       hut.version = 0;                                            // Reset version
+  |       hut.sync = hut.sync.map(v => ({}));                         // Clear current delta
+  |       hut.fols.forEach((fol, rec) => hut.toSync('addRec', rec));  // Gen full sync delta
+  |       
+  |       let initialSync = hut.genSyncTell();
+  |       let requestedReality = this.realityFor(hut, msg); // Checks "fulfillsRequest" for each Reality, and hopefully correctly picks the `HtmlCssReality`
+  |       let initBelow = await requestedReality.getInitPayload(absConn, hut, initialSync);
+  |       reply(initBelow);
+  |       
+  |     });
+
+*/
+
 // The "foundation" is environment-level normalization. It configures javascript to
 // operate consistently whether in the browser, in node.js, on a particular web
 // platform, etc. Also, for each platform, the foundation takes into account whether

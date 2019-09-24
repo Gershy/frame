@@ -160,7 +160,7 @@ U.buildRoom({
           hut.fols.forEach((fol, rec) => hut.toSync('addRec', rec));  // Gen full sync delta
           
           let update = hut.genSyncTell();
-          let initBelow = await foundation.genInitBelow('text/html', absConn, hut.getTerm(), [], update);
+          let initBelow = await foundation.genInitBelow('text/html', absConn, hut.getTerm(), update);
           reply(initBelow);
           
         });
@@ -186,6 +186,53 @@ U.buildRoom({
       addWay: function(way) {
         way.lands = this;
         this.ways.add(way);
+      },
+      addReality: function(rootReal, reality) {
+        
+        // Note: Above, multiple Realities can exist for the same Real.
+        // This is because Above includes all *possibile* Reals. The
+        // Below, on the other hand, has a single determined Real - so
+        // only 1 Reality can exist per Real Below. (VERY theoretically,
+        // there could be separate Reals each with their own Reality,
+        // Below. Like... something that runs in both Electron and the
+        // browser at the same time??)
+        
+        if (rootReal) {
+          if (rootReal.reality) throw new Error(`Real ${rootReal.nameChain.join('.')} already has Reality`);
+          rootReal.reality = reality;
+        }
+        
+        /// {ABOVE=
+        
+        // TODO: Should files be added to the entire foundation? Or only to a particular app?
+        // Consider adding the file to the foundation, but also requiring something like:
+        // `lands.addServableFile(`${reality.name}.css`);`
+        let cssControls = reality.getCssControls();
+        foundation.addMountDataAsFile(`${reality.name}.css`, 'text/css', cssControls.cmp);
+        return Hog(() => {
+          foundation.remMountFile(`${reality.name}.css`);
+          if (rootReal) rootReal.reality = null;
+        });
+        
+        /// =ABOVE} {BELOW=
+        
+        let { query } = foundation.parseUrl(window.location.toString());
+        
+        let styleElem = document.createElement('link');
+        styleElem.setAttribute('rel', 'stylesheet');
+        styleElem.setAttribute('type', 'text/css');
+        styleElem.setAttribute('media', 'screen');
+        styleElem.setAttribute('href', `/!FILE/${reality.name}.css${query.has('spoof') ? `?spoof=${query.spoof}` : ''}`);
+        document.head.appendChild(styleElem);
+        
+        real.dom.id = `${reality.name}`;
+        return Hog(() => {
+          real.dom.id = '';
+          if (rootReal) rootReal.reality = null;
+        });
+        
+        /// =BELOW}
+        
       },
       nextUid: function() { return (this.uidCnt++).toString(36).padHead(8, '0'); },
       genUniqueTerm: function() {
@@ -240,6 +287,18 @@ U.buildRoom({
         this.getAllHuts().forEach(hut => hut.tell(msg));
       },
       
+      /// {ABOVE=
+      setRealRooms: function(realRooms) { this.realRooms = realRooms; },
+      /// =ABOVE}
+      
+      getRootReal: async function(realRoom=foundation.getDefaultReality()) {
+        let rootReal = await foundation.getRootReal();
+        if (rootReal.reality) throw new Error('Reality already applied');
+        let reality = realRoom.Reality('root', this.realLayout);
+        rootReal.reality = reality;
+        return rootReal;
+      },
+      
       /// {BELOW=
       resetHeartbeatTimeout: function() {
         if (!this.heartbeatMs) return;
@@ -262,6 +321,22 @@ U.buildRoom({
         /// =ABOVE} {BELOW=
         TERMS = [ 'remote' ]; // Below has only 1 Hut, so only 1 name needed
         /// =BELOW}
+        
+        /// {ABOVE=
+        
+        // Temporarily create each supported Reality, and include its
+        // compile-time assets
+        for (let realRoom of this.realRooms) {
+          
+          let reality = realRoom.Reality('root', this.realLayout); // This instance exists temporarily
+          let staticAssets = reality.getCmpTimeFwkAssets();
+          staticAssets.forEach(({ contentType, content }, key) => {
+            foundation.addMountDataAsFile(key, contentType, content);
+          });
+          
+        }
+        
+        /// =ABOVE}
         
         await Promise.allArr([ ...this.ways ].map(w => w.open())); // Open all Ways
         
@@ -561,6 +636,7 @@ U.buildRoom({
           this.lands.createRec('archHut', {}, this.lands.arch, hut);
           
         });
+        console.log(`Server listening: ${this.server.desc}`);
       },
       shut: async function() { this.serverFunc.shut(); },
       

@@ -32,7 +32,7 @@
       // This is the root of all graphical entities
       this.rootReal = null;
       
-      // We'll hold everything else back until the Window loads
+      // Detect when the Window loads
       this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
       
       // We want to be able to react when the browser is closed
@@ -72,21 +72,21 @@
     },
     getRootReal: async function() { 
       
+      await this.domAvailablePromise; // Block until DOM is available
+      
       if (!this.rootReal) {
         
-        let room = U.rooms.real || U.rooms.real2;
-        if (!room) return null;
-        
-        await this.domAvailablePromise;
-        let real = room.built;
-        let { Reality, Real } = real;
-        this.rootReal = Real({ nameChain: [ 'root' ], makeDom: () => document.body });
+        let real = U.rooms.real.built;
+        let realHtmlCss = U.rooms.realHtmlCss.built;
+        // let reality = realHtmlCss.Reality('root',  // TODO: This is where Reality should be initialized
+        this.rootReal = real.Real({ nameChain: [ 'root' ], realized: document.body });
         
       }
       
       return this.rootReal;
       
     },
+    getDefaultReality: function() { return U.rooms.realHtmlCss.built; },
     
     // Functionality
     queueTask: function(func) { Promise.resolve().then(func); },

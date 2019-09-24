@@ -714,7 +714,8 @@
               syncReqRes = true;
             }
           } else if (urlPath === '/') {
-            [ body, syncReqRes ] = [ { command: 'getInit' }, true ];
+            body = { command: 'getInit' };
+            syncReqRes = true;
           } else { // If a meaningless request is received reject it and close the connection
             conn.shut();
             res.writeHead(400);
@@ -752,7 +753,7 @@
         if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(res, msg) ]);
         
         // Run hut-level actions
-        if (comTypes.has('hut')) conn.hear.wobble([ body, null ]);
+        if (comTypes.has('hut') && comTypes.hut) conn.hear.wobble([ body, null ]);
         
         // TODO: Only a single longpoll is held - no need for an Array of longpolls!
         // HTTP POLLING MANAGEMENT; We now have an unspent, generic-purpose poll available:
@@ -766,6 +767,7 @@
       serverWob.desc = `HTTP @ ${ip}:${port}`;
       
       await new Promise(r => server.listen(port, ip, 511, r));
+      
       return serverWob;
     },
     makeSoktServer: async function(ip=this.ip, port=this.port + 1) {
@@ -1026,23 +1028,13 @@
       this.variantDefs.forEach(vd => vd.gain({ test: 1 }));
     },
     getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
-    genInitBelow: async function(contentType, absConn, hutTerm, urlResources, initContent={}) {
+    genInitBelow: async function(contentType, absConn, hutTerm, initContent={}) {
+      
+      if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let urlFn = this.spoofEnabled
         ? fp => `/!FILE${fp}?spoof=${absConn.cpuId}` // TODO: Even if `absConn` isn't spoofing, this will occur
         : fp => `/!FILE${fp}`;
-      
-      let cssUrls = [];
-      let jsUrls = [];
-      let otherUrls = [];
-      
-      urlResources.forEach(({ type, url }) => {
-        if (type === 'text/css')              cssUrls.push(url);
-        else if (type === 'text/javascript')  jsUrls.push(url);
-        else                                  otherUrls.push(url);
-      });
-      
-      if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let doc = XmlElement(null, 'root');
       
@@ -1059,12 +1051,10 @@
       favicon.setProp('type', 'image/x-icon');
       favicon.setProp('href', urlFn('/favicon.ico'));
       
-      cssUrls.forEach(cssUrl => {
-        let link = head.add(XmlElement('link', 'singleton'));
-        link.setProp('rel', 'stylesheet');
-        link.setProp('type', 'text/css');
-        link.setProp('href', urlFn(cssUrl));
-      });
+      let css = head.add(XmlElement('link', 'singleton'));
+      css.setProp('rel', 'stylesheet');
+      css.setProp('type', 'text/css');
+      css.setProp('href', urlFn('/style.css'));
       
       // Make a `global` value available to browsers
       let setupScript = head.add(XmlElement('script', 'text'));
@@ -1072,12 +1062,6 @@
       setupScript.setText('window.global = window;');
       
       let mainScript = head.add(XmlElement('script', 'text'));
-      
-      jsUrls.forEach(cssUrl => {
-        let script = head.add(XmlElement('script', 'text'));
-        link.setProp('type', 'text/javascript');
-        link.setProp('src', urlFn(cssUrl));
-      });
       
       // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
       // TODO: Could memoize the static portion of the script
@@ -1098,7 +1082,7 @@
         // TODO: "scriptOffset" is the number of HTML lines which appear before the first line of code
         // inside the <script> tag. Note that if the opening "<script>" tag is on its own line, it
         // counts towards the "scriptOffset".
-        scriptOffset: 7, // TODO: Hardcoded for now! doctype+html+head+title+link+script+script = 7
+        scriptOffset: 8, // TODO: Hardcoded for now! doctype+html+head+title+link+link+script+script = 8
         rooms: {}
       };
       let fullScriptContent = [];
