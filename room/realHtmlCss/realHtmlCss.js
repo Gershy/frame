@@ -40,231 +40,192 @@ U.buildRoom({
     unitCss.set(real.ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
     unitCss.set(real.CalcAdd, calc => `calc(${calc.units.map(u => getUnitCss(u)).join(' + ')})`);
     
-    // Note: Below there is the idea of "LayoutContext" - one such context
-    // corresponds to the parent, under `parCtx`, and one corresponds to
-    // the Layout itself, under `layoutCtx`. Such LayoutContexts are
-    // established without ever seeing the finalized css of a Layout -
-    // instead LayoutContexts contain computed information based on the
-    // sum of the Slots, Size, and Slot - for example, whether the width
-    // and height of the layout will be set. `parCtx.isSized` tells us
-    // if the width and height of the parent Layout are set, while
-    // `layoutCtx.isSized` tells us if the width+height of the child are
-    // set.
-    // Note: If a Real isn't "sized", its size is determined based on
-    // the size of its parent, or the sum of the sizes of its children(??)
-    let layoutCss = Map();
-    let getLayoutCss = (layout, parCtx) => layoutCss.get(layout.constructor)(layout, parCtx);
-    layoutCss.set(real.FillParent,        (layout, parCtx) => ({
-      // makeDomElem: () => document.createElement('div'),
-      cmpTimeUix: {
-        main: {
-          display: 'block', position: 'absolute',
-          left: layout.shrinkL, right: layout.shrinkR,
-          top: layout.shrinkT, bottom: layout.shrinkB
-        }
-      }
-      // runTimeUix: real => {}
-    }));
-    layoutCss.set(real.WrapChildren,      (layout, parCtx) => ({
-      cmpTimeUix: {
-        main: {
-          boxSizing: (parCtx.slots && parCtx.slots.fixesChildSizes()) ? 'border-box' : 'initial',
-          ...(layout.padL.amt ? { paddingLeft: layout.padL } : {}),
-          ...(layout.padR.amt ? { paddingRight: layout.padR } : {}),
-          ...(layout.padT.amt ? { paddingTop: layout.padT } : {}),
-          ...(layout.padB.amt ? { paddingBottom: layout.padB } : {})
-        }
-      }
-    }));
-    layoutCss.set(real.ShowText,          (layout, parCtx) => {
+    // TODO: Would be cool if patterns to the compiler could be
+    // dynamically defined on a per-file basis. So for example here,
+    // we could ask the compiler to, when compiling Below, not only
+    // ignore everything marked {ABO/VE= ... =ABO/VE}, but also to ignore
+    // a regex like /zoneCss.set\(/. Would be especially nifty if the
+    // compiler began counting indentation during a dynamic-ignore, and
+    // automatically figured out the ignored block was complete after
+    // indentation returns to where it started!
+    
+    // "zoneCss" gets ZoneCss
+    // "domElemFunc" gets a function returning a dom element
+    // "runTimeUixFunc" gets a function which applies uix to a Real
+    let getCssAspect = (() => { // Params: "type", "layoutCmp", "layout", "trail"
       
-      let makeDomElem = () => {
-        
-        if (!layout.interactive) return document.createElement('div');
-        
-        let dom = document.createElement(layout.multiLine ? 'textarea' : 'input');
-        dom.style.fontFamily = 'inherit'; // TODO: This can be a static rule in the global css
-        if (layout.multiLine) {
-          dom.style.resize = 'none'; // TODO: This can be a static rule in the global css
-        } else {
-          dom.setAttribute('type', 'text');
-        }
-        return dom;
-      };
+      let zoneCss = Map(), domElemFunc = Map(), runTimeUixFunc = Map();
       
-      let cmpTimeUix = {
-        main: {
-          whiteSpace: layout.multiLine ? 'pre-wrap' : 'pre',
-          boxSizing: (parCtx.slots && parCtx.slots.fixesChildSizes()) ? 'border-box' : 'initial',
-          textOverflow: 'ellipsis',
-          ...(layout.padL.amt ? { paddingLeft: layout.padL } : {}),
-          ...(layout.padR.amt ? { paddingRight: layout.padR } : {}),
-          ...(layout.padT.amt ? { paddingTop: layout.padT } : {}),
-          ...(layout.padB.amt ? { paddingBottom: layout.padB } : {}),
-        },
-        lateDecals: {
-          textOrigin: layout.origin
-        }
-      };
-      
-      let runTimeUix = real => {
-        let dom = real.realized;
-        if (layout.interactive) {
-          real.tellWob0 = U.WobVal('');
-          dom.addEventListener('input', v => real.tellWob0.wobble(dom.value));
-          real.setText = layout.multiLine
-            ? text => dom.textContent = text
-            : text => dom.value = text
-        } else {
-          real.setText = text => dom.textContent = text;
-        }
-      };
-      
-      return { makeDomElem, cmpTimeUix, runTimeUix };
-      
-    });
-    layoutCss.set(real.RootViewStyles,    (layout, parCtx) => ({
-      cmpTimeUix: {
-        main: {
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-          fontSize: '0'
-        },
+      /// {ABOVE=
+      zoneCss.set(real.RootViewStyles, (rootViewStyles, layout, ...trail) => ({
+        main: { textAlign: 'center', fontSize: '0', overflow: 'hidden', ...cssTech.vAlignPar },
         before: cssTech.vAlignBefore
-      }
-    }));
-    layoutCss.set(real.RootViewPortItem,  (layout, parCtx) => ({
-      cmpTimeUix: {
+      }));
+      zoneCss.set(real.RootViewPortItem, (rootViewPortItem, layout, ...trail) => ({
         main: {
-          position: 'relative',
-          width: real.ViewPortMin(1),
-          height: real.ViewPortMin(1),
+          position: 'relative', display: 'block',
+          overflow: 'auto', fontSize: '13px',
+          width: real.ViewPortMin(1), height: real.ViewPortMin(1),
           ...cssTech.vAlignChild,
-          overflow: 'auto',
-          fontSize: '13px'
         }
-      }
-    }));
-    layoutCss.set(real.RootPageItem,      (layout, parCtx) => ({
-      cmpTimeUix: {
+      }));
+      zoneCss.set(real.RootPageItem, (rootPageItem, layout, ...trail) => ({
         main: {
           position: 'absolute', display: 'block',
-          left: '0', right: '0', top: '0', bottom: '0',
-          overflowX: 'hidden', overflowY: 'auto',
-          fontSize: '13px'
+          overflow: 'hidden auto', fontSize: '13px',
+          left: '0', right: '0', top: '0', bottom: '0'
         }
-      }
-    }));
-    layoutCss.set(real.AxisSections,      (layout, parCtx) => ({
-      cmpTimeUix: { main: {} }  // TODO: Should articulate `position: "relative if not absolute"`
-    }));
-    layoutCss.set(real.AxisSectionItem,   (layout, parCtx) => {
-      
-      let { cuts, axis, dir } = layout.par; // TODO: What about when multiple pars are available?
-        
-      let off = CalcAdd(...cuts.slice(0, layout.index));
-      let ext = (layout.index === cuts.length)
-        ? CalcAdd(parCtx[axis === 'x' ? 'w' : 'h'], ...cuts.map(u => u.mult(-1)))
-        : cuts[layout.index];
-      
-      let h = axis === 'x'; // "horizontal"
-      let f = dir === '+';  // "forwards"
-      let main = {
-        // AxisSectionItems are always absolute!
-        position: 'absolute',
-        
-        // Spanning offset (is always 0)
-        [h ? 'top' : 'left']:                                   UnitPx(0),
-        
-        // Spanning extent (is always the parent's full extent)
-        [h ? 'height' : 'width']:                               h ? parCtx.h : parCtx.w,
-        
-        // Partial offset (depends on axis AND direction)
-        [h ? (f ? 'left' : 'right') : (f ? 'top' : 'bottom')]:  off,
-        
-        // Partial extent
-        [h ? 'width' : 'height']:                               ext
-      };
-      
-      return { cmpTimeUix: { main } };
-      
-    });
-    layoutCss.set(real.LinearSlots,       (layout, parCtx) => ({
-      cmpTimeUix: (layout.axis === 'x')
-        ? { // X-axis alignment needs the vertical-align technique
-          main: { whiteSpace: 'nowrap', overflowX: 'auto', overflowY: 'hidden' },
-          before: cssTech.vAlignBefore
+      }));
+      zoneCss.set(real.FillParent, (fillParent, layout, ...trail) => ({
+        main: {
+          display: 'block', position: 'absolute',
+          left: fillParent.shrinkL, right: fillParent.shrinkR,
+          top: fillParent.shrinkT, bottom: fillParent.shrinkB
         }
-        : { // Y-axis alignment is easy
-          main: { overflowX: 'hidden', overflowY: 'auto' }
-        }
-    }));
-    layoutCss.set(real.LinearItem,        (layout, parCtx) => ({
-      cmpTimeUix: {
-        // X-axis needs child alignment; Y-axis must not be absolute
-        main: (layout.par.axis === 'x') ? cssTech.vAlignChild : { position: 'relative' }
-      }
-    }));
-    layoutCss.set(real.CenteredSlot,      (layout, parCtx) => ({
-      cmpTimeUix: {
-        main: { textAlign: 'center' },
+      }));
+      zoneCss.set(real.WrapChildren, (wrapChildren, layout, ...trail) => {
+        let w = layout.getW(...trail);
+        let h = layout.getH(...trail);
+        if ((!!w) !== (!!h)) throw new Error('WrapChildren mixes set and unset extents');
+        return { main: {
+          ...((w && h) ? { boxSizing: 'border-box' } : {}),
+          ...(wrapChildren.padL.amt ? { paddingLeft:    wrapChildren.padL } : {}),
+          ...(wrapChildren.padR.amt ? { paddingRight:   wrapChildren.padR } : {}),
+          ...(wrapChildren.padT.amt ? { paddingTop:     wrapChildren.padT } : {}),
+          ...(wrapChildren.padB.amt ? { paddingBottom:  wrapChildren.padB } : {})
+        }};
+      });
+      zoneCss.set(real.ShowText, (showText, layout, ...trail) => {
+        let w = layout.getW(...trail);
+        let h = layout.getH(...trail);
+        let vCentered = showText.origin[1] === 'c';
+        
+        // Note that if height for vertical centering is `null` there's
+        // no need to apply a line-height: the element's height will
+        // conform to the text, making it centered by default.
+        if (vCentered && h && !h.isAbsolute()) throw new Error('Css doesn\'t enjoy vertically aligning text in a non-absolute-height element!');
+        if (showText.origin[1] === 'b') throw new Error('Css doesn\'t enjoy vertically aligning text to bottom');
+        if ((!!w) !== (!!h)) throw new Error('ShowText mixes set and unset extents');
+        
+        return { main: {
+          ...((w && h) ? { boxSizing: 'border-box' } : {}),
+          whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
+          textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
+          textOverflow: 'ellipsis',
+          ...((vCentered && h) ? { lineHeight: h } : {}),
+          ...(showText.padL.amt ? { paddingLeft: showText.padL } : {}),
+          ...(showText.padR.amt ? { paddingRight: showText.padR } : {}),
+          ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
+          ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
+        }};
+      });
+      zoneCss.set(real.AxisSectionItem, (axisSectionItem, layout, parLayout, ...parTrail) => {
+        
+        let { cuts, axis, dir } = axisSectionItem.par;
+        let index = axisSectionItem.index;
+        
+        let h = axis === 'x'; // "horizontal"
+        let f = dir === '+';  // "forwards"
+        
+        let parW = parLayout.getW(...parTrail) || UnitPc(1); // TODO: Potentially don't need to calculate (based on "axis", and if it's the final index)
+        let parH = parLayout.getH(...parTrail) || UnitPc(1);
+        
+        let off = CalcAdd(...cuts.slice(0, index));
+        let ext = (index === cuts.length)
+          // For the final index, subtract all cuts from the parent's full extent along "axis"
+          ? CalcAdd(h ? parW : parH, ...cuts.map(u => u.mult(-1)))
+          // For other indexes, the size of the indexed cut is the extent of the AxisSectionItem
+          : cuts[index];
+        
+        let main = { position: 'absolute' };
+        if (h) main.gain({ top: UnitPx(0),  height: parH, [f ? 'left' : 'right'] : off, width: ext });
+        else   main.gain({ left: UnitPx(0), width:  parW, [f ? 'top' : 'bottom'] : off, height: ext });
+        
+        return { main };
+        
+      });
+      zoneCss.set(real.LinearSlots, (linearSlots, layout, ...trail) => {
+        return  (linearSlots.axis === 'x')
+          // X-axis alignment needs the vertical-align technique
+          ? { main: { overflow: 'auto hidden', ...cssTech.vAlignPar }, before: cssTech.vAlignBefore }
+          // Y-axis alignment is easy
+          : { main: { overflow: 'hidden auto' } };
+      });
+      zoneCss.set(real.LinearItem, (linearItem, layout, ...trail) => ({
+        // X-axis needs child vertical-alignment; Y-axis must not be absolute
+        main: (linearItem.par.axis === 'x') ? cssTech.vAlignChild : { position: 'relative' }
+      }));
+      zoneCss.set(real.CenteredSlot, (centeredSlot, layout, ...trail) => ({
+        main: { textAlign: 'center', ...cssTech.vAlignPar },
         before: cssTech.vAlignBefore
-      }
-    }));
-    layoutCss.set(real.CenteredItem,      (layout, parCtx) => ({
-      cmpTimeUix: { main: cssTech.vAlignChild }
-    }));
-    layoutCss.set(real.TextFlowSlots,     (layout, parCtx) => ({
-      cmpTimeUix: { main: { whiteSpace: 'pre', overflowX: 'hidden', overflowY: 'auto' } }
-    }));
-    layoutCss.set(real.TextFlowItem,      (layout, parCtx) => ({
-      cmpTimeUix: {
+      }));
+      zoneCss.set(real.CenteredItem, (centeredItem, layout, ...trail) => ({
+        main: cssTech.vAlignChild
+      }));
+      zoneCss.set(real.TextFlowSlots, (textFlowSlots, layout, ...trail) => ({
+        main: { whiteSpace: 'pre', overflow: 'hidden auto' }
+      }));
+      zoneCss.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => ({
         main: {
           display: 'inline',
           whiteSpace: 'pre-wrap',
-          ...(layout.par.gap.amt ? { marginRight: layout.par.gap } : {}),
-          ...(layout.par.lineHeight ? { lineHeight: layout.par.lineHeight } : {})
+          ...(textFlowItem.par.gap.amt ? { marginRight: textFlowItem.par.gap } : {}),
+          ...(textFlowItem.par.lineHeight ? { lineHeight: textFlowItem.par.lineHeight } : {})
         }
-      },
-      runTimeUix: real => {
-        real.setText = text => real.realized.textContent = text;
-      }
-    }));
+      }));
+      /// =ABOVE}
+      
+      domElemFunc.set(real.ShowText, (showText, layout, ...trail) => {
+        if (!showText.interactive) return () => document.createElement('div');
+        return showText.multiLine
+          ? () => {
+              let dom = document.createElement('textarea');
+              dom.style.fontFamily = 'inherit'; // TODO: Should be static css rule
+              dom.style.resize = 'none'; // TODO: Also should be in css
+              return dom;
+            }
+          : () => {
+              let dom = document.createElement('input');
+              dom.style.fontFamily = 'inherit';
+              dom.setAttribute('type', 'text');
+              return dom;
+            }
+      });
+      
+      runTimeUixFunc.set(real.ShowText, (showText, layout, ...trail) => {
+        return showText.interactive
+          ? real => {
+              let dom = real.realized;
+              real.tellWob0 = U.WobVal('');
+              real.setText = showText.multiLine ? text => dom.textContent = text : text => dom.value = text;
+              dom.addEventListener('input', v => real.tellWob0.wobble(dom.value));
+            }
+          : real => {
+              real.setText = text => real.realized.textContent = text;
+            };
+      });
+      runTimeUixFunc.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => {
+        return real => {
+          real.setText = text => real.realized.textContent = text;
+        };
+      });
+      
+      let cssAspects = { zoneCss, domElemFunc, runTimeUixFunc };
+      return (type, layoutCmp, layout, trail) => {
+        if (!cssAspects.has(type)) throw new Error('Invalid type');
+        let Cls = layoutCmp.constructor;
+        let aspects = cssAspects[type];
+        if (!aspects.has(Cls)) return null;
+        return aspects.get(Cls)(layoutCmp, layout, ...trail);
+      };
+      
+    })();
     
     let Reality = U.inspire({ name: 'Reality', insps: real.slice('Reality'), methods: (insp, Insp) => ({
-      $makeDefDomElem: () => document.createElement('div'),
-      
-      init: function(...args) {
-        insp.Reality.init.call(this, ...args);
-        this.iterateCtxNodes((ctxNode, chain) => {
-          
-          let { slot=null, size=null, slots=null } = ctxNode.computed;
-          ctxNode.makeDomElem = null;
-          ctxNode.runTimeUixControls = [];
-          
-          for (let layout of [ slot, size, slots ]) {
-            if (!layout) continue;
-            let { makeDomElem, runTimeUix } = getLayoutCss(layout, ctxNode.par);
-            
-            if (makeDomElem) {
-              if (ctxNode.makeDomElem) throw new Error(`Conflicting "makeDomElem" funcs for Real @ ${chain.join('.')}`);
-              ctxNode.makeDomElem = makeDomElem;
-            }
-            
-            if (runTimeUix) {
-              ctxNode.runTimeUixControls.push(runTimeUix);
-            }
-          }
-          
-        });
-      },
-      
-      makeDefaultDomElem: function() { return document.createElement('div'); },
-      
       /// {ABOVE=
       
       // Only Above needs to know how to generate css markup
-      decalsToCss: function(mainCss, decals) { // TODO: When "textOrigin" is cleaned up, can drop "mainCss" param
+      decalsToZoneCss: function(decals) {
         
         if (!decals) return {};
         
@@ -276,19 +237,6 @@ U.buildRoom({
           
           colour: 'backgroundColor',
           textSize: 'fontSize',
-          textOrigin: origin => {
-            // TODO: "textOrigin" should disappear, and `mainCss` should
-            // be removed from params
-            if (origin !== 'center') return { textAlign: origin };
-            
-            if (mainCss.has('height') && !mainCss.height.isAbsolute())
-              { console.log('Can\'t center css text for relative-height element'); return { textAlign: 'center' }; }
-              //throw new Error('Can\'t center css text for relative-height element');
-            
-            let ret = { textAlign: 'center' };
-            if (mainCss.has('height')) ret.lineHeight = mainCss.height;
-            return ret;
-          },
           textColour: 'color',
           textFont: 'fontFamily',
           text: v => { return { /* tricky! need to set javascript on the element */ }; },
@@ -330,6 +278,7 @@ U.buildRoom({
         // Zone is "main", "before", "after", "focus", "hover", etc.
         add.forEach((css, zone) => {
           
+          if (css.isEmpty()) return; // Don't merge empty zones
           if (!cur.has(zone)) cur[zone] = {};
           
           css.forEach((cssVal, cssKey) => {
@@ -341,10 +290,6 @@ U.buildRoom({
               // it means there's a conflict!
               
               let cssVal0 = cur[zone][cssKey];
-              //let inspMatch = U.inspOf(cssVal) === U.inspOf(cssVal0);
-              //let sameVal = inspMatch
-              //  ? (U.isInspiredBy(cssVal, UnitAmt) ? (cssVal.amt === cssVal0.amt) : (cssVal === cssVal0))
-              //  : false;
               if (!real.unitsEq(cssVal, cssVal0)) throw new Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
               
             }
@@ -364,63 +309,55 @@ U.buildRoom({
         // any dynamic uix features.
         
         let cssRules = []; // [ { chain, zoneCss } ... ];
-        this.iterateCtxNodes((ctxNode, chain, par) => {
+        this.iterateLayouts((layout, trail) => {
           
-          let { slot, size, slots, decals } = ctxNode.computed;
+          let nameChain = [ layout.name, ...trail.map(l => l.name) ].invert();
           
-          // Merge ZoneCss for each provided Layout
-          let zoneCss = { main: {} };
-          for (let layout of [ slot, size, slots ]) {
-            if (layout) this.mergeZoneCss(zoneCss, getLayoutCss(layout, ctxNode.par).cmpTimeUix); // `cmpTimeUix` is ZoneCss
+          try {
+            
+            let layoutCmps = this.getLayoutCmps(layout, trail);
+            let decals = layout.cmps.decals;
+            
+            // Merge ZoneCss for all LayoutCmps
+            let zoneCss = { main: {} };
+            for (let layoutCmp of layoutCmps) {
+              let zoneCssForLayoutCmp = getCssAspect('zoneCss', layoutCmp, layout, trail);
+              if (zoneCssForLayoutCmp) this.mergeZoneCss(zoneCss, zoneCssForLayoutCmp);
+            }
+            
+            // Merge in Decal ZoneCss
+            if (decals) this.mergeZoneCss(zoneCss, this.decalsToZoneCss(decals));
+            
+            // Note only the "main" zone may be empty by this point
+            if (zoneCss.main.isEmpty()) delete zoneCss.main;
+            
+            // TODO: Necessary??
+            zoneCss.forEach((css, zone) => {
+              if (css.isEmpty()) { delete zoneCss[zone]; return; }
+              
+              // TODO:  Consider globally inherited font-size of 0, and
+              //        only apply font-size to `ShowText`???
+              // Reset any inappropriately inherited values
+              if (!css.has('textAlign')) css.textAlign = 'left';
+              if (!css.has('fontSize')) css.fontSize = '13px';
+              if (css.fontSize === 'inherit') delete css.fontSize; // `font-size: inherit;` is redundant!
+            });
+            
+            // The overall purpose here is to populate `cssRules`
+            if (!zoneCss.isEmpty()) cssRules.push({ nameChain, zoneCss });
+          
+          } catch(err) {
+            err.message = `Failed css for [${nameChain.join('.')}]: ${err.message}`;
+            throw err;
           }
-          
-          // Merge in Decal ZoneCss
-          if (decals) this.mergeZoneCss(zoneCss, this.decalsToCss(zoneCss.main, decals));
-          
-          if (zoneCss.has('lateDecals')) {
-            // The "lateDecals" zone allow decals to be added with the
-            // full knowledge of geometric parameters. Can be useful
-            // for, example, setting a line-height equal to whatever
-            // the height happens to be.
-            // NOTE: It isn't impossible that the "late" addition of
-            // decals will try to schedule ANOTHER late addition. If
-            // that happens it's ignored: we always delete "lateDecals"
-            this.mergeZoneCss(zoneCss, this.decalsToCss(zoneCss.main, zoneCss.lateDecals));
-            delete zoneCss.lateDecals;
-          }
-          
-          // TODO: Necessary??
-          zoneCss.forEach((css, zone) => {
-            
-            if (css.isEmpty()) { delete zoneCss[zone]; return; }
-            
-            css.forEach((v, k) => { if (!k.match(/^[a-zA-Z]+$/)) throw new Error(`Invalid css key: "${k}"`); });
-            
-            // Reset any inappropriately inherited values
-            if (!css.has('textAlign')) css.textAlign = 'left';
-            if (!css.has('fontSize')) css.fontSize = '13px';
-            if (css.fontSize === 'inherit') delete css.fontSize; // `font-size: inherit;` is redundant!
-            
-            // Simplify compound props? (e.g. padding, margin? (padding-left, padding-right...), gradient, ...)
-            
-          });
-          
-          // The overall purpose of `recurseRules` is to populate `cssRules`
-          if (!zoneCss.isEmpty()) cssRules.push({ chain, zoneCss });
           
         });
         
-        let cmpText = cssRules.map(({ chain, zoneCss }) => {
+        let cmpText = cssRules.map(({ nameChain, zoneCss }) => {
           
           return zoneCss.toArr((css, zone) => {
             
-            // Make sure every selector starts with "body"
-            // This is important for the root element, whose chain is []
-            // If we didn't include "body" in the selector, its selector
-            // would be the empty string (and for regions like ::before,
-            // a css rule would be generated that globally applies
-            // ::before pseudo-elements to all html elements!)
-            let selector = [ 'body', ...chain.map(v => `.${v}`) ].join(' > ');
+            let selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
             
             if (zone === 'main') { // Main css - do nothing!
             } else if ([ 'focus', 'hover' ].has(zone)) {  // Pseudo-selector
@@ -428,12 +365,13 @@ U.buildRoom({
             } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
               selector = `${selector}::${zone}`;
             } else {
-              throw new Error(`Invalid css zone: ${zone}`);
+              throw new Error(`Unexpected css zone: ${zone}`);
             }
             
+            //console.log('CSS:', nameChain.join('.'), css);
             return [
               `${selector} {`,
-              ...css.toArr((v, k) => `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};`),
+              ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};` : C.skip),
               '}'
             ].join('\n'); // Join together all lines of a CssBlock
             
@@ -457,16 +395,25 @@ U.buildRoom({
         };
         
       },
-      initReal: function(nameChain) {
-        // TODO: Most of this should only appear in realHtmlCss!
-        let ctx = this.getCtxNode(...nameChain);
+      initReal0: function(real, layout, trail) {
+        // Create dom element and add class for `layout.name`
+        let cmps = this.getLayoutCmps(layout, trail);
+        let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
+        if (makeDomElems.length > 1) throw new Error('Conflicting domElemFuncs');
         
-        // Create dom element and add class
-        let domElem = ctx.makeDomElem ? ctx.makeDomElem() : document.createElement('div');
-        domElem.classList.add(nameChain[nameChain.length - 1]);
+        let domElem = makeDomElems.length ? makeDomElems[0]() : document.createElement('div');
+        domElem.classList.add(layout.name);
         
-        let real = Real({ nameChain, reality: this, realized: domElem });
-        for (let rtuc of ctx.runTimeUixControls) rtuc(real);
+        // Link real to dom
+        real.realized = domElem;
+        
+        // Apply runtime uix
+        for (let cmp of cmps) {
+          let rtuc = getCssAspect('runTimeUixFunc', cmp, layout, trail);
+          if (rtuc) rtuc(real);
+        }
+        
+        // Now `real` should be ready!
         return real;
       },
       addChildReal: function(parReal, childReal) {

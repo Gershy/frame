@@ -291,11 +291,12 @@ U.buildRoom({
       setRealRooms: function(realRooms) { this.realRooms = realRooms; },
       /// =ABOVE}
       
-      getRootReal: async function(realRoom=foundation.getDefaultReality()) {
+      getRootReal: async function(realRoom=foundation.getDefaultRealRoom()) {
         let rootReal = await foundation.getRootReal();
         if (rootReal.reality) throw new Error('Reality already applied');
         let reality = realRoom.Reality('root', this.realLayout);
         rootReal.reality = reality;
+        rootReal.layout = reality.rootLayout;
         return rootReal;
       },
       

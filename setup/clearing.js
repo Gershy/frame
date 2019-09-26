@@ -99,6 +99,11 @@ protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
+protoDef(Array, 'invert', function() {
+  let ret = [];
+  for (let i = this.length - 1; i >= 0; i--) ret.push(this[i]);
+  return ret;
+});
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {

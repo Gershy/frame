@@ -56,228 +56,228 @@ U.buildRoom({
       let { FillParent, WrapChildren, ShowText } = real;
       let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
       lands.realLayout = {
-          
-        'main': par => ({
-          slot: par.slots.insertViewPortItem(),
+        
+        'main': {
+          slot: par => par.cmps.slots.insertViewPortItem(),
           size: null,
           slots: AxisSections({ axis: 'y', cuts: [ UnitPx(50) ] }),
           decals: {
             colour: 'rgba(0, 0, 0, 1)'
           }
-        }),
-        'main.header': par => ({
-          slot: par.slots.insertSectionItem(0),
+        },
+        'main.header': {
+          slot: par => par.cmps.slots.insertSectionItem(0),
           size: null,
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3), UnitPc(1/6) ] }),
           decals: {
             colour: 'rgba(100, 255, 30, 0.75)',
             textColour: 'rgba(255, 255, 255, 1)'
           }
-        }),
-        'main.header.title': par => ({
-          slot: par.slots.insertSectionItem(1),
-          size: ShowText({ origin: 'center' }),
+        },
+        'main.header.title': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
+          size: ShowText({ origin: 'cc' }),
           slots: null,
           decals: {
             textSize: UnitPx(24),
           }
-        }),
-        'main.header.back': par => ({
-          slot: par.slots.insertSectionItem(3),
-          size: ShowText({ origin: 'center' }),
+        },
+        'main.header.back': {
+          slot: par => par.cmps.slots.insertSectionItem(3),
+          size: ShowText({ origin: 'cc' }),
           slots: null,
           decals: {
             textSize: UnitPx(20),
             border: { ext: UnitPx(2), colour: 'rgba(255, 255, 255, 1)' }
           }
-        }), // TODO: Separate the next items as a new section
+        }, // TODO: Separate the next items as a new section
         
-        'main.loggedOut': par => ({
-          slot: par.slots.insertSectionItem(1),
+        'main.loggedOut': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
           size: null,
           slots: CenteredSlot(),
           decals: {
             colour: 'rgba(200, 200, 200, 1)'
           }
-        }),
-        'main.loggedOut.form': par => ({
-          slot: par.slots.insertCenteredItem(),
-          size: WrapChildren({ pad: UnitPx(10), padB: UnitPx(50) }), //null, //FillParent({ par, shrinkL: UnitPc(0.2), shrinkR: UnitPc(0.2) }),
+        },
+        'main.loggedOut.form': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
+          size: WrapChildren({ pad: UnitPx(10), padB: UnitPx(50) }),
           slots: LinearSlots({ axis: 'y', dir: '+' })
-        }),
-        'main.loggedOut.form.item': par => ({
-          slot: par.slots.insertLinearItem(),
+        },
+        'main.loggedOut.form.item': {
+          slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ padB: UnitPx(8) }),
           slots: LinearSlots({ axis: 'y', dir: '+' })
-        }),
-        'main.loggedOut.form.item.title': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(2) }),
+        },
+        'main.loggedOut.form.item.title': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(2) }),
           slots: null,
           decals: {
             textSize: UnitPx(30)
           }
-        }),
-        'main.loggedOut.form.item.field': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ interactive: true, pad: UnitPx(4) }),
+        },
+        'main.loggedOut.form.item.field': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', interactive: true, pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(20)
           }
-        }),
-        'main.loggedOut.form.submit': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ padV: UnitPx(4), origin: 'center' }),
+        },
+        'main.loggedOut.form.submit': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'cc', padV: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(255, 180, 0, 0.8)',
             textSize: UnitPx(30)
           }
-        }),
+        },
         
-        'main.loggedIn': par => ({
-          slot: par.slots.insertSectionItem(1),
+        'main.loggedIn': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
           size: null,
           slots: null
-        }),
-        'main.loggedIn.storyOut': par => ({
-          slot: null,
-          size: FillParent({ par }),
+        },
+        'main.loggedIn.storyOut': {
+          slot: par => null,
+          size: FillParent({}),
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(0.5) ] })
-        }),
-        'main.loggedIn.storyOut.storyList': par => ({
-          slot: par.slots.insertSectionItem(0),
+        },
+        'main.loggedIn.storyOut.storyList': {
+          slot: par => par.cmps.slots.insertSectionItem(0),
           size: null,
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
             colour: 'rgba(170, 255, 170, 0.9)'
           }
-        }),
-        'main.loggedIn.storyOut.storyList.item': par => ({
-          slot: par.slots.insertLinearItem(),
+        },
+        'main.loggedIn.storyOut.storyList.item': {
+          slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ pad: UnitPx(5) }),
           slots: null
-        }),
-        'main.loggedIn.storyOut.storyList.item.content': par => ({
-          slot: null,
+        },
+        'main.loggedIn.storyOut.storyList.item.content': {
+          slot: par => null,
           size: WrapChildren({}),
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
             colour: 'rgba(0, 120, 0, 0.8)'
           }
-        }),
-        'main.loggedIn.storyOut.storyList.item.content.name': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(4) }),
+        },
+        'main.loggedIn.storyOut.storyList.item.content.name': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
           slots: null,
           decals: {
             textSize: UnitPx(25),
             textColour: 'rgba(255, 255, 255, 1)'
           }
-        }),
-        'main.loggedIn.storyOut.storyList.item.content.desc': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(4) }),
+        },
+        'main.loggedIn.storyOut.storyList.item.content.desc': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
           slots: null,
           decals: {
             textSize: UnitPx(16),
             textColour: 'rgba(255, 255, 255, 1)'
           }
-        }),
+        },
         
-        'main.loggedIn.storyOut.storyCreate': par => ({
-          slot: par.slots.insertSectionItem(1),
+        'main.loggedIn.storyOut.storyCreate': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
           size: null,
           slots: CenteredSlot({}),
           decals: {
             colour: 'rgba(200, 255, 200, 1)'
           }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form': par => ({
-          slot: par.slots.insertCenteredItem(),
+        },
+        'main.loggedIn.storyOut.storyCreate.form': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
           size: WrapChildren({ pad: UnitPx(5) }),
           slots: LinearSlots({ axis: 'y', dir: '+' })
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item': par => ({
-          slot: par.slots.insertLinearItem(),
+        },
+        'main.loggedIn.storyOut.storyCreate.form.item': {
+          slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ padB: UnitPx(8) }),
           slots: LinearSlots({ axis: 'y', dir: '+' })
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.title': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(2) }),
+        },
+        'main.loggedIn.storyOut.storyCreate.form.item.title': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(2) }),
           slots: null,
           decals: {
             textSize: UnitPx(20)
           }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.item.field': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ interactive: true, pad: UnitPx(4) }),
+        },
+        'main.loggedIn.storyOut.storyCreate.form.item.field': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', interactive: true, pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(18)
           }
-        }),
-        'main.loggedIn.storyOut.storyCreate.form.submit': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(4), origin: 'center' }),
+        },
+        'main.loggedIn.storyOut.storyCreate.form.submit': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'cc', pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(0, 100, 0, 1)',
             textColour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(25)
           }
-        }),
+        },
         
-        'main.loggedIn.storyIn': par => ({
-          slot: null,
-          size: FillParent({ par }),
+        'main.loggedIn.storyIn': {
+          slot: par => null,
+          size: FillParent({}),
           slots: AxisSections({ axis: 'y', cuts: [ UnitPc(0.5) ] })
-        }),
-        'main.loggedIn.storyIn.upperPane': par => ({
-          slot: par.slots.insertSectionItem(0),
+        },
+        'main.loggedIn.storyIn.upperPane': {
+          slot: par => par.cmps.slots.insertSectionItem(0),
           size: null,
           slots: AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(30) ] })
-        }),
-        'main.loggedIn.storyIn.lowerPane': par => ({
-          slot: par.slots.insertSectionItem(1),
+        },
+        'main.loggedIn.storyIn.lowerPane': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
           size: null,
           slots: null
-        }),
+        },
         
-        'main.loggedIn.storyIn.upperPane.meta': par => ({
-          slot: par.slots.insertSectionItem(0),
+        'main.loggedIn.storyIn.upperPane.meta': {
+          slot: par => par.cmps.slots.insertSectionItem(0),
           size: null,
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3) ] }),
           decals: {
             colour: 'rgba(0, 0, 0, 1)',
             textColour: 'rgba(255, 255, 255, 1)'
           }
-        }),
-        'main.loggedIn.storyIn.upperPane.meta.clock': par => ({
-          slot: par.slots.insertSectionItem(1),
-          size: ShowText({ origin: 'center' }),
+        },
+        'main.loggedIn.storyIn.upperPane.meta.clock': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
+          size: ShowText({ origin: 'cc' }),
           slots: null,
           decals: {
             textSize: UnitPx(18)
           }
-        }),
+        },
         
-        'main.loggedIn.storyIn.upperPane.entries': par => ({
-          slot: par.slots.insertSectionItem(1),
+        'main.loggedIn.storyIn.upperPane.entries': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
           size: WrapChildren({ pad: UnitPx(6) }),
           slots: TextFlowSlots({ gap: UnitPx(4), lineHeight: UnitPx(22) }),
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             border: { ext: UnitPx(4), colour: 'rgba(177, 232, 177, 1)' }
           }
-        }),
-        'main.loggedIn.storyIn.upperPane.entries.entry': par => ({
-          slot: par.slots.insertTextFlowItem(),
+        },
+        'main.loggedIn.storyIn.upperPane.entries.entry': {
+          slot: par => par.cmps.slots.insertTextFlowItem(),
           size: null,
           slots: null,
           decals: {
@@ -289,58 +289,58 @@ U.buildRoom({
               textColour: 'rgba(255, 255, 255, 1)'
             }
           }
-        }),
+        },
         
-        'main.loggedIn.storyIn.lowerPane.writing': par => ({
-          slot: null,
-          size: FillParent({ par }),
+        'main.loggedIn.storyIn.lowerPane.writing': {
+          slot: par => null,
+          size: FillParent({}),
           slots: AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(50) ] })
-        }),
-        'main.loggedIn.storyIn.lowerPane.writing.submit': par => ({
-          slot: par.slots.insertSectionItem(0),
-          size: ShowText({ origin: 'center' }),
+        },
+        'main.loggedIn.storyIn.lowerPane.writing.submit': {
+          slot: par => par.cmps.slots.insertSectionItem(0),
+          size: ShowText({ origin: 'cc' }),
           slots: null,
           decals: {
             colour: 'rgba(150, 255, 130, 1)',
             textSize: UnitPx(24)
           }
-        }),
-        'main.loggedIn.storyIn.lowerPane.writing.field': par => ({
-          slot: par.slots.insertSectionItem(1),
-          size: ShowText({ interactive: true, multiLine: true, pad: UnitPx(4) }),
+        },
+        'main.loggedIn.storyIn.lowerPane.writing.field': {
+          slot: par => par.cmps.slots.insertSectionItem(1),
+          size: ShowText({ origin: 'lt', interactive: true, multiLine: true, pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(16)
           }
-        }),
+        },
         
-        'main.loggedIn.storyIn.lowerPane.voting': par => ({
-          slot: null,
-          size: FillParent({ par }),
+        'main.loggedIn.storyIn.lowerPane.voting': {
+          slot: par => null,
+          size: FillParent({}),
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
             colour: 'rgba(175, 200, 175, 1)'
           }
-        }),
-        'main.loggedIn.storyIn.lowerPane.voting.entry': par => ({
-          slot: par.slots.insertLinearItem(),
+        },
+        'main.loggedIn.storyIn.lowerPane.voting.entry': {
+          slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ pad: UnitPx(8), padB: UnitPx(0) }),
           slots: LinearSlots({ axis: 'y', dir: '+' })
-        }),
-        'main.loggedIn.storyIn.lowerPane.voting.entry.author': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(4), origin: 'left' }),
+        },
+        'main.loggedIn.storyIn.lowerPane.voting.entry.author': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(0, 150, 0, 1)',
             textSize: UnitPx(14),
             textColour: 'rgba(255, 255, 255, 1)'
           }
-        }),
-        'main.loggedIn.storyIn.lowerPane.voting.entry.text': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(10), multiLine: true, origin: 'left' }),
+        },
+        'main.loggedIn.storyIn.lowerPane.voting.entry.text': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(10), multiLine: true }),
           slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
@@ -348,25 +348,25 @@ U.buildRoom({
             textFont: 'serif',
             border: { ext: UnitPx(8), colour: 'rgba(0, 150, 0, 1)' }
           }
-        }),
-        'main.loggedIn.storyIn.lowerPane.voting.entry.votes': par => ({
-          slot: par.slots.insertLinearItem(),
+        },
+        'main.loggedIn.storyIn.lowerPane.voting.entry.votes': {
+          slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ pad: UnitPx(4) }),
           slots: LinearSlots({ axis: 'x', dir: '+' }),
           decals: {
             colour: 'rgba(0, 100, 0, 1)'
           }
-        }),
-        'main.loggedIn.storyIn.lowerPane.voting.entry.votes.vote': par => ({
-          slot: par.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(4) }),
+        },
+        'main.loggedIn.storyIn.lowerPane.voting.entry.votes.vote': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
           slots: null,
           decals: {
             colour: 'rgba(0, 150, 0, 1)',
             textColour: 'rgba(255, 255, 255, 1)',
             border: { ext: UnitPx(1), colour: 'rgba(255, 255, 255, 1)' }
           }
-        })
+        }
         
       };
       
@@ -807,14 +807,11 @@ U.buildRoom({
         // exactly one Reality. We get that one Reality here:
         // let reality = await lands.getReality(); // `Lands.prototype.getReality` for {BELOW==BELOW} only!
         
-        console.log('BELOW!');
-        
         let rootReal = await lands.getRootReal();
-        
-        console.log('GOT ROOT REAL!');
+        console.log('ROOT REALLLL:', rootReal);
         
         let mainReal = dep(rootReal.addReal('main'));
-        let headerReal = mainReal.addReal('header');
+        let headerReal = mainReal.addReal('header', 'lolol');
         let titleReal = headerReal.addReal('title');
         titleReal.setText('StoryMix');
         

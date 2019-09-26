@@ -113,8 +113,8 @@
       this.mountedFiles = {}; // TODO: with MANY files could save this in its own file
       
       this.variantDefs = {
-        above: { above: 1, below: 0 },
-        below: { above: 0, below: 1 }
+        above: { above: 1, below: 0, test: 0 },
+        below: { above: 0, below: 1, test: 0 }
       };
       
       this.transportDebug = false;
@@ -602,8 +602,8 @@
         
         // TODO: This is nice content-type-dependent information!
         if (this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
-          text: () => ({ ISTEXT: true, val: msg }),
-          html: () => ({ ISHTML: true, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
+          text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
+          html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
           file: () => ({ ISFILE: true, ...msg.slice('name', 'type') })
         })[type]());
@@ -1087,23 +1087,28 @@
       };
       let fullScriptContent = [];
       contents.forEach((fileContent, roomName) => {
-        // Mark the beginning of what is logically, on the Above, a separate file
-        fullScriptContent.push(`// ==== File: ${roomName}`);
+        // Get raw lines to include
+        let lines = fileContent.trim().replace(/\r/g, '').split('\n');
         
+        // Mark the beginning of what is logically, on the Above, a separate file
+        fullScriptContent.push(`// ==== File: ${roomName} (${lines.length} lines)`);
+        
+        // Debug data for this room begins right at this point in `fullScriptContent`
         debugLineData.rooms[roomName] = {
           offsetWithinScript: fullScriptContent.length,
           // Note that rooms without offset data have uncompiled files
           offsets: this.compilationData.has(roomName) ? this.compilationData[roomName].below.offsets : null // TODO: In the future, a Hut Below us could be a HutBetween
         };
-        let lines = fileContent.trim().replace(/\r/g, '').split('\n');
+        
+        // Include all raw lines
         fullScriptContent.push(...lines);
         
-        // Separate logical files with an extra newline
+        // Separate logical files with an additional newline
         fullScriptContent.push('');
       });
       
       contents = fullScriptContent.join('\n') + '\n\n' + [
-        '// ==== File: hut.js',
+        '// ==== File: hut.js (7 lines)',
         `U.hutTerm = '${hutTerm}';`,
         `U.aboveMsAtResponseTime = ${this.getMs()};`,
         `U.initData = ${JSON.stringify(initContent)};`,

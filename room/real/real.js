@@ -1,7 +1,3 @@
-// TODO: real-css file which defines a similar class, inspired by and under
-// the same name as all the classes here, except everything is nicely separated
-// for Above/Below??
-
 // TODO:  UnitPx -> UnitAbs??
 //        UnitPc -> UnitRel???
 
@@ -23,14 +19,12 @@ U.buildRoom({
       // V default to the prefix-less value.
       
       let def = params.has(prefix) ? params[prefix] : defUnit;
-      let horzDef = params.has(`${prefix}H`) ? params[`${prefix}H`] : def;
-      let vertDef = params.has(`${prefix}V`) ? params[`${prefix}V`] : def;
-      
-      real[`${prefix}L`] = params.has(`${prefix}L`) ? params[`${prefix}L`] : horzDef;
-      real[`${prefix}R`] = params.has(`${prefix}R`) ? params[`${prefix}R`] : horzDef;
-      real[`${prefix}T`] = params.has(`${prefix}T`) ? params[`${prefix}T`] : vertDef;
-      real[`${prefix}B`] = params.has(`${prefix}B`) ? params[`${prefix}B`] : vertDef;
-      
+      let hDef = params.has(`${prefix}H`) ? params[`${prefix}H`] : def;
+      let vDef = params.has(`${prefix}V`) ? params[`${prefix}V`] : def;
+      real[`${prefix}L`] = params.has(`${prefix}L`) ? params[`${prefix}L`] : hDef;
+      real[`${prefix}R`] = params.has(`${prefix}R`) ? params[`${prefix}R`] : hDef;
+      real[`${prefix}T`] = params.has(`${prefix}T`) ? params[`${prefix}T`] : vDef;
+      real[`${prefix}B`] = params.has(`${prefix}B`) ? params[`${prefix}B`] : vDef;
       return real;
       
     };
@@ -122,13 +116,15 @@ U.buildRoom({
     
     
     // ==== ABSTRACT
-    let RealLayout = U.inspire({ name: 'RealLayout', methods: (insp, Insp) => ({
-      init: function() {}
+    let RealLayoutCmp = U.inspire({ name: 'RealLayoutCmp', methods: (insp, Insp) => ({
+      init: function() {},
+      getW: function(...trail) { return null; },
+      getH: function(...trail) { return null; }
     })});
     
     
     // ==== SIZE
-    let Size = U.inspire({ name: 'Size', insps: { RealLayout }, methods: (insp, Insp) => ({
+    let Size = U.inspire({ name: 'Size', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: C.notImplemented,
       getH: C.notImplemented
     })});
@@ -137,21 +133,25 @@ U.buildRoom({
         insp.Size.init.call(this, {});
         hvParams('shrink', params, this);
       },
-      getW: function(par) { return CalcAdd(par.w, this.shrinkL.mult(-1), this.shrinkR.mult(-1)); },
-      getH: function(par) { return CalcAdd(par.h, this.shrinkT.mult(-1), this.shrinkB.mult(-1)); }
+      getW: function(par, ...parTrail) {
+        return CalcAdd(par.getW(...parTrail) || UnitPc(1), this.shrinkL.mult(-1), this.shrinkR.mult(-1));
+      },
+      getH: function(par, ...parTrail) {
+        return CalcAdd(par.getH(...parTrail) || UnitPc(1), this.shrinkT.mult(-1), this.shrinkB.mult(-1));
+      }
     })});
-    let WrapChildren = U.inspire({ name: 'WrapChildren', insps: {}, methods: (insp, Insp) => ({
+    let WrapChildren = U.inspire({ name: 'WrapChildren', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(params) {
         hvParams('pad', params, this);
       }
     })});
-    let ShowText = U.inspire({ name: 'ShowText', insps: {}, methods: (insp, Insp) => ({
+    let ShowText = U.inspire({ name: 'ShowText', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(params) {
         hvParams('pad', params, this);
         
         // NOTE: Text origin has really wonky handling. Originally it
         // could be specified in decals, and now it should only be
-        // provided to `ShowText` - but specifying to decals was
+        // provided to `ShowText` - but specifying under decals was
         // advantageous: decals are applied after geometry is complete
         // and after all other css. `ShowText` doesn't have knowledge
         // of the total geometry of its target, so it can't make the
@@ -164,7 +164,9 @@ U.buildRoom({
         // "textOrigin" value can finally apply when geometry is fully
         // understood.
         
-        let { multiLine=false, origin='left', interactive=false } = params;
+        let { multiLine=false, origin='cc', interactive=false } = params;
+        if (origin === 'c') origin = 'cc';
+        if (!origin.match(/^[lrc][tbc]$/)) throw new Error(`Invalid "origin": ${origin}`);
         this.multiLine = multiLine;
         this.origin = origin;
         this.interactive = interactive;
@@ -173,7 +175,7 @@ U.buildRoom({
     
     
     // ==== SLOTS
-    let Slots = U.inspire({ name: 'Slots', insps: { RealLayout }, methods: (insp, Insp) => ({}) });
+    let Slots = U.inspire({ name: 'Slots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({}) });
     
     let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { Slots }, methods: (insp, Insp) => ({
       init: function() {},
@@ -183,13 +185,13 @@ U.buildRoom({
     })});
     let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { Size }, methods: (insp, Insp) => ({
       init: function() {},
-      getW: function(par) { return ViewPortMin(1); },
-      getH: function(par) { return ViewPortMin(1); }
+      getW: function(...trail) { return ViewPortMin(1); },
+      getH: function(...trail) { return ViewPortMin(1); }
     })});
     let RootPageItem = U.inspire({ name: 'RootPageItem', insps: { Size }, methods: (insp, Insp) => ({
       init: function() {},
-      getW: function(par) { return par.w; },
-      getH: function(par) { return par.h; }
+      getW: function(par, ...parTrail) { return UnitPc(1); },
+      getH: function(par, ...parTrail) { return UnitPc(1); }
     })});
     
     let AxisSections = U.inspire({ name: 'AxisSections', insps: { Slots }, methods: (insp, Insp) => ({
@@ -212,8 +214,13 @@ U.buildRoom({
         this.par = par;
         this.index = index;
       },
-      getW: function(par) { return (this.par.axis === 'y') ? par.w : this.par.cuts[this.index]; },
-      getH: function(par) { return (this.par.axis === 'x') ? par.h : this.par.cuts[this.index]; }
+      getCutExt: function(par, ...parTrail) {
+        if (this.index < this.par.cuts.length) return this.par.cuts[this.index];
+        let parExt = (this.par.axis === 'x') ? par.getW(...parTrail) : par.getH(...parTrail);
+        return CalcAdd(parExt, ...this.par.cuts.map(amt => amt.mult(-1)));
+      },
+      getW: function(par, ...parTrail) { return (this.par.axis === 'y') ? par.getW(...parTrail) || UnitPc(1) : this.getCutExt(par, ...parTrail); },
+      getH: function(par, ...parTrail) { return (this.par.axis === 'x') ? par.getH(...parTrail) || UnitPc(1) : this.getCutExt(par, ...parTrail); }
     })});
     
     let LinearSlots = U.inspire({ name: 'LinearSlots', insps: { Slots }, methods: (insp, Insp) => ({
@@ -227,7 +234,7 @@ U.buildRoom({
       insertLinearItem: function() { return LinearItem(this); },
       fixesChildSizes: function() { return false; }
     })});
-    let LinearItem = U.inspire({ name: 'LinearItem', insps: {}, methods: (insp, Insp) => ({
+    let LinearItem = U.inspire({ name: 'LinearItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par) {
         this.par = par;
       }
@@ -238,7 +245,7 @@ U.buildRoom({
       insertCenteredItem: function() { return CenteredItem(this); },
       fixesChildSizes: function() { return false; }
     })});
-    let CenteredItem = U.inspire({ name: 'CenteredItem', insps: {}, methods: (insp, Insp) => ({
+    let CenteredItem = U.inspire({ name: 'CenteredItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par) {
         this.par = par;
       }
@@ -252,7 +259,7 @@ U.buildRoom({
       insertTextFlowItem: function() { return TextFlowItem(this); },
       fixesChildSizes: function() { return false; }
     })});
-    let TextFlowItem = U.inspire({ name: 'TextFlowItem', insps: {}, methods: (insp, Insp) => ({
+    let TextFlowItem = U.inspire({ name: 'TextFlowItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par) {
         this.par = par;
       }
@@ -262,96 +269,104 @@ U.buildRoom({
     // ==== STRUCTURE
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
       
-      init: function(name, ctxsByNameFlat) {
-        this.name = name;
-        
-        // ==== Convert `ctxsByNameFlat` into a heirarchical version @ `this.rootCtxNode`
-        this.rootCtxNode = {
-          ctxsFunc: () => ({ slot: null, size: null, slots: RootViewStyles({}) }),
+      $nestedLayouts: flat => {
+        // This is the root layout node - so "slots" are RootViewStyles
+        let nested = {
+          name: 'root',
+          cmps: { slot: par => null, size: null, slots: RootViewStyles({}) },
           children: {}
         };
-        ctxsByNameFlat.forEach((ctxsFunc, chainName) => {
-          // Looking at the dom elem with chain name `chainName`, we
-          // get "slot", "size", and "slots"" by calling `ctxsFunc`
+        flat.forEach((cmps, chainName) => {
           let names = chainName.split('.');
-          let ptr = this.rootCtxNode;
+          let ptr = nested;
           for (let name of names) {
-            if (!ptr.children.has(name)) { ptr.children[name] = { ctxsFunc: () => ({}), children: {} }; }
+            if (!ptr.children.has(name)) ptr.children[name] = { cmps: null, children: {} };
             ptr = ptr.children[name];
           }
-          ptr.ctxsFunc = ctxsFunc; // Set the func at the end of the pointer chain
+          ptr.name = names[names.length - 1]; // Assign the name at the end of the chain
+          ptr.cmps = cmps; // Set "cmps"
         });
-        
-        let rootPar = { slots: null, w: UnitPc(1), h: UnitPc(1) };
-        this.iterateCtxNodes((ctxNode, chain, par) => {
-          
-          let { slot=null, size=null, slots=null, decals=null } = ctxNode.ctxsFunc(par);
-          
-          ctxNode.gain({
-            par,
-            computed: { slot, size, slots, decals },
-            chain // TODO: Probably not necessary; will naturally be available when needed
-          });
-          
-          // Look at the 3 Layouts to try to determine size
-          let w=null, h=null;
-          for (let layout of [ slot, size, slots ]) {
-            if (!U.isInspiredBy(layout, Size)) continue;
-            
-            let wFromSize = layout.getW(par);
-            if (wFromSize !== null) {
-              if (w !== null && !unitsEq(w, wFromSize)) throw new Error('Conflict at size.w');
-              w = wFromSize;
-            }
-            
-            let hFromSize = layout.getH(par);
-            if (hFromSize !== null) {
-              if (h !== null && !unitsEq(h, hFromSize)) throw new Error('Conflict at size.h');
-              h = hFromSize;
-            }
-          }
-          
-          if (!w || !w.isAbsolute()) w = UnitPc(1);
-          if (!h || !h.isAbsolute()) h = UnitPc(1);
-          
-          let nextPar = { slots, w, h };
-          return [ nextPar ];
-          
-        }, [ rootPar ]);
-        
+        return nested;
       },
-      iterateCtxNodes: function(it, nextArgs=[], chain=[], node=this.rootCtxNode) {
-        nextArgs = it(node, chain, ...nextArgs);
-        node.children.forEach((node, name) => this.iterateCtxNodes(it, nextArgs, chain.concat([ name ]), node));
+      
+      init: function(name, layoutsFlat) {
+        this.name = name;
+        this.rootLayout = Insp.nestedLayouts(layoutsFlat);
+        
+        // TODO: Whereas in the future "iterating layouts" may involve
+        // visiting every possible slotting of child layout in parent
+        // layout, the iteration here simply needs to visit every
+        // distinct layout (while the futuristic version would be good
+        // for validating all possible getW and getH calls succeed!)
+        this.iterateLayouts((layout, trail) => {
+          layout.getW = (...trail) => this.getLayoutW(layout, trail);
+          layout.getH = (...trail) => this.getLayoutH(layout, trail);
+        });
       },
-      getCtxNode: function(...chain) {
-        let ret = { children: { root: this.rootCtxNode } };
-        for (let pc of chain) ret = ret.children[pc];
-        return ret;
+      getLayoutCmps: function(layout, trail) {
+        let cmps = [];
+        if (layout.cmps.size) cmps.push(layout.cmps.size);
+        if (layout.cmps.slots) cmps.push(layout.cmps.slots);
+        if (layout.cmps.slot) {
+          let slot = layout.cmps.slot(...trail);
+          if (slot) cmps.push(slot);
+        }
+        return cmps;
+      },
+      getLayoutW: function(layout, trail) {
+        let cmps = this.getLayoutCmps(layout, trail);
+        let w = null, w1 = null;
+        for (let cmp of cmps) {
+          if (!cmp.getW || (w1 = cmp.getW(...trail)) === null) continue; // TODO: Duck typing...?
+          if (w !== null && !unitsEq(w, w1)) throw new Error('Can\'t determine width; conflicting widths');
+          w = w1;
+        }
+        return w ? (w.isAbsolute() ? w : UnitPc(1)) : null; //(w && w.isAbsolute()) ? w : UnitPc(1);
+      },
+      getLayoutH: function(layout, trail) {
+        let cmps = this.getLayoutCmps(layout, trail);
+        let h = null, h1 = null;
+        for (let cmp of cmps) {
+          if (!cmp.getH || (h1 = cmp.getH(...trail)) === null) continue; // TODO: Duck typing...?
+          if (h !== null && !unitsEq(h, h1)) throw new Error('Can\'t determine height; conflicting heights');
+          h = h1;
+        }
+        return h ? (h.isAbsolute() ? h : UnitPc(1)) : null; //(h && h.isAbsolute()) ? h : UnitPc(1);
+      },
+      iterateLayouts: function(it, trail=[], layout=this.rootLayout) {
+        it(layout, trail);
+        trail = [ layout, ...trail ];
+        layout.children.forEach(childLay => this.iterateLayouts(it, trail, childLay));
       },
       getCmpTimeFwkAssets: C.notImplemented,
-      initReal: C.notImplemented,
+      initReal: function(parReal, layout) {
+        // Develop the trail
+        let trail = [];
+        while (parReal) { trail.push(parReal.layout); parReal = parReal.par; }
+        let real = Real({ reality: this, layout });
+        
+        // Do `this.initReal0` - expect it to set `real.realized`!
+        this.initReal0(real, layout, trail);
+        if (!real.realized) throw new Error(`${U.typeOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
+        
+        return real;
+      },
+      initReal0: C.notImplemented,
       addChildReal: C.notImplemented,
       remChildReal: C.notImplemented,
       makeFeelable: C.notImplemented
     })});
     let Real = U.inspire({ name: 'Real', insps: { Hog }, methods: (insp, Insp) => ({
-      init: function({ reality=null, realized=null, nameChain=null, altNames=[] }={}) {
-        
-        if (nameChain === null) throw new Error('Missing "nameChain" param');
-        if (nameChain.find(v => v.has('.'))) throw new Error(`Invalid Real name: [${nameChain.join(', ')}]`);
-        //if (!reality) throw new Error('Missing "reality" param');
-        if (!realized) throw new Error('Missing "realized" param');
-        
+      init: function({ reality=null, layout=null }={}) {
         insp.Hog.init.call(this);
         
         this.reality = reality;     // Our link to a Reality instance
-        this.nameChain = nameChain; // The list of names to specify our role
-        this.realized = realized;   // Reference to a node in a graphics framework
+        this.layout = layout; // The list of names to specify our role
         
+        this.realized = null;   // Reference to a node in a graphics framework
+        this.par = null;
         this.feelWob0 = null;       // "Feeling" most often occurs via click
         this.tellWob0 = null;       // "Telling" most often occurs via text entry
-        
       },
       form: function(submitTerm, dep, act, items) {
         
@@ -411,19 +426,21 @@ U.buildRoom({
         }
         return this.tellWob0;
       },
-      addReal: function(realName) {
-        let real = this.reality.initReal([ ...this.nameChain, realName ]);
+      addReal: function(realName, dbg=false) {
+        let real = this.reality.initReal(this, this.layout.children[realName]);
+        real.par = this;
         this.reality.addChildReal(this, real);
         return real;
       },
       shut0: function() {
         this.reality.remChildReal(this);
+        this.par = null;
       }
     })});
     
     
     return {
-      RealLayout,
+      RealLayoutCmp,
       
       unitsEq,
       Unit,

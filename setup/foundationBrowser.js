@@ -79,14 +79,17 @@
         let real = U.rooms.real.built;
         let realHtmlCss = U.rooms.realHtmlCss.built;
         // let reality = realHtmlCss.Reality('root',  // TODO: This is where Reality should be initialized
-        this.rootReal = real.Real({ nameChain: [ 'root' ], realized: document.body });
+        this.rootReal = real.Real({ nameChain: [ 'root' ] });
+        this.rootReal.realized = document.body;
+        this.rootReal.realized.classList.add('root');
+        this.rootReal.realized.innerHTML = '';
         
       }
       
       return this.rootReal;
       
     },
-    getDefaultReality: function() { return U.rooms.realHtmlCss.built; },
+    getDefaultRealRoom: function() { return U.rooms.realHtmlCss.built; },
     
     // Functionality
     queueTask: function(func) { Promise.resolve().then(func); },
