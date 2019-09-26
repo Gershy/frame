@@ -10,7 +10,6 @@ U.buildRoom({
     
     
     // ==== UTIL
-    let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
     let hvParams = (prefix, params, real={}, defUnit=UnitPx(0)) => {
       
       // Get "horz-vert" params for a particular prefix. Gives left,
@@ -242,14 +241,10 @@ U.buildRoom({
     
     let CenteredSlot = U.inspire({ name: 'CenteredSlot', insps: { Slots }, methods: (insp, Insp) => ({
       init: function() {},
-      insertCenteredItem: function() { return CenteredItem(this); },
+      insertCenteredItem: function() { return CenteredItem(); },
       fixesChildSizes: function() { return false; }
     })});
-    let CenteredItem = U.inspire({ name: 'CenteredItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-      init: function(par) {
-        this.par = par;
-      }
-    })});
+    let CenteredItem = U.inspire({ name: 'CenteredItem', insps: { RealLayoutCmp } });
     
     let TextFlowSlots = U.inspire({ name: 'TextFlowSlots', insps: { Slots }, methods: (insp, Insp) => ({
       init: function({ gap=UnitPx(0), lineHeight=null }) {

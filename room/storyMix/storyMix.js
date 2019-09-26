@@ -808,7 +808,6 @@ U.buildRoom({
         // let reality = await lands.getReality(); // `Lands.prototype.getReality` for {BELOW==BELOW} only!
         
         let rootReal = await lands.getRootReal();
-        console.log('ROOT REALLLL:', rootReal);
         
         let mainReal = dep(rootReal.addReal('main'));
         let headerReal = mainReal.addReal('header', 'lolol');
