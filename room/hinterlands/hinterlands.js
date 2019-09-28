@@ -123,6 +123,9 @@ U.buildRoom({
         let { commands=[] } = more;
         this.commands = Set(commands);
         
+        // A list of all supported Real Rooms
+        this.realRooms = [];
+        
         /// =ABOVE} {BELOW=
         
         // Keep direct references to all Recs for update/removal
@@ -183,10 +186,7 @@ U.buildRoom({
         /// =BELOW}
         
       },
-      addWay: function(way) {
-        way.lands = this;
-        this.ways.add(way);
-      },
+      addWay: function(way) { way.lands = this; this.ways.add(way); },
       addReality: function(rootReal, reality) {
         
         // Note: Above, multiple Realities can exist for the same Real.
@@ -294,7 +294,8 @@ U.buildRoom({
       getRootReal: async function(realRoom=foundation.getDefaultRealRoom()) {
         let rootReal = await foundation.getRootReal();
         if (rootReal.reality) throw new Error('Reality already applied');
-        let reality = realRoom.Reality('root', this.realLayout);
+        let reality = realRoom.Reality('root');
+        reality.addFlatLayouts(this.realLayout);
         rootReal.reality = reality;
         rootReal.layout = reality.rootLayout;
         return rootReal;
@@ -329,7 +330,9 @@ U.buildRoom({
         // compile-time assets
         for (let realRoom of this.realRooms) {
           
-          let reality = realRoom.Reality('root', this.realLayout); // This instance exists temporarily
+          let reality = realRoom.Reality('root'); // This instance exists temporarily
+          reality.addFlatLayouts(this.realLayout);
+          
           let staticAssets = reality.getCmpTimeFwkAssets();
           staticAssets.forEach(({ contentType, content }, key) => {
             foundation.addMountDataAsFile(key, contentType, content);
@@ -565,9 +568,15 @@ U.buildRoom({
       /// =TEST}
       
       tell: function(msg) {
-        let findWay = this.ways.toArr(v => v).find(() => true);
-        if (!findWay) throw new Error(`Hut ${this.address} has no Ways`);
-        findWay[0].tellHut(this, msg);
+        // TODO: Below picks the lowest cost Way, but Above picks the
+        // lowest cost Way **WHICH IS SUPPORTED BY `this` HUT!**
+        let bestWay = null;
+        for (let way of this.ways) {
+          if (!bestWay || (way.server && (way.server.cost < bestWay.server.cost))) bestWay = way;
+        }
+        
+        if (!bestWay) throw new Error(`Hut ${this.address} has no Ways`);
+        bestWay.tellHut(this, msg);
       }
     })});
     let Way = U.inspire({ name: 'Way', methods: (insp, Insp) => ({
@@ -597,52 +606,56 @@ U.buildRoom({
           
           // Get the cpuId; ensure it isn't already connected
           let { cpuId } = absConn;
-          //if (this.lands.pool.getConn(cpuId, this.server)) throw new Error(`Server "${this.server.desc}" gave duplicate cpuId "${cpuId}" - makeServer may be flawed`);
+          let isNewCpu = !this.lands.hutsBelow.has(cpuId); // TODO: Is this tracking anything different from `this.lands.pool.cpus`?
           
-          // It's possible this is the first Way through which the Hut is connecting
-          let hut = this.lands.hutsBelow.get(cpuId);
-          if (!hut) {
-            hut = this.lands.createRec('hut', { cpuId }); // Create a hut for the cpu...
-            
-            // Remember the Hut so long as it lives
-            this.lands.hutsBelow.set(cpuId, hut);
-            hut.shutWob().hold(() => this.lands.hutsBelow.rem(cpuId));
+          let hut = null;
+          if (isNewCpu) {
+            hut = this.lands.createRec('hut', { cpuId });
+            this.lands.hutsBelow.set(cpuId, hut); // Register Hut on Lands
+            hut.shutWob().hold(group => this.lands.hutsBelow.rem(cpuId));
+          } else {
+            hut = this.lands.hutsBelow.get(cpuId);
           }
+          
+          let holdRelay = absConn.hear.hold(([ msg, reply=null ]) => {
+            /// {ABOVE=
+            hut.refreshExpiry();
+            /// =ABOVE}
+            this.lands.hear(absConn, hut, msg, reply);
+          });
+          hut.ways.add(this);
+          
+          // Shutting the Connection does most of the cleanup
+          absConn.shutWob().hold(group => {
+            hut.ways.rem(this);
+            if (!holdRelay.isShut()) holdRelay.shut(group);
+            if (!hut.isShut() && hut.ways.isEmpty()) hut.shut(group);
+          });
+          
+          // Shutting the Hut shuts the Connection
+          hut.shutWob().hold(group => !absConn.isShut() && absConn.shut(group));
           
           // TODO: Can Ways shut? Like if the server loses its ability to perform
           // SOKT connections? Let's assume "no" for now...
           
-          hut.ways.add(this);
-          hut.shutWob().hold(group => absConn.isShut() || absConn.shut(group));
-          
-          absConn.shutWob().hold(group => {
-            // Disconnect the Hut from `this` Way. If the Hut has no more Ways,
-            // shut the Hut!
-            hut.ways.rem(this);
-            if (!hut.isShut() && hut.ways.toArr(v => v).isEmpty()) hut.shut(group);
-          });
-          
-          /// {ABOVE=
-          absConn.hear.hold(() => hut.refreshExpiry()); // Any communication refreshes expiry
-          /// =ABOVE}
-          
-          // Pass anything heard on to our Lands
-          absConn.hear.hold(([ msg, reply=null ]) => this.lands.hear(absConn, hut, msg, reply));
+          // Hut and Way stay connected while Connection lives. If all
+          // Connections close, the Hut is shut.
           
           // Attach the Hut to the Way and to the Lands
           // TODO: Right now the lands tracks the Hut both through `hutsBelow` and
           // through `archHut`... ideally only one should be used! I think we can't
           // create the ArchHut too early in this function, or else initial holders
           // will receive a Hut that is lacking some functionality
-          this.lands.createRec('archHut', {}, this.lands.arch, hut);
+          if (isNewCpu) {
+            this.lands.createRec('archHut', {}, this.lands.arch, hut);
+          }
           
         });
-        console.log(`Server listening: ${this.server.desc}`);
       },
       shut: async function() { this.serverFunc.shut(); },
       
       tellHut: function(hut, msg) {
-        let conn = this.lands.pool.getConn(hut.cpuId, this.server);
+        let conn = this.lands.pool.getCpuConn(hut.cpuId, this.server);
         if (!conn) throw new Error(`Tried to tell disconnected hut: ${hut.getTerm()}`);
         conn.tell(msg);
       }
@@ -695,7 +708,6 @@ U.buildRoom({
           let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
           
           let client = Hog();
-          client.cpuId = cpuId;
           client.hear = U.Wob();
           client.tellWob = U.Wob();
           client.tell = (...args) => {
@@ -718,7 +730,7 @@ U.buildRoom({
             return tellVal;
           };
           
-          lands.pool.addConn(client.cpuId, server, client);
+          lands.pool.addCpuConn(cpuId, server, client);
           server.wobble(client);
           
           clients.add(client);
@@ -1312,7 +1324,6 @@ U.buildRoom({
               let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
               
               let aboveClient = Hog();
-              aboveClient.cpuId = cpuId;
               aboveClient.hear = U.Wob();
               aboveClient.tellWob = U.Wob();
               aboveClient.tell = (...args) => aboveClient.tellWob.wobble(...args);
@@ -1335,7 +1346,7 @@ U.buildRoom({
                 
               };
               
-              lands.pool.addConn(aboveClient.cpuId, serverBelow, aboveClient);
+              lands.pool.addCpuConn(cpuId, serverBelow, aboveClient);
               serverBelow.wobble(aboveClient);
               
               return aboveClient;
@@ -1498,9 +1509,9 @@ U.buildRoom({
             let heardData = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
             
             if (!U.isType(heardData, String)) {
-              console.log('DAFUQ??', U.typeOf(heardData));
+              console.log('DAFUQ??', U.nameOf(heardData));
               console.log(heardData);
-              throw new Error(`Unexpected non-String in test: ${U.typeOf(heardData)} ${JSON.stringify(heardData, null, 2)}`);
+              throw new Error(`Unexpected non-String in test: ${U.nameOf(heardData)} ${JSON.stringify(heardData, null, 2)}`);
             }
             
             return [

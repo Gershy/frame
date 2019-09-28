@@ -94,7 +94,7 @@ protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
 });
 protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
   for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return [ this[i], i ];
-  return null;
+  return null; // TODO: Return empty array instead??
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
@@ -185,23 +185,16 @@ Promise.allObj = async obj => {
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
+
 let U = global.U = {
-  Obj: Object, Arr: Array, Str: String,
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
-    if (!U.dbgCntMap.has(name)) {
-      U.dbgCntMap[name] = 0;
-    } else {
-      U.dbgCntMap[name]++;
-    }
+    if (!U.dbgCntMap.has(name)) U.dbgCntMap[name] = 0;
+    else                        U.dbgCntMap[name]++;
     return U.dbgCntMap[name];
   },
-  dbgVar: obj => {
-    for (let k in obj) console.log(k.upper(), obj[k]);
-  },
+  dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
   int32: Math.pow(2, 32),
-  intUpperBound: Math.pow(2, 32),
-  intLowerBound: -Math.pow(2, 32),
   safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
   inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
     
@@ -265,7 +258,7 @@ let U = global.U = {
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName];
       if (methodsAtName.length > 1) throw new Error(`Multiple methods "${methodName}" for ${name}; declare a custom method`);
-      protoDef(Insp, methodName, methodsAtName[0]); // `methodsAtName.length === 1`
+      protoDef(Insp, methodName, methodsAtName[0]); // `methodsAtName.length` will certainly be `1`
     }
     
     protoDef(Insp, 'constructor', Insp);
@@ -282,14 +275,15 @@ let U = global.U = {
       return Insp1.has('allInsps') && Insp1.allInsps.has(Insp2);
     } catch(err) { return false; }
   },
-  typeOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
+  nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   
   buildRoom: ({ name, innerRooms=[], build }) => {
     
+    if (U.rooms.has(name)) throw new Error(`Tried to overwrite room "${name}"`);
     return U.rooms[name] = () => {
       
-      if (!U.isType(name, String)) throw new Error(`Invalid name: ${U.typeOf(name)}`);
+      if (!U.isType(name, String)) throw new Error(`Invalid name: ${U.nameOf(name)}`);
       let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
       if (missingRoom) throw new Error(`Missing innerRoom: ${missingRoom[0]}`);
       
@@ -312,24 +306,10 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
     this.shutWob0 = U.WobOne();
     if (shut) this.shut0 = shut; // Allow easy overwrite of "shut0" functionality
   },
-  shutCondAny: function(...wobs) {
-    if (this.shutAnyWobs) throw new Error('Already have a "shutCondAny" condition');
-    
-    let holds = Set();
-    let fn = () => {
-      if (!holds) return;
-      let holds0 = holds;
-      holds = null;
-      holds0.forEach(h => h.shut());
-      this.shut();
-    };
-    wobs.forEach(wob => holds.add(wob.hold(fn)));
-    
-    return Hog(() => holds.forEach(h => h.shut()));
-  },
   isShut: function() { return !!this.didShut; },
   shut0: function() { /* nothing */ },
   shut: function(group=Set()) {
+    // TODO: Eventually get rid of `group`, and always excuse double-shuts??
     if (group.has(this)) return; // Double-shut is excused!
     group.add(this);
     
@@ -347,7 +327,7 @@ let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
   hold: function(holdFn) {
     if (this.holds.has(holdFn)) throw new Error('Already held');
     this.holds.add(holdFn);
-    return Hog(() => this.shutHolder(holdFn)); // holds.delete(func));
+    return Hog(() => this.shutHolder(holdFn));
   },
   shutHolder: function(holdFn) { this.holds.delete(holdFn); },
   wobble: function(...args) { this.holds.forEach(holdFn => this.toHold(holdFn, ...args)); },
@@ -367,7 +347,7 @@ let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) =
     
     // Return a duck-typed Hog which ignores shuts and wobbles as if
     // its already been shut
-    return { shut: () => {}, shutWob: () => this };
+    return { shut: () => {}, shutWob: () => this, isShut: () => true };
   },
   shutHolder: function(holdFn) {
     if (this.holds) this.holds.delete(holdFn);
@@ -403,30 +383,6 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
     insp.Wob.wobble.call(this, value, origVal);
   },
   modify: function(func, force) { this.wobble(func(this.value), force); }
-})});
-let WobFlt = U.inspire({ name: 'WobFlt', insps: { Wob, Hog }, methods: (insp, Insp) => ({
-  
-  // Wob Filter
-  
-  init: function(wob, flt, open=true) {
-    insp.Wob.init.call(this);
-    insp.Hog.init.call(this);
-    this.wob = wob;
-    this.flt = flt;
-    this.wobHold = null;
-    if (open) this.open();
-  },
-  open: function() {
-    
-    if (this.wobHold) throw new Error('Already open');
-    
-    this.wobHold = this.wob.hold((...args) => {
-      let flt = this.flt(...args);
-      if (flt !== C.skip) this.wobble(flt);
-    });
-    
-  },
-  shut0: function(group=Set()) { if (this.wobHold) this.wobHold.shut(group); }
 })});
 let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) => ({
   
@@ -473,34 +429,6 @@ let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) =
     return ret;
   },
   wobble: function(...args) { return insp.Wob.wobble.call(this, this.tmp, ...args); }
-})});
-
-let WobMemVal = U.inspire({ name: 'WobMemVal', insps: { Wob }, methods: (insp, Insp) => ({
-  init: function() { insp.Wob.init.call(this); this.val = null; },
-  hold: function(holdFn) {
-    if (this.val) this.toHold(holdFn, this.val);
-    return insp.Wob.hold.call(this, holdFn);
-  },
-  gain: function(val) {
-    if (!val) throw new Error(`Invalid val ${U.typeOf(val)} resolves to false`);
-    if (this.val) throw new Error('Already add');
-    this.val = val;
-    this.wobble(this.val);
-    return Hog(() => { this.val = null; });
-  }
-})});
-let WobMemSet = U.inspire({ name: 'WobMemSet', insps: { Wob }, methods: (insp, Insp) => ({
-  init: function() { insp.Wob.init.call(this); this.vals = Set(); },
-  hold: function(holdFn) {
-    this.vals.forEach(v => this.toHold(holdFn, v));
-    return insp.Wob.hold.call(this, holdFn);
-  },
-  gain: function(val) {
-    if (this.vals.has(val)) throw new Error('Already add');
-    this.vals.add(val);
-    this.wobble(val);
-    return Hog(() => this.vals.delete(val));
-  }
 })});
 
 let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) => ({
@@ -595,8 +523,8 @@ let shutDependence = (dep, srcShutWobs) => {
   // freedom - we can pass Wobs that aren't specifically ShutWobs, and
   // tie `dep`'s dependence to these Wobs as well!
   
-  if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.typeOf(dep)}`);
-  if (srcShutWobs.find(w => !w.hold)) throw new Error(`Invalid srcShutWobs: [ ${srcShutWobs.map(U.typeOf).join(', ')} ]`);
+  if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.nameOf(dep)}`);
+  if (srcShutWobs.find(w => !w.hold)) throw new Error(`Invalid srcShutWobs: [ ${srcShutWobs.map(U.nameOf).join(', ')} ]`);
   
   // A set of all SrcHolds which will cause `dep` (the TrgHold) to shut
   let srcShutCauseDepShutHolds = null;
@@ -627,7 +555,6 @@ let shutDependence = (dep, srcShutWobs) => {
   return dep;
   
 };
-
 let HorzScope = U.inspire({ name: 'HorzScope', insps: { Hog }, methods: (insp, Insp) => ({
   init: function(hogWob, gen=null, dbg=false) {
     insp.Hog.init.call(this);
@@ -699,4 +626,4 @@ let VertScope = U.inspire({ name: 'VertScope', insps: { Wob, Hog }, methods: (in
   shut0: function(...args) { this.children.forEach(child => child.shut(...args)); }
 })});
 
-U.gain({ Hog, Wob, WobOne, WobVal, WobMemVal, WobMemSet, WobTmp, HorzScope, VertScope, WobSquad });
+U.gain({ Hog, Wob, WobOne, WobVal, WobTmp, HorzScope, WobSquad, VertScope });

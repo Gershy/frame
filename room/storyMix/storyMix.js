@@ -43,12 +43,21 @@ U.buildRoom({
       let commands = [ 'author', 'story', 'join', 'entry', 'vote' ];
       let heartbeatMs = 10 * 60 * 1000;
       let lands = U.lands = Lands({ foundation, recTypes, commands, heartbeatMs });
+      
+      // Note: The Foundation has host and port values, but technically
+      // a Foundation can run a number of server - so this ip+port
+      // pair is like the "default" host+port pair, while others could
+      // exist too.
+      let { ip, port } = foundation;
       lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, 'localhost', 80) }));
+      lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, 'localhost', 8000) }));
       
       /// {ABOVE=
       // TODO: Eventually decouple this from hinterlands
+      // TODO: Should commandline arguments determine which real-rooms
+      //       to support?
       // NOTE: Maybe a list of room names, rather than rooms? That could
-      // potentially clear up dependencies for Below...
+      //       potentially clear up dependencies for Below...
       lands.setRealRooms([ realHtmlCss ]);
       /// =ABOVE}
       
@@ -394,8 +403,6 @@ U.buildRoom({
           let hut = archHut.members[1];
           dep(hut.followRec(archStoryMix));
           dep(hut.followRec(storyMix));
-          
-          console.log('HUT FOLLOWING STORYMIX');
           
           dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
             

@@ -1,6 +1,7 @@
 (() => {
   
-  let [ path, fs, http, crypto, os ] = [ 'path', 'fs', 'http', 'crypto', 'os' ].map(v => require(v));
+  let [  path,   fs,   net,   http,   crypto,   os ] =
+      [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
   let { Hog, Wob } = U;
   
   let rootDir = path.join(__dirname, '..');
@@ -99,7 +100,7 @@
           ? `${i}<${t}${p}>\n${this.text.split('\n').map(ln => i + '  ' + ln).join('\n')}\n${i}</${t}>\n`
           : `${i}<${t}${p}>${this.text}</${t}>\n`,
         root: (i, t, p, c) => `${i}${c.map(c => c.toString(i)).join('')}`,
-        container: (i, t, p, c) => `${i}<${t}${p}>\n${c.map(c => c.toString(i + '  ')).join('')}${i}</${t}>\n`
+        container: (i, t, p, c) => `${i}<${t}${p}>${c.isEmpty() ? '' : '\n'}${c.map(c => c.toString(i + '  ')).join('')}${c.isEmpty() ? '' : i}</${t}>\n`
       })[this.type](indent, this.tagName, propStr, this.children);
     }
   })});
@@ -589,6 +590,8 @@
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
     makeHttpServer: async function(pool, ip, port) {
+      // TODO: `serverWobs` should be shuttable? And shutting them
+      // would in turn shut all connections
       let serverWob = Wob({});
       
       // Translates a javascript value `msg` into http content type and payload
@@ -597,7 +600,7 @@
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
-          throw new Error(`Unknown type for ${U.typeOf(msg)}`);
+          throw new Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
         // TODO: This is nice content-type-dependent information!
@@ -664,28 +667,24 @@
         
         let isSpoofed = this.spoofEnabled && query.has('spoof');
         
-        let [ ip, port ] = isSpoofed
+        let [ connIp, connPort ] = isSpoofed
           ? query.spoof.split(':')
           : [ req.connection.remoteAddress, 80 /*req.connection.remotePort*/ ];
         
-        let cpuId = ip.has('.') ? this.compactIp(ip, port) : `${ip}:${port}`;
+        // TODO: Should be more rigorous about how ips are represented in the spoof query
+        let cpuId = connIp.has('.') ? this.compactIp(connIp, connPort) : `${connIp}:${connPort}`;
         
         // // Build the "cpuId"; use ip + innerId
         // // TODO: Rename "compactIp" -> "uniqueCpuId"?
-        // let cpuId = this.compactIp(ip, port);
+        // let cpuId = this.compactIp(connIp, connPort);
         
         // Get the connection from the pool
-        let conn = pool.getConn(cpuId, serverWob);
-        
+        let conn = pool.getCpuConn(cpuId, serverWob);
         if (!conn) {
           
-          conn = Hog(() => {
-            // Fizzle all remaining polls
-            conn.waitResps.forEach(res => res.end());
-          });
-          conn.cpuId = cpuId;
+          conn = Hog(() => conn.waitResps.forEach(res => res.end())); // Fizzle all remaining polls
           conn.isSpoofed = isSpoofed;
-          conn.ipPort = [ ip, port ];
+          conn.ipPort = [ connIp, connPort ];
           conn.hear = Wob({});
           conn.tell = msg => conn.waitResps.length // Send immediately if possible, otherwise queue!
             ? sendData(conn.waitResps.shift(), msg)
@@ -693,7 +692,7 @@
           conn.waitResps = [];
           conn.waitTells = [];
           
-          pool.addConn(conn.cpuId, serverWob, conn);
+          pool.addCpuConn(cpuId, serverWob, conn);
           serverWob.wobble(conn);
           
         }
@@ -765,261 +764,260 @@
         
       });
       serverWob.desc = `HTTP @ ${ip}:${port}`;
+      serverWob.cost = 100;
       
       await new Promise(r => server.listen(port, ip, 511, r));
-      
       return serverWob;
     },
-    makeSoktServer: async function(ip=this.ip, port=this.port + 1) {
+    makeSoktServer: async function(pool, ip=this.ip, port=this.port + 1) {
       let serverWob = Wob({});
       let server = net.createServer(sokt => {
         
-        let connectionWob = {
-          ip: this.compactIp(sokt.remoteAddress, sokt.remotePort),
-          hear: Wob({}),
-          tell: Wob({}), // TODO: Should be a function
-          shut: Wob({})
-        };
+        console.log('SOKT:', sokt, sokt.url);
         
-        let status = 'starting';
-        let buffer = Buffer.alloc(0);
-        let curOp = null;
-        let curFrames = [];
+        let isSpoofed = this.spoofEnabled; // && <CHECK FOR SOCKET SPOOF PARAM?>
+        let [ connIp, connPort ] = isSpoofed
+          ? ______.spoof.split(':')
+          : [ sokt.remoteAddress, 80 /* sokt.remotePort */ ] // TODO: Does sokt.remotePort ever change?
         
-        // These functions use the higher-scope `buffer` as their source of data
-        let heardHandshakeData = () => {
-          if (buffer.length < 4) return;
+        let cpuId = connIp.has('.') ? this.compactIp(connIp, connPort) : `${connIp}:${connPort}`;
+        
+        let conn = pool.getCpuConn(cpuId, serverWob);
+        if (!conn) {
           
-          // Search for a 0x1101, 0x1010, 0x1101, 0x1010 sequence
-          let packetInd = null;
-          for (let i = 0, len = buffer.length - 4; i <= len; i++) {
-            if (buffer[i] === 13 && buff[i + 1] === 10 && buff[i + 1] === 13 && buff[i + 3] === 10) { packetInd = i; break; }
-          }
-          if (packetInd === null) return;
+          let status = 'starting';
+          let buffer, curOp, curFrames;
+          let resetSoktState = () => { buffer = Buffer.alloc(0); curOp = null; curFrames = []; };
+          resetSoktState();
           
-          let packet = buffer.slice(0, packetInd).toString('utf8');
-          buffer = buffer.slice(packetInd + 4);
+          let socketActivePromise = null; // TODO!
           
-          // Do an http upgrade operation
-          try {
+          conn = Hog(() => { sokt.end(); });
+          conn.isSpoofed = isSpoofed;
+          conn.ipPort = [ connIp, connPort ];
+          conn.hear = Wob({});
+          conn.tell = async msg => {
+            await socketActivePromise;
             
-            let lines = packet.split('\r\n');
+            let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
+            let len = dataBuff.length;
             
-            // Parse headers:
-            let headers = {};
-            for (let i = 1; i < lines.length; i++) {
-              let line = lines[i];
-              let [ head, ...tail ] = line.split(':');
-              if (tail.isEmpty()) throw new Error(`Line isn't header: ${line}`);
-              let k = line.substr(0, sepInd).trim().toLowerCase();
-              let v = line.substr(sepInd + 1).trim();
-              headers[head.trim()] = tail.join(':').trim();
+            let metaBuff = null;
+            
+            // The 2nd byte (`metaBuff[1]`) is either 127 to specify
+            // "large", 126 to specify "medium", or n < 126, where
+            // `n` is the exact length of `dataBuff`.
+            if (len < 126) {            // small-size
+              
+              console.log('Sending with "small" frame');
+              metaBuff = Buffer.alloc(2);
+              metaBuff[1] = len;
+              
+            } else if (len < 65536) {   // medium-size
+              
+              console.log('Sending with "medium" frame');
+              metaBuff = Buffer.alloc(2 + 2);
+              metaBuff[1] = 126;
+              metaBuff.writeUInt16BE(len, 2);
+              
+            } else {                    // large-size
+              
+              console.log('Sending with "large" frame');
+              metaBuff = Buffer.alloc(2 + 8);
+              metaBuff[1] = 127;
+              metaBuff.writeUInt32BE(Math.floor(len / U.int32), 2); // Lo end of `len` from metaBuff[2-5]
+              metaBuff.writeUInt32BE(len % U.int32, 6);             // Hi end of `len` from metaBuff[6-9]
+              
             }
             
-            if (!headers.hasOwnProperty('sec-websocket-key')) throw new Error('Missing "sec-websocket-key" header');
-            let hash = crypto.createHash('sha1');
-            hash.end(`${headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
-            sokt.write([
-              'HTTP/1.1 101 Switching Protocols',
-              'Upgrade: websocket',
-              'Connection: Upgrade',
-              `Sec-WebSocket-Accept: ${hash.read().toString('base64')}`,
-              '\r\n'
-            ].join('\r\n'));
+            metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
+            sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
+          };
+          
+          // These functions use the higher-scope `buffer` as their source of data
+          let heardHandshakeData = () => {
+            if (buffer.length < 4) return;
             
-            status = 'started';
-            connectionWob.tell.hold(msg => {
-              if (status !== 'started') throw new Error(`Can't send data to client with status ${status}`);
-              let data = null;
-              try { data = JSON.stringify(msg); }
-              catch(err) { console.log('Couldn\'t serialize message', msg); return; }
+            // Search for a 0x1101, 0x1010, 0x1101, 0x1010 sequence
+            let packetInd = null;
+            for (let i = 0, len = buffer.length - 4; i <= len; i++) {
+              // TODO: We could be smart enough to jump more than 1 byte at a time in some cases
+              // E.g. if the first byte doesn't match we increment by 1, but if the second
+              // byte doesn't match we can increment by 2. Watch out for the repetition of the
+              // same byte in the "needle" (as opposed to haystack)
+              if (buffer[i] === 13 && buffer[i + 1] === 10 && buffer[i + 2] === 13 && buffer[i + 3] === 10) { packetInd = i; break; }
+            }
+            if (packetInd === null) return;
+            
+            let packet = buffer.slice(0, packetInd).toString('utf8');
+            buffer = buffer.slice(packetInd + 4);
+            
+            // Do an http upgrade operation
+            try {
               
-              let metaBuff = null;
+              let lines = packet.replace(/\\r/g, '').split('\n');
               
-              if (data.length < 126) {            // small-size
-                
-                metaBuff = Buffer.alloc(2);
-                metaBuff[1] = data.length;
-                
-              } else if (data.length < 65536) {   // medium-size
-                
-                metaBuff = Buffer.alloc(4);
-                metaBuff[1] = 126;
-                metaBuff.writeUInt16BE(data.length, 2);
-                
-              } else {                            // large-size
-                
-                metaBuff = Buffer.alloc(8);
-                metaBuff[1] = 127;
-                metaBuff.writeUInt32BE(Math.floor(data.length / U.int32), 2);
-                metaBuff.writeUInt32BE(data.length % U.int32, 6);
-                
+              // Parse headers:
+              let headers = {};
+              for (let i = 1; i < lines.length; i++) {
+                let line = lines[i];
+                let [ head, ...tail ] = line.split(':');
+                if (tail.isEmpty()) throw new Error(`Line isn't header: ${line}`);
+                headers[head.trim().lower()] = tail.join(':').trim();
               }
               
-              metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-              sokt.write(Buffer.concat([ metaBuff, Buffer.from(data) ]), () => {}); // Ignore the callback
-            });
-            serverWob.wobble(connectionWob);
-            
-          } catch(err) {
-            
-            console.log(`Couldn't do handshake:\nPACKET:\n${packet}`);
-            sokt.end(`HTTP/1.1 400 ${err.message} \r\n\r\n`);
-            throw err;
-            
-          }
-          
-          // Process any remaining data as a websocket message
-          try {
-            if (buffer.length) safeHeardData();
-          } catch(err) {
-            console.log(`Error hearing data: ${this.formatError(err)}`);
-          }
-          
-        };
-        let heardData = function() { while (buffer.length >= 2) {
-          // ==== PARSE FRAME
-          
-          let b = buffer[0] >> 4; // Look at bits beyond first 4
-          if (b % 8) throw new Error('Some reserved bits are on');
-          let final = b === 8;
-          
-          let op = buffer[0] % 16;
-          if (op < 0 || (op > 2 && op < 8) || op > 10) throw new Error(`Invalid op: ${op}`);
-          
-          if (op >= 8 && !final) throw new Error('Fragmented control frame');
-          
-          b = buffer[1];
-          let masked = b >> 7;
-          
-          // Server requires a mask. Client requires no mask
-          if (!masked) throw new Error('No mask');
-          
-          let length = b % 128;
-          let offset = masked ? 6 : 2; // Masked frames have an extra 4 halfwords containing the mask
-          
-          if (buffer.length < offset + length) return; // Await more data
-          
-          if (length === 126) {         // Websocket's "medium-size" frame format
-            length = buffer.readUInt16BE(2);
-            offset += 2;
-          } else if (length === 127) {  // Websocket's "large-size" frame format
-            length = buffer.readUInt32BE(2) * U.int32 + buffer.readUInt32BE(6);
-            offset += 8;
-          }
-          
-          if (buffer.length < offset + length) return; // Await more data
-          
-          // Now we know the exact range of the incoming frame; we can slice and unmask it as necessary
-          let data = buffer.slice(offset, offset + length);
-          if (masked) { // Apply an XOR mask if directed
-            
-            let mask = buffer.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
-            let w = 0;
-            for (let i = 0, len = data.length; i < len; i++) {
-              data[i] ^= mask[w];
-              w = w < 3 ? w + 1 : 0; // `w` follows `i`, but wraps every 4. More efficient than `%`
+              if (!headers.hasOwnProperty('sec-websocket-key')) throw new Error('Missing "sec-websocket-key" header');
+              let hash = crypto.createHash('sha1');
+              hash.end(`${headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
+              sokt.write([
+                'HTTP/1.1 101 Switching Protocols',
+                'Upgrade: websocket',
+                'Connection: Upgrade',
+                `Sec-WebSocket-Accept: ${hash.read().toString('base64')}`,
+                '\r\n'
+              ].join('\r\n'));
+              
+              // This is where everything comes alive, the connection is
+              // registered with the Pool, and `serverWob` wobbles a new
+              // Connection!
+              status = 'started';
+              pool.addCpuConn(cpuId, serverWob, conn);
+              serverWob.wobble(conn);
+              
+            } catch(err) {
+              
+              console.log(`Couldn't do handshake:\nPACKET:\n${packet}`);
+              sokt.end(`HTTP/1.1 400 ${err.message} \r\n\r\n`);
+              throw err;
+              
             }
             
-          }
-          
-          // Remove the frame we've managed to locate
-          buffer = buffer.slice(offset + length); 
-          
-          // ==== PROCESS FRAME (based on `final`, `op`, and `data`)
-          
-          // The following operations can occur regardless of the socket's status
-          if (op === 8) {         // Process "close" op
+            // Process any remaining data as a websocket message
+            try {
+              if (buffer.length) safeHeardData();
+            } catch(err) {
+              console.log(`Error hearing data: ${this.formatError(err)}`);
+            }
             
-            status = 'ending';
-            sokt.end();
-            break;
-            
-          } else if (op === 9) {  // Process "ping" op
-            
-            throw new Error('Unimplemented op: 9');
-            
-          } else if (op === 10) { // Process "pong" op
-            
-            throw new Error('Unimplemented op: 10');
-            
-          }
-          
-          // For the following operations, ensure that the socket is open and steady
-          if (status !== 'started') continue;
-          
-          // Validate "continuation" functionality
-          if (op === 0 && curOp === null) throw new Error('Invalid continuation frame');
-          if (op !== 0 && curOp !== null) throw new Error('Expected continuation frame');
-          
-          // Process "continuation" ops as if they were the op being continued
-          if (op === 0) op = curOp;
-          
-          // Text ops are our ONLY supported ops!
-          if (op !== 1) throw new Error(`Unsupported op: ${op}`);
-          
-          curOp = 1;
-          curFrames.push(data);
-          
-          if (final) {
-            let fullStr = Buffer.concat(p.curFrames).toString('utf8');
-            curOp = null;
-            curFrames = [];
-            connectionWob.hear.wobble(JSON.parse(fullStr));
-          }
-        }};
-        let safeHeardData = function() {
-          try {
-            heardData();
-          } catch(err) {
-            buffer = Buffer.alloc(0);
-            curOp = null;
-            curFrames = [];
-            throw err;
           };
-        };
-        
-        sokt.on('readable', () => {
-          let incomingBuffer = sokt.read();
-          if (!incomingBuffer) return;
-          let totalLen = buffer.length + incomingBuffer.length; // TODO: Deny big requests!
-          buffer = Buffer.concat([ buffer, incomingBuffer ], totalLen);
+          let heardData = () => { while (buffer.length >= 2) { // TODO: Refactor to "parseSoktBufferMessages"
+            
+            // ==== PARSE FRAME
+            
+            let b = buffer[0] >> 4;   // Skip first 4 bits of 1st byte
+            if (b % 8) throw new Error('Some reserved bits are on');
+            let isFinalFrame = b === 8;
+            
+            let op = buffer[0] % 16;
+            if (op < 0 || (op > 2 && op < 8) || op > 10) throw new Error(`Invalid op: ${op}`);
+            
+            if (op >= 8 && !isFinalFrame) throw new Error('Incomplete control frame');
+            
+            b = buffer[1];            // Look at second byte
+            let masked = b >> 7;      // Final bit of 2nd byte - states whether frame is masked
+            
+            // Server requires a mask; Client requires no mask
+            if (!masked) throw new Error('No mask');
+            
+            let length = b % 128;
+            let offset = masked ? 6 : 2; // Masked frames have an extra 4 halfwords containing the mask
+            
+            if (buffer.length < offset + length) return; // Await more data
+            
+            if (length === 126) {         // Websocket's "medium-size" frame format
+              length = buffer.readUInt16BE(2);
+              offset += 2;
+            } else if (length === 127) {  // Websocket's "large-size" frame format
+              length = buffer.readUInt32BE(2) * U.int32 + buffer.readUInt32BE(6);
+              offset += 8;
+            }
+            
+            if (buffer.length < offset + length) return; // Await more data
+            
+            // Now we know the exact range of the incoming frame; we can slice and unmask it as necessary
+            let mask = buffer.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
+            let data = buffer.slice(offset, offset + length); // After the mask comes the data
+            let w = 0;
+            for (let i = 0, len = data.length; i < len; i++) {
+              data[i] ^= mask[w];     // Apply XOR
+              w = w < 3 ? w + 1 : 0;  // `w` follows `i`, but wraps every 4. More efficient than `%`
+            }
+            
+            // Dispense with the frame we've just processed
+            buffer = buffer.slice(offset + length); 
+            
+            // ==== PROCESS FRAME (based on `isFinalFrame`, `op`, and `data`)
+            
+            // The following operations can occur regardless of socket state
+            if (op === 8) {         // Process "close" op
+              status = 'ending'; conn.shut(); break;
+            } else if (op === 9) {  // Process "ping" op
+              throw new Error('Unimplemented op: 9');
+            } else if (op === 10) { // Process "pong" op
+              throw new Error('Unimplemented op: 10');
+            }
+            
+            // For the following operations, ensure that the socket is open and steady
+            if (status !== 'started') continue;
+            
+            // Validate "continuation" functionality
+            if (op === 0 && curOp === null) throw new Error('Unexpected continuation frame');
+            if (op !== 0 && curOp !== null) throw new Error('Truncated continuation frame');
+            
+            // Process "continuation" ops as if they were the op being continued
+            if (op === 0) op = curOp;
+            
+            // Text ops are our ONLY supported ops!
+            if (op !== 1) throw new Error(`Unsupported op: ${op}`);
+            
+            curOp = 1;
+            curFrames.push(data);
+            
+            if (isFinalFrame) {
+              let fullStr = Buffer.concat(curFrames).toString('utf8');
+              curOp = null; curFrames = []; // Note `buffer` may have overflow data for the next op!
+              conn.hear.wobble([ JSON.parse(fullStr), null ]);
+            }
+          }};
+          let safeHeardData = () => { try { heardData(); } catch(err) { resetSoktState(); throw err; }; };
           
-          if (status === 'started') {
+          sokt.on('readable', () => {
+            let incomingBuffer = sokt.read();
+            if (!incomingBuffer || !incomingBuffer.length) return;
+            buffer = Buffer.concat([ buffer, incomingBuffer ], buffer.length + incomingBuffer.length);
             
-            try { safeHeardData(); }
-            catch(err) { console.log(`Sokt error when started:\n${this.formatError(err)}`); }
-            
-          } else if (status === 'starting') {
-            
-            try { heardHandshakeData(); }
-            catch(err) { console.log(`Error handshaking: ${this.formatError(err)}`); }
-            
-          } else {
-            
-            console.log(`Ignored ${incomingBuffer.length} bytes; status is ${status}`);
-            // buffer = Buffer.alloc(0);
-            // curOp = null;
-            // curFrames = [];
-            
-          }
+            if (status === 'started') {
+              
+              try { safeHeardData(); }
+              catch(err) { console.log(`Sokt error when started:\n${this.formatError(err)}`); }
+              
+            } else if (status === 'starting') {
+              
+              try { heardHandshakeData(); }
+              catch(err) { console.log(`Error handshaking: ${this.formatError(err)}`); }
+              
+            } else {
+              
+              console.log(`Ignored ${incomingBuffer.length} bytes (status is ${status})`);
+              resetSoktState();
+              
+            }
+          });
+          sokt.on('close', () => {
+            resetSoktState(); status = 'ended'; conn.shut();
+          });
+          sokt.on('error', err => {
+            console.log(`Socket error:\n${this.formatError(err)}`);
+            resetSoktState(); status = 'ended'; conn.shut();
+          });
           
-        });
-        sokt.on('close', () => {
-          status = 'ended';
-          buffer = null;
-          curOp = null;
-          curFrames = [];
-          connectionWob.shut();
-        });
-        sokt.on('error', err => {
-          console.log(`Socket error:\n${this.formatError(err)}`);
-          sokt.end();
-        });
+        }
         
       });
+      serverWob.desc = `SOKT @ ${ip}:${port}`;
+      serverWob.cost = 50;
       
-      await new Promise(r => server.listen(port, ip, r));
+      await Promise(r => server.listen(port, ip, r));
       return serverWob;
     },
     
@@ -1145,6 +1143,8 @@
       if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw new Error(`Invalid bearing: "${bearing}"`);
       
       // We're establishing with known params! So set them on `this`
+      this.ip = ip || 'localhost';
+      this.port = port || 80;
       this.hut = hut;
       this.bearing = bearing;
       this.spoofEnabled = spoofEnabled;

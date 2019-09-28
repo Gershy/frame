@@ -23,7 +23,9 @@
       // current value of Above's `foundation.getMs()`
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
-      let { query } = this.parseUrl(window.location.href);
+      let { host, port, query } = this.parseUrl(window.location.href);
+      this.ip = host;
+      this.port = port;
       this.spoof = query.has('spoof') ? query.spoof : null;
       
       // This value shows up in stack traces (used to isolate line number)
@@ -78,11 +80,10 @@
         
         let real = U.rooms.real.built;
         let realHtmlCss = U.rooms.realHtmlCss.built;
-        // let reality = realHtmlCss.Reality('root',  // TODO: This is where Reality should be initialized
-        this.rootReal = real.Real({ nameChain: [ 'root' ] });
+        // let reality = realHtmlCss.Reality('root',  // TODO: This is where Reality should be initialized??
+        this.rootReal = real.Real({});
         this.rootReal.realized = document.body;
         this.rootReal.realized.classList.add('root');
-        this.rootReal.realized.innerHTML = '';
         
       }
       
@@ -150,23 +151,41 @@
         
       };
       
-      
       let conn = Hog();
-      conn.cpuId = 'remote';
       conn.hear = U.Wob({});
       conn.tell = tellAndHear;
       
       let serverWob = U.WobVal(null);
       serverWob.desc = `HTTP @ ${ip}:${port}`;
+      serverWob.cost = 100;
       
-      pool.addConn(conn.cpuId, serverWob, conn);
+      pool.addCpuConn('remote', serverWob, conn);
       serverWob.wobble(conn);
       
       // Immediately bank a poll
       conn.tell({ command: 'bankPoll' });
       
-      // TODO: What about this?
-      // this.unloadWob.hold(v => v && tellAndHear({ command: 'close' }));
+      return serverWob;
+    },
+    makeSoktServer: async function(pool, ip, port) {
+      
+      if (!WebSocket) return null;
+      
+      let sokt = new WebSocket(`ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
+      await Promise(r => sokt.onopen = r);
+      
+      let conn = Hog();
+      conn.hear = U.Wob({});
+      conn.tell = msg => sokt.send(JSON.stringify(msg));
+      
+      sokt.onmessage = ({ data }) => data && conn.hear.wobble([ JSON.parse(data), null ]);
+      
+      let serverWob = U.WobVal(null);
+      serverWob.desc = `SOKT @ ${ip}:${port}`;
+      serverWob.cost = 50;
+      
+      pool.addCpuConn('remote', serverWob, conn);
+      serverWob.wobble(conn);
       
       return serverWob;
     },

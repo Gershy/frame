@@ -88,45 +88,55 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     let ret = JSON.stringify(item);
     return (ret.length > this.dbgLimit) ? ret.substr(0, this.dbgLimit - 3) + '...' : ret;
   },
-  addConn: function(cpuId, server, conn) {
+  addCpuConn: function(cpuId, server, conn) {
     
-    if (!conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.typeOf(conn));
+    if (!conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.nameOf(conn));
     
-    if (!this.cpus.has(cpuId)) {
-      
-      this.cpus[cpuId] = { cpuId, addedMs: U.foundation.getMs(), conns: Map() };
-      if (doNetworkDbg) console.log(`>>JOIN ${cpuId}`);
+    let dbgDesc = doNetworkDbg ? `${server.desc.substr(0, 4)}:${cpuId}` : '';
+    
+    if (this.cpus.has(cpuId)) {
+      if (this.cpus[cpuId].conns.has(server)) throw new Error(`CpuId ${cpuId} already seen on server ${server.desc}`);
+    } else {
+      this.cpus[cpuId] = { cpuId, firstSeenMs: U.foundation.getMs(), conns: Map(), ipPort: [ null, null ], spoofed: false };
+      if (doNetworkDbg) console.log(`>>JOIN ${dbgDesc}`);
     }
     
     // Track connection
+    conn.cpuId = cpuId;
     this.cpus[cpuId].conns.set(server, conn);
-    if (doNetworkDbg) console.log(`>-HOLD ${cpuId} on ${server.desc}`);
     
-    if (doNetworkDbg) conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${cpuId}: ${this.dbgItem(msg)}`));
-    
-    let origTell = conn.tell;
-    if (doNetworkDbg) conn.tell = (...args) => {
-      console.log(`--TELL ${cpuId}: ${this.dbgItem(args[0])}`);
-      return origTell(...args);
-    };
+    if (doNetworkDbg) {
+      console.log(`>-HOLD ${dbgDesc} on ${server.desc}`);
+      
+      conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${dbgDesc}: ${this.dbgItem(msg)}`));
+      
+      let origTell = conn.tell;
+      conn.tell = (...args) => {
+        console.log(`--TELL ${dbgDesc}: ${this.dbgItem(args[0])}`);
+        return origTell(...args);
+      };
+    }
     
     // If connection shuts, untrack connection. If no connections left,
     // untrack entire cpu!
     conn.shutWob().hold(() => {
       this.cpus[cpuId].conns.rem(server);
-      if (doNetworkDbg) console.log(`<-DROP ${cpuId} on ${server.desc}`);
+      if (doNetworkDbg) console.log(`<-DROP ${dbgDesc} on ${server.desc}`);
       
-      if (this.cpus[cpuId].conns.toArr(v => v).isEmpty()) {
+      if (this.cpus[cpuId].conns.isEmpty()) {
         delete this.cpus[cpuId];
-        if (doNetworkDbg) console.log(`<<EXIT ${cpuId}`);
+        if (doNetworkDbg) console.log(`<<EXIT ${dbgDesc}`);
       }
     });
     
     return conn;
   },
-  getConn: function(cpuId, server) {
+  getCpu: function(cpuId) {
+    return this.cpus.has(cpuId) ? this.cpus[cpuId] : null;
+  },
+  getCpuConn: function(cpuId, server) {
     if (!this.cpus.has(cpuId)) return null;
-    return this.cpus[cpuId].conns.get(server);
+    return this.cpus[cpuId].conns.get(server) || null;
   },
   remConn: function(cpuId, server) {
     if (!this.cpus.has(cpuId)) throw new Error(`Can't rem conn; no cpu at id "${cpuId}"`);
@@ -243,9 +253,10 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   parseUrl: function(url) {
     let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
     if (!path.hasHead('/')) path = `/${path}`;
+    
     return {
       protocol, host, port, path,
-      query: query.split('&').toObj(queryPc => queryPc.has('=') ? queryPc.split('=') : [ queryPc, null ])
+      query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.split('=') : [ pc, null ])
     };
   },
 })});

@@ -20,18 +20,16 @@ U.buildRoom({
       vAlignBefore: { zoom: '1', display: 'inline-block', verticalAlign: 'middle', content: '\'\'', width: '0', height: '100%' },
     };
     let tinyRound = (val, epsilon=0.00001) => {
-      
       // If `val` is within `epsilon` distance of an integer, returns
       // that nearby integer (otherwise returns `val`).
-      
       let round = Math.round(val);
       return (Math.abs(val - round) < epsilon) ? round : val;
     };
-    let makeEventCustom = evt => evt.stopPropagation() || evt.preventDefault();
+    let customEvent = evt => evt.stopPropagation() || evt.preventDefault() || true;
     
     let unitCss = Map();
     let getUnitCss = unit => {
-      if (!unitCss.has(unit.constructor)) throw new Error(`Can\'t get css for Unit: ${U.typeOf(unit)}`);
+      if (!unitCss.has(unit.constructor)) throw new Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
       return unitCss.get(unit.constructor)(unit);
     };
     unitCss.set(real.Unit, unit => { throw new Error('Can\'t get css for Unit'); });
@@ -63,16 +61,14 @@ U.buildRoom({
       }));
       zoneCss.set(real.RootViewPortItem, (rootViewPortItem, layout, ...trail) => ({
         main: {
-          position: 'relative', display: 'block',
-          overflow: 'auto', fontSize: '13px',
+          position: 'relative', display: 'block', overflow: 'auto',
           width: real.ViewPortMin(1), height: real.ViewPortMin(1),
           ...cssTech.vAlignChild,
         }
       }));
       zoneCss.set(real.RootPageItem, (rootPageItem, layout, ...trail) => ({
         main: {
-          position: 'absolute', display: 'block',
-          overflow: 'hidden auto', fontSize: '13px',
+          position: 'absolute', display: 'block', overflow: 'hidden auto',
           left: '0', right: '0', top: '0', bottom: '0'
         }
       }));
@@ -107,7 +103,8 @@ U.buildRoom({
         if (showText.origin[1] === 'b') throw new Error('Css doesn\'t enjoy vertically aligning text to bottom');
         if ((!!w) !== (!!h)) throw new Error('ShowText mixes set and unset extents');
         
-        return { main: {
+        let zoneCss = {};
+        zoneCss.main = {
           ...((w && h) ? { boxSizing: 'border-box' } : {}),
           whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
           textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
@@ -117,7 +114,14 @@ U.buildRoom({
           ...(showText.padR.amt ? { paddingRight: showText.padR } : {}),
           ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
           ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
-        }};
+        };
+        
+        if (!showText.interactive) zoneCss.before = {
+          // These escapes are ugly: we want '\200B' to appear in css
+          content: '\'\\200B\''
+        };
+        
+        return zoneCss;
       });
       zoneCss.set(real.AxisSectionItem, (axisSectionItem, layout, parLayout, ...parTrail) => {
         
@@ -163,7 +167,8 @@ U.buildRoom({
         main: cssTech.vAlignChild
       }));
       zoneCss.set(real.TextFlowSlots, (textFlowSlots, layout, ...trail) => ({
-        main: { whiteSpace: 'pre', overflow: 'hidden auto' }
+        // TODO: Include `textFlowSlots.origin`, and apply origin here?
+        main: { whiteSpace: 'pre', overflow: 'hidden auto', textAlign: 'left' }
       }));
       zoneCss.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => ({
         main: {
@@ -178,31 +183,33 @@ U.buildRoom({
       domElemFunc.set(real.ShowText, (showText, layout, ...trail) => {
         if (!showText.interactive) return () => document.createElement('div');
         return showText.multiLine
-          ? () => {
-              let dom = document.createElement('textarea');
-              dom.style.fontFamily = 'inherit'; // TODO: Should be static css rule
-              dom.style.resize = 'none'; // TODO: Also should be in css
-              return dom;
-            }
+          ? () => document.createElement('textarea')
           : () => {
               let dom = document.createElement('input');
-              dom.style.fontFamily = 'inherit';
               dom.setAttribute('type', 'text');
               return dom;
             }
       });
       
       runTimeUixFunc.set(real.ShowText, (showText, layout, ...trail) => {
-        return showText.interactive
-          ? real => {
-              let dom = real.realized;
-              real.tellWob0 = U.WobVal('');
-              real.setText = showText.multiLine ? text => dom.textContent = text : text => dom.value = text;
-              dom.addEventListener('input', v => real.tellWob0.wobble(dom.value));
-            }
-          : real => {
-              real.setText = text => real.realized.textContent = text;
-            };
+        
+        if (showText.interactive) {
+          return real => {
+            if (real.tellWob) throw new Error(`Conflicting runTimeUix "tellWob" on ${real.layout.name}`);
+            if (real.setText) throw new Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
+            let dom = real.realized;
+            let tellWob = U.WobVal('');
+            real.tellWob = () => tellWob;
+            real.setText = text => tellWob.wobble(dom.value = text);
+            dom.addEventListener('input', () => tellWob.wobble(dom.value));
+          };
+        } else {
+          return real => {
+            if (real.setText) throw new Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
+            real.setText = text => real.realized.textContent = text;
+          };
+        };
+        
       });
       runTimeUixFunc.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => {
         return real => {
@@ -315,7 +322,7 @@ U.buildRoom({
           
           try {
             
-            let layoutCmps = this.getLayoutCmps(layout, trail);
+            let layoutCmps = this.getLayoutCmps(layout, ...trail);
             let decals = layout.cmps.decals;
             
             // Merge ZoneCss for all LayoutCmps
@@ -334,13 +341,6 @@ U.buildRoom({
             // TODO: Necessary??
             zoneCss.forEach((css, zone) => {
               if (css.isEmpty()) { delete zoneCss[zone]; return; }
-              
-              // TODO:  Consider globally inherited font-size of 0, and
-              //        only apply font-size to `ShowText`???
-              // Reset any inappropriately inherited values
-              if (!css.has('textAlign')) css.textAlign = 'left';
-              if (!css.has('fontSize')) css.fontSize = '13px';
-              if (css.fontSize === 'inherit') delete css.fontSize; // `font-size: inherit;` is redundant!
             });
             
             // The overall purpose here is to populate `cssRules`
@@ -353,24 +353,48 @@ U.buildRoom({
           
         });
         
-        let cmpText = cssRules.map(({ nameChain, zoneCss }) => {
+        cssRules = [
+          { selector: ':focus', zoneCss: {
+            main: {
+              boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'
+            }
+          }},
+          { selector: 'textarea, input', zoneCss: {
+            main: {
+              border: 'none',
+              outline: 'none',
+              fontFamily: 'inherit',
+              boxShadow: 'inset 0 0 0 2px rgba(0, 0, 0, 0.5)'
+            }
+          }},
+          { selector: 'textarea', zoneCss: {
+            main: {
+              resize: 'none'
+            }
+          }},
+          ...cssRules
+        ];
+          
+        
+        let cmpCssText = cssRules.map(({ nameChain=null, selector=null, zoneCss }) => {
+          
+          if (selector === null) selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
           
           return zoneCss.toArr((css, zone) => {
             
-            let selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
+            let zoneSelector = selector;
             
             if (zone === 'main') { // Main css - do nothing!
             } else if ([ 'focus', 'hover' ].has(zone)) {  // Pseudo-selector
-              selector = `${selector}:${zone}`;
+              zoneSelector = `${selector}:${zone}`;
             } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
-              selector = `${selector}::${zone}`;
+              zoneSelector = `${selector}::${zone}`;
             } else {
               throw new Error(`Unexpected css zone: ${zone}`);
             }
             
-            //console.log('CSS:', nameChain.join('.'), css);
             return [
-              `${selector} {`,
+              `${zoneSelector} {`,
               ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};` : C.skip),
               '}'
             ].join('\n'); // Join together all lines of a CssBlock
@@ -379,7 +403,7 @@ U.buildRoom({
           
         }).join('\n');  // Join together all ZonedCssBlocks of a CssStyleSheet
         
-        return cmpText;
+        return cmpCssText;
         
       },
       
@@ -397,7 +421,7 @@ U.buildRoom({
       },
       initReal0: function(real, layout, trail) {
         // Create dom element and add class for `layout.name`
-        let cmps = this.getLayoutCmps(layout, trail);
+        let cmps = this.getLayoutCmps(layout, ...trail);
         let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
         if (makeDomElems.length > 1) throw new Error('Conflicting domElemFuncs');
         
@@ -423,14 +447,23 @@ U.buildRoom({
         let dom = childReal.realized;
         dom.parentNode.removeChild(dom);
       },
-      makeFeelable: function(real, wobTmp) {
-        let dom = real.realized;
-        dom.addEventListener('mousedown', evt => makeEventCustom(evt) || wobTmp.up());
-        dom.addEventListener('mouseup', evt => makeEventCustom(evt) || wobTmp.dn());
-        dom.style.gain({ cursor: 'pointer' });
-      },
-      makeTellable: function(real, wob) {
+      makeFeelable: function(r, wobTmp) {
+        let up = () => !wobTmp.tmp && wobTmp.up();
+        let dn = () => wobTmp.tmp && wobTmp.dn();
         
+        let dom = r.realized;
+        dom.addEventListener('mousedown', evt => customEvent(evt) && up());
+        dom.addEventListener('mouseup', evt => customEvent(evt) && dn());
+        
+        // Note we only process the "enter" key
+        let keySet = real.keys.activate;
+        dom.addEventListener('keydown', evt => keySet.has(evt.keyCode) && customEvent(evt) && up());
+        dom.addEventListener('keyup', evt => keySet.has(evt.keyCode) && customEvent(evt) && dn());
+        
+        dom.setAttribute('tabIndex', '0');
+        dom.style.gain({ cursor: 'pointer' });
+        
+        r.shutWob().hold(dn); // Deactive wob if/when Real shuts
       }
     })});
     

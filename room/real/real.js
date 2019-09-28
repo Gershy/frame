@@ -27,15 +27,19 @@ U.buildRoom({
       return real;
       
     };
-    
-    
-    // ==== UNIT VALUES
     let unitsEq = (u1, u2) => {
       let Insp1=U.inspOf(u1), Insp2=U.inspOf(u2);
       if (Insp1 !== Insp2) return false;
       if (U.isInspiredBy(Insp1, Unit)) return u1.eq(u2);
       return u1 === u2;
     };
+    let updatedUnit = (curW, newW) => {
+      // Updates a unit, throwing an error upon conflicts
+      if (curW && newW && !unitsEq(curW, newW)) throw new Error('Conflicting extents');
+      return curW || newW;
+    };
+    
+    // ==== UNIT VALUES
     let Unit = U.inspire({ name: 'Unit', insps: {}, methods: (insp, Insp) => ({
       init: function() {},
       eq: function(u) { return (U.inspOf(u) === U.inspOf(this)) && this.eq0(u); },
@@ -46,23 +50,18 @@ U.buildRoom({
       // A Unit with a specific numeric "amount"
       
       init: function(amt) {
-        if (!U.typeOf(amt, Number) || isNaN(amt)) throw new Error(`Invalid amt: ${amt}`);
+        if (!U.nameOf(amt, Number) || isNaN(amt)) throw new Error(`Invalid amt: ${amt}`);
         insp.Unit.init.call(this);
         this.amt = amt;
       },
       eq0: function(u) { return u.amt === this.amt; },
       isAbsolute: function() {
-        // Indicates whether the final length indicated by the unit is
-        // known without any context. For example, pixel-units are
-        // always absolute, since, e.g., "53 pixels" has a known size
-        // regardless of any context. In contrast, the final length as
-        // a result of percentage units isn't known without knowing
-        // the size of the containing Real.
+        // Indicates whether the resulting amount is unchanging
+        // regardless of context
         return false;
       },
       add: function(n) { let Cls = this.constructor; return Cls(this.amt + n); },
       mult: function(n) { let Cls = this.constructor; return Cls(this.amt * n); },
-      round: function() { let Cls = this.constructor; return Cls(Math.round(this.amt)); }
       
     })});
     let UnitPx = U.inspire({ name: 'UnitPx', insps: { UnitAmt }, methods: (insp, Insp) => ({
@@ -79,7 +78,7 @@ U.buildRoom({
       init: function(...units) {
         let unitsByType = Map();
         for (let unit of units) {
-          if (!U.isInspiredBy(unit, UnitAmt)) throw new Error(`Provided invalid Unit: ${U.typeOf(unit)}`);
+          if (!U.isInspiredBy(unit, UnitAmt)) throw new Error(`Provided invalid Unit: ${U.nameOf(unit)}`);
           let UnitCls = unit.constructor;
           if (!unitsByType.has(UnitCls)) unitsByType.set(UnitCls, []);
           unitsByType.get(UnitCls).push(unit);
@@ -123,13 +122,8 @@ U.buildRoom({
     
     
     // ==== SIZE
-    let Size = U.inspire({ name: 'Size', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-      getW: C.notImplemented,
-      getH: C.notImplemented
-    })});
-    let FillParent = U.inspire({ name: 'FillParent', insps: { Size }, methods: (insp, Insp) => ({
+    let FillParent = U.inspire({ name: 'FillParent', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(params) {
-        insp.Size.init.call(this, {});
         hvParams('shrink', params, this);
       },
       getW: function(par, ...parTrail) {
@@ -174,26 +168,20 @@ U.buildRoom({
     
     
     // ==== SLOTS
-    let Slots = U.inspire({ name: 'Slots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({}) });
-    
-    let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { Slots }, methods: (insp, Insp) => ({
-      init: function() {},
+    let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       insertViewPortItem: function() { return RootViewPortItem(); },
-      insertPageItem: function() { return RootPageItem(); },
-      fixesChildSizes: function() { return true; },
+      insertPageItem: function() { return RootPageItem(); }
     })});
-    let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { Size }, methods: (insp, Insp) => ({
-      init: function() {},
+    let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: function(...trail) { return ViewPortMin(1); },
       getH: function(...trail) { return ViewPortMin(1); }
     })});
-    let RootPageItem = U.inspire({ name: 'RootPageItem', insps: { Size }, methods: (insp, Insp) => ({
-      init: function() {},
+    let RootPageItem = U.inspire({ name: 'RootPageItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: function(par, ...parTrail) { return UnitPc(1); },
       getH: function(par, ...parTrail) { return UnitPc(1); }
     })});
     
-    let AxisSections = U.inspire({ name: 'AxisSections', insps: { Slots }, methods: (insp, Insp) => ({
+    let AxisSections = U.inspire({ name: 'AxisSections', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function({ axis, dir='+', cuts }) {
         if (!axis) throw new Error('Missing "axis" param');
         if (!cuts) throw new Error('Missing "cuts" param');
@@ -204,12 +192,10 @@ U.buildRoom({
         this.dir = dir;
         this.cuts = cuts;
       },
-      insertSectionItem: function(index) { return AxisSectionItem(this, index); },
-      fixesChildSizes: function() { return true; }
+      insertSectionItem: function(index) { return AxisSectionItem(this, index); }
     })});
-    let AxisSectionItem = U.inspire({ name: 'AxisSectionItem', insps: { Size }, methods: (insp, Insp) => ({
+    let AxisSectionItem = U.inspire({ name: 'AxisSectionItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par, index) {
-        insp.Size.init.call(this);
         this.par = par;
         this.index = index;
       },
@@ -222,7 +208,7 @@ U.buildRoom({
       getH: function(par, ...parTrail) { return (this.par.axis === 'x') ? par.getH(...parTrail) || UnitPc(1) : this.getCutExt(par, ...parTrail); }
     })});
     
-    let LinearSlots = U.inspire({ name: 'LinearSlots', insps: { Slots }, methods: (insp, Insp) => ({
+    let LinearSlots = U.inspire({ name: 'LinearSlots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function({ axis, dir='+' /*, initPad=UnitPx(0)*/ }) {
         if (!axis) throw new Error('Missing "axis" param');
         if (![ '+', '-' ].has(dir)) throw new Error('Invalid "dir" param');
@@ -230,8 +216,7 @@ U.buildRoom({
         this.axis = axis;
         this.dir = dir;
       },
-      insertLinearItem: function() { return LinearItem(this); },
-      fixesChildSizes: function() { return false; }
+      insertLinearItem: function() { return LinearItem(this); }
     })});
     let LinearItem = U.inspire({ name: 'LinearItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par) {
@@ -239,20 +224,18 @@ U.buildRoom({
       }
     })});
     
-    let CenteredSlot = U.inspire({ name: 'CenteredSlot', insps: { Slots }, methods: (insp, Insp) => ({
-      init: function() {},
-      insertCenteredItem: function() { return CenteredItem(); },
-      fixesChildSizes: function() { return false; }
+    let CenteredSlot = U.inspire({ name: 'CenteredSlot', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
+      insertCenteredItem: function() { return CenteredItem(); }
     })});
     let CenteredItem = U.inspire({ name: 'CenteredItem', insps: { RealLayoutCmp } });
     
-    let TextFlowSlots = U.inspire({ name: 'TextFlowSlots', insps: { Slots }, methods: (insp, Insp) => ({
+    let TextFlowSlots = U.inspire({ name: 'TextFlowSlots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function({ gap=UnitPx(0), lineHeight=null }) {
+        // TODO: Include "origin"?
         this.gap = gap;
         this.lineHeight = lineHeight;
       },
-      insertTextFlowItem: function() { return TextFlowItem(this); },
-      fixesChildSizes: function() { return false; }
+      insertTextFlowItem: function() { return TextFlowItem(this); }
     })});
     let TextFlowItem = U.inspire({ name: 'TextFlowItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function(par) {
@@ -264,41 +247,28 @@ U.buildRoom({
     // ==== STRUCTURE
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
       
-      $nestedLayouts: flat => {
-        // This is the root layout node - so "slots" are RootViewStyles
-        let nested = {
+      init: function(name, layoutsFlat) {
+        this.name = name;
+        this.rootLayout = {
           name: 'root',
           cmps: { slot: par => null, size: null, slots: RootViewStyles({}) },
           children: {}
         };
-        flat.forEach((cmps, chainName) => {
+      },
+      addFlatLayouts: function(flatLayouts) {
+        flatLayouts.forEach((cmps, chainName) => {
           let names = chainName.split('.');
-          let ptr = nested;
+          let layout = this.rootLayout;
           for (let name of names) {
-            if (!ptr.children.has(name)) ptr.children[name] = { cmps: null, children: {} };
-            ptr = ptr.children[name];
+            if (!layout.children.has(name)) layout.children[name] = { name, cmps: null, children: {} };
+            layout = layout.children[name];
           }
-          ptr.name = names[names.length - 1]; // Assign the name at the end of the chain
-          ptr.cmps = cmps; // Set "cmps"
-        });
-        return nested;
-      },
-      
-      init: function(name, layoutsFlat) {
-        this.name = name;
-        this.rootLayout = Insp.nestedLayouts(layoutsFlat);
-        
-        // TODO: Whereas in the future "iterating layouts" may involve
-        // visiting every possible slotting of child layout in parent
-        // layout, the iteration here simply needs to visit every
-        // distinct layout (while the futuristic version would be good
-        // for validating all possible getW and getH calls succeed!)
-        this.iterateLayouts((layout, trail) => {
-          layout.getW = (...trail) => this.getLayoutW(layout, trail);
-          layout.getH = (...trail) => this.getLayoutH(layout, trail);
+          layout.cmps = cmps; // Set "cmps"
+          layout.getW = this.getLayoutW.bind(this, layout);
+          layout.getH = this.getLayoutH.bind(this, layout);
         });
       },
-      getLayoutCmps: function(layout, trail) {
+      getLayoutCmps: function(layout, ...trail) {
         let cmps = [];
         if (layout.cmps.size) cmps.push(layout.cmps.size);
         if (layout.cmps.slots) cmps.push(layout.cmps.slots);
@@ -308,30 +278,22 @@ U.buildRoom({
         }
         return cmps;
       },
-      getLayoutW: function(layout, trail) {
-        let cmps = this.getLayoutCmps(layout, trail);
-        let w = null, w1 = null;
-        for (let cmp of cmps) {
-          if (!cmp.getW || (w1 = cmp.getW(...trail)) === null) continue; // TODO: Duck typing...?
-          if (w !== null && !unitsEq(w, w1)) throw new Error('Can\'t determine width; conflicting widths');
-          w = w1;
-        }
-        return w ? (w.isAbsolute() ? w : UnitPc(1)) : null; //(w && w.isAbsolute()) ? w : UnitPc(1);
+      getLayoutW: function(layout, ...trail) {
+        let cmps = this.getLayoutCmps(layout, ...trail);
+        let w = null;
+        for (let cmp of cmps) w = updatedUnit(w, cmp.getW(...trail));
+        return w && (w.isAbsolute() ? w : UnitPc(1));
       },
-      getLayoutH: function(layout, trail) {
-        let cmps = this.getLayoutCmps(layout, trail);
-        let h = null, h1 = null;
-        for (let cmp of cmps) {
-          if (!cmp.getH || (h1 = cmp.getH(...trail)) === null) continue; // TODO: Duck typing...?
-          if (h !== null && !unitsEq(h, h1)) throw new Error('Can\'t determine height; conflicting heights');
-          h = h1;
-        }
-        return h ? (h.isAbsolute() ? h : UnitPc(1)) : null; //(h && h.isAbsolute()) ? h : UnitPc(1);
+      getLayoutH: function(layout, ...trail) {
+        let cmps = this.getLayoutCmps(layout, ...trail);
+        let h = null;
+        for (let cmp of cmps) h = updatedUnit(h, cmp.getH(...trail));
+        return h && (h.isAbsolute() ? h : UnitPc(1));
       },
-      iterateLayouts: function(it, trail=[], layout=this.rootLayout) {
+      iterateLayouts: function(it, layout=this.rootLayout, trail=[]) {
         it(layout, trail);
         trail = [ layout, ...trail ];
-        layout.children.forEach(childLay => this.iterateLayouts(it, trail, childLay));
+        layout.children.forEach(childLayout => this.iterateLayouts(it, childLayout, trail));
       },
       getCmpTimeFwkAssets: C.notImplemented,
       initReal: function(parReal, layout) {
@@ -342,7 +304,7 @@ U.buildRoom({
         
         // Do `this.initReal0` - expect it to set `real.realized`!
         this.initReal0(real, layout, trail);
-        if (!real.realized) throw new Error(`${U.typeOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
+        if (!real.realized) throw new Error(`${U.nameOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
         
         return real;
       },
@@ -361,7 +323,6 @@ U.buildRoom({
         this.realized = null;   // Reference to a node in a graphics framework
         this.par = null;
         this.feelWob0 = null;       // "Feeling" most often occurs via click
-        this.tellWob0 = null;       // "Telling" most often occurs via text entry
       },
       form: function(submitTerm, dep, act, items) {
         
@@ -413,15 +374,11 @@ U.buildRoom({
         }
         return this.feelWob0;
       },
-      tellWob: function() {
-        if (!this.tellWob0) {
-          // TODO: Anything here?
-          // this.tellWob0 = WobVal(''); ???
-          // this.reality.makeTellable(this, this.tellWob0); ???
-        }
-        return this.tellWob0;
-      },
       addReal: function(realName, dbg=false) {
+        if (!this.layout.children.has(realName)) {
+          console.log(this.layout);
+          throw new Error(`No layout for "${realName}"`);
+        }
         let real = this.reality.initReal(this, this.layout.children[realName]);
         real.par = this;
         this.reality.addChildReal(this, real);
@@ -435,16 +392,18 @@ U.buildRoom({
     
     
     return {
+      
+      keys: {
+        activate: Set([ 13, 32 ]) // Enter, space
+      },
+      
       RealLayoutCmp,
       
       unitsEq,
-      Unit,
-      UnitAmt, UnitPx, UnitPc, ViewPortMin, Calc, CalcAdd,
+      Unit, UnitAmt, UnitPx, UnitPc, ViewPortMin, Calc, CalcAdd,
       
-      Size,
+      RealLayoutCmp,
       FillParent, WrapChildren, ShowText,
-      
-      Slots,
       RootViewStyles, RootViewPortItem, RootPageItem,
       AxisSections, AxisSectionItem,
       LinearSlots, LinearItem,
