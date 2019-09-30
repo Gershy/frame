@@ -152,6 +152,7 @@
       };
       
       let conn = Hog();
+      conn.cpuId = 'remote';
       conn.hear = U.Wob({});
       conn.tell = tellAndHear;
       
@@ -159,7 +160,7 @@
       serverWob.desc = `HTTP @ ${ip}:${port}`;
       serverWob.cost = 100;
       
-      pool.addCpuConn('remote', serverWob, conn);
+      pool.addCpuConn(serverWob, conn);
       serverWob.wobble(conn);
       
       // Immediately bank a poll
@@ -171,10 +172,12 @@
       
       if (!WebSocket) return null;
       
+      console.log(`SOKT TO: ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
       let sokt = new WebSocket(`ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
       
       let conn = Hog();
+      conn.cpuId = 'remote';
       conn.hear = U.Wob({});
       conn.tell = msg => sokt.send(JSON.stringify(msg));
       
@@ -184,7 +187,7 @@
       serverWob.desc = `SOKT @ ${ip}:${port}`;
       serverWob.cost = 50;
       
-      pool.addCpuConn('remote', serverWob, conn);
+      pool.addCpuConn(serverWob, conn);
       serverWob.wobble(conn);
       
       return serverWob;

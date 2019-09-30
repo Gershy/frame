@@ -49,8 +49,8 @@ U.buildRoom({
       // pair is like the "default" host+port pair, while others could
       // exist too.
       let { ip, port } = foundation;
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, 'localhost', 80) }));
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, 'localhost', 8000) }));
+      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, '127.0.0.1', 80) }));
+      lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, '127.0.0.1', 8000) }));
       
       /// {ABOVE=
       // TODO: Eventually decouple this from hinterlands
@@ -526,6 +526,7 @@ U.buildRoom({
               
               // Shut the AuthorHut
               let hutAuthor = hut.relRec(rt.hutAuthor);
+              if (!hutAuthor) return hut.tell({ command: 'error', type: 'denied', msg: 'not logged in', orig: msg });
               hutAuthor.members[1].modify(v => v.gain({ term: null }));
               hutAuthor.shut();
               

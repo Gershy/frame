@@ -88,21 +88,22 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     let ret = JSON.stringify(item);
     return (ret.length > this.dbgLimit) ? ret.substr(0, this.dbgLimit - 3) + '...' : ret;
   },
-  addCpuConn: function(cpuId, server, conn) {
+  addCpuConn: function(server, conn) {
     
-    if (!conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.nameOf(conn));
+    if (!conn.cpuId || !conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.nameOf(conn));
     
+    let cpuId = conn.cpuId;
     let dbgDesc = doNetworkDbg ? `${server.desc.substr(0, 4)}:${cpuId}` : '';
     
     if (this.cpus.has(cpuId)) {
       if (this.cpus[cpuId].conns.has(server)) throw new Error(`CpuId ${cpuId} already seen on server ${server.desc}`);
     } else {
       this.cpus[cpuId] = { cpuId, firstSeenMs: U.foundation.getMs(), conns: Map(), ipPort: [ null, null ], spoofed: false };
+      
       if (doNetworkDbg) console.log(`>>JOIN ${dbgDesc}`);
     }
     
     // Track connection
-    conn.cpuId = cpuId;
     this.cpus[cpuId].conns.set(server, conn);
     
     if (doNetworkDbg) {
@@ -144,7 +145,6 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     this.cpus[cpuId].conns.rem(server);
   }
 })});
-
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   init: function() {
     this.goals = this.defaultGoals();

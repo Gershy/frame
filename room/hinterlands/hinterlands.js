@@ -381,6 +381,8 @@ U.buildRoom({
         this.forceSyncVal = null;
         /// =TEST}
         
+        console.log('CREATED HUT:', this.getTerm());
+        
       },
       getTerm: function() {
         if (!this.term) this.term = this.lands.genUniqueTerm();
@@ -708,6 +710,7 @@ U.buildRoom({
           let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
           
           let client = Hog();
+          client.cpuId = cpuId;
           client.hear = U.Wob();
           client.tellWob = U.Wob();
           client.tell = (...args) => {
@@ -730,7 +733,7 @@ U.buildRoom({
             return tellVal;
           };
           
-          lands.pool.addCpuConn(cpuId, server, client);
+          lands.pool.addCpuConn(server, client);
           server.wobble(client);
           
           clients.add(client);
@@ -1324,6 +1327,7 @@ U.buildRoom({
               let cpuId = (cpuIdCnt++).toString(36).padHead(8, '0');
               
               let aboveClient = Hog();
+              aboveClient.cpuId = cpuId;
               aboveClient.hear = U.Wob();
               aboveClient.tellWob = U.Wob();
               aboveClient.tell = (...args) => aboveClient.tellWob.wobble(...args);
@@ -1346,7 +1350,7 @@ U.buildRoom({
                 
               };
               
-              lands.pool.addCpuConn(cpuId, serverBelow, aboveClient);
+              lands.pool.addCpuConn(serverBelow, aboveClient);
               serverBelow.wobble(aboveClient);
               
               return aboveClient;
