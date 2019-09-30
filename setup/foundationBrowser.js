@@ -172,7 +172,6 @@
       
       if (!WebSocket) return null;
       
-      console.log(`SOKT TO: ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
       let sokt = new WebSocket(`ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
       

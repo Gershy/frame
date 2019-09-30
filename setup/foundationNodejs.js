@@ -105,9 +105,10 @@
     }
   })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
-    $parseSoktMessages: (buffer, status, curOp, curFrames) => {
+    $parseSoktMessages: soktState => {
       let messages = [];
-      while (buffer.length >= 2) { // TODO: Refactor to "parseSoktBufferMessages"
+      let buffer = soktState.buffer;
+      while (buffer.length >= 2) {
         
         // ==== PARSE FRAME
         
@@ -150,14 +151,11 @@
           w = w < 3 ? w + 1 : 0;  // `w` follows `i`, but wraps every 4. More efficient than `%`
         }
         
-        // Dispense with the frame we've just processed
-        buffer = buffer.slice(offset + length); 
-        
         // ==== PROCESS FRAME (based on `isFinalFrame`, `op`, and `data`)
         
         // The following operations can occur regardless of socket state
         if (op === 8) {         // Process "close" op
-          status = 'ending'; break;
+          soktState.status = 'ended'; break;
         } else if (op === 9) {  // Process "ping" op
           throw new Error('Unimplemented op: 9');
         } else if (op === 10) { // Process "pong" op
@@ -165,28 +163,34 @@
         }
         
         // Validate "continuation" functionality
-        if (op === 0 && curOp === null) throw new Error('Unexpected continuation frame');
-        if (op !== 0 && curOp !== null) throw new Error('Truncated continuation frame');
+        if (op === 0 && soktState.curOp === null) throw new Error('Unexpected continuation frame');
+        if (op !== 0 && soktState.curOp !== null) throw new Error('Truncated continuation frame');
         
         // Process "continuation" ops as if they were the op being continued
-        if (op === 0) op = curOp;
+        if (op === 0) op = soktState.curOp;
         
-        // Text ops are our ONLY supported ops!
+        // Text ops are our ONLY supported ops! (TODO: For now?)
         if (op !== 1) throw new Error(`Unsupported op: ${op}`);
         
-        curOp = 1;
-        curFrames.push(data);
+        buffer = buffer.slice(offset + length); // Dispense with the frame we've just processed
+        soktState.curOp = 1;                              // Our only supported op is "text"
+        soktState.curFrames.push(data);                   // Include the complete frame
         
         if (isFinalFrame) {
-          let fullStr = Buffer.concat(curFrames).toString('utf8');
-          curOp = null; curFrames = []; // Note `buffer` may have overflow data for the next op!
+          let fullStr = Buffer.concat(soktState.curFrames).toString('utf8');
           messages.push(JSON.parse(fullStr));
+          soktState.curOp = null;
+          soktState.curFrames = [];
         }
       }
-      return { messages, remainingBuffer: buffer, status, curOp, curFrames };
-    },
-    $parseSoktUpgradeRequest: buffer => {
       
+      soktState.buffer = buffer;
+      
+      return messages;
+    },
+    $parseSoktUpgradeRequest: soktState => {
+      
+      let buffer = soktState.buffer;
       if (buffer.length < 4) return null;
       
       // TODO: Could it be more efficient to search backwards from the
@@ -206,7 +210,7 @@
       
       // Do an http upgrade operation
       let [ methodLine, ...lines ] = packet.replace(/\\r/g, '').split('\n'); // TODO: I think line-endings will always be \r\n
-      let [ method, path, version ] = methodLine.split(' ');
+      let [ method, path, httpVersion ] = methodLine.split(' ').map(v => v.trim());
       
       // Parse headers
       let headers = {};
@@ -215,7 +219,9 @@
         headers[head.trim().lower()] = tail.join(':').trim();
       }
       
-      return { method, path, version, headers, remainingBuffer: buffer.slice(packetEndInd + 4) };
+      soktState.buffer = buffer.slice(packetEndInd + 4);
+      
+      return { method, path, httpVersion, headers };
       
     },
     
@@ -888,7 +894,12 @@
       serverWob.desc = `SOKT @ ${ip}:${port}`;
       serverWob.cost = 50;
       
-      let soktInd = 0;
+      let makeSoktState = (status='initial') => ({
+        status, // "initial", "upgrading", "ready", "ended"
+        buffer: Buffer.alloc(0),
+        curOp: null,
+        curFrames: []
+      });
       
       let server = net.createServer(async sokt => {
         
@@ -898,44 +909,38 @@
         // TODO: If this connection *is* being repeated, is it an error?
         // Or do we end the current connection and create a new one?
         
-        // let conn = pool.getCpuConn(cpuId, serverWob);
-        
-        let buffer, curOp, curFrames;
-        let resetSoktState = () => { buffer = Buffer.alloc(0); curOp = null; curFrames = []; };
-        resetSoktState();
-        
-        let status = 'starting';
+        let soktState = makeSoktState();
         
         // Wait to get websocket request - it contains only headers
         let upgradeReq = null;
         while (true) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
           
-          upgradeReq = await Promise((rsv, rjc) => sokt.once('readable', () => {
+          upgradeReq = await Promise(r => sokt.once('readable', () => {
             let newBuffer = sokt.read();
-            if (!newBuffer || !newBuffer.length) return rsv(null);
-            buffer = Buffer.concat([ buffer, newBuffer ], buffer.length + newBuffer.length);
-            rsv(Insp.parseSoktUpgradeRequest(buffer));
+            if (!newBuffer || !newBuffer.length) return r(null);
+            soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
+            r(Insp.parseSoktUpgradeRequest(soktState));
           }));
-          if (upgradeReq) {
-            buffer = upgradeReq.remainingBuffer;
-            break;
-          }
+          if (upgradeReq) break;
           
         }
+        
+        soktState.status = 'upgrading';
         
         // Now we have the headers - send upgrade response
         if (!upgradeReq.headers.has('sec-websocket-key')) throw new Error('Missing "sec-websocket-key" header');
         let hash = crypto.createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
-        sokt.write([
+        
+        await new Promise(r => sokt.write([
           'HTTP/1.1 101 Switching Protocols',
           'Upgrade: websocket',
           'Connection: Upgrade',
           `Sec-WebSocket-Accept: ${hash.read().toString('base64')}`,
           '\r\n'
-        ].join('\r\n'));
+        ].join('\r\n'), r));
         
-        status = 'started';
+        soktState.status = 'ready';
         
         let { query: upgradeQuery } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
         
@@ -951,9 +956,7 @@
         conn.isSpoofed = isSpoofed;
         conn.ipPort = [ connIp, connPort ];
         conn.hear = Wob({});
-        conn.sokt = sokt;
         conn.tell = msg => {
-          
           let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
           let len = dataBuff.length;
           let metaBuff = null;
@@ -987,30 +990,26 @@
         };
         
         sokt.on('readable', () => {
-          let incomingBuffer = sokt.read();
-          if (!incomingBuffer || !incomingBuffer.length) return;
-          buffer = Buffer.concat([ buffer, incomingBuffer ], buffer.length + incomingBuffer.length);
+          if (conn.isShut()) return;
+          let newBuffer = sokt.read();
+          if (!newBuffer || !newBuffer.length) return;
+          soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            let { messages, ...state } = Insp.parseSoktMessages(buffer, status, curOp, curFrames);
-            buffer = state.remainingBuffer;
-            status = state.status;
-            curOp = state.curOp;
-            curFrames = state.curFrames;
-            for (let msg of messages) conn.hear.wobble([ msg, null ]);
-            if (status === 'ending') conn.shut();
-          } catch(err) { resetSoktState(); console.log(`Socket error:\n${this.formatError(err)}`); }
+            let messages = Insp.parseSoktMessages(soktState);
+            for (let message of messages) conn.hear.wobble([ message, null ]);
+          } catch(err) {
+            console.log(`Socket error:\n${this.formatError(err)}`);
+            soktState = makeSoktState('ended');
+          }
+          if (soktState.status === 'ended') conn.shut();
         });
-        sokt.on('close', () => { resetSoktState(); status = 'ended'; !conn.isShut() && conn.shut(); });
-        sokt.on('error', err => {
-          console.log(`Socket error:\n${this.formatError(err)}`);
-          resetSoktState(); status = 'ended'; !conn.isShut() && conn.shut();
-        });
+        sokt.on('close', () => { soktState = makeSoktState('ended'); conn.isShut() || conn.shut(); });
+        sokt.on('error', () => { soktState = makeSoktState('ended'); conn.isShut() || conn.shut(); });
+        sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
-        try {
-          pool.addCpuConn(serverWob, conn);
-          serverWob.wobble(conn);
-        } catch(err) { sokt.end(); }
+        try { pool.addCpuConn(serverWob, conn); } catch(err) { conn.shut(); throw err; }
+        serverWob.wobble(conn);
         
       });
       await Promise(r => server.listen(port, ip, r));

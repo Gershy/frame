@@ -381,8 +381,6 @@ U.buildRoom({
         this.forceSyncVal = null;
         /// =TEST}
         
-        console.log('CREATED HUT:', this.getTerm());
-        
       },
       getTerm: function() {
         if (!this.term) this.term = this.lands.genUniqueTerm();
