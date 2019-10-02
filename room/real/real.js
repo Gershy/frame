@@ -339,8 +339,6 @@ U.buildRoom({
           let field = item.addReal('field');
           fields.push(field);
           
-          title.setText(desc);
-          
           dep(field.tellWob().hold(({
             str: v => vals[k] = v,
             int: v => vals[k] = (parseInt(v, 10) || null)

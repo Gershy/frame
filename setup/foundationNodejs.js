@@ -130,7 +130,7 @@
         let length = b % 128;
         let offset = 6; // Masked frames have an extra 4 halfwords containing the mask
         
-        if (buffer.length < offset + length) return; // Await more data
+        if (buffer.length < offset + length) return []; // No messages - should await more data
         
         if (length === 126) {         // Websocket's "medium-size" frame format
           length = buffer.readUInt16BE(2);
@@ -140,7 +140,7 @@
           offset += 8;
         }
         
-        if (buffer.length < offset + length) return; // Await more data
+        if (buffer.length < offset + length) return []; // No messages - should await more data
         
         // Now we know the exact range of the incoming frame; we can slice and unmask it as necessary
         let mask = buffer.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
@@ -345,7 +345,7 @@
         detect: args => args.has('version') && args.version,
         enact: async (foundation, args) => {
           console.log('Version 0.0.1');
-          console.log('Developed by Gershom Maes');
+          console.log('Author: Gershom Maes');
           console.log('Email: gershom.maes@gmail.com');
         }
       });

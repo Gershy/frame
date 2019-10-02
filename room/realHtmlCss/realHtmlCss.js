@@ -94,31 +94,64 @@ U.buildRoom({
       zoneCss.set(real.ShowText, (showText, layout, ...trail) => {
         let w = layout.getW(...trail);
         let h = layout.getH(...trail);
-        let vCentered = showText.origin[1] === 'c';
+        let absH = h && h.isAbsolute();
+        
+        let alignCss = null;
+        if (showText.interactive) {
+          if (showText.origin[1] !== 't' && showText.multiLine) throw new Error('Tricky to vertically align textarea text anywhere but top');
+          alignCss = {
+            textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
+          };
+        } else {
+          if (showText.origin[1] === 'c' && absH) {
+            // Vertically centered with absolute height: use line-height
+            alignCss = {
+              textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
+              lineHeight: h
+            };
+          } else if (showText.origin[1] === 'c' && !absH) {
+            // Vertically centered with relative height: use flexbox
+            alignCss = {
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[showText.origin[0]]
+            };
+          } else if (showText.origin[1] === 't') {
+            // Vertically at the top: this happens by default!
+            alignCss = {
+              textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
+            };
+          } else if (showText.origin[1] === 'b') {
+            // Vertically at the bottom: this also needs flexbox
+            alignCss = {
+              display: 'flex', flexDirection: 'row',
+              alignItems: 'flex-end',
+              justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[showText.origin[0]]
+            };
+          }
+        }
         
         // Note that if height for vertical centering is `null` there's
         // no need to apply a line-height: the element's height will
         // conform to the text, making it centered by default.
-        if (vCentered && h && !h.isAbsolute()) throw new Error('Css doesn\'t enjoy vertically aligning text in a non-absolute-height element!');
-        if (showText.origin[1] === 'b') throw new Error('Css doesn\'t enjoy vertically aligning text to bottom');
         if ((!!w) !== (!!h)) throw new Error('ShowText mixes set and unset extents');
         
         let zoneCss = {};
         zoneCss.main = {
           ...((w && h) ? { boxSizing: 'border-box' } : {}),
-          whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
-          textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
-          textOverflow: 'ellipsis',
-          ...((vCentered && h) ? { lineHeight: h } : {}),
+          ...alignCss,
           ...(showText.padL.amt ? { paddingLeft: showText.padL } : {}),
           ...(showText.padR.amt ? { paddingRight: showText.padR } : {}),
           ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
           ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
+          whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
+          textOverflow: 'ellipsis'
         };
         
         if (!showText.interactive) zoneCss.before = {
-          // These escapes are ugly: we want '\200B' to appear in css
-          content: '\'\\200B\''
+          // We want '\200B' to appear in css
+          content: `'\\200B'`
         };
         
         return zoneCss;
@@ -183,10 +216,15 @@ U.buildRoom({
       domElemFunc.set(real.ShowText, (showText, layout, ...trail) => {
         if (!showText.interactive) return () => document.createElement('div');
         return showText.multiLine
-          ? () => document.createElement('textarea')
+          ? () => {
+              let dom = document.createElement('textarea');
+              dom.setAttribute('disabled', '');
+              return dom;
+            }
           : () => {
               let dom = document.createElement('input');
               dom.setAttribute('type', 'text');
+              dom.setAttribute('disabled', '');
               return dom;
             }
       });
@@ -199,8 +237,11 @@ U.buildRoom({
             if (real.setText) throw new Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
             let dom = real.realized;
             let tellWob = U.WobVal('');
-            real.tellWob = () => tellWob;
-            real.setText = text => tellWob.wobble(dom.value = text);
+            real.tellWob = () => (dom.removeAttribute('disabled'), tellWob);
+            real.setText = text => {
+              if (!U.isType(text, String)) throw new Error('Non-string "text" param');
+              if (dom.value !== text) tellWob.wobble(dom.value = text);
+            };
             dom.addEventListener('input', () => tellWob.wobble(dom.value));
           };
         } else {
@@ -255,6 +296,7 @@ U.buildRoom({
         let zoneDecals = { main: decals };
         if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
         if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
+        if (decals.has('disabled')) { zoneDecals.disabled = decals.disabled; delete decals.disabled; }
         
         // Zones are the same between css and Decals... for now
         let zoneCss = zoneDecals.map((decals, zone) => {
@@ -385,7 +427,7 @@ U.buildRoom({
             let zoneSelector = selector;
             
             if (zone === 'main') { // Main css - do nothing!
-            } else if ([ 'focus', 'hover' ].has(zone)) {  // Pseudo-selector
+            } else if ([ 'focus', 'hover', 'disabled' ].has(zone)) {  // Pseudo-selector
               zoneSelector = `${selector}:${zone}`;
             } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
               zoneSelector = `${selector}::${zone}`;
@@ -420,6 +462,8 @@ U.buildRoom({
         
       },
       initReal0: function(real, layout, trail) {
+        
+        
         // Create dom element and add class for `layout.name`
         let cmps = this.getLayoutCmps(layout, ...trail);
         let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
