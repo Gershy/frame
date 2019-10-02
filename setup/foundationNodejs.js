@@ -1025,8 +1025,8 @@
       
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
-      let urlFn = this.spoofEnabled
-        ? fp => `/!FILE${fp}?spoof=${absConn.cpuId}` // TODO: Even if `absConn` isn't spoofing, this will occur
+      let urlFn = (this.spoofEnabled && absConn.isSpoofed)
+        ? fp => `/!FILE${fp}?spoof=${absConn.cpuId}`
         : fp => `/!FILE${fp}`;
       
       let doc = XmlElement(null, 'root');
@@ -1067,6 +1067,7 @@
         clearing: 'setup/clearing.js',
         foundation: 'setup/foundation.js',
         foundationBrowser: 'setup/foundationBrowser.js',
+        // TODO: In the future, a Hut Below us could be a HutBetween
         ...this.roomsInOrder.toObj(roomName => [ roomName, `room/${roomName}/${roomName}.below.js` ])
       };
       let contents = await Promise.allObj(files.map(roomPath => this.readFile(path.join(rootDir, roomPath))));
@@ -1081,17 +1082,29 @@
       let fullScriptContent = [];
       contents.forEach((fileContent, roomName) => {
         // Get raw lines to include
-        let lines = fileContent.trim().replace(/\r/g, '').split('\n');
+        let lines = fileContent.trim().replace(/\r/g, '').split('\n')
+        let isSource = !this.compilationData.has(roomName);
+        let offsets = isSource ? [] : this.compilationData[roomName].below.offsets;
+        // Remove all blank and comment lines
+        if (isSource) {
+          let cur = { at: 0, offset: 0 };
+          lines = lines.map((ln, ind) => {
+            let skip = ln.match(/^( *\/\/.*)$/);
+            if (skip) {
+              cur.offset++;
+            } else {
+              if (cur.offset > 0) offsets.push(cur);
+              cur = { at: ind, offset: 0 };
+            }
+            return skip ? C.skip : ln;
+          });
+        }
         
         // Mark the beginning of what is logically, on the Above, a separate file
         fullScriptContent.push(`// ==== File: ${roomName} (${lines.length} lines)`);
         
         // Debug data for this room begins right at this point in `fullScriptContent`
-        debugLineData.rooms[roomName] = {
-          offsetWithinScript: fullScriptContent.length,
-          // Note that rooms without offset data have uncompiled files
-          offsets: this.compilationData.has(roomName) ? this.compilationData[roomName].below.offsets : null // TODO: In the future, a Hut Below us could be a HutBetween
-        };
+        debugLineData.rooms[roomName] = { offsetWithinScript: fullScriptContent.length, offsets };
         
         // Include all raw lines
         fullScriptContent.push(...lines);

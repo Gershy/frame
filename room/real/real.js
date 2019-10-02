@@ -326,7 +326,7 @@ U.buildRoom({
       },
       form: function(submitTerm, dep, act, items) {
         
-        // TODO: Dunno where this function should exist, but not here...
+        // TODO: This function should exist elsewhere...
         
         let vals = items.map(v => null);
         let fields = [];
@@ -341,16 +341,12 @@ U.buildRoom({
           
           title.setText(desc);
           
-          if (type === 'str') {
-            dep(field.tellWob().hold(v => { vals[k] = v; }));
-          } else if (type === 'int') {
-            dep(field.tellWob().hold(v => { vals[k] = parseInt(v, 10) || null; }));
-          }
+          dep(field.tellWob().hold(({
+            str: v => vals[k] = v,
+            int: v => vals[k] = (parseInt(v, 10) || null)
+          })[type]));
           
-          if (v !== null) {
-            field.setText(v);
-            field.tellWob().wobble(v);
-          }
+          if (v !== null) field.setText(v);
           
         });
         
@@ -375,10 +371,7 @@ U.buildRoom({
         return this.feelWob0;
       },
       addReal: function(realName, dbg=false) {
-        if (!this.layout.children.has(realName)) {
-          console.log(this.layout);
-          throw new Error(`No layout for "${realName}"`);
-        }
+        if (!this.layout.children.has(realName)) throw new Error(`No layout for "${realName}"`);
         let real = this.reality.initReal(this, this.layout.children[realName]);
         real.par = this;
         this.reality.addChildReal(this, real);

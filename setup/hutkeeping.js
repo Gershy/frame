@@ -246,6 +246,8 @@ U.gain({
       
       Keep(k, '5', () => {
         
+        // TODO:  Note that `BaseInsp` was removed, and with it
+        //        `BaseInsp.prototype.inspClone`!
         let prob = cleanArrStrings.inspClone([], { max: 4 }).problemFor([], [
           'hi', 'hello', 'wassup', 'loler', 'lololer'
         ]);

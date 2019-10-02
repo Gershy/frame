@@ -9,11 +9,9 @@ U.buildRoom({
     // TODO: Could use a nice big high-level comment explaining why Huts are
     //  Recs, but Lands and Ways are not (although `myLands.arch` is a Rec!)
     
-    // TODO: HEEERE! Use this one function both for Below, and for Tests!
-    // Right now the Test's Below-update-logic is still a corrupt copy-paste
-    // This function should be used instead. This function should exist in
-    // EITHER "BELOW" or "TEST" modes - no capability to do that at present!
     let doUpdate = (lands, msg) => {
+      
+      // Updates `lands` based on the contents of `msg`.
       
       let { version, content } = msg;
       if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);

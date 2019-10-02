@@ -369,10 +369,10 @@ U.buildRoom({
         'main.loggedIn.storyIn.lowerPane.voting.entry.votes.vote': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(0, 150, 0, 1)',
             textColour: 'rgba(255, 255, 255, 1)',
+            textSize: UnitPx(14),
             border: { ext: UnitPx(1), colour: 'rgba(255, 255, 255, 1)' }
           }
         }

@@ -56,7 +56,7 @@ U.buildRoom({
       
       /// {ABOVE=
       zoneCss.set(real.RootViewStyles, (rootViewStyles, layout, ...trail) => ({
-        main: { textAlign: 'center', fontSize: '0', overflow: 'hidden', ...cssTech.vAlignPar },
+        main: { ...cssTech.vAlignPar, textAlign: 'center', fontSize: '0', overflow: 'hidden' },
         before: cssTech.vAlignBefore
       }));
       zoneCss.set(real.RootViewPortItem, (rootViewPortItem, layout, ...trail) => ({
@@ -151,7 +151,7 @@ U.buildRoom({
       zoneCss.set(real.LinearSlots, (linearSlots, layout, ...trail) => {
         return  (linearSlots.axis === 'x')
           // X-axis alignment needs the vertical-align technique
-          ? { main: { overflow: 'auto hidden', ...cssTech.vAlignPar }, before: cssTech.vAlignBefore }
+          ? { main: { overflow: 'auto hidden', ...cssTech.vAlignPar, textAlign: (linearSlots.dir === '+') ? 'left' : 'right' }, before: cssTech.vAlignBefore }
           // Y-axis alignment is easy
           : { main: { overflow: 'hidden auto' } };
       });
@@ -160,7 +160,7 @@ U.buildRoom({
         main: (linearItem.par.axis === 'x') ? cssTech.vAlignChild : { position: 'relative' }
       }));
       zoneCss.set(real.CenteredSlot, (centeredSlot, layout, ...trail) => ({
-        main: { textAlign: 'center', ...cssTech.vAlignPar },
+        main: { ...cssTech.vAlignPar, textAlign: 'center' },
         before: cssTech.vAlignBefore
       }));
       zoneCss.set(real.CenteredItem, (centeredItem, layout, ...trail) => ({

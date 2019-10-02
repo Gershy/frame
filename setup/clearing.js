@@ -7,16 +7,6 @@ let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, 
 
 let C = global.C = {
   skip: { SKIP: 1 },
-  BaseInsp: (() => {
-    let BaseInsp = function BaseInsp() {};
-    BaseInsp.prototype = Object.create(null);
-    protoDef(BaseInsp, 'isInspiredBy', function(Insp0) { return this.constructor.allInsps.has(Insp0.uid); }); 
-    protoDef(BaseInsp, 'inspReborn', function(cnsProps=[]) { return this.constructor.call(null, ...cnsProps); }); 
-    protoDef(BaseInsp, 'inspClone', function(cnsProps=[], props={}) {
-      return ({}).gain.call(this.inspReborn(cnsProps), { ...this, ...props });
-    });
-    return BaseInsp;
-  })(),
   notImplemented: function() { throw new Error(`Not implemented by ${this.constructor.name}`); }
 };
 
@@ -210,7 +200,7 @@ let U = global.U = {
     Insp.allInsps = Set(inheritedInsps);
     
     // Initialize prototype
-    Insp.prototype = Object.create(C.BaseInsp.prototype);
+    Insp.prototype = Object.create(null);
     
     // Resolve all SupInsps to their prototypes
     parInsps = parInsps.map(ParInsp => {
