@@ -1,11 +1,12 @@
-// TODO: If an AccessPath accepted a GeneratorFunction as its `gen` param,
-// the GeneratorFunction could `yield` every dependent Hog.
-// TODO: "innerRooms" now depends on Bearing. Above needs potentially
-// lots of different realRooms, whereas Below never needs more than 1.
 U.buildRoom({
   name: 'storyMix',
   innerRooms: [ 'hinterlands', 'chance', 'record', 'real', 'realHtmlCss' ],
   build: (foundation, hinterlands, chance, record, real, realHtmlCss) => {
+    
+    // TODO: If an AccessPath accepted a GeneratorFunction as its `gen` param,
+    // the GeneratorFunction could `yield` every dependent Hog.
+    // TODO: "innerRooms" now depends on Bearing. Above needs potentially
+    // lots of different realRooms, whereas Below never needs more than 1.
     
     let { HorzScope: AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Chance } = chance;

@@ -1,10 +1,3 @@
-// TODO: real-css file which defines a similar class, inspired by and under
-// the same name as all the classes here, except everything is nicely separated
-// for Above/Below??
-
-// TODO:  UnitPx -> UnitAbs??
-//        UnitPc -> UnitRel???
-
 U.buildRoom({
   name: 'realHtmlCss',
   innerRooms: [ 'real' ],
@@ -103,13 +96,15 @@ U.buildRoom({
             textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
           };
         } else {
-          if (showText.origin[1] === 'c' && absH) {
+          if (showText.origin[1] === 'c' && (!h || h.isAbsolute())) {
             // Vertically centered with absolute height: use line-height
+            // if a height is required; otherwise leave line-height
+            // unspecified (and container height will conform to text)
             alignCss = {
               textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
-              lineHeight: h
+              ...(h ? { lineHeight: h } : {})
             };
-          } else if (showText.origin[1] === 'c' && !absH) {
+          } else if (showText.origin[1] === 'c' && !h.isAbsolute()) {
             // Vertically centered with relative height: use flexbox
             alignCss = {
               display: 'flex',

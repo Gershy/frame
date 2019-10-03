@@ -3,7 +3,7 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real', 'realHtmlCss' ],
   build: (foundation, hinterlands, record, real, realHtmlCss) => {
     
-    let { HorzScope: AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
+    let { HorzScope, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Rec, recTyper } = record;
     let { Lands, Way } = hinterlands;
     
@@ -86,14 +86,14 @@ U.buildRoom({
       let archRound = lands.createRec('archRound', {}, lands.arch, round);
       /// =ABOVE}
       
-      let rootScope = AccessPath(lands.arch.relWob(rt.archRound), async (dep, archRound) => {
+      let rootScope = HorzScope(lands.arch.relWob(rt.archRound), async (dep, archRound) => {
         
         let round = archRound.members[1];
         
         /// {ABOVE=
         
         // Init Player for Hut
-        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        dep(HorzScope(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           let hut = archHut.members[1];
           dep(hut.followRec(round));
           dep(hut.followRec(archRound));
@@ -103,11 +103,11 @@ U.buildRoom({
         }));
         
         // Follows
-        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        dep(HorzScope(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           let hut = archHut.members[1];
           dep(hut.followRec(archRound));
           dep(hut.followRec(round));
-          dep(AccessPath(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
+          dep(HorzScope(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
             let player = roundPlayer.members[1];
             console.log(`Hut ${hut.getTerm()} follows player ${player.value.name}`);
             dep(hut.followRec(player));
@@ -116,9 +116,9 @@ U.buildRoom({
         }));
         
         // Controls on Huts
-        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        dep(HorzScope(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
           let hut = archHut.members[1];
-          dep(AccessPath(hut.relWob(rt.hutPlayer), (dep, hutPlayer) => {
+          dep(HorzScope(hut.relWob(rt.hutPlayer), (dep, hutPlayer) => {
             let player = hutPlayer.members[1];
             dep(hut.comWob('rename').hold( ({ msg }) => player.modify(v => v.gain(msg.slice('name'))) ));
             dep(hut.comWob('click').hold( ({ msg }) => player.modify(v => (v.score++, v)) ));
@@ -137,7 +137,7 @@ U.buildRoom({
         lowerReal.setText('Score!');
         dep(lowerReal.feelWob().hold(() => lands.tell({ command: 'click' })));
         
-        dep(AccessPath(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
+        dep(HorzScope(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
           
           let player = roundPlayer.members[1];
           let playerReal = dep(playersReal.addReal('player'));
@@ -154,7 +154,6 @@ U.buildRoom({
               dep(playerNameReal.tellWob().hold(name => (name !== player.value.name) && lands.tell({ command: 'rename', name })));
             }
           }));
-          
           
         }));
         

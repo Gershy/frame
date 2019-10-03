@@ -1,6 +1,3 @@
-// TODO:  UnitPx -> UnitAbs??
-//        UnitPc -> UnitRel???
-
 U.buildRoom({
   name: 'real',
   innerRooms: [],
@@ -344,6 +341,7 @@ U.buildRoom({
             int: v => vals[k] = (parseInt(v, 10) || null)
           })[type]));
           
+          title.setText(desc);
           if (v !== null) field.setText(v);
           
         });

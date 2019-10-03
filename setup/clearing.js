@@ -136,8 +136,8 @@ let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
 Set.prototype = SetOrig.prototype;
 protoDef(SetOrig, 'toArr', function(fn) {
-  let ret = [];
-  for (let v of this) { v = fn(v); if (v !== C.skip) ret.push(v); }
+  let ret = [], ind = 0;
+  for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
   return ret;
 });
 protoDef(SetOrig, 'find', function(f) {
