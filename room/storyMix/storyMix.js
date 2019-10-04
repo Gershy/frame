@@ -167,7 +167,7 @@ U.buildRoom({
         },
         'main.loggedIn.storyOut.storyList.item': {
           slot: par => par.cmps.slots.insertLinearItem(),
-          size: WrapChildren({ pad: UnitPx(5) }),
+          size: WrapChildren({ pad: UnitPx(5), padB: UnitPx(0) }),
           slots: null
         },
         'main.loggedIn.storyOut.storyList.item.content': {
