@@ -364,11 +364,11 @@ let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) =
   wobble: function(value=null, force=U.isType(value, Object)) {
     // Wobbles ought to be prevented on duplicate data; impossible to
     // detect mutation of value though, e.g. on Object props. The Above
-    // should generate a wobble, even though the param to `wobbly.wobble`
-    // appears to be a duplicate. Therefore the default behaviour here is
+    // should generate a wobble even though the param to `wobbly.wobble`
+    // appears to be a duplicate - so the default behaviour here is
     // to force the wobble to occur if the new value is an Object.
     let origVal = this.value;
-    if (!force && value === origVal) return; // Duplicate value; no forcing
+    if (!force && value === origVal) return; // Duplicate value!
     this.value = value;
     insp.Wob.wobble.call(this, value, origVal);
   },

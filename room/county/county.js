@@ -19,9 +19,8 @@ U.buildRoom({
       console.log('Init county...');
       
       let recTypes = { ...hinterlands.rt, ...rt }; // TODO: Collisions could occur...
-      let commands = [ 'rename', 'click' ];
       let heartbeatMs = 10 * 60 * 1000;
-      let lands = Lands({ foundation, recTypes, commands, heartbeatMs });
+      let lands = Lands({ recTypes, heartbeatMs });
       
       lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, '127.0.0.1', 80) }));
       lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, '127.0.0.1', 8000) }));
@@ -97,7 +96,7 @@ U.buildRoom({
           let hut = archHut.members[1];
           dep(hut.followRec(round));
           dep(hut.followRec(archRound));
-          let player = lands.createRec('player', { value: { name: 'anon', hutTerm: hut.getTerm(), score: 0 } });
+          let player = lands.createRec('player', { value: { hutTerm: hut.getTerm(), name: 'anon', score: 0 } });
           let hutPlayer = lands.createRec('hutPlayer', {}, hut, player);
           let roundPlayer = lands.createRec('roundPlayer', {}, round, player);
         }));
@@ -109,19 +108,25 @@ U.buildRoom({
           dep(hut.followRec(round));
           dep(HorzScope(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
             let player = roundPlayer.members[1];
-            console.log(`Hut ${hut.getTerm()} follows player ${player.value.name}`);
             dep(hut.followRec(player));
             dep(hut.followRec(roundPlayer));
           }));
-        }));
-        
-        // Controls on Huts
-        dep(HorzScope(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
-          let hut = archHut.members[1];
           dep(HorzScope(hut.relWob(rt.hutPlayer), (dep, hutPlayer) => {
             let player = hutPlayer.members[1];
-            dep(hut.comWob('rename').hold( ({ msg }) => player.modify(v => v.gain(msg.slice('name'))) ));
-            dep(hut.comWob('click').hold( ({ msg }) => player.modify(v => (v.score++, v)) ));
+            // TODO: Should also be possible to apply a schema to Recs
+            // So validation is a combination of fitting the Rec's
+            // schema, and app-specific validation. Schemas could handle
+            // typical types:. array/string length, required/optional
+            // object properties, etc. Only the app would be able to say
+            // something like "score cannot be changed to any value
+            // except a value one bigger than its current value".
+            dep(hut.followRec(player, { modifyAny: newVal => {
+              let { score=C.skip, name=C.skip, ...more } = newVal; // Note: `C.skip` instead of `null` to use a value that can't be spoofed in JSON messages
+              if (!more.isEmpty()) return false; // throw new Error(`Invalid props: ${more.toArr((v, k) => k).join(', ')}`);
+              if (score !== C.skip && score !== player.value.score + 1) return false; // throw new Error(`Invalid score: ${U.nameOf(score)}`);
+              if (name !== C.skip && (!U.isType(name, String) || name.length < 2 || name.length > 20)) return false; // throw new Error(`Invalid name: ${U.nameOf(name)}`);
+              return true;
+            }}));
           }));
         }));
         
@@ -135,7 +140,13 @@ U.buildRoom({
         
         let lowerReal = roundReal.addReal('lower');
         lowerReal.setText('Score!');
-        dep(lowerReal.feelWob().hold(() => lands.tell({ command: 'click' })));
+        
+        // TODO: Maybe `foundation.hutTerm` or `foundation.getHutTerm()`
+        // makes more sense than `U.hutTerm`?
+        let myPlayerWob = WobTmp('dn');
+        dep(HorzScope(round.relWob(rt.roundPlayer), (dep, { members: [ _, player ] }) => {
+          if (player.value.hutTerm === U.hutTerm) dep(myPlayerWob.up(player));
+        }));
         
         dep(HorzScope(round.relWob(rt.roundPlayer), (dep, roundPlayer) => {
           
@@ -144,15 +155,15 @@ U.buildRoom({
           let playerNameReal = playerReal.addReal('name');
           let playerScoreReal = playerReal.addReal('score');
           
-          let canRename = false;
-          
           dep(player.hold(v => {
             playerNameReal.setText(v.name);
             playerScoreReal.setText(v.score);
-            if (!canRename && (v.hutTerm === U.hutTerm)) {
-              canRename = true;
-              dep(playerNameReal.tellWob().hold(name => (name !== player.value.name) && lands.tell({ command: 'rename', name })));
-            }
+          }));
+          
+          dep(HorzScope(myPlayerWob, (dep, { value: myPlayer }) => {
+            if (myPlayer !== player) return;
+            dep(lowerReal.feelWob().hold(() => lands.modifyRec(player, { score: player.value.score + 1 })));
+            dep(playerNameReal.tellWob().hold(name => lands.modifyRec(player, { name })));
           }));
           
         }));

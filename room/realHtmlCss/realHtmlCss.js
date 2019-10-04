@@ -391,6 +391,15 @@ U.buildRoom({
         });
         
         cssRules = [
+          { selector: 'html, body', zoneCss: {
+            main: {
+              position: 'absolute',
+              left: '0', top: '0', width: '100%', height: '100%',
+              margin: '0', padding: '0',
+              fontFamily: 'monospace',
+              overflow: 'hidden'
+            }
+          }},
           { selector: ':focus', zoneCss: {
             main: {
               boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'

@@ -1129,16 +1129,7 @@
       
       let mainStyle = head.add(XmlElement('style', 'text'));
       mainStyle.setProp('type', 'text/css');
-      mainStyle.setText([
-        'html, body {',
-        '  position: absolute;',
-        '  left: 0; top: 0; width: 100%; height: 100%;',
-        '  margin: 0; padding: 0;',
-        '  background-color: #eaeaf2;',
-        '  font-family: monospace;',
-        '  overflow: hidden;',
-        '}'
-      ].join('\n'));
+      mainStyle.setText('html { background-color: #eaeaf2; }');
       
       let body = html.add(XmlElement('body', 'container'));
       
