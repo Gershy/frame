@@ -1,8 +1,11 @@
+// NOTES:
+// [ ] Persistence
+// [ ] Login/identity (desired username + token?)
+
 // The server-side equivalent of a web-page running hut:
 // Build the clearing, the foundation and all prerequisite rooms, and
 // finally build the hut being run.
 // Server-side huts perform compilation, as part of the foundation.
-
 
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource

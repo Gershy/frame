@@ -204,14 +204,14 @@ let U = global.U = {
     
     // Resolve all SupInsps to their prototypes
     parInsps = parInsps.map(ParInsp => {
-      // `protoDef` sets prototype properties, making them non-enumerable
+      // `protoDef` sets non-enumerable prototype properties
       // Iterate non-enumerable props with `Object.getOwnPropertyNames`
       let proto = ParInsp.prototype;
       let pNames = Object.getOwnPropertyNames(proto);
       return pNames.toObj(v => [ v, proto[v] ]);
     });
     
-    // If `methods` is a function it becomes the result of its own call
+    // If `methods` is a function it becomes the result of its call
     if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
     
     // Ensure we have valid "methods"

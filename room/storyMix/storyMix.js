@@ -46,7 +46,7 @@ U.buildRoom({
       let lands = U.lands = Lands({ foundation, recTypes, commands, heartbeatMs });
       
       // Note: The Foundation has host and port values, but technically
-      // a Foundation can run a number of server - so this ip+port
+      // a Foundation can run a number of servers - so this ip+port
       // pair is like the "default" host+port pair, while others could
       // exist too.
       let { ip, port } = foundation;

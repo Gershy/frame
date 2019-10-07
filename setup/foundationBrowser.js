@@ -93,7 +93,7 @@
     getDefaultRealRoom: function() { return U.rooms.realHtmlCss.built; },
     
     // Functionality
-    queueTask: function(func) { Promise.resolve().then(func); },
+    queueTask: function(func) { Promise.resolve().then(func); }, // TODO: This is untested
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {

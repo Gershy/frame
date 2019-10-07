@@ -293,6 +293,17 @@ U.buildRoom({
         this.getAllHuts().forEach(hut => hut.tell(msg));
       },
       
+      stateToRaw: function() {
+        let recs = this.allRecs.toArr((rec, uid) => {
+          return {
+            type: r.type.name,
+            value: r.value,
+            members: r.members.map(m => m.uid) // TODO: Could be shared with genSyncTell
+          };
+        });
+        return recs;
+      },
+      
       /// {ABOVE=
       setRealRooms: function(realRooms) { this.realRooms = realRooms; },
       /// =ABOVE}
@@ -481,7 +492,6 @@ U.buildRoom({
             
             // await this.genSyncThrottlePrm();
             await new Promise(r => foundation.queueTask(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
-            
             
             this.syncThrottlePrm = null;
             
@@ -1381,7 +1391,12 @@ U.buildRoom({
             
             // Combine hinterlands RecTypes (`rt`) along with RecTypes for tests (`trt`)
             let state = { version: 0, recTypes, allRecs: Map(), server: null, holds: [] };
-            state.createRec = (type, ...args) => recTypes[type].create(...args);
+            state.createRec = (type, ...args) => {
+              let rec = recTypes[type].create(...args);
+              state.allRecs.set(rec.uid, rec);
+              rec.shutWob().hold(() => state.allRecs.rem(rec.uid));
+              return rec;
+            };
             state.arch = rt.arch.create({ uid: '!arch' });
             
             let cpuIdCnt = 0;
