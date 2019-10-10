@@ -463,6 +463,11 @@ let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) =>
   },
   complete: function(err=null) {
     
+    // Note that `err` indicates whether we are successfully completing.
+    // Regardless of success we still need to clean up our Wobs - by
+    // deleting the properties we attached to them. Only upon success do
+    // we perform wobbles and shut-wobbles.
+    
     let wobs = this.wobs;
     let shuts = this.shuts;
     this.wobs = null;

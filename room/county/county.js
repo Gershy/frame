@@ -120,7 +120,7 @@ U.buildRoom({
             // object properties, etc. Only the app would be able to say
             // something like "score cannot be changed to any value
             // except a value one bigger than its current value".
-            dep(hut.followRec(player, { modifyAny: newVal => {
+            dep(hut.followRec(player, { modifyAllow: newVal => {
               let { score=C.skip, name=C.skip, ...more } = newVal; // Note: `C.skip` instead of `null` to use a value that can't be spoofed in JSON messages
               if (!more.isEmpty()) return false; // throw new Error(`Invalid props: ${more.toArr((v, k) => k).join(', ')}`);
               if (score !== C.skip && score !== player.value.score + 1) return false; // throw new Error(`Invalid score: ${U.nameOf(score)}`);

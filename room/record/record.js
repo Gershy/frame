@@ -44,17 +44,52 @@ U.buildRoom({
       toArr: function(fn) { return this.recs.toArr(fn); }
     })});
     
+    let Tidy = U.inspire({ name: 'Tidy', methods: (insp, Insp) => ({
+      init: function(check=null) { if (check) this.check = check; },
+      check: C.notImplemented
+    })});
+    let TidyArr = U.inspire({ name: 'TidyArr', insps: { Tidy }, methods: (insp, Insp) => ({
+      init: function(min=null, max=null, innerTidy=null) {
+        insp.Tidy.init.call(this);
+        this.min = min;
+        this.max = max;
+        this.innerTidy = innerTidy;
+      },
+      check: function(arr) {
+        if (!U.isType(arr, Array)) throw new Error(`Expected Array; got ${U.nameOf(arr)}`);
+        if (this.min !== null && arr.length < this.min) throw new Error(`Array has ${arr.length} items; min is ${this.min}`);
+        if (this.max !== null && arr.length > this.max) throw new Error(`Array has ${arr.length} items; max is ${this.max}`);
+        if (this.innerTidy) for (let v of arr) this.innerTidy.check(v);
+      }
+    })});
+    let TidyObj = U.inspire({ name: 'TidyObj', insps: { Tidy }, methods: (insp, Insp) => ({
+      init: function(required=[], tidyMap={}) {
+        insp.Tidy.init.call(this);
+        this.required = required;
+        this.tidyMap = tidyMap;
+      },
+      check: function(obj) {
+        if (!U.isType(obj, Object)) throw new Error(`Expected Object; got ${U.nameOf(obj)}`);
+        for (let r of this.required) if (!obj.has(r)) throw new Error(`Object missing required property: ${r}`);
+        for (let k in obj) {
+          if (!this.tidyMap.has(k)) throw new Error(`Object has unexpected property: ${k}`);
+          this.tidyMap[k].check(obj[k]);
+        }
+      }
+    })});
+    
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       
-      init: function(name, RecCls=Rec, crd=null, ...memberTypes) {
+      init: function(name, RecCls=Rec, cardinality=null, ...memberTypes) {
         
-        if (crd && crd.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${crd}"`);
-        if (crd && crd.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${crd}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
+        if (cardinality && cardinality.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${cardinality}"`);
+        if (cardinality && cardinality.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${cardinality}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
         
         this.name = name;
         this.RecCls = RecCls;
-        this.crd = crd;
+        this.cardinality = cardinality;
         this.memberTypes = memberTypes;
+        this.tidy = null;
         
       },
       create: function(params={}, ...members) {
@@ -79,10 +114,8 @@ U.buildRoom({
           
           // Wobble all Wobs
           wobs.forEach(w => {
-            // Add the Rec
+            // Add the Rec; remove it when the Rec shuts
             let addHog = squad.wobble(w, relRec);
-            
-            // When the Rec shuts, un-add the Rec
             let holdShut = relRec.shutWob().hold(() => addHog.shut());
             
             // If the Rec is un-added, stop holding the Rec shut
@@ -143,8 +176,8 @@ U.buildRoom({
         if (!this.relWobs.has(key)) {
           
           if (this.type !== recType.memberTypes[ind]) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
-          let crd = recType.crd[1 - ind]; // Note that `WobRec*` class is determined by OTHER type's cardinality
-          this.relWobs[key] = crd === 'M' ? WobRecCrdM() : WobRecCrd1();
+          let cardinality = recType.cardinality[1 - ind]; // Note that `WobRec*` class is determined by OTHER type's cardinality
+          this.relWobs[key] = cardinality === 'M' ? WobRecCrdM() : WobRecCrd1();
           
         }
         
@@ -167,7 +200,7 @@ U.buildRoom({
       return { rt, add };
     };
     
-    let content = { RecType, Rec, recTyper };
+    let content = { Tidy, TidyArr, TidyObj, RecType, Rec, recTyper };
     
     /// {TEST=
     content.test = rootKeep => rootKeep.contain(k => {

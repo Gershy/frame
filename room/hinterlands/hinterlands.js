@@ -343,18 +343,19 @@ U.buildRoom({
         let curVal = rec.value;
         if (curVal === newVal) return;
         
-        let regUpd = curVal !== null && newVal !== null; // "regular update"; neither value is null
+        // Only allow type-mixing between `null` and non-null values
+        let nullUpd = curVal === null || newVal === null;
         
-        if (regUpd && U.inspOf(curVal) !== U.inspOf(newVal))
+        if (!nullUpd && U.inspOf(curVal) !== U.inspOf(newVal))
           throw new Error(`Tried to update ${U.nameOf(curVal)} -> ${U.nameOf(newVal)}`);
         
-        if (regUpd && U.isType(newVal, Object)) {
+        if (!nullUpd && U.isType(newVal, Object)) {
           let changedProp = false;
           for (let k in newVal) {
             if (!curVal.has(k)) throw new Error(`Tried to add non-existent property: "${k}"`);
             if (curVal[k] !== newVal[k]) changedProp = true;
           }
-          if (!changedProp) return; // Tolerate this! No property changed. TODO: Should check recursively if an inner property was also an Object
+          if (!changedProp) return; // Tolerate this! No property changed. TODO: Recursively check inner properties?
         }
         
         this.tell({ command: 'modifyRec', uid: rec.uid, val: newVal });
@@ -562,7 +563,7 @@ U.buildRoom({
             // `dep` - e.g. if `rec` shuts, this entry in `this.fols`
             // still persists. Instead use `setRecFollowStrength` to
             // decrement follow strength to 0!
-            fol = { strength, ap, modifyAny: Map(), modifyAll: Map() }; // A single "any" and every "all" must pass
+            fol = { strength, ap, modifyAllow: Map(), modifyBlock: Map() }; // A single "any" and every "all" must pass
             this.fols.set(rec, fol);
             
             // Send a sync
@@ -595,19 +596,19 @@ U.buildRoom({
         // TODO: Automatically follow `rec.members`?
         let fol = this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
         
-        // Note that `fol.modifyAny` and `fol.modifyAll` map functions
+        // Note that `fol.modifyAllow` and `fol.modifyBlock` map functions
         // to the hold strength of that specific function
-        let { modifyAny: anyF, modifyAll: allF } = modify;
-        if (anyF && !U.isType(anyF, Function)) throw new Error('Invalid "modifyAny" value');
-        if (allF && !U.isType(allF, Function)) throw new Error('Invalid "modifyAll" value');
-        if (anyF) fol.modifyAny.set(anyF, (fol.modifyAny.get(anyF) || 0) + 1);
-        if (allF) fol.modifyAll.set(allF, (fol.modifyAll.get(allF) || 0) + 1);
+        let { modifyAllow: anyF, modifyBlock: allF } = modify;
+        if (anyF && !U.isType(anyF, Function)) throw new Error('Invalid "modifyAllow" value');
+        if (allF && !U.isType(allF, Function)) throw new Error('Invalid "modifyBlock" value');
+        if (anyF) fol.modifyAllow.set(anyF, (fol.modifyAllow.get(anyF) || 0) + 1);
+        if (allF) fol.modifyBlock.set(allF, (fol.modifyBlock.get(allF) || 0) + 1);
         
         return Hog(() => {
           let fol = this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1);
           if (fol) {
-            if (anyF) { let v = fol.modifyAny.get(anyF); fol.modifyAny[(v > 1) ? 'set' : 'rem'](anyF, v - 1); }
-            if (allF) { let v = fol.modifyAll.get(allF); fol.modifyAll[(v > 1) ? 'set' : 'rem'](allF, v - 1); }
+            if (anyF) { let v = fol.modifyAllow.get(anyF); fol.modifyAllow[(v > 1) ? 'set' : 'rem'](anyF, v - 1); }
+            if (allF) { let v = fol.modifyBlock.get(allF); fol.modifyBlock[(v > 1) ? 'set' : 'rem'](allF, v - 1); }
           }
         });
       },
@@ -622,15 +623,15 @@ U.buildRoom({
             throw new Error(`Can't modify - tried to modify ${U.nameOf(rec.value)} -> ${U.nameOf(newVal)}`);
         
         let fol = this.fols.get(rec);
-        if (!fol) throw new Error(`Can't modify `);
+        if (!fol) throw new Error(`Modification denied`);
         
-        // Allow if any "modifyAny" passes and no "modifyAll" fails
-        let anyPass = false;
-        for (let f of fol.modifyAny.keys()) if (f(newVal)) { anyPass = true; break; }
-        if (!anyPass) throw new Error(`Can't modify since no "any" passed`);
+        // Allow if any "modifyAllow" passes and no "modifyBlock" fails
+        let anyAllow = false;
+        for (let f of fol.modifyAllow.keys()) if (f(newVal)) { anyAllow = true; break; }
+        if (!anyAllow) throw new Error(`Can't modify since no "any" passed`);
         
         let allPass = true;
-        for (let f of fol.modifyAll.keys()) if (f(newVal)) { allPass = false; break; }
+        for (let f of fol.modifyBlock.keys()) if (f(newVal)) { allPass = false; break; }
         if (!allPass) throw new Error(`Can't modify since an "all" denied`);
         
         if (U.isType(newVal, Object)) rec.wobble({ ...(rec.value || {}), ...newVal });
@@ -1474,6 +1475,8 @@ U.buildRoom({
             
           };
           
+          lands.modifyRec = (rec, newVal) => lands.tell({ command: 'modifyRec', uid: rec.uid, val: newVal });
+          
           mock2PartyData = { addClientBelow, above: testData };
           
         };
@@ -1499,6 +1502,8 @@ U.buildRoom({
           let [ aboveClient, belowClient ] = below1.fresh();
           
           let heardData = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+          
+          if (!U.isType(heardData, String)) console.log('WUTTTT???\n\n\n\n', heardData, '\n\n\n\n');
           
           return [
             [ 'response is String', () => U.isType(heardData, String) ],
@@ -1825,6 +1830,12 @@ U.buildRoom({
               [ 'only above has archHut', () => diff.onlyInAbove.find(rec => rec.type.name === 'archHut') ],
               [ 'no value mismatches', () => diff.valueMismatch.isEmpty() ]
             ];
+            
+          });
+          
+          U.Keep(k, 'modifyRec', async () => {
+            
+            return { result: true };
             
           });
           
