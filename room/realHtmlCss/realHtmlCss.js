@@ -12,7 +12,7 @@ U.buildRoom({
       vAlignChild: { display: 'inline-block', verticalAlign: 'middle' }, // Should include `position: "relative if not absolute"`
       vAlignBefore: { display: 'inline-block', verticalAlign: 'middle', content: '\'\'', width: '0', height: '100%' },
     };
-    let tinyRound = (val, epsilon=0.00001) => {
+    let tinyRound = (val, epsilon=0.001) => {
       // If `val` is within `epsilon` distance of an integer, returns
       // that nearby integer (otherwise returns `val`).
       let round = Math.round(val);

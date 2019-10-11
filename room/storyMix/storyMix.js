@@ -812,10 +812,6 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        // TODO: Above supports multiple Realities, but Below works with
-        // exactly one Reality. We get that one Reality here:
-        // let reality = await lands.getReality(); // `Lands.prototype.getReality` for {BELOW==BELOW} only!
-        
         let rootReal = await lands.getRootReal();
         
         let mainReal = dep(rootReal.addReal('main'));

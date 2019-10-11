@@ -185,6 +185,19 @@ let U = global.U = {
   },
   dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
   int32: Math.pow(2, 32),
+  base62: n => {
+    let pow=0, amt=1, next;
+    while (true) { next = amt * 62; if (next > n) break; pow++; amt = next; }
+    let amts = [];
+    for (let p = pow; p >= 0; p--) {
+      let amt=Math.pow(62, p), div=Math.floor(n / amt);
+      n -= amt * div;
+      if (div < 10)       amts.push(`${div}`);
+      else if (div < 36)  amts.push(String.fromCharCode(97 + div - 10));
+      else                amts.push(String.fromCharCode(65 + div - 36));
+    }
+    return amts.join('');
+  },
   safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
   inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
     

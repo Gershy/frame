@@ -93,7 +93,7 @@
     getDefaultRealRoom: function() { return U.rooms.realHtmlCss.built; },
     
     // Functionality
-    queueTask: function(func) { Promise.resolve().then(func); }, // TODO: This is untested
+    queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {
@@ -102,11 +102,11 @@
     makeHttpServer: async function(pool, ip, port) {
       let numPendingReqs = 0;
       
-      let tellAndHear = async msg => {
+      let tellAndHear = async (msg, conn) => {
         
         // Do XHR
         let req = new XMLHttpRequest();
-        req.open('POST', this.spoof ? `?spoof=${this.spoof}` : '', true);
+        req.open('POST', `?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`, true);
         req.setRequestHeader('Content-Type', 'application/json');
         req.send(JSON.stringify(msg));
         
@@ -128,9 +128,8 @@
           
           // If any data was received, process it at a higher level
           if (res) {
-            try {
-              conn.hear.wobble([ res, null ]);
-            } catch(err) {
+            try { conn.hear.wobble([ res, null ]); }
+            catch(err) {
               console.log('TRANSMISSION HEARD:', JSON.stringify(res));
               console.log('ERROR RESULTING:\n', this.formatError(err));
             }
@@ -147,47 +146,35 @@
         numPendingReqs--;
         
         // Always have 1 pending req
-        if (!numPendingReqs) tellAndHear({ command: 'bankPoll' });
+        if (!numPendingReqs) tellAndHear({ command: 'bankPoll' }, conn);
         
       };
-      
-      let conn = Hog();
-      conn.cpuId = 'remote';
-      conn.hear = U.Wob({});
-      conn.tell = tellAndHear;
       
       let serverWob = U.WobVal(null);
       serverWob.desc = `HTTP @ ${ip}:${port}`;
       serverWob.cost = 100;
-      
-      pool.addCpuConn(serverWob, conn);
-      serverWob.wobble(conn);
-      
-      // Immediately bank a poll
-      conn.tell({ command: 'bankPoll' });
+      serverWob.decorateConn = conn => {
+        conn.hear = U.Wob();
+        conn.tell = msg => tellAndHear(msg, conn);
+        this.queueTask(() => conn.tell({ command: 'bankPoll' })); // Immediately bank a poll
+      };
       
       return serverWob;
     },
     makeSoktServer: async function(pool, ip, port) {
-      
       if (!WebSocket) return null;
       
-      let sokt = new WebSocket(`ws://${ip}:${port}${this.spoof ? `?spoof=${this.spoof}` : ''}`);
+      let sokt = new WebSocket(`ws://${ip}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
-      
-      let conn = Hog();
-      conn.cpuId = 'remote';
-      conn.hear = U.Wob({});
-      conn.tell = msg => sokt.send(JSON.stringify(msg));
-      
-      sokt.onmessage = ({ data }) => data && conn.hear.wobble([ JSON.parse(data), null ]);
       
       let serverWob = U.WobVal(null);
       serverWob.desc = `SOKT @ ${ip}:${port}`;
       serverWob.cost = 50;
-      
-      pool.addCpuConn(serverWob, conn);
-      serverWob.wobble(conn);
+      serverWob.decorateConn = conn => {
+        conn.hear = U.Wob();
+        conn.tell = msg => sokt.send(JSON.stringify(msg));
+        sokt.onmessage = ({ data }) => data && conn.hear.wobble([ JSON.parse(data), null ]);
+      };
       
       return serverWob;
     },

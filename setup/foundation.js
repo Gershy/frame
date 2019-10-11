@@ -3,38 +3,10 @@ The hut can run on any platform that supports javascript
   - E.g. redhat, digitalocean, heroku, etc.
 
 The hut can have multiple unrelated servers
-
 A server can support unrelated apps(??) (e.g. both chess2 and storyMix)
-
-Multiple BelowHuts can connect to an AboveHut
-
+Multiple BelowHuts can run under an AboveHut
 Each BelowHut->AboveHut connection can occur over multiple Ways
-
-BelowHut->AboveHut connections can occur with a variety of Realities
-
-The base Realities provides essential layout utilities, but it should be
-extensible to allow
-
-  |     lands.addReality(HtmlCssReality('storyMix', realityLayouts));
-  |     
-  |     HtmlCssReality.prototype.fulfillsRequest = function(hut, msg) {
-  |       return msg.supportedRealities.has('htmlCss');
-  |     };
-  |     
-  |     // ** within `Lands.prototype.addDefaultCommands`**
-  |     requiredCommand('getInit', async ({ absConn, hut, msg, reply }) => {
-  |       
-  |       hut.version = 0;                                            // Reset version
-  |       hut.sync = hut.sync.map(v => ({}));                         // Clear current delta
-  |       hut.fols.forEach((fol, rec) => hut.toSync('addRec', rec));  // Gen full sync delta
-  |       
-  |       let initialSync = hut.genSyncTell();
-  |       let requestedReality = this.realityFor(hut, msg); // Checks "fulfillsRequest" for each Reality, and hopefully correctly picks the `HtmlCssReality`
-  |       let initBelow = await requestedReality.getInitPayload(absConn, hut, initialSync);
-  |       reply(initBelow);
-  |       
-  |     });
-
+A BelowHut under an AboveHut runs with a specific Reality (only one!)
 */
 
 // The "foundation" is environment-level normalization. It configures javascript to
@@ -47,7 +19,6 @@ extensible to allow
 let doNetworkDbg = 1;
 
 let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
-  
   init: function({ name, desc, detect, enact }) {
     this.name = name;
     this.desc = desc;
@@ -56,81 +27,78 @@ let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
     this.children = Set();
   },
   attempt: async function(foundation, args) {
-    
     if (!this.detect(args)) return false;
-    
     await this.enact(foundation, args);
     for (let child of this.children) await child.attempt(foundation, args);
     return true;
-    
   }
-  
 })});
 let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
-  // TODO: CpuPool should probably written into hinterlands.Lands...
   init: function(dbgLimit=150) {
+    this.cpuIdCnt = 0;
     this.cpus = {};
     this.dbgLimit = dbgLimit;
+    this.cpuWob = U.Wob();
   },
   dbgItem: function(item) {
     let ret = JSON.stringify(item);
     return (ret.length > this.dbgLimit) ? ret.substr(0, this.dbgLimit - 3) + '...' : ret;
   },
-  addCpuConn: function(server, conn) {
-    
-    if (!conn.cpuId || !conn.hear || !conn.hear.hold) throw new Error('Invalid conn: ' + U.nameOf(conn));
+  makeCpuConn: function(serverWob, decorateConn) {
+    let conn = U.Hog();
+    decorateConn(conn); // Note that decoration may apply a cpuId
+    serverWob.decorateConn(conn);
+    if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(6, '0')
+      + U.base62(Math.random() * Math.pow(62, 6)).padHead(6, '0');
     
     let cpuId = conn.cpuId;
-    let dbgDesc = doNetworkDbg ? `${server.desc.substr(0, 4)}:${cpuId}` : '';
+    let cpu = null;
+    let serverConns = null;
+    let dbgDesc = doNetworkDbg ? `${serverWob.desc.substr(0, 4)}:${cpuId}` : '';
+    let isKnownCpu = this.cpus.has(cpuId);
     
-    if (this.cpus.has(cpuId)) {
-      if (this.cpus[cpuId].conns.has(server)) throw new Error(`CpuId ${cpuId} already seen on server ${server.desc}`);
+    if (isKnownCpu) { // Check if we've seen this cpu on another connection
+      cpu = this.cpus[cpuId];
+      serverConns = this.cpus[cpuId].serverConns;
+      if (serverConns.has(serverWob)) throw new Error(`CpuId ${cpuId} connected twice via ${serverWob.desc}`);
     } else {
-      this.cpus[cpuId] = { cpuId, firstSeenMs: U.foundation.getMs(), conns: Map(), ipPort: [ null, null ], spoofed: false };
-      
+      cpu = U.Hog();
+      cpu.cpuId = cpuId;                      // Unique, sensitive id of this cpu
+      cpu.serverConns = serverConns = Map();  // Maps a server to the connection this cpu has on that server
+      this.cpus[cpuId] = cpu;
       if (doNetworkDbg) console.log(`>>JOIN ${dbgDesc}`);
     }
     
-    // Track connection
-    this.cpus[cpuId].conns.set(server, conn);
+    serverConns.set(serverWob, conn);
     
     if (doNetworkDbg) {
-      console.log(`>-HOLD ${dbgDesc} on ${server.desc}`);
-      
+      console.log(`>-HOLD ${dbgDesc} on ${serverWob.desc}`);
       conn.hear.hold(([ msg, reply ]) => console.log(`--HEAR ${dbgDesc}: ${this.dbgItem(msg)}`));
-      
       let origTell = conn.tell;
       conn.tell = (...args) => {
         console.log(`--TELL ${dbgDesc}: ${this.dbgItem(args[0])}`);
-        return origTell(...args);
+        return origTell(...args)
       };
+      
+      conn.shutWob().hold(() => {
+        serverConns.rem(serverWob);
+        if (doNetworkDbg) console.log(`<-DROP ${dbgDesc} on ${serverWob.desc} (${serverConns.size} remaining)`);
+        if (serverConns.isEmpty()) {
+          delete this.cpus[cpuId];
+          cpu.shut();
+          if (doNetworkDbg) console.log(`<<EXIT ${dbgDesc}`);
+        }
+      });
+      
     }
     
-    // If connection shuts, untrack connection. If no connections left,
-    // untrack entire cpu!
-    conn.shutWob().hold(() => {
-      this.cpus[cpuId].conns.rem(server);
-      if (doNetworkDbg) console.log(`<-DROP ${dbgDesc} on ${server.desc}`);
-      
-      if (this.cpus[cpuId].conns.isEmpty()) {
-        delete this.cpus[cpuId];
-        if (doNetworkDbg) console.log(`<<EXIT ${dbgDesc}`);
-      }
-    });
+    if (!isKnownCpu) this.cpuWob.wobble(cpu);
+    serverWob.wobble(conn); // TODO: Inappropriately coupled to servers
     
     return conn;
   },
   getCpu: function(cpuId) {
     return this.cpus.has(cpuId) ? this.cpus[cpuId] : null;
-  },
-  getCpuConn: function(cpuId, server) {
-    if (!this.cpus.has(cpuId)) return null;
-    return this.cpus[cpuId].conns.get(server) || null;
-  },
-  remConn: function(cpuId, server) {
-    if (!this.cpus.has(cpuId)) throw new Error(`Can't rem conn; no cpu at id "${cpuId}"`);
-    if (!this.cpus[cpuId].conns.has(server)) throw new Error(`Can't rem conn; cpu at id "${cpuId}" has no conn for server "${server.desc}"`);
-    this.cpus[cpuId].conns.rem(server);
   }
 })});
 let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({

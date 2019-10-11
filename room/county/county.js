@@ -19,7 +19,7 @@ U.buildRoom({
       console.log('Init county...');
       
       let recTypes = { ...hinterlands.rt, ...rt }; // TODO: Collisions could occur...
-      let heartbeatMs = 10 * 60 * 1000;
+      let heartbeatMs = 1 * 60 * 1000;
       let lands = Lands({ recTypes, heartbeatMs });
       
       lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, '127.0.0.1', 80) }));

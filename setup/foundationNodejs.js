@@ -229,6 +229,7 @@
       
       insp.Foundation.init.call(this);
       
+      this.cpuCnt = 0;
       this.roomsInOrder = [];
       this.compilationData = {};
       this.mountedFiles = {}; // TODO: with MANY files could save this in its own file
@@ -709,12 +710,39 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
+    getCpuConn: function(serverWob, pool, query, decorate) {
+      
+      if (this.spoofEnabled && query.has('spoof')) {
+        
+        // Return the current connection for `serverWob` for the spoofed
+        // identity, or create such a connection if none exists
+        let cpu = pool.getCpu(query.spoof);
+        if (cpu && cpu.serverConns.has(serverWob)) return cpu.serverConns.get(serverWob)
+        return pool.makeCpuConn(serverWob, conn => {
+          conn.cpuId = query.spoof;
+          conn.isSpoofed = true;
+        });
+        
+      } else if (query.has('cpuId')) {
+        
+        // If the given identity exists, returns a connection for the
+        // identity for `serverWob`. Returns `null` if not recognized
+        let cpu = pool.getCpu(query.cpuId);
+        if (!cpu) return null;
+        if (cpu.serverConns.has(serverWob)) return cpu.serverConns.get(serverWob);
+        return pool.makeCpuConn(serverWob, conn => {
+          conn.cpuId = query.cpuId;
+        });
+        
+      } else {
+        
+        // Create a connection and identity for the unrecognized request
+        return pool.makeCpuConn(serverWob, conn => {});
+        
+      }
+      
+    },
     makeHttpServer: async function(pool, ip, port) {
-      // TODO: `serverWobs` should be shuttable? And shutting them
-      // would in turn shut all connections
-      let serverWob = Wob({});
-      serverWob.desc = `HTTP @ ${ip}:${port}`;
-      serverWob.cost = 100;
       
       // Translates a javascript value `msg` into http content type and payload
       let sendData = (res, msg) => {
@@ -759,6 +787,21 @@
         })[type]();
         
       };
+      
+      let serverWob = Wob({});
+      serverWob.desc = `HTTP @ ${ip}:${port}`;
+      serverWob.cost = 100;
+      serverWob.decorateConn = conn => {
+        conn.knownHosts = Set();
+        conn.waitResps = [];
+        conn.waitTells = [];
+        conn.hear = Wob({});
+        conn.tell = msg => conn.waitResps.length
+          ? sendData(conn.waitResps.shift(), msg)
+          : conn.waitTells.push(msg)
+        conn.shutWob().hold(() => conn.waitResps.forEach(res => res.end()));
+      };
+      
       let server = http.createServer(async (req, res) => {
         
         // TODO: connections should be Hogs - with "shut" and "shutWob" methods
@@ -787,38 +830,10 @@
           ].join('\n'));
         }
         
-        let isSpoofed = this.spoofEnabled && query.has('spoof');
+        let conn = this.getCpuConn(serverWob, pool, query);
+        if (!conn) { res.writeHead(400); res.end(); return; }
         
-        let [ connIp, connPort ] = isSpoofed
-          ? query.spoof.split(':')
-          : [ req.connection.remoteAddress, 80 /*req.connection.remotePort*/ ];
-        
-        // TODO: Should be more rigorous about how ips are represented in the spoof query
-        let cpuId = connIp.has('.') ? this.compactIp(connIp, connPort) : `${connIp}:${connPort}`;
-        
-        // // Build the "cpuId"; use ip + innerId
-        // // TODO: Rename "compactIp" -> "uniqueCpuId"?
-        // let cpuId = this.compactIp(connIp, connPort);
-        
-        // Get the connection from the pool
-        let conn = pool.getCpuConn(cpuId, serverWob);
-        if (!conn) {
-          
-          conn = Hog(() => conn.waitResps.forEach(res => res.end())); // Fizzle all remaining polls
-          conn.isSpoofed = isSpoofed;
-          conn.cpuId = cpuId;
-          conn.ipPort = [ connIp, connPort ];
-          conn.waitResps = [];
-          conn.waitTells = [];
-          conn.hear = Wob({});
-          conn.tell = msg => conn.waitResps.length // Send immediately if possible, otherwise queue!
-            ? sendData(conn.waitResps.shift(), msg)
-            : conn.waitTells.push(msg);
-          
-          pool.addCpuConn(serverWob, conn);
-          serverWob.wobble(conn);
-          
-        }
+        conn.knownHosts.add(req.connection.remoteAddress);
         
         // A requirement to sync means the response data alone lacks context;
         // the response object will need to correspond to its fellow request
@@ -833,6 +848,9 @@
           if (urlPath.hasHead('/!')) {
             if (urlPath.hasHead('/!FILE/')) {
               body = { command: 'getFile', path: urlPath.substr(7) }; // `7` strips off "/!FILE/"
+              syncReqRes = true;
+            } else if (urlPath.hasHead('/!STATUS/')) {
+              body = { command: 'getStatus', path: urlPath.substr(9) }; // `9` strips off "/!STATUS/"
               syncReqRes = true;
             }
           } else if (urlPath === '/') {
@@ -877,11 +895,10 @@
         // Run hut-level actions
         if (comTypes.has('hut') && comTypes.hut) conn.hear.wobble([ body, null ]);
         
-        // TODO: Only a single longpoll is held - no need for an Array of longpolls!
-        // HTTP POLLING MANAGEMENT; We now have an unspent, generic-purpose poll available:
-        // If there are any tells send the oldest, otherwise keep ahold of the response
-        // If we have multiple polls available, return all but one
-        // (Can't hold too many polls - most browsers limit http connections per site)
+        // We now have an unspent, generic-purpose poll available. If we
+        // have tells send the oldest otherwise hold on to the response.
+        // Finally return all but one poll. (TODO: Can raise this if the
+        // browser allows us multiple connections?)
         conn.waitTells.length ? sendData(res, conn.waitTells.shift()) : conn.waitResps.push(res);
         while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
         
@@ -893,6 +910,42 @@
       let serverWob = Wob({});
       serverWob.desc = `SOKT @ ${ip}:${port}`;
       serverWob.cost = 50;
+      serverWob.decorateConn = conn => {
+        conn.hear = Wob({});
+        conn.tell = msg => {
+          let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
+          let len = dataBuff.length;
+          let metaBuff = null;
+          
+          // The 2nd byte (`metaBuff[1]`) is either 127 to specify
+          // "large", 126 to specify "medium", or n < 126, where
+          // `n` is the exact length of `dataBuff`.
+          if (len < 126) {            // small-size
+            
+            metaBuff = Buffer.alloc(2);
+            metaBuff[1] = len;
+            
+          } else if (len < 65536) {   // medium-size
+            
+            metaBuff = Buffer.alloc(2 + 2);
+            metaBuff[1] = 126;
+            metaBuff.writeUInt16BE(len, 2);
+            
+          } else {                    // large-size
+            
+            // TODO: large-size packet could use more testing
+            metaBuff = Buffer.alloc(2 + 8);
+            metaBuff[1] = 127;
+            metaBuff.writeUInt32BE(Math.floor(len / U.int32), 2); // Lo end of `len` from metaBuff[2-5]
+            metaBuff.writeUInt32BE(len % U.int32, 6);             // Hi end of `len` from metaBuff[6-9]
+            
+          }
+          
+          metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
+          sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
+        };
+        conn.shutWob().hold(() => sokt.end());
+      };
       
       let makeSoktState = (status='initial') => ({
         status, // "initial", "upgrading", "ready", "ended"
@@ -902,12 +955,6 @@
       });
       
       let server = net.createServer(async sokt => {
-        
-        // Note: This is a NEW connection; we shouldn't be seeing some
-        // pre-existing connection repeated again here.
-        
-        // TODO: If this connection *is* being repeated, is it an error?
-        // Or do we end the current connection and create a new one?
         
         let soktState = makeSoktState();
         
@@ -942,52 +989,10 @@
         
         soktState.status = 'ready';
         
-        let { query: upgradeQuery } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
+        let { query } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
         
-        let isSpoofed = this.spoofEnabled && upgradeQuery.has('spoof');
-        let [ connIp, connPort ] = isSpoofed
-          ? upgradeQuery.spoof.split(':')
-          : [ sokt.remoteAddress, 80 /* sokt.remotePort */ ] // TODO: Does sokt.remotePort ever change?
-        
-        let cpuId = connIp.has('.') ? this.compactIp(connIp, connPort) : `${connIp}:${connPort}`;
-        
-        let conn = Hog(() => { sokt.end(); });
-        conn.cpuId = cpuId;
-        conn.isSpoofed = isSpoofed;
-        conn.ipPort = [ connIp, connPort ];
-        conn.hear = Wob({});
-        conn.tell = msg => {
-          let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
-          let len = dataBuff.length;
-          let metaBuff = null;
-          
-          // The 2nd byte (`metaBuff[1]`) is either 127 to specify
-          // "large", 126 to specify "medium", or n < 126, where
-          // `n` is the exact length of `dataBuff`.
-          if (len < 126) {            // small-size
-            
-            metaBuff = Buffer.alloc(2);
-            metaBuff[1] = len;
-            
-          } else if (len < 65536) {   // medium-size
-            
-            metaBuff = Buffer.alloc(2 + 2);
-            metaBuff[1] = 126;
-            metaBuff.writeUInt16BE(len, 2);
-            
-          } else {                    // large-size
-            
-            console.log('SENDING WITH "large" FRAME!! (Does this work??)');
-            metaBuff = Buffer.alloc(2 + 8);
-            metaBuff[1] = 127;
-            metaBuff.writeUInt32BE(Math.floor(len / U.int32), 2); // Lo end of `len` from metaBuff[2-5]
-            metaBuff.writeUInt32BE(len % U.int32, 6);             // Hi end of `len` from metaBuff[6-9]
-            
-          }
-          
-          metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-          sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
-        };
+        let conn = this.getCpuConn(serverWob, pool, query);
+        if (!conn) return sokt.end();
         
         sokt.on('readable', () => {
           if (conn.isShut()) return;
@@ -1008,9 +1013,6 @@
         sokt.on('error', () => { soktState = makeSoktState('ended'); conn.isShut() || conn.shut(); });
         sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
-        try { pool.addCpuConn(serverWob, conn); } catch(err) { conn.shut(); throw err; }
-        serverWob.wobble(conn);
-        
       });
       await Promise(r => server.listen(port, ip, r));
       return serverWob;
@@ -1026,8 +1028,8 @@
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
       let urlFn = (this.spoofEnabled && absConn.isSpoofed)
-        ? fp => `/!FILE${fp}?spoof=${absConn.cpuId}`
-        : fp => `/!FILE${fp}`;
+        ? fp => `/!FILE${fp}?cpuId=${absConn.cpuId}&spoof=${absConn.cpuId}`
+        : fp => `/!FILE${fp}?cpuId=${absConn.cpuId}`;
       
       let doc = XmlElement(null, 'root');
       
@@ -1114,7 +1116,8 @@
       });
       
       contents = fullScriptContent.join('\n') + '\n\n' + [
-        '// ==== File: hut.js (7 lines)',
+        '// ==== File: hut.js (8 lines)',
+        `U.cpuId = '${absConn.cpuId}';`,
         `U.hutTerm = '${hutTerm}';`,
         `U.aboveMsAtResponseTime = ${this.getMs()};`,
         `U.initData = ${JSON.stringify(initContent)};`,
