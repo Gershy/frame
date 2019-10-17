@@ -13,7 +13,7 @@
       //   This is the time we received the server's 1st byte
       // - No certainty further than `now - firstContactMs`; increasing accuracy
       //   requires guessing time between data insertion and our 1st byte
-      // - We'll estimate LESS than the real latency this way
+      // - This estimates LESS than the real latency
       
       let nativeNow = +new Date();
       let firstContactMs = performance.timing.responseStart;
@@ -36,6 +36,7 @@
       
       // Detect when the Window loads
       this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
+      window.history.replaceState({}, '', this.spoof ? `?spoof=${this.spoof}` : `?cpuId=${U.cpuId}`);
       
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what page-closing signifies...
@@ -158,6 +159,7 @@
         conn.tell = msg => tellAndHear(msg, conn);
         this.queueTask(() => conn.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };
+      serverWob.shut = () => { tellAndHear = () => {}; };
       
       return serverWob;
     },
@@ -175,6 +177,7 @@
         conn.tell = msg => sokt.send(JSON.stringify(msg));
         sokt.onmessage = ({ data }) => data && conn.hear.wobble([ JSON.parse(data), null ]);
       };
+      serverWob.shut = () => sokt.close();
       
       return serverWob;
     },

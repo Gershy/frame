@@ -11,7 +11,7 @@ U.buildRoom({
     let { HorzScope: AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Chance } = chance;
     let { Rec, recTyper } = record;
-    let { Lands, Way } = hinterlands;
+    let { Lands } = hinterlands;
     
     let { rt, add } = recTyper();
     add('storyMix', Rec); // Note: `Rec` is optional when it's the last param
@@ -50,8 +50,8 @@ U.buildRoom({
       // pair is like the "default" host+port pair, while others could
       // exist too.
       let { ip, port } = foundation;
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, '127.0.0.1', 80) }));
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, '127.0.0.1', 8000) }));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, '127.0.0.1', 80));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, '127.0.0.1', 8000));
       
       /// {ABOVE=
       // TODO: Eventually decouple this from hinterlands

@@ -5,7 +5,7 @@ U.buildRoom({
     
     let { HorzScope, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Rec, recTyper } = record;
-    let { Lands, Way } = hinterlands;
+    let { Lands } = hinterlands;
     
     let { rt, add } = recTyper();
     add('round',              Rec);
@@ -22,8 +22,8 @@ U.buildRoom({
       let heartbeatMs = 1 * 60 * 1000;
       let lands = Lands({ recTypes, heartbeatMs });
       
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeHttpServer(lands.pool, '127.0.0.1', 80) }));
-      lands.addWay(Way({ lands, makeServer: () => foundation.makeSoktServer(lands.pool, '127.0.0.1', 8000) }));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, '127.0.0.1', 80));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, '127.0.0.1', 8000));
       
       /// {ABOVE=
       lands.setRealRooms([ realHtmlCss ]);

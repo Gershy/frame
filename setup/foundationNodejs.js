@@ -426,6 +426,14 @@
       //   added to `precedence` such that a added earlier never depends on
       //   a room added later.
       
+      if (U.isType(roomName, Object)) {
+        let virtualRoom = roomName;
+        compiledPrms[virtualRoom.name] = Promise.resolve();
+        let depNames = virtualRoom.innerRooms;
+        await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
+        return precedence.gain([ virtualRoom ]);
+      }
+      
       if (compiledPrms.has(roomName)) return compiledPrms[roomName];
       
       let rsv = null, rjc = null, prm = Promise((rsv0, rjc0) => { rsv = rsv0; rjc = rjc0; });
@@ -721,6 +729,7 @@
         return pool.makeCpuConn(serverWob, conn => {
           conn.cpuId = query.spoof;
           conn.isSpoofed = true;
+          if (decorate) decorate(conn);
         });
         
       } else if (query.has('cpuId')) {
@@ -732,12 +741,13 @@
         if (cpu.serverConns.has(serverWob)) return cpu.serverConns.get(serverWob);
         return pool.makeCpuConn(serverWob, conn => {
           conn.cpuId = query.cpuId;
+          if (decorate) decorate(conn);
         });
         
       } else {
         
         // Create a connection and identity for the unrecognized request
-        return pool.makeCpuConn(serverWob, conn => {});
+        return pool.makeCpuConn(serverWob, decorate || (conn => {}));
         
       }
       
@@ -904,6 +914,8 @@
         
       });
       await new Promise(r => server.listen(port, ip, 511, r));
+      serverWob.shut = () => server.close();
+      
       return serverWob;
     },
     makeSoktServer: async function(pool, ip=this.ip, port=this.port + 1) {
@@ -942,9 +954,9 @@
           }
           
           metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-          sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
+          conn.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
         };
-        conn.shutWob().hold(() => sokt.end());
+        conn.shutWob().hold(() => conn.sokt.end());
       };
       
       let makeSoktState = (status='initial') => ({
@@ -991,7 +1003,7 @@
         
         let { query } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
         
-        let conn = this.getCpuConn(serverWob, pool, query);
+        let conn = this.getCpuConn(serverWob, pool, query, conn => conn.sokt = sokt);
         if (!conn) return sokt.end();
         
         sokt.on('readable', () => {
@@ -1015,15 +1027,15 @@
         
       });
       await Promise(r => server.listen(port, ip, r));
+      serverWob.shut = () => server.close();
+      
       return serverWob;
     },
     
-    prepareForTests: function() {
-      require('./hutkeeping.js');
-      this.variantDefs.forEach(vd => vd.gain({ test: 1 }));
-    },
     getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
     genInitBelow: async function(contentType, absConn, hutTerm, initContent={}) {
+      
+      // TODO: This should probably be implemented by realHtmlCss
       
       if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
       
@@ -1123,8 +1135,8 @@
         `U.initData = ${JSON.stringify(initContent)};`,
         `U.debugLineData = ${JSON.stringify(debugLineData)};`,
         'let { FoundationBrowser } = U.setup;',
-        `U.foundation = FoundationBrowser();`,
-        `U.foundation.raise({ settle: '${this.hut}.below' });`
+        `let foundation = U.foundation = FoundationBrowser();`,
+        `foundation.raise({ settle: '${this.hut}.below' });`
       ].join('\n');
       
       mainScript.setProp('type', 'text/javascript');
@@ -1151,20 +1163,27 @@
       this.bearing = bearing;
       this.spoofEnabled = spoofEnabled;
       
-      // Overwrite the original "buildRoom" logic such that building a
-      // Room immediately executes that Room
-      let origBuildRoom = U.buildRoom;
-      U.buildRoom = (...args) => origBuildRoom(...args)();
-      
       // Compile everything!
       this.roomsInOrder = await this.compileRecursive(this.hut);
+      if (U.isType(this.hut, Object)) this.hut = this.hut.name; 
       
       // As soon as we're compiled we can install useful cmp->src exception handlers
       process.on('uncaughtException', err => console.error(this.formatError(err)));
       process.on('unhandledRejection', err => console.error(this.formatError(err)));
       
       // Require all rooms nodejs-style
-      this.roomsInOrder.forEach(roomName => require(`../room/${roomName}/${roomName}.${this.bearing}.js`));
+      this.roomsInOrder.forEach(room => {
+        if (U.isType(room, String)) {
+          // Install and run the room-building-function
+          require(`../room/${room}/${room}.${this.bearing}.js`);
+          U.rooms[room]();
+        } else {
+          U.rooms[room.name] = {
+            name: room.name,
+            built: room.build(this, ...U.rooms.slice(...room.innerRooms).toArr(v => v.built))
+          };
+        }
+      });
       
       // The final Room is our Hut!
       return U.rooms[this.hut];
