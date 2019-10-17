@@ -235,8 +235,8 @@
       this.mountedFiles = {}; // TODO: with MANY files could save this in its own file
       
       this.variantDefs = {
-        above: { above: 1, below: 0, test: 0 },
-        below: { above: 0, below: 1, test: 0 }
+        above: { above: 1, below: 0 },
+        below: { above: 0, below: 1 }
       };
       
       this.transportDebug = false;

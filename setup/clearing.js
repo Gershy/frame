@@ -268,7 +268,7 @@ let U = global.U = {
     return Insp;
   },
   isType: (val, Cls) => {
-    // Unboxed values (`null` and `undefined` are tested in the `catch`
+    // Unboxed values (`null` and `undefined` hit the `catch`
     try { return val.constructor === Cls; } catch (err) { return val === Cls; }
     return false;
   },

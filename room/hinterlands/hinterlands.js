@@ -244,6 +244,9 @@ U.buildRoom({
       },
       
       createRec: function(name, params={}, ...args) {
+        // TODO: Don't use this for Hut and ArchHut??
+        // They shouldn't be included in allRecs, and they should
+        // have non-trivial ids. Hut still needs a `lands` param tho
         if (!this.recTypes.has(name)) throw new Error(`Invalid RecType name: "${name}"`)
         if (!params.has('uid')) params.uid = this.nextUid();
         params.lands = this;
@@ -376,7 +379,7 @@ U.buildRoom({
           // "farHut" and "ourHut" :P ("proclaim" = "inform all below")
           
           let cpuId = cpu.cpuId;
-          let hut = this.createRec('hut', { cpuId, uid: `!cpu:${cpuId}` });
+          let hut = this.createRec('hut', { cpuId, uid: `!hut:${cpuId}` });
           this.hutsByCpuId.set(cpuId, hut);
           
           cpu.connWob.hold(conn => { // Now `cpu` is also connected via `conn`
@@ -401,7 +404,7 @@ U.buildRoom({
           hut.shutWob().hold(group => { if (!cpu.isShut()) cpu.shut(group); this.hutsByCpuId.rem(cpuId); });
           cpu.shutWob().hold(group => { if (!hut.isShut()) hut.shut(group) });
           
-          this.createRec('archHut', {}, this.arch, hut);
+          this.createRec('archHut', { uid: `!archHut:${cpuId}` }, this.arch, hut);
           
         });
         
@@ -425,7 +428,7 @@ U.buildRoom({
       
       init: function({ lands, cpuId, ...supArgs }) {
         
-        if (!lands) throw new Error('Missing "lands"');
+        if (!lands) throw new Error('Missing "lands"'); // TODO: Can this property be removed? It's aaalmost unnecessary
         if (!cpuId) throw new Error('Missing "cpuId"');
         
         insp.Rec.init.call(this, supArgs);
@@ -439,7 +442,7 @@ U.buildRoom({
         // Keep track of which Records the Below for this Hut has followed
         this.version = 0;
         this.fols = Map();
-        this.sync = [ 'addRec', 'updRec', 'remRec' ].toObj(v => [ v, {} ]);
+        this.sync = { addRec: {}, updRec: {}, remRec: {} };
         
         // Keep track of whether the Below for this Hut is still communicating
         this.expiryTimeout = null;
