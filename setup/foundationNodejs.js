@@ -1135,7 +1135,7 @@
         `U.initData = ${JSON.stringify(initContent)};`,
         `U.debugLineData = ${JSON.stringify(debugLineData)};`,
         'let { FoundationBrowser } = U.setup;',
-        `let foundation = U.foundation = FoundationBrowser();`,
+        `let foundation = FoundationBrowser();`,
         `foundation.raise({ settle: '${this.hut}.below' });`
       ].join('\n');
       
@@ -1176,7 +1176,7 @@
         if (U.isType(room, String)) {
           // Install and run the room-building-function
           require(`../room/${room}/${room}.${this.bearing}.js`);
-          U.rooms[room]();
+          U.rooms[room](this);
         } else {
           U.rooms[room.name] = {
             name: room.name,

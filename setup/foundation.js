@@ -1,20 +1,18 @@
 /*
-The hut can run on any platform that supports javascript
-  - E.g. redhat, digitalocean, heroku, etc.
+Huts are built on Foundations. There is OurHut representing ourself in
+the hinterlands, and FarHuts representing others.
 
-The hut can have multiple unrelated servers
-A server can support unrelated apps(??) (e.g. both chess2 and storyMix)
-Multiple BelowHuts can run under an AboveHut
-Cpus can communicate over multiple connections
-A BelowHut under an AboveHut runs with a specific Reality (only one!)
+A Foundation runs on any platform which supports javascript - redhat,
+digitalocean, heroku, browser, etc.
+
+Huts connect to each other through a variable number of Connections
+
+Huts can be uphill, downhill or level with each other. Any Hut may be at
+the very top, or in communication with a single upwards Hut.
+
+Any Hut with Huts underneath it can support a variety of Realities. A
+Hut at the very bottom runs using a single Reality.
 */
-
-// The "foundation" is environment-level normalization. It configures javascript to
-// operate consistently whether in the browser, in node.js, on a particular web
-// platform, etc. Also, for each platform, the foundation takes into account whether
-// the hut is alone, above, below, or between
-
-// TODO: Write classes for transports
 
 let doNetworkDbg = 1;
 
@@ -53,15 +51,12 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(6, '0')
       + U.base62(Math.random() * Math.pow(62, 6)).padHead(6, '0');
     
-    let cpuId = conn.cpuId;
-    let cpu = null;
-    let serverConns = null;
+    let cpuId=conn.cpuId, cpu=null, serverConns=null, isKnownCpu=this.cpus.has(cpuId);
     let dbgDesc = doNetworkDbg ? `${serverWob.desc.substr(0, 4)}:${cpuId}` : '';
-    let isKnownCpu = this.cpus.has(cpuId);
     
     if (isKnownCpu) { // Check if we've seen this cpu on another connection
       cpu = this.cpus[cpuId];
-      serverConns = this.cpus[cpuId].serverConns;
+      serverConns = cpu.serverConns;
       if (serverConns.has(serverWob)) throw new Error(`CpuId ${cpuId} connected twice via ${serverWob.desc}`);
     } else {
       cpu = U.Hog();

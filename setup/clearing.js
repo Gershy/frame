@@ -284,15 +284,16 @@ let U = global.U = {
   buildRoom: ({ name, innerRooms=[], build }) => {
     
     if (U.rooms.has(name)) throw new Error(`Tried to overwrite room "${name}"`);
-    return U.rooms[name] = () => {
+    return U.rooms[name] = foundation => {
       
+      if (!foundation) throw new Error('Missing "foundation" param');
       if (!U.isType(name, String)) throw new Error(`Invalid name: ${U.nameOf(name)}`);
       let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
       if (missingRoom) throw new Error(`Missing innerRoom: ${missingRoom[0]}`);
       
       return U.rooms[name] = {
         name,
-        built: build(U.foundation, ...innerRooms.map(rn => U.rooms[rn].built))
+        built: build(foundation, ...innerRooms.map(rn => U.rooms[rn].built))
       };
       
     };
@@ -300,7 +301,6 @@ let U = global.U = {
   },
   
   setup: {}, // Gains items used for setup
-  foundation: null,
   rooms: {}
 };
 
@@ -316,7 +316,7 @@ let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
     if (group.has(this)) return; // Double-shut is excused!
     group.add(this);
     
-    if (this.didShut) { console.log(U.foundation.formatError(this.didShut)); throw new Error('Second shut'); }
+    if (this.didShut) { let err = new Error('Second shut'); err.firstShut = this.didShut; throw err; }
     this.didShut = new Error('First shut');
     this.shut0(group);
     this.shutWob0.wobble();
@@ -444,10 +444,10 @@ let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) =>
     this.shuts = new Set();
     
     this.err = new Error('');
-    U.foundation.queueTask(() => {
+    setTimeout(() => {
       if (this.wobs) { this.err.message = 'INCOMPLETE AGG'; throw this.err; }
       delete this.err;
-    });
+    }, 0);
   },
   wobble: function(rec, ...args) { this.addWob(rec); return rec.wobble(...args); },
   shut: function(rec) { this.shuts.add(rec); },
@@ -461,8 +461,8 @@ let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) =>
     // could also be Hogs.
     
     wob.squadCnt = wob.squadCnt ? wob.squadCnt + 1 : 1;
-    if (wob.squadCnt > 1) console.log(U.foundation.formatError(new Error('Multiple squads'))); // TODO: Bad?
     
+    if (wob.squadCnt > 1) throw new Error('Multiple squads'); // TODO: Bad?
     if (wob.squadCnt !== 1) return wob; // WobSquads past the first don't mask any functions
     
     let m = wob.squadMapHoldToArgsSet = Map();

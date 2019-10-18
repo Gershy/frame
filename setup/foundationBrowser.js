@@ -51,7 +51,7 @@
       if (!args.has('hut')) throw new Error('Missing "hut" param');
       
       // Build all Rooms
-      U.rooms.forEach(room => room());
+      U.rooms.forEach(room => room(this));
       
       // Catch exceptions after building all Rooms
       window.addEventListener('unhandledrejection', evt => {

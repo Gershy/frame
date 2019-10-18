@@ -5,7 +5,7 @@ let { Keep } = require('./hutkeeping.js');
 
 module.exports = async (args, foundationInsps) => {
   
-  let foundation = U.foundation = FoundationNodejs();
+  let foundation = FoundationNodejs();
   
   let [ recordRoomForNodeJs, hinterlandsRoomForNodeJs ] = await Promise(resolve => foundation.raise({
     settle: 'hinterlandsTest.above',
