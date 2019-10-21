@@ -96,7 +96,7 @@ U.buildRoom({
           let hut = archHut.members[1];
           dep(hut.followRec(round));
           dep(hut.followRec(archRound));
-          let player = lands.createRec('player', { value: { hutTerm: hut.getTerm(), name: 'anon', score: 0 } });
+          let player = dep(lands.createRec('player', { value: { hutTerm: hut.getTerm(), name: 'anon', score: 0 } }));
           let hutPlayer = lands.createRec('hutPlayer', {}, hut, player);
           let roundPlayer = lands.createRec('roundPlayer', {}, round, player);
         }));

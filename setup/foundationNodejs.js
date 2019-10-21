@@ -1084,6 +1084,7 @@
         // TODO: In the future, a Hut Below us could be a HutBetween
         ...this.roomsInOrder.toObj(roomName => [ roomName, `room/${roomName}/${roomName}.below.js` ])
       };
+      
       let contents = await Promise.allObj(files.map(roomPath => this.readFile(path.join(rootDir, roomPath))));
       
       let debugLineData = {
@@ -1168,6 +1169,8 @@
       if (U.isType(this.hut, Object)) this.hut = this.hut.name; 
       
       // As soon as we're compiled we can install useful cmp->src exception handlers
+      process.removeAllListeners('uncaughtException');  // TODO: Bandaid for multiple instances of FoundationNodejs
+      process.removeAllListeners('unhandledRejection');
       process.on('uncaughtException', err => console.error(this.formatError(err)));
       process.on('unhandledRejection', err => console.error(this.formatError(err)));
       
@@ -1184,6 +1187,9 @@
           };
         }
       });
+      
+      // At this stage it's safe to filter out virtual rooms
+      this.roomsInOrder = this.roomsInOrder.map(n => U.isType(n, String) ? n : C.skip);
       
       // The final Room is our Hut!
       return U.rooms[this.hut];

@@ -1,196 +1,120 @@
 require('../foundationNodeJs.js');
 require('../foundationBrowser.js');
+let { Hog, Wob, HorzScope } = U;
 let { FoundationNodejs, FoundationBrowser } = U.setup;
 let { Keep } = require('./hutkeeping.js');
+let path = require('path');
+
+let isGlobalLocked = false;
+let doLockGlobal = async fn => {
+  if (isGlobalLocked) throw new Error('Can\'t perform - requires global, and global is locked');
+  isGlobalLocked = true;
+  await fn();
+  isGlobalLocked = false;
+};
 
 module.exports = async (args, foundationInsps) => {
   
-  let foundation = FoundationNodejs();
-  
-  let [ recordRoomForNodeJs, hinterlandsRoomForNodeJs ] = await Promise(resolve => foundation.raise({
-    settle: 'hinterlandsTest.above',
-    hut: {
-      name: 'hinterlandsTest',
-      innerRooms: [ 'record', 'hinterlands' ],
-      build: (foundation, record, hinterlands) => ({ open: () => resolve([ record, hinterlands ]) })
+  let isRoomFileName = name => {
+    let pcs = name.split(path.sep).slice(-3);
+    if (pcs.length < 3) return false;
+    return pcs[0] === 'room' && pcs[2].hasHead(`${pcs[1]}.`) && pcs[2].hasTail('.js');
+  };
+  let spoofFoundationHut = async (FoundationCls, name, bearing, fn) => {
+    
+    // TODO: Multiple instances of FoundationNodejs result in many `process.on('uncaughtException', ...)`
+    
+    for (let fileName in require.cache) if (isRoomFileName(fileName)) delete require.cache[fileName];
+    U.rooms = {}; // TODO: `U.rooms` should move to `foundationInstance.rooms`
+    
+    let desc = `${FoundationCls.name}:${name}.${bearing}`;
+    let foundation = FoundationCls(); // TODO: Eventually try to prevent FoundationNodejs recompilation (for speed)
+    let args0 = null;
+    
+    try {
+      await foundation.raise({
+        settle: `${name}.${bearing}`,
+        hut: {
+          name, innerRooms: [ 'record', 'hinterlands' ],
+          build: (...args) => ({ open: () => { args0 = args; fn(...args); } })
+        }
+      });
+    } catch(err) {
+      console.log(`Error with [${desc}]:\n${foundation.formatError(err)}`);
     }
-  }));
-  
-  let { Lands, Hut, rt } = hinterlandsRoomForNodeJs;
-  let { recTyper, Rec } = recordRoomForNodeJs;
-  let { Hog, Wob, HorzScope } = U;
-  
-  let parseInitData = msg => {
-    let endBit = msg.substr(msg.indexOf('// ==== File:' + ' hut.js'));
-    let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
-    if (!initDataMatch) throw new Error(`Couldn't parse invalid initData`);
-    return JSON.parse(initDataMatch[1]);
-  };
-  
-  // TODO: Copy-pasted from hinterlands
-  let doUpdate = (lands, msg) => {
     
-    // Updates `lands` based on the contents of `msg`.
-    
-    let { version, content } = msg;
-    if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
-    
-    let squad = U.WobSquad();
-    let err = U.safe(() => {
-      
-      // Apply all operations
-      let { addRec={}, remRec={}, updRec={} } = content;
-      
-      // "head" Recs existed before the current update. "tail" Recs are Recs
-      // whose existence results from the update. A Rec coming into existence
-      // may have member references to both HeadRecs and TailRecs
-      let headRecs = lands.allRecs;
-      let tailRecs = Map();
-      let getHeadOrTailRec = uid => {
-        if (headRecs.has(uid)) return headRecs.get(uid);
-        if (tailRecs.has(uid)) return tailRecs.get(uid);
-        return null;
-      };
-      
-      // Add new Recs with dependency churning
-      let waiting = addRec.toArr((v, uid) => v.gain({ uid }));
-      while (waiting.length) {
-        
-        let attempt = waiting;
-        waiting = [];
-        
-        for (let addVals of attempt) {
-        
-          let { type, value, members, uid } = addVals;
-          
-          // Convert all members from uid to Rec
-          members = members.map(uid => getHeadOrTailRec(uid));
-          
-          // If a member couldn't be converted wait for a later churn
-          if (members.find(m => !m)) { waiting.push(addVals); continue; }
-          
-          // All members are available - create the Rec!
-          let newRec = lands.createRec(type, { uid, value, squad }, ...members);
-          tailRecs.set(uid, newRec);
-          
-        }
-        
-        if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
-          console.log('Head Recs:', headRecs.toArr((rec, uid) => `${uid}: ${U.nameOf(rec)}`).join('\n'));
-          console.log(JSON.stringify(content, null, 2));
-          throw new Error(`Unresolvable Rec dependencies`);
-        }
-        
-      }
-      
-      // Update Recs directly
-      updRec.forEach((newValue, uid) => {
-        if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
-        squad.wobble(lands.allRecs.get(uid), newValue);
-      });
-      
-      // Remove Recs directly
-      //let shutGroup = Set();
-      remRec.forEach((val, uid) => {
-        if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
-        squad.shut(lands.allRecs.get(uid));
-      });
-      
-    });
-    
-    squad.complete(err);
-    
-    if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
-    
-    // We've successfully moved to our next version!
-    lands.version = version;
+    return args0;
     
   };
+  
+  // TODO:
+  // - Refactor out common test logic
+  // - Test Cpus disconnecting
+  // - Test Cpus disconnecting and reconnecting
+  // - Test comWobs
+  // - Test a setup where BelowHuts can communicate through edits and
+  //   shared follows
+  // - Test Below->Above modifies (LandsBelow.prototype.modifyRec)
   
   let keep = Keep(null, 'hinterlands').contain(k => {
     
-    let testyNames = [ 'jim', 'bob', 'sal', 'tom', 'tim', 'rik',
-      'hal', 'jed', 'man', 'guy', 'ted', 'may', 'fay', 'boi', 'mom',
-      'glo', 'dad', 'zed', 'kli', 'pog', 'wei', 'joy', 'ann', 'rae' ];
-    
-    let testData = null;
-    k.sandwich.before = async () => {
-      
-      let { rt: trt, add } = recTyper();
-      add('loc',        Rec);
-      add('item',       Rec);
-      add('man',        Rec);
-      add('hat',        Rec);
-      add('store',      Rec);
-      add('manHat',     Rec, '11', trt.man,     trt.hat);
-      add('storeItem',  Rec, '1M', trt.store,   trt.item);
-      add('storeLoc',   Rec, '11', trt.store,   trt.loc);
-      add('manSeen',    Rec, 'MM', trt.man,     trt.loc);
-      add('archItem',   Rec, '1M', rt.arch,     trt.item);
-      add('archMan',    Rec, '1M', rt.arch,     trt.man);
-      add('archStore',  Rec, '1M', rt.arch,     trt.store);
-      
-      let lands = Lands({ recTypes: { ...rt, ...trt } });
-      
-      let cpus = Set();
-      
-      let belowIdCnt = 0;
-      lands.makeServers.push(pool => {
-        let serverWob = U.Wob();
-        serverWob.desc = 'Spoofy Above serverWob for hinterlands tests';
-        serverWob.cost = 50;
-        serverWob.spoofCpu = () => pool.makeCpuConn(serverWob, conn => conn.cpuId = testyNames[belowIdCnt++]);
-        serverWob.decorateConn = conn => {
-          conn.hear = U.Wob();
-          conn.hear.hold(v => { if (!U.isType(v, Array)) throw new Error('Must hear Array'); });
-          conn.tellWob = U.Wob();
-          conn.tell = (...args) => conn.tellWob.wobble(...args);
-          conn.nextTell = async (fn=null, force='force') => {
-            let hold = null;
-            let prm = new Promise(rsv => hold = conn.tellWob.hold(v => rsv(v)));
-            prm.then(() => hold.shut());
-            
-            let hut = lands.hutForCpu(conn);
-            if (force) hut.forceSync(force);
-            if (fn) await fn(hut)
-            
-            return await prm;
-          };
-          
-          cpus.add(conn);
-          conn.shutWob().hold(() => cpus.rem(conn));
-        };
-        serverWob.shut = () => serverWob.spoofCpu = null;
-        return serverWob;
-      });
-      lands.hutForCpu = ({ cpuId }) => lands.hutsByCpuId.get(cpuId);
-      
-      await lands.open();
-      
-      testData = { trt, server: lands.servers[0], lands, cpus };
-      
+    let trackTimeouts = Set();
+    let trackIntervals = Set();
+    let origSetTimeout = global.setTimeout;
+    let origSetInterval = global.setInterval;
+    global.setTimeout = (f, ms) => {
+      let v = [ f ];
+      let t = origSetTimeout(() => { trackTimeouts.rem(v); f(); }, ms);
+      v.push(t);
+      trackTimeouts.add(v);
+      return t;
     };
-    k.sandwich.after = () => {
-      let shutGroup = Set();
-      
-      // If these aren't explicitly shut timeouts may cause
-      // the program to persist after all tests are complete
-      testData.cpus.forEach(cpu => cpu.shut(shutGroup));
-      testData.lands.shut(shutGroup);
+    global.setInterval = (f, ms) => {
+      let v = [ f ];
+      let i = origSetInterval(() => { trackIntervals.rem(v); f(); }, ms);
+      v.push(i);
+      trackIntervals.add(v);
+      return i;
     };
     
-    Keep(k, 'landsGenUid', () => {
+    let testHogs = Set();
+    let addTestHog = h => testHogs.add(h) && h;
+    
+    k.sandwich = {
+      after: async () => {
+        // Clear all timeouts+intervals
+        console.log(`** Clearing ${trackTimeouts.size} timeout(s) and ${trackIntervals.size} interval(s) **`);
+        for (let [ f, timeout ] of trackTimeouts) { /*f();*/ clearTimeout(timeout); }
+        for (let [ f, interval ] of trackIntervals) { /*f();*/ clearInterval(interval); }
+        trackTimeouts = Set(); trackIntervals = Set();
+        
+        // Shut all test Hogs
+        for (let hog of testHogs) (hog.isShut && hog.isShut()) || hog.shut();
+        testHogs = Set();
+        
+        // Wait for a brief moment (allow nextTicks to occur, etc)
+        await Promise(r => origSetTimeout(r, 10));
+      }
+    };
+    
+    Keep(k, 'landsGenUid', async n => {
+      let [ f, r, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
       let lands = Lands({ recTypes: rt });
       return { msg: 'Lands uid len is 8', result: lands.nextUid().length === 8 };
     });
     
-    Keep(k, 'arch', async () => {
-      let { trt, server, lands } = testData;
-      return { msg: 'Lands has "arch"', result: U.isInspiredBy(lands.arch, Rec) };
+    Keep(k, 'arch', async n => {
+      let [ f, { Rec }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+      let lands = Lands({ recTypes: rt });
+      return { msg: 'Lands "arch" is Rec', result: U.isType(lands.arch, Rec) };
     });
     
-    Keep(k, 'relWobDefineFirst', async () => {
-      let { trt, server, lands } = testData;
+    Keep(k, 'relWobDefineFirst', async n => {
+      let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+      let { rt: trt, add } = recTyper();
+      add('item',     Rec);
+      add('archItem', Rec, '1M', rt.arch, trt.item);
+      let lands = Lands({ recTypes: { ...trt, ...rt } });
       
       let wobbledItem = null;
       HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, { members: [ _, item ] }) => { wobbledItem = item; });
@@ -202,11 +126,14 @@ module.exports = async (args, foundationInsps) => {
         [ 'relWob returns item', () => !!wobbledItem ],
         [ 'relWob returns correct item', () => wobbledItem === item ]
       ];
-      
     });
     
-    Keep(k, 'relWobCreateFirst', async () => {
-      let { trt, server, lands } = testData;
+    Keep(k, 'relWobCreateFirst', async n => {
+      let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+      let { rt: trt, add } = recTyper();
+      add('item',     Rec);
+      add('archItem', Rec, '1M', rt.arch, trt.item);
+      let lands = Lands({ recTypes: { ...trt, ...rt } });
       
       let item = lands.createRec('item', { value: 'item!' })
       let archItem = lands.createRec('archItem', {}, lands.arch, item)
@@ -218,355 +145,428 @@ module.exports = async (args, foundationInsps) => {
         [ 'relWob returns item', () => !!wobbledItem ],
         [ 'relWob returns correct item', () => wobbledItem === item ]
       ];
-      
     });
     
-    Keep(k, 'connectionSucceeds', async () => {
-      let { trt, server, lands } = testData;
+    Keep(k, 'connect').contain(k => {
       
-      let client = server.spoofCpu();
-      return { result: !!client };
-    });
-    
-    Keep(k, 'connectHutDefineFirst', async () => {
-      let { trt, server, lands } = testData;
-      
-      let wobbledHut = null;
-      HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
-      
-      let client = server.spoofCpu();
-      
-      return [
-        [ 'relWob returns item', () => !!wobbledHut ],
-        [ 'relWob returns hut', () => U.isInspiredBy(wobbledHut, Hut) ]
-      ];
-      
-    });
-    
-    Keep(k, 'connectHutCreateFirst', async () => {
-      let { trt, server, lands } = testData;
-      
-      let client = server.spoofCpu();
-      
-      let wobbledHut = null;
-      HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
-      
-      return [
-        [ 'relWob returns item', () => !!wobbledHut ],
-        [ 'relWob returns hut', () => U.isInspiredBy(wobbledHut, Hut) ]
-      ];
-      
-    });
-    
-    Keep(k, 'clientShutsHut', async () => {
-      
-      let { trt, server, lands } = testData;
-      
-      let client = server.spoofCpu();
-      
-      let wobbledHut = null;
-      HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
-        wobbledHut = hut;
-      });
-      
-      client.shut();
-      
-      return { msg: 'hut is shut', result: () => hut.isShut() };
-      
-    });
-    
-    Keep(k, 'hutShutsClient', async () => {
-      
-      let { trt, server, lands } = testData;
-      
-      let client = server.spoofCpu();
-      
-      let wobbledHut = null;
-      HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { wobbledHut = hut; });
-      
-      client.shut();
-      
-      return { msg: 'hut is shut', result: () => hut.isShut() };
-      
-    });
-    
-    Keep(k, 'getInit').contain(k => {
-      
-      Keep(k, 'noData', async () => {
+      let spoofServerWob = (name, pool) => {
         
-        return { result: true };
+        // Very simple Server which hardly decorates incoming Conns
         
-        let { trt, server, lands } = testData;
+        let serverWob = Wob();
+        serverWob.desc = `SPOO ("${name}", a spoofy server)`;
+        serverWob.cost = 50;
+        serverWob.decorateConn = conn => {
+          conn.spoofed = `Represents a FarHut for serverWob ${name}`;
+        };
+        serverWob.shut = () => {};
+        return serverWob;
         
-        let client = server.spoofCpu();
-        
-        let result = await client.nextTell(() => {
-          client.hear.wobble([ { command: 'getInit' }, client.tell ]);
-        }, null);
-        
-        let initData = parseInitData(result);
-        return { result: initData === null };
-        
-      });
+      };
       
-      Keep(k, 'simpleRec', async () => {
+      let receiveConnAction = (conn, action, timeoutMs=15) => {
         
-        let { trt, server, lands } = testData;
+        if (!conn.tellWob) throw new Error('Can\'t receive for conn without tellWob');
+        let h = null;
+        let err = new Error('timed out');
+        let prm = Promise((rsv, rjc) => { h = conn.tellWob.hold(rsv); setTimeout(() => rjc(err), timeoutMs); });
+        prm.catch(() => {}).then(() => h.shut()); // No matter what, shut the hold
+        if (U.isType(action, Object)) conn.hear.wobble([ action, conn.tell ]);
+        else                          action(conn);
+        return prm;
         
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
-          dep(HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            hut.followRec(archItem);
-            hut.followRec(archItem.members[1]);
-          }));
-        });
+      };
+      
+      Keep(k, 'connectScopeFirst', async n => {
         
-        let item = lands.createRec('item', { value: 'item!' });
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-         
-        let client = server.spoofCpu();
-        let result = await client.nextTell(() => {
-          client.hear.wobble([ { command: 'getInit' }, client.tell ]);
-        });
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
         
-        let initData = parseInitData(result);
+        let hutsFromCpus = [];
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { hutsFromCpus.push(hut); });
+        
+        let server0 = lands.servers[0];
+        let testCpuId = `spoofed:${n}`;
+        let conn = addTestHog(lands.pool.makeCpuConn(server0, conn => {
+          conn.cpuId = testCpuId
+          conn.hear = Wob();
+          conn.tell = () => {};
+        }));
         
         return [
-          [ 'data is Object', () => U.isType(initData, Object) ],
-          [ 'version is 1', () => initData.version === 1 ],
-          [ 'command is update', () => initData.command === 'update' ],
-          [ 'content is Object', () => U.isType(initData.content, Object) ],
-          [ 'content addRec is Object', () => U.isType(initData.content.addRec, Object) ],
-          [ 'adds 2 Recs', () => initData.content.addRec.toArr(v => v).length === 2 ],
-          [ 'adds item', () => initData.content.addRec.find((v, k) => k === item.uid) ],
-          [ 'adds archItem', () => initData.content.addRec.find((v, k) => k === archItem.uid) ]
+          [ 'exactly one cpu resulted', () => lands.pool.cpus.toArr(v => v).length === 1 ],
+          [ 'exactly one cpu conn',     () => lands.pool.cpus.toArr(v => v)[0].serverConns.size === 1 ],
+          [ 'conn is as expected',      () => lands.pool.cpus.toArr(v => v)[0].serverConns.toArr(v => v)[0] === conn ],
+          [ 'exactly one hut resulted', () => hutsFromCpus.length === 1 ],
+          [ 'hut cpuId as expected',    () => hutsFromCpus[0].cpuId === testCpuId ],
+          [ 'cpu cpuId as expected',    () => lands.pool.cpus.has(testCpuId) ]
         ];
         
       });
       
-    });
-    
-    Keep(k, 'follow').contain(k => {
-      
-      Keep(k, 'addRecDefineFirst', async () => {
+      Keep(k, 'connectConnFirst', async n => {
         
-        let { trt, server, lands } = testData;
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
         
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
-          
-          let [ arch, hut ] = archHut.members;
-          
-          dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            
-            let [ arch, item ] = archItem.members;
-            
-            hut.followRec(archItem);
-            hut.followRec(item);
-            
-          }));
-          
-        });
+        let server0 = lands.servers[0];
+        let testCpuId = `spoofed:${n}`;
+        let conn = addTestHog(lands.pool.makeCpuConn(server0, conn => {
+          conn.cpuId = testCpuId
+          conn.hear = Wob();
+          conn.tell = () => {};
+        }));
         
-        let client = server.spoofCpu();
-        let hut = lands.hutForCpu(client);
-        
-        let item = lands.createRec('item', { value: 'item!' })
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-        
-        let result = await client.nextTell();
+        let hutsFromCpus = [];
+        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => { hutsFromCpus.push(hut); });
         
         return [
-          [ 'result is object', () => U.isType(result, Object) ],
-          [ 'result isn\'t forced', () => !result.has('force') ],
-          [ 'is version 1', () => result.version === 1 ],
-          [ 'is update command', () => result.command === 'update' ],
-          [ 'result content is Object', () => U.isType(result.content, Object) ],
-          [ 'content addRec is Object', () => U.isType(result.content.addRec, Object) ],
-          [ 'add 2 Recs', () => result.content.addRec.toArr(v => v).length === 2 ],
-          [ 'add includes item', () => result.content.addRec.find((v, k) => v.type === item.type.name && k === item.uid && v.value === 'item!') ],
-          [ 'add includes archItem', () => result.content.addRec.find((v, k) => v.type === archItem.type.name && k === archItem.uid) ],
+          [ 'exactly one cpu resulted', () => lands.pool.cpus.toArr(v => v).length === 1 ],
+          [ 'exactly one cpu conn',     () => lands.pool.cpus.toArr(v => v)[0].serverConns.size === 1 ],
+          [ 'conn is as expected',      () => lands.pool.cpus.toArr(v => v)[0].serverConns.toArr(v => v)[0] === conn ],
+          [ 'exactly one hut resulted', () => hutsFromCpus.length === 1 ],
+          [ 'hut cpuId as expected',    () => hutsFromCpus[0].cpuId === testCpuId ],
+          [ 'cpu cpuId as expected',    () => lands.pool.cpus.has(testCpuId) ]
         ];
         
       });
       
-      Keep(k, 'addRecCreateFirst', async () => {
+      Keep(k, 'connShutCauseCpuAndHutShut', async n => {
         
-        let { trt, server, lands } = testData;
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
         
-        let client = server.spoofCpu();
-        let hut = lands.hutForCpu(client);
+        let server0 = lands.servers[0];
+        let testCpuId = `spoofed:${n}`;
+        let conn = addTestHog(lands.pool.makeCpuConn(server0, conn => {
+          conn.cpuId = testCpuId
+          conn.hear = Wob();
+          conn.tell = () => {};
+        }));
+        let cpu = lands.pool.getCpu(testCpuId);
+        let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
         
-        let item = lands.createRec('item', { value: 'item!' });
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-        
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
-          
-          let [ arch, hut ] = archHut.members;
-          
-          dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            
-            let [ arch, item ] = archItem.members;
-            
-            hut.followRec(archItem);
-            hut.followRec(item);
-            
-          }));
-          
-        });
-        
-        let result = await client.nextTell();
+        conn.shut();
         
         return [
-          [ 'result is object', () => U.isType(result, Object) ],
-          [ 'result isn\'t forced', () => !result.has('force') ],
-          [ 'is version 1', () => result.version === 1 ],
-          [ 'is update command', () => result.command === 'update' ],
-          [ 'result content is Object', () => U.isType(result.content, Object) ],
-          [ 'content addRec is Object', () => U.isType(result.content.addRec, Object) ],
-          [ 'add 2 Recs', () => result.content.addRec.toArr(v => v).length === 2 ],
-          [ 'add includes item', () => result.content.addRec.find((v, k) => v.type === item.type.name && k === item.uid && v.value === 'item!') ],
-          [ 'add includes archItem', () => result.content.addRec.find((v, k) => v.type === archItem.type.name && k === archItem.uid) ],
+          [ 'conn shut', () => conn.isShut() ],
+          [ 'cpu shut', () => cpu.isShut() ],
+          [ 'hut shut', () => hut.isShut() ],
         ];
         
       });
       
-      Keep(k, 'updRec1', async () => {
+      Keep(k, 'cpuShutCauseConnAndHutShut', async n => {
         
-        let { trt, server, lands } = testData;
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
         
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
-          let [ arch, hut ] = archHut.members;
-          dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            let [ arch, item ] = archItem.members;
-            hut.followRec(archItem);
-            hut.followRec(item);
-          }));
-        });
+        let server0 = lands.servers[0];
+        let testCpuId = `spoofed:${n}`;
+        let conn = addTestHog(lands.pool.makeCpuConn(server0, conn => {
+          conn.cpuId = testCpuId
+          conn.hear = Wob();
+          conn.tell = () => {};
+        }));
+        let cpu = lands.pool.getCpu(testCpuId);
+        let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
         
-        let client = server.spoofCpu();
-        let hut = lands.hutForCpu(client);
-        
-        let item = lands.createRec('item', { value: 'item!' });
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-        
-        // Get addRec
-        let result = await client.nextTell();
-        
-        // Get updRec
-        result = await client.nextTell(() => item.wobble('Wheee'));
+        await Promise(r => setTimeout(r, 100));
+        cpu.shut();
         
         return [
-          [ 'result is object', () => U.isType(result, Object) ],
-          [ 'result isn\'t forced', () => !result.has('force') ],
-          [ 'is version 2', () => result.version === 2 ],
-          [ 'is update command', () => result.command === 'update' ],
-          [ 'result content is Object', () => U.isType(result.content, Object) ],
-          [ 'content updRec is Object', () => U.isType(result.content.updRec, Object) ],
-          [ 'upd 1 Rec', () => result.content.updRec.toArr(v => v).length === 1 ],
-          [ 'upd item to correct value', () => result.content.updRec.find((v, k) => k === item.uid && v === 'Wheee') ],
+          [ 'conn shut', () => conn.isShut() ],
+          [ 'cpu shut', () => cpu.isShut() ],
+          [ 'hut shut', () => hut.isShut() ],
         ];
         
       });
       
-      Keep(k, 'remRec1', async () => {
+      Keep(k, 'hutShutCauseConnAndCpuShut', async n => {
         
-        let { trt, server, lands } = testData;
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
         
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
-          
-          let [ arch, hut ] = archHut.members;
-          
-          dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            
-            let [ arch, item ] = archItem.members;
-            
-            hut.followRec(archItem);
-            hut.followRec(item);
-            
-          }));
-          
-        });
+        let server0 = lands.servers[0];
+        let testCpuId = `spoofed:${n}`;
+        let conn = addTestHog(lands.pool.makeCpuConn(server0, conn => {
+          conn.cpuId = testCpuId
+          conn.hear = Wob();
+          conn.tell = () => {};
+        }));
+        let cpu = lands.pool.getCpu(testCpuId);
+        let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
         
-        let client = server.spoofCpu();
-        let hut = lands.hutForCpu(client);
-        
-        let item = lands.createRec('item', { value: 'item!' });
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-        
-        let result = await client.nextTell();
-        
-        result = await client.nextTell(() => {
-          archItem.shut();
-        });
+        await Promise(r => setTimeout(r, 100));
+        hut.shut();
         
         return [
-          [ 'result is object', () => U.isType(result, Object) ],
-          [ 'result isn\'t forced', () => !result.has('force') ],
-          [ 'is version 2', () => result.version === 2 ],
-          [ 'is update command', () => result.command === 'update' ],
-          [ 'result content is Object', () => U.isType(result.content, Object) ],
-          [ 'content remRec is Object', () => U.isType(result.content.remRec, Object) ],
-          [ 'rem 1 Rec', () => result.content.remRec.toArr(v => v).length === 1 ],
-          [ 'rem archItem', () => result.content.remRec.find((v, k) => k === archItem.uid) ]
+          [ 'conn shut', () => conn.isShut() ],
+          [ 'cpu shut', () => cpu.isShut() ],
+          [ 'hut shut', () => hut.isShut() ],
         ];
         
       });
       
-      Keep(k, 'remRec2', async () => {
+      let parseInitData = msg => {
+        let endBit = msg.substr(msg.indexOf('// ==== File:' + ' hut.js'));
+        let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
+        if (!initDataMatch) throw new Error(`Couldn't parse invalid initData`);
+        return JSON.parse(initDataMatch[1]);
+      };
+      
+      let getNodejsAboveLands = async n => {
         
-        let { trt, server, lands } = testData;
+        // Creates a FoundationNodejs instance, and a Lands instance
+        // under it. The Lands instance will already have a makeServers
+        // item which simply uses `spoofServerWob`.
         
-        HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let lands = Lands({ recTypes: rt });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
+        return { lands, rt };
+        
+      };
+      
+      let getNodejsAboveLandsWithItemRec = async n => {
+        
+        // Creates a FoundationNodejs instance, some simple RecTypes
+        // under it, and a Lands instance using the recTypes. The Lands
+        // instance will already have a makeServers item which simply
+        // uses `spoofServerWob`.
+        
+        let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
+        let { rt: trt, add } = recTyper();
+        add('item',     Rec);
+        add('archItem', Rec, '1M', rt.arch, trt.item);
+        let lands = Lands({ recTypes: { ...trt, ...rt } });
+        lands.makeServers.push(pool => spoofServerWob('above', pool));
+        await lands.open();
+        return { lands, trt, rt };
+        
+      };
+      
+      let makeTellWobConnWithLandsServer = (lands, serverWob, cpuId=null) => {
+        if (!lands.servers.has(serverWob)) throw new Error('Provided Lands doesn\'t use the provided ServerWob');
+        return addTestHog(lands.pool.makeCpuConn(serverWob, conn => {
+          if (cpuId) conn.cpuId = cpuId;
+          conn.hear = Wob();
+          conn.tellWob = Wob(); // tells and replies will wobble here
+          conn.tell = (...args) => conn.tellWob.wobble(...args);
+        }));
+      };
+      
+      Keep(k, 'sync').contain(k => {
+        
+        Keep(k, 'initNoData', async n => {
           
-          let [ arch, hut ] = archHut.members;
-          
-          dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-            
-            let [ arch, item ] = archItem.members;
-            
-            hut.followRec(archItem);
-            hut.followRec(item);
-            
-          }));
+          let { lands, rt } = await getNodejsAboveLands(n);
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          let result = await receiveConnAction(conn, { command: 'getInit' });
+          return [
+            [ 'result is string',       () => U.isType(result, String) ],
+            [ 'result looks like html', () => result.hasHead('<!DOCTYPE html>') ],
+            [ 'initial value is null',  () => parseInitData(result) === null ]
+          ];
           
         });
         
-        let client = server.spoofCpu();
-        let hut = lands.hutForCpu(client);
-        
-        let item = lands.createRec('item', { value: 'item!' });
-        let archItem = lands.createRec('archItem', {}, lands.arch, item);
-        
-        // Get addRec
-        let result = await client.nextTell();
-        
-        // Get remRec
-        result = await client.nextTell(() => item.shut());
-        
-        // TODO: Really, we only need to send "remRec" for `item`, as its
-        // removal will automatically remove `archItem` from below as well.
-        // This isn't taken into consideration at the moment. Instead all
-        // Recs whose shutting occurs as a result of a single operation are
-        // individually synced shut on the Below's end.
-        
-        return [
-          [ 'result is object', () => U.isType(result, Object) ],
-          [ 'result isn\'t forced', () => !result.has('force') ],
-          [ 'is version 2', () => result.version === 2 ],
-          [ 'is update command', () => result.command === 'update' ],
-          [ 'result content is Object', () => U.isType(result.content, Object) ],
-          [ 'content remRec is Object', () => U.isType(result.content.remRec, Object) ],
-          [ 'rem 2 Recs', () => result.content.remRec.toArr(v => v).length === 2 ],
-          [ 'rem item', () => result.content.remRec.find((v, k) => k === item.uid) ],
-          [ 'rem archItem', () => result.content.remRec.find((v, k) => k === archItem.uid) ]
-        ];
-        
-      });
-      
-      Keep(k, 'multi').contain(k => {
-        
-        Keep(k, 'addSyncRemSyncAddSync', async () => {
+        Keep(k, 'initSimpleRecCreateFirst', async n => {
           
-          let { trt, server, lands } = testData;
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
+          
+          // All Huts immediately follow Items
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
+            dep(HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              hut.followRec(archItem);
+              hut.followRec(archItem.members[1]);
+            }));
+          });
+          
+          let item = lands.createRec('item', { value: 'item!' });
+          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          
+          // Request initialization with `conn`
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          if (!U.isType(resultHtml, String)) return { result: false, msg: 'result is String' };
+          if (!resultHtml.hasHead('<!DOCTYPE html>')) return { result: false, msg: 'result looks like html' };
+          
+          let initData = parseInitData(resultHtml);
+          
+          return [
+            [ 'data is Object', () => U.isType(initData, Object) ],
+            [ 'version is 1', () => initData.version === 1 ],
+            [ 'command is update', () => initData.command === 'update' ],
+            [ 'content is Object', () => U.isType(initData.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(initData.content.addRec, Object) ],
+            [ 'adds 2 Recs', () => initData.content.addRec.toArr(v => v).length === 2 ],
+            [ 'adds item', () => initData.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'adds archItem', () => initData.content.addRec.find((v, k) => k === archItem.uid) ]
+          ];
+          
+        });
+        
+        Keep(k, 'initSimpleRecConnFirst', async n => {
+          
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
+          
+          // All Huts immediately follow Items
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, { members: [ _, hut ] }) => {
+            dep(HorzScope(lands.arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              hut.followRec(archItem);
+              hut.followRec(archItem.members[1]);
+            }));
+          });
+          
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          
+          let item = lands.createRec('item', { value: 'item!' });
+          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          
+          // Request initialization with `conn`
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          if (!U.isType(resultHtml, String)) return { result: false, msg: 'result is non-String' };
+          if (!resultHtml.hasHead('<!DOCTYPE html>')) return { result: false, msg: 'result isn\'t html' };
+          
+          let initData = parseInitData(resultHtml);
+          
+          return [
+            [ 'data is Object', () => U.isType(initData, Object) ],
+            [ 'version is 1', () => initData.version === 1 ],
+            [ 'command is update', () => initData.command === 'update' ],
+            [ 'content is Object', () => U.isType(initData.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(initData.content.addRec, Object) ],
+            [ 'adds 2 Recs', () => initData.content.addRec.toArr(v => v).length === 2 ],
+            [ 'adds item', () => initData.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'adds archItem', () => initData.content.addRec.find((v, k) => k === archItem.uid) ]
+          ];
+          
+        });
+        
+        Keep(k, 'updRec1', async n => {
+          
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
+          
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              let [ arch, item ] = archItem.members;
+              hut.followRec(archItem);
+              hut.followRec(item);
+            }));
+          });
+          
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          
+          let item = lands.createRec('item', { value: 'item!' });
+          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          let resultUpd = await receiveConnAction(conn, () => item.wobble('Wheee')); 
+          
+          return [
+            [ 'result is object', () => U.isType(resultUpd, Object) ],
+            [ 'result isn\'t forced', () => !resultUpd.has('force') ],
+            [ 'is version 2', () => resultUpd.version === 2 ],
+            [ 'is update command', () => resultUpd.command === 'update' ],
+            [ 'result content is Object', () => U.isType(resultUpd.content, Object) ],
+            [ 'content updRec is Object', () => U.isType(resultUpd.content.updRec, Object) ],
+            [ 'upd 1 Rec', () => resultUpd.content.updRec.toArr(v => v).length === 1 ],
+            [ 'upd item to correct value', () => resultUpd.content.updRec.find((v, k) => k === item.uid && v === 'Wheee') ],
+          ];
+          
+        });
+        
+        Keep(k, 'remRec1', async n => {
+          
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
+          
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              let [ arch, item ] = archItem.members;
+              hut.followRec(archItem);
+              hut.followRec(item);
+            }));
+          });
+          
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          
+          let item = lands.createRec('item', { value: 'item!' });
+          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          let resultRem = await receiveConnAction(conn, () => archItem.shut());
+          
+          return [
+            [ 'result is object', () => U.isType(resultRem, Object) ],
+            [ 'result isn\'t forced', () => !resultRem.has('force') ],
+            [ 'is version 2', () => resultRem.version === 2 ],
+            [ 'is update command', () => resultRem.command === 'update' ],
+            [ 'result content is Object', () => U.isType(resultRem.content, Object) ],
+            [ 'content remRec is Object', () => U.isType(resultRem.content.remRec, Object) ],
+            [ 'rem 1 Rec', () => resultRem.content.remRec.toArr(v => v).length === 1 ],
+            [ 'rem archItem', () => resultRem.content.remRec.find((v, k) => k === archItem.uid) ]
+          ];
+          
+        });
+        
+        Keep(k, 'remRec2', async n => {
+          
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
+          
+          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+              let [ arch, item ] = archItem.members;
+              hut.followRec(archItem);
+              hut.followRec(item);
+            }));
+          });
+          
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          
+          let item = lands.createRec('item', { value: 'item!' });
+          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          let resultRem = await receiveConnAction(conn, () => item.shut());
+          
+          return [
+            [ 'result is object', () => U.isType(resultRem, Object) ],
+            [ 'result isn\'t forced', () => !resultRem.has('force') ],
+            [ 'is version 2', () => resultRem.version === 2 ],
+            [ 'is update command', () => resultRem.command === 'update' ],
+            [ 'result content is Object', () => U.isType(resultRem.content, Object) ],
+            [ 'content remRec is Object', () => U.isType(resultRem.content.remRec, Object) ],
+            [ 'rem 2 Recs', () => resultRem.content.remRec.toArr(v => v).length === 2 ],
+            [ 'rem item', () => resultRem.content.remRec.find((v, k) => k === item.uid) ],
+            [ 'rem archItem', () => resultRem.content.remRec.find((v, k) => k === archItem.uid) ]
+          ];
+          
+        });
+        
+        Keep(k, 'addSyncRemSyncAddSync', async n => {
+          
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
           
           HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
@@ -580,22 +580,13 @@ module.exports = async (args, foundationInsps) => {
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           
-          let client = server.spoofCpu();
-          let hut = lands.hutForCpu(client);
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
           
-          // Get addRec for `item` and `archItem`
-          let result1 = await client.nextTell();
-          
-          // Unfollow `archItem`
-          let str = hut.getRecFollowStrength(archItem);
-          let result2 = await client.nextTell(() => {
-            hut.setRecFollowStrength(archItem, 0);
-          });
-          
-          // Follow `archItem` again
-          let result3 = await client.nextTell(() => {
-            hut.setRecFollowStrength(archItem, str);
-          });
+          // Sync initially, then after `archItem` is forgotten, then after following it again
+          let result1 = await receiveConnAction(conn, { command: 'getInit' });
+          let result2 = await receiveConnAction(conn, () => hut.setRecFollowStrength(archItem, 0));
+          let result3 = await receiveConnAction(conn, () => hut.setRecFollowStrength(archItem, 1));
           
           return [
             [ 'result is object', () => U.isType(result3, Object) ],
@@ -609,9 +600,9 @@ module.exports = async (args, foundationInsps) => {
           
         });
         
-        Keep(k, 'addSyncRemAddSync', async () => {
+        Keep(k, 'addSyncRemAddSync', async n => {
           
-          let { trt, server, lands } = testData;
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
           
           HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
@@ -625,33 +616,25 @@ module.exports = async (args, foundationInsps) => {
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           
-          let client = server.spoofCpu();
-          let hut = lands.hutForCpu(client);
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
           
-          // Get addRec for `item` and `archItem`
-          let result1 = await client.nextTell();
-          
-          // Unfollow and follow `archItem`
-          let result2 = await client.nextTell(() => {
-            let str = hut.getRecFollowStrength(archItem);
-            hut.setRecFollowStrength(archItem, 0);
-            hut.setRecFollowStrength(archItem, str);
-          });
-          
-          return [
-            [ 'result is object', () => U.isType(result2, Object) ],
-            [ 'is version 2', () => result2.version === 2 ],
-            [ 'is update command', () => result2.command === 'update' ],
-            [ 'result content is Object', () => U.isType(result2.content, Object) ],
-            [ 'content has no addRec', () => !result2.content.has('addRec') ],
-            [ 'content has no remRec', () => !result2.content.has('remRec') ],
-          ];
+          let result1 = await receiveConnAction(conn, { command: 'getInit' });
+          try {
+            let result2 = await receiveConnAction(conn, () => {
+              hut.setRecFollowStrength(archItem, 0);
+              hut.setRecFollowStrength(archItem, 1);
+            });
+            return { result: false, msg: 'rem then add should produce no sync' };
+          } catch(err) {
+            return { result: err.message === 'timed out', msg: 'error should be timeout' };
+          }
           
         });
         
-        Keep(k, 'addRemSync1', async () => {
+        Keep(k, 'addRemSync1', async n => {
           
-          let { trt, server, lands } = testData;
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
           
           HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
@@ -662,31 +645,32 @@ module.exports = async (args, foundationInsps) => {
             }));
           });
           
-          let client = server.spoofCpu();
-          let hut = lands.hutForCpu(client);
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
           
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           hut.setRecFollowStrength(archItem, 0);
           
           // Get addRec for `item` and `archItem`
-          let result = await client.nextTell();
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          let resultInit = parseInitData(resultHtml);
           
           return [
-            [ 'result is Object', () => U.isType(result, Object) ],
-            [ 'is version 1', () => result.version === 1 ],
-            [ 'is update command', () => result.command === 'update' ],
-            [ 'result content is Object', () => U.isType(result.content, Object) ],
-            [ 'content addRec is Object', () => U.isType(result.content.addRec, Object) ],
-            [ 'adds 1 Rec', () => result.content.addRec.toArr(v => v).length === 1 ],
-            [ 'adds correct Rec', () => result.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'result is Object', () => U.isType(resultInit, Object) ],
+            [ 'is version 1', () => resultInit.version === 1 ],
+            [ 'is update command', () => resultInit.command === 'update' ],
+            [ 'result content is Object', () => U.isType(resultInit.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(resultInit.content.addRec, Object) ],
+            [ 'adds 1 Rec', () => resultInit.content.addRec.toArr(v => v).length === 1 ],
+            [ 'adds correct Rec', () => resultInit.content.addRec.find((v, k) => k === item.uid) ],
           ];
           
         });
         
-        Keep(k, 'addRemSync2', async () => {
+        Keep(k, 'addRemSync2', async n => {
           
-          let { trt, server, lands } = testData;
+          let { lands, trt, rt } = await getNodejsAboveLandsWithItemRec(n);
           
           HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
@@ -697,197 +681,159 @@ module.exports = async (args, foundationInsps) => {
             }));
           });
           
-          let client = server.spoofCpu();
-          let hut = lands.hutForCpu(client);
+          let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
+          let hut = lands.hutsByCpuId.get(`spoofed:${n}`);
           
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
-          archItem.shut();
+          hut.setRecFollowStrength(archItem, 0);
+          //archItem.shut();
           
           // Get addRec for `item` and `archItem`
-          let result = await client.nextTell();
+          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
+          let resultInit = parseInitData(resultHtml);
           
           return [
-            [ 'result is Object', () => U.isType(result, Object) ],
-            [ 'is version 1', () => result.version === 1 ],
-            [ 'is update command', () => result.command === 'update' ],
-            [ 'result content is Object', () => U.isType(result.content, Object) ],
-            [ 'content addRec is Object', () => U.isType(result.content.addRec, Object) ],
-            [ 'adds 1 Rec', () => result.content.addRec.toArr(v => v).length === 1 ],
-            [ 'adds correct Rec', () => result.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'result is Object', () => U.isType(resultInit, Object) ],
+            [ 'is version 1', () => resultInit.version === 1 ],
+            [ 'is update command', () => resultInit.command === 'update' ],
+            [ 'result content is Object', () => U.isType(resultInit.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(resultInit.content.addRec, Object) ],
+            [ 'adds 1 Rec', () => resultInit.content.addRec.toArr(v => v).length === 1 ],
+            [ 'adds correct Rec', () => resultInit.content.addRec.find((v, k) => k === item.uid) ],
           ];
           
         });
         
       });
       
-    });
-    
-    Keep(k, 'aboveAndBelow').contain(k => {
-      
-      let mock2PartyData = null;
-      k.sandwich.before = async () => {
+      Keep(k, 'aboveBelow').contain(k => {
         
-        // `serverAbove` wobbles cpus representing Belows
-        // `serverBelow` wobbles a single client representing its Above
-        
-        let { trt, server: serverAbove, lands } = testData;
-        
-        let addClientBelow = (name, fn=null) => {
+        let getNodejsAboveLandsWithBelowSpoofing = async (n, recTypeFn=v=>v) => {
           
-          let recTypes = { ...rt, ...trt };
+          let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, `${n}Above`, 'above', () => {});
+          let { rt: trt, add } = recTyper();
+          recTypeFn(Rec, trt, rt, add);
+          let landsAbove = Lands({ recTypes: { ...trt, ...rt } });
+          landsAbove.makeServers.push(pool => {
+            let serverWob = Wob();
+            serverWob.desc = `ABV2 For ${n}`;
+            serverWob.cost = 50;
+            serverWob.decorateConn = conn => {
+              conn.desc = 'Above\'s representation of a connection with Below';
+              conn.hear = Wob();
+              conn.tellWob = Wob(); // tells and replies will wobble here
+              conn.tell = (...args) => conn.tellWob.wobble(...args);
+            };
+            serverWob.shut = () => {};
+            return serverWob;
+          });
+          await landsAbove.open();
           
-          // Combine hinterlands RecTypes (`rt`) along with RecTypes for tests (`trt`)
-          let state = { version: 0, recTypes, allRecs: Map(), server: null, holds: [] };
-          state.createRec = (type, ...args) => {
-            let rec = recTypes[type].create(...args);
-            state.allRecs.set(rec.uid, rec);
-            rec.shutWob().hold(() => state.allRecs.rem(rec.uid));
-            return rec;
-          };
-          state.arch = rt.arch.create({ uid: '!arch' });
+          let countBelowCpus = 0;
           
-          let cpuIdCnt = testyNames.length - 1;
-          let serverBelow = state.server = U.Wob();
-          serverBelow.desc = 'Spoofy Below server for hinterlands tests';
-          serverBelow.cost = 50;
-          serverBelow.decorateConn = aboveConn => {
-            aboveConn.hear = U.Wob();
-            aboveConn.hear.hold(v => { if (!U.isType(v, Array)) throw new Error('Need to use Arrays for "tell"'); });
-            aboveConn.tellWob = U.Wob();
-            aboveConn.tell = (...args) => aboveConn.tellWob.wobble(...args);
-            aboveConn.nextHear = async (fn=null, force='force') => {
-              let timeout = null;
-              let hold = null;
-              let prm = new Promise(rsv => {
-                hold = aboveConn.hear.hold((...args) => { 'Resolves "nextHear" promise'; rsv(...args); });
-                timeout = setTimeout(() => rsv([ { force }, () => { throw new Error('No reply available!'); } ]), 20);
+          landsAbove.spoofNodejsLandsBelow = async (belowCpuId, doInitSetup=true) => {
+            
+            let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, `${n}Below`, 'below', () => {});
+            let { rt: trt, add } = recTyper();
+            recTypeFn(Rec, trt, rt, add);
+            let landsBelow = Lands({ recTypes: { ...trt, ...rt } });
+            landsBelow.makeServers.push(pool => {
+              let serverWob = Wob();
+              serverWob.desc = `BLW2 For ${n}`;
+              serverWob.cost = 50;
+              serverWob.decorateConn = conn => {
+                conn.desc = 'Below\'s representation of a connection with Above';
+                conn.hear = Wob();
+                conn.tellWob = Wob(); // tells and replies will wobble here
+                conn.tell = (...args) => conn.tellWob.wobble(...args);
+              };
+              serverWob.shut = () => {};
+              return serverWob;
+            });
+            
+            landsBelow.requestInitialHtmlSyncAndSpoofNetwork = async () => {
+              
+              // This is the object `landsAbove` uses to represent its
+              // connection with `landsBelow`. We get it by declaring a
+              // new connection has occurred.
+              let connAHearB = addTestHog(landsAbove.pool.makeCpuConn(landsAbove.servers[0], conn => {
+                conn.cpuId = belowCpuId;
+              }));
+              
+              let resultHtml = await receiveConnAction(connAHearB, { command: 'getInit' });
+              let resultInit = parseInitData(resultHtml);
+              
+              // TODO: Just another reason why `initData` should be on Foundation! (AND IT COULD BE USED FOR RESTORING SAVED STATES WHEN SET ON ABOVE??)
+              await doLockGlobal(async () => {
+                U.initData = resultInit;
+                await landsBelow.open();
+                U.initData = null;
               });
               
-              if (fn) fn();
+              // This is the object `landsBelow` uses to represent its
+              // connection with `landsAbove`. A Lands instance Below
+              // will have automatically created a single connection for
+              // each server, for the cpuId "above"
+              let connBHearA = landsBelow.pool.getCpu('above').serverConns.toArr(v => v)[0];
               
-              let [ msg, reply ] = await prm; // We ignore "reply" here
-              clearTimeout(timeout);
-              hold.shut();
+              // From now on, these connections are bound together: a
+              // Tell to one results in a Hear from the other.
+              let shutNetwork = () => {
+                holdAHearB.isShut() || holdAHearB.shut();
+                holdBHearA.isShut() || holdBHearA.shut();
+                holdAbvCpuShut.isShut() || holdAbvCpuShut.shut();
+                holdBlwCpuShut.isShut() || holdBlwCpuShut.shut();
+              };
               
-              return msg;
-            };
-          };
-          serverBelow.spoofCpu = () => lands.pool.makeCpuConn(serverBelow, conn => {
-            conn.cpuId = testyNames[cpuIdCnt--];
-            conn.spoofForTest = 'spoofy!'
-          });
-          serverBelow.shut = () => serverBelow.spoofCpu = null;
-          
-          if (fn) fn(state, serverBelow);
-          
-          state.fresh = () => {
-            
-            state.version = 0;
-            state.lands = lands;
-            state.arch = rt.arch.create({ uid: '!arch' });
-            state.allRecs = Map([ [ state.arch.uid, state.arch ] ]);
-            state.holds.forEach(hold => !hold.isShut() && hold.shut()); // Close any open holds
-            
-            // `aboveClient` is `serverAbove`'s representation of Below
-            let aboveClient = serverAbove.spoofCpu();
-            
-            // `belowClient` is `serverBelow`'s only Client, and representation of Above
-            // Generated by the function just above!
-            let belowClient = serverBelow.spoofCpu();
-            
-            state.tell = (msg) => {
-              if (!U.isType(msg, Object)) throw new Error(`Pls provide Object, not ${U.nameOf(msg)}`);
-              belowClient.tell([ msg, (...args) => aboveClient.tell(...args) ]);
+              let holdAHearB = connAHearB.tellWob.hold(msg => {
+                let reply = (...args) => process.nextTick(() => connAHearB.hear.wobble(...args));
+                connBHearA.hear.wobble([ msg, reply ]);
+              });
+              let holdBHearA = connBHearA.tellWob.hold(msg => {
+                let reply = (...args) => process.nextTick(() => connBHearA.hear.wobble(...args));
+                connAHearB.hear.wobble([ msg, reply ]);
+              });
+              
+              let holdAbvCpuShut = landsBelow.pool.getCpu('above').shutWob().hold(shutNetwork);
+              let holdBlwCpuShut = landsAbove.pool.getCpu(belowCpuId).shutWob().hold(shutNetwork);
+              
+              return { connAHearB, connBHearA };
+              
             };
             
-            // Here's how messages from Above hit Below! Note that a "reply" function
-            // is included
-            state.holds.push(aboveClient.tellWob.hold(msg => {
-              belowClient.hear.wobble([ msg, (...args) => aboveClient.tell(...args) ])
-            }));
+            if (doInitSetup) await landsBelow.requestInitialHtmlSyncAndSpoofNetwork();
             
-            // Here's how messages from Below hit Above. Note that any "reply" function
-            // will already be included in `args`
-            state.holds.push(belowClient.tellWob.hold(msg => {
-              aboveClient.hear.wobble(U.isType(msg, Array) ? msg : [ msg, null ]);
-            }));
-            
-            return [ aboveClient, belowClient ];
+            return { lands: landsBelow, trt, rt, cpuId: belowCpuId };
             
           };
           
-          return state;
+          return { lands: landsAbove, trt, rt, cpuId: 'above' }; // Since Below will always assume a single remote Cpu named "above"
           
         };
         
-        lands.modifyRec = (rec, newVal) => lands.tell({ command: 'modifyRec', uid: rec.uid, val: newVal });
-        
-        mock2PartyData = { addClientBelow, above: testData };
-        
-      };
-      k.sandwich.after = () => {
-      };
-      
-      Keep(k, 'connectedness', async () => {
-        
-        let { trt, server: serverAbove, lands } = mock2PartyData.above;
-        let below1 = mock2PartyData.addClientBelow('testBelow1');
-        let [ aboveClient, belowClient ] = below1.fresh();
-        
-        let heard = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
-        
-        return { msg: 'heard something', result: !U.isType(heard, Object) || !heard.has('force') };
-        
-      });
-      
-      Keep(k, 'getInitHtml', async () => {
-        
-        let { trt, server: serverAbove, lands } = mock2PartyData.above;
-        let below1 = mock2PartyData.addClientBelow('testBelow1');
-        let [ aboveClient, belowClient ] = below1.fresh();
-        
-        let heardData = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
-        
-        if (!U.isType(heardData, String)) {
-          console.log('\n\n\n\n');
-          console.log('TYPE:', U.nameOf(heardData));
-          console.log('DATA:', heardData);
-          console.log('\n\n\n\n');
-        }
-        
-        return [
-          [ 'response is String', () => U.isType(heardData, String) ],
-          [ 'response looks like html', () => heardData.hasHead('<!DOCTYPE html>') ]
-        ];
-        
-      });
-      
-      Keep(k, 'mockBelow').contain(k => {
-        
-        let gatherAllRecs = (rec, allRecs={}) => {
+        let gatherAllRecs = (rec, allRecs={}, ignoreExc=true) => {
           
-          if (allRecs.has(rec.uid)) return allRecs;
+          if (allRecs.has(rec.uid) || rec.uid[0] === '!') return allRecs;
           allRecs[rec.uid] = rec;
           
-          // Include all MemberRecs
+          // Include Member and GroupRecs
           rec.members.forEach(mem => gatherAllRecs(mem, allRecs));
-          
-          // Include all GroupRecs
           rec.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec0 => gatherAllRecs(rec0, allRecs)));
           
           return allRecs;
           
         };
-        let aboveBelowDiff = (lands, state) => {
+        
+        let aboveBelowDiff = (landsAbove, landsBelow, ignoreExc=true) => {
           
-          let [ aboveRecs, belowRecs ] = [ lands.arch, state.arch ].map(r => gatherAllRecs(r));
+          let [ recsAbove, recsBelow ] = [ landsAbove.arch, landsBelow.arch ].map(r => gatherAllRecs(r, ignoreExc));
           
-          let onlyInAbove = aboveRecs.map((rec, uid) => belowRecs.has(uid) ? C.skip : rec);
-          let onlyInBelow = belowRecs.map((rec, uid) => aboveRecs.has(uid) ? C.skip : rec);
-          let valueMismatch = aboveRecs.toArr((rec, uid) =>
-            (belowRecs.has(uid) && belowRecs[uid].value !== rec.value)
-              ? { above: rec, below: belowRecs[uid] }
+          let onlyInAbove = recsAbove.map((rec, uid) => recsBelow.has(uid) ? C.skip : rec);
+          let onlyInBelow = recsBelow.map((rec, uid) => recsAbove.has(uid) ? C.skip : rec);
+          let valueMismatch = recsAbove.toArr((rec, uid) =>
+            (recsBelow.has(uid) && recsBelow[uid].value !== rec.value)
+              ? { above: rec, below: recsBelow[uid] }
               : C.skip
           );
           let match = onlyInAbove.isEmpty() && onlyInBelow.isEmpty() && valueMismatch.isEmpty();
@@ -895,313 +841,339 @@ module.exports = async (args, foundationInsps) => {
           return { onlyInAbove, onlyInBelow, valueMismatch, match };
           
         };
-        k.sandwich.before = () => {
-          
-          // Wrap `addMockedClientBelow` so that information is not
-          // just heard, but is actually processed (e.g. an "update"
-          // command results in duplicate Recs getting created in our
-          // spoofed Below)
-          mock2PartyData.addMockedClientBelow = name => {
-            
-            return mock2PartyData.addClientBelow(name, state => {
-              state.server.hold(client => client.hear.hold(([ msg, reply ]) => {
-                
-                // This happens whenever the Below hears anything
-                
-                if (U.isType(msg, String)) {
-                  
-                  if (msg.hasHead('<!DOCTYPE html>')) {
-                    
-                    let initData = parseInitData(msg);
-                    if (initData) doUpdate(state, initData);
-                    
-                  }
-                  
-                } else if (U.isType(msg, Object)) {
-                  
-                  if (msg.has('command')) {
-                    
-                    if (msg.command === 'update') {
-                      
-                      doUpdate(state, msg);
-                    
-                    } else if (msg.command === 'error') {
-                      
-                      console.log('OH NO:', msg);
-                      
-                    } else {
-                      
-                      throw new Error(`Command not supported: "${msg.command}"`);
-                      
-                    }
-                    
-                  }
-                  
-                }
-                
-              }));
-            });
-            
-          };
-          
+        
+        let diffMatchTests = diff => {
+          return [
+            [ 'no recs only in above',  () => diff.onlyInAbove.isEmpty() ],
+            [ 'no recs only in below',  () => diff.onlyInBelow.isEmpty() ],
+            [ 'no rec values mismatch', () => diff.valueMismatch.isEmpty() ]
+          ];
         };
-        k.sandwich.after = () => {};
         
-        Keep(k, 'getInitHtml', async () => {
+        Keep(k, 'createCpuHutSingle', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
-          let [ aboveClient, belowClient ] = below1.fresh();
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n);
+          let blw1 = await abv.lands.spoofNodejsLandsBelow('testBelow1');
           
-          let heardData = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+          let aboveCpus = abv.lands.pool.cpus.toArr(cpu => cpu);
+          let aboveFarHuts = abv.lands.hutsByCpuId.toArr(v => v);
+          let belowCpus = blw1.lands.pool.cpus.toArr(cpu => cpu);
+          let belowFarHuts = blw1.lands.hutsByCpuId.toArr(v => v);
+          return [
+            [ 'above has a single cpu',   () => aboveCpus.length === 1 ],
+            [ 'above cpu cpuId correct',  () => aboveCpus[0].cpuId === blw1.cpuId ],
+            [ 'above has a single hut',   () => aboveFarHuts.length === 1 ],
+            [ 'above hut cpuId correct',  () => aboveFarHuts[0].cpuId === blw1.cpuId ],
+            [ 'below has a single cpu',   () => belowCpus.length === 1 ],
+            [ 'below cpu cpuId correct',  () => belowCpus[0].cpuId === abv.cpuId ],
+            [ 'below has a single hut',   () => belowFarHuts.length === 1 ],
+            [ 'below hut cpuId correct',  () => belowFarHuts[0].cpuId === abv.cpuId ],
+          ];
           
-          if (!U.isType(heardData, String)) {
-            console.log('\n\n\n\n');
-            console.log('TYPE:', U.nameOf(heardData));
-            console.log('DATA:', heardData);
-            console.log('\n\n\n\n');
+        });
+        
+        Keep(k, 'createCpuHutMulti', async n => {
+          
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n);
+          let numBlws = 10;
+          let blws = [];
+          for (let i = 0; i < numBlws; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
+          
+          let aboveCpus = abv.lands.pool.cpus.toArr(cpu => cpu);
+          let aboveFarHuts = abv.lands.hutsByCpuId.toArr(v => v);
+          
+          let tests = [
+            [ `above has ${numBlws} cpus`, () => aboveCpus.length === numBlws ],
+            [ `above has ${numBlws} huts`, () => aboveFarHuts.length === numBlws ]
+          ];
+          
+          blws.forEach((blw, i) => {
+            tests.push(...[
+              [ `above has cpu for ${blw.cpuId}`, () => aboveCpus.find(cpu => cpu.cpuId === blw.cpuId) ],
+              [ `above has hut for ${blw.cpuId}`, () => aboveFarHuts.find(hut => hut.cpuId === blw.cpuId) ]
+            ]);
+          });
+          
+          blws.forEach((blw, i) => {
+            let belowCpus = blw.lands.pool.cpus.toArr(cpu => cpu);
+            let belowFarHuts = blw.lands.hutsByCpuId.toArr(v => v);
+            tests.push(...[
+              [ `${blw.cpuId} has a single cpu`,  () => belowCpus.length === 1 ],
+              [ `${blw.cpuId} cpu cpuId correct`, () => belowCpus[0].cpuId === abv.cpuId ],
+              [ `${blw.cpuId} has a single hut`,  () => belowFarHuts.length === 1 ],
+              [ `${blw.cpuId} hut cpuId correct`, () => belowFarHuts[0].cpuId === abv.cpuId ],
+            ]);
+          });
+          
+          return tests;
+          
+        });
+        
+        Keep(k, 'multipleConnectsFails', async n => {
+          
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n);
+          let blw = await abv.lands.spoofNodejsLandsBelow(`testBelow1`, false);
+          
+          await blw.lands.requestInitialHtmlSyncAndSpoofNetwork();
+          
+          try {
+            await blw.lands.requestInitialHtmlSyncAndSpoofNetwork();
+            return { result: false, msg: 'multiple connects fails' };
+          } catch(err) {
+            return { result: err.message.has('connected twice'), msg: 'error indicates multiple connects' };
           }
           
+        });
+        
+        Keep(k, 'initSyncNull', async n => {
+          
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n);
+          let blw1 = await abv.lands.spoofNodejsLandsBelow('testBelow1');
           return [
-            [ 'response is String', () => U.isType(heardData, String) ],
-            [ 'response looks like html', () => heardData.hasHead('<!DOCTYPE html>') ]
+            ...diffMatchTests(aboveBelowDiff(abv.lands, blw1.lands))
           ];
           
         });
         
-        Keep(k, 'getInitAndSyncRaw', async () => {
+        Keep(k, 'initSyncSimpleSingleBlwRecFirst', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
-          let [ aboveClient, belowClient ] = below1.fresh();
-          
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
-            
-            let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
-              
-              let [ _, item ] = archItem.members;
-              hut.followRec(archItem);
-              hut.followRec(item);
-              
-            }));
-            
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
           });
           
-          let heardData1 = await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
+              let [ _, item ] = archItem.members;
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
+            }));
+          });
           
-          let item = lands.createRec('item', { value: 'item!' });
-          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
-          let heardData2 = await belowClient.nextHear();
+          let blw1 = await abv.lands.spoofNodejsLandsBelow('testBelow1');
           
           return [
-            [ 'got Object', () => U.isType(heardData2, Object) ],
-            [ 'object version 1', () => heardData2.version === 1 ],
-            [ 'command is "update"', () => heardData2.command === 'update' ],
-            [ 'command content is Object', () => U.isType(heardData2.content, Object) ],
-            [ 'content addRec is Object', () => U.isType(heardData2.content.addRec, Object) ],
-            [ 'adds 2 Recs', () => heardData2.content.addRec.toArr(v => v).length === 2 ],
-            [ 'adds item', () => heardData2.content.addRec.find((v, uid) => uid === item.uid) ],
-            [ 'adds archItem', () => heardData2.content.addRec.find((v, uid) => uid === archItem.uid) ]
+            ...diffMatchTests(aboveBelowDiff(abv.lands, blw1.lands))
           ];
           
         });
         
-        Keep(k, 'getInitAndSync', async () => {
+        Keep(k, 'initSyncSimpleSingleBlwBlwFirst', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
-          let [ aboveClient, belowClient ] = below1.fresh();
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
           
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
               let [ _, item ] = archItem.members;
-              hut.followRec(archItem);
-              hut.followRec(item);
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
             }));
           });
           
-          await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+          let blw1 = await abv.lands.spoofNodejsLandsBelow('testBelow1');
           
-          let item = lands.createRec('item', { value: 'item!' });
-          let archItem = lands.createRec('archItem', {}, lands.arch, item);
-          
-          await belowClient.nextHear();
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
           return [
-            [ 'synced archItem', () => below1.arch.relWob(trt.archItem, 0).toArr(v => v).length === 1 ],
-            [ 'synced item', () => {
-              let archItemBelow = below1.arch.relWob(trt.archItem, 0).toArr(v => v)[0];
-              let itemBelow = archItemBelow.members.find(rec => rec.type === trt.item);
-              if (!itemBelow) return false;
-              else            itemBelow = itemBelow[0];
-              return itemBelow && itemBelow.uid === item.uid && itemBelow !== item;
-              //below1.arch.relWob(trt.archItem, 0).toArr(v => v).find(v => 1).members.find(v => v.type.name === 'item') ]
-            }]
+            ...diffMatchTests(aboveBelowDiff(abv.lands, blw1.lands))
           ];
           
         });
         
-        Keep(k, 'multipleGetInit', async () => {
+        Keep(k, 'initSyncSimpleMultiBlwRecFirst', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
           
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
               let [ _, item ] = archItem.members;
-              hut.followRec(archItem);
-              hut.followRec(item);
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
             }));
           });
           
-          // Reset a bunch of times
-          let [ aboveClient, belowClient ] = [ null, null ];
-          for (let i = 0; i < 10; i++) {
-            [ aboveClient, belowClient ] = below1.fresh();
-            below1.tell({ command: 'getInit' })
-            await belowClient.nextHear();
-          }
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
-          let item = lands.createRec('item', { value: 'item!' });
-          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
           
-          await belowClient.nextHear();
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
           
-          return [
-            [ 'synced archItem', () => below1.arch.relWob(trt.archItem, 0).toArr(v => v).length === 1 ],
-            [ 'synced item', () => {
-              let archItemBelow = below1.arch.relWob(trt.archItem, 0).toArr(v => v)[0];
-              let itemBelow = archItemBelow.members.find(rec => rec.type === trt.item);
-              return itemBelow && itemBelow[0].uid === item.uid && itemBelow[0] !== item;
-            }]
-          ];
+          return tests;
           
         });
         
-        Keep(k, 'updSync', async () => {
+        Keep(k, 'initSyncSimpleMultiBlwBlwFirst', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
           
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
               let [ _, item ] = archItem.members;
-              hut.followRec(item);
-              hut.followRec(archItem);
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
             }));
           });
           
-          let [ aboveClient, belowClient ] = below1.fresh();
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
           
-          await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
-          let item = lands.createRec('item', { value: 'item1' });
-          let archItem = lands.createRec('archItem', {}, lands.arch, item);
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
           
-          await belowClient.nextHear();
-          
-          item.modify(v => `${v}-modified`);
-          
-          await belowClient.nextHear();
-          
-          let diff = aboveBelowDiff(lands, below1);
-          return [
-            [ 'diff not empty', () => !diff.match ],
-            [ 'above is superset of below', () => diff.onlyInBelow.isEmpty() ],
-            [ 'above has 2 extra Recs', () => diff.onlyInAbove.toArr(v => v).length === 2 ],
-            [ 'only above has hut', () => diff.onlyInAbove.find(rec => rec.type.name === 'hut') ],
-            [ 'only above has archHut', () => diff.onlyInAbove.find(rec => rec.type.name === 'archHut') ]
-          ];
+          return tests;
           
         });
         
-        Keep(k, 'remSyncRaw', async () => {
+        Keep(k, 'syncUpd', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
           
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
               let [ _, item ] = archItem.members;
-              hut.followRec(item);
-              hut.followRec(archItem);
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
             }));
           });
           
-          let [ aboveClient, belowClient ] = below1.fresh();
-          let item, archItem;
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
           
-          let v0 = await belowClient.nextHear();
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
-          let v1 = await belowClient.nextHear(() => {
-            item = lands.createRec('item', { value: 'item1' });
-            archItem = lands.createRec('archItem', {}, lands.arch, item);
-          });
+          item.wobble('a new value!');
           
-          let sync = await belowClient.nextHear(() => item.shut());
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
           
-          return [
-            [ 'sync is Object', () => U.isType(sync, Object) ],
-            [ 'sync is version 2', () => sync.version === 2 ],
-            [ 'sync command is "update"', () => sync.command === 'update' ],
-            [ 'sync content is Object', () => U.isType(sync.content, Object) ],
-            [ 'sync does remRec', () => U.isType(sync.content.remRec, Object) ],
-            [ 'sync rems 2 Recs', () => sync.content.remRec.toArr(v => v).length === 2 ],
-            [ 'sync rems item', () => sync.content.remRec.find((r, uid) => uid === item.uid) ],
-            [ 'sync rems archItem', () => sync.content.remRec.find((r, uid) => uid === archItem.uid) ]
-          ];
+          return tests;
           
         });
         
-        Keep(k, 'remSync', async () => {
+        Keep(k, 'syncRem1', async n => {
           
-          let { trt, server: serverAbove, lands } = mock2PartyData.above;
-          let below1 = mock2PartyData.addMockedClientBelow('testBelow1');
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
           
-          HorzScope(lands.arch.relWob(rt.archHut, 0), (dep, archHut) => {
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
             let [ arch, hut ] = archHut.members;
-            dep(HorzScope(arch.relWob(trt.archItem, 0), (dep, archItem) => {
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
               let [ _, item ] = archItem.members;
-              hut.followRec(item);
-              hut.followRec(archItem);
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
             }));
           });
           
-          let [ aboveClient, belowClient ] = below1.fresh();
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
           
-          await belowClient.nextHear(() => below1.tell({ command: 'getInit' }));
-          
-          let item = lands.createRec('item', { value: 'item1' });
-          let archItem = lands.createRec('archItem', {}, lands.arch, item);
-          
-          await belowClient.nextHear();
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
           
           item.shut();
           
-          let remResult = await belowClient.nextHear();
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
           
-          let diff = aboveBelowDiff(lands, below1);
-          
-          return [
-            [ 'archItem removed', () => below1.arch.relWob(trt.archItem, 0).size() === 0 ],
-            [ 'above is superset of below', () => diff.onlyInBelow.isEmpty() ],
-            [ 'above has 2 extra Recs', () => diff.onlyInAbove.toArr(v => v).length === 2 ],
-            [ 'only above has hut', () => diff.onlyInAbove.find(rec => rec.type.name === 'hut') ],
-            [ 'only above has archHut', () => diff.onlyInAbove.find(rec => rec.type.name === 'archHut') ],
-            [ 'no value mismatches', () => diff.valueMismatch.isEmpty() ]
-          ];
+          return tests;
           
         });
         
-        Keep(k, 'modifyRec', async () => {
+        Keep(k, 'syncRem2', async n => {
           
-          return { result: true };
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
+          
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
+              let [ _, item ] = archItem.members;
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
+            }));
+          });
+          
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
+          
+          let item = abv.lands.createRec('item', { value: 'an item' });
+          let archItem = abv.lands.createRec('archItem', {}, abv.lands.arch, item);
+          
+          archItem.shut();
+          
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
+          
+          return tests;
+          
+        });
+        
+        Keep(k, 'syncAddAddRemAdd', async n => {
+          
+          let abv = await getNodejsAboveLandsWithBelowSpoofing(n, (Rec, trt, rt, add) => {
+            add('item',     Rec);
+            add('archItem', Rec, '1M', rt.arch, trt.item);
+          });
+          
+          HorzScope(abv.lands.arch.relWob(abv.rt.archHut, 0), (dep, archHut) => {
+            let [ arch, hut ] = archHut.members;
+            dep(HorzScope(arch.relWob(abv.trt.archItem, 0), (dep, archItem) => {
+              let [ _, item ] = archItem.members;
+              dep(hut.followRec(archItem));
+              dep(hut.followRec(item));
+            }));
+          });
+          
+          let blws = [];
+          for (let i = 0; i < 10; i++) blws.push(await abv.lands.spoofNodejsLandsBelow(`testBelow${i + 1}`));
+          
+          let item1 = abv.lands.createRec('item', { value: 'an item' });
+          let archItem1 = abv.lands.createRec('archItem', {}, abv.lands.arch, item1);
+          
+          let item2 = abv.lands.createRec('item', { value: 'an item' });
+          let archItem2 = abv.lands.createRec('archItem', {}, abv.lands.arch, item2)
+          
+          archItem1.shut();
+          
+          let item3 = abv.lands.createRec('item', { value: 'an item' });
+          let archItem3 = abv.lands.createRec('archItem', {}, abv.lands.arch, item3)
+          
+          let tests = [];
+          blws.forEach(blw => tests.push(...diffMatchTests(aboveBelowDiff(abv.lands, blw.lands))));
+          
+          return tests;
           
         });
         
@@ -1210,8 +1182,10 @@ module.exports = async (args, foundationInsps) => {
     });
     
   });
-  keep.formatError = err => foundation.formatError(err);
   
-  return keep.showResults(foundation, args);
+  let [ foundationAbove ] = await spoofFoundationHut(FoundationNodejs, 'errorsAbove', 'above', () => {})
+  let [ foundationBelow ] = await spoofFoundationHut(FoundationNodejs, 'errorsBelow', 'below', () => {})
+  keep.formatError = err => (err.stack.has('.above.') ? foundationAbove : foundationBelow).formatError(err);
+  await keep.showResults(args);
   
 };

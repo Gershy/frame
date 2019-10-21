@@ -50,7 +50,7 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     let chain = this.chain();
     for (let par of chain) if (par.sandwich.before) await par.sandwich.before();
     try {
-      let v = this.func ? await this.func() : { result: null };
+      let v = this.func ? await this.func(this.name) : { result: null };
       
       if (U.isType(v, Array)) {
         
@@ -120,12 +120,12 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     }
     
   },
-  showResults: async function(foundation, args) {
+  showResults: async function(args) {
     
     if (this.par) throw new Error('Should only do `showResults` from the root Keep');
     
     let suitePcs = args.has('suite') ? args.suite.split('.') : [];
-    let entryKeep = suitePcs.isEmpty() ? this : this.getChild(...suitPcs); // Get specific suite
+    let entryKeep = suitePcs.isEmpty() ? this : this.getChild(...suitePcs); // Get specific suite
     
     let firstErr = null;
     let outputTest = (name, run, ind='') => {

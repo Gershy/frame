@@ -176,7 +176,78 @@ U.buildRoom({
         
         requiredCommand('update', ({ lands, hut, msg, reply }) => {
           
-          doUpdate(lands, msg);
+          let { version, content } = msg;
+          if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
+          
+          let squad = U.WobSquad();
+          let err = U.safe(() => {
+            
+            // Apply all operations
+            let { addRec={}, remRec={}, updRec={} } = content;
+            
+            // "head" Recs existed before the current update. "tail" Recs are Recs
+            // whose existence results from the update. A Rec coming into existence
+            // may have member references to both HeadRecs and TailRecs
+            let headRecs = lands.allRecs;
+            let tailRecs = Map();
+            let getHeadOrTailRec = uid => {
+              if (headRecs.has(uid)) return headRecs.get(uid);
+              if (tailRecs.has(uid)) return tailRecs.get(uid);
+              return null;
+            };
+            
+            // Add new Recs with dependency churning
+            let waiting = addRec.toArr((v, uid) => v.gain({ uid }));
+            while (waiting.length) {
+              
+              let attempt = waiting;
+              waiting = [];
+              
+              for (let addVals of attempt) {
+              
+                let { type, value, members, uid } = addVals;
+                
+                // Convert all members from uid to Rec
+                members = members.map(uid => getHeadOrTailRec(uid));
+                
+                // If a member couldn't be converted wait for a later churn
+                if (members.find(m => !m)) { waiting.push(addVals); continue; }
+                
+                // All members are available - create the Rec!
+                let newRec = lands.createRec(type, { uid, value, squad }, ...members);
+                tailRecs.set(uid, newRec);
+                
+              }
+              
+              if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
+                console.log('Head Recs:', headRecs.toArr((rec, uid) => `${uid}: ${U.nameOf(rec)}`).join('\n'));
+                console.log(JSON.stringify(content, null, 2));
+                throw new Error(`Unresolvable Rec dependencies`);
+              }
+              
+            }
+            
+            // Update Recs directly
+            updRec.forEach((newValue, uid) => {
+              if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
+              squad.wobble(lands.allRecs.get(uid), newValue);
+            });
+            
+            // Remove Recs directly
+            //let shutGroup = Set();
+            remRec.forEach((val, uid) => {
+              if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
+              squad.shut(lands.allRecs.get(uid));
+            });
+            
+          });
+          
+          squad.complete(err);
+          
+          if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
+          
+          // We've successfully moved to our next version!
+          lands.version = version;
           
         });
         
@@ -347,6 +418,7 @@ U.buildRoom({
       },
       
       // TODO: async functions shouldn't be named "open" and "shut"
+      // TODO: should return a HorzScope I think??
       open: async function() {
         /// {ABOVE=
         TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
@@ -401,8 +473,8 @@ U.buildRoom({
           });
           
           // Hut and Cpu only exist together
-          hut.shutWob().hold(group => { if (!cpu.isShut()) cpu.shut(group); this.hutsByCpuId.rem(cpuId); });
-          cpu.shutWob().hold(group => { if (!hut.isShut()) hut.shut(group) });
+          hut.shutWob().hold(g => { if (!cpu.isShut()) cpu.shut(g); this.hutsByCpuId.rem(cpuId); });
+          cpu.shutWob().hold(g => { if (!hut.isShut()) hut.shut(g) });
           
           this.createRec('archHut', { uid: `!archHut:${cpuId}` }, this.arch, hut);
           
@@ -449,8 +521,6 @@ U.buildRoom({
         this.syncThrottlePrm = null; // Resolves when we've sent sync to Below
         this.refreshExpiry();
         /// =ABOVE}
-        
-        this.forceSyncVal = null; // TODO: Take this out eventually? Only needed for testing..
         
       },
       getTerm: function() {
@@ -545,8 +615,6 @@ U.buildRoom({
         if (!addRec.isEmpty()) content.addRec = addRec;
         if (!updRec.isEmpty()) content.updRec = updRec;
         if (!remRec.isEmpty()) content.remRec = remRec;
-        
-        if (content.isEmpty() && this.forceSyncVal) { content.force = this.forceSyncVal; this.forceSyncVal = null; } // TODO: Take this out! For testing only
         if (content.isEmpty()) return null;
         
         this.sync = this.sync.map(v => ({}));
@@ -660,9 +728,6 @@ U.buildRoom({
         clearTimeout(this.expiryTimeout); this.expiryTimeout = null;
       },
       /// =ABOVE}
-      
-      // TODO: This is only for testing... take it out eventually
-      forceSync: function(val) { this.forceSyncVal = val; this.requestSyncBelow(); },
       
       tell: function(msg, conn=null) {
         if (conn) {

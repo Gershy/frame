@@ -48,6 +48,9 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
     serverWob.decorateConn(conn);
     conn.serverWob = serverWob;
     
+    if (!conn.hear) throw new Error('Invalid conn: missing "hear"');
+    if (!conn.tell) throw new Error('Invalid conn: missing "tell"');
+    
     if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(6, '0')
       + U.base62(Math.random() * Math.pow(62, 6)).padHead(6, '0');
     
@@ -63,8 +66,11 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
       cpu.cpuId = cpuId;                      // Unique, sensitive id of this cpu
       cpu.serverConns = serverConns = Map();  // Maps a server to the connection this cpu has on that server
       cpu.connWob = U.Wob();
+      cpu.shutWob().hold(g => {               // Shut all Conns when the Cpu shuts
+        for (let [ s, conn ] of cpu.serverConns) if (!conn.isShut()) conn.shut(g);
+      });
       this.cpus[cpuId] = cpu;
-      this.cpuWob.wobble(cpu)
+      this.cpuWob.wobble(cpu);
       if (doNetworkDbg) console.log(`>>JOIN ${dbgDesc}`);
     }
     
@@ -78,12 +84,12 @@ let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
         return origTell(...args);
       };
       
-      conn.shutWob().hold(() => {
+      conn.shutWob().hold(g => {
         serverConns.rem(serverWob);
         if (doNetworkDbg) console.log(`<-DROP ${dbgDesc} on ${serverWob.desc} (${serverConns.size} remaining)`);
         if (serverConns.isEmpty()) {
           delete this.cpus[cpuId];
-          cpu.shut();
+          if (!cpu.isShut()) cpu.shut(g); // TODO: Need to sort out multiple-shut troubles!! Can search for "if \(.*\.isShut\(\)"
           if (doNetworkDbg) console.log(`<<EXIT ${dbgDesc}`);
         }
       });
