@@ -104,6 +104,6 @@ U.buildRoom({
       
     };
     
-    return { commands, makeScope };
+    return { rt, commands, makeScope };
   }
 });

@@ -96,7 +96,7 @@ U.buildRoom({
     let TERMS = [];
     
     let Lands = U.inspire({ name: 'Lands', methods: () => ({
-      init: function({ heartbeatMs=10000, recTypes={}, ...more }) {
+      init: function({ heartbeatMs=10000, recTypes={} }) {
         
         if (recTypes.isEmpty()) throw new Error('No "recTypes" provided');
         
@@ -115,8 +115,6 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        let { commands=[] } = more;
-        this.commands = Set(commands);              // All valid Below commands
         this.realRooms = [];                        // All supported Real Rooms
         
         /// =ABOVE} {BELOW=
@@ -134,19 +132,12 @@ U.buildRoom({
       },
       addDefaultCommands: function() {
         
-        // Add required commands to Lands
-        let requiredCommand = (name, effect) => {
-          /// {ABOVE=
-          this.commands.add(name);
-          /// =ABOVE}
-          this.comWob(name).hold(effect);
-        };
-        requiredCommand('error', async ({ hut, msg, reply }) => { /* nothing */ });
-        requiredCommand('fizzle', async ({ hut, msg, reply }) => { /* nothing */ });
+        this.comWob('error').hold(({ hut, msg, reply }) => { /* nothing */ });
+        this.comWob('fizzle').hold(({ hut, msg, reply }) => { /* nothing */ });
         
         /// {ABOVE=
         
-        requiredCommand('getInit', async ({ absConn, hut, msg, reply }) => {
+        this.comWob('getInit').hold(async ({ absConn, hut, msg, reply }) => {
           hut.version = 0;                                            // Reset version
           hut.sync = hut.sync.map(v => ({}));                         // Clear current delta
           hut.fols.forEach((fol, rec) => hut.toSync('addRec', rec));  // Gen full sync delta
@@ -155,7 +146,7 @@ U.buildRoom({
           let initBelow = await foundation.genInitBelow('text/html', absConn, hut.getTerm(), update);
           reply(initBelow);
         });
-        requiredCommand('modifyRec', async ({ lands, hut, msg, reply }) => {
+        this.comWob('modifyRec').hold(({ lands, hut, msg, reply }) => {
           if (!msg.has('uid')) return hut.tell({ command: 'error', type: 'uidMissing', orig: msg });
           if (!msg.has('val')) return hut.tell({ command: 'error', type: 'valMissing', orig: msg });
           let { uid, val } = msg;
@@ -164,17 +155,17 @@ U.buildRoom({
           try { hut.modifyRec(rec, val); }
           catch(err) { hut.tell({ command: 'error', type: 'modifyError', message: err.message, orig: msg }); }
         });
-        requiredCommand('getFile', async ({ hut, msg, reply }) => {
+        this.comWob('getFile').hold(({ hut, msg, reply }) => {
           reply(U.safe(
             () => foundation.getMountFile(msg.path),
             () => ({ command: 'error', type: 'fileNotFound', orig: msg })
           ));
         });
-        requiredCommand('thunThunk', async ({ hut, msg, reply }) => { /* nothing */ });
+        this.comWob('thunThunk').hold(({ hut, msg, reply }) => { /* nothing */ });
         
         /// =ABOVE} {BELOW=
         
-        requiredCommand('update', ({ lands, hut, msg, reply }) => {
+        this.comWob('update').hold(({ lands, hut, msg, reply }) => {
           
           let { version, content } = msg;
           if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
@@ -327,12 +318,7 @@ U.buildRoom({
         return rec;
       },
       comWob: function(command) {
-        if (!this.comWobs.has(command)) {
-          /// {ABOVE=
-          if (!this.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
-          /// =ABOVE}
-          this.comWobs[command] = U.Wob({});
-        }
+        if (!this.comWobs.has(command)) this.comWobs[command] = U.Wob({});
         return this.comWobs[command];
       },
       hear: async function(absConn, hut, msg, reply=null) {
@@ -340,13 +326,11 @@ U.buildRoom({
         
         let { command } = msg;
         
-        /// {ABOVE=
-        if (!this.commands.has(command)) return hut.tell({ command: 'error', type: 'notSupported', orig: msg });
-        /// =ABOVE}
-        
+        // Note: We don't allow a new `comWob` to be created for
+        // `command`; that could allow exploitation from Below.
         let comVal = { lands: this, absConn, hut, msg, reply };
-        this.comWob(command).wobble(comVal);
-        hut.comWob(command).wobble(comVal);
+        if (this.comWobs.has(command))  this.comWobs[command].wobble(comVal);
+        if (hut.comWobs.has(command))   hut.comWobs[command].wobble(comVal);
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -528,12 +512,7 @@ U.buildRoom({
         return this.term;
       },
       comWob: function(command) {
-        if (!this.comWobs.has(command)) {
-          /// {ABOVE=
-          if (!this.lands.commands.has(command)) throw new Error(`Invalid command: "${command}"`);
-          /// =ABOVE}
-          this.comWobs[command] = U.Wob({});
-        }
+        if (!this.comWobs.has(command)) this.comWobs[command] = U.Wob({});
         return this.comWobs[command];
       },
       
