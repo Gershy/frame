@@ -517,8 +517,8 @@ U.buildRoom({
         this.sync = { addRec: {}, updRec: {}, remRec: {} };
         
         // Keep track of whether the Below for this Hut is still communicating
-        this.expiryTimeout = null;
         this.syncThrottlePrm = null; // Resolves when we've sent sync to Below
+        this.expiryTimeout = null;
         this.refreshExpiry();
         /// =ABOVE}
         

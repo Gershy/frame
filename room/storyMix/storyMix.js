@@ -69,7 +69,6 @@ U.buildRoom({
         
         'main': {
           slot: par => par.cmps.slots.insertViewPortItem(),
-          size: null,
           slots: AxisSections({ axis: 'y', cuts: [ UnitPx(50) ] }),
           decals: {
             colour: 'rgba(0, 0, 0, 1)'
@@ -77,7 +76,6 @@ U.buildRoom({
         },
         'main.header': {
           slot: par => par.cmps.slots.insertSectionItem(0),
-          size: null,
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3), UnitPc(1/6) ] }),
           decals: {
             colour: 'rgba(100, 255, 30, 0.75)',
@@ -87,7 +85,6 @@ U.buildRoom({
         'main.header.title': {
           slot: par => par.cmps.slots.insertSectionItem(1),
           size: ShowText({ origin: 'cc' }),
-          slots: null,
           decals: {
             textSize: UnitPx(24),
           }
@@ -95,7 +92,6 @@ U.buildRoom({
         'main.header.back': {
           slot: par => par.cmps.slots.insertSectionItem(3),
           size: ShowText({ origin: 'cc' }),
-          slots: null,
           decals: {
             textSize: UnitPx(20),
             border: { ext: UnitPx(2), colour: 'rgba(255, 255, 255, 1)' }
@@ -104,7 +100,6 @@ U.buildRoom({
         
         'main.loggedOut': {
           slot: par => par.cmps.slots.insertSectionItem(1),
-          size: null,
           slots: CenteredSlot(),
           decals: {
             colour: 'rgba(200, 200, 200, 1)'
@@ -123,7 +118,6 @@ U.buildRoom({
         'main.loggedOut.form.item.title': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(2) }),
-          slots: null,
           decals: {
             textSize: UnitPx(30)
           }
@@ -131,7 +125,6 @@ U.buildRoom({
         'main.loggedOut.form.item.field': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', interactive: true, pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(20)
@@ -140,7 +133,6 @@ U.buildRoom({
         'main.loggedOut.form.submit': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'cc', padV: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(255, 180, 0, 0.8)',
             textSize: UnitPx(30)
@@ -149,17 +141,13 @@ U.buildRoom({
         
         'main.loggedIn': {
           slot: par => par.cmps.slots.insertSectionItem(1),
-          size: null,
-          slots: null
         },
         'main.loggedIn.storyOut': {
-          slot: par => null,
           size: FillParent({}),
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(0.5) ] })
         },
         'main.loggedIn.storyOut.storyList': {
           slot: par => par.cmps.slots.insertSectionItem(0),
-          size: null,
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
             colour: 'rgba(170, 255, 170, 0.9)'
@@ -168,10 +156,8 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyList.item': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: WrapChildren({ pad: UnitPx(5), padB: UnitPx(0) }),
-          slots: null
         },
         'main.loggedIn.storyOut.storyList.item.content': {
-          slot: par => null,
           size: WrapChildren({}),
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
@@ -181,7 +167,6 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyList.item.content.name': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
-          slots: null,
           decals: {
             textSize: UnitPx(25),
             textColour: 'rgba(255, 255, 255, 1)'
@@ -190,7 +175,6 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyList.item.content.desc': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
-          slots: null,
           decals: {
             textSize: UnitPx(16),
             textColour: 'rgba(255, 255, 255, 1)'
@@ -199,7 +183,6 @@ U.buildRoom({
         
         'main.loggedIn.storyOut.storyCreate': {
           slot: par => par.cmps.slots.insertSectionItem(1),
-          size: null,
           slots: CenteredSlot({}),
           decals: {
             colour: 'rgba(200, 255, 200, 1)'
@@ -218,7 +201,6 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyCreate.form.item.title': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(2) }),
-          slots: null,
           decals: {
             textSize: UnitPx(20)
           }
@@ -226,7 +208,6 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyCreate.form.item.field': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', interactive: true, pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(18)
@@ -235,7 +216,6 @@ U.buildRoom({
         'main.loggedIn.storyOut.storyCreate.form.submit': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'cc', pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(0, 100, 0, 1)',
             textColour: 'rgba(255, 255, 255, 1)',
@@ -244,24 +224,19 @@ U.buildRoom({
         },
         
         'main.loggedIn.storyIn': {
-          slot: par => null,
           size: FillParent({}),
           slots: AxisSections({ axis: 'y', cuts: [ UnitPc(0.5) ] })
         },
         'main.loggedIn.storyIn.upperPane': {
           slot: par => par.cmps.slots.insertSectionItem(0),
-          size: null,
           slots: AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(30) ] })
         },
         'main.loggedIn.storyIn.lowerPane': {
           slot: par => par.cmps.slots.insertSectionItem(1),
-          size: null,
-          slots: null
         },
         
         'main.loggedIn.storyIn.upperPane.meta': {
           slot: par => par.cmps.slots.insertSectionItem(0),
-          size: null,
           slots: AxisSections({ axis: 'x', cuts: [ UnitPc(1/3), UnitPc(1/3) ] }),
           decals: {
             colour: 'rgba(0, 0, 0, 1)',
@@ -271,7 +246,6 @@ U.buildRoom({
         'main.loggedIn.storyIn.upperPane.meta.clock': {
           slot: par => par.cmps.slots.insertSectionItem(1),
           size: ShowText({ origin: 'cc' }),
-          slots: null,
           decals: {
             textSize: UnitPx(18)
           }
@@ -288,8 +262,6 @@ U.buildRoom({
         },
         'main.loggedIn.storyIn.upperPane.entries.entry': {
           slot: par => par.cmps.slots.insertTextFlowItem(),
-          size: null,
-          slots: null,
           decals: {
             colour: 'rgba(0, 80, 0, 0.074)',
             textSize: UnitPx(16),
@@ -302,14 +274,12 @@ U.buildRoom({
         },
         
         'main.loggedIn.storyIn.lowerPane.writing': {
-          slot: par => null,
           size: FillParent({}),
           slots: AxisSections({ axis: 'y', dir: '-', cuts: [ UnitPx(50) ] })
         },
         'main.loggedIn.storyIn.lowerPane.writing.submit': {
           slot: par => par.cmps.slots.insertSectionItem(0),
           size: ShowText({ origin: 'cc' }),
-          slots: null,
           decals: {
             colour: 'rgba(150, 255, 130, 1)',
             textSize: UnitPx(24)
@@ -318,7 +288,6 @@ U.buildRoom({
         'main.loggedIn.storyIn.lowerPane.writing.field': {
           slot: par => par.cmps.slots.insertSectionItem(1),
           size: ShowText({ origin: 'lt', interactive: true, multiLine: true, pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(16)
@@ -326,7 +295,6 @@ U.buildRoom({
         },
         
         'main.loggedIn.storyIn.lowerPane.voting': {
-          slot: par => null,
           size: FillParent({}),
           slots: LinearSlots({ axis: 'y', dir: '+' }),
           decals: {
@@ -341,7 +309,6 @@ U.buildRoom({
         'main.loggedIn.storyIn.lowerPane.voting.entry.author': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(4) }),
-          slots: null,
           decals: {
             colour: 'rgba(0, 150, 0, 1)',
             textSize: UnitPx(14),
@@ -351,7 +318,6 @@ U.buildRoom({
         'main.loggedIn.storyIn.lowerPane.voting.entry.text': {
           slot: par => par.cmps.slots.insertLinearItem(),
           size: ShowText({ origin: 'lc', pad: UnitPx(10), multiLine: true }),
-          slots: null,
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             textSize: UnitPx(16),
@@ -381,12 +347,7 @@ U.buildRoom({
       };
       
       /// {ABOVE=
-      let storyMix = lands.createRec('storyMix', {
-        value: {
-          version: '0.0.1',
-          description: 'Collaborate with other authors to write stories that belong to everyone!'
-        }
-      });
+      let storyMix = lands.createRec('storyMix', { value: { version: '0.0.1' } });
       let archStoryMix = lands.createRec('archStoryMix', {}, lands.arch, storyMix);
       /// =ABOVE}
       
@@ -494,7 +455,7 @@ U.buildRoom({
             
             if (username !== null) {
               
-              if (hut.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', org: msg });
+              if (hut.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', orig: msg });
               
               // Find an author by that username
               let allAuthors = storyMix.relRecs(rt.storyMixAuthor).map(sma => sma.members[1]);
@@ -517,6 +478,7 @@ U.buildRoom({
                 
               }
               
+              if (author.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'someone else is logged in there', orig: msg });
               if (author.relRec(rt.authorPassword).members[1].value !== password) return hut.tell({ command: 'error', type: 'denied', msg: 'incorrect password', orig: msg });
               
               // Set `author` as currently controlled by `hut`

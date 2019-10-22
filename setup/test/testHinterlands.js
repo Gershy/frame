@@ -93,7 +93,7 @@ module.exports = async (args, foundationInsps) => {
         testHogs = Set();
         
         // Wait for a brief moment (allow nextTicks to occur, etc)
-        await Promise(r => origSetTimeout(r, 10));
+        await Promise(r => origSetTimeout(r, 2));
       }
     };
     
@@ -1186,6 +1186,6 @@ module.exports = async (args, foundationInsps) => {
   let [ foundationAbove ] = await spoofFoundationHut(FoundationNodejs, 'errorsAbove', 'above', () => {})
   let [ foundationBelow ] = await spoofFoundationHut(FoundationNodejs, 'errorsBelow', 'below', () => {})
   keep.formatError = err => (err.stack.has('.above.') ? foundationAbove : foundationBelow).formatError(err);
-  await keep.showResults(args);
+  console.log(await keep.getResultString(args));
   
 };

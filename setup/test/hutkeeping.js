@@ -120,7 +120,9 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     }
     
   },
-  showResults: async function(args) {
+  getResultString: async function(args) {
+    
+    let results = [];
     
     if (this.par) throw new Error('Should only do `showResults` from the root Keep');
     
@@ -136,24 +138,26 @@ let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
       
       // Show the single result, with optional error and failure-message
       let { summary, cases } = childResults || { summary: null, cases: {} };
-      console.log(`${ind}[${result ? '.' : 'X'}] ${name}`);
-      if (err)              console.log(`${ind}    TESTERROR(${err.id}) - ${err.message.split('\n')[2]}`);
-      if (!result && msg)   console.log(`${ind}    Fail at: "${msg}"`);
-      //else if (msg)       console.log(`${ind}    "${msg}"`);
+      results.push(`${ind}[${result ? '.' : 'X'}] ${name}`);
+      if (err)              results.push(`${ind}    TESTERROR(${err.id}) - ${err.message.split('\n')[2]}`);
+      if (!result && msg)   results.push(`${ind}    Fail at: "${msg}"`);
+      //else if (msg)       results.push(`${ind}    "${msg}"`);
       if (cases.isEmpty()) return;
       
       // Show all child results
-      console.log(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
+      results.push(`${ind}    Passed ${summary.passed} / ${summary.total} cases:`);
       for (let [ name0, run ] of Object.entries(cases)) outputTest(`${name}.${name0}`, run, ind + '    ');
     };
     
-    console.log('Running tests...');
+    results.push('Running tests...');
     let result = await entryKeep.run();
     outputTest(entryKeep.name, result); // Print all results with nice formatting
-    console.log(`Overall: Passed ${this.passed} / ${this.total} (${Math.round((this.passed / this.total) * 100)}%)`);
+    results.push(`Overall: Passed ${this.passed} / ${this.total} (${Math.round((this.passed / this.total) * 100)}%)`);
     
     // For convenience show the first error last
-    if (firstErr) console.log('First error encountered:\n', this.formatError(firstErr));
+    if (firstErr) results.push('First error encountered:\n', this.formatError(firstErr));
+    
+    return results.join('\n');
     
   }
 })});
