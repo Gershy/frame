@@ -1,7 +1,7 @@
 U.buildRoom({
   name: 'storyMix',
-  innerRooms: [ 'hinterlands', 'chance', 'record', 'real', 'realHtmlCss' ],
-  build: (foundation, hinterlands, chance, record, real, realHtmlCss) => {
+  innerRooms: [ 'hinterlands', 'record', 'soul', 'chance', 'real', 'realHtmlCss' ],
+  build: (foundation, hinterlands, record, soul, chance, real, realHtmlCss) => {
     
     // TODO: If an AccessPath accepted a GeneratorFunction as its `gen` param,
     // the GeneratorFunction could `yield` every dependent Hog.
@@ -13,37 +13,34 @@ U.buildRoom({
     let { Rec, recTyper } = record;
     let { Lands } = hinterlands;
     
+    let soulRt = soul.rt;
+    let landsRt = hinterlands.rt;
+    
     let { rt, add } = recTyper();
     add('storyMix', Rec); // Note: `Rec` is optional when it's the last param
-    add('author', Rec);
-    add('password', Rec);
     add('story', Rec);
     add('round', Rec);
     add('entry', Rec);
     
-    add('archStoryMix',       Rec, '11', hinterlands.rt.arch, rt.storyMix);
+    add('archStoryMix',       Rec, '11', landsRt.arch, rt.storyMix);
     add('storyMixStory',      Rec, '1M', rt.storyMix,         rt.story);
-    add('storyMixAuthor',     Rec, '1M', rt.storyMix,         rt.author);
-    add('hutAuthor',          Rec, '11', hinterlands.rt.hut,  rt.author);
-    add('authorPassword',     Rec, '11', rt.author,           rt.password);
-    add('authorCurStory',     Rec, 'M1', rt.author,           rt.story);
-    add('storyCreatorAuthor', Rec, 'M1', rt.story,            rt.author);
-    add('storyAuthor',        Rec, 'MM', rt.story,            rt.author);
+    add('soulCurStory',       Rec, 'M1', soulRt.soul,        rt.story);
+    add('storyCreatorSoul',   Rec, 'M1', rt.story,            soulRt.soul);
+    add('storySoul',          Rec, 'MM', rt.story,            soulRt.soul);
     add('storyRound',         Rec, '1M', rt.story,            rt.round);
     add('storyCurRound',      Rec, '11', rt.story,            rt.round);
     add('storyEntry',         Rec, '1M', rt.story,            rt.entry);
     add('roundEntry',         Rec, '1M', rt.round,            rt.entry);
-    add('entryAuthor',        Rec, 'M1', rt.entry,            rt.author);
-    add('entryVoterAuthor',   Rec, 'MM', rt.entry,            rt.author);
+    add('entrySoul',          Rec, 'M1', rt.entry,            soulRt.soul);
+    add('entryVoterSoul',     Rec, 'MM', rt.entry,            soulRt.soul);
     
     let open = async () => {
       
       console.log('Init storyMix...');
       
-      let recTypes = { ...hinterlands.rt, ...rt }; // TODO: Collisions could occur...
-      let commands = [ 'author', 'story', 'join', 'entry', 'vote' ];
+      let recTypes = { ...landsRt, ...soulRt, ...rt }; // TODO: Collisions could occur...
       let heartbeatMs = 10 * 60 * 1000;
-      let lands = U.lands = Lands({ foundation, recTypes, commands, heartbeatMs });
+      let lands = U.lands = Lands({ foundation, recTypes, heartbeatMs });
       
       // Note: The Foundation has host and port values, but technically
       // a Foundation can run a number of servers - so this ip+port
@@ -359,25 +356,36 @@ U.buildRoom({
         
         let chance = Chance(null);
         
+        // Allow Huts to gain Souls
+        dep(soul.makeScope(lands));
+        
         // Follows
-        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        dep(AccessPath(lands.arch.relWob(landsRt.archHut), (dep, archHut) => {
           
+          // Huts immediately follow the root StoryMix instance
           let hut = archHut.members[1];
           dep(hut.followRec(archStoryMix));
           dep(hut.followRec(storyMix));
           
-          dep(AccessPath(hut.relWob(rt.hutAuthor), (dep, hutAuthor) => {
+          dep(AccessPath(hut.relWob(soulRt.hutSoul), (dep, hutSoul) => {
             
-            // Follow the Author through `rt.storyMixAuthor`, not `rt.hutAuthor`
-            let author = hutAuthor.members[1];
-            dep(hut.followRec(author));
-            dep(hut.followRec(author.relRec(rt.storyMixAuthor)));
+            let soul = hutSoul.members[1];
             
-            dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+            // Only Huts with Souls follow the list of all Stories
+            dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
               
-              let curStory = authorCurStory.members[1];
+              let story = storyMixStory.members[1];
+              dep(hut.followRec(story));
+              dep(hut.followRec(storyMixStory));
+              
+            }));
+            
+            // Only Huts with Souls follow the current Story
+            dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
+              
+              let curStory = soulCurStory.members[1];
               dep(hut.followRec(curStory));
-              dep(hut.followRec(authorCurStory));
+              dep(hut.followRec(soulCurStory));
               
               dep(AccessPath(curStory.relWob(rt.storyEntry), (dep, storyEntry) => {
                 
@@ -385,11 +393,11 @@ U.buildRoom({
                 dep(hut.followRec(entry));
                 dep(hut.followRec(storyEntry));
                 
-                dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                   
-                  let author = entryAuthor.members[1];
-                  dep(hut.followRec(author));
-                  dep(hut.followRec(entryAuthor));
+                  let soul = entrySoul.members[1];
+                  dep(hut.followRec(soul));
+                  dep(hut.followRec(entrySoul));
                   
                 }));
                 
@@ -407,20 +415,16 @@ U.buildRoom({
                   dep(hut.followRec(entry));
                   dep(hut.followRec(roundEntry));
                   
-                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
-                    
-                    let author = entryAuthor.members[1];
-                    dep(hut.followRec(author));
-                    dep(hut.followRec(entryAuthor));
-                    
+                  dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                    let soul = entrySoul.members[1];
+                    dep(hut.followRec(soul));
+                    dep(hut.followRec(entrySoul));
                   }));
                   
-                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
-                    
-                    let voterAuthor = entryVoterAuthor.members[1];
-                    dep(hut.followRec(voterAuthor));
-                    dep(hut.followRec(entryVoterAuthor));
-                    
+                  dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                    let voterSoul = entryVoterSoul.members[1];
+                    dep(hut.followRec(voterSoul));
+                    dep(hut.followRec(entryVoterSoul));
                   }));
                   
                 }));
@@ -431,133 +435,65 @@ U.buildRoom({
             
           }));
           
-          dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
-            
-            let story = storyMixStory.members[1];
-            dep(hut.followRec(story));
-            dep(hut.followRec(storyMixStory));
-            
-          }));
-          
         }));
         
-        // Controls on Huts
-        dep(AccessPath(lands.arch.relWob(hinterlands.rt.archHut), (dep, archHut) => {
+        // Controls on Souls
+        dep(AccessPath(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
           
-          let hut = archHut.members[1];
+          let soul = archSoul.members[1];
           
-          dep(hut.comWob('author').hold(({ lands, hut, msg }) => {
+          // Enable Soul actions: 1) create story 2) join story
+          dep(AccessPath(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
             
-            let { username, password } = msg;
-            
-            // The truthiness of `username` determines if we're logging
-            // in or logging out.
-            
-            if (username !== null) {
-              
-              if (hut.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'already logged in', orig: msg });
-              
-              // Find an author by that username
-              let allAuthors = storyMix.relRecs(rt.storyMixAuthor).map(sma => sma.members[1]);
-              let author = null;
-              let findAuthor = allAuthors.find(auth => auth.value.username === username);
-              
-              if (!findAuthor) {
-                
-                console.log('Create author for', hut.getTerm());
-                
-                author = lands.createRec('author', { value: { username, term: null } });
-                let pass = lands.createRec('password', { value: password });
-                
-                lands.createRec('storyMixAuthor', {}, storyMix, author);
-                lands.createRec('authorPassword', {}, author, pass);
-                
-              } else {
-                
-                author = findAuthor[0];
-                
-              }
-              
-              if (author.relRec(rt.hutAuthor)) return hut.tell({ command: 'error', type: 'denied', msg: 'someone else is logged in there', orig: msg });
-              if (author.relRec(rt.authorPassword).members[1].value !== password) return hut.tell({ command: 'error', type: 'denied', msg: 'incorrect password', orig: msg });
-              
-              // Set `author` as currently controlled by `hut`
-              author.modify(v => v.gain({ term: hut.getTerm() }));
-              lands.createRec('hutAuthor', {}, hut, author);
-              
-            } else {
-              
-              // Shut the AuthorHut
-              let hutAuthor = hut.relRec(rt.hutAuthor);
-              if (!hutAuthor) return hut.tell({ command: 'error', type: 'denied', msg: 'not logged in', orig: msg });
-              hutAuthor.members[1].modify(v => v.gain({ term: null }));
-              hutAuthor.shut();
-              
-            }
-            
-          }));
-          
-        }));
-        
-        // Controls on Authors
-        dep(AccessPath(storyMix.relWob(rt.storyMixAuthor), (dep, storyMixAuthor) => {
-          
-          let author = storyMixAuthor.members[1];
-          
-          // Enable Author actions: 1) create story 2) join story
-          dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
-            
-            let hut = hutAuthor.members[0];
-            
+            let hut = hutSoul.members[0];
             dep(hut.comWob('story').hold(({ msg }) => {
               
-              let { name, desc, roundMs, maxAuthors } = msg;
+              let { name, desc, roundMs, maxSouls } = msg;
               
               if (!U.isType(name, String)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               if (!U.isType(desc, String)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               if (!U.isType(roundMs, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
-              if (!U.isType(maxAuthors, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
+              if (!U.isType(maxSouls, Number)) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid', orig: msg });
               
               let newStory = lands.createRec('story', { value: {
                 name,
                 desc,
                 startMs: foundation.getMs(),
                 endMs: null,
-                numAuthors: 0,
+                numSouls: 0,
                 settings: {
                   roundMs,
-                  // TODO: minAuthors (can't start a Round until this many Authors have joined)
-                  maxAuthors
+                  // TODO: minSouls (can't start a Round until this many Souls have joined)
+                  maxSouls
                   // TODO: minEntryLength
                   // TODO: maxEntryLength
-                  // TODO: showRoundEntryAuthor
-                  // TODO: showStoryEntryAuthor
-                  // TODO: showRoundEntryVotes  // (hidden|amount|authors) - show amount, but not who voted?
+                  // TODO: showRoundEntrySoul
+                  // TODO: showStoryEntrySoul
+                  // TODO: showRoundEntryVotes  // (hidden|amount|names) (amount: show count but not names)
                   // TODO: maxRounds
                 }
               }});
               
-              // Liven up `newStory.value.numAuthors`
-              let ap = AccessPath(newStory.relWob(rt.storyAuthor), (dep, relAuthor) => {
-                newStory.modify(v => (v.numAuthors++, v));
-                dep(Hog(() => newStory.modify(v => (v.numAuthors--, v))));
+              // Liven up `newStory.value.numSouls`
+              let ap = AccessPath(newStory.relWob(rt.storySoul), (dep, storySoul) => {
+                newStory.modify(v => (v.numSouls++, v));
+                dep(Hog(() => newStory.modify(v => (v.numSouls--, v))));
               });
               
               let storyMixStory = lands.createRec('storyMixStory', {}, storyMix, newStory);
-              storyMixStory.shutWob().hold(() => ap.shut()); // Stop counting authors if relation breaks
+              storyMixStory.shutWob().hold(() => ap.shut()); // Stop counting souls if relation breaks
               
-              let storyCreatorAuthor = lands.createRec('storyCreatorAuthor', {}, newStory, author);
-              let storyAuthor = lands.createRec('storyAuthor', {}, newStory, author);
+              let storyCreatorSoul = lands.createRec('storyCreatorSoul', {}, newStory, soul);
+              let storySoul = lands.createRec('storySoul', {}, newStory, soul);
               
             }));
-            
             dep(hut.comWob('join').hold(({ msg }) => {
               
               if (!msg.has('story')) return hut.tell({ command: 'error', type: 'denied', msg: 'no story specified', orig: msg });
               
               if (msg.story !== null) {
                 
-                if (author.relRec(rt.authorCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'already in a story', orig: msg });
+                if (soul.relRec(rt.soulCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'already in a story', orig: msg });
                 
                 let findStory = storyMix.relRecs(rt.storyMixStory).find(sms => sms.members[1].uid === msg.story);
                 if (!findStory) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid uid', orig: msg });
@@ -565,20 +501,17 @@ U.buildRoom({
                 // We found the Story! Reference it.
                 let story = findStory[0].members[1];
                 
-                // Try to find if the Author has already joined the story...
-                let findAuthorInStory = story.relRecs(rt.storyAuthor).find(sa => sa.members[1] === author);
+                // Group Soul and Story if not already grouped
+                let findSoulInStory = story.relRecs(rt.storySoul).find(sa => sa.members[1] === soul);
+                if (!findSoulInStory) lands.createRec('storySoul', {}, story, soul);
                 
-                // Group Author and Story if not already grouped!
-                if (!findAuthorInStory) lands.createRec('storyAuthor', {}, story, author);
-                
-                // Always set this Story as the Author's CurrentStory
-                lands.createRec('authorCurStory', {}, author, story);
+                // Always set this Story as the Soul's CurrentStory
+                lands.createRec('soulCurStory', {}, soul, story);
                 
               } else {
                 
-                if (!author.relRec(rt.authorCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'not in a story', orig: msg });
-                
-                author.relRec(rt.authorCurStory).shut();
+                if (!soul.relRec(rt.soulCurStory)) return hut.tell({ command: 'error', type: 'denied', msg: 'not in a story', orig: msg });
+                soul.relRec(rt.soulCurStory).shut();
                 
               }
               
@@ -586,16 +519,15 @@ U.buildRoom({
             
           }));
           
-          // Controls on Author -> CurStory
-          dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+          // Controls on Soul -> CurStory
+          dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
             
-            let story = authorCurStory.members[1];
+            let story = soulCurStory.members[1];
             
-            // Enable Author actions: 1) submit Entry; 2) submit Vote
-            dep(AccessPath(author.relWob(rt.hutAuthor), (dep, hutAuthor) => {
+            // Enable Soul actions: 1) submit Entry; 2) submit Vote
+            dep(AccessPath(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
               
-              let hut = hutAuthor.members[0];
-              
+              let hut = hutSoul.members[0];
               dep(hut.comWob('entry').hold(({ msg }) => {
                 
                 // If no Round exists, a new one begins
@@ -618,7 +550,7 @@ U.buildRoom({
                   // Liven up `curRound.value.numVotes`
                   let scope = AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
                     let entry = roundEntry.members[1];
-                    dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                    dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                       curRound.modify(v => (v.numVotes++, v));
                       dep(Hog(() => curRound.modify(v => (v.numVotes--, v))));
                     }));
@@ -636,20 +568,19 @@ U.buildRoom({
                 let entry = lands.createRec('entry', { value: { text: msg.text, numVotes: 0 } });
                 
                 // Liven up `entry.value.numVotes`
-                let scope = AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                let scope = AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                   entry.modify(v => (v.numVotes++, v));
                   dep(Hog(() => entry.modify(v => (v.numVotes--, v))));
                 });
                 
-                // Connect Entry to Author
-                let entryAuthor = lands.createRec('entryAuthor', {}, entry, author);
+                // Connect Entry to Soul
+                let entrySoul = lands.createRec('entrySoul', {}, entry, soul);
                 
                 // Connect Entry to Round
                 let roundEntry = lands.createRec('roundEntry', {}, curRound, entry);
                 roundEntry.shutWob().hold(() => scope.shut());
                 
               }));
-              
               dep(hut.comWob('vote').hold(({ msg }) => {
                 
                 let storyCurRound = story.relRec(rt.storyCurRound);
@@ -659,10 +590,9 @@ U.buildRoom({
                 let entries = curRound.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
                 
                 let findEntry = entries.find(entry => entry.uid === msg.entry);
-                
                 if (!findEntry) return hut.tell({ command: 'error', type: 'denied', msg: `Invalid Entry uid: ${msg.entry}`, orig: msg });
                 
-                lands.createRec('entryVoterAuthor', {}, findEntry[0], author);
+                lands.createRec('entryVoterSoul', {}, findEntry[0], soul);
                 
               }));
               
@@ -684,15 +614,14 @@ U.buildRoom({
             
             let unbeatableEntry = () => {
               
-              // Sum up votes for all Entries. Figure out how many Authors haven't voted.
-              // If not enough Authors remain to tip the balance to another Entry, return
-              // the unbeatable Entry
+              // Sum votes for Entries, determine how many votes remain
+              // If too few Souls remain to unseat winner, return winner
               
               let entries = round.relRecs(rt.roundEntry).map(roundEntry => roundEntry.members[1]);
               if (entries.length === 0) return null;
               if (entries.length === 1) return entries[0]; // TODO: A lone Entry is unbeatable??
               
-              let numVotesRemaining = story.value.numAuthors - round.value.numVotes;
+              let numVotesRemaining = story.value.numSouls - round.value.numVotes;
               let [ place1, place2 ] = entries.sort((a, b) => b.value.numVotes - a.value.numVotes);
               
               // If `place1` is unbeatable, return it - otherwise, `null`
@@ -750,7 +679,7 @@ U.buildRoom({
             dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
               
               let entry = roundEntry.members[1];
-              dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+              dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                 
                 // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
@@ -765,7 +694,7 @@ U.buildRoom({
             // We only listen for changes in total votes cast to trigger the round-end-due-to-exhaustion event though.
             // TODO: This assumes that total votes available can never decrement
             dep(round.hold(v => {
-              if (v.numVotes >= story.value.numAuthors) endRound('noMoreVotes', bestEntry());
+              if (v.numVotes >= story.value.numSouls) endRound('noMoreVotes', bestEntry());
             }));
             
           }));
@@ -781,36 +710,36 @@ U.buildRoom({
         let titleReal = headerReal.addReal('title');
         titleReal.setText('StoryMix');
         
-        // Some fancy footwork: only listen to do `myAuthorWob.up(...)`
-        // when `myAuthorWob` is dn!
-        let myAuthorWob = WobTmp('dn');
-        dep(AccessPath(storyMix.relWob(rt.storyMixAuthor), (dep, storyMixAuthor) => {
-          let author = storyMixAuthor.members[1];
-          if (author.value.term === U.hutTerm) dep(myAuthorWob.up(author));
+        // Some fancy footwork: only listen to do `mySoulWob.up(...)`
+        // when `mySoulWob` is dn!
+        let mySoulWob = WobTmp('dn');
+        dep(AccessPath(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
+          let soul = archSoul.members[1];
+          if (soul.value.term === U.hutTerm) dep(mySoulWob.up(soul));
         }));
         
-        dep(AccessPath(myAuthorWob.inverse(), dep => {
+        dep(AccessPath(mySoulWob.inverse(), dep => {
           
           let loggedOutReal = dep(mainReal.addReal('loggedOut'));
           let loginForm = loggedOutReal.addReal('form');
           let form = loginForm.form('Login', dep,
-            v => form.clear() && lands.tell({ command: 'author', ...v }),
+            v => form.clear() && lands.tell({ command: 'soulHold', ...v }),
             {
-              username: { type: 'str', desc: 'Username' },
-              password: { type: 'str', desc: 'Password' }
+              name: { type: 'str', desc: 'Username' },
+              pass: { type: 'str', desc: 'Password' }
             }
           );
           
         }));
         
-        dep(AccessPath(myAuthorWob, (dep, { value: author }) => {
+        dep(AccessPath(mySoulWob, (dep, { value: soul }) => {
           
           let loggedInReal = dep(mainReal.addReal('loggedIn'));
           
           let myStoryWob = WobTmp('dn');
-          dep(AccessPath(author.relWob(rt.authorCurStory), (dep, authorCurStory) => {
+          dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
             
-            let curStory = authorCurStory.members[1];
+            let curStory = soulCurStory.members[1];
             dep(myStoryWob.up(curStory));
             
           }));
@@ -843,7 +772,7 @@ U.buildRoom({
               name:       { type: 'str', desc: 'Name', v: 'test' },
               desc:       { type: 'str', desc: 'Description', v: 'TEST TEST' },
               roundMs:    { type: 'int', desc: 'Round Timer', v: '10000000' },
-              maxAuthors: { type: 'int', desc: 'Max Authors', v: '10' }
+              maxSouls:   { type: 'int', desc: 'Max Authors', v: '10' }
             });
             
           }));
@@ -880,54 +809,25 @@ U.buildRoom({
                 
                 let entry = roundEntry.members[1];
                 
-                // Look at "entryAuthor" to establish current Entry
-                dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
+                // Look at "entrySoul" to establish current Entry
+                dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                   
-                  let authorOfEntry = entryAuthor.members[1];
-                  if (authorOfEntry === author) dep(myCurEntryWob.up(entry));
+                  let soulOfEntry = entrySoul.members[1];
+                  if (soulOfEntry === soul) dep(myCurEntryWob.up(entry));
                   
                 }));
                 
-                // Look at "entryVoterAuthor" to establish current voted Entry
-                dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                // Look at "entryVoterSoul" to establish current voted Entry
+                dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                   
-                  let voterAuthor = entryVoterAuthor.members[1];
-                  if (voterAuthor === author) dep(myCurVotedEntryWob.up(entry));
+                  let voterSoul = entryVoterSoul.members[1];
+                  if (voterSoul === soul) dep(myCurVotedEntryWob.up(entry));
                   
                 }));
                 
               }));
               
             }));
-            
-            /*
-            // TODO: This also works to liven up `myCurEntryWob` and
-            // `myCurVotedEntryWob`!
-            let storyScope = VertScope();
-            let entryWob = storyScope
-              .dive(story =>          story.relWob(rt.storyCurRound))
-              .dive(storyCurRound =>  WobVal(storyCurRound.members[1]))
-              .dive(round =>          round.relWob(rt.roundEntry))
-              .dive(roundEntry =>     WobVal(roundEntry.members[1]));
-            
-            let authorOfEntryWob = entryWob
-              .dive(entry => entry.relWob(rt.entryAuthor))
-              .dive(entryAuthor => WobVal(entryAuthor.members[1]));
-            
-            let voterAuthorOfEntryWob = entryWob
-              .dive(entry => entry.relWob(rt.entryVoterAuthor))
-              .dive(entryVoterAuthor => WobVal(entryVoterAuthor.members[1]));
-            
-            dep(authorOfEntryWob.hold((dep, [ authorOfEntry, _, entry ]) => {
-              if (authorOfEntry === author) dep(myCurEntryWob.up(entry));
-            }));
-            
-            dep(voterAuthorOfEntryWob.hold((dep, [ voterAuthor, _, entry ]) => {
-              if (voterAuthor === author) dep(myCurVotedEntryWob.up(entry));
-            }));
-            
-            storyScope.trackWob(story);
-            */
             
             dep(AccessPath(myCurRoundWob.inverse(), dep => {
               clockReal.setText('---');
@@ -979,20 +879,19 @@ U.buildRoom({
                     dep(entryReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: entry.uid })));
                   }));
                   
-                  
-                  dep(AccessPath(entry.relWob(rt.entryAuthor), (dep, entryAuthor) => {
-                    let author = entryAuthor.members[1];
-                    dep(author.hold(v => entryAuthorReal.setText(v.username)));
+                  dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                    let soul = entrySoul.members[1];
+                    dep(soul.hold(v => entryAuthorReal.setText(v.username)));
                   }));
                   
                   let entryVotesReal = null;
-                  dep(AccessPath(entry.relWob(rt.entryVoterAuthor), (dep, entryVoterAuthor) => {
+                  dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                     // TODO: BAD!
                     if (!entryVotesReal) entryVotesReal = entryReal.addReal('votes');
                     
-                    let voterAuthor = entryVoterAuthor.members[1];
-                    let voterAuthorReal = entryVotesReal.addReal('vote');
-                    dep(voterAuthor.hold(v => voterAuthorReal.setText(v.username)));
+                    let voterSoul = entryVoterSoul.members[1];
+                    let voterSoulReal = entryVotesReal.addReal('vote');
+                    dep(voterSoul.hold(v => voterSoulReal.setText(v.username)));
                   }));
                   
                 }));

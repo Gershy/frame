@@ -2,7 +2,6 @@ U.buildRoom({
   name: 'soul',
   innerRooms: [ 'record', 'hinterlands' ],
   build: (foundation, record, hinterlands) => {
-    
     let { HorzScope, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Rec, recTyper } = record;
     
@@ -13,7 +12,6 @@ U.buildRoom({
     add('hutSoul',      Rec, '11', hinterlands.rt.hut,  rt.soul);
     add('soulThoughts', Rec, '11', rt.soul,             rt.thoughts);
     
-    let commands = [ 'holdSoul', 'dropSoul' ];
     let makeScope = lands => {
       
       return HorzScope(WobVal(lands.arch), (dep, arch) => {
@@ -27,7 +25,7 @@ U.buildRoom({
           // Huts without Souls can hold Souls
           dep(HorzScope(hutCurSoul.inverse(), dep => {
             
-            dep(hut.comWob('holdSoul').hold(({ msg }) => {
+            dep(hut.comWob('soulHold').hold(({ msg }) => {
               
               let { name, pass } = msg;
               if (!name) return hut.tell({ command: 'error', type: 'denied', msg: 'invalid name for login' });
@@ -43,7 +41,6 @@ U.buildRoom({
                 // TODO: Any souls created this way should expire from
                 // a timeout unless they're verified first
                 
-                console.log(`Create soul for ${hut.cpuId}`);
                 soul = lands.createRec('soul', { value: { name, term: null } });
                 
                 let thoughts = lands.createRec('thoughts', { value: { pass } });
@@ -58,7 +55,7 @@ U.buildRoom({
               }
               
               if (soul.relRec(rt.hutSoul)) return hut.tell({ command: 'error', type: 'denied', msg: 'soul already held', orig: msg });
-              if (soul.relRec(rt.thoughts).members[1].value.pass !== pass) return hut.tell({ command: 'error', typed: 'denied', msg: 'invalid login', orig: msg });
+              if (soul.relRec(rt.soulThoughts).members[1].value.pass !== pass) return hut.tell({ command: 'error', typed: 'denied', msg: 'invalid login', orig: msg });
               
               soul.modify(v => v.gain({ term: hut.getTerm() }));
               lands.createRec('hutSoul', {}, hut, soul);
@@ -70,7 +67,7 @@ U.buildRoom({
           // Huts with Souls can drop their Soul
           dep(HorzScope(hutCurSoul, dep => {
             
-            dep(hut.comWob('dropSoul').hold(({ msg }) => {
+            dep(hut.comWob('soulDrop').hold(({ msg }) => {
               
               // Shut the AuthorHut
               let hutSoul = hut.relRec(rt.hutSoul);
@@ -90,7 +87,7 @@ U.buildRoom({
             dep(hut.followRec(soul));
             
             // Follow the Soul's Thoughts (only for this Hut)
-            dep(HorzScope(soul.relRec(rt.soulThoughts), (dep, soulThoughts) => {
+            dep(HorzScope(soul.relWob(rt.soulThoughts), (dep, soulThoughts) => {
               let thoughts = soulThoughts.members[1];
               dep(hut.followRec(thoughts));
               dep(hut.followRec(soulThoughts));
@@ -104,6 +101,7 @@ U.buildRoom({
       
     };
     
-    return { rt, commands, makeScope };
+    return { rt, makeScope };
+    
   }
 });

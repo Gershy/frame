@@ -162,7 +162,7 @@ U.buildRoom({
       //m: function(ind) { return this.members[ind]; },
       relWob: function(recType, ind=null) {
         
-        if (!recType) throw new Error(`Passed null recType`);
+        if (!recType) throw new Error(`Invalid recType: ${U.nameOf(recType)}`);
         
         // `ind` is our index in `recType.memberTypes`
         // If no `ind` is given, return the first index matching our type
