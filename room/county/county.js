@@ -16,8 +16,6 @@ U.buildRoom({
     
     let open = async () => {
       
-      console.log('Init county...');
-      
       let recTypes = { ...hinterlands.rt, ...rt }; // TODO: Collisions could occur...
       let heartbeatMs = 1 * 60 * 1000;
       let lands = Lands({ recTypes, heartbeatMs });

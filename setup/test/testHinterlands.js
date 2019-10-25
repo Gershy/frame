@@ -77,6 +77,10 @@ module.exports = async (args, foundationInsps) => {
       return i;
     };
     
+    let addGetInitCommandForLands = lands => {
+      lands
+    };
+    
     let testHogs = Set();
     let addTestHog = h => testHogs.add(h) && h;
     
@@ -324,10 +328,7 @@ module.exports = async (args, foundationInsps) => {
       });
       
       let parseInitData = msg => {
-        let endBit = msg.substr(msg.indexOf('// ==== File:' + ' hut.js'));
-        let initDataMatch = endBit.match(/U\.initData = (.*);\s*U\.debugLineData = /);
-        if (!initDataMatch) throw new Error(`Couldn't parse invalid initData`);
-        return JSON.parse(initDataMatch[1]);
+        return msg;
       };
       
       let getNodejsAboveLands = async n => {
@@ -338,6 +339,7 @@ module.exports = async (args, foundationInsps) => {
         
         let [ f, { Rec, recTyper }, { Lands, rt } ] = await spoofFoundationHut(FoundationNodejs, n, 'above', () => {});
         let lands = Lands({ recTypes: rt });
+        lands.comWob('getInit').hold(async ({ hut, reply }) => (hut.resetFollows(), reply(hut.genSyncTell())));
         lands.makeServers.push(pool => spoofServerWob('above', pool));
         await lands.open();
         return { lands, rt };
@@ -356,6 +358,7 @@ module.exports = async (args, foundationInsps) => {
         add('item',     Rec);
         add('archItem', Rec, '1M', rt.arch, trt.item);
         let lands = Lands({ recTypes: { ...trt, ...rt } });
+        lands.comWob('getInit').hold(async ({ hut, reply }) => (hut.resetFollows(), reply(hut.genSyncTell())));
         lands.makeServers.push(pool => spoofServerWob('above', pool));
         await lands.open();
         return { lands, trt, rt };
@@ -380,9 +383,7 @@ module.exports = async (args, foundationInsps) => {
           let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
           let result = await receiveConnAction(conn, { command: 'getInit' });
           return [
-            [ 'result is string',       () => U.isType(result, String) ],
-            [ 'result looks like html', () => result.hasHead('<!DOCTYPE html>') ],
-            [ 'initial value is null',  () => parseInitData(result) === null ]
+            [ 'initial value is null',  () => result === null ]
           ];
           
         });
@@ -405,21 +406,17 @@ module.exports = async (args, foundationInsps) => {
           let conn = makeTellWobConnWithLandsServer(lands, lands.servers[0], `spoofed:${n}`);
           
           // Request initialization with `conn`
-          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
-          if (!U.isType(resultHtml, String)) return { result: false, msg: 'result is String' };
-          if (!resultHtml.hasHead('<!DOCTYPE html>')) return { result: false, msg: 'result looks like html' };
-          
-          let initData = parseInitData(resultHtml);
+          let resultInit = await receiveConnAction(conn, { command: 'getInit' });
           
           return [
-            [ 'data is Object', () => U.isType(initData, Object) ],
-            [ 'version is 1', () => initData.version === 1 ],
-            [ 'command is update', () => initData.command === 'update' ],
-            [ 'content is Object', () => U.isType(initData.content, Object) ],
-            [ 'content addRec is Object', () => U.isType(initData.content.addRec, Object) ],
-            [ 'adds 2 Recs', () => initData.content.addRec.toArr(v => v).length === 2 ],
-            [ 'adds item', () => initData.content.addRec.find((v, k) => k === item.uid) ],
-            [ 'adds archItem', () => initData.content.addRec.find((v, k) => k === archItem.uid) ]
+            [ 'data is Object', () => U.isType(resultInit, Object) ],
+            [ 'version is 1', () => resultInit.version === 1 ],
+            [ 'command is update', () => resultInit.command === 'update' ],
+            [ 'content is Object', () => U.isType(resultInit.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(resultInit.content.addRec, Object) ],
+            [ 'adds 2 Recs', () => resultInit.content.addRec.toArr(v => v).length === 2 ],
+            [ 'adds item', () => resultInit.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'adds archItem', () => resultInit.content.addRec.find((v, k) => k === archItem.uid) ]
           ];
           
         });
@@ -442,21 +439,17 @@ module.exports = async (args, foundationInsps) => {
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           
           // Request initialization with `conn`
-          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
-          if (!U.isType(resultHtml, String)) return { result: false, msg: 'result is non-String' };
-          if (!resultHtml.hasHead('<!DOCTYPE html>')) return { result: false, msg: 'result isn\'t html' };
-          
-          let initData = parseInitData(resultHtml);
+          let resultInit = await receiveConnAction(conn, { command: 'getInit' });
           
           return [
-            [ 'data is Object', () => U.isType(initData, Object) ],
-            [ 'version is 1', () => initData.version === 1 ],
-            [ 'command is update', () => initData.command === 'update' ],
-            [ 'content is Object', () => U.isType(initData.content, Object) ],
-            [ 'content addRec is Object', () => U.isType(initData.content.addRec, Object) ],
-            [ 'adds 2 Recs', () => initData.content.addRec.toArr(v => v).length === 2 ],
-            [ 'adds item', () => initData.content.addRec.find((v, k) => k === item.uid) ],
-            [ 'adds archItem', () => initData.content.addRec.find((v, k) => k === archItem.uid) ]
+            [ 'data is Object', () => U.isType(resultInit, Object) ],
+            [ 'version is 1', () => resultInit.version === 1 ],
+            [ 'command is update', () => resultInit.command === 'update' ],
+            [ 'content is Object', () => U.isType(resultInit.content, Object) ],
+            [ 'content addRec is Object', () => U.isType(resultInit.content.addRec, Object) ],
+            [ 'adds 2 Recs', () => resultInit.content.addRec.toArr(v => v).length === 2 ],
+            [ 'adds item', () => resultInit.content.addRec.find((v, k) => k === item.uid) ],
+            [ 'adds archItem', () => resultInit.content.addRec.find((v, k) => k === archItem.uid) ]
           ];
           
         });
@@ -653,8 +646,7 @@ module.exports = async (args, foundationInsps) => {
           hut.setRecFollowStrength(archItem, 0);
           
           // Get addRec for `item` and `archItem`
-          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
-          let resultInit = parseInitData(resultHtml);
+          let resultInit = await receiveConnAction(conn, { command: 'getInit' });
           
           return [
             [ 'result is Object', () => U.isType(resultInit, Object) ],
@@ -690,8 +682,7 @@ module.exports = async (args, foundationInsps) => {
           //archItem.shut();
           
           // Get addRec for `item` and `archItem`
-          let resultHtml = await receiveConnAction(conn, { command: 'getInit' });
-          let resultInit = parseInitData(resultHtml);
+          let resultInit = await receiveConnAction(conn, { command: 'getInit' });
           
           return [
             [ 'result is Object', () => U.isType(resultInit, Object) ],
@@ -715,6 +706,7 @@ module.exports = async (args, foundationInsps) => {
           let { rt: trt, add } = recTyper();
           recTypeFn(Rec, trt, rt, add);
           let landsAbove = Lands({ recTypes: { ...trt, ...rt } });
+          landsAbove.comWob('getInit').hold(async ({ hut, reply }) => (hut.resetFollows(), reply(hut.genSyncTell())));
           landsAbove.makeServers.push(pool => {
             let serverWob = Wob();
             serverWob.desc = `ABV2 For ${n}`;
@@ -761,8 +753,7 @@ module.exports = async (args, foundationInsps) => {
                 conn.cpuId = belowCpuId;
               }));
               
-              let resultHtml = await receiveConnAction(connAHearB, { command: 'getInit' });
-              let resultInit = parseInitData(resultHtml);
+              let resultInit = await receiveConnAction(connAHearB, { command: 'getInit' });
               
               // TODO: Just another reason why `initData` should be on Foundation! (AND IT COULD BE USED FOR RESTORING SAVED STATES WHEN SET ON ABOVE??)
               await doLockGlobal(async () => {

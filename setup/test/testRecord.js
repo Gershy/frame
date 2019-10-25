@@ -945,7 +945,6 @@ module.exports = async (args, foundationInsps) => {
     
   });
   keep.formatError = err => foundation.formatError(err);
-  
-  return keep.showResults(args);
+  console.log(await keep.getResultString(args));
   
 };

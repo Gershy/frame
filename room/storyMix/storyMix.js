@@ -36,8 +36,6 @@ U.buildRoom({
     
     let open = async () => {
       
-      console.log('Init storyMix...');
-      
       let recTypes = { ...landsRt, ...soulRt, ...rt }; // TODO: Collisions could occur...
       let heartbeatMs = 10 * 60 * 1000;
       let lands = U.lands = Lands({ foundation, recTypes, heartbeatMs });

@@ -20,6 +20,42 @@ U.buildRoom({
     };
     let customEvent = evt => evt.stopPropagation() || evt.preventDefault() || true;
     
+    /// {ABOVE=
+    let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
+      init: function(tagName, type, text='') {
+        if (![ 'root', 'singleton', 'container', 'text' ].has(type)) throw new Error(`Invalid type; ${type}`);
+        this.tagName = tagName;
+        this.type = type;
+        this.props = {};
+        this.children = [];
+        this.text = '';
+        this.setText(text);
+      },
+      setText: function(text) {
+        if (text !== text.trim()) throw new Error(`Text "${text}" has extra whitespace`);
+        this.text = text;
+      },
+      setProp: function(name, value=null) { this.props[name] = value; },
+      add: function(child) {
+        if (![ 'root', 'container' ].has(this.type)) throw new Error(`Can\'t add to type ${this.type}`);
+        this.children.push(child);
+        return child;
+      },
+      toString: function(indent='') {
+        let propStr = this.props.toArr((v, k) => v === null ? k : `${k}="${v}"`).join(' ');
+        if (propStr) propStr = ' ' + propStr;
+        return ({
+          singleton: (i, t, p) => `${i}<${t}${p}${t.hasHead('!') ? '' : '/'}>\n`,
+          text: (i, t, p) => this.text.has('\n')
+            ? `${i}<${t}${p}>\n${this.text.split('\n').map(ln => i + '  ' + ln).join('\n')}\n${i}</${t}>\n`
+            : `${i}<${t}${p}>${this.text}</${t}>\n`,
+          root: (i, t, p, c) => `${i}${c.map(c => c.toString(i)).join('')}`,
+          container: (i, t, p, c) => `${i}<${t}${p}>${c.isEmpty() ? '' : '\n'}${c.map(c => c.toString(i + '  ')).join('')}${c.isEmpty() ? '' : i}</${t}>\n`
+        })[this.type](indent, this.tagName, propStr, this.children);
+      }
+    })});
+    /// =ABOVE}
+    
     let unitCss = Map();
     let getUnitCss = unit => {
       if (!unitCss.has(unit.constructor)) throw new Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
@@ -420,7 +456,6 @@ U.buildRoom({
           }},
           ...cssRules
         ];
-          
         
         let cmpCssText = cssRules.map(({ nameChain=null, selector=null, zoneCss }) => {
           
@@ -450,6 +485,102 @@ U.buildRoom({
         }).join('\n');  // Join together all ZonedCssBlocks of a CssStyleSheet
         
         return cmpCssText;
+        
+      },
+      prepareAboveLands: function(lands) {
+        
+        foundation.addMountDataAsFile('realHtmlCssMainStyles.css', 'text/css', this.genCss());
+        
+        lands.comWob('getInit').hold(async ({ absConn, hut, msg, reply }) => {
+          
+          let baseParams = { [absConn.isSpoofed ? 'spoof' : 'cpuId']: absConn.cpuId };
+          let urlFn = p => {
+            return '/?' + ({ ...baseParams, ...p, reply: true }).toArr((v, k) => `${k}=${v}`).join('&');
+          };
+          
+          let doc = XmlElement(null, 'root');
+          
+          let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
+          doctype.setProp('html');
+          
+          let html = doc.add(XmlElement('html', 'container'));
+          
+          let head = html.add(XmlElement('head', 'container'));
+          
+          let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
+          
+          let favicon = head.add(XmlElement('link', 'singleton'));
+          favicon.setProp('rel', 'shortcut icon');
+          favicon.setProp('type', 'image/x-icon');
+          favicon.setProp('href', urlFn({ command: 'realHtmlCssGetFavicon' }));
+          
+          let css = head.add(XmlElement('link', 'singleton'));
+          css.setProp('rel', 'stylesheet');
+          css.setProp('type', 'text/css');
+          css.setProp('href', urlFn({ command: 'realHtmlCssGetStylesheet' }));
+          
+          // Make a `global` value available to browsers
+          let setupScript = head.add(XmlElement('script', 'text'));
+          setupScript.setProp('type', 'text/javascript');
+          setupScript.setText('window.global = window;');
+          
+          let mainScript = head.add(XmlElement('script', 'text'));
+          
+          // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
+          // TODO: Could memoize the static portion of the script
+          let roomNames = foundation.getOrderedRoomNames();
+          let files = {
+            clearing: [ 'setup', 'clearing' ],
+            foundation: [ 'setup', 'foundation' ],
+            foundationBrowser: [ 'setup', 'foundationBrowser' ],
+            ...roomNames.toObj(rn => [ rn, [ 'room', rn, 'below' ] ]) // Note that "below" might need to be "between" in some cases
+          };
+          
+          // "scriptOffset" is count of html lines preceeding javascript
+          let debugLineData = { scriptOffset: 8,  rooms: {} };
+          let fileSourceData = await Promise.allObj(files.map(v => foundation.getJsSource(...v)));
+          let scriptTextItems = [];
+          let totalLineCount = 0;
+          fileSourceData.forEach(({ content, offsets, numLines }, roomName) => {
+            
+            scriptTextItems.push(`// ==== File: ${roomName} (line count: ${numLines})`); totalLineCount += 1;
+            debugLineData.rooms[roomName] = { offsetWithinScript: totalLineCount, offsets };
+            scriptTextItems.push(content); totalLineCount += numLines;
+            scriptTextItems.push(''); totalLineCount += 1;
+            
+          });
+          
+          hut.resetFollows(); // The FarHut starts from scratch
+          let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
+            '// ==== File: hut.js (line count: 8)',
+            `U.cpuId = '${absConn.cpuId}';`,
+            `U.hutTerm = '${hut.getTerm()}';`,
+            `U.aboveMsAtResponseTime = ${foundation.getMs()};`,
+            `U.initData = ${JSON.stringify(hut.genSyncTell())};`,
+            `U.debugLineData = ${JSON.stringify(debugLineData)};`,
+            'let { FoundationBrowser } = U.setup;',
+            `let foundation = FoundationBrowser();`,
+            `foundation.raise({ settle: '${foundation.hut}.below' });`
+          ].join('\n');
+          
+          mainScript.setProp('type', 'text/javascript');
+          mainScript.setText(scriptContent);
+          
+          let mainStyle = head.add(XmlElement('style', 'text'));
+          mainStyle.setProp('type', 'text/css');
+          mainStyle.setText('html { background-color: #eaeaf2; }');
+          
+          let body = html.add(XmlElement('body', 'container'));
+          
+          reply(doc.toString());
+          
+        });
+        lands.comWob('realHtmlCssGetFavicon').hold(({ absConn, hut, msg, reply }) => {
+          U.safe(() => reply(foundation.getMountFile('favicon.ico')), err => reply(err));
+        });
+        lands.comWob('realHtmlCssGetStylesheet').hold(({ absConn, hut, msg, reply }) => {
+          U.safe(() => reply(foundation.getMountFile('realHtmlCssMainStyles.css')), err => reply(err));
+        });
         
       },
       

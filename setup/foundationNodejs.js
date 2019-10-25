@@ -472,7 +472,7 @@
         let { content: compiledContent, offsets } = this.compileContent(variantName, contentLines);
         await this.writeFile(compiledFileName, compiledContent, { flag: 'w', encoding: 'utf8' }); // Contents are written to disk
         
-        this.compilationData[roomName][variantName] = { fileName: compiledFileName, offsets }; // Filename and offsets are kept
+        this.compilationData[roomName][variantName] = { fileName: compiledFileName, offsets, numLines: contentLines.length }; // Filename, offsets, and length are kept
       }
       
     },
@@ -651,6 +651,7 @@
       ].join('\n');
       
     },
+    getOrderedRoomNames: function() { return this.roomsInOrder; },
     
     // Platform
     queueTask: process.nextTick, //function(func) { process.nextTick(func); },
@@ -698,17 +699,51 @@
         .to(arr => Array.combine(...arr))
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
+    writeFile: async function(name, content, options='utf8') {
+      let err0 = new Error('');
+      return new Promise((rsv, rjc) => fs.writeFile(name, content, options, (err, c) => {
+        return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
+      }));
+    },
     readFile: async function(name, options='utf8') {
       let err0 = new Error('');
       return new Promise((rsv, rjc) => fs.readFile(name, options, (err, c) => {
         return err ? rjc(err0.gain({ message: `Couldn't read ${name}: ${err.message}` })) : rsv(c);
       }));
     },
-    writeFile: async function(name, content, options='utf8') {
-      let err0 = new Error('');
-      return new Promise((rsv, rjc) => fs.writeFile(name, content, options, (err, c) => {
-        return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
-      }));
+    getJsSource: async function(type, name, bearing, options) {
+      if (![ 'setup', 'room' ].has(type)) throw new Error(`Invalid source type: "${type}"`);
+      let fp = (type === 'setup')
+        ? path.join(rootDir, 'setup', `${name}.js`)
+        : path.join(rootDir, 'room', name, `${name}.${bearing}.js`);
+      
+      let srcContent = await this.readFile(fp, options);
+      let v = (() => {
+        if (type === 'room') {
+          let { offsets, numLines } = this.compilationData[name][bearing];
+          return [ srcContent, offsets, numLines ];
+        }
+        
+        let offsets = [];
+        let lines = srcContent.trim().replace(/\r/g, '').split('\n');
+        let cur = { at: 0, offset: 0 };
+        lines = lines.map((ln, ind) => {
+          // Note that this isn't syntax-aware: it may incorrectly strip
+          // data from multiline tag-strings, for example
+          let skip = ln.match(/^ *\/\//); // Skip lines which contain only a single-line comment
+          if (skip) { cur.offset++; return C.skip; } // Increment skip-count, and remove the line
+          
+          if (cur.offset > 0) offsets.push(cur);
+          cur = { at: ind, offset: 0 };
+          return ln;
+        });
+        
+        return [ lines.join('\n'), offsets, lines.length ];
+      })();
+      
+      let [ content, offsets, numLines ] = v;
+      
+      return { content, offsets, numLines };
     },
     compactIp: function(verboseIp, verbosePort) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
@@ -718,7 +753,7 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getCpuConn: function(serverWob, pool, query, decorate) {
+    getCpuConn: function(serverWob, pool, query, decorate=null) {
       
       if (this.spoofEnabled && query.has('spoof')) {
         
@@ -760,6 +795,7 @@
         let type = (() => {
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
+          if (U.isType(msg, Error)) return 'error';
           throw new Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
@@ -768,7 +804,8 @@
           text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
           html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
-          file: () => ({ ISFILE: true, ...msg.slice('name', 'type') })
+          file: () => ({ ISFILE: true, ...msg.slice('name', 'type') }),
+          error: () => ({ ISERROR: true, msg: msg.error })
         })[type]());
         
         return ({
@@ -787,12 +824,19 @@
             res.end(msg);
           },
           file: async () => {
-            let numBytes = await msg.getNumBytes();
             res.writeHead(200, {
               'Content-Type': (msg.has('type') && msg.type) ? msg.type : 'application/octet-stream',
-              'Content-Length': numBytes
+              'Content-Length': await msg.getNumBytes()
             });
             msg.getPipe().pipe(res);
+          },
+          error: () => {
+            let text = msg.message;
+            res.writeHead(400, {
+              'Content-Type': 'text/plain',
+              'Content-Length': Buffer.byteLength(text)
+            });
+            res.end(text);
           }
         })[type]();
         
@@ -823,10 +867,15 @@
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
         
         // `body` is either JSON or the empty string (TODO: For now!)
-        try { body = body.length ? JSON.parse(body) : {}; }
-        catch(err) { console.log('Couldn\'t parse body', body); body = {}; }
+        try {
+          body = body.length ? JSON.parse(body) : {};
+          if (!U.isType(body, Object)) throw new Error(`Http body should be Object; got ${U.nameOf(body)}`);
+        } catch(err) {
+          res.writeHead(400); res.end(); return;
+        }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
+        let params = { ...body, ...query }; // Params are initially based on body and query
         
         if (this.httpFullDebug) {
           console.log('\n\n' + [
@@ -840,38 +889,24 @@
           ].join('\n'));
         }
         
-        let conn = this.getCpuConn(serverWob, pool, query);
+        let conn = this.getCpuConn(serverWob, pool, params.slice('spoof', 'cpuId'));
         if (!conn) { res.writeHead(400); res.end(); return; }
-        
         conn.knownHosts.add(req.connection.remoteAddress);
         
-        // A requirement to sync means the response data alone lacks context;
-        // the response object will need to correspond to its fellow request
-        let syncReqRes = false;
+        // Remove identity-specifying params
+        delete params.spoof;
+        delete params.cpuId;
         
-        // We are receiving http Requests, but need to work with hut-style Commands
-        // The http body should be a Command in json format, but if it's empty
-        // we'll translate the other features of the Request into a Command. This
-        // is necessary for accommodating unavoidable http functionality, like the
-        // initial request to a page (which is always a simple, body-less GET!)
-        if (body.isEmpty()) {
-          if (urlPath.hasHead('/!')) {
-            if (urlPath.hasHead('/!FILE/')) {
-              body = { command: 'getFile', path: urlPath.substr(7) }; // `7` strips off "/!FILE/"
-              syncReqRes = true;
-            } else if (urlPath.hasHead('/!STATUS/')) {
-              body = { command: 'getStatus', path: urlPath.substr(9) }; // `9` strips off "/!STATUS/"
-              syncReqRes = true;
-            }
-          } else if (urlPath === '/') {
-            body = { command: 'getInit' };
-            syncReqRes = true;
-          } else { // If a meaningless request is received reject it and close the connection
-            conn.shut();
-            res.writeHead(400);
-            return res.end();
-          }
+        if (params.isEmpty()) { // If params are empty at this point, look at http path
+          params = (p => {
+            if (p === '/') return { command: 'getInit', reply: true };
+            if (p.hasHead('/!FILE/')) return { command: 'getFile', reply: true, path: p.substr(7) };
+            return {};
+          })(urlPath);
         }
+        
+        // Error response for invalid params
+        if (!params.has('command')) { conn.shut(); res.writeHead(400); res.end(); return; };
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
@@ -893,20 +928,20 @@
         };
         
         // If no ComType found, default to Hut-level command!
-        let comTypes = comTypesMap.has(body.command) ? comTypesMap[body.command] : { hut: true };
+        let comTypes = comTypesMap.has(params.command) ? comTypesMap[params.command] : { hut: true };
         
         // Run transport-level actions
         if (comTypes.has('transport')) comTypes.transport(conn);
         
-        // Synced requests end here - `conn.hear.wobble` MUST result in a response
-        // TODO: Could consider a timeout to deal with careless, responseless usage
-        if (syncReqRes) return conn.hear.wobble([ body, msg => sendData(res, msg) ]);
+        // Synced requests end here - `conn.hear.wobble` MUST respond
+        // TODO: Consider a timeout to deal with improper usage
+        if (params.reply) return conn.hear.wobble([ params, msg => sendData(res, msg) ]);
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) conn.hear.wobble([ body, null ]);
+        if (comTypes.has('hut') && comTypes.hut) conn.hear.wobble([ params, null ]);
         
         // We now have an unspent, generic-purpose poll available. If we
-        // have tells send the oldest otherwise hold on to the response.
+        // have tells send the oldest, otherwise keep the response.
         // Finally return all but one poll. (TODO: Can raise this if the
         // browser allows us multiple connections?)
         conn.waitTells.length ? sendData(res, conn.waitTells.shift()) : conn.waitResps.push(res);
@@ -1033,124 +1068,6 @@
     },
     
     getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
-    genInitBelow: async function(contentType, absConn, hutTerm, initContent={}) {
-      
-      // TODO: This should probably be implemented by realHtmlCss
-      
-      if (contentType !== 'text/html') throw new Error(`Invalid content type: ${contentType}`);
-      
-      let urlFn = (this.spoofEnabled && absConn.isSpoofed)
-        ? fp => `/!FILE${fp}?cpuId=${absConn.cpuId}&spoof=${absConn.cpuId}`
-        : fp => `/!FILE${fp}?cpuId=${absConn.cpuId}`;
-      
-      let doc = XmlElement(null, 'root');
-      
-      let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-      doctype.setProp('html');
-      
-      let html = doc.add(XmlElement('html', 'container'));
-      
-      let head = html.add(XmlElement('head', 'container'));
-      let title = head.add(XmlElement('title', 'text', `${this.hut.upper()}`));
-      
-      let favicon = head.add(XmlElement('link', 'singleton'));
-      favicon.setProp('rel', 'shortcut icon');
-      favicon.setProp('type', 'image/x-icon');
-      favicon.setProp('href', urlFn('/favicon.ico'));
-      
-      let css = head.add(XmlElement('link', 'singleton'));
-      css.setProp('rel', 'stylesheet');
-      css.setProp('type', 'text/css');
-      css.setProp('href', urlFn('/style.css'));
-      
-      // Make a `global` value available to browsers
-      let setupScript = head.add(XmlElement('script', 'text'));
-      setupScript.setProp('type', 'text/javascript');
-      setupScript.setText('window.global = window;');
-      
-      let mainScript = head.add(XmlElement('script', 'text'));
-      
-      // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
-      // TODO: Could memoize the static portion of the script
-      // Accumulate all files needed to run this hut Below in the browser:
-      // 1) setup/clearing.js
-      // 2) setup/foundation.js
-      // 3) setup/foundationBrowser.js
-      // 4..n) Necessary rooms
-      let files = {
-        clearing: 'setup/clearing.js',
-        foundation: 'setup/foundation.js',
-        foundationBrowser: 'setup/foundationBrowser.js',
-        // TODO: In the future, a Hut Below us could be a HutBetween
-        ...this.roomsInOrder.toObj(roomName => [ roomName, `room/${roomName}/${roomName}.below.js` ])
-      };
-      
-      let contents = await Promise.allObj(files.map(roomPath => this.readFile(path.join(rootDir, roomPath))));
-      
-      let debugLineData = {
-        // TODO: "scriptOffset" is the number of HTML lines which appear before the first line of code
-        // inside the <script> tag. Note that if the opening "<script>" tag is on its own line, it
-        // counts towards the "scriptOffset".
-        scriptOffset: 8, // TODO: Hardcoded for now! doctype+html+head+title+link+link+script+script = 8
-        rooms: {}
-      };
-      let fullScriptContent = [];
-      contents.forEach((fileContent, roomName) => {
-        // Get raw lines to include
-        let lines = fileContent.trim().replace(/\r/g, '').split('\n')
-        let isSource = !this.compilationData.has(roomName);
-        let offsets = isSource ? [] : this.compilationData[roomName].below.offsets;
-        // Remove all blank and comment lines
-        if (isSource) {
-          let cur = { at: 0, offset: 0 };
-          lines = lines.map((ln, ind) => {
-            let skip = ln.match(/^( *\/\/.*)$/);
-            if (skip) {
-              cur.offset++;
-            } else {
-              if (cur.offset > 0) offsets.push(cur);
-              cur = { at: ind, offset: 0 };
-            }
-            return skip ? C.skip : ln;
-          });
-        }
-        
-        // Mark the beginning of what is logically, on the Above, a separate file
-        fullScriptContent.push(`// ==== File: ${roomName} (${lines.length} lines)`);
-        
-        // Debug data for this room begins right at this point in `fullScriptContent`
-        debugLineData.rooms[roomName] = { offsetWithinScript: fullScriptContent.length, offsets };
-        
-        // Include all raw lines
-        fullScriptContent.push(...lines);
-        
-        // Separate logical files with an additional newline
-        fullScriptContent.push('');
-      });
-      
-      contents = fullScriptContent.join('\n') + '\n\n' + [
-        '// ==== File: hut.js (8 lines)',
-        `U.cpuId = '${absConn.cpuId}';`,
-        `U.hutTerm = '${hutTerm}';`,
-        `U.aboveMsAtResponseTime = ${this.getMs()};`,
-        `U.initData = ${JSON.stringify(initContent)};`,
-        `U.debugLineData = ${JSON.stringify(debugLineData)};`,
-        'let { FoundationBrowser } = U.setup;',
-        `let foundation = FoundationBrowser();`,
-        `foundation.raise({ settle: '${this.hut}.below' });`
-      ].join('\n');
-      
-      mainScript.setProp('type', 'text/javascript');
-      mainScript.setText(contents);
-      
-      let mainStyle = head.add(XmlElement('style', 'text'));
-      mainStyle.setProp('type', 'text/css');
-      mainStyle.setText('html { background-color: #eaeaf2; }');
-      
-      let body = html.add(XmlElement('body', 'container'));
-      
-      return doc.toString();
-    },
     establishHut: async function({ hut=null, bearing=null, ip=null, port=null, spoofEnabled=false }) {
       
       if (!hut) throw new Error('Missing "hut" param');

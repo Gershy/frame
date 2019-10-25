@@ -127,8 +127,9 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
         let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
         if (!rootRoom.built.has('open')) throw new Error(`Room "${rootRoom.name}" isn't setup for settling`);
         
+        console.log(`Settling ${rootRoom.name} on ${this.getPlatformName()}`);
         await rootRoom.built.open();
-        console.log(`Settled ${rootRoom.name} on ${this.getPlatformName()}`);
+        
       }
     });
     
@@ -144,6 +145,7 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   makeSoktServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
   getRootReal: async function() { return C.notImplemented.call(this); },
   formatError: C.notImplemented,
+  getOrderedRoomNames: C.notImplemented,
   
   // Setup
   raise: async function(raiseArgs) {
@@ -157,7 +159,6 @@ let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
   },
   establishHut: async function(args) { return C.notImplemented.call(this); },
   installFoundation: C.notImplemented,
-  genInitBelow: async function(contentType) { return C.notImplemented.call(this); },
   parseUrl: function(url) {
     let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
     if (!path.hasHead('/')) path = `/${path}`;

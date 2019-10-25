@@ -137,15 +137,6 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        this.comWob('getInit').hold(async ({ absConn, hut, msg, reply }) => {
-          hut.version = 0;                                            // Reset version
-          hut.sync = hut.sync.map(v => ({}));                         // Clear current delta
-          hut.fols.forEach((fol, rec) => hut.toSync('addRec', rec));  // Gen full sync delta
-          
-          let update = hut.genSyncTell();
-          let initBelow = await foundation.genInitBelow('text/html', absConn, hut.getTerm(), update);
-          reply(initBelow);
-        });
         this.comWob('modifyRec').hold(({ lands, hut, msg, reply }) => {
           if (!msg.has('uid')) return hut.tell({ command: 'error', type: 'uidMissing', orig: msg });
           if (!msg.has('val')) return hut.tell({ command: 'error', type: 'valMissing', orig: msg });
@@ -418,11 +409,7 @@ U.buildRoom({
           
           let reality = realRoom.Reality('root'); // This instance exists temporarily
           reality.addFlatLayouts(this.realLayout);
-          
-          let staticAssets = reality.getCmpTimeFwkAssets();
-          staticAssets.forEach(({ contentType, content }, key) => {
-            foundation.addMountDataAsFile(key, contentType, content);
-          });
+          reality.prepareAboveLands(this);
           
         }
         
@@ -580,6 +567,12 @@ U.buildRoom({
           
         })();
         
+      },
+      
+      resetFollows: function() {
+        this.version = 0;                                           // Reset version
+        this.sync = this.sync.map(v => ({}));                       // Clear current delta
+        this.fols.forEach((f, rec) => this.toSync('addRec', rec));  // Gen full sync delta
       },
       genSyncTell: function() {
         
