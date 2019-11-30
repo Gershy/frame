@@ -3,12 +3,12 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'soul', 'chance', 'real', 'realHtmlCss' ],
   build: (foundation, hinterlands, record, soul, chance, real, realHtmlCss) => {
     
-    // TODO: If an AccessPath accepted a GeneratorFunction as its `gen` param,
+    // TODO: If an HorzScope accepted a GeneratorFunction as its `gen` param,
     // the GeneratorFunction could `yield` every dependent Hog.
     // TODO: "innerRooms" now depends on Bearing. Above needs potentially
     // lots of different realRooms, whereas Below never needs more than 1.
     
-    let { HorzScope: AccessPath, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
+    let { HorzScope, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
     let { Chance } = chance;
     let { Rec, recTyper } = record;
     let { Lands } = hinterlands;
@@ -21,10 +21,9 @@ U.buildRoom({
     add('story', Rec);
     add('round', Rec);
     add('entry', Rec);
-    
-    add('archStoryMix',       Rec, '11', landsRt.arch, rt.storyMix);
+    add('archStoryMix',       Rec, '11', landsRt.arch,        rt.storyMix);
     add('storyMixStory',      Rec, '1M', rt.storyMix,         rt.story);
-    add('soulCurStory',       Rec, 'M1', soulRt.soul,        rt.story);
+    add('soulCurStory',       Rec, 'M1', soulRt.soul,         rt.story);
     add('storyCreatorSoul',   Rec, 'M1', rt.story,            soulRt.soul);
     add('storySoul',          Rec, 'MM', rt.story,            soulRt.soul);
     add('storyRound',         Rec, '1M', rt.story,            rt.round);
@@ -38,7 +37,7 @@ U.buildRoom({
       
       let recTypes = { ...landsRt, ...soulRt, ...rt }; // TODO: Collisions could occur...
       let heartbeatMs = 10 * 60 * 1000;
-      let lands = U.lands = Lands({ foundation, recTypes, heartbeatMs });
+      let lands = U.lands = Lands({ recTypes, heartbeatMs });
       
       // Note: The Foundation has host and port values, but technically
       // a Foundation can run a number of servers - so this ip+port
@@ -346,7 +345,7 @@ U.buildRoom({
       let archStoryMix = lands.createRec('archStoryMix', {}, lands.arch, storyMix);
       /// =ABOVE}
       
-      let rootScope = AccessPath(lands.arch.relWob(rt.archStoryMix), async (dep, archStoryMix) => {
+      let rootScope = HorzScope(lands.arch.relWob(rt.archStoryMix), async (dep, archStoryMix) => {
         
         let storyMix = archStoryMix.members[1];
         
@@ -358,19 +357,19 @@ U.buildRoom({
         dep(soul.makeScope(lands));
         
         // Follows
-        dep(AccessPath(lands.arch.relWob(landsRt.archHut), (dep, archHut) => {
+        dep(HorzScope(lands.arch.relWob(landsRt.archHut), (dep, archHut) => {
           
           // Huts immediately follow the root StoryMix instance
           let hut = archHut.members[1];
           dep(hut.followRec(archStoryMix));
           dep(hut.followRec(storyMix));
           
-          dep(AccessPath(hut.relWob(soulRt.hutSoul), (dep, hutSoul) => {
+          dep(HorzScope(hut.relWob(soulRt.hutSoul), (dep, hutSoul) => {
             
             let soul = hutSoul.members[1];
             
             // Only Huts with Souls follow the list of all Stories
-            dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+            dep(HorzScope(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
               
               let story = storyMixStory.members[1];
               dep(hut.followRec(story));
@@ -379,19 +378,19 @@ U.buildRoom({
             }));
             
             // Only Huts with Souls follow the current Story
-            dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
+            dep(HorzScope(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
               
               let curStory = soulCurStory.members[1];
               dep(hut.followRec(curStory));
               dep(hut.followRec(soulCurStory));
               
-              dep(AccessPath(curStory.relWob(rt.storyEntry), (dep, storyEntry) => {
+              dep(HorzScope(curStory.relWob(rt.storyEntry), (dep, storyEntry) => {
                 
                 let entry = storyEntry.members[1];
                 dep(hut.followRec(entry));
                 dep(hut.followRec(storyEntry));
                 
-                dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                dep(HorzScope(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                   
                   let soul = entrySoul.members[1];
                   dep(hut.followRec(soul));
@@ -401,25 +400,25 @@ U.buildRoom({
                 
               }));
               
-              dep(AccessPath(curStory.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+              dep(HorzScope(curStory.relWob(rt.storyCurRound), (dep, storyCurRound) => {
                 
                 let curRound = storyCurRound.members[1];
                 dep(hut.followRec(curRound));
                 dep(hut.followRec(storyCurRound));
                 
-                dep(AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
+                dep(HorzScope(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
                   
                   let entry = roundEntry.members[1];
                   dep(hut.followRec(entry));
                   dep(hut.followRec(roundEntry));
                   
-                  dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                  dep(HorzScope(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                     let soul = entrySoul.members[1];
                     dep(hut.followRec(soul));
                     dep(hut.followRec(entrySoul));
                   }));
                   
-                  dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                  dep(HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                     let voterSoul = entryVoterSoul.members[1];
                     dep(hut.followRec(voterSoul));
                     dep(hut.followRec(entryVoterSoul));
@@ -436,12 +435,12 @@ U.buildRoom({
         }));
         
         // Controls on Souls
-        dep(AccessPath(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
+        dep(HorzScope(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
           
           let soul = archSoul.members[1];
           
           // Enable Soul actions: 1) create story 2) join story
-          dep(AccessPath(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
+          dep(HorzScope(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
             
             let hut = hutSoul.members[0];
             dep(hut.comWob('story').hold(({ msg }) => {
@@ -473,7 +472,7 @@ U.buildRoom({
               }});
               
               // Liven up `newStory.value.numSouls`
-              let ap = AccessPath(newStory.relWob(rt.storySoul), (dep, storySoul) => {
+              let ap = HorzScope(newStory.relWob(rt.storySoul), (dep, storySoul) => {
                 newStory.modify(v => (v.numSouls++, v));
                 dep(Hog(() => newStory.modify(v => (v.numSouls--, v))));
               });
@@ -518,12 +517,12 @@ U.buildRoom({
           }));
           
           // Controls on Soul -> CurStory
-          dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
+          dep(HorzScope(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
             
             let story = soulCurStory.members[1];
             
             // Enable Soul actions: 1) submit Entry; 2) submit Vote
-            dep(AccessPath(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
+            dep(HorzScope(soul.relWob(soulRt.hutSoul), (dep, hutSoul) => {
               
               let hut = hutSoul.members[0];
               dep(hut.comWob('entry').hold(({ msg }) => {
@@ -546,9 +545,9 @@ U.buildRoom({
                   }});
                   
                   // Liven up `curRound.value.numVotes`
-                  let scope = AccessPath(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
+                  let scope = HorzScope(curRound.relWob(rt.roundEntry), (dep, roundEntry) => {
                     let entry = roundEntry.members[1];
-                    dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                    dep(HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                       curRound.modify(v => (v.numVotes++, v));
                       dep(Hog(() => curRound.modify(v => (v.numVotes--, v))));
                     }));
@@ -566,7 +565,7 @@ U.buildRoom({
                 let entry = lands.createRec('entry', { value: { text: msg.text, numVotes: 0 } });
                 
                 // Liven up `entry.value.numVotes`
-                let scope = AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                let scope = HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                   entry.modify(v => (v.numVotes++, v));
                   dep(Hog(() => entry.modify(v => (v.numVotes--, v))));
                 });
@@ -601,12 +600,12 @@ U.buildRoom({
         }));
         
         // Controls on Stories
-        dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+        dep(HorzScope(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
           
           let story = storyMixStory.members[1];
           
           // Controls on Stories -> Rounds
-          dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+          dep(HorzScope(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
             
             let round = storyCurRound.members[1];
             
@@ -646,7 +645,7 @@ U.buildRoom({
               // if two end conditions aren't mutually exclusive). We'd
               // expect `dep` to ensure only one condition occurs: this
               // whole scope is reliant on `storyCurRound`, and
-              // therefore shutting `storyCurRound` should close all
+              // therefore shutting `storyCurRound` should shut all
               // `deps`, including the `dep` listening for the 2nd end
               // condition.
               // In the meantime, need this stupid `if` to prevent
@@ -674,10 +673,10 @@ U.buildRoom({
             dep(Hog(() => clearTimeout(timeout)));
             
             // Round ends because of insurmountable vote on a specific Entry
-            dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
+            dep(HorzScope(round.relWob(rt.roundEntry), (dep, roundEntry) => {
               
               let entry = roundEntry.members[1];
-              dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+              dep(HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                 
                 // Another Vote just happened on an Entry! See if an Entry has become unbeatable.
                 let winningEntry = unbeatableEntry();
@@ -711,12 +710,12 @@ U.buildRoom({
         // Some fancy footwork: only listen to do `mySoulWob.up(...)`
         // when `mySoulWob` is dn!
         let mySoulWob = WobTmp('dn');
-        dep(AccessPath(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
+        dep(HorzScope(lands.arch.relWob(soulRt.archSoul), (dep, archSoul) => {
           let soul = archSoul.members[1];
           if (soul.value.term === U.hutTerm) dep(mySoulWob.up(soul));
         }));
         
-        dep(AccessPath(mySoulWob.inverse(), dep => {
+        dep(HorzScope(mySoulWob.inverse(), dep => {
           
           let loggedOutReal = dep(mainReal.addReal('loggedOut'));
           let loginForm = loggedOutReal.addReal('form');
@@ -730,24 +729,24 @@ U.buildRoom({
           
         }));
         
-        dep(AccessPath(mySoulWob, (dep, { value: soul }) => {
+        dep(HorzScope(mySoulWob, (dep, { value: soul }) => {
           
           let loggedInReal = dep(mainReal.addReal('loggedIn'));
           
           let myStoryWob = WobTmp('dn');
-          dep(AccessPath(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
+          dep(HorzScope(soul.relWob(rt.soulCurStory), (dep, soulCurStory) => {
             
             let curStory = soulCurStory.members[1];
             dep(myStoryWob.up(curStory));
             
           }));
           
-          dep(AccessPath(myStoryWob.inverse(), dep => {
+          dep(HorzScope(myStoryWob.inverse(), dep => {
             
             let noStoryReal = dep(loggedInReal.addReal('storyOut'));
             
             let storyList = noStoryReal.addReal('storyList');
-            dep(AccessPath(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
+            dep(HorzScope(storyMix.relWob(rt.storyMixStory), (dep, storyMixStory) => {
               
               let story = storyMixStory.members[1];
               
@@ -775,7 +774,7 @@ U.buildRoom({
             
           }));
           
-          dep(AccessPath(myStoryWob, (dep, { value: story }) => {
+          dep(HorzScope(myStoryWob, (dep, { value: story }) => {
             
             let backReal = dep(headerReal.addReal('back'));
             backReal.setText('Back');
@@ -786,7 +785,7 @@ U.buildRoom({
             let storyLowerReal = storyReal.addReal('lowerPane');
             
             let entriesReal = storyUpperReal.addReal('entries');
-            dep(AccessPath(story.relWob(rt.storyEntry), (dep, storyEntry) => {
+            dep(HorzScope(story.relWob(rt.storyEntry), (dep, storyEntry) => {
               let entry = storyEntry.members[1];
               let entryReal = dep(entriesReal.addReal('entry'));
               dep(entry.hold(v => entryReal.setText(v.text)));
@@ -798,17 +797,17 @@ U.buildRoom({
             let myCurEntryWob = WobTmp('dn');
             let myCurVotedEntryWob = WobTmp('dn');
             let myCurRoundWob = WobTmp('dn');
-            dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+            dep(HorzScope(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
               
               let round = storyCurRound.members[1];
               dep(myCurRoundWob.up(round));
               
-              dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
+              dep(HorzScope(round.relWob(rt.roundEntry), (dep, roundEntry) => {
                 
                 let entry = roundEntry.members[1];
                 
                 // Look at "entrySoul" to establish current Entry
-                dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                dep(HorzScope(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                   
                   let soulOfEntry = entrySoul.members[1];
                   if (soulOfEntry === soul) dep(myCurEntryWob.up(entry));
@@ -816,7 +815,7 @@ U.buildRoom({
                 }));
                 
                 // Look at "entryVoterSoul" to establish current voted Entry
-                dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                dep(HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                   
                   let voterSoul = entryVoterSoul.members[1];
                   if (voterSoul === soul) dep(myCurVotedEntryWob.up(entry));
@@ -827,10 +826,10 @@ U.buildRoom({
               
             }));
             
-            dep(AccessPath(myCurRoundWob.inverse(), dep => {
+            dep(HorzScope(myCurRoundWob.inverse(), dep => {
               clockReal.setText('---');
             }));
-            dep(AccessPath(myCurRoundWob, (dep, { value: round }) => {
+            dep(HorzScope(myCurRoundWob, (dep, { value: round }) => {
               
               let updTime = () => {
                 let diff = round.value.endMs - foundation.getMs();
@@ -841,7 +840,7 @@ U.buildRoom({
               
             }));
             
-            dep(AccessPath(myCurEntryWob.inverse(), dep => {
+            dep(HorzScope(myCurEntryWob.inverse(), dep => {
               
               let writeReal = dep(storyLowerReal.addReal('writing'));
               let writeFieldReal = writeReal.addReal('field');
@@ -855,15 +854,15 @@ U.buildRoom({
               
             }));
             
-            dep(AccessPath(myCurEntryWob, dep => {
+            dep(HorzScope(myCurEntryWob, dep => {
               
-              dep(AccessPath(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
+              dep(HorzScope(story.relWob(rt.storyCurRound), (dep, storyCurRound) => {
                 
                 let round = storyCurRound.members[1];
                 
                 let entriesReal = dep(storyLowerReal.addReal('voting'));
                 
-                dep(AccessPath(round.relWob(rt.roundEntry), (dep, roundEntry) => {
+                dep(HorzScope(round.relWob(rt.roundEntry), (dep, roundEntry) => {
                   
                   let entry = roundEntry.members[1];
                   
@@ -873,17 +872,17 @@ U.buildRoom({
                   dep(entry.hold(v => entryTextReal.setText(v.text)));
                   
                   // Listen for clicks when we haven't voted
-                  dep(AccessPath(myCurVotedEntryWob.inverse(), dep => {
+                  dep(HorzScope(myCurVotedEntryWob.inverse(), dep => {
                     dep(entryReal.feelWob().hold(() => lands.tell({ command: 'vote', entry: entry.uid })));
                   }));
                   
-                  dep(AccessPath(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
+                  dep(HorzScope(entry.relWob(rt.entrySoul), (dep, entrySoul) => {
                     let soul = entrySoul.members[1];
                     dep(soul.hold(v => entryAuthorReal.setText(v.username)));
                   }));
                   
                   let entryVotesReal = null;
-                  dep(AccessPath(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
+                  dep(HorzScope(entry.relWob(rt.entryVoterSoul), (dep, entryVoterSoul) => {
                     // TODO: BAD!
                     if (!entryVotesReal) entryVotesReal = entryReal.addReal('votes');
                     

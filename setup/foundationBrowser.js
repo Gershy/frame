@@ -1,6 +1,7 @@
 (() => {
   
-  let { Hog } = U;
+  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  //let { Load, Free, Flow, Flux } = U.life;
   let { Foundation } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -28,6 +29,9 @@
       this.port = port;
       this.spoof = query.has('spoof') ? query.spoof : null;
       
+      // Make sure that refreshes redirect to the same session
+      window.history.replaceState({}, '', this.spoof ? `?spoof=${this.spoof}` : `?cpuId=${U.cpuId}`);
+      
       // This value shows up in stack traces (used to isolate line number)
       this.traceUrl = window.location.slice('origin', 'pathname', 'search').toArr(v => v).join('');
       
@@ -35,14 +39,16 @@
       this.rootReal = null;
       
       // Detect when the Window loads
-      this.domAvailablePromise = new Promise(r => window.addEventListener('load', r));
-      window.history.replaceState({}, '', this.spoof ? `?spoof=${this.spoof}` : `?cpuId=${U.cpuId}`);
+      this.domAvailableNozz = Promise(r => window.addEventListener('load', r));
       
       // We want to be able to react when the browser is closed
       // TODO: Still need to qualify what page-closing signifies...
       // Does it mean pausing? Exiting immediately? Exiting after a delay?
-      this.unloadWob = U.Wob({});
-      window.addEventListener('beforeunload', () => this.unloadWob.wobble(true));
+      this.unloadNozz = Nozz();
+      window.addEventListener('beforeunload', () => this.unloadNozz.drip());
+      
+      this.domAvailableNozz.route(() => document.body.classList.add('loaded'));
+      this.unloadNozz.route(() => document.body.classList.remove('loaded'));
       
     },
     getPlatformName: function() { return 'browser'; },
@@ -75,17 +81,16 @@
     },
     getRootReal: async function() { 
       
-      await this.domAvailablePromise; // Block until DOM is available
+      await this.domAvailableNozz; // Block until DOM is available
       
       if (!this.rootReal) {
-        
-        let real = U.rooms.real.built;
         let realHtmlCss = U.rooms.realHtmlCss.built;
-        // let reality = realHtmlCss.Reality('root',  // TODO: This is where Reality should be initialized??
-        this.rootReal = real.Real({});
+        let { Reality } = realHtmlCss;
+        
+        let Real = Reality.prototype.getRealCls();
+        this.rootReal = Real({});
         this.rootReal.realized = document.body;
         this.rootReal.realized.classList.add('root');
-        
       }
       
       return this.rootReal;
@@ -113,35 +118,22 @@
         
         numPendingReqs++;
         
-        // Communicating with Above has two parts; performing the HTTP transmission, and
-        // responding to its result. Inside this try/catch both occur:
-        try {
+        // Listen for the request to result in a JSON response
+        let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
+          if (req.readyState !== 4) return;
+          if (req.status === 0) return rjc(new Error('Got HTTP status 0'));
           
-          // Listen for the request to result in a JSON response
-          let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
-            if (req.readyState !== 4) return;
-            if (req.status === 0) return rjc(new Error('Got HTTP status 0'));
-            //if (req.responseText.length === 0) return rjc(new Error('Above sent empty message'));
-            
-            try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
-            catch(err) {  return rjc(new Error('Malformed JSON')); }
-          }}));
-          
-          // If any data was received, process it at a higher level
-          if (res) {
-            try { conn.hear.wobble([ res, null ]); }
-            catch(err) {
-              console.log('TRANSMISSION HEARD:', JSON.stringify(res));
-              console.log('ERROR RESULTING:\n', this.formatError(err));
-            }
+          try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
+          catch(err) {  return rjc(new Error('Malformed JSON')); }
+        }}));
+        
+        // If any data was received, process it at a higher level
+        if (res) {
+          try { conn.hear.drip([ res, null ]); }
+          catch(err) {
+            console.log('TRANSMISSION HEARD:', JSON.stringify(res));
+            console.log('ERROR RESULTING:\n', this.formatError(err));
           }
-          
-        } catch(err) {
-          
-          // TODO: Reset our state Below! Reload page?
-          console.log('Error from transmission:', this.formatError(err));
-          throw err;
-          
         }
         
         numPendingReqs--;
@@ -151,17 +143,16 @@
         
       };
       
-      let serverWob = U.WobVal(null);
-      serverWob.desc = `HTTP @ ${ip}:${port}`;
-      serverWob.cost = 100;
-      serverWob.decorateConn = conn => {
-        conn.hear = U.Wob();
+      let server = TubSet({ onceDry: () => tellAndHear = ()=>{} }, Nozz());
+      server.desc = `HTTP @ ${ip}:${port}`;
+      server.cost = 100;
+      server.decorateConn = conn => {
+        conn.hear = Nozz();
         conn.tell = msg => tellAndHear(msg, conn);
         this.queueTask(() => conn.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };
-      serverWob.shut = () => { tellAndHear = () => {}; };
       
-      return serverWob;
+      return server;
     },
     makeSoktServer: async function(pool, ip, port) {
       if (!WebSocket) return null;
@@ -169,17 +160,16 @@
       let sokt = new WebSocket(`ws://${ip}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
       
-      let serverWob = U.WobVal(null);
-      serverWob.desc = `SOKT @ ${ip}:${port}`;
-      serverWob.cost = 50;
-      serverWob.decorateConn = conn => {
-        conn.hear = U.Wob();
+      let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
+      server.desc = `SOKT @ ${ip}:${port}`;
+      server.cost = 50;
+      server.decorateConn = conn => {
+        conn.hear = Nozz();
         conn.tell = msg => sokt.send(JSON.stringify(msg));
-        sokt.onmessage = ({ data }) => data && conn.hear.wobble([ JSON.parse(data), null ]);
+        sokt.onmessage = ({ data }) => data && conn.hear.drip([ JSON.parse(data), null ]);
       };
-      serverWob.shut = () => sokt.close();
       
-      return serverWob;
+      return server;
     },
     formatError: function(err) {
       if (!U.has('debugLineData')) return err.stack;

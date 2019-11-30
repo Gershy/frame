@@ -3,7 +3,8 @@ U.buildRoom({
   innerRooms: [],
   build: (foundation) => {
     
-    let { WobVal, WobTmp, Hog } = U;
+    //let { WobVal, WobTmp, Hog } = U;
+    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
     
     // ==== UTIL
@@ -109,7 +110,6 @@ U.buildRoom({
       op: function(...vals) { let v = 0; for (let vv of vals) v += vv; return v; }
     })});
     
-    
     // ==== ABSTRACT
     let RealLayoutCmp = U.inspire({ name: 'RealLayoutCmp', methods: (insp, Insp) => ({
       init: function() {},
@@ -117,10 +117,9 @@ U.buildRoom({
       getH: function(...trail) { return null; }
     })});
     
-    
     // ==== SIZE
     let FillParent = U.inspire({ name: 'FillParent', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-      init: function(params) {
+      init: function(params={}) {
         hvParams('shrink', params, this);
       },
       getW: function(par, ...parTrail) {
@@ -162,7 +161,6 @@ U.buildRoom({
         this.interactive = interactive;
       }
     })});
-    
     
     // ==== SLOTS
     let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
@@ -240,10 +238,8 @@ U.buildRoom({
       }
     })});
     
-    
     // ==== STRUCTURE
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
-      
       init: function(name, layoutsFlat) {
         this.name = name;
         this.rootLayout = {
@@ -297,6 +293,7 @@ U.buildRoom({
         // Develop the trail
         let trail = [];
         while (parReal) { trail.push(parReal.layout); parReal = parReal.par; }
+        let Real = this.getRealCls();
         let real = Real({ reality: this, layout });
         
         // Do `this.initReal0` - expect it to set `real.realized`!
@@ -305,21 +302,22 @@ U.buildRoom({
         
         return real;
       },
+      getRealCls: function() { return Real; },
       initReal0: C.notImplemented,
       addChildReal: C.notImplemented,
       remChildReal: C.notImplemented,
-      makeFeelable: C.notImplemented
+      initFeel: C.notImplemented
     })});
-    let Real = U.inspire({ name: 'Real', insps: { Hog }, methods: (insp, Insp) => ({
-      init: function({ reality=null, layout=null }={}) {
-        insp.Hog.init.call(this);
+    let Real = U.inspire({ name: 'Real', insps: { Drop }, methods: (insp, Insp) => ({
+      init: function({ drier=null, reality=null, layout=null }={}) {
+        insp.Drop.init.call(drier, this);
         
-        this.reality = reality;     // Our link to a Reality instance
-        this.layout = layout; // The list of names to specify our role
+        this.reality = reality; // Our link to a Reality instance
+        this.layout = layout;   // The list of names to specify our role
         
         this.realized = null;   // Reference to a node in a graphics framework
         this.par = null;
-        this.feelWob0 = null;       // "Feeling" most often occurs via click
+        this.sense = {};        // Collect various Real-sensing nozzes here
       },
       form: function(submitTerm, dep, act, items) {
         
@@ -359,12 +357,14 @@ U.buildRoom({
         };
         
       },
-      feelWob: function() {
-        if (!this.feelWob0) {
-          this.feelWob0 = WobTmp('dn');
-          this.reality.makeFeelable(this, this.feelWob0);
+      feelNozz: function() {
+        if (!this.sense.has('feel')) {
+          this.reality.initFeel(this);
+          this.sense.feel = TubVal(null, Nozz());
+          this.sense.feel.feelDrop = Drop();
+          this.sense.feel.feelDrop.dry();
         }
-        return this.feelWob0;
+        return this.sense.feel;
       },
       addReal: function(realName, dbg=false) {
         if (!this.layout.children.has(realName)) throw new Error(`No layout for "${realName}"`);
@@ -373,7 +373,7 @@ U.buildRoom({
         this.reality.addChildReal(this, real);
         return real;
       },
-      shut0: function() {
+      onceDry: function() {
         this.reality.remChildReal(this);
         this.par = null;
       }

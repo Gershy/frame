@@ -679,7 +679,6 @@ module.exports = async (args, foundationInsps) => {
           let item = lands.createRec('item', { value: 'item!' });
           let archItem = lands.createRec('archItem', {}, lands.arch, item);
           hut.setRecFollowStrength(archItem, 0);
-          //archItem.shut();
           
           // Get addRec for `item` and `archItem`
           let resultInit = await receiveConnAction(conn, { command: 'getInit' });

@@ -2,47 +2,10 @@ U.buildRoom({
   name: 'record',
   innerRooms: [],
   build: (foundation) => {
+    
     // Recs are data items with a number of properties, including relational properties
     
-    let { Hog, Wob, WobVal, WobSquad } = U;
-    
-    let WobRecCrd1 = U.inspire({ name: 'WobRecCrd1', insps: { Wob }, methods: (insp, Insp) => ({
-      init: function() {
-        insp.Wob.init.call(this);
-        this.rec = null;
-      },
-      hold: function(holdFn) {
-        if (this.rec) this.toHold(holdFn, this.rec); // Call immediately
-        return insp.Wob.hold.call(this, holdFn);
-      },
-      wobble: function(rec) {
-        if (!rec) throw new Error('Invalid rec for add');
-        if (this.rec) throw new Error(`Already add: ${this.rec.type.name}`);
-        this.rec = rec;
-        insp.Wob.wobble.call(this, this.rec, ...this.rec.members);
-        return Hog(() => { this.rec = null; });
-      },
-      size: function() { return this.rec ? 1 : 0; },
-      toArr: function(fn) { return this.rec ? [ this.rec ].map(fn) : []; }
-    })});
-    let WobRecCrdM = U.inspire({ name: 'WobRecCrdM', insps: { Wob }, methods: (insp, Insp) => ({
-      init: function() {
-        insp.Wob.init.call(this);
-        this.recs = Map();
-      },
-      hold: function(holdFn) {
-        this.recs.forEach(rec => this.toHold(holdFn, rec));
-        return insp.Wob.hold.call(this, holdFn);
-      },
-      wobble: function(rec) {
-        if (this.recs.has(rec.uid)) throw new Error(`Already add: ${this.recs.get(rec.uid).type.name}`);
-        this.recs.set(rec.uid, rec);
-        insp.Wob.wobble.call(this, rec, ...rec.members);
-        return Hog(() => { this.recs.delete(rec.uid); });
-      },
-      size: function() { return this.recs.size; },
-      toArr: function(fn) { return this.recs.toArr(fn); }
-    })});
+    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
     let Tidy = U.inspire({ name: 'Tidy', methods: (insp, Insp) => ({
       init: function(check=null) { if (check) this.check = check; },
@@ -94,102 +57,94 @@ U.buildRoom({
       },
       create: function(params={}, ...members) {
         
-        members = members.toArr(v => v); // Will be handed off by reference. TODO: Is cloning necessary?
-        
         if (members.length !== this.memberTypes.length)
           throw new Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${members.length}`);
         
         for (let i = 0; i < members.length; i++)
           if (members[i].type !== this.memberTypes[i])
-            throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(v => v.name).join(', ')}] but got [${members.map(m => m.type.name).join(', ')}]`);
+            throw new Error(`RecType ${this.name} expects [${this.memberTypes.map(mt => mt.name).join(', ')}] but got [${members.map(m => m.type.name).join(', ')}]`);
         
+        // Create GroupRec; Inform all MemberRecs of the new relation
         let relRec = this.RecCls({ ...params, type: this, members });
-        
-        let squad = params.has('squad') ? params.squad : null;
-        let defAgg = !squad;
-        if (defAgg) squad = WobSquad();
-        
-        let wobs = members.map((m, ind) => m.relWob(this, ind));
-        let err = U.safe(() => {
-          
-          // Wobble all Wobs
-          wobs.forEach(w => {
-            // Add the Rec; remove it when the Rec shuts
-            let addHog = squad.wobble(w, relRec);
-            let holdShut = relRec.shutWob().hold(() => addHog.shut());
-            
-            // If the Rec is un-added, stop holding the Rec shut
-            addHog.shutWob().hold(() => holdShut.shut());
-          });
-          
-        });
-        
-        // Complete squad
-        if (defAgg) squad.complete(err);
-        
-        // If an error occurred it needs to be thrown
-        if (err) throw err;
+        members.forEach((m, i) => m.relNozz(this, i).nozz.drip(relRec));
         
         return relRec;
         
       }
       
     })});
-    let Rec = U.inspire({ name: 'Rec', insps: { Hog, WobVal }, methods: (insp, Insp) => ({
+    let Rec = U.inspire({ name: 'Rec', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
       
       $NEXT_UID: 0,
       
-      init: function({ value=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
+      init: function({ drier=null, val=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
         
+        if (!drier) drier = defDrier(); //{ nozz: TubVal(null, Nozz()) };
+        
+        if (!drier.nozz) throw new Error('Missing "drier.nozz"');
         if (type === null) throw new Error(`Missing "type"`);
         if (uid === null) throw new Error(`Missing "uid"`);
         
-        insp.Hog.init.call(this);
-        insp.WobVal.init.call(this, value);
+        insp.Drop.init.call(this, drier);
+        insp.Nozz.init.call(this);
         
         this.type = type;
         this.uid = uid;
+        this.val = val;
         
-        this.relWobs = {};
+        this.relNozzes = {};
         this.members = members; // GroupRecs link to all MemberRecs
         
-        // Any MemberRec shutting causes `this` GroupRec to shut
-        // `this` GroupRec shutting releases all holds on MemberRecs
-        let holds = members.map(m => m.shutWob().hold(g => this.shut(g)));
-        this.shutWob().hold(g => holds.forEach(h => h.shut(g)));
+        // TODO: When MemberRecs shut, in `doShut`, they shut their
+        // GroupRecs. So the following is redundant?
+        // TODO: Also consider keeping this, but removing `doShut` -
+        // that could free up some requirements of `relNozz()
+        /// // Any MemberRec shutting causes `this` GroupRec to shut
+        /// // `this` GroupRec shutting releases all holds on MemberRecs
+        /// let holds = members.map(m => m.shutFlow().hold(() => this.shut()));
+        /// this.shutFlow().hold(() => holds.forEach(h => h.shut()));
         
       },
-      //m: function(ind) { return this.members[ind]; },
-      relWob: function(recType, ind=null) {
+      defaultRecTypeInd: function(recType) {
         
+        // Without knowing which specific index is desired, we can still
+        // often make a 100% certain guess: this is possible when the
+        // MemberRecs of `recType` have different RecType - this means
+        // we can select the index of *our* type as the correct index.
+        // Note this may have unintended consequences if `recType`
+        // contains multiple MemberRecs of the same RecType!
+        
+        let findMatchingType = recType.memberTypes.find(m => m === this.type);
+        if (!findMatchingType) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
+        return findMatchingType[1];
+        
+      },
+      relNozz: function(recType, ind=null) {
         if (!recType) throw new Error(`Invalid recType: ${U.nameOf(recType)}`);
-        
-        // `ind` is our index in `recType.memberTypes`
-        // If no `ind` is given, return the first index matching our type
-        if (ind === null) {
-          let findMatchingType = recType.memberTypes.find(m => m === this.type);
-          if (!findMatchingType) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
-          ind = findMatchingType[1];
-        }
+        if (ind === null) ind = this.defaultRecTypeInd(recType);
         
         let key = `${recType.name}.${ind}`;
-        if (!this.relWobs.has(key)) {
-          
+        if (!this.relNozzes.has(key)) {
           if (this.type !== recType.memberTypes[ind]) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
-          let cardinality = recType.cardinality[1 - ind]; // Note that `WobRec*` class is determined by OTHER type's cardinality
-          this.relWobs[key] = cardinality === 'M' ? WobRecCrdM() : WobRecCrd1();
-          
+          let cardinality = recType.cardinality[1 - ind]; // Note that cardinality is determined by OTHER type's cardinality
+          let relNozz = this.relNozzes[key] = (cardinality === 'M' ? TubSet : TubVal)(null, Nozz());
+          relNozz.desc = `RelNozz for ${this.type.name} -> ${recType.name}; crd: ${cardinality === 'M' ? 'plural' : 'single'}`;
         }
         
-        return this.relWobs[key];
-        
+        return this.relNozzes[key];
       },
-      relRecs: function(recType, ind=null) { return this.relWob(recType, ind).toArr(v => v); }, // TODO: Inefficient!
-      relRec: function(recType, ind=null) { return this.relRecs(recType, ind)[0] || null; }, // TODO: Inefficient!
-      shut0: function(group=Set()) {
-        // Shutting us also shuts all GroupRecs of which we are a MemberRec
-        // Note that any double-shuts encountered here are tolerated
-        this.relWobs.forEach(relWob => relWob.toArr(v => v).forEach(rec => rec.isShut() || rec.shut(group)));
+      relRecs: function(recType, ind) { return this.relNozz(recType, ind).set; },
+      relRec: function(recType, ind) { let rec = this.relNozz(recType, ind).val; return rec === C.skip ? null : rec; },
+      update: function(newVal) {
+        if (newVal !== this.val || U.isType(newVal, Object)) this.drip(this.val = newVal);
+      },
+      modify: function(fn) { this.update(fn(this.val)); },
+      newRoute: function(routeFn) { routeFn(this.val); },
+      onceDry: function() {
+        this.relNozzes.forEach(relNozz => {
+          if (U.isType(relNozz, TubVal)) { if (relNozz.val !== C.skip) relNozz.val.dry(); }
+          if (U.isType(relNozz, TubSet)) { for (let gr of relNozz.set) gr.dry(); } // "gr" = "GroupRec"
+        });
       }
       
     })});

@@ -2,7 +2,9 @@
   
   let [  path,   fs,   net,   http,   crypto,   os ] =
       [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
-  let { Hog, Wob } = U;
+  
+  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  //let { Load, Free, Flow, Flux } = U.life;
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -17,7 +19,6 @@
     for (let name of names) fsRemTreeSync(path.join(f, name));
     fs.rmdirSync(f);
   };
-  
   let fsUpdFile = (cmps, v) => {
     let f = path.join(...cmps);
     let err = new Error(`Couldn't upd file "${f}"`);
@@ -183,9 +184,7 @@
           soktState.curFrames = [];
         }
       }
-      
-      soktState.buffer = buffer;
-      
+      soktState.buffer = buffer; // Set remaining buffer
       return messages;
     },
     $parseSoktUpgradeRequest: soktState => {
@@ -232,7 +231,7 @@
       this.cpuCnt = 0;
       this.roomsInOrder = [];
       this.compilationData = {};
-      this.mountedFiles = {}; // TODO: with MANY files could save this in its own file
+      this.mountedFiles = {}; // TODO: with MANY files could save this index in its own file
       
       this.variantDefs = {
         above: { above: 1, below: 0 },
@@ -400,7 +399,11 @@
     
     // Compilation
     parseDependencies: async function(roomName) {
+      
       // Determine the inner rooms of `roomName` by parsing the file for the "innerRooms" property
+      // TODO: Could potentially spoof U.buildRoom, and then require and
+      // uncache the room file. It will call U.buildRoom with the
+      // anticipated room names...
       
       let roomFileContents = await this.readFile(path.join(roomDir, roomName, `${roomName}.js`));
       let depStr = roomFileContents.match(/innerRooms:\s*\[([^\]]*)\]/)[1].trim();
@@ -654,7 +657,7 @@
     getOrderedRoomNames: function() { return this.roomsInOrder; },
     
     // Platform
-    queueTask: process.nextTick, //function(func) { process.nextTick(func); },
+    queueTask: setImmediate,
     getMemUsage: function() {
       let usage1 = process.memoryUsage();
       return {
@@ -753,15 +756,15 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getCpuConn: function(serverWob, pool, query, decorate=null) {
+    getCpuConn: function(server, pool, query, decorate=null) {
       
       if (this.spoofEnabled && query.has('spoof')) {
         
-        // Return the current connection for `serverWob` for the spoofed
+        // Return the current connection for `server` for the spoofed
         // identity, or create such a connection if none exists
         let cpu = pool.getCpu(query.spoof);
-        if (cpu && cpu.serverConns.has(serverWob)) return cpu.serverConns.get(serverWob)
-        return pool.makeCpuConn(serverWob, conn => {
+        if (cpu && cpu.serverConns.has(server)) return cpu.serverConns.get(server)
+        return pool.makeCpuConn(server, conn => {
           conn.cpuId = query.spoof;
           conn.isSpoofed = true;
           if (decorate) decorate(conn);
@@ -770,11 +773,11 @@
       } else if (query.has('cpuId')) {
         
         // If the given identity exists, returns a connection for the
-        // identity for `serverWob`. Returns `null` if not recognized
+        // identity for `server`. Returns `null` if not recognized
         let cpu = pool.getCpu(query.cpuId);
         if (!cpu) return null;
-        if (cpu.serverConns.has(serverWob)) return cpu.serverConns.get(serverWob);
-        return pool.makeCpuConn(serverWob, conn => {
+        if (cpu.serverConns.has(server)) return cpu.serverConns.get(server);
+        return pool.makeCpuConn(server, conn => {
           conn.cpuId = query.cpuId;
           if (decorate) decorate(conn);
         });
@@ -782,7 +785,7 @@
       } else {
         
         // Create a connection and identity for the unrecognized request
-        return pool.makeCpuConn(serverWob, decorate || (conn => {}));
+        return pool.makeCpuConn(server, decorate || (conn => {}));
         
       }
       
@@ -841,25 +844,7 @@
         })[type]();
         
       };
-      
-      let serverWob = Wob({});
-      serverWob.desc = `HTTP @ ${ip}:${port}`;
-      serverWob.cost = 100;
-      serverWob.decorateConn = conn => {
-        conn.knownHosts = Set();
-        conn.waitResps = [];
-        conn.waitTells = [];
-        conn.hear = Wob({});
-        conn.tell = msg => conn.waitResps.length
-          ? sendData(conn.waitResps.shift(), msg)
-          : conn.waitTells.push(msg)
-        conn.shutWob().hold(() => conn.waitResps.forEach(res => res.end()));
-      };
-      
-      let server = http.createServer(async (req, res) => {
-        
-        // TODO: connections should be Hogs - with "shut" and "shutWob" methods
-        // Right now they have "shut" set to `U.Wob()`
+      let httpServer = http.createServer(async (req, res) => {
         
         // Stream the body
         let chunks = [];
@@ -889,8 +874,8 @@
           ].join('\n'));
         }
         
-        let conn = this.getCpuConn(serverWob, pool, params.slice('spoof', 'cpuId'));
-        if (!conn) { res.writeHead(400); res.end(); return; }
+        let conn = this.getCpuConn(server, pool, params.slice('spoof', 'cpuId'));
+        if (!conn) { res.writeHead(302, { 'Location': '/' }); res.end(); return; }
         conn.knownHosts.add(req.connection.remoteAddress);
         
         // Remove identity-specifying params
@@ -899,14 +884,14 @@
         
         if (params.isEmpty()) { // If params are empty at this point, look at http path
           params = (p => {
+            // Map typical http requests to their meaning within Hut
             if (p === '/') return { command: 'getInit', reply: true };
-            if (p.hasHead('/!FILE/')) return { command: 'getFile', reply: true, path: p.substr(7) };
             return {};
           })(urlPath);
         }
         
         // Error response for invalid params
-        if (!params.has('command')) { conn.shut(); res.writeHead(400); res.end(); return; };
+        if (!params.has('command')) { conn.dry(); res.writeHead(400).end(); return; };
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
@@ -920,7 +905,7 @@
             hut: true
           },
           close: {
-            transport: conn => conn.shut()
+            transport: conn => conn.dry()
           },
           bankPoll: {
             transport: conn => { /* empty transport-level action */ }
@@ -933,12 +918,13 @@
         // Run transport-level actions
         if (comTypes.has('transport')) comTypes.transport(conn);
         
-        // Synced requests end here - `conn.hear.wobble` MUST respond
+        // Synced requests end here - `conn.hear.drip` MUST occur or the
+        // request will hang indefinitely
         // TODO: Consider a timeout to deal with improper usage
-        if (params.reply) return conn.hear.wobble([ params, msg => sendData(res, msg) ]);
+        if (params.reply) return conn.hear.drip([ params, msg => sendData(res, msg) ]);
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) conn.hear.wobble([ params, null ]);
+        if (comTypes.has('hut') && comTypes.hut) conn.hear.drip([ params, null ]);
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells send the oldest, otherwise keep the response.
@@ -948,51 +934,25 @@
         while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
         
       });
-      await new Promise(r => server.listen(port, ip, 511, r));
-      serverWob.shut = () => server.close();
+      await new Promise(r => httpServer.listen(port, ip, 511, r));
       
-      return serverWob;
+      let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
+      server.desc = `HTTP @ ${ip}:${port}`;
+      server.cost = 100;
+      server.decorateConn = conn => {
+        conn.knownHosts = Set();
+        conn.waitResps = [];
+        conn.waitTells = [];
+        conn.hear = Nozz();
+        conn.tell = msg => conn.waitResps.length
+          ? sendData(conn.waitResps.shift(), msg)
+          : conn.waitTells.push(msg)
+        conn.drierNozz().route(() => { for (let res of conn.waitResps) res.end(); });
+      };
+      
+      return server;
     },
     makeSoktServer: async function(pool, ip=this.ip, port=this.port + 1) {
-      let serverWob = Wob({});
-      serverWob.desc = `SOKT @ ${ip}:${port}`;
-      serverWob.cost = 50;
-      serverWob.decorateConn = conn => {
-        conn.hear = Wob({});
-        conn.tell = msg => {
-          let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
-          let len = dataBuff.length;
-          let metaBuff = null;
-          
-          // The 2nd byte (`metaBuff[1]`) is either 127 to specify
-          // "large", 126 to specify "medium", or n < 126, where
-          // `n` is the exact length of `dataBuff`.
-          if (len < 126) {            // small-size
-            
-            metaBuff = Buffer.alloc(2);
-            metaBuff[1] = len;
-            
-          } else if (len < 65536) {   // medium-size
-            
-            metaBuff = Buffer.alloc(2 + 2);
-            metaBuff[1] = 126;
-            metaBuff.writeUInt16BE(len, 2);
-            
-          } else {                    // large-size
-            
-            // TODO: large-size packet could use more testing
-            metaBuff = Buffer.alloc(2 + 8);
-            metaBuff[1] = 127;
-            metaBuff.writeUInt32BE(Math.floor(len / U.int32), 2); // Lo end of `len` from metaBuff[2-5]
-            metaBuff.writeUInt32BE(len % U.int32, 6);             // Hi end of `len` from metaBuff[6-9]
-            
-          }
-          
-          metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-          conn.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
-        };
-        conn.shutWob().hold(() => conn.sokt.end());
-      };
       
       let makeSoktState = (status='initial') => ({
         status, // "initial", "upgrading", "ready", "ended"
@@ -1000,8 +960,7 @@
         curOp: null,
         curFrames: []
       });
-      
-      let server = net.createServer(async sokt => {
+      let soktServer = net.createServer(async sokt => {
         
         let soktState = makeSoktState();
         
@@ -1038,33 +997,72 @@
         
         let { query } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
         
-        let conn = this.getCpuConn(serverWob, pool, query, conn => conn.sokt = sokt);
+        let conn = this.getCpuConn(server, pool, query, conn => conn.sokt = sokt);
         if (!conn) return sokt.end();
         
         sokt.on('readable', () => {
-          if (conn.isShut()) return;
+          if (conn.isDry()) return;
           let newBuffer = sokt.read();
           if (!newBuffer || !newBuffer.length) return;
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
             let messages = Insp.parseSoktMessages(soktState);
-            for (let message of messages) conn.hear.wobble([ message, null ]);
+            for (let message of messages) conn.hear.drip([ message, null ]);
           } catch(err) {
             console.log(`Socket error:\n${this.formatError(err)}`);
             soktState = makeSoktState('ended');
           }
-          if (soktState.status === 'ended') conn.shut();
+          if (soktState.status === 'ended') conn.dry();
         });
-        sokt.on('close', () => { soktState = makeSoktState('ended'); conn.isShut() || conn.shut(); });
-        sokt.on('error', () => { soktState = makeSoktState('ended'); conn.isShut() || conn.shut(); });
+        sokt.on('close', () => { soktState = makeSoktState('ended'); conn.dry(); });
+        sokt.on('error', () => { soktState = makeSoktState('ended'); conn.dry(); });
         sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
       });
-      await Promise(r => server.listen(port, ip, r));
-      serverWob.shut = () => server.close();
+      await Promise(r => soktServer.listen(port, ip, r));
       
-      return serverWob;
+      let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
+      server.desc = `SOKT @ ${ip}:${port}`;
+      server.cost = 50;
+      server.decorateConn = conn => {
+        conn.hear = Nozz();
+        conn.tell = msg => {
+          let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
+          let len = dataBuff.length;
+          let metaBuff = null;
+          
+          // The 2nd byte (`metaBuff[1]`) is either 127 to specify
+          // "large", 126 to specify "medium", or n < 126, where
+          // `n` is the exact length of `dataBuff`.
+          if (len < 126) {            // small-size
+            
+            metaBuff = Buffer.alloc(2);
+            metaBuff[1] = len;
+            
+          } else if (len < 65536) {   // medium-size
+            
+            metaBuff = Buffer.alloc(2 + 2);
+            metaBuff[1] = 126;
+            metaBuff.writeUInt16BE(len, 2);
+            
+          } else {                    // large-size
+            
+            // TODO: large-size packet could use more testing
+            metaBuff = Buffer.alloc(2 + 8);
+            metaBuff[1] = 127;
+            metaBuff.writeUInt32BE(Math.floor(len / U.int32), 2); // Lo end of `len` from metaBuff[2-5]
+            metaBuff.writeUInt32BE(len % U.int32, 6);             // Hi end of `len` from metaBuff[6-9]
+            
+          }
+          
+          metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
+          conn.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
+        };
+        conn.drierNozz().route(() => conn.sokt.end());
+      };
+      
+      return server;
     },
     
     getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },

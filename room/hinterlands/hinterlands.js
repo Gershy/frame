@@ -11,87 +11,19 @@ U.buildRoom({
     // possible for the GroupRec to have a Member with RecType of "hut", 
     // an error will be thrown: unexpected RecType received!
     
-    let doUpdate = (lands, msg) => {
-      
-      // Updates `lands` based on the contents of `msg`.
-      
-      let { version, content } = msg;
-      if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
-      
-      let squad = U.WobSquad();
-      let err = U.safe(() => {
-        
-        // Apply all operations
-        let { addRec={}, remRec={}, updRec={} } = content;
-        
-        // "head" Recs existed before the current update. "tail" Recs are Recs
-        // whose existence results from the update. A Rec coming into existence
-        // may have member references to both HeadRecs and TailRecs
-        let headRecs = lands.allRecs;
-        let tailRecs = Map();
-        let getHeadOrTailRec = uid => {
-          if (headRecs.has(uid)) return headRecs.get(uid);
-          if (tailRecs.has(uid)) return tailRecs.get(uid);
-          return null;
-        };
-        
-        // Add new Recs with dependency churning
-        let waiting = addRec.toArr((v, uid) => v.gain({ uid }));
-        while (waiting.length) {
-          
-          let attempt = waiting;
-          waiting = [];
-          
-          for (let addVals of attempt) {
-          
-            let { type, value, members, uid } = addVals;
-            
-            // Convert all members from uid to Rec
-            members = members.map(uid => getHeadOrTailRec(uid));
-            
-            // If a member couldn't be converted wait for a later churn
-            if (members.find(m => !m)) { waiting.push(addVals); continue; }
-            
-            // All members are available - create the Rec!
-            let newRec = lands.createRec(type, { uid, value, squad }, ...members);
-            tailRecs.set(uid, newRec);
-            
-          }
-          
-          if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
-            console.log('Head Recs:', headRecs.toArr((rec, uid) => `${uid}: ${U.nameOf(rec)}`).join('\n'));
-            console.log(JSON.stringify(content, null, 2));
-            throw new Error(`Unresolvable Rec dependencies`);
-          }
-          
-        }
-        
-        // Update Recs directly
-        updRec.forEach((newValue, uid) => {
-          if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
-          squad.wobble(lands.allRecs.get(uid), newValue);
-        });
-        
-        // Remove Recs directly
-        //let shutGroup = Set();
-        remRec.forEach((val, uid) => {
-          if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
-          squad.shut(lands.allRecs.get(uid));
-        });
-        
-      });
-      
-      squad.complete(err);
-      
-      if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
-      
-      // We've successfully moved to our next version!
-      lands.version = version;
-      
-    };
+    // NOTE: Recs are created in 3 different manners:
+    // 1 - Arch: May be referenced by other Huts; never dries. Created
+    // without `Lands.prototype.createRec`, but still tracked within
+    // `lands.allRecs`
+    // 2 - ArchHut, Hut: May not be referenced by other Huts. Only dry
+    // when the corresponding Cpu is rejected (for bad behaviour, etc),
+    // or when the corresponding Cpu shuts. Are created without the use
+    // of `Lands.prototype.createRec`; aren't tracked in `lands.allRecs`
+    // 3 - All other Recs: May be referenced, and may dry up for any
+    // reason! So we use `Lands.prototype.createRec`.
     
     let { Rec, Rel } = record;
-    let { Hog, WobTmp, HorzScope } = U;
+    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
     let TERMS = [];
     
@@ -105,179 +37,118 @@ U.buildRoom({
         this.heartbeatMs = heartbeatMs;
         this.recTypes = recTypes;
         this.uidCnt = 0;
-        this.comWobs = {};
+        this.comNozzes = {};
         
         this.servers = [];
         this.makeServers = [];
         
-        this.allRecs = Map();                       // Map uid -> Rec
-        this.hutsByCpuId = Map();                   // Map cpuId -> Hut
+        this.allRecs = Map();             // Map uid -> Rec
         
         /// {ABOVE=
         
-        this.realRooms = [];                        // All supported Real Rooms
+        this.realRooms = [];              // All supported Real Rooms
         
         /// =ABOVE} {BELOW=
         
-        this.version = 0;                           // Track the version of Below
-        this.heartbeatTimeout = null;               // Timeout reference
-        this.resetHeartbeatTimeout();               // Initialize heartbeat Below
+        this.syncVersion = 0;             // Track the version of Below
+        this.heartbeatTimeout = null;     // Timeout reference
+        this.resetHeartbeatTimeout();     // Initialize heartbeat Below
         
         /// =BELOW}
         
-        this.arch = this.createRec('arch', { uid: '!arch' });
+        // Note that Arch and ArchHut don't use `this.createRec`
+        this.arch = this.recTypes.arch.create({ uid: '!arch' });
+        this.allRecs.set('!arch', this.arch);
         
         this.addDefaultCommands();
         
       },
       addDefaultCommands: function() {
         
-        this.comWob('error').hold(({ hut, msg, reply }) => { /* nothing */ });
-        this.comWob('fizzle').hold(({ hut, msg, reply }) => { /* nothing */ });
+        this.comNozz('error').route(({ hut, msg, reply }) => { /* nothing */ });
+        this.comNozz('fizzle').route(({ hut, msg, reply }) => { /* nothing */ });
         
         /// {ABOVE=
         
-        this.comWob('modifyRec').hold(({ lands, hut, msg, reply }) => {
+        this.comNozz('modifyRec').route(({ hut, msg, reply }) => {
           if (!msg.has('uid')) return hut.tell({ command: 'error', type: 'uidMissing', orig: msg });
           if (!msg.has('val')) return hut.tell({ command: 'error', type: 'valMissing', orig: msg });
           let { uid, val } = msg;
-          let rec = lands.allRecs.get(uid);
+          let rec = this.allRecs.get(uid);
           if (!rec) return hut.tell({ command: 'error', type: 'uidNotFound', orig: msg });
           try { hut.modifyRec(rec, val); }
           catch(err) { hut.tell({ command: 'error', type: 'modifyError', message: err.message, orig: msg }); }
         });
-        this.comWob('getFile').hold(({ hut, msg, reply }) => {
-          reply(U.safe(
-            () => foundation.getMountFile(msg.path),
-            () => ({ command: 'error', type: 'fileNotFound', orig: msg })
-          ));
-        });
-        this.comWob('thunThunk').hold(({ hut, msg, reply }) => { /* nothing */ });
+        this.comNozz('thunThunk').route(({ hut, msg, reply }) => { /* nothing */ });
         
         /// =ABOVE} {BELOW=
         
-        this.comWob('update').hold(({ lands, hut, msg, reply }) => {
+        this.comNozz('update').route(({ msg, reply }) => {
           
           let { version, content } = msg;
-          if (version !== lands.version + 1) throw new Error(`Tried to move from version ${lands.version} -> ${version}`);
           
-          let squad = U.WobSquad();
-          let err = U.safe(() => {
+          if (version !== this.syncVersion + 1) throw new Error(`Tried to move from version ${this.syncVersion} -> ${version}`);
+          
+          // Apply all operations
+          let { addRec={}, remRec={}, updRec={} } = content;
+          
+          // Consider "head" and "tail" Recs - HeadRecs exist before
+          // update, TailRecs exist *due to* update. TailRecs may have
+          // both HeadRecs and TailRecs as MemberRecs
+          let headRecs = this.allRecs;
+          let tailRecs = Map();
+          let getHeadOrTailRec = uid => headRecs.get(uid) || tailRecs.get(uid) || null;
+          
+          // Add new Recs with churning
+          let waiting = addRec.toArr((v, uid) => ({ ...v, uid }));
+          while (waiting.length) {
             
-            // Apply all operations
-            let { addRec={}, remRec={}, updRec={} } = content;
+            let attempt = waiting;
+            waiting = [];
             
-            // "head" Recs existed before the current update. "tail" Recs are Recs
-            // whose existence results from the update. A Rec coming into existence
-            // may have member references to both HeadRecs and TailRecs
-            let headRecs = lands.allRecs;
-            let tailRecs = Map();
-            let getHeadOrTailRec = uid => {
-              if (headRecs.has(uid)) return headRecs.get(uid);
-              if (tailRecs.has(uid)) return tailRecs.get(uid);
-              return null;
-            };
+            for (let addVals of attempt) {
             
-            // Add new Recs with dependency churning
-            let waiting = addRec.toArr((v, uid) => v.gain({ uid }));
-            while (waiting.length) {
+              let { type, val, memberUids, uid } = addVals;
               
-              let attempt = waiting;
-              waiting = [];
-              
-              for (let addVals of attempt) {
-              
-                let { type, value, members, uid } = addVals;
-                
-                // Convert all members from uid to Rec
-                members = members.map(uid => getHeadOrTailRec(uid));
-                
-                // If a member couldn't be converted wait for a later churn
-                if (members.find(m => !m)) { waiting.push(addVals); continue; }
-                
-                // All members are available - create the Rec!
-                let newRec = lands.createRec(type, { uid, value, squad }, ...members);
-                tailRecs.set(uid, newRec);
-                
+              // Convert all members from uid to Rec
+              let memberRecs = [];
+              for (let memberUid of memberUids) {
+                let memberRec = getHeadOrTailRec(memberUid);
+                if (!memberRec) { memberRecs = null; break; }
+                else            memberRecs.push(memberRec);
               }
               
-              if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
-                console.log('Head Recs:', headRecs.toArr((rec, uid) => `${uid}: ${U.nameOf(rec)}`).join('\n'));
-                console.log(JSON.stringify(content, null, 2));
-                throw new Error(`Unresolvable Rec dependencies`);
-              }
+              if (!memberRecs) { waiting.push(addVals); continue; }
+              
+              // All members are available - create the Rec!
+              let newRec = this.createRec(type, { uid, val }, ...memberRecs);
+              tailRecs.set(uid, newRec);
               
             }
             
-            // Update Recs directly
-            updRec.forEach((newValue, uid) => {
-              if (!lands.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
-              squad.wobble(lands.allRecs.get(uid), newValue);
-            });
+            if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
+              console.log('Head Recs:\n', headRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
+              console.log(JSON.stringify(content, null, 2));
+              throw new Error(`Unresolvable Rec dependencies`);
+            }
             
-            // Remove Recs directly
-            //let shutGroup = Set();
-            remRec.forEach((val, uid) => {
-              if (!lands.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
-              squad.shut(lands.allRecs.get(uid));
-            });
-            
+          }
+          
+          // Update Recs directly
+          updRec.forEach((newValue, uid) => {
+            if (!this.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
+            this.allRecs.get(uid).drip(newValue);
           });
           
-          squad.complete(err);
-          
-          if (err) { err.message = `Error in "update": ${err.message}`; throw err; }
+          // Remove Recs directly
+          remRec.forEach((val, uid) => {
+            if (!this.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
+            this.allRecs.get(uid).shut();
+          });
           
           // We've successfully moved to our next version!
-          lands.version = version;
+          this.syncVersion = version;
           
-        });
-        
-        /// =BELOW}
-        
-      },
-      addReality: function(rootReal, reality) {
-        
-        // Note: Above, multiple Realities can exist for the same Real.
-        // This is because Above includes all *possibile* Reals. The
-        // Below, on the other hand, has a single determined Real - so
-        // only 1 Reality can exist per Real Below. (VERY theoretically,
-        // there could be separate Reals each with their own Reality,
-        // Below. Like... something that runs in both Electron and the
-        // browser at the same time??)
-        
-        if (rootReal) {
-          if (rootReal.reality) throw new Error(`Real ${rootReal.nameChain.join('.')} already has Reality`);
-          rootReal.reality = reality;
-        }
-        
-        /// {ABOVE=
-        
-        // TODO: Should files be added to the entire foundation? Or only to a particular app?
-        // Consider adding the file to the foundation, but also requiring something like:
-        // `lands.addServableFile(`${reality.name}.css`);`
-        let cssControls = reality.getCssControls();
-        foundation.addMountDataAsFile(`${reality.name}.css`, 'text/css', cssControls.cmp);
-        return Hog(() => {
-          foundation.remMountFile(`${reality.name}.css`);
-          if (rootReal) rootReal.reality = null;
-        });
-        
-        /// =ABOVE} {BELOW=
-        
-        let { query } = foundation.parseUrl(window.location.toString());
-        
-        let styleElem = document.createElement('link');
-        styleElem.setAttribute('rel', 'stylesheet');
-        styleElem.setAttribute('type', 'text/css');
-        styleElem.setAttribute('media', 'screen');
-        styleElem.setAttribute('href', `/!FILE/${reality.name}.css${query.has('spoof') ? `?spoof=${query.spoof}` : ''}`);
-        document.head.appendChild(styleElem);
-        
-        real.dom.id = `${reality.name}`;
-        return Hog(() => {
-          real.dom.id = '';
-          if (rootReal) rootReal.reality = null;
         });
         
         /// =BELOW}
@@ -297,31 +168,34 @@ U.buildRoom({
       },
       
       createRec: function(name, params={}, ...args) {
-        // TODO: Don't use this for Hut and ArchHut??
-        // They shouldn't be included in allRecs, and they should
-        // have non-trivial ids. Hut still needs a `lands` param tho
+        
+        // Prefer this to `this.recTypes.<type>.create(...)` when:
+        // 1 - Want to supply automatic uid for recType
+        // 2 - Want to supply automatic "lands" param to Rec subclass
+        // 3 - Want to include createdRec in `this.allRecs`, and remove
+        // it when it dries up
+        
         if (!this.recTypes.has(name)) throw new Error(`Invalid RecType name: "${name}"`)
         if (!params.has('uid')) params.uid = this.nextUid();
         params.lands = this;
+        
         let rec = this.recTypes[name].create(params, ...args);
         this.allRecs.set(rec.uid, rec);
-        rec.shutWob().hold(() => this.allRecs.rem(rec.uid));
+        rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
         return rec;
       },
-      comWob: function(command) {
-        if (!this.comWobs.has(command)) this.comWobs[command] = U.Wob({});
-        return this.comWobs[command];
+      comNozz: function(command) {
+        if (!this.comNozzes.has(command)) this.comNozzes[command] = Nozz();
+        return this.comNozzes[command];
       },
       hear: async function(absConn, hut, msg, reply=null) {
-        if (msg === null) return; // TODO: Necessary? I think servers already prevent null messages
-        
         let { command } = msg;
         
-        // Note: We don't allow a new `comWob` to be created for
+        // Note: We don't allow a new `comNozz` to be created for
         // `command`; that could allow exploitation from Below.
         let comVal = { lands: this, absConn, hut, msg, reply };
-        if (this.comWobs.has(command))  this.comWobs[command].wobble(comVal);
-        if (hut.comWobs.has(command))   hut.comWobs[command].wobble(comVal);
+        if (this.comNozzes.has(command))  this.comNozzes[command].drip(comVal);
+        if (hut.comNozzes.has(command))   hut.comNozzes[command].drip(comVal);
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -366,7 +240,7 @@ U.buildRoom({
         // "modifyRec" command) don't reflect that "newVal" is often a
         // delta - containing only the changed properties.
         
-        let curVal = rec.value;
+        let curVal = rec.val;
         if (curVal === newVal) return;
         
         // Only allow type-mixing between `null` and non-null values
@@ -389,7 +263,7 @@ U.buildRoom({
       /// =BELOW}
       
       getAllHuts: function() {
-        return this.arch.relWob(rt.archHut, 0).toArr(archHut => archHut.members[1]);
+        return this.arch.relNozz(rt.archHut, 0).set.toArr(archHut => archHut.members[1]);
       },
       
       // TODO: async functions shouldn't be named "open" and "shut"
@@ -403,51 +277,53 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        // Temporarily create each supported Reality, and include its
-        // compile-time assets
+        // Setup each supported Reality (using temporary instances)
         for (let realRoom of this.realRooms) {
-          
-          let reality = realRoom.Reality('root'); // This instance exists temporarily
+          let reality = realRoom.Reality('root');
           reality.addFlatLayouts(this.realLayout);
           reality.prepareAboveLands(this);
-          
         }
         
         /// =ABOVE}
         
         // Servers ultimately result in Cpus and CpuConns being wobbled
         this.servers = await Promise.allArr(this.makeServers.map(make => make(this.pool)));
-        this.holdCpuWob = this.pool.cpuWob.hold(cpu => {
-          
-          // "farHut" and "ourHut" :P ("proclaim" = "inform all below")
+        this.cpuScope = Scope(this.pool.cpuNozz, (cpu, dep) => {
           
           let cpuId = cpu.cpuId;
-          let hut = this.createRec('hut', { cpuId, uid: `!hut:${cpuId}` });
-          this.hutsByCpuId.set(cpuId, hut);
           
-          cpu.connWob.hold(conn => { // Now `cpu` is also connected via `conn`
+          // Create a Hut; it will be throttled until it gives us a Tell
+          let hut = this.recTypes.hut.create({ uid: `!hut@${cpuId}`, cpu, lands: this });
+          let resolveGotCom = null;
+          let hutGotComPrm = Promise(r => resolveGotCom = r);
+          hut['throttleSyncBelow'] = () => hutGotComPrm;
+          
+          // Now that the Hut is safely throttled connect it to ArchHut
+          let archHut = this.recTypes.archHut.create({ uid: `!archHut@${cpuId}` }, this.arch, hut);
+          
+          // Cpu and Hut dry up together!
+          dep(Drop(null, () => hut && hut.dry()));
+          dep(hut.drierNozz().route(() => cpu.dry()));
+          
+          // Listen to each Conn of the Cpu
+          dep.scp(cpu.connNozz, (conn, dep) => {
             
-            hut.conns.add(conn);
-            
-            // If we could establish the structure that `conn.hear`
-            // belongs to `conn` we could implicitly shut `conn.hear`
-            // when `conn` shuts.
-            let holdConn = conn.hear.hold(([ msg, reply=null ]) => {
+            // Listen to Commands coming from the Conn
+            dep(conn.hear.route(([ msg, reply=null ]) => {
+              
               /// {ABOVE=
               hut.refreshExpiry();
               /// =ABOVE}
+              
               this.hear(conn, hut, msg, reply);
-            });
-            
-            conn.shutWob().hold(() => { holdConn.shut(); hut.conns.rem(conn); });
+              
+              // This will only occur once per Hut. Now that we've heard
+              // from the Hut, unthrottle its tells.
+              if (resolveGotCom) { resolveGotCom(); resolveGotCom = null; delete hut['throttleSyncBelow']; }
+              
+            }));
             
           });
-          
-          // Hut and Cpu only exist together
-          hut.shutWob().hold(g => { if (!cpu.isShut()) cpu.shut(g); this.hutsByCpuId.rem(cpuId); });
-          cpu.shutWob().hold(g => { if (!hut.isShut()) hut.shut(g) });
-          
-          this.createRec('archHut', { uid: `!archHut:${cpuId}` }, this.arch, hut);
           
         });
         
@@ -456,33 +332,31 @@ U.buildRoom({
         // The only Hut which Below talks to is the Above Hut
         for (let server of this.servers) this.pool.makeCpuConn(server, conn => conn.cpuId = 'above');
         let aboveHut = this.getAllHuts().find(() => true)[0];
-        await this.hear(null, aboveHut, U.initData); // Do the initial update
+        if (U.initData) await this.hear(null, aboveHut, U.initData); // Do the initial update
         
         /// =BELOW}
       },
       shut: async function() {
-        // TODO: Also need to stop all servers! Servers should be `Wob`
-        // and `Hog`!
-        this.holdCpuWob.shut();
-        await Promise.allArr(this.servers.map(server => server.shut()));
+        this.cpuScope.dry();
+        await Promise.allArr(this.servers.map(server => server.dry()));
       }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({
       
-      init: function({ lands, cpuId, ...supArgs }) {
+      init: function({ lands, cpu, ...supArgs }) {
         
         if (!lands) throw new Error('Missing "lands"'); // TODO: Can this property be removed? It's aaalmost unnecessary
-        if (!cpuId) throw new Error('Missing "cpuId"');
+        if (!cpu) throw new Error('Missing "cpu"');
         
         insp.Rec.init.call(this, supArgs);
-        this.lands = lands;
-        this.cpuId = cpuId;
+        this.lands = lands;   // TODO: Only needed for "getTerm" and "refreshExpiry"
+        this.cpu = cpu;       // TODO: Only needed in "tell" (this.cpu.connNozz.set)
         this.term = null;
-        this.comWobs = {};
-        this.conns = Set();
+        this.comNozzes = {};
         
         /// {ABOVE=
         // Keep track of which Records the Below for this Hut has followed
+        
         this.version = 0;
         this.fols = Map();
         this.sync = { addRec: {}, updRec: {}, remRec: {} };
@@ -498,15 +372,15 @@ U.buildRoom({
         if (!this.term) this.term = this.lands.genUniqueTerm();
         return this.term;
       },
-      comWob: function(command) {
-        if (!this.comWobs.has(command)) this.comWobs[command] = U.Wob({});
-        return this.comWobs[command];
+      comNozz: function(command) {
+        if (!this.comNozzes.has(command)) this.comNozzes[command] = Nozz();
+        return this.comNozzes[command];
       },
       
       /// {ABOVE=
       refreshExpiry: function() {
         clearTimeout(this.expiryTimeout);
-        this.expiryTimeout = setTimeout(() => this.shut(), this.lands.heartbeatMs);
+        this.expiryTimeout = setTimeout(() => this.dry(), this.lands.heartbeatMs);
       },
       
       toSync: function(type, rec) {
@@ -519,68 +393,54 @@ U.buildRoom({
         // Can remRec and updRec occur together? YES (e.g. animation upon deletion)
         
         if (type === 'addRec') {
-          
           if (remRec.has(rec.uid))  delete remRec[rec.uid];
-          else                      { delete updRec[rec.uid]; addRec[rec.uid] = rec; }
-          
+          else                      addRec[rec.uid] = (delete updRec[rec.uid], rec);
         } else if (type === 'remRec') {
-          
           if (addRec.has(rec.uid))  delete addRec[rec.uid];
           else                      remRec[rec.uid] = rec;
-          
         } else if (type === 'updRec') {
-          
           if (addRec.has(rec.uid))  return; // No "updRec" necessary: already adding!
           else                      updRec[rec.uid] = rec;
-          
         }
         
         this.requestSyncBelow();
         
       },
+      throttleSyncBelow: function() { return Promise(r => foundation.queueTask(r)); },
       requestSyncBelow: function() {
         
         // Schedules Below to be synced if not already scheduled
         
-        let err = new Error('');
+        if (this.syncThrottlePrm) return; // A request to sync already exists
         
         this.syncThrottlePrm = (async () => {
           
-          try {
-            
-            // await this.genSyncThrottlePrm();
-            await new Promise(r => foundation.queueTask(r)); // TODO: This could be swapped out (to a timeout, or whatever!)
-            
-            this.syncThrottlePrm = null;
-            
-            // Hut may have been shut between scheduling and executing sync
-            if (this.isShut()) return;
-            
-            let updateTell = this.genSyncTell();
-            if (updateTell) this.tell(updateTell);
-            
-          } catch(err0) {
-            throw err0;
-            //err.message = `Error doing sync: ${err0.message}`;
-            //throw err;
-          }
+          let throttlePrm = this.throttleSyncBelow();
+          await throttlePrm;
+          this.syncThrottlePrm = null;
+          
+          // Hut may have dried between scheduling and executing sync
+          if (this.isDry()) return;
+          
+          let updateTell = this.genSyncTell();
+          if (updateTell) this.tell(updateTell);
           
         })();
         
       },
       
-      resetFollows: function() {
+      resetSyncState: function() {
         this.version = 0;                                           // Reset version
         this.sync = this.sync.map(v => ({}));                       // Clear current delta
-        this.fols.forEach((f, rec) => this.toSync('addRec', rec));  // Gen full sync delta
+        this.fols.forEach((f, rec) => this.toSync('addRec', rec));  // Sync all addRecs
       },
       genSyncTell: function() {
         
-        // Generates sync data to bring the Below up to date. Has the side-effect
-        // of clearing this Hut's memory of the current delta.
+        // Generates data to sync the BelowHut, and flags the BelowHut
+        // as fully up to date
         
-        let addRec = this.sync.addRec.map(r => ({ type: r.type.name, value: r.value, members: r.members.map(m => m.uid) }));
-        let updRec = this.sync.updRec.map(r => r.value);
+        let addRec = this.sync.addRec.map(r => ({ type: r.type.name, val: r.val, memberUids: r.members.map(m => m.uid) }));
+        let updRec = this.sync.updRec.map(r => r.val);
         let remRec = this.sync.remRec.map(r => 1);
         
         let content = {};
@@ -611,27 +471,19 @@ U.buildRoom({
         
         if (!strength0) {                   // ADD
           
-          // This HorzScope depends on `rec`. That means if `rec` shuts for
-          // any reason, we will stop following it! We can also explicitly
-          // cease following `rec` by calling `ap.shut()`
-          HorzScope(U.WobVal(rec), (dep, rec, ap) => {
-            
-            // Track the follow. Note that this is NOT cleaned up with
-            // `dep` - e.g. if `rec` shuts, this entry in `this.fols`
-            // still persists. Instead use `setRecFollowStrength` to
-            // decrement follow strength to 0!
-            fol = { strength, ap, modifyAllow: Map(), modifyBlock: Map() }; // A single "any" and every "all" must pass
-            this.fols.set(rec, fol);
-            
-            // Send a sync
-            this.toSync('addRec', rec);
-            dep(Hog(() => this.toSync('remRec', rec)));
-            
-            // Send upd syncs when `rec` wobbles (note `false` indicates non-hastiness)
-            dep(rec.hold(val => this.toSync('updRec', rec), false));
-            
+          // Follow ends when Rec is unfollowed, or Rec dries
+          
+          this.toSync('addRec', rec);
+          let updRecRoute = rec.route(() => this.toSync('updRec', rec));
+          
+          let unfollowNozz = Funnel(rec.drier.nozz);
+          unfollowNozz.route(() => {
+            this.toSync('remRec', rec);
+            updRecRoute.dry();
           });
-          return fol;
+          
+          fol = { strength, unfollowNozz, modifyAllow: Map(), modifyBlock: Map() };
+          this.fols.set(rec, fol);
           
         } else if (strength0 && strength) { // UPD
           
@@ -639,9 +491,8 @@ U.buildRoom({
           
         } else {                            // REM
           
-          // Close the HorzScope
-          fol.ap.shut();
-          this.fols.delete(rec);
+          this.fols.rem(rec);
+          fol.unfollowNozz.drip();
           fol = null;
           
         }
@@ -650,6 +501,7 @@ U.buildRoom({
         
       },
       followRec: function(rec, modify={}) {
+        
         // TODO: Automatically follow `rec.members`?
         let fol = this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
         
@@ -661,13 +513,18 @@ U.buildRoom({
         if (anyF) fol.modifyAllow.set(anyF, (fol.modifyAllow.get(anyF) || 0) + 1);
         if (allF) fol.modifyBlock.set(allF, (fol.modifyBlock.get(allF) || 0) + 1);
         
-        return Hog(() => {
+        return Drop(null, () => {
           let fol = this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) - 1);
           if (fol) {
             if (anyF) { let v = fol.modifyAllow.get(anyF); fol.modifyAllow[(v > 1) ? 'set' : 'rem'](anyF, v - 1); }
             if (allF) { let v = fol.modifyBlock.get(allF); fol.modifyBlock[(v > 1) ? 'set' : 'rem'](allF, v - 1); }
-          }
+          }3
         });
+      },
+      follow: function(rec) {
+        // Note: may pass Recs with "!"-prefixed uids - they're ignored
+        let drops = [ rec, ...rec.members ].map(r => r.uid[0] === '!' ? C.skip : this.followRec(r));
+        return Drop(null, () => drops.forEach(d => d.dry()));
       },
       modifyRec: function(rec, newVal) {
         
@@ -675,9 +532,9 @@ U.buildRoom({
         // Below has permission to modify this `rec` as it desires, and
         // if so do the modification.
         
-        if (rec.value !== null && newVal.value !== null)
-          if (U.inspOf(rec.value) !== U.inspOf(newVal))
-            throw new Error(`Can't modify - tried to modify ${U.nameOf(rec.value)} -> ${U.nameOf(newVal)}`);
+        if (rec.val !== null && newVal.val !== null)
+          if (U.inspOf(rec.val) !== U.inspOf(newVal))
+            throw new Error(`Can't modify - tried to modify ${U.nameOf(rec.val)} -> ${U.nameOf(newVal)}`);
         
         let fol = this.fols.get(rec);
         if (!fol) throw new Error(`Modification denied`);
@@ -691,27 +548,29 @@ U.buildRoom({
         for (let f of fol.modifyBlock.keys()) if (f(newVal)) { allPass = false; break; }
         if (!allPass) throw new Error(`Can't modify since an "all" denied`);
         
-        if (U.isType(newVal, Object)) rec.wobble({ ...(rec.value || {}), ...newVal });
-        else                          rec.wobble(newVal);
+        if (U.isType(newVal, Object)) rec.drip({ ...(rec.val || {}), ...newVal });
+        else                          rec.drip(newVal);
       },
       
-      shut0: function() {
-        insp.Rec.shut0.call(this);
+      onceDry: function() {
+        insp.Rec.onceDry.call(this);
         clearTimeout(this.expiryTimeout); this.expiryTimeout = null;
       },
       /// =ABOVE}
       
       tell: function(msg, conn=null) {
-        if (conn) {
-          if (!this.conns.has(conn)) throw new Error(`Provided Conn doesn't connect this Hut`);
-        } else {
+        let conns = this.cpu.connNozz.set;
+        if (conns.isEmpty()) throw new Error(`Hut ${this.getTerm()} has no Conns`);
+        if (conn && !conns.has(conn)) throw new Error(`Provided Conn doesn't apply to Hut`);
+        
+        if (!conn) {
           let bestCost = U.int32;
-          for (let conn0 of this.conns) {
-            if (conn0.serverWob.cost < bestCost) { conn = conn0; bestCost = conn0.serverWob.cost; }
+          for (let conn0 of conns) {
+            let cost = conn0.server.cost;
+            if (cost < bestCost) { conn = conn0; bestCost = cost; }
           }
         }
         
-        if (!conn) throw new Error(`Hut ${this.cpuId} has no Conns`);
         conn.tell(msg);
       }
     })});

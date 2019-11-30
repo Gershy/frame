@@ -3,7 +3,9 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real', 'realHtmlCss' ],
   build: (foundation, hinterlands, record, real, realHtmlCss) => {
     
-    let { HorzScope, Hog, Wob, WobVal, WobTmp, AggWobs } = U;
+    //let { HorzScope, Hog, Wob, WobVal, WobTmp } = U;
+    let { Load, Free, Flow, Flux } = U.life;
+    
     let { Rec, recTyper } = record;
     let { Lands } = hinterlands;
     

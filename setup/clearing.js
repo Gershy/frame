@@ -12,8 +12,8 @@ let C = global.C = {
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
 protoDef(Object, 'map', function(fn) {
-  let ret = {};
-  for (let k in this) { let v = fn(this[k], k); if (v !== C.skip) ret[k] = v; }
+  let ret = Object.assign({}, this);
+  for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
   return ret;
 });
 protoDef(Object, 'toArr', function(it) {
@@ -40,10 +40,8 @@ protoDef(Object, 'find', function(f) { // Returns [ VAL, KEY ]
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
 protoDef(Object, 'gain', function(obj) {
-  for (let k in obj) {
-    let v = obj[k];
-    if (v !== C.skip) { this[k] = v; } else { delete this[k]; }
-  }
+  Object.assign(this, obj);
+  for (let k in obj) if (obj[k] === C.skip) delete this[k];
   return this;
 });
 protoDef(Object, 'to', function(f) { return f(this); });
@@ -135,7 +133,7 @@ protoDef(String, 'polish', function(c=null) {
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
 Set.prototype = SetOrig.prototype;
-protoDef(SetOrig, 'toArr', function(fn) {
+protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; returns VAL
   let ret = [], ind = 0;
   for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
   return ret;
@@ -150,7 +148,7 @@ protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
 let MapOrig = Map;
 Map = global.Map = function Map(...args) { return new MapOrig(...args); };
 Map.prototype = MapOrig.prototype;
-protoDef(MapOrig, 'toObj', function(fn) { // Iterator returns [ KEY, VAL ] pairs
+protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; returns [ KEY, VAL ] pairs
   let ret = {};
   for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
@@ -175,12 +173,12 @@ Promise.allObj = async obj => {
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
+protoDef(Promise, 'route', Promise.prototype.then);
 
 let U = global.U = {
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
-    if (!U.dbgCntMap.has(name)) U.dbgCntMap[name] = 0;
-    else                        U.dbgCntMap[name]++;
+    U.dbgCntMap[name] = U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0;
     return U.dbgCntMap[name];
   },
   dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
@@ -240,8 +238,8 @@ let U = global.U = {
       for (let [ methodName, method ] of Object.entries(inspProto)) {
         // `inspProto` contains a "constructor" property that needs to be skipped
         if (methodName === 'constructor') continue;
-        if (!methodsByName.has(methodName)) methodsByName[methodName] = [];
-        methodsByName[methodName].push(method);
+        if (!methodsByName.has(methodName)) methodsByName[methodName] = Set();
+        methodsByName[methodName].add(method);
       }
     });
     
@@ -249,19 +247,21 @@ let U = global.U = {
     for (let methodName in methods) {
       let method = methods[methodName];
       
-      // Dollar-sign indicates class-level property
       // All methods here are the single method of their name!
       // They may call inherited methods of the same name (or not)
-      if (methodName[0] === '$')  Insp[methodName.crop(1, 0)] = method; 
-      else                        methodsByName[methodName] = [ method ]; // Guaranteed to be singular
+      if (methodName[0] === '$')  Insp[methodName.crop(1, 0)] = method;        // "$" = class-level property
+      else                        methodsByName[methodName] = Set([ method ]); // Guaranteed to be singular
+      
     }
     
     if (!methodsByName.has('init')) throw new Error('No "init" method available');
     
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName];
-      if (methodsAtName.length > 1) throw new Error(`Multiple methods "${methodName}" for ${name}; declare a custom method`);
-      protoDef(Insp, methodName, methodsAtName[0]); // `methodsAtName.length` will certainly be `1`
+      if (methodsAtName.size > 1) {
+        throw new Error(`Found ${methodsAtName.size} methods "${methodName}" for ${name}; declare a custom method`);
+      }
+      protoDef(Insp, methodName, methodsAtName.toArr(v=>v)[0]); // `methodsAtName.length` will certainly be `1`
     }
     
     protoDef(Insp, 'constructor', Insp);
@@ -300,338 +300,216 @@ let U = global.U = {
     
   },
   
+  life: {},
   setup: {}, // Gains items used for setup
   rooms: {}
 };
 
-let Hog = U.inspire({ name: 'Hog', methods: (insp, Insp) => ({
-  init: function(shut=null) {
-    this.shutWob0 = U.WobOne();
-    if (shut) this.shut0 = shut; // Allow easy overwrite of "shut0" functionality
+let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
+  init: function(drier=null, onceDry=null) {
+    this.drier = drier; // `drier` may have "nozz", "isWet", "onceDry"
+    if (onceDry) this.onceDry = onceDry;
   },
-  isShut: function() { return !!this.didShut; },
-  shut0: function() { /* nothing */ },
-  shut: function(group=Set()) {
-    // TODO: Eventually get rid of `group`, and always excuse double-shuts??
-    if (group.has(this)) return; // Double-shut is excused!
-    group.add(this);
+  isWet: function() {
+    let drier = this.drier;
+    if (!drier) return true;                     // Drops without Driers are always Wet
+    if (drier.isWet) return this.drier.isWet();  // If the Drier provides "isWet", use it!
+    if (!drier.nozz) return true;                // If Drier has no Nozz, always Wet
     
-    if (this.didShut) { let err = new Error('Second shut'); err.firstShut = this.didShut; throw err; }
-    this.didShut = new Error('First shut');
-    this.shut0(group);
-    this.shutWob0.wobble();
+    // A cheeky technique to check dryness when `drier.nozz` exists
+    let isDry = false; drier.nozz.route(() => isDry = true).dry(); return !isDry;
   },
-  shutWob: function() { return this.shutWob0; }
-})});
-
-let Wob = U.inspire({ name: 'Wob', methods: (insp, Insp) => ({
-  init: function() { this.holds = new Set(); },
-  numHolds: function() { return this.holds ? this.holds.size : 0; },
-  hold: function(holdFn) {
-    if (this.holds.has(holdFn)) throw new Error('Already held');
-    this.holds.add(holdFn);
-    return Hog(() => this.shutHolder(holdFn));
+  isDry: function() { return !this.isWet(); },
+  onceDry: function() {},
+  dry: function() {
+    if (this.isDry()) return;
+    this.onceDry();
+    if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
+    if (this.isWet()) this.isWet = () => false; // Accomodate poor implementations
   },
-  shutHolder: function(holdFn) { this.holds.delete(holdFn); },
-  wobble: function(...args) { this.holds.forEach(holdFn => this.toHold(holdFn, ...args)); },
-  toHold: function(holdFn, ...args) { holdFn(...args); }
-})});
-let WobOne = U.inspire({ name: 'WobOne', insps: { Wob }, methods: (insp, Insp) => ({
-  init: function() {
-    insp.Wob.init.call(this);
-  },
-  hold: function(holdFn) {
-    // If we haven't wobbled, regular `Wob` functionality
-    if (this.holds)     return insp.Wob.hold.call(this, holdFn);
-    
-    // If `!this.holds`, we're either mid-wobble or done wobbling:
-    if (this.tmpHolds)  this.tmpHolds.add(holdFn);  // Mid-wobble: we're already iterating `this.tmpHolds` so queue `holdFn` and we'll get to it
-    else                this.toHold(holdFn);        // Done wobbling: call `holdFn` immediately with no args
-    
-    // Return a duck-typed Hog which ignores shuts and wobbles as if
-    // its already been shut
-    return { shut: () => {}, shutWob: () => this, isShut: () => true };
-  },
-  shutHolder: function(holdFn) {
-    if (this.holds) this.holds.delete(holdFn);
-    else if (this.tmpHolds) this.tmpHolds.delete(holdFn);
-  },
-  wobble: function(...args) {
-    if (!this.holds) return; // Can only wobble once; the 1st time is detected by `!!this.holds`
-    this.tmpHolds = this.holds;
-    this.holds = null;
-    this.tmpHolds.forEach(holdFn => this.toHold(holdFn, ...args));
-    delete this.tmpHolds;
+  drierNozz: function() {
+    if (!this.drier) throw new Error('No "drier" available');
+    if (!this.drier.has('nozz')) throw new Error('No "drier.nozz" available');
+    return this.drier.nozz;
   }
 })});
-let WobVal = U.inspire({ name: 'WobVal', insps: { Wob }, methods: (insp, Insp) => ({
-  init: function(value=null) {
-    insp.Wob.init.call(this);
-    this.value = value;
+let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
+  init: function() { this.routes = Set(); },
+  route: function(routeFn) {
+    this.routes.add(routeFn);
+    this.newRoute(routeFn);
+    return Drop({ isWet: () => this.routes.has(routeFn), onceDry: () => this.routes.rem(routeFn) });
   },
-  hold: function(holdFn, hasty=true) {
-    let ret = insp.Wob.hold.call(this, holdFn);
-    if (hasty) this.toHold(holdFn, this.value, null);
-    return ret;
-  },
-  wobble: function(value=null, force=U.isType(value, Object)) {
-    // Wobbles ought to be prevented on duplicate data; impossible to
-    // detect mutation of value though, e.g. on Object props. The Above
-    // should generate a wobble even though the param to `wobbly.wobble`
-    // appears to be a duplicate - so the default behaviour here is
-    // to force the wobble to occur if the new value is an Object.
-    let origVal = this.value;
-    if (!force && value === origVal) return; // Duplicate value!
-    this.value = value;
-    insp.Wob.wobble.call(this, value, origVal);
-  },
-  modify: function(func, force) { this.wobble(func(this.value), force); }
-})});
-let WobTmp = U.inspire({ name: 'WobTmp', insps: { Wob }, methods: (insp, Insp) => ({
-  
-  // Wob Temporary
-  
-  init: function(pos='up', value=null) {
-    if (![ 'up', 'dn' ].has(pos)) throw new Error(`Param should be "up" or "dn"; got ${pos}`);
-    insp.Wob.init.call(this);
-    this.tmp = null;
-    if (pos === 'up') this.up(value);
-  },
-  inverse: function() {
-    
-    // TODO: Need to test WobTmp.prototype.inverse
-    
-    if (!this.inverse0) {
-      this.inverse0 = WobTmp(this.pos === 'up' ? 'dn' : 'up');
-      this.inverse0.inverse0 = this;
-      
-      // Now, forever, wobbles on us have an inverse effect on `this.inverse0`
-      this.hold(tmp => {
-        this.inverse0.dn(); // Us going up puts our inverse down
-        tmp.shutWob().hold(() => this.inverse0.up()); // TODO: Would pass `tmp.value` here if `this.inverse0` were initializable with a value
-      });
-      
-    }
-    return this.inverse0;
-    
-  },
-  up: function(value=null) {
-    if (this.tmp) throw new Error('Already up');
-    this.tmp = Hog(() => { this.tmp = null; });
-    this.tmp.value = value;
-    this.wobble(this.tmp);
-    return Hog(() => this.dn());
-  },
-  dn: function() {
-    if (!this.tmp) throw new Error('Already dn');
-    this.tmp.shut();
-  },
-  hold: function(holdFn) {
-    let ret = insp.Wob.hold.call(this, holdFn);
-    if (this.tmp) this.toHold(holdFn, this.tmp);
-    return ret;
-  },
-  wobble: function(...args) { return insp.Wob.wobble.call(this, this.tmp, ...args); }
-})});
-
-let WobSquad = U.inspire({ name: 'WobSquad', insps: {}, methods: (insp, Insp) => ({
-  // Added Wobs have "toHolds" intercepted, and repurposed to collect a mapping of
-  // all args going to all holds of the Wob.
-  // Shut Wobs are simply collected.
-  
-  init: function() {
-    this.wobs = new Set(); // Maps a `Wob` to its related WobItem
-    this.shuts = new Set();
-    
-    this.err = new Error('');
-    setTimeout(() => {
-      if (this.wobs) { this.err.message = 'INCOMPLETE AGG'; throw this.err; }
-      delete this.err;
-    }, 0);
-  },
-  wobble: function(rec, ...args) { this.addWob(rec); return rec.wobble(...args); },
-  shut: function(rec) { this.shuts.add(rec); },
-  addWob: function(wob) {
-    
-    if (this.wobs.has(wob)) return wob; // Allowed to add the same `wob` multiple times (with no effect)
-    this.wobs.add(wob);
-    
-    // For each Wob there are many Holds. Each Hold may be contacted multiple times,
-    // with different values each time. These values could be simple literals, or
-    // could also be Hogs.
-    
-    wob.squadCnt = wob.squadCnt ? wob.squadCnt + 1 : 1;
-    
-    if (wob.squadCnt > 1) throw new Error('Multiple squads'); // TODO: Bad?
-    if (wob.squadCnt !== 1) return wob; // WobSquads past the first don't mask any functions
-    
-    let m = wob.squadMapHoldToArgsSet = Map();
-    wob['toHold'] = (holdFn, ...args) => {
-      // From the Wob, get a particular Hold, and add a set of arguments for it.
-      if (!m.has(holdFn)) m.set(holdFn, Set());
-      m.get(holdFn).add(args);
+  newRoute: function(routeFn) {},
+  drip: function(...items) { for (let routeFn of this.routes) routeFn(...items); },
+  block: function() {
+    this.routes = Set();
+    this.route = routeFn => {
+      this.newRoute(routeFn);
+      let drop = Drop(); drop.isWet = () => false;
+      return drop;
     };
-    
-    return wob;
+  }
+})});
+let Funnel = U.inspire({ name: 'Funnel', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(...nozzes) {
+    insp.Drop.init.call(this);
+    insp.Nozz.init.call(this);
+    this.joinRoutes = Set();
+    for (let nozz of nozzes) this.joinRoute(nozz);
   },
-  complete: function(err=null) {
-    
-    // Note that `err` indicates whether we are successfully completing.
-    // Regardless of success we still need to clean up our Wobs - by
-    // deleting the properties we attached to them. Only upon success do
-    // we perform wobbles and shut-wobbles.
-    
-    let wobs = this.wobs;
-    let shuts = this.shuts;
-    this.wobs = null;
-    this.shuts = null;
-    
-    // Catch up on buffered wobbles!
-    for (let wob of wobs) {
+  joinRoute: function(nozz) {
+    let joinRoute = nozz.route(this.drip.bind(this));
+    this.joinRoutes.add(joinRoute);
+    return joinRoute;
+  },
+  onceDry: function() { for (let jr in this.joinRoutes) jr.dry(); }
+})});
+let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(drier, nozz, flt=null) {
+    insp.Drop.init.call(this, drier);
+    insp.Nozz.init.call(this);
+    this.nozz = nozz;   // This Nozz is "above" the Tub - it flows into the Tub
+    this.val = C.skip;  // `null` indicates the `null` will be Dripped. `C.skip` indicates no Drip
+    this.itemDryRoute = null; // A Route to know if latest item goes Dry
+    this.nozzRoute = this.nozz.route(item => {
+      // If filter, replace `item` with filter result and ignore skips
+      if (flt && (item = flt(item)) === C.skip) return;
       
-      if (wob.squadCnt > 1) { wob.squadCnt--; return; } // There are still more WobSquad holding `wob`
+      // Check to see if `item` is a Drop
+      let itemIsDrop = U.isInspiredBy(item, Drop);
+      if (itemIsDrop && item.isDry()) return; // Skip Dry Drops
       
-      // Get reference to needed data, then clean up our "toHold" mask and other "squad*" props
-      let holdsToArgsSet = err || wob.squadMapHoldToArgsSet;
-      delete wob['toHold'];
-      delete wob.squadCnt;
-      delete wob.squadMapHoldToArgsSet;
+      // Remove previous Item-Dry-Route if it exists
+      if (this.itemDryRoute) throw new Error('A value is already set');
       
-      // In the case of an error skip calling any Holds!
-      if (err) continue;
+      // If `item` is a Drop with a Drier-Nozz add additional Routes
+      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
+      if (itemDryNozz) {
+        // Note that no drip occurs when `item` dries
+        this.itemDryRoute = itemDryNozz.route(() => { this.itemDryRoute = null; this.val = C.skip; });
+      }
       
-      // Call each Hold once for every set of arguments it is meant to be called with
-      holdsToArgsSet.forEach((argsSet, holdFn) => argsSet.forEach(args => holdFn(...args)));
+      // Update our value
+      this.val = item;
+      if (this.val !== C.skip) this.drip(item);
+    });
+  },
+  newRoute: function(routeFn) { if (this.val !== C.skip) routeFn(this.val); },
+  onceDry: function() {
+    this.nozzRoute.dry();
+    if (this.itemDryRoute) this.itemDryRoute.dry();
+  }
+})});
+let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(drier, nozz, flt=null) {
+    insp.Drop.init.call(this, drier);
+    insp.Nozz.init.call(this);
+    this.nozz = nozz;
+    this.set = Set();
+    this.tubRoutes = Set();
+    this.tubRoutes.add(this.nozz.route(item => {
+      // If filter, replace `item` with filter result and ignore skips
+      if (flt && (item = flt(item)) === C.skip) return;
       
-    }
+      // Check to see if `item` is a Drop
+      let itemIsDrop = U.isInspiredBy(item, Drop);
+      if (itemIsDrop && item.isDry()) return;
+      
+      // If `item` is a Drop with a Drier-Nozz add additional Routes
+      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
+      if (itemDryNozz) {
+        let itemDryRoute = itemDryNozz.route(() => {
+          this.tubRoutes.rem(itemDryRoute);
+          this.set.rem(item);
+        });
+        this.tubRoutes.add(itemDryRoute);
+      }
+      
+      // Add `item` to our set
+      this.set.add(item);
+      this.drip(item);
+    }));
+  },
+  newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
+  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
+})});
+let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(drier, nozz) {
+    insp.Drop.init.call(this, drier);
+    insp.Nozz.init.call(this);
+    this.nozz = nozz;
     
-    // Catch up on buffered shuts!
-    if (!err) {
-      let shutGroup = Set();
-      for (let hog of shuts) hog.shut(shutGroup);
-    }
+    let count = 0;
+    this.drop = Drop(defDrier());
+    this.drop.desc = `From TubDry`;
     
+    this.dropDryRoutes = Set();
+    this.nozzRoute = this.nozz.route(drop => {
+      
+      if (!U.isInspiredBy(drop, Drop)) throw new Error(`TubDry expected nozz to drip Drops - got ${U.nameOf(drop)}`);
+      if (!drop.drier) throw new Error('TubDry expects Drops to have "drier"');
+      if (!drop.drier.nozz) throw new Error('TubDry expects Drops to have "drier.nozz"');
+      if (drop.isDry()) return;
+      
+      if (count === 0) this.drop.dry();
+      count++;
+      
+      this.dropDryRoutes.add(drop.drier.nozz.route(() => {
+        count--;
+        if (count === 0) this.drip(this.drop = Drop(defDrier()));
+        this.drop.desc = `From TubDry`;
+      }));
+      
+    });
+  },
+  newRoute: function(routeFn) { if (this.drop.isWet()) routeFn(this.drop); },
+  onceDry: function() {
+    this.nozzRoute.dry();
+    for (let dr of this.dropDryRoutes) dr.dry();
+  }
+})});
+let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
+  init: function(nozz, fn) {
+    
+    this.dryNozz = Funnel();
+    insp.Drop.init.call(this, { nozz: TubVal(null, this.dryNozz), isWet: () => !!this.fn });
+    
+    this.fn = fn;
+    this.nozzRoute = nozz.route(drop => {
+      
+      if (!U.isInspiredBy(drop, Drop)) throw new Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
+      
+      // Allow shorthand adding of Deps and SubScopes
+      let deps = Set();
+      let addDep = dep => { deps.add(dep); return dep; };
+      addDep.scp = (subNozz, fn) => addDep(Scope(subNozz, fn));
+      
+      // Unscope if the Scope or Drop (assuming dryable Drop) dries
+      let dropUnscopedNozz = Funnel(this.dryNozz);
+      let drierNozz = drop.drier && drop.drier.has('nozz') && drop.drier.nozz;
+      if (drierNozz) dropUnscopedNozz.joinRoute(drierNozz);
+      deps.add(dropUnscopedNozz);
+      
+      // When Drop unscopes dry up all deps (Note: not the Drop itself!)
+      dropUnscopedNozz.route(() => { for (let dep of deps) dep.dry(); });
+      
+      this.fn(drop, addDep);
+      
+    });
+  },
+  onceDry: function() {
+    this.fn = null;
+    this.nozzRoute.dry();
+    this.dryNozz.drip();
   }
 })});
 
-let shutDependence = (dep, srcShutWobs) => {
-  
-  // Sets up a bunch of holds to implement shut dependence, such that
-  // if any SrcHog shuts, `dep`, the TrgHog, will shut as well!
-  // Note that setting up such a dependence creates many Hogs. Shutting
-  // these Hogs can't be accomplished directly - this function returns
-  // the SrcHog, and no explicit way of undoing the shut-dependence.
-  // It may sound workable to add an extra Hog into `srcShutWobs`, and
-  // shut it when the dependence should be undone - but note this will
-  // also shut `dep`! At the moment there is no way to remove the
-  // dependence without shutting `dep`.
-  
-  // Note that our SrcShuts aren't a list of Hogs, but rather Wobs -
-  // which can be produced via `theHog.shutWob()`. This gives us more
-  // freedom - we can pass Wobs that aren't specifically ShutWobs, and
-  // tie `dep`'s dependence to these Wobs as well!
-  
-  if (!dep.shutWob) throw new Error(`Invalid "dep": ${U.nameOf(dep)}`);
-  if (srcShutWobs.find(w => !w.hold)) throw new Error(`Invalid srcShutWobs: [ ${srcShutWobs.map(U.nameOf).join(', ')} ]`);
-  
-  // A set of all SrcHolds which will cause `dep` (the TrgHold) to shut
-  let srcShutCauseDepShutHolds = null;
-  
-  // When Dep shuts immediately stop holding
-  let depShutFirstWob = dep.shutWob().hold(() => {
-    let holdsToDrop = srcShutCauseDepShutHolds;
-    srcShutCauseDepShutHolds = null;
-    
-    // Shut every non-null src hold
-    let shutGroup = Set();
-    holdsToDrop.forEach(hold => hold && hold.shut(shutGroup));
-  });
-  
-  // It's possible that `dep.shutWob()` has wobbled before any
-  // `srcShutCauseDepShutHolds` are initialized.
-  if (!srcShutCauseDepShutHolds) {
-    // If the HorzScope or Hog shut, immediately shut all src holds!
-    // Note that shutting `dep` will cause all such holds to be dropped
-    
-    srcShutCauseDepShutHolds = [];
-    for (let srcShut of srcShutWobs) {
-      if (!srcShutCauseDepShutHolds) break; // Cut short if everything has shut
-      srcShutCauseDepShutHolds.push(srcShut.hold((...args) => dep.shut(...args)));
-    }
-  }
-  
-  return dep;
-  
+let defDrier = () => {
+  let nozz = Nozz();
+  let wet = true;
+  nozz.newHold = holdFn => !wet && holdFn();
+  nozz.desc = 'Default Drier instance';
+  return { nozz, isWet: () => wet, onceDry: () => { wet = false; nozz.drip(); nozz.block(); } };
 };
-let HorzScope = U.inspire({ name: 'HorzScope', insps: { Hog }, methods: (insp, Insp) => ({
-  init: function(hogWob, gen=null, dbg=false) {
-    insp.Hog.init.call(this);
-    
-    this.gen = gen;
-    this.hogWobHold = null;
-    this.open(hogWob);
-  },
-  open: function(hogWob) {
-    
-    this.hogWobHold = hogWob.hold(hog => {
-      
-      // If somehow an already-shut Hog is wobbled, ignore it. This can
-      // happen when using WobSquads, for example!
-      if (hog.isShut()) return;
-      
-      // Whatever the user passes as a Dep will be tied to `hog`
-      let addHogDep = dep => { shutDependence(dep, [ hog.shutWob(), this.shutWob() ]); return dep; };
-      this.gen(addHogDep, hog, this);
-      
-    });
-    
-  },
-  shut0: function(group=Set()) { this.hogWobHold.shut(group); },
-})});
-let VertScope = U.inspire({ name: 'VertScope', insps: { Wob, Hog }, methods: (insp, Insp) => ({
-  init: function(wob=null) {
-    insp.Wob.init.call(this);
-    insp.Hog.init.call(this);
-    this.genSubWob = null;
-    this.children = Set();  // All our sub-states
-  },
-  trackWob: function(wob, depHog=null, path=[]) { // TODO: Consider adding an "squad" param?
-    
-    // `wob` is a Rec wobbled by our mainWob
-    
-    if (wob.isShut()) return; // Skip Wobs which are somehow already shut
-    
-    // `trackHog` lives so long as this `VertScope` is tracking `wob`
-    let trackHog = Hog();
-    let deps = [ this.shutWob(), wob.shutWob() ];
-    if (depHog) deps.push(depHog.shutWob());
-    shutDependence(trackHog, deps);
-    
-    let addHogDep = dep => { shutDependence(dep, [ trackHog.shutWob() ]); return dep; };
-    let fullPath = [ wob, ...path ];
-    this.wobble(addHogDep, fullPath);
-    
-    this.children.forEach(child => {
-      
-      // Generate some new `Wob` derived from `Wob`
-      let relWob = child.genSubWob(wob);
-      
-      // Wobble `tWobs` ("TrackWobs") when `relWob` wobbles!
-      // Derived Wobs wobble "TrackWobs". All the VertScope's children
-      // are informed of a new TrackWob.
-      let holdRelWob = relWob.hold(tWob => child.trackWob(tWob, trackHog, fullPath));
-      shutDependence(holdRelWob, [ trackHog.shutWob() ]);
-      
-    });
-    
-  },
-  dive: function(genSubWob) {
-    let childVertScope = VertScope();
-    childVertScope.genSubWob = genSubWob;
-    this.children.add(childVertScope);
-    return childVertScope;
-  },
-  shut0: function(...args) { this.children.forEach(child => child.shut(...args)); }
-})});
-
-U.gain({ Hog, Wob, WobOne, WobVal, WobTmp, HorzScope, WobSquad, VertScope });
+U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier };

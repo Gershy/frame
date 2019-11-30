@@ -436,6 +436,8 @@ U.buildRoom({
               overflow: 'hidden'
             }
           }},
+          { selector: 'body', zoneCss: { main: { opacity: '0', transition: 'opacity 600ms linear' } }},
+          { selector: 'body.loaded', zoneCss: { main: { opacity: '1' } }},
           { selector: ':focus', zoneCss: {
             main: {
               boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'
@@ -457,7 +459,11 @@ U.buildRoom({
           ...cssRules
         ];
         
-        let cmpCssText = cssRules.map(({ nameChain=null, selector=null, zoneCss }) => {
+        let cmpCssText = cssRules.map(cssRule => {
+          
+          if (U.isType(cssRule, String)) return cssRule;
+          
+          let { nameChain=null, selector=null, zoneCss } = cssRule;
           
           if (selector === null) selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
           
@@ -491,7 +497,26 @@ U.buildRoom({
         
         foundation.addMountDataAsFile('realHtmlCssMainStyles.css', 'text/css', this.genCss());
         
-        lands.comWob('getInit').hold(async ({ absConn, hut, msg, reply }) => {
+        lands.comNozz('getInit').route(async ({ absConn, hut, msg, reply }) => {
+          
+          // NOTE: Need to reset and gen initial Tell before *any* async
+          // behaviour - otherwise a Tell may occur between the start of
+          // this function and the point where `hut.resetSyncState` is
+          // finally called. This intermediate Tell could have version 0
+          // and this would conflict with the initial sync included in
+          // the html <script>, which *always* has version set to 0
+          
+          // NOTE: Tells may be requested during async portions here but
+          // these will have the correct version. It is upon the client
+          // to ensure that they don't process these intermediate tells
+          // (which would have non-zero version) before receiving the
+          // initial html. It's unlikely that clients would ever even do
+          // this, as it would require them to have initiated Conns
+          // (banked http polls, connected sokts, etc.) *before* running
+          // the js embedded in the html
+          
+          hut.resetSyncState(); // The FarHut starts from scratch
+          let initSyncTell = hut.genSyncTell();
           
           let baseParams = { [absConn.isSpoofed ? 'spoof' : 'cpuId']: absConn.cpuId };
           let urlFn = p => {
@@ -506,7 +531,6 @@ U.buildRoom({
           let html = doc.add(XmlElement('html', 'container'));
           
           let head = html.add(XmlElement('head', 'container'));
-          
           let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
           
           let favicon = head.add(XmlElement('link', 'singleton'));
@@ -542,21 +566,18 @@ U.buildRoom({
           let scriptTextItems = [];
           let totalLineCount = 0;
           fileSourceData.forEach(({ content, offsets, numLines }, roomName) => {
-            
             scriptTextItems.push(`// ==== File: ${roomName} (line count: ${numLines})`); totalLineCount += 1;
             debugLineData.rooms[roomName] = { offsetWithinScript: totalLineCount, offsets };
             scriptTextItems.push(content); totalLineCount += numLines;
             scriptTextItems.push(''); totalLineCount += 1;
-            
           });
           
-          hut.resetFollows(); // The FarHut starts from scratch
           let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
             '// ==== File: hut.js (line count: 8)',
             `U.cpuId = '${absConn.cpuId}';`,
             `U.hutTerm = '${hut.getTerm()}';`,
             `U.aboveMsAtResponseTime = ${foundation.getMs()};`,
-            `U.initData = ${JSON.stringify(hut.genSyncTell())};`,
+            `U.initData = ${JSON.stringify(initSyncTell)};`,
             `U.debugLineData = ${JSON.stringify(debugLineData)};`,
             'let { FoundationBrowser } = U.setup;',
             `let foundation = FoundationBrowser();`,
@@ -575,10 +596,10 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        lands.comWob('realHtmlCssGetFavicon').hold(({ absConn, hut, msg, reply }) => {
+        lands.comNozz('realHtmlCssGetFavicon').route(({ absConn, hut, msg, reply }) => {
           U.safe(() => reply(foundation.getMountFile('favicon.ico')), err => reply(err));
         });
-        lands.comWob('realHtmlCssGetStylesheet').hold(({ absConn, hut, msg, reply }) => {
+        lands.comNozz('realHtmlCssGetStylesheet').route(({ absConn, hut, msg, reply }) => {
           U.safe(() => reply(foundation.getMountFile('realHtmlCssMainStyles.css')), err => reply(err));
         });
         
@@ -586,19 +607,8 @@ U.buildRoom({
       
       /// =ABOVE}
       
-      getCmpTimeFwkAssets: function() {
-        
-        return {
-          'style.css': {
-            contentType: 'text/css',
-            content: this.genCss()
-          }
-        };
-        
-      },
+      getRealCls: function() { return HtmlCssReal; },
       initReal0: function(real, layout, trail) {
-        
-        
         // Create dom element and add class for `layout.name`
         let cmps = this.getLayoutCmps(layout, ...trail);
         let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
@@ -626,24 +636,49 @@ U.buildRoom({
         let dom = childReal.realized;
         dom.parentNode.removeChild(dom);
       },
-      makeFeelable: function(r, wobTmp) {
-        let up = () => !wobTmp.tmp && wobTmp.up();
-        let dn = () => wobTmp.tmp && wobTmp.dn();
+      initFeel: function(real) {
+        let dom = real.realized;
         
-        let dom = r.realized;
-        dom.addEventListener('mousedown', evt => customEvent(evt) && up());
-        dom.addEventListener('mouseup', evt => customEvent(evt) && dn());
+        let mouseDnFn = evt => {
+          customEvent(evt);
+          
+          let drop = real.sense.feel.feelDrop = Drop();
+          real.sense.feel.drip(drop);
+          
+          let mouseUpFn = evt => {
+            customEvent(evt);
+            dom.removeEventListener('mouseup', mouseUpFn, true);
+            drop.dry();
+          };
+          dom.addEventListener('mouseup', mouseUpFn, true);
+        };
+        dom.addEventListener('mousedown', mouseDnFn, true);
         
-        // Note we only process the "enter" key
-        let keySet = real.keys.activate;
-        dom.addEventListener('keydown', evt => keySet.has(evt.keyCode) && customEvent(evt) && up());
-        dom.addEventListener('keyup', evt => keySet.has(evt.keyCode) && customEvent(evt) && dn());
+        // TODO: If bringing back in key-activation of feelable Reals,
+        // make sure that the same Real can't be felt simultaneously
+        // with mouse and keyboard!
+        /// // Note we only process the "enter" key
+        /// let keySet = real.keys.activate;
+        /// dom.addEventListener('keydown', evt => keySet.has(evt.keyCode) && customEvent(evt) && up());
+        /// dom.addEventListener('keyup', evt => keySet.has(evt.keyCode) && customEvent(evt) && dn());
         
         dom.setAttribute('tabIndex', '0');
         dom.style.gain({ cursor: 'pointer' });
         
-        r.shutWob().hold(dn); // Deactive wob if/when Real shuts
+        // TODO: Do we need to concern ourselves with drying the Feel
+        // Drop if the Real dries mid-feel? Or is it the responsibility
+        // of the user to design code that clears up Feel routes when
+        // the Real being felt dries up??
+        ///real.shutFlow().route(dn); // Deactivate if/when Real shuts
       }
+    })});
+    let HtmlCssReal = U.inspire({ name: 'HtmlCssReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
+      init: function(...args) {
+        insp.Real.init.call(this, ...args);
+        console.log(this.layout);
+      },
+      setSize: function() { console.log('SET SIZE!'); },
+      setLoc: function() { console.log('SET LOC!'); }
     })});
     
     return { Reality };
