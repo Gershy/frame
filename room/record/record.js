@@ -79,11 +79,11 @@ U.buildRoom({
       
       init: function({ drier=null, val=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
         
-        if (!drier) drier = defDrier(); //{ nozz: TubVal(null, Nozz()) };
-        
-        if (!drier.nozz) throw new Error('Missing "drier.nozz"');
         if (type === null) throw new Error(`Missing "type"`);
         if (uid === null) throw new Error(`Missing "uid"`);
+        
+        if (!drier) drier = defDrier(); //defDrier(Funnel(...members.map(m => m.drierNozz()))); //{ nozz: TubVal(null, Nozz()) };
+        if (!drier.nozz) throw new Error('Missing "drier.nozz"');
         
         insp.Drop.init.call(this, drier);
         insp.Nozz.init.call(this);
@@ -91,14 +91,17 @@ U.buildRoom({
         this.type = type;
         this.uid = uid;
         this.val = val;
+        this.desc = `${this.type.name}@${this.uid}`;
         
         this.relNozzes = {};
         this.members = members; // GroupRecs link to all MemberRecs
         
+        this.memberDryRoutes = this.members.map(mem => mem.drierNozz().route(() => this.dry()));
+          
         // TODO: When MemberRecs shut, in `doShut`, they shut their
         // GroupRecs. So the following is redundant?
         // TODO: Also consider keeping this, but removing `doShut` -
-        // that could free up some requirements of `relNozz()
+        // that could free up some requirements of `relNozz()`
         /// // Any MemberRec shutting causes `this` GroupRec to shut
         /// // `this` GroupRec shutting releases all holds on MemberRecs
         /// let holds = members.map(m => m.shutFlow().hold(() => this.shut()));
@@ -141,10 +144,8 @@ U.buildRoom({
       modify: function(fn) { this.update(fn(this.val)); },
       newRoute: function(routeFn) { routeFn(this.val); },
       onceDry: function() {
-        this.relNozzes.forEach(relNozz => {
-          if (U.isType(relNozz, TubVal)) { if (relNozz.val !== C.skip) relNozz.val.dry(); }
-          if (U.isType(relNozz, TubSet)) { for (let gr of relNozz.set) gr.dry(); } // "gr" = "GroupRec"
-        });
+        for (let memRoute of this.memberDryRoutes) memRoute.dry();
+        this.relNozzes = {};
       }
       
     })});

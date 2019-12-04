@@ -26,7 +26,7 @@ U.buildRoom({
       
     };
     let unitsEq = (u1, u2) => {
-      let Insp1=U.inspOf(u1), Insp2=U.inspOf(u2);
+      let Insp1 = U.inspOf(u1), Insp2 = U.inspOf(u2);
       if (Insp1 !== Insp2) return false;
       if (U.isInspiredBy(Insp1, Unit)) return u1.eq(u2);
       return u1 === u2;
@@ -95,7 +95,7 @@ U.buildRoom({
       },
       eq0: function(c) {
         if (this.units.length !== c.units.length) return false;
-        let byType=Map();
+        let byType = Map();
         for (let u1 of this.units) byType1.set(u1.constructor, u1);
         for (let u2 of c.units) {
           let u1 = byType.get(u2.constructor);

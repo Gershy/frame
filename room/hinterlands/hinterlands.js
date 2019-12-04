@@ -134,17 +134,27 @@ U.buildRoom({
             
           }
           
-          // Update Recs directly
-          updRec.forEach((newValue, uid) => {
-            if (!this.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
-            this.allRecs.get(uid).drip(newValue);
-          });
-          
-          // Remove Recs directly
-          remRec.forEach((val, uid) => {
-            if (!this.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
-            this.allRecs.get(uid).shut();
-          });
+          try {
+            
+            // Update Recs directly
+            updRec.forEach((newValue, uid) => {
+              if (!this.allRecs.has(uid)) throw new Error(`Tried to upd non-existent Rec @ ${uid}`);
+              this.allRecs.get(uid).update(newValue);
+            });
+            
+            // Remove Recs directly
+            remRec.forEach((val, uid) => {
+              if (!this.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
+              this.allRecs.get(uid).dry();
+            });
+            
+          } catch(err) {
+            
+            console.log('AN ERROR OCCURED FOR UPDATE:');
+            console.log(msg);
+            throw err;
+            
+          }
           
           // We've successfully moved to our next version!
           this.syncVersion = version;
@@ -185,7 +195,10 @@ U.buildRoom({
         return rec;
       },
       comNozz: function(command) {
-        if (!this.comNozzes.has(command)) this.comNozzes[command] = Nozz();
+        if (!this.comNozzes.has(command)) {
+          this.comNozzes[command] = Nozz();
+          this.comNozzes[command].desc = `Lands ComNozz for "${command}"`;
+        }
         return this.comNozzes[command];
       },
       hear: async function(absConn, hut, msg, reply=null) {
@@ -194,6 +207,7 @@ U.buildRoom({
         // Note: We don't allow a new `comNozz` to be created for
         // `command`; that could allow exploitation from Below.
         let comVal = { lands: this, absConn, hut, msg, reply };
+        
         if (this.comNozzes.has(command))  this.comNozzes[command].drip(comVal);
         if (hut.comNozzes.has(command))   hut.comNozzes[command].drip(comVal);
       },
@@ -373,7 +387,10 @@ U.buildRoom({
         return this.term;
       },
       comNozz: function(command) {
-        if (!this.comNozzes.has(command)) this.comNozzes[command] = Nozz();
+        if (!this.comNozzes.has(command)) {
+          this.comNozzes[command] = Nozz();
+          this.comNozzes[command].desc = `Hut ComNozz for "${command}"`
+        }
         return this.comNozzes[command];
       },
       
@@ -441,7 +458,7 @@ U.buildRoom({
         
         let addRec = this.sync.addRec.map(r => ({ type: r.type.name, val: r.val, memberUids: r.members.map(m => m.uid) }));
         let updRec = this.sync.updRec.map(r => r.val);
-        let remRec = this.sync.remRec.map(r => 1);
+        let remRec = this.sync.remRec.map(r => r.type.name);
         
         let content = {};
         if (!addRec.isEmpty()) content.addRec = addRec;

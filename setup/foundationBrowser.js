@@ -1,7 +1,6 @@
 (() => {
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
-  //let { Load, Free, Flow, Flux } = U.life;
   let { Foundation } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -103,7 +102,7 @@
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     addMountFile: function() { /* Nothing... */ },
     getMountFile: function(name) {
-      return { ISFILE: true, name, url: this.spoof ? `!FILE/${name}?spoof=${this.spoof}` : `!FILE/${name}` };
+      return { ISFILE: true, name, url: `?command=${name}&${this.spoof ? `spoof=${this.spoof}` : `cpuId=${U.cpuId}`}&reply=1` };
     },
     makeHttpServer: async function(pool, ip, port) {
       let numPendingReqs = 0;

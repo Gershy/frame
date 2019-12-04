@@ -55,7 +55,7 @@ Hut at the very bottom runs using a single Reality.
       if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(6, '0')
         + U.base62(Math.random() * Math.pow(62, 6)).padHead(6, '0');
       
-      let cpuId=conn.cpuId, cpu=null, serverConns=null, isKnownCpu=this.cpus.has(cpuId);
+      let cpuId = conn.cpuId, cpu = null, serverConns = null, isKnownCpu = this.cpus.has(cpuId);
       let dbgDesc = doNetworkDbg ? `${cpuId}:${server.desc.substr(0, 4)}` : '';
       
       if (isKnownCpu) { // Check if we've seen this cpu on another connection
@@ -77,7 +77,7 @@ Hut at the very bottom runs using a single Reality.
       if (doNetworkDbg) {
         
         console.log(`>-HOLD ${dbgDesc} on ${server.desc}`);
-        conn.hear.route(([ msg, reply ]) => console.log(`--HEAR ${dbgDesc}: ${this.dbgItem(msg)}`));
+        conn.hear.route(([ msg ]) => console.log(`--HEAR ${dbgDesc}: ${this.dbgItem(msg)}`));
         let origTell = conn.tell;
         conn.tell = (...args) => {
           console.log(`--TELL ${dbgDesc}: ${this.dbgItem(args[0])}`);

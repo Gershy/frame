@@ -184,11 +184,11 @@ let U = global.U = {
   dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
   int32: Math.pow(2, 32),
   base62: n => {
-    let pow=0, amt=1, next;
+    let pow = 0, amt = 1, next;
     while (true) { next = amt * 62; if (next > n) break; pow++; amt = next; }
     let amts = [];
     for (let p = pow; p >= 0; p--) {
-      let amt=Math.pow(62, p), div=Math.floor(n / amt);
+      let amt = Math.pow(62, p), div = Math.floor(n / amt);
       n -= amt * div;
       if (div < 10)       amts.push(`${div}`);
       else if (div < 36)  amts.push(String.fromCharCode(97 + div - 10));
@@ -325,7 +325,7 @@ let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
     if (this.isDry()) return;
     this.onceDry();
     if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-    if (this.isWet()) this.isWet = () => false; // Accomodate poor implementations
+    if (this.isWet()) this.isWet = () => false; // Ensure we're considered dry at this stage
   },
   drierNozz: function() {
     if (!this.drier) throw new Error('No "drier" available');
@@ -338,17 +338,26 @@ let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
   route: function(routeFn) {
     this.routes.add(routeFn);
     this.newRoute(routeFn);
-    return Drop({ isWet: () => this.routes.has(routeFn), onceDry: () => this.routes.rem(routeFn) });
+    return Drop(null, () => this.routes.rem(routeFn));
   },
   newRoute: function(routeFn) {},
-  drip: function(...items) { for (let routeFn of this.routes) routeFn(...items); },
-  block: function() {
+  drip: function(...items) {
+    for (let routeFn of this.routes) routeFn(...items);
+  },
+  block: function(doDrip, ...dripVals) {
+    // Cause any new Routes to receive "newRoute" functionality, but not
+    // to be held (and return a dry Drop in indication of this)
+    this.route = routeFn => { this.newRoute(routeFn); return Drop({ isWet: () => false }); };
+    
+    // Keep track of our most recent set of Routes, and then clear our Routes
+    let origRoutes = this.routes;
     this.routes = Set();
-    this.route = routeFn => {
-      this.newRoute(routeFn);
-      let drop = Drop(); drop.isWet = () => false;
-      return drop;
-    };
+    
+    // Do a final drip to our latest set of Routes if required
+    if (doDrip) for (let routeFn of origRoutes) routeFn(...dripVals);
+    
+    // If we're an instance of Drop release any resources
+    if (this.dry) this.dry();
   }
 })});
 let Funnel = U.inspire({ name: 'Funnel', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
@@ -396,6 +405,11 @@ let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, 
     });
   },
   newRoute: function(routeFn) { if (this.val !== C.skip) routeFn(this.val); },
+  dryContents: function() {
+    if (this.val === C.skip) return;
+    if (U.isInspiredBy(this.val, Drop)) this.val.dry();
+    this.val = C.skip;
+  },
   onceDry: function() {
     this.nozzRoute.dry();
     if (this.itemDryRoute) this.itemDryRoute.dry();
@@ -432,6 +446,9 @@ let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, 
     }));
   },
   newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
+  dryContents: function() {
+    for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry();
+  },
   onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
 })});
 let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
@@ -505,11 +522,22 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
   }
 })});
 
-let defDrier = () => {
-  let nozz = Nozz();
+let defDrier = (nozz=Nozz()) => {
+  
+  // Takes a Nozz to be the DrierNozz. Telling the associated Drop to
+  // dry will cause the given Nozz to drip, and become blocked. It will
+  // also cause the Nozz to always immediately drip from any new Routes
+  // that are attempted to be attached. (These Routes won't be attached,
+  // but the immediate drip will signal dryness to the implementation.)
+  // Note that dripping from the Nozz does NOT cause the associated Drop
+  // to dry. Call `Drop.prototype.dry()` as desired; it causes `nozz` to
+  // drip. Never call `nozz.drip()` directly - it would NOT cause the
+  // instance of Drop to dry.
+  
   let wet = true;
   nozz.newHold = holdFn => !wet && holdFn();
-  nozz.desc = 'Default Drier instance';
-  return { nozz, isWet: () => wet, onceDry: () => { wet = false; nozz.drip(); nozz.block(); } };
+  nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
+  return { nozz, isWet: () => wet, onceDry: () => { wet = false; nozz.block(true); } };
+  
 };
 U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier };

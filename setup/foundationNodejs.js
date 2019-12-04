@@ -4,7 +4,6 @@
       [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
-  //let { Load, Free, Flow, Flux } = U.life;
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -70,41 +69,6 @@
   };
   
   let { Foundation } = U.setup;
-  let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
-    init: function(tagName, type, text='') {
-      if (![ 'root', 'singleton', 'container', 'text' ].has(type)) throw new Error(`Invalid type; ${type}`);
-      this.tagName = tagName;
-      this.type = type;
-      this.props = {};
-      this.children = [];
-      this.text = '';
-      this.setText(text);
-    },
-    setText: function(text) {
-      if (text !== text.trim()) throw new Error(`Text "${text}" has extra whitespace`);
-      this.text = text;
-    },
-    setProp: function(name, value=null) { this.props[name] = value; },
-    add: function(child) {
-      if (![ 'root', 'container' ].has(this.type)) throw new Error(`Can\'t add to type ${this.type}`);
-      this.children.push(child);
-      return child;
-    },
-    toString: function(indent='') {
-      let lines = [];
-      let propStr = this.props.toArr((v, k) => v === null ? k : `${k}="${v}"`).join(' ');
-      if (propStr) propStr = ' ' + propStr;
-      
-      return ({
-        singleton: (i, t, p) => `${i}<${t}${p}${t.hasHead('!') ? '' : '/'}>\n`,
-        text: (i, t, p) => this.text.has('\n')
-          ? `${i}<${t}${p}>\n${this.text.split('\n').map(ln => i + '  ' + ln).join('\n')}\n${i}</${t}>\n`
-          : `${i}<${t}${p}>${this.text}</${t}>\n`,
-        root: (i, t, p, c) => `${i}${c.map(c => c.toString(i)).join('')}`,
-        container: (i, t, p, c) => `${i}<${t}${p}>${c.isEmpty() ? '' : '\n'}${c.map(c => c.toString(i + '  ')).join('')}${c.isEmpty() ? '' : i}</${t}>\n`
-      })[this.type](indent, this.tagName, propStr, this.children);
-    }
-  })});
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
     $parseSoktMessages: soktState => {
       let messages = [];
@@ -667,6 +631,14 @@
       };
     },
     addMountFile: function(name, type, src) {
+      
+      // TODO: We could skip the `name` parameter and make the
+      // implementor responsible for referencing the mounted file. The
+      // disadvantage would be that the Below would then also need to
+      // call `addMountFile` in order to have a reference to a
+      // MountedFile, instead of being able to reference the files it
+      // must have by name
+      
       let nativeDir = path.join(rootDir, src);
       try { fs.statSync(nativeDir); }
       catch(err) { throw new Error(`Couldn't add file ${name}: ${src}`); }
@@ -679,7 +651,7 @@
     },
     getMountFile: function(name) {
       if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
-      let { method, type, nativeDir } = this.mountedFiles[name];
+      let { type, nativeDir } = this.mountedFiles[name];
       
       return {
         ISFILE: true, type, name,
@@ -1007,8 +979,7 @@
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            let messages = Insp.parseSoktMessages(soktState);
-            for (let message of messages) conn.hear.drip([ message, null ]);
+            for (let message of Insp.parseSoktMessages(soktState)) conn.hear.drip([ message, null ]);
           } catch(err) {
             console.log(`Socket error:\n${this.formatError(err)}`);
             soktState = makeSoktState('ended');

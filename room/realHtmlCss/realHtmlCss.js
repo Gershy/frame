@@ -54,7 +54,12 @@ U.buildRoom({
         })[this.type](indent, this.tagName, propStr, this.children);
       }
     })});
-    /// =ABOVE}
+    /// =ABOVE} {BELOW=
+    let updStyle = (dom, prop, newVal) => {
+      if (newVal === null) return dom.style.removeProperty(camelToKebab(prop));
+      if (newVal !== dom.style[prop]) dom.style[prop] = newVal;
+    };
+    /// =BELOW}
     
     let unitCss = Map();
     let getUnitCss = unit => {
@@ -177,6 +182,7 @@ U.buildRoom({
           ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
           ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
           whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
+          pointerEvents: 'auto',
           textOverflow: 'ellipsis'
         };
         
@@ -433,7 +439,8 @@ U.buildRoom({
               left: '0', top: '0', width: '100%', height: '100%',
               margin: '0', padding: '0',
               fontFamily: 'monospace',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              pointerEvents: 'none'
             }
           }},
           { selector: 'body', zoneCss: { main: { opacity: '0', transition: 'opacity 600ms linear' } }},
@@ -520,7 +527,7 @@ U.buildRoom({
           
           let baseParams = { [absConn.isSpoofed ? 'spoof' : 'cpuId']: absConn.cpuId };
           let urlFn = p => {
-            return '/?' + ({ ...baseParams, ...p, reply: true }).toArr((v, k) => `${k}=${v}`).join('&');
+            return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
           };
           
           let doc = XmlElement(null, 'root');
@@ -603,6 +610,26 @@ U.buildRoom({
           U.safe(() => reply(foundation.getMountFile('realHtmlCssMainStyles.css')), err => reply(err));
         });
         
+        
+        lands.comNozz('realHtmlCssGetQuadTest').route(({ reply }) => {
+          
+          reply([
+            '<!DOCTYPE html>',
+            '<html>',
+            '  <head>',
+            '    <title>Quad Test</title>',
+            '  </head>',
+            '  <body>',
+            '    <iframe id="jimFrame" width="400" height="400" src="?spoof=jim"></iframe>',
+            '    <iframe id="bobFrame" width="400" height="400" src="?spoof=bob"></iframe>',
+            '    <iframe id="salFrame" width="400" height="400" src="?spoof=sal"></iframe>',
+            '    <iframe id="joeFrame" width="400" height="400" src="?spoof=joe"></iframe>',
+            '  </body>',
+            '</html>'
+          ].join('\n'));
+          
+        });
+        
       },
       
       /// =ABOVE}
@@ -662,8 +689,13 @@ U.buildRoom({
         /// dom.addEventListener('keydown', evt => keySet.has(evt.keyCode) && customEvent(evt) && up());
         /// dom.addEventListener('keyup', evt => keySet.has(evt.keyCode) && customEvent(evt) && dn());
         
+        // LAZY fix to use pointer-events: none. The entire purpose was
+        // allow deselecting a selected chesspiece by clicking on the
+        // piece itself (which couldn't happen ordinarily; it would be
+        // blocked by the indicator indicating it was selected)
         dom.setAttribute('tabIndex', '0');
-        dom.style.gain({ cursor: 'pointer' });
+        updStyle(dom, 'pointerEvents', 'auto');
+        updStyle(dom, 'cursor', 'pointer');
         
         // TODO: Do we need to concern ourselves with drying the Feel
         // Drop if the Real dries mid-feel? Or is it the responsibility
@@ -675,10 +707,68 @@ U.buildRoom({
     let HtmlCssReal = U.inspire({ name: 'HtmlCssReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
       init: function(...args) {
         insp.Real.init.call(this, ...args);
-        console.log(this.layout);
+        this.size = null;
+        this.loc = null;
       },
-      setSize: function() { console.log('SET SIZE!'); },
-      setLoc: function() { console.log('SET LOC!'); }
+      
+      setDeathTransition: function(ms, fn) {
+        
+        // TODO: doing `this.realized.parentNode.removeChild(this.realized)`
+        // needs to wait for `ms` millis. Need to collect data for compound
+        // attributes (like transform, transition, etc) for proper
+        // transitions.
+        
+      },
+      
+      setLayoutTransition: function(ms, type='smooth') {
+        if (!ms) return updStyle(this.realized, 'transition', null);
+        let cssFn = ({ 'smooth': 'ease-in-out', 'steady': 'linear' })[type];
+        let trnProps = `${Math.round(ms)}ms ${cssFn}`;
+        updStyle(this.realized, 'transition', [ 'width', 'height', 'left', 'top' ]
+          .map(v => `${v} ${trnProps}`).join(', '));
+      },
+      setSize: function(w, h) { this.size = [ w, h ]; this.updateLayout(); },
+      setLoc: function(x, y) { this.loc = [ x, y ]; this.updateLayout(); },
+      setLayout: function(w, h, x, y) { this.size = [ w, h ]; this.loc = [ x, y ]; this.updateLayout(); },
+      updateLayout: function() {
+        let dom = this.realized;
+        for (let p of [ 'position', 'left', 'top', 'width', 'height' ]) dom.style.removeProperty(p);
+        
+        updStyle(dom, 'position', 'absolute');
+        
+        if (this.size) {
+          dom.style.width = getUnitCss(this.size[0]);
+          dom.style.height = getUnitCss(this.size[1]);
+        }
+        if (this.loc) {
+          let [ w, h ] = this.size || dom.getBoundingClientRect().slice('width', 'height').toArr(UnitPx);
+          dom.style.left = getUnitCss(CalcAdd(this.loc[0], w.mult(-0.5)));
+          dom.style.top = getUnitCss(CalcAdd(this.loc[1], h.mult(-0.5)));
+        }
+      },
+      setImage: function(file) {
+        if (file) {
+          updStyle(this.realized, 'backgroundImage', `url('${file.url}')`) ;
+          updStyle(this.realized, 'backgroundSize', 'contain'); 
+        } else {
+          updStyle(this.realized, 'backgroundImage', null);
+          updStyle(this.realized, 'backgroundSize', null);
+        }
+      },
+      setRotate: function(amt) {
+        amt = tinyRound(amt - Math[amt < 0 ? 'ceil' : 'floor'](amt), 0.0001);
+        updStyle(this.realized, 'transform', amt ? `rotate(${amt * 360}deg)` : null);
+      },
+      setRoundness: function(amt) {
+        updStyle(this.realized, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
+      },
+      setBorder: function(ext, colour) {
+        updStyle(this.realized, 'boxShadow', ext.amt ? `inset 0 0 0 ${getUnitCss(ext)} ${colour}` : null);
+      },
+      setColour: function(colour=null) {
+        updStyle(this.realized, 'backgroundColor', colour);
+      }
+      
     })});
     
     return { Reality };
