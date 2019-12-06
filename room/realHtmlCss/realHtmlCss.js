@@ -589,7 +589,7 @@ U.buildRoom({
             `U.debugLineData = ${JSON.stringify(debugLineData)};`,
             'let { FoundationBrowser } = U.setup;',
             `let foundation = FoundationBrowser();`,
-            `foundation.raise({ settle: '${foundation.hut}.below' });`
+            `foundation.raise({ settle: '${foundation.hut}.below', hutHosting: '${foundation.raiseArgs.hutHosting}' });`
           ].join('\n');
           
           mainScript.setProp('type', 'text/javascript');

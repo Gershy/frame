@@ -262,11 +262,11 @@ U.buildRoom({
       // Mount files
       
       // TODO: No good that this needs to be flattened!
-      let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('chess2Host')
-        ? foundation.raiseArgs.chess2Host.split(':')
+      let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
+        ? foundation.raiseArgs.hutHosting.split(':')
         : [ 'localhost', '80', '8000' ];
       
-      console.log('ARGS:', foundation.raiseArgs.chess2Host.split(':'));
+      console.log('ARGS:', foundation.raiseArgs.hutHosting.split(':'));
       console.log(`HOST: ${host}, httpPort: ${httpPort}, soktPort: ${soktPort}`);
       
       let recTypes = { ...rt.chess2, ...rt.lands };
