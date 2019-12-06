@@ -262,14 +262,14 @@ U.buildRoom({
       // Mount files
       
       // TODO: No good that this needs to be flattened!
-      let [ host, port ] = foundation.raiseArgs.has('chess2Host')
+      let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('chess2Host')
         ? foundation.raiseArgs.chess2Host.split(':')
-        : [ 'localhost', 80 ];
+        : [ 'localhost', '80', '8000' ];
       
       let recTypes = { ...rt.chess2, ...rt.lands };
       let lands = U.lands = Lands({ recTypes, heartbeatMs: 1 * 60 * 1000 });
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, parseInt(port)));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, host, parseInt(port) + 1));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, parseInt(httpPort)));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, host, parseInt(soktPort)));
       
       // TODO: Insertions (the "Relation" equivalent for Reals) should
       // exist explicitly
