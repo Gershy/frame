@@ -293,7 +293,7 @@ U.buildRoom({
       // TODO: should return a HorzScope I think??
       open: async function() {
         /// {ABOVE=
-        TERMS = JSON.parse(await foundation.readFile('room/hinterlands/TERMS.json'));
+        TERMS = JSON.parse(await foundation.readFile('room/hinterlands/terms.json'));
         /// =ABOVE} {BELOW=
         TERMS = [ 'above' ]; // Below has only 1 FarHut, so only 1 name
         /// =BELOW}
