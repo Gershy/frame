@@ -266,6 +266,9 @@ U.buildRoom({
         ? foundation.raiseArgs.chess2Host.split(':')
         : [ 'localhost', '80', '8000' ];
       
+      console.log('ARGS:', foundation.raiseArgs.chess2Host.split(':'));
+      console.log(`HOST: ${host}, httpPort: ${httpPort}, soktPort: ${soktPort}`);
+      
       let recTypes = { ...rt.chess2, ...rt.lands };
       let lands = U.lands = Lands({ recTypes, heartbeatMs: 1 * 60 * 1000 });
       lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, parseInt(httpPort)));
