@@ -153,14 +153,15 @@
       
       return server;
     },
-    makeSoktServer: async function(pool, ip, port) {
+    makeSoktServer: async function(pool, host, port) {
       if (!WebSocket) return null;
       
-      let sokt = new WebSocket(`ws://${ip}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
+      console.log('CONNECT TO:', `ws://${host}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
+      let sokt = new WebSocket(`ws://${host}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
       
       let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
-      server.desc = `SOKT @ ${ip}:${port}`;
+      server.desc = `SOKT @ ${host}:${port}`;
       server.cost = 50;
       server.decorateConn = conn => {
         conn.hear = Nozz();
