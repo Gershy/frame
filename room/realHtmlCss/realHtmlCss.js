@@ -324,6 +324,7 @@ U.buildRoom({
           textSize: 'fontSize',
           textColour: 'color',
           textFont: 'fontFamily',
+          contentMode: type => ({ overflow: ({ window: 'hidden', free: 'visible' })[type] }),
           text: v => { return { /* tricky! need to set javascript on the element */ }; },
           border: ({ type='in', ext, colour }) => {
             return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${getUnitCss(ext)} ${colour}` }
@@ -661,7 +662,9 @@ U.buildRoom({
       },
       remChildReal: function(childReal) {
         let dom = childReal.realized;
+        updStyle(dom, 'pointerEvents', 'none');
         if (childReal.deathTrnMs > 0) {
+          if (childReal.deathFn) childReal.deathFn(childReal, childReal.deathTrnMs);
           setTimeout(() => dom.parentNode.removeChild(dom), childReal.deathTrnMs);
         } else {
           dom.parentNode.removeChild(dom);
@@ -716,28 +719,58 @@ U.buildRoom({
         this.deathTrnMs = 0;
       },
       
-      setDeathTransition: function(ms, fn) {
-        
-        // TODO: I wrote this very hastily to play with chris :P
-        // TODO: doing `this.realized.parentNode.removeChild(this.realized)`
-        // needs to wait for `ms` millis. Need to collect data for compound
-        // attributes (like transform, transition, etc) for proper
-        // transitions.
-        
-        this.deathTrnMs = ms;
-        
+      initDynamic: function() {
+        this.size = null;
+        this.loc = null;
+        this.deathTrnMs = 0;
+        this.deathFn = null;
+        this.transitionProps = Map();
+        this.transform = { scale: null, rotate: null };
+        return this;
       },
       
-      setLayoutTransition: function(ms, type='smooth') {
-        if (!ms) return updStyle(this.realized, 'transition', null);
-        let cssFn = ({ 'smooth': 'ease-in-out', 'steady': 'linear' })[type];
-        let trnProps = `${Math.round(ms)}ms ${cssFn}`;
-        updStyle(this.realized, 'transition', [ 'width', 'height', 'left', 'top' ]
-          .map(v => `${v} ${trnProps}`).join(', '));
+      setTransition: function(props, ms, type='steady', delay=0) {
+        if (!ms) return props.forEach(p => this.transitionProps.rem(p));
+        props.forEach(p => this.transitionProps.set(p, [ ms, type, delay ]));
+        this.updateTransition();
       },
+      
+      setDeathTransition: function(ms, fn) { this.deathTrnMs = ms; this.deathFn = fn; },
       setSize: function(w, h) { this.size = [ w, h ]; this.updateLayout(); },
       setLoc: function(x, y) { this.loc = [ x, y ]; this.updateLayout(); },
       setLayout: function(w, h, x, y) { this.size = [ w, h ]; this.loc = [ x, y ]; this.updateLayout(); },
+      setImage: function(file) {
+        if (file) {
+          updStyle(this.realized, 'backgroundImage', `url('${file.url}')`) ;
+          updStyle(this.realized, 'backgroundSize', 'contain'); 
+        } else {
+          updStyle(this.realized, 'backgroundImage', null);
+          updStyle(this.realized, 'backgroundSize', null);
+        }
+      },
+      /*setRotate: function(amt) {
+        amt = tinyRound(amt - Math[amt < 0 ? 'ceil' : 'floor'](amt), 0.0001);
+        updStyle(this.realized, 'transform', amt ? `rotate(${amt * 360}deg)` : null);
+      },*/
+      setRoundness: function(amt) {
+        updStyle(this.realized, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
+      },
+      setBorder: function(ext, colour) {
+        updStyle(this.realized, 'boxShadow', ext.amt ? `inset 0 0 0 ${getUnitCss(ext)} ${colour}` : null);
+      },
+      setColour: function(colour=null) {
+        updStyle(this.realized, 'backgroundColor', colour);
+      },
+      setOpacity: function(amt) { updStyle(this.realized, 'opacity', amt.toString()); },
+      setScale: function(w, h=w) {
+        this.transform.scale = { w, h };
+        this.updateTransform();
+      },
+      setRotate: function(amt) {
+        this.transform.rotate = amt;
+        this.updateTransform();
+      },
+      
       updateLayout: function() {
         let dom = this.realized;
         for (let p of [ 'position', 'left', 'top', 'width', 'height' ]) dom.style.removeProperty(p);
@@ -754,27 +787,34 @@ U.buildRoom({
           dom.style.top = getUnitCss(CalcAdd(this.loc[1], h.mult(-0.5)));
         }
       },
-      setImage: function(file) {
-        if (file) {
-          updStyle(this.realized, 'backgroundImage', `url('${file.url}')`) ;
-          updStyle(this.realized, 'backgroundSize', 'contain'); 
-        } else {
-          updStyle(this.realized, 'backgroundImage', null);
-          updStyle(this.realized, 'backgroundSize', null);
+      updateTransform: function() {
+        
+        let items = [];
+        if (this.transform.scale !== null) {
+          let { w, h } = this.transform.scale;
+          items.push(`scale(${tinyRound(w)}, ${tinyRound(h)})`);
         }
+        if (this.transform.rotate !== null) {
+          items.push(`rotate(${tinyRound(this.transform.rotate * 360)}deg)`);
+        }
+        
+        updStyle(this.realized, 'transform', items.length ? items.join(' ') : null);
       },
-      setRotate: function(amt) {
-        amt = tinyRound(amt - Math[amt < 0 ? 'ceil' : 'floor'](amt), 0.0001);
-        updStyle(this.realized, 'transform', amt ? `rotate(${amt * 360}deg)` : null);
-      },
-      setRoundness: function(amt) {
-        updStyle(this.realized, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
-      },
-      setBorder: function(ext, colour) {
-        updStyle(this.realized, 'boxShadow', ext.amt ? `inset 0 0 0 ${getUnitCss(ext)} ${colour}` : null);
-      },
-      setColour: function(colour=null) {
-        updStyle(this.realized, 'backgroundColor', colour);
+      updateTransition: function() {
+        let dom = this.realized;
+        if (this.transitionProps.isEmpty()) return updStyle(dom, 'transition', null);
+        
+        let mapTrnProps = {
+          x: 'left', y: 'top', w: 'width', h: 'size',
+          opacity: 'opacity',
+          rotate: 'transform',
+          scale: 'transform'
+        };
+        let mapTrnTypes = { smooth: 'ease-in-out', steady: 'linear' };
+        updStyle(dom, 'transition', this.transitionProps.toArr(([ ms, type, delay ], p) => {
+          return `${mapTrnProps[p]} ${ms}ms ${mapTrnTypes[type]} ${delay}ms`;
+        }).join(', '));
+        
       }
       
     })});

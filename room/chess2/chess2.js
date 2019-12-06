@@ -310,7 +310,10 @@ U.buildRoom({
         },
         'main.in.game': {
           size: FillParent(),
-          decals: { colour: 'rgba(100, 100, 150, 1)' }
+          decals: {
+            contentMode: 'window',
+            colour: 'rgba(100, 100, 150, 1)'
+          }
         },
         'main.in.game.player': {
           slots: CenteredSlot()
@@ -651,7 +654,7 @@ U.buildRoom({
               let match = myMatchPlayer.members[0];
               let myColour = myMatchPlayer.val.colour;
               
-              let gameReal = dep(inReal.addReal('game'));
+              let gameReal = dep(inReal.addReal('game')).initDynamic();
               
               // Show Player names
               dep.scp(match.relNozz(rt.chess2.matchPlayer), (matchPlayer, dep) => {
@@ -659,7 +662,7 @@ U.buildRoom({
                 let player = matchPlayer.members[1];
                 let colour = matchPlayer.val.colour;
                 
-                let playerReal = dep(gameReal.addReal('player'));
+                let playerReal = dep(gameReal.addReal('player')).initDynamic();
                 let playerContentReal = playerReal.addReal('content');
                 let playerNameReal = playerContentReal.addReal('name');
                 playerNameReal.setText(player.val.term);
@@ -697,7 +700,7 @@ U.buildRoom({
               
               let t = 1 / 8;
               let p = t * 0.95;
-              let boardReal = gameReal.addReal('board');
+              let boardReal = gameReal.addReal('board').initDynamic();
               boardReal.setLayout(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
               
               // Show board tiles
@@ -714,12 +717,10 @@ U.buildRoom({
               dep.scp(match.relNozz(rt.chess2.matchPiece), (matchPiece, dep) => {
                 
                 let piece = matchPiece.members[1];
-                let pieceReal = dep(boardReal.addReal('piece'));
-                pieceReal.setLayoutTransition(300);
-                pieceReal.setDeathTransition(300, r => {
-                  r.setScale(8);
-                  r.setOpacity(0);
-                });
+                let pieceReal = dep(boardReal.addReal('piece')).initDynamic();
+                pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
+                pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);
+                pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScale(8); });
                 dep(piece.route(({ colour, type, col, row, wait }) => {
                   
                   // Reset selected and confirmed pieces when any piece updates
@@ -767,10 +768,10 @@ U.buildRoom({
                 
                 validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
                   
-                  let moveReal = dep(boardReal.addReal('move'));
+                  let moveReal = dep(boardReal.addReal('move')).initDynamic();
                   moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
                   
-                  let indReal = moveReal.addReal('indicator');
+                  let indReal = moveReal.addReal('indicator').initDynamic();
                   let colour = (piece.val.colour === 'white') ? '#e4e4f0' : '#191944';
                   indReal.setLayout(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
                   indReal.setRoundness(1);
@@ -797,12 +798,12 @@ U.buildRoom({
                 let { piece, tile, cap } = confirmedMove;
                 let colour = '#40df15';
                 
-                let showPieceReal = dep(boardReal.addReal('showMovePiece'));
+                let showPieceReal = dep(boardReal.addReal('showMovePiece')).initDynamic();
                 showPieceReal.setRoundness(1);
                 showPieceReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
                 showPieceReal.setBorder(UnitPx(5), colour);
                 
-                let showTileReal = dep(boardReal.addReal('showMoveTile'));
+                let showTileReal = dep(boardReal.addReal('showMoveTile')).initDynamic();
                 showTileReal.setRoundness(1);
                 if (cap) {
                   showTileReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
@@ -821,7 +822,7 @@ U.buildRoom({
                 let conclusion = matchConclusion.members[1];
                 let result = conclusion.val;
                 
-                let conclusionReal = dep(gameReal.addReal('conclusion'));
+                let conclusionReal = dep(gameReal.addReal('conclusion')).initDynamic();
                 let conclusionContentReal = conclusionReal.addReal('content');
                 
                 let type = (result !== 'stalemate')
