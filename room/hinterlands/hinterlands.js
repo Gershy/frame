@@ -25,6 +25,9 @@ U.buildRoom({
     let { Rec, Rel } = record;
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
+    let hutsWithRemmedMatchPlayer = Map();
+    
+    
     let TERMS = [];
     
     let Lands = U.inspire({ name: 'Lands', methods: () => ({
@@ -144,6 +147,12 @@ U.buildRoom({
             
             // Remove Recs directly
             remRec.forEach((val, uid) => {
+              // Note: it seems like the 2 stacktraces for the two
+              // different occasions on which the same Rec is remRec'd
+              // VARY (particularly the 2nd one) depending on how long
+              // matchmakeMs delays... very odd!
+              //if (!this.allRecs.has(uid)) return;
+              
               if (!this.allRecs.has(uid)) throw new Error(`Tried to rem non-existent Rec @ ${uid}`);
               this.allRecs.get(uid).dry();
             });
@@ -405,6 +414,9 @@ U.buildRoom({
         if (!this.sync.has(type)) throw new Error(`Invalid type: ${type}`);
         let { addRec, updRec, remRec } = this.sync;
         
+        // addRec, remRec: cancel out! No information on Rec is sent
+        // remRec, addRec: cancel out! (Rec is present Below, and stays)
+        
         // Can addRec and remRec occur together? NO  (conflicting messages!)
         // Can addRec and updRec occur together? NO  (redundant!)
         // Can remRec and updRec occur together? YES (e.g. animation upon deletion)
@@ -430,6 +442,8 @@ U.buildRoom({
         
         if (this.syncThrottlePrm) return; // A request to sync already exists
         
+        let ctxErr = Error('');
+        
         this.syncThrottlePrm = (async () => {
           
           let throttlePrm = this.throttleSyncBelow();
@@ -439,7 +453,7 @@ U.buildRoom({
           // Hut may have dried between scheduling and executing sync
           if (this.isDry()) return;
           
-          let updateTell = this.genSyncTell();
+          let updateTell = this.genSyncTell(ctxErr);
           if (updateTell) this.tell(updateTell);
           
         })();
@@ -451,14 +465,14 @@ U.buildRoom({
         this.sync = this.sync.map(v => ({}));                       // Clear current delta
         this.fols.forEach((f, rec) => this.toSync('addRec', rec));  // Sync all addRecs
       },
-      genSyncTell: function() {
+      genSyncTell: function(ctxErr=Error('')) {
         
         // Generates data to sync the BelowHut, and flags the BelowHut
         // as fully up to date
         
         let addRec = this.sync.addRec.map(r => ({ type: r.type.name, val: r.val, memberUids: r.members.map(m => m.uid) }));
         let updRec = this.sync.updRec.map(r => r.val);
-        let remRec = this.sync.remRec.map(r => r.type.name);
+        let remRec = this.sync.remRec.map(r => `${r.type.name} (${r.desc || '-'})`);
         
         let content = {};
         if (!addRec.isEmpty()) content.addRec = addRec;
@@ -480,6 +494,7 @@ U.buildRoom({
         let fol = this.fols.get(rec) || null;     // The current Follow
         let strength0 = fol ? fol.strength : 0;   // The current FollowStrength
         if (strength === strength0) throw new Error(`Strength is already ${strength}`);
+        if (strength > strength0 && rec.isDry()) throw new Error(`Tried to increase follow on dry ${rec.type.name}@${rec.uid}`);
         
         // Our FollowStrength of `rec` is changing! There are 3 possibilities:
         // 1 - Strength moving from =0 to >0 : ADD REC!
@@ -493,13 +508,15 @@ U.buildRoom({
           this.toSync('addRec', rec);
           let updRecRoute = rec.route(() => this.toSync('updRec', rec));
           
-          let unfollowNozz = Funnel(rec.drier.nozz);
-          unfollowNozz.route(() => {
-            this.toSync('remRec', rec);
-            updRecRoute.dry();
-          });
+          let recDryRoute = rec.drierNozz().route(() => unfollow.fn());
+          let unfollow = { fn: () => {
+            unfollow.fn = () => {};
+            updRecRoute.dry();          // Stop listening to updates
+            this.toSync('remRec', rec); // Sync that this Rec has been removed
+            this.fols.rem(rec);         // 
+          }};
           
-          fol = { strength, unfollowNozz, modifyAllow: Map(), modifyBlock: Map() };
+          fol = { strength, unfollow, modifyAllow: Map(), modifyBlock: Map() };
           this.fols.set(rec, fol);
           
         } else if (strength0 && strength) { // UPD
@@ -508,8 +525,7 @@ U.buildRoom({
           
         } else {                            // REM
           
-          this.fols.rem(rec);
-          fol.unfollowNozz.drip();
+          fol.unfollow.fn();
           fol = null;
           
         }
@@ -518,7 +534,6 @@ U.buildRoom({
         
       },
       followRec: function(rec, modify={}) {
-        
         // TODO: Automatically follow `rec.members`?
         let fol = this.setRecFollowStrength(rec, this.getRecFollowStrength(rec) + 1);
         
@@ -535,7 +550,7 @@ U.buildRoom({
           if (fol) {
             if (anyF) { let v = fol.modifyAllow.get(anyF); fol.modifyAllow[(v > 1) ? 'set' : 'rem'](anyF, v - 1); }
             if (allF) { let v = fol.modifyBlock.get(allF); fol.modifyBlock[(v > 1) ? 'set' : 'rem'](allF, v - 1); }
-          }3
+          }
         });
       },
       follow: function(rec) {

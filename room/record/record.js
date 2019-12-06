@@ -91,7 +91,6 @@ U.buildRoom({
         this.type = type;
         this.uid = uid;
         this.val = val;
-        this.desc = `${this.type.name}@${this.uid}`;
         
         this.relNozzes = {};
         this.members = members; // GroupRecs link to all MemberRecs
@@ -144,6 +143,7 @@ U.buildRoom({
       modify: function(fn) { this.update(fn(this.val)); },
       newRoute: function(routeFn) { routeFn(this.val); },
       onceDry: function() {
+        console.log(`DRIED: ${this.type.name}@${this.uid}`);
         for (let memRoute of this.memberDryRoutes) memRoute.dry();
         this.relNozzes = {};
       }

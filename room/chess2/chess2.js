@@ -1,4 +1,4 @@
-// TODO: HEEERE: Doing SO GOOD, shit is solid!
+// TODO: Doing SO GOOD, shit is alost completely solid!
 // - Players can't move each other's pieces
 // - An error occurs trying to sync remRec for matchPlayer when the 2nd
 //   Player exits a Match
@@ -15,9 +15,13 @@ U.buildRoom({
     
     // Config values
     let moveMs = 50 * 1000;
-    let matchmakeMs = 3000;
+    let matchmakeMs = 2 * 1000;
     let heartbeatMs = 2 * 60 * 1000;
     let pieceDefs = {
+      minimal: {
+        white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
+        black: [ [ 'queen', 3, 4 ], [ 'king', 4, 4 ] ]
+      },
       standard: {
         white: [
           [ 'rook',     0, 0 ],
@@ -101,9 +105,10 @@ U.buildRoom({
       foundation.addMountFile(`chess2Piece.${colour}.${pieceType}`, `image/png`, `room/chess2/img/classicPieces/${colour}-${pieceType}.png`);
     }}
     
-    let validMoves = (match, piece) => {
+    let validMoves = (matchPlayer, match, piece) => {
       
       if (piece.val.wait > 0) return [];
+      if (matchPlayer.val.colour !== piece.val.colour) return [];
       
       // Get other pieces
       let pieces = match.relRecs(rt.chess2.matchPiece).toArr(matchPiece => matchPiece.members[1]);
@@ -182,6 +187,7 @@ U.buildRoom({
       }
       
       return moves;
+      
     };
     let applyMoves = (match, ...playerMoves) => {
       
@@ -240,7 +246,6 @@ U.buildRoom({
     add('hutPlayer',        Rec, '11', rt.lands.hut,          rt.chess2.player);
     add('chess2Player',     Rec, '1M', rt.chess2.chess2,      rt.chess2.player);
     add('matchPlayer',      Rec, '1M', rt.chess2.match,       rt.chess2.player);
-    add('piecePlayer',      Rec, 'M1', rt.chess2.piece,       rt.chess2.player);
     add('playerMove',       Rec, '11', rt.chess2.player,      rt.chess2.move);
     add('conclusion',       Rec);
     add('matchConclusion',  Rec, '11', rt.chess2.match,       rt.chess2.conclusion);
@@ -257,10 +262,12 @@ U.buildRoom({
       // Mount files
       
       // TODO: No good that this needs to be flattened!
+      let host = 'localhost';
+      let port = 80;
       let recTypes = { ...rt.chess2, ...rt.lands };
       let lands = U.lands = Lands({ recTypes, heartbeatMs: 1 * 60 * 1000 });
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, '127.0.0.1', 80));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, '127.0.0.1', 8000));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, port));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, host, port + 1));
       
       // TODO: Insertions (the "Relation" equivalent for Reals) should
       // exist explicitly
@@ -401,7 +408,7 @@ U.buildRoom({
                 
                 // Follow Players, Pieces, Round, Conclusion of Match
                 let match = matchPlayer.members[0];
-                dep.scp(match.relNozz(rt.chess2.matchConclusion), (mc, dp) => dep(hut.follow(mc)));
+                dep.scp(match.relNozz(rt.chess2.matchConclusion), (mc, dep) => dep(hut.follow(mc)));
                 dep.scp(match.relNozz(rt.chess2.matchRound), (mr, dep) => dep(hut.follow(mr)));
                 dep.scp(match.relNozz(rt.chess2.matchPlayer), (mp, dep) => dep(hut.follow(mp)));
                 dep.scp(match.relNozz(rt.chess2.matchPiece), (mp, dep) => dep(hut.follow(mp)));
@@ -429,7 +436,11 @@ U.buildRoom({
             // Huts with Players in Matches can leave their Match
             let player = hutPlayer.members[1];
             dep.scp(player.relNozz(rt.chess2.matchPlayer), (matchPlayer, dep) => {
-              dep(hut.comNozz('exitMatch').route(() => matchPlayer.dry()));
+              console.log(`LISTENING FOR ${hut.getTerm()} TO EXIT...`);
+              dep(hut.comNozz('exitMatch').route(() => {
+                console.log(`HUT QUIT MATCH: ${hut.getTerm()}`);
+                matchPlayer.dry();
+              }));
             });
             
           });
@@ -577,14 +588,17 @@ U.buildRoom({
             let match = lands.createRec('match');
             
             let playerPieceSets = [
-              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.standard.white },
-              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.standard.black }
+              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.minimal.white },
+              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.minimal.black }
             ];
+            
+            console.log('Matching:', playerPieceSets.map(({ player }) => player.val.term));
+            
             for (let { colour, player, pieces } of playerPieceSets) {
-              let matchPlayer1 = lands.createRec('matchPlayer', { val: { colour } }, match, player);
+              let matchPlayer = lands.createRec('matchPlayer', { val: { colour } }, match, player);
+              matchPlayer.desc = `For Player ${player.val.term}`;
               for (let [ type, col, row ] of pieces) {
                 let piece = lands.createRec('piece', { val: { colour, type, col, row, wait: 0 } });
-                let piecePlayer = lands.createRec('piecePlayer', {}, piece, player);
                 let matchPiece = lands.createRec('matchPiece', {}, match, piece);
               }
             }
@@ -670,7 +684,11 @@ U.buildRoom({
                   
                   let round = matchRound.members[1];
                   let playerTimerReal = dep(playerContentReal.addReal('timer'));
-                  let updTimer = () => playerTimerReal.setText(`(${Math.floor((round.val.endMs - foundation.getMs()) / 1000)})`);
+                  let updTimer = () => {
+                    let ms = round.val.endMs - foundation.getMs();
+                    let secs = Math.floor(ms / 1000);
+                    playerTimerReal.setText(`(${Math.max(0, secs)})`);
+                  };
                   let interval = setInterval(updTimer, 500); updTimer();
                   dep(Drop(null, () => clearInterval(interval)));
                   
@@ -751,7 +769,7 @@ U.buildRoom({
                 confirmedMoveNozz.dryContents();
                 lands.tell({ command: 'doMove', type: 'retract' });
                 
-                validMoves(match, piece).forEach(([ col, row, cap ]) => {
+                validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
                   
                   let moveReal = dep(boardReal.addReal('move'));
                   moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));

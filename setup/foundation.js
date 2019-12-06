@@ -15,7 +15,7 @@ Hut at the very bottom runs using a single Reality.
 */
 
 (() => {
-  let doNetworkDbg = 1;
+  let doNetworkDbg = 0;
 
   //let { Load, FreeLoad, Flow, Flux } = U.life;
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;

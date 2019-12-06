@@ -661,7 +661,11 @@ U.buildRoom({
       },
       remChildReal: function(childReal) {
         let dom = childReal.realized;
-        dom.parentNode.removeChild(dom);
+        if (childReal.deathTrnMs > 0) {
+          setTimeout(() => dom.parentNode.removeChild(dom), childReal.deathTrnMs);
+        } else {
+          dom.parentNode.removeChild(dom);
+        }
       },
       initFeel: function(real) {
         let dom = real.realized;
@@ -709,14 +713,18 @@ U.buildRoom({
         insp.Real.init.call(this, ...args);
         this.size = null;
         this.loc = null;
+        this.deathTrnMs = 0;
       },
       
       setDeathTransition: function(ms, fn) {
         
+        // TODO: I wrote this very hastily to play with chris :P
         // TODO: doing `this.realized.parentNode.removeChild(this.realized)`
         // needs to wait for `ms` millis. Need to collect data for compound
         // attributes (like transform, transition, etc) for proper
         // transitions.
+        
+        this.deathTrnMs = ms;
         
       },
       

@@ -175,6 +175,11 @@ Promise.allObj = async obj => {
 Promise.resolve = PromiseOrig.resolve;
 protoDef(Promise, 'route', Promise.prototype.then);
 
+let ErrorOrig = Error;
+Error = global.Error = function Error(...args) { return new ErrorOrig(...args); };
+Error.prototype = ErrorOrig.prototype;
+protoDef(Error, 'update', function(msg) { this.message = msg; return this; });
+
 let U = global.U = {
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
@@ -323,9 +328,23 @@ let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
   onceDry: function() {},
   dry: function() {
     if (this.isDry()) return;
+    
+    // --------------------------
+    
+    this.isWet = () => false;
     this.onceDry();
     if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-    if (this.isWet()) this.isWet = () => false; // Ensure we're considered dry at this stage
+    
+    /// // We're immediately marked wet using a dummy function
+    /// let dummyIsWet = () => false;
+    /// this.isWet = dummyIsWet;
+    /// 
+    /// this.onceDry();
+    /// if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
+    /// 
+    /// if (this.isWet === dummyIsWet) delete this.isWet;
+    /// if (!this.isWet()) this.isWet = dummyIsWet;
+    
   },
   drierNozz: function() {
     if (!this.drier) throw new Error('No "drier" available');
@@ -341,9 +360,7 @@ let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
     return Drop(null, () => this.routes.rem(routeFn));
   },
   newRoute: function(routeFn) {},
-  drip: function(...items) {
-    for (let routeFn of this.routes) routeFn(...items);
-  },
+  drip: function(...items) { for (let routeFn of this.routes) routeFn(...items); },
   block: function(doDrip, ...dripVals) {
     // Cause any new Routes to receive "newRoute" functionality, but not
     // to be held (and return a dry Drop in indication of this)
@@ -496,10 +513,11 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
     this.nozzRoute = nozz.route(drop => {
       
       if (!U.isInspiredBy(drop, Drop)) throw new Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
+      if (drop.isDry()) return;
       
       // Allow shorthand adding of Deps and SubScopes
       let deps = Set();
-      let addDep = dep => { deps.add(dep); return dep; };
+      let addDep = dep => { if (dep.isWet()) deps.add(dep); return dep; };
       addDep.scp = (subNozz, fn) => addDep(Scope(subNozz, fn));
       
       // Unscope if the Scope or Drop (assuming dryable Drop) dries
@@ -537,7 +555,12 @@ let defDrier = (nozz=Nozz()) => {
   let wet = true;
   nozz.newHold = holdFn => !wet && holdFn();
   nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
-  return { nozz, isWet: () => wet, onceDry: () => { wet = false; nozz.block(true); } };
+  let drier = { nozz, isWet: () => wet, onceDry: () => {
+    wet = false;
+    drier.onceDry = () => {};
+    nozz.block(true);
+  }};
+  return drier;
   
 };
 U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier };
