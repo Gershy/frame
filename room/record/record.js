@@ -143,7 +143,6 @@ U.buildRoom({
       modify: function(fn) { this.update(fn(this.val)); },
       newRoute: function(routeFn) { routeFn(this.val); },
       onceDry: function() {
-        console.log(`DRIED: ${this.type.name}@${this.uid}`);
         for (let memRoute of this.memberDryRoutes) memRoute.dry();
         this.relNozzes = {};
       }

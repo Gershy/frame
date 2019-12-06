@@ -316,35 +316,18 @@ let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
     if (onceDry) this.onceDry = onceDry;
   },
   isWet: function() {
-    let drier = this.drier;
-    if (!drier) return true;                     // Drops without Driers are always Wet
-    if (drier.isWet) return this.drier.isWet();  // If the Drier provides "isWet", use it!
-    if (!drier.nozz) return true;                // If Drier has no Nozz, always Wet
-    
-    // A cheeky technique to check dryness when `drier.nozz` exists
-    let isDry = false; drier.nozz.route(() => isDry = true).dry(); return !isDry;
+    // If our drier setup tells us "isWet", use that; otherwise `true`
+    return (this.drier && this.drier.has('isWet'))
+      ? this.drier.isWet()
+      : true;
   },
   isDry: function() { return !this.isWet(); },
   onceDry: function() {},
   dry: function() {
     if (this.isDry()) return;
-    
-    // --------------------------
-    
     this.isWet = () => false;
     this.onceDry();
     if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-    
-    /// // We're immediately marked wet using a dummy function
-    /// let dummyIsWet = () => false;
-    /// this.isWet = dummyIsWet;
-    /// 
-    /// this.onceDry();
-    /// if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-    /// 
-    /// if (this.isWet === dummyIsWet) delete this.isWet;
-    /// if (!this.isWet()) this.isWet = dummyIsWet;
-    
   },
   drierNozz: function() {
     if (!this.drier) throw new Error('No "drier" available');
@@ -552,11 +535,11 @@ let defDrier = (nozz=Nozz()) => {
   // drip. Never call `nozz.drip()` directly - it would NOT cause the
   // instance of Drop to dry.
   
-  let wet = true;
-  nozz.newHold = holdFn => !wet && holdFn();
+  let dried = false;
+  nozz.newHold = holdFn => dried && holdFn();
   nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
-  let drier = { nozz, isWet: () => wet, onceDry: () => {
-    wet = false;
+  let drier = { nozz, onceDry: () => {
+    dried = false;
     drier.onceDry = () => {};
     nozz.block(true);
   }};
