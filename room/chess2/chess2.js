@@ -15,8 +15,8 @@ U.buildRoom({
     
     // Config values
     let moveMs = 50 * 1000;
-    let matchmakeMs = 2 * 1000;
-    let heartbeatMs = 2 * 60 * 1000;
+    let matchmakeMs = 8 * 1000;
+    let heartbeatMs = 3 * 60 * 1000;
     let pieceDefs = {
       minimal: {
         white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
@@ -266,11 +266,8 @@ U.buildRoom({
         ? foundation.raiseArgs.hutHosting.split(':')
         : [ 'localhost', '80', '8000' ];
       
-      console.log('ARGS:', foundation.raiseArgs.hutHosting.split(':'));
-      console.log(`HOST: ${host}, httpPort: ${httpPort}, soktPort: ${soktPort}`);
-      
       let recTypes = { ...rt.chess2, ...rt.lands };
-      let lands = U.lands = Lands({ recTypes, heartbeatMs: 1 * 60 * 1000 });
+      let lands = U.lands = Lands({ recTypes, heartbeatMs });
       lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, parseInt(httpPort)));
       lands.makeServers.push(pool => foundation.makeSoktServer(pool, host, parseInt(soktPort)));
       

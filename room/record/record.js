@@ -44,7 +44,6 @@ U.buildRoom({
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       
       init: function(name, RecCls=Rec, cardinality=null, ...memberTypes) {
-        
         if (cardinality && cardinality.split('').find(v => v !== 'M' && v !== '1')) throw new Error(`Invalid cardinality: "${cardinality}"`);
         if (cardinality && cardinality.length !== memberTypes.length) throw new Error(`Invalid: cardinality "${cardinality}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
         
@@ -52,8 +51,6 @@ U.buildRoom({
         this.RecCls = RecCls;
         this.cardinality = cardinality;
         this.memberTypes = memberTypes;
-        this.tidy = null;
-        
       },
       create: function(params={}, ...members) {
         
@@ -78,11 +75,10 @@ U.buildRoom({
       $NEXT_UID: 0,
       
       init: function({ drier=null, val=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
-        
         if (type === null) throw new Error(`Missing "type"`);
         if (uid === null) throw new Error(`Missing "uid"`);
         
-        if (!drier) drier = defDrier(); //defDrier(Funnel(...members.map(m => m.drierNozz()))); //{ nozz: TubVal(null, Nozz()) };
+        if (!drier) drier = defDrier();
         if (!drier.nozz) throw new Error('Missing "drier.nozz"');
         
         insp.Drop.init.call(this, drier);
@@ -94,27 +90,15 @@ U.buildRoom({
         
         this.relNozzes = {};
         this.members = members; // GroupRecs link to all MemberRecs
-        
         this.memberDryRoutes = this.members.map(mem => mem.drierNozz().route(() => this.dry()));
-          
-        // TODO: When MemberRecs shut, in `doShut`, they shut their
-        // GroupRecs. So the following is redundant?
-        // TODO: Also consider keeping this, but removing `doShut` -
-        // that could free up some requirements of `relNozz()`
-        /// // Any MemberRec shutting causes `this` GroupRec to shut
-        /// // `this` GroupRec shutting releases all holds on MemberRecs
-        /// let holds = members.map(m => m.shutFlow().hold(() => this.shut()));
-        /// this.shutFlow().hold(() => holds.forEach(h => h.shut()));
-        
       },
       defaultRecTypeInd: function(recType) {
         
         // Without knowing which specific index is desired, we can still
-        // often make a 100% certain guess: this is possible when the
-        // MemberRecs of `recType` have different RecType - this means
-        // we can select the index of *our* type as the correct index.
-        // Note this may have unintended consequences if `recType`
-        // contains multiple MemberRecs of the same RecType!
+        // often make a 100% certain guess: when `recType` MemberRecs 
+        // have different RecTypes. In this case we can select the index
+        // of *our* type as the correct index. Note this breaks when
+        // `recType` contains multiple MemberRecs of the same RecType!
         
         let findMatchingType = recType.memberTypes.find(m => m === this.type);
         if (!findMatchingType) throw new Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
