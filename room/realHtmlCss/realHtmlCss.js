@@ -7,11 +7,6 @@ U.buildRoom({
     let { UnitPx, UnitPc, CalcAdd, Real } = real;
     
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
-    let cssTech = {
-      vAlignPar: { whiteSpace: 'nowrap' },
-      vAlignChild: { display: 'inline-block', verticalAlign: 'middle' }, // Should include `position: "relative if not absolute"`
-      vAlignBefore: { display: 'inline-block', verticalAlign: 'middle', content: '\'\'', width: '0', height: '100%' },
-    };
     let tinyRound = (val, epsilon=0.001) => {
       // If `val` is within `epsilon` distance of an integer, returns
       // that nearby integer (otherwise returns `val`).
@@ -21,9 +16,14 @@ U.buildRoom({
     let customEvent = evt => evt.stopPropagation() || evt.preventDefault() || true;
     
     /// {ABOVE=
+    let cssTech = {
+      vAlignPar: { whiteSpace: 'nowrap' },
+      vAlignChild: { display: 'inline-block', verticalAlign: 'middle' }, // Should include `position: "relative if not absolute"`
+      vAlignBefore: { display: 'inline-block', verticalAlign: 'middle', content: `''`, width: '0', height: '100%' },
+    };
     let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
       init: function(tagName, type, text='') {
-        if (![ 'root', 'singleton', 'container', 'text' ].has(type)) throw new Error(`Invalid type; ${type}`);
+        if (![ 'root', 'singleton', 'container', 'text' ].has(type)) throw Error(`Invalid type; ${type}`);
         this.tagName = tagName;
         this.type = type;
         this.props = {};
@@ -32,12 +32,12 @@ U.buildRoom({
         this.setText(text);
       },
       setText: function(text) {
-        if (text !== text.trim()) throw new Error(`Text "${text}" has extra whitespace`);
+        if (text !== text.trim()) throw Error(`Text "${text}" has extra whitespace`);
         this.text = text;
       },
       setProp: function(name, value=null) { this.props[name] = value; },
       add: function(child) {
-        if (![ 'root', 'container' ].has(this.type)) throw new Error(`Can\'t add to type ${this.type}`);
+        if (![ 'root', 'container' ].has(this.type)) throw Error(`Can\'t add to type ${this.type}`);
         this.children.push(child);
         return child;
       },
@@ -63,10 +63,10 @@ U.buildRoom({
     
     let unitCss = Map();
     let getUnitCss = unit => {
-      if (!unitCss.has(unit.constructor)) throw new Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
+      if (!unitCss.has(unit.constructor)) throw Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
       return unitCss.get(unit.constructor)(unit);
     };
-    unitCss.set(real.Unit, unit => { throw new Error('Can\'t get css for Unit'); });
+    unitCss.set(real.Unit, unit => { throw Error('Can\'t get css for Unit'); });
     unitCss.set(real.UnitPx, unit => `${tinyRound(unit.amt)}px`);
     unitCss.set(real.UnitPc, unit => `${tinyRound(unit.amt * 100)}%`);
     unitCss.set(real.ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
@@ -116,7 +116,7 @@ U.buildRoom({
       zoneCss.set(real.WrapChildren, (wrapChildren, layout, ...trail) => {
         let w = layout.getW(...trail);
         let h = layout.getH(...trail);
-        if ((!!w) !== (!!h)) throw new Error('WrapChildren mixes set and unset extents');
+        if ((!!w) !== (!!h)) throw Error('WrapChildren mixes set and unset extents');
         return { main: {
           ...((w && h) ? { boxSizing: 'border-box' } : {}),
           ...(wrapChildren.padL.amt ? { paddingLeft:    wrapChildren.padL } : {}),
@@ -132,7 +132,7 @@ U.buildRoom({
         
         let alignCss = null;
         if (showText.interactive) {
-          if (showText.origin[1] !== 't' && showText.multiLine) throw new Error('Tricky to vertically align textarea text anywhere but top');
+          if (showText.origin[1] !== 't' && showText.multiLine) throw Error('Tricky to vertically align textarea text anywhere but top');
           alignCss = {
             textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
           };
@@ -171,7 +171,7 @@ U.buildRoom({
         // Note that if height for vertical centering is `null` there's
         // no need to apply a line-height: the element's height will
         // conform to the text, making it centered by default.
-        if ((!!w) !== (!!h)) throw new Error('ShowText mixes set and unset extents');
+        if ((!!w) !== (!!h)) throw Error('ShowText mixes set and unset extents');
         
         let zoneCss = {};
         zoneCss.main = {
@@ -270,20 +270,20 @@ U.buildRoom({
         
         if (showText.interactive) {
           return real => {
-            if (real.tellWob) throw new Error(`Conflicting runTimeUix "tellWob" on ${real.layout.name}`);
-            if (real.setText) throw new Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
+            if (real.tellWob) throw Error(`Conflicting runTimeUix "tellWob" on ${real.layout.name}`);
+            if (real.setText) throw Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
             let dom = real.realized;
             let tellWob = U.WobVal('');
             real.tellWob = () => (dom.removeAttribute('disabled'), tellWob);
             real.setText = text => {
-              if (!U.isType(text, String)) throw new Error('Non-string "text" param');
+              if (!U.isType(text, String)) throw Error('Non-string "text" param');
               if (dom.value !== text) tellWob.wobble(dom.value = text);
             };
             dom.addEventListener('input', () => tellWob.wobble(dom.value));
           };
         } else {
           return real => {
-            if (real.setText) throw new Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
+            if (real.setText) throw Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
             real.setText = text => real.realized.textContent = text;
           };
         };
@@ -297,7 +297,7 @@ U.buildRoom({
       
       let cssAspects = { zoneCss, domElemFunc, runTimeUixFunc };
       return (type, layoutCmp, layout, trail) => {
-        if (!cssAspects.has(type)) throw new Error('Invalid type');
+        if (!cssAspects.has(type)) throw Error('Invalid type');
         let Cls = layoutCmp.constructor;
         let aspects = cssAspects[type];
         if (!aspects.has(Cls)) return null;
@@ -342,13 +342,13 @@ U.buildRoom({
           let css = {};
           decals.forEach((decVal, decKey) => {
             
-            if (!mapping.has(decKey)) throw new Error(`Invalid decal name: "${decKey}"`);
+            if (!mapping.has(decKey)) throw Error(`Invalid decal name: "${decKey}"`);
             let m = mapping[decKey];
             
             if (U.isType(m, Function)) m = m(decVal); // Resolve Function if necessary
             if (U.isType(m, String)) m = { [m]: decVal }; // Resolve String if necessary
             m.forEach((cssVal, cssKey) => {
-              if (css.has(cssKey)) throw new Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
+              if (css.has(cssKey)) throw Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
               css[cssKey] = cssVal;
             });
             
@@ -377,7 +377,7 @@ U.buildRoom({
               // it means there's a conflict!
               
               let cssVal0 = cur[zone][cssKey];
-              if (!real.unitsEq(cssVal, cssVal0)) throw new Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
+              if (!real.unitsEq(cssVal, cssVal0)) throw Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
               
             }
             
@@ -485,7 +485,7 @@ U.buildRoom({
             } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
               zoneSelector = `${selector}::${zone}`;
             } else {
-              throw new Error(`Unexpected css zone: ${zone}`);
+              throw Error(`Unexpected css zone: ${zone}`);
             }
             
             return [
@@ -580,6 +580,11 @@ U.buildRoom({
             scriptTextItems.push(''); totalLineCount += 1;
           });
           
+          
+          let raiseArgs = [];
+          raiseArgs.push(`settle: '${foundation.hut}.below'`);
+          if (foundation.raiseArgs.has('hutHosting')) raiseArgs.push(`hutHosting: '${foundation.raiseArgs.hutHosting}'`);
+          
           let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
             '// ==== File: hut.js (line count: 8)',
             `U.cpuId = '${absConn.cpuId}';`,
@@ -589,7 +594,7 @@ U.buildRoom({
             `U.debugLineData = ${JSON.stringify(debugLineData)};`,
             'let { FoundationBrowser } = U.setup;',
             `let foundation = FoundationBrowser();`,
-            `foundation.raise({ settle: '${foundation.hut}.below', hutHosting: '${foundation.raiseArgs.hutHosting}' });`
+            `foundation.raise({ ${raiseArgs.join(', ')} });`
           ].join('\n');
           
           mainScript.setProp('type', 'text/javascript');
@@ -621,10 +626,7 @@ U.buildRoom({
             '    <title>Quad Test</title>',
             '  </head>',
             '  <body>',
-            '    <iframe id="jimFrame" width="400" height="400" src="?spoof=jim"></iframe>',
-            '    <iframe id="bobFrame" width="400" height="400" src="?spoof=bob"></iframe>',
-            '    <iframe id="salFrame" width="400" height="400" src="?spoof=sal"></iframe>',
-            '    <iframe id="joeFrame" width="400" height="400" src="?spoof=joe"></iframe>',
+            ...[ 'jim', 'bob', 'sal', 'fae' ].map(n => `    <iframe id="${n}Frame" width="400" height="400" src="?spoof=${n}"></iframe>`),
             '  </body>',
             '</html>'
           ].join('\n'));
@@ -640,7 +642,7 @@ U.buildRoom({
         // Create dom element and add class for `layout.name`
         let cmps = this.getLayoutCmps(layout, ...trail);
         let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
-        if (makeDomElems.length > 1) throw new Error('Conflicting domElemFuncs');
+        if (makeDomElems.length > 1) throw Error('Conflicting domElemFuncs');
         
         let domElem = makeDomElems.length ? makeDomElems[0]() : document.createElement('div');
         domElem.classList.add(layout.name);
@@ -663,9 +665,10 @@ U.buildRoom({
       remChildReal: function(childReal) {
         let dom = childReal.realized;
         updStyle(dom, 'pointerEvents', 'none');
-        if (childReal.deathTrnMs > 0) {
-          if (childReal.deathFn) childReal.deathFn(childReal, childReal.deathTrnMs);
-          setTimeout(() => dom.parentNode.removeChild(dom), childReal.deathTrnMs);
+        let { death: { ms, fn } } = childReal.dyn || { death: { ms: 0, fn: null } };
+        if (ms > 0) {
+          if (fn) fn(childReal, ms);
+          setTimeout(() => dom.parentNode.removeChild(dom), ms);
         } else {
           dom.parentNode.removeChild(dom);
         }
@@ -691,54 +694,48 @@ U.buildRoom({
         // TODO: If bringing back in key-activation of feelable Reals,
         // make sure that the same Real can't be felt simultaneously
         // with mouse and keyboard!
-        /// // Note we only process the "enter" key
-        /// let keySet = real.keys.activate;
-        /// dom.addEventListener('keydown', evt => keySet.has(evt.keyCode) && customEvent(evt) && up());
-        /// dom.addEventListener('keyup', evt => keySet.has(evt.keyCode) && customEvent(evt) && dn());
-        
-        // LAZY fix to use pointer-events: none. The entire purpose was
-        // allow deselecting a selected chesspiece by clicking on the
-        // piece itself (which couldn't happen ordinarily; it would be
-        // blocked by the indicator indicating it was selected)
-        dom.setAttribute('tabIndex', '0');
-        updStyle(dom, 'pointerEvents', 'auto');
-        updStyle(dom, 'cursor', 'pointer');
         
         // TODO: Do we need to concern ourselves with drying the Feel
         // Drop if the Real dries mid-feel? Or is it the responsibility
         // of the user to design code that clears up Feel routes when
         // the Real being felt dries up??
-        ///real.shutFlow().route(dn); // Deactivate if/when Real shuts
+        
+        dom.setAttribute('tabIndex', '0');
+        updStyle(dom, 'pointerEvents', 'auto');
+        updStyle(dom, 'cursor', 'pointer');
       }
     })});
     let HtmlCssReal = U.inspire({ name: 'HtmlCssReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
       init: function(...args) {
         insp.Real.init.call(this, ...args);
-        this.size = null;
-        this.loc = null;
-        this.deathTrnMs = 0;
+        this.dyn = null;
       },
       
       initDynamic: function() {
-        this.size = null;
-        this.loc = null;
-        this.deathTrnMs = 0;
-        this.deathFn = null;
-        this.transitionProps = Map();
-        this.transform = { scale: null, rotate: null };
-        return this;
+        if (!this.dyn) {
+          this.dyn = {
+            size: null,
+            loc: null,
+            death: { ms: 0, fn: null },
+            transition: Map(),
+            transform: { scale: null, rotate: null }
+          };
+        }
+        
+        return this.dyn;
       },
       
       setTransition: function(props, ms, type='steady', delay=0) {
-        if (!ms) return props.forEach(p => this.transitionProps.rem(p));
-        props.forEach(p => this.transitionProps.set(p, [ ms, type, delay ]));
+        let { transition } = this.initDynamic();
+        if (!ms) return props.forEach(p => transition.rem(p));
+        props.forEach(p => transition.set(p, [ ms, type, delay ]));
         this.updateTransition();
       },
       
-      setDeathTransition: function(ms, fn) { this.deathTrnMs = ms; this.deathFn = fn; },
-      setSize: function(w, h) { this.size = [ w, h ]; this.updateLayout(); },
-      setLoc: function(x, y) { this.loc = [ x, y ]; this.updateLayout(); },
-      setLayout: function(w, h, x, y) { this.size = [ w, h ]; this.loc = [ x, y ]; this.updateLayout(); },
+      setDeathTransition: function(ms, fn) { this.initDynamic; this.dyn.death = { ms, fn }; },
+      setSize: function(w, h) { this.initDynamic(); this.dyn.size = [ w, h ]; this.updateLayout(); },
+      setLoc: function(x, y) { this.initDynamic(); this.dyn.loc = [ x, y ]; this.updateLayout(); },
+      setLayout: function(w, h, x, y) { this.initDynamic(); this.dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(); },
       setImage: function(file) {
         if (file) {
           updStyle(this.realized, 'backgroundImage', `url('${file.url}')`) ;
@@ -748,10 +745,6 @@ U.buildRoom({
           updStyle(this.realized, 'backgroundSize', null);
         }
       },
-      /*setRotate: function(amt) {
-        amt = tinyRound(amt - Math[amt < 0 ? 'ceil' : 'floor'](amt), 0.0001);
-        updStyle(this.realized, 'transform', amt ? `rotate(${amt * 360}deg)` : null);
-      },*/
       setRoundness: function(amt) {
         updStyle(this.realized, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
       },
@@ -762,47 +755,41 @@ U.buildRoom({
         updStyle(this.realized, 'backgroundColor', colour);
       },
       setOpacity: function(amt) { updStyle(this.realized, 'opacity', amt.toString()); },
-      setScale: function(w, h=w) {
-        this.transform.scale = { w, h };
-        this.updateTransform();
-      },
-      setRotate: function(amt) {
-        this.transform.rotate = amt;
-        this.updateTransform();
-      },
+      setScale: function(w, h=w) { this.initDynamic(); this.dyn.transform.scale = { w, h }; this.updateTransform(); },
+      setRotate: function(amt) { this.initDynamic(); this.dyn.transform.rotate = amt; this.updateTransform(); },
       
       updateLayout: function() {
         let dom = this.realized;
-        for (let p of [ 'position', 'left', 'top', 'width', 'height' ]) dom.style.removeProperty(p);
+        let { size, loc } = this.dyn;
         
         updStyle(dom, 'position', 'absolute');
+        updStyle(dom, 'width', size && size[0] && getUnitCss(size[0]));
+        updStyle(dom, 'height', size && size[1] && getUnitCss(size[1]));
         
-        if (this.size) {
-          dom.style.width = getUnitCss(this.size[0]);
-          dom.style.height = getUnitCss(this.size[1]);
-        }
-        if (this.loc) {
-          let [ w, h ] = this.size || dom.getBoundingClientRect().slice('width', 'height').toArr(UnitPx);
-          dom.style.left = getUnitCss(CalcAdd(this.loc[0], w.mult(-0.5)));
-          dom.style.top = getUnitCss(CalcAdd(this.loc[1], h.mult(-0.5)));
+        if (loc) {
+          let [ w, h ] = size || dom.getBoundingClientRect().slice('width', 'height').toArr(UnitPx);
+          updStyle(dom, 'left', getUnitCss(CalcAdd(loc[0] || UnitPx(0), w.mult(-0.5))));
+          updStyle(dom, 'top', getUnitCss(CalcAdd(loc[1] || UnitPx(0), h.mult(-0.5))));
+        } else {
+          [ 'left', 'top' ].forEach(p => updStyle(dom, p, null));
         }
       },
       updateTransform: function() {
+        let { transform } = this.dyn;
         
         let items = [];
-        if (this.transform.scale !== null) {
-          let { w, h } = this.transform.scale;
-          items.push(`scale(${tinyRound(w)}, ${tinyRound(h)})`);
-        }
-        if (this.transform.rotate !== null) {
-          items.push(`rotate(${tinyRound(this.transform.rotate * 360)}deg)`);
-        }
+        let { w, h } = transform.scale || { w: 1, h: 1 };
+        if (w !== 1 || h !== 1) items.push(`scale(${tinyRound(w)}, ${tinyRound(h)})`)
+        
+        let rot = transform.rotate || 0;
+        if (rot) items.push(`rotate(${tinyRound(rot * 360)}deg)`);
         
         updStyle(this.realized, 'transform', items.length ? items.join(' ') : null);
       },
       updateTransition: function() {
         let dom = this.realized;
-        if (this.transitionProps.isEmpty()) return updStyle(dom, 'transition', null);
+        let { transition } = this.dyn;
+        if (transition.isEmpty()) return updStyle(dom, 'transition', null);
         
         let mapTrnProps = {
           x: 'left', y: 'top', w: 'width', h: 'size',
@@ -811,7 +798,7 @@ U.buildRoom({
           scale: 'transform'
         };
         let mapTrnTypes = { smooth: 'ease-in-out', steady: 'linear' };
-        updStyle(dom, 'transition', this.transitionProps.toArr(([ ms, type, delay ], p) => {
+        updStyle(dom, 'transition', transition.toArr(([ ms, type, delay ], p) => {
           return `${mapTrnProps[p]} ${ms}ms ${mapTrnTypes[type]} ${delay}ms`;
         }).join(', '));
         

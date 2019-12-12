@@ -33,7 +33,7 @@ U.buildRoom({
     };
     let updatedUnit = (curW, newW) => {
       // Updates a unit, throwing an error upon conflicts
-      if (curW && newW && !unitsEq(curW, newW)) throw new Error('Conflicting extents');
+      if (curW && newW && !unitsEq(curW, newW)) throw Error('Conflicting extents');
       return curW || newW;
     };
     
@@ -48,7 +48,7 @@ U.buildRoom({
       // A Unit with a specific numeric "amount"
       
       init: function(amt) {
-        if (!U.nameOf(amt, Number) || isNaN(amt)) throw new Error(`Invalid amt: ${amt}`);
+        if (!U.nameOf(amt, Number) || isNaN(amt)) throw Error(`Invalid amt: ${amt}`);
         insp.Unit.init.call(this);
         this.amt = amt;
       },
@@ -76,7 +76,7 @@ U.buildRoom({
       init: function(...units) {
         let unitsByType = Map();
         for (let unit of units) {
-          if (!U.isInspiredBy(unit, UnitAmt)) throw new Error(`Provided invalid Unit: ${U.nameOf(unit)}`);
+          if (!U.isInspiredBy(unit, UnitAmt)) throw Error(`Provided invalid Unit: ${U.nameOf(unit)}`);
           let UnitCls = unit.constructor;
           if (!unitsByType.has(UnitCls)) unitsByType.set(UnitCls, []);
           unitsByType.get(UnitCls).push(unit);
@@ -155,7 +155,7 @@ U.buildRoom({
         
         let { multiLine=false, origin='cc', interactive=false } = params;
         if (origin === 'c') origin = 'cc';
-        if (!origin.match(/^[lrc][tbc]$/)) throw new Error(`Invalid "origin": ${origin}`);
+        if (!origin.match(/^[lrc][tbc]$/)) throw Error(`Invalid "origin": ${origin}`);
         this.multiLine = multiLine;
         this.origin = origin;
         this.interactive = interactive;
@@ -178,10 +178,10 @@ U.buildRoom({
     
     let AxisSections = U.inspire({ name: 'AxisSections', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function({ axis, dir='+', cuts }) {
-        if (!axis) throw new Error('Missing "axis" param');
-        if (!cuts) throw new Error('Missing "cuts" param');
-        if (![ '+', '-' ].has(dir)) throw new Error('Invalid "dir" param');
-        if (![ 'x', 'y' ].has(axis)) throw new Error('Invalid "axis" param');
+        if (!axis) throw Error('Missing "axis" param');
+        if (!cuts) throw Error('Missing "cuts" param');
+        if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
+        if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
         
         this.axis = axis;
         this.dir = dir;
@@ -205,9 +205,9 @@ U.buildRoom({
     
     let LinearSlots = U.inspire({ name: 'LinearSlots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       init: function({ axis, dir='+' /*, initPad=UnitPx(0)*/ }) {
-        if (!axis) throw new Error('Missing "axis" param');
-        if (![ '+', '-' ].has(dir)) throw new Error('Invalid "dir" param');
-        if (![ 'x', 'y' ].has(axis)) throw new Error('Invalid "axis" param');
+        if (!axis) throw Error('Missing "axis" param');
+        if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
+        if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
         this.axis = axis;
         this.dir = dir;
       },
@@ -298,7 +298,7 @@ U.buildRoom({
         
         // Do `this.initReal0` - expect it to set `real.realized`!
         this.initReal0(real, layout, trail);
-        if (!real.realized) throw new Error(`${U.nameOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
+        if (!real.realized) throw Error(`${U.nameOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
         
         return real;
       },
@@ -367,7 +367,7 @@ U.buildRoom({
         return this.sense.feel;
       },
       addReal: function(realName, dbg=false) {
-        if (!this.layout.children.has(realName)) throw new Error(`No layout for "${realName}"`);
+        if (!this.layout.children.has(realName)) throw Error(`No layout for "${realName}"`);
         let real = this.reality.initReal(this, this.layout.children[realName]);
         real.par = this;
         this.reality.addChildReal(this, real);

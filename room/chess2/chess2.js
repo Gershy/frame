@@ -8,14 +8,14 @@ U.buildRoom({
   innerRooms: [ 'hinterlands', 'record', 'real', 'realHtmlCss', 'chance' ],
   build: (foundation, hinterlands, record, real, realHtmlCss, chance) => {
     
-    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Chance } = chance;
     let { Rec, recTyper } = record;
     let { Lands } = hinterlands;
     
     // Config values
     let moveMs = 50 * 1000;
-    let matchmakeMs = 8 * 1000;
+    let matchmakeMs = ({ test: 1 * 1000, prod: 8 * 1000 })[foundation.raiseArgs.mode];
     let heartbeatMs = 3 * 60 * 1000;
     let pieceDefs = {
       minimal: {
@@ -182,7 +182,7 @@ U.buildRoom({
         
       } else {
         
-        throw new Error(`Invalid type: ${type}`);
+        throw Error(`Invalid type: ${type}`);
         
       }
       
@@ -247,6 +247,7 @@ U.buildRoom({
     add('chess2Player',     Rec, '1M', rt.chess2.chess2,      rt.chess2.player);
     add('matchPlayer',      Rec, '1M', rt.chess2.match,       rt.chess2.player);
     add('playerMove',       Rec, '11', rt.chess2.player,      rt.chess2.move);
+    
     add('conclusion',       Rec);
     add('matchConclusion',  Rec, '11', rt.chess2.match,       rt.chess2.conclusion);
     
@@ -264,7 +265,7 @@ U.buildRoom({
       // TODO: No good that this needs to be flattened!
       let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
         ? foundation.raiseArgs.hutHosting.split(':')
-        : [ 'localhost', '80', '8000' ];
+        : [ 'localhost', '80', '81' ];
       
       let recTypes = { ...rt.chess2, ...rt.lands };
       let lands = U.lands = Lands({ recTypes, heartbeatMs });
@@ -380,8 +381,8 @@ U.buildRoom({
       
       let rootScp = Scope(lands.arch.relNozz(rt.chess2.archChess2), (archChess2, dep) => {
         
-        let chess2 = archChess2.members[1];
-        global.chess2 = chess2;
+        let chess2 = global.chess2 = archChess2.members[1];
+        dep(Drop(null, () => { delete global.chess2; }));
         
         /// {ABOVE=
         
@@ -425,12 +426,17 @@ U.buildRoom({
           });
           
           // Actions for Huts (differentiate between logged-in and logged-out)
-          let hutNoPlayerNozz = dep(TubDry(null, hutPlayerNozz));
-          dep.scp(hutNoPlayerNozz, (_, dep) => {
+          let hutPlayerDryNozz = dep(TubDry(null, hutPlayerNozz));
+          dep.scp(hutPlayerDryNozz, (_, dep) => {
             dep(hut.comNozz('login').route(() => {
+              // TODO: `chess2Player` should receive `hutPlayer`, not
+              // `player`, as its second member (this would establish an
+              // implicit dependency between the Hut and the Player)
               let player =    lands.createRec('player', { val: { term: hut.getTerm() } });
               let hutPlayer = lands.createRec('hutPlayer', {}, hut, player);
               let chess2Player = lands.createRec('chess2Player', {}, chess2, player);
+              
+              hut.drierNozz().route(() => player.dry());
             }));
           });
           dep.scp(hutPlayerNozz, (hutPlayer, dep) => {
@@ -502,7 +508,8 @@ U.buildRoom({
           
           let match = chess2Match.members[1];
           let matchPlayerNozz = match.relNozz(rt.chess2.matchPlayer);
-          let matchNoPlayerNozz = dep(TubDry(null, matchPlayerNozz));
+          let matchPlayerCntNozz = dep(TubCnt(null, matchPlayerNozz));
+          let matchPlayerDryNozz = dep(TubDry(null, matchPlayerNozz));
           
           let matchRoundNozz = match.relNozz(rt.chess2.matchRound);
           let noMatchRoundNozz = dep(TubDry(null, matchRoundNozz));
@@ -510,6 +517,17 @@ U.buildRoom({
           dep.scp(matchRoundNozz, (matchRound, dep) => {
             
             let round = matchRound.members[1];
+            
+            dep(matchPlayerCntNozz.route(playerCnt => {
+              
+              if (playerCnt === 2) return;
+              
+              round.dry();
+              let [ mp=null ] = match.relRecs(rt.chess2.matchPlayer).toArr(v => v);
+              let conclusion = lands.createRec('conclusion', { val: mp ? mp.val.colour : 'stalemate' });
+              let matchConclusion = lands.createRec('matchConclusion', {}, match, conclusion);
+              
+            }));
             
             // Simplify tracking all RoundPlayerMoves; we'll use
             // `roundPlayerMoves` to always hold the most recent set of
@@ -554,9 +572,8 @@ U.buildRoom({
                 
               } else {
                 
-                let conclusion = lands.createRec('conclusion', {
-                  val: aliveCols.isEmpty() ? 'stalemate' : aliveCols.toArr(v=>v)[0]
-                });
+                let [ val = 'stalemate' ] = aliveCols.toArr(v => v);
+                let conclusion = lands.createRec('conclusion', { val });
                 lands.createRec('matchConclusion', {}, match, conclusion);
                 
               }
@@ -568,7 +585,7 @@ U.buildRoom({
           // TODO: Really the condition for a Match to end is "The Match
           // now has zero players, AND it once had non-zero Players"
           // The Match ends when no Players remain
-          dep(matchNoPlayerNozz.route(() => match.dry()));
+          dep(matchPlayerDryNozz.route(() => match.dry()));
           
         });
         
@@ -589,8 +606,8 @@ U.buildRoom({
             let match = lands.createRec('match');
             
             let playerPieceSets = [
-              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.standard.white },
-              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.standard.black }
+              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.minimal.white },
+              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.minimal.black }
             ];
             
             console.log('Matching:', playerPieceSets.map(({ player }) => player.val.term));
@@ -623,9 +640,9 @@ U.buildRoom({
             let player = chess2Player.members[1];
             return (player.val.term === U.hutTerm) ? player : C.skip;
           }));
-          let noMyPlayerNozz = dep(TubDry(null, myPlayerNozz));
+          let myPlayerDryNozz = dep(TubDry(null, myPlayerNozz));
           
-          dep.scp(noMyPlayerNozz, (_, dep) => {
+          dep.scp(myPlayerDryNozz, (_, dep) => {
             
             let outReal = dep(mainReal.addReal('out'));
             let contentReal = outReal.addReal('content');
@@ -643,9 +660,9 @@ U.buildRoom({
             let inReal = dep(mainReal.addReal('in'));
             
             let myMatchPlayerNozz = player.relNozz(rt.chess2.matchPlayer);
-            let noMyMatchPlayerNozz = dep(TubDry(null, myMatchPlayerNozz));
+            let myMatchPlayerDryNozz = dep(TubDry(null, myMatchPlayerNozz));
             
-            dep.scp(noMyMatchPlayerNozz, (_, dep) => {
+            dep.scp(myMatchPlayerDryNozz, (_, dep) => {
               
               let lobbyReal = dep(inReal.addReal('lobby'));
               lobbyReal.setText('Waiting for match...');
@@ -656,7 +673,7 @@ U.buildRoom({
               let match = myMatchPlayer.members[0];
               let myColour = myMatchPlayer.val.colour;
               
-              let gameReal = dep(inReal.addReal('game')).initDynamic();
+              let gameReal = dep(inReal.addReal('game'));
               
               // Show Player names
               dep.scp(match.relNozz(rt.chess2.matchPlayer), (matchPlayer, dep) => {
@@ -664,7 +681,7 @@ U.buildRoom({
                 let player = matchPlayer.members[1];
                 let colour = matchPlayer.val.colour;
                 
-                let playerReal = dep(gameReal.addReal('player')).initDynamic();
+                let playerReal = dep(gameReal.addReal('player'));
                 let playerContentReal = playerReal.addReal('content');
                 let playerNameReal = playerContentReal.addReal('name');
                 playerNameReal.setText(player.val.term);
@@ -702,7 +719,7 @@ U.buildRoom({
               
               let t = 1 / 8;
               let p = t * 0.95;
-              let boardReal = gameReal.addReal('board').initDynamic();
+              let boardReal = gameReal.addReal('board');
               boardReal.setLayout(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
               
               // Show board tiles
@@ -712,14 +729,14 @@ U.buildRoom({
               }}
               
               let selectedPieceNozz = dep(TubVal(null, Nozz()));
-              let noSelectedPieceNozz = dep(TubDry(null, selectedPieceNozz));
+              let selectedPieceDryNozz = dep(TubDry(null, selectedPieceNozz));
               let confirmedMoveNozz = dep(TubVal(null, Nozz()));
               let noConfirmedMoveNozz = dep(TubVal(null, Nozz()));
               
               dep.scp(match.relNozz(rt.chess2.matchPiece), (matchPiece, dep) => {
                 
                 let piece = matchPiece.members[1];
-                let pieceReal = dep(boardReal.addReal('piece')).initDynamic();
+                let pieceReal = dep(boardReal.addReal('piece'));
                 pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
                 pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);
                 pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScale(8); });
@@ -770,10 +787,10 @@ U.buildRoom({
                 
                 validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
                   
-                  let moveReal = dep(boardReal.addReal('move')).initDynamic();
+                  let moveReal = dep(boardReal.addReal('move'));
                   moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
                   
-                  let indReal = moveReal.addReal('indicator').initDynamic();
+                  let indReal = moveReal.addReal('indicator');
                   let colour = (piece.val.colour === 'white') ? '#e4e4f0' : '#191944';
                   indReal.setLayout(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
                   indReal.setRoundness(1);
@@ -800,12 +817,12 @@ U.buildRoom({
                 let { piece, tile, cap } = confirmedMove;
                 let colour = '#40df15';
                 
-                let showPieceReal = dep(boardReal.addReal('showMovePiece')).initDynamic();
+                let showPieceReal = dep(boardReal.addReal('showMovePiece'));
                 showPieceReal.setRoundness(1);
                 showPieceReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
                 showPieceReal.setBorder(UnitPx(5), colour);
                 
-                let showTileReal = dep(boardReal.addReal('showMoveTile')).initDynamic();
+                let showTileReal = dep(boardReal.addReal('showMoveTile'));
                 showTileReal.setRoundness(1);
                 if (cap) {
                   showTileReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
@@ -824,7 +841,7 @@ U.buildRoom({
                 let conclusion = matchConclusion.members[1];
                 let result = conclusion.val;
                 
-                let conclusionReal = dep(gameReal.addReal('conclusion')).initDynamic();
+                let conclusionReal = dep(gameReal.addReal('conclusion'));
                 let conclusionContentReal = conclusionReal.addReal('content');
                 
                 let type = (result !== 'stalemate')

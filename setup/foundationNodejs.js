@@ -1,5 +1,8 @@
 (() => {
   
+  // TODO: For `res.writeHead(...)`, consider Keep-Alive
+  // e.g. 'Keep-Alive: timeout=5, max=100'
+  
   let [  path,   fs,   net,   http,   crypto,   os ] =
       [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
   
@@ -20,27 +23,27 @@
   };
   let fsUpdFile = (cmps, v) => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't upd file "${f}"`);
+    let err = Error(`Couldn't upd file "${f}"`);
     return Promise((rsv, rjc) => fs.writeFile(f, v, err0 => err0 ? rjc(err) : rsv()));
   };
   let fsGetFile = cmps => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't get file "${f}"`);
+    let err = Error(`Couldn't get file "${f}"`);
     return Promise((rsv, rjc) => fs.readFile(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
   };
   let fsGetChildren = cmps => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't get children for "${f}"`);
+    let err = Error(`Couldn't get children for "${f}"`);
     return Promise((rsv, rjc) => fs.readdir(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
   };
   let fsRemFile = cmps => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't rem file "${f}"`);
+    let err = Error(`Couldn't rem file "${f}"`);
     return Promise((rsv, rjc) => fs.unlink(f, err0 => err0 ? rjc(err) : rsv()));
   };
   let fsRemDir = cmps => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't rem dir "${f}"`);
+    let err = Error(`Couldn't rem dir "${f}"`);
     return Promise((rsv, rjc) => fs.rmdir(f, err0 => err0 ? rjc(err) : rsv()));
   };
   let fsRemTree = async cmps => {
@@ -60,7 +63,7 @@
   };
   let fsGetFileMetadata = cmps => {
     let f = path.join(...cmps);
-    let err = new Error(`Couldn't check file "${f}"`);
+    let err = Error(`Couldn't check file "${f}"`);
     return Promise((rsv, rjc) => fs.stat(f, (err0, stat) => err0 ? rjc(err0) : rsv(stat)));
   };
   let fsGetFileSize = async cmps => {
@@ -78,19 +81,19 @@
         // ==== PARSE FRAME
         
         let b = buffer[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
-        if (b % 8) throw new Error('Some reserved bits are on');
+        if (b % 8) throw Error('Some reserved bits are on');
         let isFinalFrame = b === 8;
         
         let op = buffer[0] % 16;  // The 4 high bits of 1st byte give us the operation
-        if (op < 0 || (op > 2 && op < 8) || op > 10) throw new Error(`Invalid op: ${op}`);
+        if (op < 0 || (op > 2 && op < 8) || op > 10) throw Error(`Invalid op: ${op}`);
         
-        if (op >= 8 && !isFinalFrame) throw new Error('Incomplete control frame');
+        if (op >= 8 && !isFinalFrame) throw Error('Incomplete control frame');
         
         b = buffer[1];            // Look at second byte
         let masked = b >> 7;      // Lowest bit of 2nd byte - states whether frame is masked
         
         // Server requires a mask; Client requires no mask
-        if (!masked) throw new Error('No mask');
+        if (!masked) throw Error('No mask');
         
         let length = b % 128;
         let offset = 6; // Masked frames have an extra 4 halfwords containing the mask
@@ -122,20 +125,20 @@
         if (op === 8) {         // Process "close" op
           soktState.status = 'ended'; break;
         } else if (op === 9) {  // Process "ping" op
-          throw new Error('Unimplemented op: 9');
+          throw Error('Unimplemented op: 9');
         } else if (op === 10) { // Process "pong" op
-          throw new Error('Unimplemented op: 10');
+          throw Error('Unimplemented op: 10');
         }
         
         // Validate "continuation" functionality
-        if (op === 0 && soktState.curOp === null) throw new Error('Unexpected continuation frame');
-        if (op !== 0 && soktState.curOp !== null) throw new Error('Truncated continuation frame');
+        if (op === 0 && soktState.curOp === null) throw Error('Unexpected continuation frame');
+        if (op !== 0 && soktState.curOp !== null) throw Error('Truncated continuation frame');
         
         // Process "continuation" ops as if they were the op being continued
         if (op === 0) op = soktState.curOp;
         
         // Text ops are our ONLY supported ops! (TODO: For now?)
-        if (op !== 1) throw new Error(`Unsupported op: ${op}`);
+        if (op !== 1) throw Error(`Unsupported op: ${op}`);
         
         buffer = buffer.slice(offset + length); // Dispense with the frame we've just processed
         soktState.curOp = 1;                              // Our only supported op is "text"
@@ -255,7 +258,7 @@
           
           let habitName = args.habit.add;
           
-          if (!habitName) throw new Error('Need to provide name for habit');
+          if (!habitName) throw Error('Need to provide name for habit');
           
           let habitData = ({ ...args }).gain({ habit: C.skip });
           let jsonArgs = JSON.stringify(habitData, null, 2);
@@ -273,7 +276,7 @@
           
           let habitName = args.habit.rem.split('.');
           
-          if (!habitName) throw new Error('Need to provide name for habit');
+          if (!habitName) throw Error('Need to provide name for habit');
           
           try {
             await fsRemFile([ tempDir, 'habit', `${habitName}.json` ]);
@@ -293,7 +296,7 @@
           
           let habitName = args.habit.use.split('.');
           
-          if (!habitName) throw new Error('Need to provide name for habit');
+          if (!habitName) throw Error('Need to provide name for habit');
           
           let data = JSON.parse(await fsGetFile([ tempDir, 'habit', `${habitName}.json` ]));
           let newArgs = ({ ...data, ...args }).gain({ habit: C.skip });
@@ -471,7 +474,7 @@
         }
       }
       
-      if (curBlock) throw new Error(`Final ${curBlock.type} block is unbalanced`);
+      if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
       let curOffset = null;
       let offsets = [];
       let nextBlockInd = 0;
@@ -528,7 +531,7 @@
       if (!fileNameData) return null;
       
       let [ roomName, variant ] = fileNameData.slice(1);
-      if (!this.compilationData.has(roomName)) throw new Error(`Missing room ${roomName}`);
+      if (!this.compilationData.has(roomName)) throw Error(`Missing room ${roomName}`);
       if (!this.compilationData[roomName].has(variant)) return null;
       
       let variantData = this.compilationData[roomName][variant];
@@ -641,7 +644,7 @@
       
       let nativeDir = path.join(rootDir, src);
       try { fs.statSync(nativeDir); }
-      catch(err) { throw new Error(`Couldn't add file ${name}: ${src}`); }
+      catch(err) { throw Error(`Couldn't add file ${name}: ${src}`); }
       this.mountedFiles[name] = { type, nativeDir };
     },
     addMountDataAsFile: function(name, type, data) {
@@ -650,13 +653,13 @@
       this.mountedFiles[name] = { type, nativeDir };
     },
     getMountFile: function(name) {
-      if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+      if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
       let { type, nativeDir } = this.mountedFiles[name];
       
       return {
         ISFILE: true, type, name,
         getContent: async () => { 
-          if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+          if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
           this.readFile(nativeDir)
         },
         getPipe: () => fs.createReadStream(nativeDir),
@@ -664,7 +667,7 @@
       };
     },
     remMountFile: function(name) {
-      if (!this.mountedFiles.has(name)) throw new Error(`File "${name}" isn't mounted`);
+      if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
       delete this.mountedFiles[name];
     },
     getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
@@ -675,19 +678,19 @@
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
     writeFile: async function(name, content, options='utf8') {
-      let err0 = new Error('');
+      let err0 = Error('');
       return new Promise((rsv, rjc) => fs.writeFile(name, content, options, (err, c) => {
         return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
       }));
     },
     readFile: async function(name, options='utf8') {
-      let err0 = new Error('');
+      let err0 = Error('');
       return new Promise((rsv, rjc) => fs.readFile(name, options, (err, c) => {
         return err ? rjc(err0.gain({ message: `Couldn't read ${name}: ${err.message}` })) : rsv(c);
       }));
     },
     getJsSource: async function(type, name, bearing, options) {
-      if (![ 'setup', 'room' ].has(type)) throw new Error(`Invalid source type: "${type}"`);
+      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
       let fp = (type === 'setup')
         ? path.join(rootDir, 'setup', `${name}.js`)
         : path.join(rootDir, 'room', name, `${name}.${bearing}.js`);
@@ -724,7 +727,7 @@
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
       if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
       let pcs = verboseIp.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw new Error(`Invalid ip: "${verboseIp}"`);
+      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw Error(`Invalid ip: "${verboseIp}"`);
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
@@ -771,7 +774,7 @@
           if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
           if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
           if (U.isType(msg, Error)) return 'error';
-          throw new Error(`Unknown type for ${U.nameOf(msg)}`);
+          throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
         // TODO: This is nice content-type-dependent information!
@@ -826,7 +829,7 @@
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
           body = body.length ? JSON.parse(body) : {};
-          if (!U.isType(body, Object)) throw new Error(`Http body should be Object; got ${U.nameOf(body)}`);
+          if (!U.isType(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
         } catch(err) {
           res.writeHead(400); res.end(); return;
         }
@@ -847,7 +850,7 @@
         }
         
         let conn = this.getCpuConn(server, pool, params.slice('spoof', 'cpuId'));
-        if (!conn) { res.writeHead(302, { 'Location': '/' }); res.end(); return; }
+        if (!conn) return res.writeHead(302, { 'Location': '/' }).end();
         conn.knownHosts.add(req.connection.remoteAddress);
         
         // Remove identity-specifying params
@@ -863,7 +866,7 @@
         }
         
         // Error response for invalid params
-        if (!params.has('command')) { conn.dry(); res.writeHead(400).end(); return; };
+        if (!params.has('command')) { conn.dry(); return res.writeHead(400).end(); };
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
@@ -939,7 +942,6 @@
         // Wait to get websocket request - it contains only headers
         let upgradeReq = null;
         while (true) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
-          
           upgradeReq = await Promise(r => sokt.once('readable', () => {
             let newBuffer = sokt.read();
             if (!newBuffer || !newBuffer.length) return r(null);
@@ -947,13 +949,12 @@
             r(Insp.parseSoktUpgradeRequest(soktState));
           }));
           if (upgradeReq) break;
-          
         }
         
-        soktState.status = 'upgrading';
+        if (!upgradeReq.headers.has('sec-websocket-key')) return sokt.end();
         
         // Now we have the headers - send upgrade response
-        if (!upgradeReq.headers.has('sec-websocket-key')) throw new Error('Missing "sec-websocket-key" header');
+        soktState.status = 'upgrading';
         let hash = crypto.createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
         
@@ -1037,18 +1038,18 @@
     },
     
     getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
-    establishHut: async function({ hut=null, bearing=null, ip=null, port=null, spoofEnabled=false }) {
+    establishHut: async function({ hut=null, bearing=null, ip=null, port=null }) {
       
-      if (!hut) throw new Error('Missing "hut" param');
-      if (!bearing) throw new Error('Missing "bearing" param');
-      if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw new Error(`Invalid bearing: "${bearing}"`);
+      if (!hut) throw Error('Missing "hut" param');
+      if (!bearing) throw Error('Missing "bearing" param');
+      if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw Error(`Invalid bearing: "${bearing}"`);
       
       // We're establishing with known params! So set them on `this`
       this.ip = ip || '127.0.0.1';
       this.port = port || 80;
       this.hut = hut;
       this.bearing = bearing;
-      this.spoofEnabled = spoofEnabled;
+      this.spoofEnabled = this.raiseArgs.spoofEnabled;
       
       // Compile everything!
       this.roomsInOrder = await this.compileRecursive(this.hut);

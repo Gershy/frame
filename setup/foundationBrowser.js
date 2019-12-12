@@ -53,7 +53,7 @@
     getPlatformName: function() { return 'browser'; },
     establishHut: async function(args) {
       
-      if (!args.has('hut')) throw new Error('Missing "hut" param');
+      if (!args.has('hut')) throw Error('Missing "hut" param');
       
       // Build all Rooms
       U.rooms.forEach(room => room(this));
@@ -120,10 +120,10 @@
         // Listen for the request to result in a JSON response
         let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
           if (req.readyState !== 4) return;
-          if (req.status === 0) return rjc(new Error('Got HTTP status 0'));
+          if (req.status === 0) return rjc(Error('Got HTTP status 0'));
           
           try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
-          catch(err) {  return rjc(new Error('Malformed JSON')); }
+          catch(err) {  return rjc(Error('Malformed JSON')); }
         }}));
         
         // If any data was received, process it at a higher level
@@ -131,7 +131,7 @@
           try { conn.hear.drip([ res, null ]); }
           catch(err) {
             console.log('TRANSMISSION HEARD:', JSON.stringify(res));
-            console.log('ERROR RESULTING:\n', this.formatError(err));
+            throw err;
           }
         }
         
@@ -156,7 +156,6 @@
     makeSoktServer: async function(pool, host, port) {
       if (!WebSocket) return null;
       
-      console.log('CONNECT TO:', `ws://${host}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
       let sokt = new WebSocket(`ws://${host}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
       await Promise(r => sokt.onopen = r);
       

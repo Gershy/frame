@@ -3,6 +3,9 @@
 // finally build the hut being run.
 // Server-side huts perform compilation, as part of the foundation.
 
+// Keep-Alive headers
+// NODE_ENV should be production?
+
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
 

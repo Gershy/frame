@@ -2,7 +2,7 @@
 Huts are built on Foundations. There is OurHut representing ourself in
 the hinterlands, and FarHuts representing others.
 
-A Foundation runs on any platform which supports javascript - redhat,
+A Foundation sits on any platform which supports javascript - redhat,
 digitalocean, heroku, browser, etc.
 
 Huts connect to each other through a variable number of Connections
@@ -16,10 +16,9 @@ Hut at the very bottom runs using a single Reality.
 
 (() => {
   let doNetworkDbg = 1;
-
-  //let { Load, FreeLoad, Flow, Flux } = U.life;
+  
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
-
+  
   let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
     init: function({ name, desc, detect, enact }) {
       ({}).gain.call(this, { name, desc, detect, enact, children: Set() });
@@ -49,11 +48,11 @@ Hut at the very bottom runs using a single Reality.
       server.decorateConn(conn);
       conn.server = server;
       
-      if (!conn.hear) throw new Error('Invalid conn: missing "hear"');
-      if (!conn.tell) throw new Error('Invalid conn: missing "tell"');
+      if (!conn.hear) throw Error('Invalid conn: missing "hear"');
+      if (!conn.tell) throw Error('Invalid conn: missing "tell"');
       
-      if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(6, '0')
-        + U.base62(Math.random() * Math.pow(62, 6)).padHead(6, '0');
+      if (!conn.cpuId) conn.cpuId = U.base62(this.cpuIdCnt++).padHead(8, '0')
+        + U.base62(Math.random() * Math.pow(62, 8)).padHead(8, '0');
       
       let cpuId = conn.cpuId, cpu = null, serverConns = null, isKnownCpu = this.cpus.has(cpuId);
       let dbgDesc = doNetworkDbg ? `${cpuId}:${server.desc.substr(0, 4)}` : '';
@@ -61,7 +60,7 @@ Hut at the very bottom runs using a single Reality.
       if (isKnownCpu) { // Check if we've seen this cpu on another connection
         cpu = this.cpus[cpuId];
         serverConns = cpu.serverConns;
-        if (serverConns.has(server)) throw new Error(`CpuId ${cpuId} connected twice via ${server.desc}`);
+        if (serverConns.has(server)) throw Error(`CpuId ${cpuId} connected twice via ${server.desc}`);
       } else {
         // All Conns dry up when the Cpu dries
         cpu = Drop(defDrier(), () => { for (let [ s, c ] of cpu.serverConns) c.dry(); });
@@ -121,11 +120,8 @@ Hut at the very bottom runs using a single Reality.
           if (args.has('hut'))      hut = args.hut;
           if (args.has('bearing'))  bearing = args.bearing;
           
-          //if (hut && args.has('hut') && hut !== args.hut) throw new Error(`Conflicting "hut" values "${hut}" and "${args.hut}"`);
-          //if (bearing && args.has('bearing') && bearing !== args.bearing) throw new Error(`Conflicting "bearing" values "${bearing}" and "${args.bearing}"`);
-          
           let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
-          if (!rootRoom.built.has('open')) throw new Error(`Room "${rootRoom.name}" isn't setup for settling`);
+          if (!rootRoom.built.has('open')) throw Error(`Room "${rootRoom.name}" isn't setup for settling`);
           
           console.log(`Settling ${rootRoom.name} on ${this.getPlatformName()}`);
           await rootRoom.built.open();
@@ -150,7 +146,8 @@ Hut at the very bottom runs using a single Reality.
     // Setup
     raise: async function(raiseArgs) {
       
-      this.raiseArgs = raiseArgs;
+      this.raiseArgs = { mode: 'prod', ...raiseArgs };
+      if (!this.raiseArgs.has('spoofEnabled')) this.raiseArgs.spoofEnabled = this.raiseArgs.mode === 'test';
       
       let goalAchieved = false;
       for (let goal of this.goals) if (await goal.attempt(this, raiseArgs)) { goalAchieved = true; break; }
@@ -168,7 +165,6 @@ Hut at the very bottom runs using a single Reality.
       };
     },
   })});
-
+  
   U.setup.gain({ Foundation, Goal, CpuPool });
-
 })();

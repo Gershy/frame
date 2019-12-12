@@ -7,7 +7,7 @@ let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, 
 
 let C = global.C = {
   skip: { SKIP: 1 },
-  notImplemented: function() { throw new Error(`Not implemented by ${this.constructor.name}`); }
+  notImplemented: function() { throw Error(`Not implemented by ${this.constructor.name}`); }
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
@@ -206,7 +206,7 @@ let U = global.U = {
   inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
     
     let parInsps = insps;
-    parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw new Error(`Invalid Insp: "${k}"`); });
+    parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw Error(`Invalid Insp: "${k}"`); });
     
     let Insp = eval(`let Insp = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
     Object.defineProperty(Insp, 'name', { value: name });
@@ -232,10 +232,10 @@ let U = global.U = {
     if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
     
     // Ensure we have valid "methods"
-    if (!U.isType(methods, Object)) throw new Error('Couldn\'t resolve "methods" to Object');
+    if (!U.isType(methods, Object)) throw Error('Couldn\'t resolve "methods" to Object');
     
     // Ensure reserved property names haven't been used
-    if (methods.has('constructor')) throw new Error('Used reserved "constructor" key');
+    if (methods.has('constructor')) throw Error('Used reserved "constructor" key');
     
     // Collect all inherited methods
     let methodsByName = {};
@@ -260,12 +260,12 @@ let U = global.U = {
       
     }
     
-    if (!methodsByName.has('init')) throw new Error('No "init" method available');
+    if (!methodsByName.has('init')) throw Error('No "init" method available');
     
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName];
       if (methodsAtName.size > 1) {
-        throw new Error(`Found ${methodsAtName.size} methods "${methodName}" for ${name}; declare a custom method`);
+        throw Error(`Found ${methodsAtName.size} methods "${methodName}" for ${name}; declare a custom method`);
       }
       protoDef(Insp, methodName, methodsAtName.toArr(v=>v)[0]); // `methodsAtName.length` will certainly be `1`
     }
@@ -289,13 +289,13 @@ let U = global.U = {
   
   buildRoom: ({ name, innerRooms=[], build }) => {
     
-    if (U.rooms.has(name)) throw new Error(`Tried to overwrite room "${name}"`);
+    if (U.rooms.has(name)) throw Error(`Tried to overwrite room "${name}"`);
     return U.rooms[name] = foundation => {
       
-      if (!foundation) throw new Error('Missing "foundation" param');
-      if (!U.isType(name, String)) throw new Error(`Invalid name: ${U.nameOf(name)}`);
+      if (!foundation) throw Error('Missing "foundation" param');
+      if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
       let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
-      if (missingRoom) throw new Error(`Missing innerRoom: ${missingRoom[0]}`);
+      if (missingRoom) throw Error(`Missing innerRoom: ${missingRoom[0]}`);
       
       return U.rooms[name] = {
         name,
@@ -331,8 +331,8 @@ let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
     if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
   },
   drierNozz: function() {
-    if (!this.drier) throw new Error('No "drier" available');
-    if (!this.drier.has('nozz')) throw new Error('No "drier.nozz" available');
+    if (!this.drier) throw Error('No "drier" available');
+    if (!this.drier.has('nozz')) throw Error('No "drier.nozz" available');
     return this.drier.nozz;
   }
 })});
@@ -391,7 +391,7 @@ let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, 
       if (itemIsDrop && item.isDry()) return; // Skip Dry Drops
       
       // Remove previous Item-Dry-Route if it exists
-      if (this.itemDryRoute) throw new Error('A value is already set');
+      if (this.itemDryRoute) throw Error('A value is already set');
       
       // If `item` is a Drop with a Drier-Nozz add additional Routes
       let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
@@ -434,10 +434,7 @@ let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, 
       // If `item` is a Drop with a Drier-Nozz add additional Routes
       let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
       if (itemDryNozz) {
-        let itemDryRoute = itemDryNozz.route(() => {
-          this.tubRoutes.rem(itemDryRoute);
-          this.set.rem(item);
-        });
+        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.set.rem(item); });
         this.tubRoutes.add(itemDryRoute);
       }
       
@@ -447,9 +444,7 @@ let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, 
     }));
   },
   newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
-  dryContents: function() {
-    for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry();
-  },
+  dryContents: function() { for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry(); },
   onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
 })});
 let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
@@ -460,14 +455,14 @@ let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, 
     
     let count = 0;
     this.drop = Drop(defDrier());
-    this.drop.desc = `From TubDry`;
+    this.drop.desc = `TubDry dryness-indicating Drop`;
     
     this.dropDryRoutes = Set();
     this.nozzRoute = this.nozz.route(drop => {
       
-      if (!U.isInspiredBy(drop, Drop)) throw new Error(`TubDry expected nozz to drip Drops - got ${U.nameOf(drop)}`);
-      if (!drop.drier) throw new Error('TubDry expects Drops to have "drier"');
-      if (!drop.drier.nozz) throw new Error('TubDry expects Drops to have "drier.nozz"');
+      if (!U.isInspiredBy(drop, Drop)) throw Error(`TubDry expected nozz to drip Drops - got ${U.nameOf(drop)}`);
+      if (!drop.drier) throw Error('TubDry expects Drops to have "drier"');
+      if (!drop.drier.nozz) throw Error('TubDry expects Drops to have "drier.nozz"');
       if (drop.isDry()) return;
       
       if (count === 0) this.drop.dry();
@@ -487,6 +482,32 @@ let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, 
     for (let dr of this.dropDryRoutes) dr.dry();
   }
 })});
+let TubCnt = U.inspire({ name: 'TubCnt', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(drier, nozz, flt=null) {
+    insp.Drop.init.call(this, drier);
+    insp.Nozz.init.call(this);
+    this.nozz = nozz;
+    this.count = 0;
+    this.tubRoutes = Set();
+    this.tubRoutes.add(this.nozz.route(item => {
+      
+      if (flt && (item = flt(item)) === C.skip) return;
+      
+      let itemIsDrop = U.isInspiredBy(item, Drop);
+      if (itemIsDrop && item.isDry()) return;
+      
+      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
+      if (itemDryNozz) {
+        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.drip(--this.count); });
+        this.tubRoutes.add(itemDryRoute);
+      }
+      
+      this.drip(++this.count);
+    }));
+  },
+  newRoute: function(routeFn) { routeFn(this.count); },
+  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
+})});
 let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
   init: function(nozz, fn) {
     
@@ -496,7 +517,7 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
     this.fn = fn;
     this.nozzRoute = nozz.route(drop => {
       
-      if (!U.isInspiredBy(drop, Drop)) throw new Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
+      if (!U.isInspiredBy(drop, Drop)) throw Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
       if (drop.isDry()) return;
       
       // Allow shorthand adding of Deps and SubScopes
@@ -547,4 +568,4 @@ let defDrier = (nozz=Nozz()) => {
   return drier;
   
 };
-U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier };
+U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier };
