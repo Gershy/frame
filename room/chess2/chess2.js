@@ -606,8 +606,8 @@ U.buildRoom({
             let match = lands.createRec('match');
             
             let playerPieceSets = [
-              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.minimal.white },
-              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.minimal.black }
+              { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.standard.white },
+              { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.standard.black }
             ];
             
             console.log('Matching:', playerPieceSets.map(({ player }) => player.val.term));
