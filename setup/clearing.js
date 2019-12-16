@@ -153,7 +153,7 @@ protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; return
   for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(MapOrig, 'toArr', function(fn) {
+protoDef(MapOrig, 'toArr', function(fn) { // Iterator args: [ VAL, KEY ]; returns VALs
   let ret = [];
   for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;

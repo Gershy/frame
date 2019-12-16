@@ -1037,7 +1037,7 @@
       this.port = port || 80;
       this.hut = hut;
       this.bearing = bearing;
-      this.spoofEnabled = this.raiseArgs.spoofEnabled;
+      this.spoofEnabled = this.raiseArgs.mode === 'test';
       
       // Compile everything!
       this.roomsInOrder = await this.compileRecursive(this.hut);
