@@ -19,6 +19,15 @@ Hut at the very bottom runs using a single Reality.
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
+  let Saved = U.inspire({ name: 'Saved', insps: { Drop }, methods: (insp, Insp) => ({
+    init: function() {},
+    getContentType: function() { return null; },
+    update: C.notImplemented,
+    getPipe: C.notImplemented,
+    getContent: C.notImplemented,
+    getNumBytes: C.notImplemented,
+    onceDry: C.notImplemented
+  })});
   let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
     init: function({ name, desc, detect, enact }) {
       ({}).gain.call(this, { name, desc, detect, enact, children: Set() });
@@ -137,9 +146,9 @@ Hut at the very bottom runs using a single Reality.
     // Platform
     getMs: function() { return +new Date(); },
     queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead! // TODO: Better name for "queueTask" should simply imply that the task occurs after serial processing is done
-    makeHttpServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
-    makeSoktServer: async function(pool, ip, port) { return C.notImplemented.call(this); },
-    getRootReal: async function() { return C.notImplemented.call(this); },
+    makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
+    makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
+    getRootReal: async function() { C.notImplemented.call(this); },
     formatError: C.notImplemented,
     getOrderedRoomNames: C.notImplemented,
     
@@ -154,7 +163,7 @@ Hut at the very bottom runs using a single Reality.
       if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(raiseArgs, null, 2)}`);
       
     },
-    establishHut: async function(args) { return C.notImplemented.call(this); },
+    establishHut: async function(args) { C.notImplemented.call(this); },
     parseUrl: function(url) {
       let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
       if (!path.hasHead('/')) path = `/${path}`;
@@ -166,5 +175,5 @@ Hut at the very bottom runs using a single Reality.
     },
   })});
   
-  U.setup.gain({ Foundation, Goal, CpuPool });
+  U.setup.gain({ Saved, Goal, CpuPool, Foundation });
 })();

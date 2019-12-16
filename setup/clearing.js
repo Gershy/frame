@@ -179,7 +179,7 @@ let ErrorOrig = Error;
 Error = global.Error = function Error(...args) { return new ErrorOrig(...args); };
 Error.prototype = ErrorOrig.prototype;
 Error.captureStackTrace = ErrorOrig.captureStackTrace;
-protoDef(Error, 'update', function(msg) { this.message = msg; return this; });
+protoDef(Error, 'update', function(msg) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 let U = global.U = {
   dbgCnt: name => {

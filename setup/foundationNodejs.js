@@ -3,10 +3,10 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
+  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  
   let [  path,   fs,   net,   http,   crypto,   os ] =
       [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
-  
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -21,30 +21,30 @@
     for (let name of names) fsRemTreeSync(path.join(f, name));
     fs.rmdirSync(f);
   };
-  let fsUpdFile = (cmps, v) => {
+  let fsUpdFile = (cmps, data, opts='utf8') => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't upd file "${f}"`);
-    return Promise((rsv, rjc) => fs.writeFile(f, v, err0 => err0 ? rjc(err) : rsv()));
+    return Promise((rsv, rjc) => fs.writeFile(f, data, opts, e => e ? rjc(err) : rsv()));
   };
-  let fsGetFile = cmps => {
+  let fsGetFile = (cmps, opts='utf8') => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't get file "${f}"`);
-    return Promise((rsv, rjc) => fs.readFile(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
+    return Promise((rsv, rjc) => fs.readFile(f, opts, (e, v) => e ? rjc(err) : rsv(v)));
   };
   let fsGetChildren = cmps => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't get children for "${f}"`);
-    return Promise((rsv, rjc) => fs.readdir(f, (err0, v) => err0 ? rjc(err) : rsv(v)));
+    return Promise((rsv, rjc) => fs.readdir(f, (e, v) => e ? rjc(err) : rsv(v)));
   };
   let fsRemFile = cmps => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't rem file "${f}"`);
-    return Promise((rsv, rjc) => fs.unlink(f, err0 => err0 ? rjc(err) : rsv()));
+    return Promise((rsv, rjc) => fs.unlink(f, e => e ? rjc(err) : rsv()));
   };
   let fsRemDir = cmps => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't rem dir "${f}"`);
-    return Promise((rsv, rjc) => fs.rmdir(f, err0 => err0 ? rjc(err) : rsv()));
+    return Promise((rsv, rjc) => fs.rmdir(f, e => e ? rjc(err) : rsv()));
   };
   let fsRemTree = async cmps => {
     
@@ -64,12 +64,38 @@
   let fsGetFileMetadata = cmps => {
     let f = path.join(...cmps);
     let err = Error(`Couldn't check file "${f}"`);
-    return Promise((rsv, rjc) => fs.stat(f, (err0, stat) => err0 ? rjc(err0) : rsv(stat)));
+    return Promise((rsv, rjc) => fs.stat(f, (e, stat) => e ? rjc(err) : rsv(stat)));
   };
-  let fsGetFileSize = async cmps => {
-    let meta = await fsGetFileMetadata(cmps);
-    return meta.size;
-  };
+  
+  let { Saved } = U.setup;
+  let SavedFile = U.inspire({ name: 'SavedFile', insps: { Saved }, methods: (insp, Insp) => ({
+    
+    // All SavedFile uses filepaths relative to the root Hut directory
+    $extMap: {
+      '.html': 'text/html',
+      '.json': 'text/json',
+      '.css': 'text/css',
+      '.txt': 'text/plain',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.svg': 'image/svg'
+    },
+    
+    init: function(...pcs) {
+      insp.Saved.init.call(this);
+      this.nativeDir = path.join(rootDir, ...pcs);
+      this.desc = `File ${this.type} @ ${this.nativeDir}`;
+    },
+    getContentType: function() {
+      let ext = path.extname(this.nativeDir);
+      return Insp.extMap.has(ext) ? Insp.extMap[ext] : 'application/octet-stream';
+    },
+    update: async function(data, opts) { return fsUpdFile([ this.nativeDir ], data, opts); },
+    getPipe: function() { return fs.createReadStream(this.nativeDir); },
+    getContent: async function(opts) { return fsGetFile([ this.nativeDir ], opts); },
+    getNumBytes: async function() { return (await fsGetFileMetadata([ this.nativeDir ])).size; },
+    onceDry: function() { fsRemFile([ this.nativeDir ]); }
+  })});
   
   let { Foundation } = U.setup;
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -372,7 +398,7 @@
       // uncache the room file. It will call U.buildRoom with the
       // anticipated room names...
       
-      let roomFileContents = await this.readFile(path.join(roomDir, roomName, `${roomName}.js`));
+      let roomFileContents = await fsGetFile([ roomDir, roomName, `${roomName}.js` ]);
       let depStr = roomFileContents.match(/innerRooms:\s*\[([^\]]*)\]/)[1].trim();
       return depStr
         ? depStr.split(',').map(v => { v = v.trim(); return v.substr(1, v.length - 2); })
@@ -432,17 +458,21 @@
       
       // Compile a single room; generate a new file for each variant
       
-      let contentLines = await this.readFile(path.join(roomDir, roomName, `${roomName}.js`));
-      contentLines = contentLines.split('\n');
+      let contentLines = (await fsGetFile([ roomDir, roomName, `${roomName}.js` ])).split('\n');
       this.compilationData[roomName] = {};
       
       for (let variantName in this.variantDefs) {
         
-        let compiledFileName = path.join(roomDir, roomName, `${roomName}.${variantName}.js`);
-        let { content: compiledContent, offsets } = this.compileContent(variantName, contentLines);
-        await this.writeFile(compiledFileName, compiledContent, { flag: 'w', encoding: 'utf8' }); // Contents are written to disk
+        let compiledFilePcs = [ roomDir, roomName, `${roomName}.${variantName}.js` ];
+        let { lines: cmpLines, offsets } = this.compileContent(variantName, contentLines);
+        await fsUpdFile(compiledFilePcs, cmpLines.join('\n'));
         
-        this.compilationData[roomName][variantName] = { fileName: compiledFileName, offsets, numLines: contentLines.length }; // Filename, offsets, and length are kept
+        this.compilationData[roomName][variantName] = {
+          fileName: path.join(...compiledFilePcs),
+          srcNumLines: contentLines.length,
+          cmpNumLines: cmpLines.length,
+          offsets
+        }; // Filename, offsets, and length are kept
       }
       
     },
@@ -517,10 +547,7 @@
         
       }
       
-      return {
-        content: filteredLines.join('\n'),
-        offsets
-      };
+      return { lines: filteredLines, offsets };
     },
     mapLineToSource: function(fileName, lineInd) {
       // For a compiled file and line number, return the corresponding line number
@@ -633,42 +660,15 @@
         heapUsed: usage1.heapUsed - this.usage0.heapUsed
       };
     },
-    addMountFile: function(name, type, src) {
-      
-      // TODO: We could skip the `name` parameter and make the
-      // implementor responsible for referencing the mounted file. The
-      // disadvantage would be that the Below would then also need to
-      // call `addMountFile` in order to have a reference to a
-      // MountedFile, instead of being able to reference the files it
-      // must have by name
-      
-      let nativeDir = path.join(rootDir, src);
-      try { fs.statSync(nativeDir); }
-      catch(err) { throw Error(`Couldn't add file ${name}: ${src}`); }
-      this.mountedFiles[name] = { type, nativeDir };
+    
+    getSaved: function(locator) {
+      // Assume the saved item is on the filesystem...
+      return SavedFile(...locator);
     },
-    addMountDataAsFile: function(name, type, data) {
-      let nativeDir = path.join(tempDir, 'storage', name);
-      fs.writeFileSync(nativeDir, data);
-      this.mountedFiles[name] = { type, nativeDir };
-    },
-    getMountFile: function(name) {
-      if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
-      let { type, nativeDir } = this.mountedFiles[name];
-      
-      return {
-        ISFILE: true, type, name,
-        getContent: async () => { 
-          if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
-          this.readFile(nativeDir)
-        },
-        getPipe: () => fs.createReadStream(nativeDir),
-        getNumBytes: async () => (await fsGetFileMetadata([ nativeDir ])).size
-      };
-    },
-    remMountFile: function(name) {
-      if (!this.mountedFiles.has(name)) throw Error(`File "${name}" isn't mounted`);
-      delete this.mountedFiles[name];
+    getSavedFromData: async function(locator, data) {
+      let savedFile = SavedFile('mill', 'storage', ...locator); // Write to temporary location
+      await savedFile.update(data);
+      return savedFile;
     },
     getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
     getStaticIps: function(pref=[]) {
@@ -677,51 +677,35 @@
         .to(arr => Array.combine(...arr))
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
-    writeFile: async function(name, content, options='utf8') {
-      let err0 = Error('');
-      return new Promise((rsv, rjc) => fs.writeFile(name, content, options, (err, c) => {
-        return err ? rjc(err0.gain({ message: `Couldn't write ${name}: ${err.message}` })) : rsv(c);
-      }));
-    },
-    readFile: async function(name, options='utf8') {
-      let err0 = Error('');
-      return new Promise((rsv, rjc) => fs.readFile(name, options, (err, c) => {
-        return err ? rjc(err0.gain({ message: `Couldn't read ${name}: ${err.message}` })) : rsv(c);
-      }));
-    },
     getJsSource: async function(type, name, bearing, options) {
       if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
       let fp = (type === 'setup')
-        ? path.join(rootDir, 'setup', `${name}.js`)
-        : path.join(rootDir, 'room', name, `${name}.${bearing}.js`);
+        ? [ rootDir, 'setup', `${name}.js` ]
+        : [ rootDir, 'room', name, `${name}.${bearing}.js` ];
       
-      let srcContent = await this.readFile(fp, options);
-      let v = (() => {
-        if (type === 'room') {
-          let { offsets, numLines } = this.compilationData[name][bearing];
-          return [ srcContent, offsets, numLines ];
-        }
-        
-        let offsets = [];
-        let lines = srcContent.trim().replace(/\r/g, '').split('\n');
-        let cur = { at: 0, offset: 0 };
-        lines = lines.map((ln, ind) => {
-          // Note that this isn't syntax-aware: it may incorrectly strip
-          // data from multiline tag-strings, for example
-          let skip = ln.match(/^ *\/\//); // Skip lines which contain only a single-line comment
-          if (skip) { cur.offset++; return C.skip; } // Increment skip-count, and remove the line
-          
-          if (cur.offset > 0) offsets.push(cur);
-          cur = { at: ind, offset: 0 };
-          return ln;
-        });
-        
-        return [ lines.join('\n'), offsets, lines.length ];
-      })();
+      let srcContent = await fsGetFile(fp, options);
+      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
-      let [ content, offsets, numLines ] = v;
+      let offsets = [];
+      let srcLines = srcContent.replace(/\r/g, '').split('\n');
+      let cmpLines = [];
+      let cur = { at: 0, offset: 0 };
       
-      return { content, offsets, numLines };
+      for (let ind = 0; ind < srcLines.length; ind++) {
+        let srcLine = srcLines[ind].trim();
+        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
+        if (cur.offset > 0) offsets.push(cur);
+        cur = { at: ind, offset: 0 };
+        cmpLines.push(srcLine);
+      }
+      
+      return {
+        content: cmpLines.join('\n'),
+        srcNumLines: srcLines.length,
+        cmpNumLines: cmpLines.length,
+        offsets
+      };
+      
     },
     compactIp: function(verboseIp, verbosePort) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
@@ -771,8 +755,9 @@
       let sendData = (res, msg) => {
         
         let type = (() => {
-          if (U.isType(msg, String)) return msg[0] === '<' ? 'html' : 'text';
-          if (U.isType(msg, Object)) return msg.has('ISFILE') ? 'file' : 'json';
+          if (U.isType(msg, Object)) return 'json';
+          if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE html>\n') ? 'html' : 'text';
+          if (U.isInspiredBy(msg, Saved)) return 'savd';
           if (U.isType(msg, Error)) return 'error';
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
@@ -782,7 +767,7 @@
           text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
           html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
-          file: () => ({ ISFILE: true, ...msg.slice('name', 'type') }),
+          savd: () => ({ ISSAVD: true, desc: msg.desc || null }),
           error: () => ({ ISERROR: true, msg: msg.error })
         })[type]());
         
@@ -801,9 +786,9 @@
             res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
             res.end(msg);
           },
-          file: async () => {
+          savd: async () => {
             res.writeHead(200, {
-              'Content-Type': (msg.has('type') && msg.type) ? msg.type : 'application/octet-stream',
+              'Content-Type': msg.getContentType() || 'application/octet-stream',
               'Content-Length': await msg.getNumBytes()
             });
             msg.getPipe().pipe(res);
@@ -1037,12 +1022,15 @@
       return server;
     },
     
-    getPlatformName: function() { return this.ip ? `nodejs @ ${this.ip}:${this.port}` : 'nodejs'; },
+    getPlatformName: function() { return 'nodejs'; },
     establishHut: async function({ hut=null, bearing=null, ip=null, port=null }) {
       
       if (!hut) throw Error('Missing "hut" param');
       if (!bearing) throw Error('Missing "bearing" param');
       if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw Error(`Invalid bearing: "${bearing}"`);
+      
+      // Note that there should be no such thing as `this.ip` - a
+      // foundation can have any number of ips (including 0)
       
       // We're establishing with known params! So set them on `this`
       this.ip = ip || '127.0.0.1';

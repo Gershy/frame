@@ -1,15 +1,9 @@
-// TODO: Doing SO GOOD, shit is alost completely solid!
-// - Players can't move each other's pieces
-// - An error occurs trying to sync remRec for matchPlayer when the 2nd
-//   Player exits a Match
-// - Piece death transitions
 U.buildRoom({
   name: 'chess2',
-  innerRooms: [ 'hinterlands', 'record', 'real', 'realHtmlCss', 'chance' ],
-  build: (foundation, hinterlands, record, real, realHtmlCss, chance) => {
+  innerRooms: [ 'record', 'hinterlands', 'real', 'realHtmlCss' ],
+  build: (foundation, record, hinterlands, real, realHtmlCss) => {
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
-    let { Chance } = chance;
     let { Rec, recTyper } = record;
     let { Lands } = hinterlands;
     
@@ -97,138 +91,20 @@ U.buildRoom({
         ]
       }
     };
-    
     let pieceTypes = Set();
-    let mountedPieceImgs = {};
     pieceDefs.forEach(mode => mode.forEach(pl => pl.forEach(([ type ]) => pieceTypes.add(type))));
-    for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
-      foundation.addMountFile(`chess2Piece.${colour}.${pieceType}`, `image/png`, `room/chess2/img/classicPieces/${colour}-${pieceType}.png`);
-    }}
     
-    let validMoves = (matchPlayer, match, piece) => {
-      
-      if (piece.val.wait > 0) return [];
-      if (matchPlayer.val.colour !== piece.val.colour) return [];
-      
-      // Get other pieces
-      let pieces = match.relRecs(rt.chess2.matchPiece).toArr(matchPiece => matchPiece.members[1]);
-      
-      // Make a nice 2d representation of the board
-      let calc = Array.fill(8, () => Array.fill(8, () => null));
-      pieces.forEach(piece => calc[piece.val.col][piece.val.row] = piece);
-      
-      // Utility func for checking tiles (OOB=out-of-bounds, null=empty-tile, otherwise a Piece)
-      let checkTile = (col, row) => (col < 0 || col > 7 || row < 0 || row > 7) ? 'OOB' : calc[col][row];
-      
-      let { type, colour, col, row } = piece.val;
-      
-      let moves = [];
-      
-      if (type === 'pawn') {
-        
-        let dir = colour === 'white' ? 1 : -1;
-        let initRow = colour === 'white' ? 1 : 6;
-        
-        if (!checkTile(col, row + dir)) {
-          moves.push([ col, row + dir, null ]); // Add first step if unblocked
-          if (row === initRow && !checkTile(col, row + dir + dir)) {
-            moves.push([ col, row + dir + dir, null ]); // Add second step if unblocked and unmoved
-          }
-        }
-        
-        // Check for captures in both directions
-        let cap1 = checkTile(col - 1, row + dir);
-        if (cap1 && cap1 !== 'OOB' && cap1.val.colour !== colour) moves.push([ col - 1, row + dir, cap1 ]);
-        
-        let cap2 = checkTile(col + 1, row + dir);
-        if (cap2 && cap2 !== 'OOB' && cap2.val.colour !== colour) moves.push([ col + 1, row + dir, cap2 ]);
-        
-      } else if (type === 'knight') {
-        
-        let offsets = [
-          [ -2, -1 ], [ -2, 1 ], [ -1, 2 ], [ 1, 2 ], [ 2, 1 ], [ 2, -1 ], [ 1, -2 ], [ -1, -2 ]
-        ];
-        offsets.forEach(([ dx, dy ]) => {
-          let [ c, r ] = [ col + dx, row + dy ];
-          let check = checkTile(c, r);
-          if (!check || (check !== 'OOB' && check.val.colour !== colour)) moves.push([ c, r, check ]);
-        });
-        
-      } else if ([ 'bishop', 'rook', 'queen', 'king' ].has(type)) {
-        
-        let diag = [ [ -1, -1 ], [ -1, +1 ], [ +1, +1 ], [ +1, -1 ] ];
-        let orth = [ [ -1, +0 ], [ +0, +1 ], [ +1, +0 ], [ +0, -1 ] ];
-        let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
-        
-        steps.forEach(([dx, dy]) => {
-          
-          let xx = col, yy = row;
-          while (true) {
-            [ xx, yy ] = [ xx + dx, yy + dy ];
-            
-            let check = checkTile(xx, yy);
-            
-            // Stepping terminates at edge of board
-            if (check === 'OOB') break;
-            
-            // Empty tiles and tiles with enemy pieces are valid
-            if (!check || check.val.colour !== colour) moves.push([ xx, yy, check ]);
-            
-            // Finding a piece terminates stepping; kings always terminate after first step
-            if (check || type === 'king') break;
-          }
-          
-        });
-        
-      } else {
-        
-        throw Error(`Invalid type: ${type}`);
-        
-      }
-      
-      return moves;
-      
-    };
-    let applyMoves = (match, ...playerMoves) => {
-      
-      // Get all match pieces...
-      let matchPieceSet = match.relRecs(rt.chess2.matchPiece);
-      let pieces = matchPieceSet.toArr(matchPiece => matchPiece.members[1]);
-      
-      // All pieces refresh by 1 turn
-      for (let piece of pieces) if (piece.val.wait) piece.modify(v => (v.wait--, v));
-      
-      // Update piece positions
-      playerMoves.forEach(({ type, pieceUid, tile }) => {
-        if (type === 'pass') return;
-        let piece = pieces.find(p => p.uid === pieceUid)[0];
-        piece.modify(v => v.gain({ col: tile[0], row: tile[1], wait: 1 }))
-      });
-      
-      // Look for promotions
-      pieces.forEach(piece => {
-        let { type, colour, row } = piece.val;
-        let lastRow = (colour === 'white') ? 7 : 0;
-        if (type === 'pawn' && row === lastRow) piece.modify(v => v.gain({ type: 'queen' }));
-      });
-      
-      // Determine captured pieces
-      let trgSets = playerMoves.map(({ type, pieceUid, tile }) => {
-        if (type === 'pass') return [];
-        return pieces.map(p => (p.uid !== pieceUid && p.val.col === tile[0] && p.val.row === tile[1]) ? p : C.skip);
-      });
-      
-      // Remove captured pieces
-      for (let trgSet of trgSets) for (let piece of trgSet) piece.dry();
-      
-      // Return the Players who are still alive. If both Players pass,
-      // both die. If a Player submitted a move, the living Players are
-      // the ones which still possess a king at the end of the Round.
-      return playerMoves.find(({ type}) => type !== 'pass')
-        ? Set(matchPieceSet.toArr(p => p.members[1].val.type === 'king' ? p.members[1].val.colour : C.skip))
-        : Set();
-      
-    }
+    let savedItems  = {};
+    for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
+      let key = `chess2Piece.${colour}.${pieceType}`;
+      let locator = null;
+      /// {ABOVE=
+      locator = [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ];
+      /// =ABOVE} {BELOW=
+      locator = key;
+      /// =BELOW}
+      savedItems[key] = foundation.getSaved(locator);
+    }}
     
     let { rt: chess2Rt, add } = recTyper();
     let rt = { lands: hinterlands.rt, chess2: chess2Rt };
@@ -255,14 +131,137 @@ U.buildRoom({
     add('roundPlayerMove',  Rec, '11', rt.chess2.roundPlayer, rt.chess2.move);
     
     let open = async () => {
+        
+      let validMoves = (matchPlayer, match, piece) => {
+        
+        if (piece.val.wait > 0) return [];
+        if (matchPlayer.val.colour !== piece.val.colour) return [];
+        
+        // Get other pieces
+        let pieces = match.relRecs(rt.chess2.matchPiece).toArr(matchPiece => matchPiece.members[1]);
+        
+        // Make a nice 2d representation of the board
+        let calc = Array.fill(8, () => Array.fill(8, () => null));
+        pieces.forEach(piece => calc[piece.val.col][piece.val.row] = piece);
+        
+        // Utility func for checking tiles (OOB=out-of-bounds, null=empty-tile, otherwise a Piece)
+        let checkTile = (col, row) => (col < 0 || col > 7 || row < 0 || row > 7) ? 'OOB' : calc[col][row];
+        
+        let { type, colour, col, row } = piece.val;
+        
+        let moves = [];
+        
+        if (type === 'pawn') {
+          
+          let dir = colour === 'white' ? 1 : -1;
+          let initRow = colour === 'white' ? 1 : 6;
+          
+          if (!checkTile(col, row + dir)) {
+            moves.push([ col, row + dir, null ]); // Add first step if unblocked
+            if (row === initRow && !checkTile(col, row + dir + dir)) {
+              moves.push([ col, row + dir + dir, null ]); // Add second step if unblocked and unmoved
+            }
+          }
+          
+          // Check for captures in both directions
+          let cap1 = checkTile(col - 1, row + dir);
+          if (cap1 && cap1 !== 'OOB' && cap1.val.colour !== colour) moves.push([ col - 1, row + dir, cap1 ]);
+          
+          let cap2 = checkTile(col + 1, row + dir);
+          if (cap2 && cap2 !== 'OOB' && cap2.val.colour !== colour) moves.push([ col + 1, row + dir, cap2 ]);
+          
+        } else if (type === 'knight') {
+          
+          let offsets = [
+            [ -2, -1 ], [ -2, 1 ], [ -1, 2 ], [ 1, 2 ], [ 2, 1 ], [ 2, -1 ], [ 1, -2 ], [ -1, -2 ]
+          ];
+          offsets.forEach(([ dx, dy ]) => {
+            let [ c, r ] = [ col + dx, row + dy ];
+            let check = checkTile(c, r);
+            if (!check || (check !== 'OOB' && check.val.colour !== colour)) moves.push([ c, r, check ]);
+          });
+          
+        } else if ([ 'bishop', 'rook', 'queen', 'king' ].has(type)) {
+          
+          let diag = [ [ -1, -1 ], [ -1, +1 ], [ +1, +1 ], [ +1, -1 ] ];
+          let orth = [ [ -1, +0 ], [ +0, +1 ], [ +1, +0 ], [ +0, -1 ] ];
+          let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
+          
+          steps.forEach(([dx, dy]) => {
+            
+            let xx = col, yy = row;
+            while (true) {
+              [ xx, yy ] = [ xx + dx, yy + dy ];
+              
+              let check = checkTile(xx, yy);
+              
+              // Stepping terminates at edge of board
+              if (check === 'OOB') break;
+              
+              // Empty tiles and tiles with enemy pieces are valid
+              if (!check || check.val.colour !== colour) moves.push([ xx, yy, check ]);
+              
+              // Finding a piece terminates stepping; kings always terminate after first step
+              if (check || type === 'king') break;
+            }
+            
+          });
+          
+        } else {
+          
+          throw Error(`Invalid type: ${type}`);
+          
+        }
+        
+        return moves;
+        
+      };
+      let applyMoves = (match, ...playerMoves) => {
+        
+        // Get all match pieces...
+        let matchPieceSet = match.relRecs(rt.chess2.matchPiece);
+        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.members[1]);
+        
+        // All pieces refresh by 1 turn
+        for (let piece of pieces) if (piece.val.wait) piece.modify(v => (v.wait--, v));
+        
+        // Update piece positions
+        playerMoves.forEach(({ type, pieceUid, tile }) => {
+          if (type === 'pass') return;
+          let piece = pieces.find(p => p.uid === pieceUid)[0];
+          piece.modify(v => v.gain({ col: tile[0], row: tile[1], wait: 1 }))
+        });
+        
+        // Look for promotions
+        pieces.forEach(piece => {
+          let { type, colour, row } = piece.val;
+          let lastRow = (colour === 'white') ? 7 : 0;
+          if (type === 'pawn' && row === lastRow) piece.modify(v => v.gain({ type: 'queen' }));
+        });
+        
+        // Determine captured pieces
+        let trgSets = playerMoves.map(({ type, pieceUid, tile }) => {
+          if (type === 'pass') return [];
+          return pieces.map(p => (p.uid !== pieceUid && p.val.col === tile[0] && p.val.row === tile[1]) ? p : C.skip);
+        });
+        
+        // Remove captured pieces
+        for (let trgSet of trgSets) for (let piece of trgSet) piece.dry();
+        
+        // Return the Players who are still alive. If both Players pass,
+        // both die. If a Player submitted a move, the living Players are
+        // the ones which still possess a king at the end of the Round.
+        return playerMoves.find(({ type}) => type !== 'pass')
+          ? Set(matchPieceSet.toArr(p => p.members[1].val.type === 'king' ? p.members[1].val.colour : C.skip))
+          : Set();
+        
+      }
       
       // TODO: Images should probably automatically get included by the
       // real room - e.g. under decals, say `image: 'classicHorse'`, and
       // then the real room will automatically mount that file and add
       // a comWob to the lands to allow it to serve the file.
-      // Mount files
       
-      // TODO: No good that this needs to be flattened!
       let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
         ? foundation.raiseArgs.hutHosting.split(':')
         : [ 'localhost', '80', '81' ];
@@ -386,10 +385,10 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        // Serve files (to be PICKY, could only serve to Huts in matches)
+        // Serve files (TODO: to be PICKY, could deny Huts without Matches)
         for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
           let key = `chess2Piece.${colour}.${pieceType}`;
-          lands.comNozz(key).route(({ reply }) => reply(foundation.getMountFile(key)));
+          lands.comNozz(key).route(({ reply }) => reply(savedItems[key]));
         }}
         
         dep.scp(lands.arch.relNozz(rt.lands.archHut), (archHut, dep) => {
@@ -748,7 +747,7 @@ U.buildRoom({
                   
                   pieceReal.setRoundness(1);
                   pieceReal.setLayout(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
-                  pieceReal.setImage(foundation.getMountFile(`chess2Piece.${colour}.${type}`));
+                  pieceReal.setImage(savedItems[`chess2Piece.${colour}.${type}`]);
                   
                   pieceReal.setColour((wait > 0) ? 'rgba(255, 120, 50, 0.55)' : null);
                   

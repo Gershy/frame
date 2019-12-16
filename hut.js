@@ -79,7 +79,6 @@ if (args.has('test')) {
   // Make the foundation
   let { FoundationNodejs } = U.setup;
   let foundation = FoundationNodejs();
-  foundation.addMountFile('favicon.ico', 'image/x-icon', 'setup/favicon.ico');
   foundation.raise(args)
     .catch(err => console.log(foundation.formatError(err)));
   

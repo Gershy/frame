@@ -274,7 +274,8 @@ U.buildRoom({
       // TODO: should return a HorzScope I think??
       open: async function() {
         /// {ABOVE=
-        hutTerms = JSON.parse(await foundation.readFile('room/hinterlands/terms.json'));
+        let termsSaved = foundation.getSaved([ 'room', 'hinterlands', 'terms.json' ]);
+        hutTerms = JSON.parse(await termsSaved.getContent());
         /// =ABOVE} {BELOW=
         hutTerms = [ 'above' ]; // Below has only 1 FarHut, so only 1 name
         /// =BELOW}
@@ -284,7 +285,7 @@ U.buildRoom({
         for (let realRoom of this.realRooms) {
           let reality = realRoom.Reality('root');
           reality.addFlatLayouts(this.realLayout);
-          reality.prepareAboveLands(this);
+          await reality.prepareAboveLands(this);
         }
         /// =ABOVE}
         
@@ -315,8 +316,8 @@ U.buildRoom({
               
               this.hear(conn, hut, msg, reply);
               
-              // This will only occur once per Hut. Now that we've heard
-              // from the Hut, unthrottle its tells.
+              // This occurs once per Hut. We heard from Hut; unthrottle
+              // its tells and unmask "throttleSyncBelow"
               if (resolveGotCom) { resolveGotCom(); resolveGotCom = null; delete hut['throttleSyncBelow']; }
               
             }));

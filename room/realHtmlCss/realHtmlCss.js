@@ -501,9 +501,10 @@ U.buildRoom({
         return cmpCssText;
         
       },
-      prepareAboveLands: function(lands) {
+      prepareAboveLands: async function(lands) {
         
-        foundation.addMountDataAsFile('realHtmlCssMainStyles.css', 'text/css', this.genCss());
+        let styleSaved = await foundation.getSavedFromData([ 'realHtmlCssMainStyles.css' ], this.genCss());
+        let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
         
         lands.comNozz('getInit').route(async ({ absConn, hut, msg, reply }) => {
           
@@ -573,13 +574,12 @@ U.buildRoom({
           let fileSourceData = await Promise.allObj(files.map(v => foundation.getJsSource(...v)));
           let scriptTextItems = [];
           let totalLineCount = 0;
-          fileSourceData.forEach(({ content, offsets, numLines }, roomName) => {
-            scriptTextItems.push(`// ==== File: ${roomName} (line count: ${numLines})`); totalLineCount += 1;
+          fileSourceData.forEach(({ content, offsets, cmpNumLines }, roomName) => {
+            scriptTextItems.push(`// ==== File: ${roomName} (line count: ${cmpNumLines})`); totalLineCount += 1;
             debugLineData.rooms[roomName] = { offsetWithinScript: totalLineCount, offsets };
-            scriptTextItems.push(content); totalLineCount += numLines;
+            scriptTextItems.push(content); totalLineCount += cmpNumLines;
             scriptTextItems.push(''); totalLineCount += 1;
           });
-          
           
           let raiseArgs = [];
           raiseArgs.push(`settle: '${foundation.hut}.below'`);
@@ -609,29 +609,19 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        lands.comNozz('realHtmlCssGetFavicon').route(({ absConn, hut, msg, reply }) => {
-          U.safe(() => reply(foundation.getMountFile('favicon.ico')), err => reply(err));
-        });
-        lands.comNozz('realHtmlCssGetStylesheet').route(({ absConn, hut, msg, reply }) => {
-          U.safe(() => reply(foundation.getMountFile('realHtmlCssMainStyles.css')), err => reply(err));
-        });
-        
-        
-        lands.comNozz('realHtmlCssGetQuadTest').route(({ reply }) => {
-          
-          reply([
-            '<!DOCTYPE html>',
-            '<html>',
-            '  <head>',
-            '    <title>Quad Test</title>',
-            '  </head>',
-            '  <body>',
-            ...[ 'jim', 'bob', 'sal', 'fae' ].map(n => `    <iframe id="${n}Frame" width="400" height="400" src="?spoof=${n}"></iframe>`),
-            '  </body>',
-            '</html>'
-          ].join('\n'));
-          
-        });
+        lands.comNozz('realHtmlCssGetFavicon').route(({ absConn, hut, msg, reply }) => U.safe(() => reply(iconSaved), reply));
+        lands.comNozz('realHtmlCssGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
+        lands.comNozz('realHtmlCssGetQuadTest').route(({ reply }) => reply([
+          '<!DOCTYPE html>',
+          '<html>',
+          '  <head>',
+          '    <title>Quad Test</title>',
+          '  </head>',
+          '  <body>',
+          ...[ 'jim', 'bob', 'sal', 'fae' ].map(n => `    <iframe id="${n}Frame" width="400" height="400" src="?spoof=${n}"></iframe>`),
+          '  </body>',
+          '</html>'
+        ].join('\n')));
         
       },
       
@@ -738,7 +728,7 @@ U.buildRoom({
       setLayout: function(w, h, x, y) { this.initDynamic(); this.dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(); },
       setImage: function(file) {
         if (file) {
-          updStyle(this.realized, 'backgroundImage', `url('${file.url}')`) ;
+          updStyle(this.realized, 'backgroundImage', `url('${file.getUrl()}')`) ;
           updStyle(this.realized, 'backgroundSize', 'contain'); 
         } else {
           updStyle(this.realized, 'backgroundImage', null);

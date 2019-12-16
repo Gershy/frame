@@ -1,8 +1,19 @@
 (() => {
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
-  let { Foundation } = U.setup;
+  let { Foundation, Saved } = U.setup;
   
+  let HttpFileData = U.inspire({ name: 'HttpFileData', insps: { Saved }, methods: (insp, Insp) => ({
+    init: function(url) {
+      insp.Saved.init.call(this);
+      this.url = url;
+    },
+    getUrl: function() { return this.url; },
+    getContentType: function() { return null; },
+    getPipe: function() { return null; },
+    getContent: async function(opts) { return null; },
+    getNumBytes: async function() { return null; }
+  })});
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
     init: function() {
       insp.Foundation.init.call(this);
@@ -29,7 +40,7 @@
       this.spoof = query.has('spoof') ? query.spoof : null;
       
       // Make sure that refreshes redirect to the same session
-      window.history.replaceState({}, '', this.spoof ? `?spoof=${this.spoof}` : `?cpuId=${U.cpuId}`);
+      window.history.replaceState({}, '', this.getUrl({}));
       
       // This value shows up in stack traces (used to isolate line number)
       this.traceUrl = window.location.slice('origin', 'pathname', 'search').toArr(v => v).join('');
@@ -96,14 +107,15 @@
       
     },
     getDefaultRealRoom: function() { return U.rooms.realHtmlCss.built; },
+    getUrl: function(params) {
+      params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { cpuId: U.cpuId }) };
+      return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
+    },
     
     // Functionality
     queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
-    addMountFile: function() { /* Nothing... */ },
-    getMountFile: function(name) {
-      return { ISFILE: true, name, url: `?command=${name}&${this.spoof ? `spoof=${this.spoof}` : `cpuId=${U.cpuId}`}&reply=1` };
-    },
+    getSaved: function(locator) { return HttpFileData(this.getUrl({ reply: '1', command: locator })); },
     makeHttpServer: async function(pool, ip, port) {
       let numPendingReqs = 0;
       
@@ -111,13 +123,12 @@
         
         // Do XHR
         let req = new XMLHttpRequest();
-        req.open('POST', `?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`, true);
+        req.open('POST', this.getUrl(), true);
         req.setRequestHeader('Content-Type', 'application/json');
         req.send(JSON.stringify(msg));
         
-        numPendingReqs++;
-        
         // Listen for the request to result in a JSON response
+        numPendingReqs++;
         let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
           if (req.readyState !== 4) return;
           if (req.status === 0) return rjc(Error('Got HTTP status 0'));
@@ -127,17 +138,10 @@
         }}));
         
         // If any data was received, process it at a higher level
-        if (res) {
-          try { conn.hear.drip([ res, null ]); }
-          catch(err) {
-            console.log('TRANSMISSION HEARD:', JSON.stringify(res));
-            throw err;
-          }
-        }
-        
-        numPendingReqs--;
+        if (res) conn.hear.drip([ res, null ]);
         
         // Always have 1 pending req
+        numPendingReqs--;
         if (!numPendingReqs) tellAndHear({ command: 'bankPoll' }, conn);
         
       };
@@ -156,7 +160,7 @@
     makeSoktServer: async function(pool, host, port) {
       if (!WebSocket) return null;
       
-      let sokt = new WebSocket(`ws://${host}:${port}?cpuId=${U.cpuId}${this.spoof ? `&spoof=${this.spoof}` : ''}`);
+      let sokt = new WebSocket(`ws://${host}:${port}${this.getUrl({})}`);
       await Promise(r => sokt.onopen = r);
       
       let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
@@ -171,21 +175,22 @@
       return server;
     },
     formatError: function(err) {
+      
       if (!U.has('debugLineData')) return err.stack;
       
       let [ msg, type, stack ] = [ err.message, err.constructor.name, err.stack ];
       
       let traceBeginSearch = `${type}: ${msg}\n`;
-      let traceInd = stack.indexOf(traceBeginSearch);
-      let traceBegins = traceInd + traceBeginSearch.length;
-      let trace = stack.substr(traceBegins);
+      let trace = stack.substr(stack.indexOf(traceBeginSearch) + traceBeginSearch.length);
       
       let lines = trace.split('\n').map(ln => {
         try {
-          let [ pre, suf ] = ln.split(this.traceUrl);
-          if (!suf) return C.skip;
           
-          let [ full, lineInd, charInd ] = suf.match(/([0-9]+):([0-9]+)/);
+          let full = null, lineInd = null, charInd = null;
+          let match = ln.match(/([0-9]+):([0-9]+)/);
+          
+          if (!match) return C.skip;
+          [ full, lineInd, charInd ] = match;
           
           lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document
           
@@ -196,9 +201,7 @@
             roomName = k;
           }
           
-          if (roomName === null) return `UNKNOWN: ${lineInd}:${charInd}`;
-          
-          let { offsetWithinScript, offsets } = U.debugLineData.rooms[roomName];
+          let { offsetWithinScript, offsets = null } = U.debugLineData.rooms[roomName];
           lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
           
           let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
