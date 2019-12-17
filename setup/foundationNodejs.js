@@ -5,8 +5,8 @@
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let [  path,   fs,   net,   http,   crypto,   os ] =
-      [ 'path', 'fs', 'net', 'http', 'crypto', 'os' ].map(v => require(v));
+  let [  path,   fs,   crypto,   os ] =
+      [ 'path', 'fs', 'crypto', 'os' ].map(v => require(v));
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -246,6 +246,7 @@
       U.safe(() => fs.mkdirSync(path.join(tempDir, 'habit')));
       U.safe(() => fs.mkdirSync(path.join(tempDir, 'room')));
       U.safe(() => fs.mkdirSync(path.join(tempDir, 'storage')));
+      U.safe(() => fs.mkdirSync(path.join(tempDir, 'cert')));
       
     },
     defaultGoals: function() {
@@ -749,7 +750,9 @@
       }
       
     },
-    makeHttpServer: async function(pool, ip, port) {
+    makeHttpServer: async function(pool, { host, port, keyPair = null, selfSign = null }) {
+      
+      if (!port) port = keyPair ? 443 : 80;
       
       // Translates a javascript value `msg` into http content type and payload
       let sendData = (res, msg) => {
@@ -804,7 +807,7 @@
         })[type]();
         
       };
-      let httpServer = http.createServer(async (req, res) => {
+      let serverFn = async (req, res) => {
         
         // Stream the body
         let chunks = [];
@@ -893,11 +896,21 @@
         conn.waitTells.length ? sendData(res, conn.waitTells.shift()) : conn.waitResps.push(res);
         while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
         
-      });
-      await new Promise(r => httpServer.listen(port, ip, 511, r));
+      };
+      
+      let httpServer = !keyPair
+        ? require('http').createServer(serverFn)
+        : require('https').createServer({
+            ...keyPair.slice('key', 'cert'),
+            ...(selfSign ? { ca: [ selfSign ] } : {}),
+            requestCert: false,
+            rejectUnauthorized: false
+          }, serverFn);
+      
+      await new Promise(r => httpServer.listen(port, host, 511, r));
       
       let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
-      server.desc = `HTTP @ ${ip}:${port}`;
+      server.desc = `HTTP @ ${host}:${port}`;
       server.cost = 100;
       server.decorateConn = conn => {
         conn.knownHosts = Set();
@@ -912,7 +925,9 @@
       
       return server;
     },
-    makeSoktServer: async function(pool, ip=this.ip, port=this.port + 1) {
+    makeSoktServer: async function(pool, { host, port, selfSign = null, keyPair = null }) {
+      
+      if (!port) port = keyPair ? 444 : 81;
       
       let makeSoktState = (status='initial') => ({
         status, // "initial", "upgrading", "ready", "ended"
@@ -920,7 +935,7 @@
         curOp: null,
         curFrames: []
       });
-      let soktServer = net.createServer(async sokt => {
+      let serverFn = async sokt => {
         
         let soktState = makeSoktState();
         
@@ -953,7 +968,7 @@
         
         soktState.status = 'ready';
         
-        let { query } = this.parseUrl(`ws://${ip}:${port}${upgradeReq.path}`);
+        let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
         
         let conn = this.getCpuConn(server, pool, query, conn => conn.sokt = sokt);
         if (!conn) return sokt.end();
@@ -966,21 +981,29 @@
           
           try {
             for (let message of Insp.parseSoktMessages(soktState)) conn.hear.drip([ message, null ]);
-          } catch(err) {
-            console.log(`Socket error:\n${this.formatError(err)}`);
-            soktState = makeSoktState('ended');
-          }
+          } catch(err) { sokt.emit('error', err); }
+          
           if (soktState.status === 'ended') conn.dry();
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); conn.dry(); });
         sokt.on('error', () => { soktState = makeSoktState('ended'); conn.dry(); });
         sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
-      });
-      await Promise(r => soktServer.listen(port, ip, r));
+      };
+      
+      let soktServer = !keyPair
+        ? require('net').createServer(serverFn)
+        : require('tls').createServer({
+            ...keyPair.slice('key', 'cert'),
+            ...(selfSign ? { ca: [ selfSign ] } : {}),
+            requestCert: false,
+            rejectUnauthorized: false
+          }, serverFn);
+      
+      await Promise(r => soktServer.listen(port, host, r));
       
       let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
-      server.desc = `SOKT @ ${ip}:${port}`;
+      server.desc = `SOKT @ ${host}:${port}`;
       server.cost = 50;
       server.decorateConn = conn => {
         conn.hear = Nozz();
@@ -1023,28 +1046,22 @@
     },
     
     getPlatformName: function() { return 'nodejs'; },
-    establishHut: async function({ hut=null, bearing=null, ip=null, port=null }) {
+    establishHut: async function({ hut=null, bearing=null }) {
       
       if (!hut) throw Error('Missing "hut" param');
       if (!bearing) throw Error('Missing "bearing" param');
       if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw Error(`Invalid bearing: "${bearing}"`);
       
-      // Note that there should be no such thing as `this.ip` - a
-      // foundation can have any number of ips (including 0)
-      
       // We're establishing with known params! So set them on `this`
-      this.ip = ip || '127.0.0.1';
-      this.port = port || 80;
-      this.hut = hut;
+      this.hut = U.isType(hut, Object) ? hut.name : hut;
       this.bearing = bearing;
       this.spoofEnabled = this.raiseArgs.mode === 'test';
       
       // Compile everything!
-      this.roomsInOrder = await this.compileRecursive(this.hut);
-      if (U.isType(this.hut, Object)) this.hut = this.hut.name; 
+      this.roomsInOrder = await this.compileRecursive(hut);
       
       // As soon as we're compiled we can install useful cmp->src exception handlers
-      process.removeAllListeners('uncaughtException');  // TODO: Bandaid for multiple instances of FoundationNodejs
+      process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
       process.removeAllListeners('unhandledRejection');
       process.on('uncaughtException', err => console.error(this.formatError(err)));
       process.on('unhandledRejection', err => console.error(this.formatError(err)));

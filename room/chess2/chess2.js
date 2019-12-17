@@ -184,7 +184,7 @@ U.buildRoom({
         } else if ([ 'bishop', 'rook', 'queen', 'king' ].has(type)) {
           
           let diag = [ [ -1, -1 ], [ -1, +1 ], [ +1, +1 ], [ +1, -1 ] ];
-          let orth = [ [ -1, +0 ], [ +0, +1 ], [ +1, +0 ], [ +0, -1 ] ];
+          let orth = [ [ -1, 00 ], [ 00, +1 ], [ +1, 00 ], [ 00, -1 ] ];
           let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
           
           steps.forEach(([dx, dy]) => {
@@ -264,12 +264,23 @@ U.buildRoom({
       
       let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
         ? foundation.raiseArgs.hutHosting.split(':')
-        : [ 'localhost', '80', '81' ];
+        : [ 'localhost', '', '' ];
+      
+      /// {ABOVE=
+      let { cert, key, selfSign } = await Promise.allObj({
+        cert:     foundation.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
+        key:      foundation.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
+        selfSign: foundation.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
+      });
+      let serverArgs = { keyPair: { cert, key }, selfSign };
+      /// =ABOVE} {BELOW=
+      let serverArgs = { keyPair: true, selfSign: true };
+      /// =BELOW}
       
       let recTypes = { ...rt.chess2, ...rt.lands };
       let lands = U.lands = Lands({ recTypes, heartbeatMs });
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, host, parseInt(httpPort)));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, host, parseInt(soktPort)));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort), ...serverArgs }));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort), ...serverArgs }));
       
       // TODO: Insertions (the "Relation" equivalent for Reals) should
       // exist explicitly
@@ -369,7 +380,6 @@ U.buildRoom({
             textColour: 'rgba(255, 255, 255, 1)'
           }
         }
-        
       };
       
       /// {ABOVE=

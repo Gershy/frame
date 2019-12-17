@@ -35,8 +35,6 @@
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
       let { host, port, query } = this.parseUrl(window.location.href);
-      this.ip = host;
-      this.port = port;
       this.spoof = query.has('spoof') ? query.spoof : null;
       
       // Make sure that refreshes redirect to the same session
@@ -116,7 +114,10 @@
     queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     getSaved: function(locator) { return HttpFileData(this.getUrl({ reply: '1', command: locator })); },
-    makeHttpServer: async function(pool, ip, port) {
+    makeHttpServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
+      
+      if (!port) port = keyPair ? 443 : 80;
+      
       let numPendingReqs = 0;
       
       let tellAndHear = async (msg, conn) => {
@@ -147,7 +148,7 @@
       };
       
       let server = TubSet({ onceDry: () => tellAndHear = ()=>{} }, Nozz());
-      server.desc = `HTTP @ ${ip}:${port}`;
+      server.desc = `HTTP @ ${host}:${port}`;
       server.cost = 100;
       server.decorateConn = conn => {
         conn.hear = Nozz();
@@ -157,10 +158,12 @@
       
       return server;
     },
-    makeSoktServer: async function(pool, host, port) {
+    makeSoktServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
       if (!WebSocket) return null;
       
-      let sokt = new WebSocket(`ws://${host}:${port}${this.getUrl({})}`);
+      if (!port) port = keyPair ? 444 : 81;
+      
+      let sokt = new WebSocket(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${this.getUrl({})}`);
       await Promise(r => sokt.onopen = r);
       
       let server = TubSet({ onceDry: () => sokt.close() }, Nozz());

@@ -126,15 +126,13 @@ Hut at the very bottom runs using a single Reality.
         detect: args => args.has('settle'),
         enact: async (foundation, args) => {
           let [ hut=null, bearing=null ] = args.settle.split('.');
-          if (args.has('hut'))      hut = args.hut;
-          if (args.has('bearing'))  bearing = args.bearing;
+          if (!args.has('title')) args.title = U.isType(hut, Object) ? hut.name : hut;
           
           let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
           if (!rootRoom.built.has('open')) throw Error(`Room "${rootRoom.name}" isn't setup for settling`);
           
           console.log(`Settling ${rootRoom.name} on ${this.getPlatformName()}`);
           await rootRoom.built.open();
-          
         }
       });
       
@@ -145,7 +143,7 @@ Hut at the very bottom runs using a single Reality.
     
     // Platform
     getMs: function() { return +new Date(); },
-    queueTask: C.notImplemented, // TODO: No more `process.nextTick`! Use this instead! // TODO: Better name for "queueTask" should simply imply that the task occurs after serial processing is done
+    queueTask: C.notImplemented,
     makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     getRootReal: async function() { C.notImplemented.call(this); },
@@ -159,8 +157,8 @@ Hut at the very bottom runs using a single Reality.
       if (!this.raiseArgs.has('spoofEnabled')) this.raiseArgs.spoofEnabled = this.raiseArgs.mode === 'test';
       
       let goalAchieved = false;
-      for (let goal of this.goals) if (await goal.attempt(this, raiseArgs)) { goalAchieved = true; break; }
-      if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(raiseArgs, null, 2)}`);
+      for (let goal of this.goals) if (await goal.attempt(this, this.raiseArgs)) { goalAchieved = true; break; }
+      if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.raiseArgs, null, 2)}`);
       
     },
     establishHut: async function(args) { C.notImplemented.call(this); },

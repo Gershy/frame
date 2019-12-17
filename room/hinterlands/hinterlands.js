@@ -267,7 +267,7 @@ U.buildRoom({
       /// =BELOW}
       
       getAllHuts: function() {
-        return this.arch.relNozz(rt.archHut, 0).set.toArr(archHut => archHut.members[1]);
+        return this.arch.relRecs(rt.archHut, 0).toArr(archHut => archHut.members[1]);
       },
       
       // TODO: async functions shouldn't be named "open" and "shut"
@@ -338,38 +338,6 @@ U.buildRoom({
         await Promise.allArr(this.servers.map(server => server.dry()));
       }
     })});
-    
-    if (false) {
-      let lands = Lands('...');
-      
-      let ether = Ether('...');
-      
-      let recurseFollow = (ether, rec, seen=Set()) => {
-        
-        if (seen.has(rec)) return;
-        seen.add(rec);
-        
-        let relNozzRoutes = Set();
-        
-        // TODO: What if more relNozzes appear later? That would mean we
-        // didn't Route all of them...
-        // TODO: Don't forget if we add a new Nozz onto Recs (to detect
-        // new relNozzes, a.k.a "relNozzNozz"), Routes on this new Nozz
-        //  will factor into determining if Rec is "ether safe"
-        for (let relNozz of rec.relNozzes.toArr(v => v)) {
-          let relNozzRoute = relNozz.route(relRec => recurseFollow(ether, relRec, seen));
-          relNozzRoutes.add(relNozzRoute);
-        }
-        
-        let recDrierNozzRoute = rec.drierNozz().route(() => {
-          seen.rem(rec);
-          recDrierNozzRoute.dry();
-        });
-        
-      };
-      recurseFollow(ether, lands.arch);
-      
-    }
     
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({
       

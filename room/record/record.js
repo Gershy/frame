@@ -5,6 +5,33 @@ U.buildRoom({
     
     // Recs are data items with a number of properties, including relational properties
     
+    // TODO: ==== CHANGES FOR ETHER ====
+    // 
+    // A Rec can be out of memory WHILE:
+    // true
+    //   && (1. no Routes on its value OR 2. its value won't change)
+    //   && (3. no Routes on relNozzes OR 4. relNozzes won't drip)
+    //   && (5. no Routes on drierNozz OR 6. Rec won't dry)
+    // 
+    // HINTERLANDS:
+    // 1. routes Rec value for Follow ("updRec")
+    // 2. only updates Rec values when its updated (LandsAbove will
+    //    never update value!)
+    // 3. never routes relNozzes
+    // 4. ^^
+    // 5. listens to all drierNozzes of freshly created Recs (to
+    //    determine when to remove them from "allRecs")
+    // 6. dries Recs only for "remRec" update (so Above is safe).
+    //    dries Huts when their Cpu dries (Huts won't be saved to Ether)
+    // 
+    // RECORD:
+    // 1. never Routes Rec values
+    // 2. never changes Rec values
+    // 3. never Routes relNozzes
+    // 4. drips relNozzes of MemberRecs when they join a GroupRec
+    // 5. routes DrierNozzes to dry GroupRec upon MemberRec drying
+    // 6. dries GroupRecs when any MemberRec dries
+    
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
     let Tidy = U.inspire({ name: 'Tidy', methods: (insp, Insp) => ({
