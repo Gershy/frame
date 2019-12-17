@@ -54,48 +54,23 @@ U.buildRoom({
       { name: 'printEvery', type: 'int', def: 20 }
     ]);
     
-    let allowIdenCorr = false; // TUNE: This boi! TODO: When decided, factor it out of code flow
-    //let args = {
-    //  path: null,
-    //  pSize: 80,
-    //  pStep: null,
-    //  corrLen: 5000,
-    //  reps: 300,
-    //  delayMs: 0,
-    //  resultLen: 10,
-    //  printEvery: 20,
-    //  ...foundation.raiseArgs
-    //};
-    //if (!args.pStep) args.pStep = args.pSize >> 1;
-    
     if (!args.path) throw new Error('Missing "path"');
     console.log(`ARGS:\n${JSON.stringify(args, null, 2)}`);
     
-    let content = await foundation.getSaved([ args.path ]).getContent();
-    let paragraphs = content.split('\n').map(ln => ln.trim() || C.skip);
-    
-    let sentences = [];
-    for (let paragraph of paragraphs) {
-      let paraSentences = paragraph.split(/[.?!]/);
-      for (let ps of paraSentences) {
-        // Lowercase. Split on spaces and em dashes, or any sequence
-        // of 2 or more non alphanumeric characters. Finally remove all
-        // non-alphanumeric characters.
-        // Lowercase, only a-z and spaces, without multi-space sequences
-        ps = ps.lower().split(/[ —]|[^a-z0-9— ]{2,}/).map(ln => ln.replace(/[^a-z0-9]/g, '').trim() || C.skip);
-        if (!ps.isEmpty()) sentences.push(ps);
-      }
-    }
-    content = null;
-    paragraphs = null;
+    let sentences = (await foundation.getSaved([ args.path ]).getContent())
+      .lower()
+      .replace(/[^a-z0-9.!?— ]/g, '')
+      .split(/[.?!]/)
+      .map(sen => (sen = sen.trim())
+        ? sen.split(/[ —]|[^a-z0-9— ]{2,}/).map(w => w.trim() || C.skip)
+        : C.skip
+      );
     
     if (sentences.length < 10) throw new Error('Not enough sentences');
     
     let freqCount = Map();
     for (let sen of sentences) for (let word of sen) freqCount.set(word, (freqCount.get(word) || 0) + 1);
-    let maxCorrelations = allowIdenCorr
-      ? (freqCount.size * freqCount.size)
-      : (freqCount.size * freqCount.size - freqCount.size);
+    let maxCorrelations = freqCount.size * freqCount.size - freqCount.size;
     console.log(`Text parsed; ${freqCount.size} unique words -> ${maxCorrelations} possible correlations`);
     freqCount = null;
     
@@ -105,18 +80,23 @@ U.buildRoom({
     let updateCorrelations = (num, sentences, correlate=Map()) => {
       
       let freqCount = Map();
-      for (let sen of sentences) for (let word of sen) freqCount.set(word, (freqCount.get(word) || 0) + 1);
+      let maxFreq = 0;
+      for (let sen of sentences) { for (let word of sen) {
+        let newFreq = (freqCount.get(word) || 0) + 1;
+        if (newFreq > maxFreq) maxFreq = newFreq;
+        freqCount.set(word, newFreq);
+      }}
       
       // Get the correlation between two words
       let wordCorrAmt = (w1, w2) => {
-        if (!allowIdenCorr && w1 === w2) return 1;
+        if (w1 === w2) return 2 / (freqCount.get(w1) + freqCount.get(w2));
         let key = corrKey(w1, w2);
         return correlate.has(key) ? correlate.get(key) : ((w1 === w2) ? 1 : 0);
       };
       
       // Change the correlation between two words
       let wordCorrUpd = (w1, w2, amt, fade=1) => { // TUNE: best value for `fade``??
-        if (!allowIdenCorr && w1 === w2) return;
+        if (w1 === w2) return;
         let key = corrKey(w1, w2);
         let prev = correlate.has(key) ? correlate.get(key) : 0;
         if (prev !== amt) correlate.set(key, amt * fade + prev * (1 - fade));
@@ -163,27 +143,30 @@ U.buildRoom({
         // 1/2    2x             ~0.1        ~0.45     ~0.7      ~0.85
         // 1/3    3x             ~0.21       ~0.65     ~0.8      ~0.9
         // 1/4    4x             ~0.31       ~0.75     ~0.85     ~0.9
-        let sentencePower = Math.pow(anchorCorrScore / senLo.length, 1 / 2); // TODO: Tune saturation
+        let sentencePower = Math.pow(anchorCorrScore / senLo.length, 1 / 3); // TODO: Tune saturation
         
         // Given these insights recalculate all pairs of words
         let upds = Map();
-        for (let indLo = 0; indLo < senLo.length; indLo++) { for (let indHi = 0; indHi < senHi.length; indHi++) {
-          let w1 = senLo[indLo];
-          let w2 = senHi[indHi];
+        let loWords = senLo;
+        let hiWords = senHi.slice(anchorOffset, anchorOffset + loWords.length);
+        for (let indLo = 0; indLo < loWords.length; indLo++) { for (let indHi = 0; indHi < hiWords.length; indHi++) {
+          let w1 = loWords[indLo];
+          let w2 = hiWords[indHi];
+          if (w1 === w2) continue;
           
           let dist = Math.abs((anchorOffset + indLo) - indHi);
           let distMult = 0.2 / (dist + 0.2); // TUNE: distScore?? The closer to 0 the constant the more distance is punished
-          let freqMult = 1 / (freqCount.get(w1) + freqCount.get(w2) - 1);
-          let pairPower = wordCorrAmt(w1, w2) * distMult * freqMult;
+          let freqMult = 2 / (freqCount.get(w1) + freqCount.get(w2));
+          //let pairPower = wordCorrAmt(w1, w2) * distMult * freqMult;
           
-          // TUNE: This? How much power to the sentence vs the pair?
-          //let amt = 0
-          //  + 0.10 * pairPower
-          //  + 0.20 * sentencePower
-          //  + 0.70 * sentencePower * pairPower;
           let amt = 0
-            + 0.10 * sentencePower
-            + 0.90 * sentencePower * pairPower;
+            + 0.70 * wordCorrAmt(w1, w2)
+            + 0.30 * sentencePower * distMult * freqMult;
+          
+          //let amt = 0
+          //  + 0.25 * sentencePower
+          //  + 0.25 * pairPower
+          //  + 0.50 * sentencePower * pairPower;
           
           let key = corrKey(w1, w2);
           if (!upds.has(key)) upds.set(key, { total: 0, div: 0 });
@@ -219,8 +202,9 @@ U.buildRoom({
       corrItems.sort((corr1, corr2) => corr2.amt - corr1.amt);
       correlations = Map(corrItems.slice(0, args.corrLen).map(({ w1, w2, amt }) => [ corrKey(w1, w2), amt ]));
       
+      let msStr = `${foundation.getMs() - t}ms`;
       console.log([
-        `Completed ${args.reps} comparisons in ${foundation.getMs() - t}ms`,
+        `Completed ${args.reps} comparisons in ${msStr.padTail(7, ' ')}`,
         `@ offset ${portionOffset} (${(100 * (portionOffset / sentences.length)).toFixed(1)}%)`
       ].join(' '));
       
