@@ -50,23 +50,27 @@ U.buildRoom({
         
         for (let addVals of attempt) {
         
-          let { type, val, memberUids, uid } = addVals;
+          let { type, val, mems, uid } = addVals;
           
           // Convert all members from uid to Rec
           let members = null;
-          if (U.isType(memberUids, Array)) { for (let uid of memberUids) {
-            // TODO: Use this!! Array `memberUids`
+          if (U.isType(mems, Array)) {
             members = [];
-            let memberRec = getHeadOrTailRec(uid);
-            if (!memberRec) { members = null; break; }
-            members.push(memberRec);
-          }} else if (U.isType(memberUids, Object)) { for (let term in memberUids) {
+            for (let uid of mems) {
+              let memberRec = getHeadOrTailRec(uid);
+              if (!memberRec) { members = null; break; }
+              members.push(memberRec);
+            }
+          } else if (U.isType(mems, Object)) {
             members = {};
-            let uid = memberUids[term];
-            let memberRec = getHeadOrTailRec(uid);
-            if (!memberRec) { members = null; break; }
-            members[term] = memberRec;
-          }}
+            for (let term in mems) {
+              let memberRec = getHeadOrTailRec(mems[term]);
+              if (!memberRec) { members = null; break; }
+              members[term] = memberRec;
+            }
+          } else {
+            throw new Error(`Unexpected mems: ${U.nameOf(mems)}`);
+          }
           
           if (!members) { waiting.push(addVals); continue; }
           
@@ -442,7 +446,7 @@ U.buildRoom({
         // Generates data to sync the BelowHut, and flags the BelowHut
         // as fully up to date
         
-        let addRec = this.sync.addRec.map(r => ({ type: r.type.name, val: r.val, memberUids: r.members.map(m => m.uid) }));
+        let addRec = this.sync.addRec.map(r => ({ type: r.type.name, val: r.val, mems: r.members.map(m => m.uid) }));
         let updRec = this.sync.updRec.map(r => r.val);
         let remRec = this.sync.remRec.map(r => 1);
         

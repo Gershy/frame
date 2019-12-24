@@ -51,15 +51,13 @@ Array.fill = (n, f=()=>null) => {
   for (let i = 0; i < n; i++) a[i] = f(i);
   return a;
 };
-Array.combine = (...arrs) => {
+Array.combine = (...as) => {
   let len = 0;
-  for (let i = 0; i < arrs.length; i++) len += arrs[i].length;
+  for (let i = 0; i < as.length; i++) len += as[i].length;
   
   let ret = new Array(len);
   let ind = 0;
-  for (let i = 0; i < arrs.length; i++) { let arr = arrs[i]; for (let j = 0; j < arr.length; j++) {
-    ret[ind++] = arr[j];
-  }}
+  for (let i = 0; i < as.length; i++) { let a = as[i]; for (let j = 0; j < a.length; j++) { ret[ind++] = a[j]; }}
   
   return ret;
 };
@@ -552,6 +550,7 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
       
     });
   },
+  
   onceDry: function() {
     this.fn = null;
     this.nozzRoute.dry();
@@ -563,7 +562,7 @@ let defDrier = (nozz=Nozz()) => {
   
   // Takes a Nozz to be the DrierNozz. Telling the associated Drop to
   // dry will cause the given Nozz to drip, and become blocked. It will
-  // also cause the Nozz to always immediately drip from any new Routes
+  // also cause the Nozz to always immediately drip into any new Routes
   // that are attempted to be attached. (These Routes won't be attached,
   // but the immediate drip will signal dryness to the implementation.)
   // Note that dripping from the Nozz does NOT cause the associated Drop
