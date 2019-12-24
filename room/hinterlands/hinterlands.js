@@ -29,80 +29,90 @@ U.buildRoom({
     let syncOurHut = (ourHut, msg) => {
       
       let { version, content } = msg;
+      if (version <= ourHut.syncVersion) throw new Error('Got duplicate sync');
       
-      if (version !== ourHut.syncVersion + 1) throw Error(`Tried to move from version ${ourHut.syncVersion} -> ${version}`);
+      ourHut.earlySyncs.set(version, content);
       
-      // Apply all operations
-      let { addRec={}, remRec={}, updRec={} } = content;
-      
-      // HeadRecs exist before update, TailRecs created by update;
-      // TailRecs may have both HeadRecs and TailRecs as MemberRecs
-      let headRecs = ourHut.allRecs;
-      let tailRecs = Map();
-      let getHeadOrTailRec = uid => headRecs.get(uid) || tailRecs.get(uid) || null;
-      
-      // Add new Recs with churning
-      let waiting = addRec.toArr((v, uid) => ({ ...v, uid }));
-      while (waiting.length) {
+      let nextVersion = ourHut.syncVersion + 1;
+      while (ourHut.earlySyncs.has(nextVersion)) {
         
-        let attempt = waiting;
-        waiting = [];
+        // Apply all operations
+        let { addRec={}, remRec={}, updRec={} } = content;
         
-        for (let addVals of attempt) {
+        // HeadRecs exist before update, TailRecs created by update;
+        // TailRecs may have both HeadRecs and TailRecs as MemberRecs
+        let headRecs = ourHut.allRecs;
+        let tailRecs = Map();
+        let getHeadOrTailRec = uid => headRecs.get(uid) || tailRecs.get(uid) || null;
         
-          let { type, val, mems, uid } = addVals;
+        // Add new Recs with churning
+        let waiting = addRec.toArr((v, uid) => ({ ...v, uid }));
+        while (waiting.length) {
           
-          // Convert all members from uid to Rec
-          let members = null;
-          if (U.isType(mems, Array)) {
-            members = [];
-            for (let uid of mems) {
-              let memberRec = getHeadOrTailRec(uid);
-              if (!memberRec) { members = null; break; }
-              members.push(memberRec);
+          let attempt = waiting;
+          waiting = [];
+          
+          for (let addVals of attempt) {
+          
+            let { type, val, mems, uid } = addVals;
+            
+            // Convert all members from uid to Rec
+            let members = null;
+            if (U.isType(mems, Array)) {
+              members = [];
+              for (let uid of mems) {
+                let memberRec = getHeadOrTailRec(uid);
+                if (!memberRec) { members = null; break; }
+                members.push(memberRec);
+              }
+            } else if (U.isType(mems, Object)) {
+              members = {};
+              for (let term in mems) {
+                let memberRec = getHeadOrTailRec(mems[term]);
+                if (!memberRec) { members = null; break; }
+                members[term] = memberRec;
+              }
+            } else {
+              throw new Error(`Unexpected mems: ${U.nameOf(mems)}`);
             }
-          } else if (U.isType(mems, Object)) {
-            members = {};
-            for (let term in mems) {
-              let memberRec = getHeadOrTailRec(mems[term]);
-              if (!memberRec) { members = null; break; }
-              members[term] = memberRec;
-            }
-          } else {
-            throw new Error(`Unexpected mems: ${U.nameOf(mems)}`);
+            
+            if (!members) { waiting.push(addVals); continue; }
+            
+            // All members are available - create the Rec!
+            let newRec = ourHut.followRec(Rec(ourHut.getType(type), uid, members, val));
+            tailRecs.set(uid, newRec);
+            
           }
           
-          if (!members) { waiting.push(addVals); continue; }
-          
-          // All members are available - create the Rec!
-          let newRec = ourHut.followRec(Rec(ourHut.getType(type), uid, members, val));
-          tailRecs.set(uid, newRec);
+          if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
+            console.log('Head Recs:\n', headRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
+            console.log('Tail Recs (created NOW):\n', tailRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
+            console.log(JSON.stringify(content, null, 2));
+            throw Error(`Unresolvable Rec dependencies`);
+          }
           
         }
         
-        if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
-          console.log('Head Recs:\n', headRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
-          console.log('Tail Recs (created NOW):\n', tailRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
-          console.log(JSON.stringify(content, null, 2));
-          throw Error(`Unresolvable Rec dependencies`);
-        }
+        // Update Recs directly
+        updRec.forEach((newValue, uid) => {
+          if (!ourHut.allRecs.has(uid)) throw Error(`Tried to upd non-existent Rec @ ${uid}`);
+          ourHut.allRecs.get(uid).setVal(newValue);
+        });
         
+        // Remove Recs directly
+        remRec.forEach((val, uid) => {
+          if (!ourHut.allRecs.has(uid)) throw Error(`Tried to rem non-existent Rec @ ${uid}`);
+          ourHut.allRecs.get(uid).dry();
+        });
+          
+        // We've successfully moved to our next version!
+        ourHut.syncVersion = version;
+        
+        ourHut.earlySyncs.rem(nextVersion);
+        nextVersion++;
       }
       
-      // Update Recs directly
-      updRec.forEach((newValue, uid) => {
-        if (!ourHut.allRecs.has(uid)) throw Error(`Tried to upd non-existent Rec @ ${uid}`);
-        ourHut.allRecs.get(uid).setVal(newValue);
-      });
-      
-      // Remove Recs directly
-      remRec.forEach((val, uid) => {
-        if (!ourHut.allRecs.has(uid)) throw Error(`Tried to rem non-existent Rec @ ${uid}`);
-        ourHut.allRecs.get(uid).dry();
-      });
-        
-      // We've successfully moved to our next version!
-      ourHut.syncVersion = version;
+      if (ourHut.earlySyncs.size > 30) throw new Error('Too many pending syncs');
       
     };
     
@@ -113,7 +123,7 @@ U.buildRoom({
         
         insp.RecTypes.init.call(this);
         
-        this.pool = U.setup.CpuPool();
+        this.cpuPool = U.setup.CpuPool();
         this.heartbeatMs = heartbeatMs;
         this.uidCnt = 0;
         this.comNozzes = {};
@@ -122,6 +132,7 @@ U.buildRoom({
         this.makeServers = [];
         
         this.allRecs = Map();             // Map uid -> Rec
+        this.earlySyncs = Map();
         
         /// {ABOVE=
         
@@ -137,7 +148,7 @@ U.buildRoom({
         /// =BELOW}
         
         // Note that Arch and ArchHut don't use `this.createRec`
-        this.arch = Rec(this.getType('arch'), '!arch');
+        this.arch = Rec(this.getType('lands.arch'), '!arch');
         this.allRecs.set('!arch', this.arch);
         
         this.addDefaultCommands();
@@ -195,6 +206,11 @@ U.buildRoom({
         return this.comNozzes[command];
       },
       hear: async function(absConn, hut, msg, reply=null) {
+        
+        /// {ABOVE=
+        hut.refreshExpiry(); // We heard from this Hut so renew!
+        /// =ABOVE}
+        
         let { command } = msg;
         
         // Note: We don't allow a new `comNozz` to be created for
@@ -285,23 +301,23 @@ U.buildRoom({
         // Setup each supported Reality (using temporary instances)
         for (let realRoom of this.realRooms) {
           let reality = realRoom.Reality('root');
-          reality.addFlatLayouts(this.realLayout);
+          reality.addFlatLayouts(this.realLayout || {});
           await reality.prepareAboveLands(this);
         }
         /// =ABOVE}
         
         // Servers ultimately result in Cpus and CpuConns being wobbled
-        this.servers = await Promise.allArr(this.makeServers.map(make => make(this.pool)));
-        this.cpuScope = Scope(this.pool.cpuNozz, (cpu, dep) => {
+        this.servers = await Promise.allArr(this.makeServers.map(make => make(this.cpuPool)));
+        this.cpuScope = Scope(this.cpuPool.cpuNozz, (cpu, dep) => {
           
           let cpuId = cpu.cpuId;
           
           // Create a Hut; it will be throttled until it gives us a Tell
           let hut = Hut(this, cpu, this.getType('lands.hut'), `!hut@${cpuId}`);
           
-          let resolveGotCom = null;
-          let hutGotComPrm = Promise(r => resolveGotCom = r);
-          hut['throttleSyncBelow'] = () => hutGotComPrm;
+          let hutReadyPrmExt = Promise.ext();
+          hut['throttleSyncBelow'] = () => hutReadyPrmExt.prm;
+          let connectedServers = Set();
           
           // Now that the Hut is safely throttled connect it to ArchHut
           let archHut = Rec(this.getType('lands.archHut'), `!archHut@${cpuId}`, [ this.arch, hut ]);
@@ -309,20 +325,33 @@ U.buildRoom({
           // Listen to each Conn of the Cpu
           dep.scp(cpu.connNozz, (conn, dep) => {
             
+            if (connectedServers) {
+              
+              // TODO: For any app the minimum requirement is to *hear
+              // from a single connection* before unthrottling the Hut.
+              // In the case of realtime apps the minimum requirement
+              // is to *gain a connection to the SOKT server*. Because
+              // this 2nd requirement is a subset of the 1st (if we've
+              // connected to SOKT we surely(?) heard from HTTP) there
+              // is one drawback: SOKT connections are no longer
+              // optional for any app, even simple, non-realtime ones!
+              // Any app which supports SOKTs is being held to a
+              // realtime standard. Does Hinterlands have enough info to
+              // detect this? Can it independently decide when to
+              // unthrottle a given hut for a given app?
+              
+              connectedServers.add(conn.server);
+              if (connectedServers.size === this.servers.length) {
+                connectedServers = null;
+                delete hut['throttleSyncBelow'];
+                hutReadyPrmExt.rsv();
+                hutReadyPrmExt = null;
+              }
+              
+            }
+            
             // Listen to Commands coming from the Conn
-            dep(conn.hear.route(([ msg, reply=null ]) => {
-              
-              /// {ABOVE=
-              hut.refreshExpiry();
-              /// =ABOVE}
-              
-              this.hear(conn, hut, msg, reply);
-              
-              // This occurs once per Hut. We heard from Hut; unthrottle
-              // its tells and unmask "throttleSyncBelow"
-              if (resolveGotCom) { resolveGotCom(); resolveGotCom = null; delete hut['throttleSyncBelow']; }
-              
-            }));
+            dep(conn.hear.route(args => this.hear(conn, hut, ...args))); // `args` is [ msg, reply ]
             
           });
           
@@ -330,7 +359,7 @@ U.buildRoom({
         
         /// {BELOW=
         // The only Hut which Below talks to is the Above Hut
-        for (let server of this.servers) this.pool.makeCpuConn(server, conn => conn.cpuId = 'above');
+        for (let server of this.servers) this.cpuPool.makeCpuConn(server, conn => conn.cpuId = 'above');
         let aboveHut = this.getAllHuts().find(() => true)[0];
         if (U.initData) await this.hear(null, aboveHut, U.initData); // Do the initial update
         /// =BELOW}

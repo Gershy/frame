@@ -166,6 +166,11 @@ Promise.allObj = async obj => {
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
+Promise.ext = () => {
+  let rsv=null, rjc=null;
+  let prm = Promise((rsv0, rjc0) => (rsv=rsv0, rjc=rjc0));
+  return { rsv, rjc, prm };
+};
 protoDef(Promise, 'route', Promise.prototype.then);
 
 let ErrorOrig = Error;

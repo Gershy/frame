@@ -1,5 +1,5 @@
 U.buildRoom({
-  name: 'chess2',
+  name: 'tag',
   innerRooms: [ 'record', 'hinterlands', 'real', 'realDom' ],
   build: (foundation, record, hinterlands, real, realDom) => {
     
@@ -8,235 +8,9 @@ U.buildRoom({
     let { Lands } = hinterlands;
     
     // Config values
-    let moveMs = 50 * 1000;
-    let matchmakeMs = ({ test: 1 * 1000, prod: 8 * 1000 })[foundation.raiseArgs.mode];
-    let heartbeatMs = 2 * 60 * 1000;
-    let pieceDefs = {
-      minimal: {
-        white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
-        black: [ [ 'queen', 4, 4 ], [ 'king', 3, 4 ] ]
-      },
-      standard: {
-        white: [
-          [ 'rook',     0, 0 ],
-          [ 'knight',   1, 0 ],
-          [ 'bishop',   2, 0 ],
-          [ 'queen',    3, 0 ],
-          [ 'king',     4, 0 ],
-          [ 'bishop',   5, 0 ],
-          [ 'knight',   6, 0 ],
-          [ 'rook',     7, 0 ],
-          [ 'pawn',     0, 1 ],
-          [ 'pawn',     1, 1 ],
-          [ 'pawn',     2, 1 ],
-          [ 'pawn',     3, 1 ],
-          [ 'pawn',     4, 1 ],
-          [ 'pawn',     5, 1 ],
-          [ 'pawn',     6, 1 ],
-          [ 'pawn',     7, 1 ]
-        ],
-        black: [
-          [ 'rook',     0, 7 ],
-          [ 'knight',   1, 7 ],
-          [ 'bishop',   2, 7 ],
-          [ 'queen',    3, 7 ],
-          [ 'king',     4, 7 ],
-          [ 'bishop',   5, 7 ],
-          [ 'knight',   6, 7 ],
-          [ 'rook',     7, 7 ],
-          [ 'pawn',     0, 6 ],
-          [ 'pawn',     1, 6 ],
-          [ 'pawn',     2, 6 ],
-          [ 'pawn',     3, 6 ],
-          [ 'pawn',     4, 6 ],
-          [ 'pawn',     5, 6 ],
-          [ 'pawn',     6, 6 ],
-          [ 'pawn',     7, 6 ]
-        ]
-      },
-      gameOverTest: {
-        white: [
-          [ 'rook',     0, 0 ],
-          [ 'knight',   1, 0 ],
-          [ 'bishop',   2, 0 ],
-          [ 'queen',    4, 6 ],
-          [ 'king',     4, 0 ],
-          [ 'bishop',   5, 0 ],
-          [ 'knight',   6, 0 ],
-          [ 'rook',     7, 0 ],
-          [ 'pawn',     0, 1 ],
-          [ 'pawn',     1, 1 ],
-          [ 'pawn',     2, 1 ],
-          [ 'pawn',     3, 1 ],
-          [ 'pawn',     5, 1 ],
-          [ 'pawn',     6, 1 ],
-          [ 'pawn',     7, 1 ]
-        ],
-        black: [
-          [ 'rook',     0, 7 ],
-          [ 'knight',   1, 7 ],
-          [ 'bishop',   2, 7 ],
-          [ 'queen',    4, 1 ],
-          [ 'king',     4, 7 ],
-          [ 'bishop',   5, 7 ],
-          [ 'knight',   6, 7 ],
-          [ 'rook',     7, 7 ],
-          [ 'pawn',     0, 6 ],
-          [ 'pawn',     1, 6 ],
-          [ 'pawn',     2, 6 ],
-          [ 'pawn',     3, 6 ],
-          [ 'pawn',     5, 6 ],
-          [ 'pawn',     6, 6 ],
-          [ 'pawn',     7, 6 ]
-        ]
-      }
-    };
-    let pieceTypes = Set();
-    pieceDefs.forEach(mode => mode.forEach(pl => pl.forEach(([ type ]) => pieceTypes.add(type))));
-    
-    let savedItems  = {};
-    for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
-      let key = `chess2Piece.${colour}.${pieceType}`;
-      let locator = null;
-      /// {ABOVE=
-      locator = [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ];
-      /// =ABOVE} {BELOW=
-      locator = key;
-      /// =BELOW}
-      savedItems[key] = foundation.getSaved(locator);
-    }}
+    let heartbeatMs = 10 * 1000;
     
     let open = async () => {
-        
-      let validMoves = (matchPlayer, match, piece) => {
-        
-        if (piece.val.wait > 0) return [];
-        if (matchPlayer.val.colour !== piece.val.colour) return [];
-        
-        // Get other pieces
-        let pieces = match.relRecs('chess2.matchPiece').toArr(matchPiece => matchPiece.mem('piece'));
-        
-        // Make a nice 2d representation of the board
-        let calc = Array.fill(8, () => Array.fill(8, () => null));
-        pieces.forEach(piece => calc[piece.val.col][piece.val.row] = piece);
-        
-        // Utility func for checking tiles (OOB=out-of-bounds, null=empty-tile, otherwise a Piece)
-        let checkTile = (col, row) => (col < 0 || col > 7 || row < 0 || row > 7) ? 'OOB' : calc[col][row];
-        
-        let { type, colour, col, row } = piece.val;
-        
-        let moves = [];
-        
-        if (type === 'pawn') {
-          
-          let dir = colour === 'white' ? 1 : -1;
-          let initRow = colour === 'white' ? 1 : 6;
-          
-          if (!checkTile(col, row + dir)) {
-            moves.push([ col, row + dir, null ]); // Add first step if unblocked
-            if (row === initRow && !checkTile(col, row + dir + dir)) {
-              moves.push([ col, row + dir + dir, null ]); // Add second step if unblocked and unmoved
-            }
-          }
-          
-          // Check for captures in both directions
-          let cap1 = checkTile(col - 1, row + dir);
-          if (cap1 && cap1 !== 'OOB' && cap1.val.colour !== colour) moves.push([ col - 1, row + dir, cap1 ]);
-          
-          let cap2 = checkTile(col + 1, row + dir);
-          if (cap2 && cap2 !== 'OOB' && cap2.val.colour !== colour) moves.push([ col + 1, row + dir, cap2 ]);
-          
-        } else if (type === 'knight') {
-          
-          let offsets = [
-            [ -2, -1 ], [ -2, 1 ], [ -1, 2 ], [ 1, 2 ], [ 2, 1 ], [ 2, -1 ], [ 1, -2 ], [ -1, -2 ]
-          ];
-          offsets.forEach(([ dx, dy ]) => {
-            let [ c, r ] = [ col + dx, row + dy ];
-            let check = checkTile(c, r);
-            if (!check || (check !== 'OOB' && check.val.colour !== colour)) moves.push([ c, r, check ]);
-          });
-          
-        } else if ([ 'bishop', 'rook', 'queen', 'king' ].has(type)) {
-          
-          let diag = [ [ -1, -1 ], [ -1, +1 ], [ +1, +1 ], [ +1, -1 ] ];
-          let orth = [ [ -1, 00 ], [ 00, +1 ], [ +1, 00 ], [ 00, -1 ] ];
-          let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
-          
-          steps.forEach(([dx, dy]) => {
-            
-            let xx = col, yy = row;
-            while (true) {
-              [ xx, yy ] = [ xx + dx, yy + dy ];
-              
-              let check = checkTile(xx, yy);
-              
-              // Stepping terminates at edge of board
-              if (check === 'OOB') break;
-              
-              // Empty tiles and tiles with enemy pieces are valid
-              if (!check || check.val.colour !== colour) moves.push([ xx, yy, check ]);
-              
-              // Finding a piece terminates stepping; kings always terminate after first step
-              if (check || type === 'king') break;
-            }
-            
-          });
-          
-        } else {
-          
-          throw Error(`Invalid type: ${type}`);
-          
-        }
-        
-        return moves;
-        
-      };
-      let applyMoves = (match, ...playerMoves) => {
-        
-        // Get all match pieces...
-        let matchPieceSet = match.relRecs('chess2.matchPiece');
-        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.mem('piece'));
-        
-        // All pieces refresh by 1 turn
-        for (let piece of pieces) if (piece.val.wait) piece.modVal(v => (v.wait--, v));
-        
-        // Update piece positions
-        playerMoves.forEach(({ type, pieceUid, tile }) => {
-          if (type === 'pass') return;
-          let piece = pieces.find(p => p.uid === pieceUid)[0];
-          piece.modVal(v => v.gain({ col: tile[0], row: tile[1], wait: 1 }))
-        });
-        
-        // Look for promotions
-        pieces.forEach(piece => {
-          let { type, colour, row } = piece.val;
-          let lastRow = (colour === 'white') ? 7 : 0;
-          if (type === 'pawn' && row === lastRow) piece.modVal(v => v.gain({ type: 'queen' }));
-        });
-        
-        // Determine captured pieces
-        let trgSets = playerMoves.map(({ type, pieceUid, tile }) => {
-          if (type === 'pass') return [];
-          return pieces.map(p => (p.uid !== pieceUid && p.val.col === tile[0] && p.val.row === tile[1]) ? p : C.skip);
-        });
-        
-        // Remove captured pieces
-        for (let trgSet of trgSets) for (let piece of trgSet) piece.dry();
-        
-        // Return the Players who are still alive. If both Players pass,
-        // both die. If a Player submitted a move, the living Players are
-        // the ones which still possess a king at the end of the Round.
-        return playerMoves.find(({ type}) => type !== 'pass')
-          ? Set(matchPieceSet.toArr(p => { let v = p.mem('piece').val; return v.type === 'king' ? v.colour : C.skip; }))
-          : Set();
-        
-      }
-      
-      // TODO: Images should probably automatically get included by the
-      // real room - e.g. under decals, say `image: 'classicHorse'`, and
-      // then the real room will automatically mount that file and add
-      // a comWob to the lands to allow it to serve the file.
       
       let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
         ? foundation.raiseArgs.hutHosting.split(':')
@@ -258,127 +32,146 @@ U.buildRoom({
       }
       
       let lands = U.lands = Lands({ heartbeatMs });
+      lands.cpuPool.dbgEnabled = false;
       lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort), ...serverArgs }));
       lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort), ...serverArgs }));
       
-      // TODO: Insertions (the "Relation" equivalent for Reals) should
-      // exist explicitly
+      /// {ABOVE=
+      lands.setRealRooms([ realDom ]);
+      let updCnt = 0;
+      let tag = lands.createRec('tag.tag', [], { cnt: U.base62(0).padHead(8, '0') });
+      let archTag = lands.createRec('tag.archTag', [ lands.arch, tag ]);
+      /// =ABOVE}
+      
       let { UnitPx, UnitPc } = real;
-      let { FillParent, WrapChildren, ShowText } = real;
+      let { FillParent, WrapChildren, ShowText, Art } = real;
       let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
       lands.realLayout = {
         'main': {
-          slot: par => par.cmps.slots.insertViewPortItem(),
+          slot: par => par.cmps.slots.insertFullPageItem(),
           decals: { colour: 'rgba(100, 100, 150, 1)' }
         },
-        'main.out': {
-          size: FillParent({ shrink: UnitPc(0.2) }),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot()
-        },
-        'main.out.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'y', dir: '+' })
-        },
-        'main.out.content.title': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(10) }),
-          decals: { textSize: UnitPx(24), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.out.content.text': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(3) }),
-          decals: { textSize: UnitPx(12), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.in': {
-          size: FillParent(),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot() // Regarding Real "Insertions" (Relations) - note that we want CenteredSlot when inserting "lobby", but FillParent when inserting "game"
-        },
-        'main.in.lobby': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(15) }),
-          decals: { colour: 'rgba(100, 100, 150, 1)', textColour: 'rgba(255, 255, 255, 1)', textSize: UnitPx(12) }
-        },
-        'main.in.game': {
-          size: FillParent(),
-          decals: {
-            contentMode: 'window',
-            colour: 'rgba(100, 100, 150, 1)'
-          }
-        },
-        'main.in.game.player': {
-          slots: CenteredSlot()
-        },
-        'main.in.game.player.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'x', dir: '+' }),
-          decals: {
-            textSize: UnitPx(14),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        },
-        'main.in.game.player.content.name': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', padH: UnitPx(6) })
-        },
-        'main.in.game.player.content.timer': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc' })
-        },
-        'main.in.game.board': { decals: { colour: 'rgba(255, 255, 255, 0)' } },
-        'main.in.game.board.tileWhite': {
-          decals: {
-            colour: 'rgba(154, 154, 187, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.tileBlack': {
-          decals: {
-            colour: 'rgba(137, 137, 175, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.piece': { decals: {} },
-        'main.in.game.board.move': { decals: {} },
-        'main.in.game.board.move.indicator': { decals: {} },
-        'main.in.game.board.showMovePiece': { decals: {} },
-        'main.in.game.board.showMoveTile': { decals: {} },
-        'main.in.game.conclusion': {
-          size: FillParent(),
-          slots: CenteredSlot(),
-          decals: {
-            colour: 'rgba(0, 0, 0, 0.5)'
-          }
-        },
-        'main.in.game.conclusion.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ origin: 'cc' }),
-          decals: {
-            textSize: UnitPx(30),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        }
+        'main.art': { size: Art({}) }
       };
       
-      /// {ABOVE=
-      lands.setRealRooms([ realDom ]);
-      let chess2 = lands.createRec('chess2.chess2');
-      let archChess2 = lands.createRec('chess2.archChess2', [ lands.arch, chess2 ]);
-      /// =ABOVE}
-      
-      let rootScp = RecScope(lands.arch, 'chess2.archChess2', (archChess2, dep) => {
+      let rootScp = RecScope(lands.arch, 'tag.archTag', (archTag, dep) => {
+        
+        let tag = global.tag = archTag.members['tag.tag'];
+        
+        /// {ABOVE=
+        
+        dep.scp(lands.arch, 'lands.archHut', (archHut, dep) => {
+          
+          let hut = archHut.members['lands.hut'];
+          let player = dep(lands.createRec('tag.player', [], { keyVal: 0 }));
+          let hutPlayer = lands.createRec('tag.hutPlayer', [ hut, player ]);
+          let tagPlayer = lands.createRec('tag.tagPlayer', [ tag, player ], { term: hut.getTerm() });
+          
+          // Runner value is a bitmasked "controls" value - indicating
+          // which controls are depressed Below
+          let runner = lands.createRec('tag.runner', [], { x: Math.random() * 30 - 15, y: Math.random() * 30 - 15 });
+          let playerRunner = lands.createRec('tag.playerRunner', [ player, runner ]);
+          let tagRunner = lands.createRec('tag.tagRunner', [ tag, runner ], { term: hut.getTerm() });
+          
+          dep(hut.comNozz('upd').route(({ msg }) => {
+            let { keyVal } = msg;
+            if (!U.isType(keyVal, Number)) return;
+            player.modVal(v => (v.keyVal = keyVal, v));
+          }));
+          
+          dep(hut.follow(archTag));
+          dep.scp(tag, 'tag.tagRunner', (tagRunner, dep) => console.log(`${hut.getTerm()} follows tagRunner ${tagRunner.uid}`) || dep(hut.follow(tagRunner)));
+          
+          let interval = setInterval(() => {
+            tag.modVal(v => (v.cnt = U.base62(++updCnt), v));
+            for (let tagRunner of tag.relRecs('tag.tagRunner')) {
+              
+              let runner = tagRunner.members['tag.runner'];
+              
+              let playerRunner = runner.relRec('tag.playerRunner');
+              if (!playerRunner) continue; // TODO: Why does this happen?
+              
+              let player = playerRunner.members['tag.player'];
+              let { keyVal } = player.val;
+              
+              let keys = [];
+              for (let i = 0; i < 4; i++)
+                keys.push((keyVal & (1 << i)) ? 1 : 0);
+              
+              let vx = keys[1] - keys[0];
+              let vy = keys[3] - keys[2];
+              
+              if (vx && vy) {
+                let div = 1 / Math.sqrt(vx * vx + vy * vy);
+                vx *= div;
+                vy *= div;
+              }
+              
+              if (vx || vy) runner.modVal(v => (v.x += vx, v.y += vy, v));
+              
+            }
+          }, 1000 / 30);
+          
+        });
+        
+        /// =ABOVE} {BELOW=
+        
+        dep.scp(lands.getRootReal(), rootReal => {
+          
+          let mainReal = dep(rootReal.addReal('main'));
+          let artReal = mainReal.addReal('art');
+          let { draw, keys } = artReal;
+          
+          let doDraw = () => {
+            let { w, h, hw, hh } = draw.getDims();
+            draw.rect(0, 0, w, h, { fillStyle: 'rgba(0, 0, 0, 1)' });
+            draw.frame(() => {
+              
+              draw.trn(hw, hh); // Center of canvas is now origin
+              
+              for (let tagRunner of tag.relRecs('tag.tagRunner')) {
+                let runner = tagRunner.members['tag.runner'];
+                let { x, y } = runner.val;
+                draw.circ(x - 5, y - 5, 5, { fillStyle: 'rgba(255, 255, 255, 1)' });
+              }
+              
+            });
+          };
+          
+          dep(keys.nozz.route(keys => {
+            
+            let keyNums = [
+              65, // l
+              68, // r
+              87, // u
+              83  // d
+            ];
+            let keyVal = 0;
+            for (let i = 0; i < keyNums.length; i++) {
+              keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
+            }
+            lands.tell({ command: 'upd', keyVal });
+            
+          }));
+          
+          dep(tag.route(doDraw));
+          
+          //// TODO: Should immediately draw upon update! But determining
+          //// when update happened is a little awkward...
+          //setInterval(doDraw, 1000 / 30);
+          //doDraw();
+          
+        });
+        
+        /// =BELOW}
+        
+        
+        if (false) {
         
         let chess2 = global.chess2 = archChess2.mem('chess2');
         dep(Drop(null, () => { delete global.chess2; }));
         
         /// {ABOVE=
-        
-        // Serve files (TODO: to be PICKY, could deny Huts without Matches)
-        for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
-          let key = `chess2Piece.${colour}.${pieceType}`;
-          lands.comNozz(key).route(({ reply }) => reply(savedItems[key]));
-        }}
         
         dep.scp(lands.arch, 'lands.archHut', (archHut, dep) => {
           
@@ -802,8 +595,6 @@ U.buildRoom({
                 let conclusionReal = dep(gameReal.addReal('conclusion'));
                 let conclusionContentReal = conclusionReal.addReal('content');
                 
-                console.log(conclusion, myMatchPlayer);
-                
                 let type = (result !== 'stalemate')
                   ? ((result === myMatchPlayer.val.colour) ? 'winner' : 'loser')
                   : 'stalemate';
@@ -817,7 +608,7 @@ U.buildRoom({
                 dep(myMatchPlayer.route(val => conclusionReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
                 
                 dep(conclusionReal.feelNozz().route(() => lands.tell({ command: 'exitMatch' })));
-                  
+                
               });
               
             });
@@ -827,6 +618,8 @@ U.buildRoom({
         });
         
         /// =BELOW}
+        
+        }
         
       });
       

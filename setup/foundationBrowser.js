@@ -18,20 +18,19 @@
     init: function() {
       insp.Foundation.init.call(this);
       
-      // GOAL: Determine how long since Above generated `U.aboveMsAtResponseTime`
+      // GOAL: how long since Above generated `U.aboveMsAtResponseTime`?
       // - `firstContactMs` is our earliest timing of server response
-      // - We'll calculate `firstContactMs` as `performance.timing.responseStart`
+      // - `firstContactMs` is `performance.timing.responseStart`
       //   This is the time we received the server's 1st byte
-      // - No certainty further than `now - firstContactMs`; increasing accuracy
-      //   requires guessing time between data insertion and our 1st byte
+      // - Without making any assumptions: `now - firstContactMs`
       // - This estimates LESS than the real latency
       
       let nativeNow = +new Date();
       let firstContactMs = performance.timing.responseStart;
       let knownLatencyMs = nativeNow - firstContactMs;
       
-      // With this value, `new Date() + this.clockDeltaMs` is best guess at
-      // current value of Above's `foundation.getMs()`
+      // With this value, `new Date() + this.clockDeltaMs` is best guess
+      // at current value of Above's `foundation.getMs()` *right now*
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
       let { host, port, query } = this.parseUrl(window.location.href);
@@ -92,8 +91,8 @@
       await this.domAvailableNozz; // Block until DOM is available
       
       if (!this.rootReal) {
-        let realHtmlCss = U.rooms.realHtmlCss.built;
-        let { Reality } = realHtmlCss;
+        let realDom = U.rooms.realDom.built;
+        let { Reality } = realDom;
         
         let Real = Reality.prototype.getRealCls();
         this.rootReal = Real({});
@@ -104,7 +103,7 @@
       return this.rootReal;
       
     },
-    getDefaultRealRoom: function() { return U.rooms.realHtmlCss.built; },
+    getDefaultRealRoom: function() { return U.rooms.realDom.built; },
     getUrl: function(params) {
       params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { cpuId: U.cpuId }) };
       return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;

@@ -15,8 +15,6 @@ Hut at the very bottom runs using a single Reality.
 */
 
 (() => {
-  let doNetworkDbg = 1;
-  
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
   let Saved = U.inspire({ name: 'Saved', insps: { Drop }, methods: (insp, Insp) => ({
@@ -40,9 +38,10 @@ Hut at the very bottom runs using a single Reality.
     }
   })});
   let CpuPool = U.inspire({ name: 'CpuPool', methods: (insp, Insp) => ({
-    init: function(dbgLimit=150) {
+    init: function(dbgEnabled=true, dbgLimit=150) {
       this.cpuIdCnt = 0;
       this.cpus = {};
+      this.dbgEnabled = dbgEnabled;
       this.dbgLimit = dbgLimit;
       this.cpuNozz = TubSet(null, Nozz());
     },
@@ -64,7 +63,7 @@ Hut at the very bottom runs using a single Reality.
         + U.base62(Math.random() * Math.pow(62, 8)).padHead(8, '0');
       
       let cpuId = conn.cpuId, cpu = null, serverConns = null, isKnownCpu = this.cpus.has(cpuId);
-      let dbgDesc = doNetworkDbg ? `${cpuId}:${server.desc.substr(0, 4)}` : '';
+      let dbgDesc = this.dbgEnabled ? `${cpuId}:${server.desc.substr(0, 4)}` : '';
       
       if (isKnownCpu) { // Check if we've seen this cpu on another connection
         cpu = this.cpus[cpuId];
@@ -79,10 +78,10 @@ Hut at the very bottom runs using a single Reality.
         this.cpus[cpuId] = cpu;
         this.cpuNozz.nozz.drip(cpu);
         
-        if (doNetworkDbg) console.log(`>>JOIN ${cpuId}`);
+        if (this.dbgEnabled) console.log(`>>JOIN ${cpuId}`);
       }
       
-      if (doNetworkDbg) {
+      if (this.dbgEnabled) {
         
         console.log(`>-HOLD ${dbgDesc} on ${server.desc}`);
         conn.hear.route(([ msg ]) => console.log(`--HEAR ${dbgDesc}: ${this.dbgItem(msg)}`));
@@ -94,11 +93,11 @@ Hut at the very bottom runs using a single Reality.
         
         conn.drierNozz().route(() => {
           serverConns.rem(server);
-          if (doNetworkDbg) console.log(`<-DROP ${dbgDesc} on ${server.desc} (${serverConns.size} remaining)`);
+          if (this.dbgEnabled) console.log(`<-DROP ${dbgDesc} on ${server.desc} (${serverConns.size} remaining)`);
           if (serverConns.isEmpty()) {
             delete this.cpus[cpuId];
             cpu.dry();
-            if (doNetworkDbg) console.log(`<<EXIT ${cpuId}`);
+            if (this.dbgEnabled) console.log(`<<EXIT ${cpuId}`);
           }
         });
       }

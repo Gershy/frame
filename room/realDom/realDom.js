@@ -1,5 +1,5 @@
 U.buildRoom({
-  name: 'realHtmlCss',
+  name: 'realDom',
   innerRooms: [ 'real' ],
   build: (foundation, real) => {
     
@@ -100,7 +100,7 @@ U.buildRoom({
           ...cssTech.vAlignChild,
         }
       }));
-      zoneCss.set(real.RootPageItem, (rootPageItem, layout, ...trail) => ({
+      zoneCss.set(real.RootFullPageItem, (rootPageItem, layout, ...trail) => ({
         main: {
           position: 'absolute', display: 'block', overflow: 'hidden auto',
           left: '0', right: '0', top: '0', bottom: '0'
@@ -193,6 +193,14 @@ U.buildRoom({
         
         return zoneCss;
       });
+      zoneCss.set(real.Art, (art, layout, ...trail) => {
+        return { main: {
+          display: 'block', position: 'absolute',
+          pointerEvents: 'all',
+          backgroundColor: 'rgba(0, 0, 0, 0.1)',
+          left: '0', right: '0', width: '100%', height: '100%'
+        }};
+      });
       zoneCss.set(real.AxisSectionItem, (axisSectionItem, layout, parLayout, ...parTrail) => {
         
         let { cuts, axis, dir } = axisSectionItem.par;
@@ -265,6 +273,15 @@ U.buildRoom({
               return dom;
             }
       });
+      domElemFunc.set(real.Art, (art, layout, ...trail) => {
+        return () => {
+          let g = document.createElement('canvas');
+          g.setAttribute('tabIndex', '0');
+          g.width = 500;
+          g.height = 500;
+          return g;
+        }
+      });
       
       runTimeUixFunc.set(real.ShowText, (showText, layout, ...trail) => {
         
@@ -292,6 +309,74 @@ U.buildRoom({
       runTimeUixFunc.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => {
         return real => {
           real.setText = text => real.realized.textContent = text;
+        };
+      });
+      runTimeUixFunc.set(real.Art, (art, layout, ...trail) => {
+        return real => {
+          let canvasDom = real.realized;
+          let ctx = canvasDom.getContext('2d');
+          let pathFns = {
+            jump: (x, y) => ct.moveTo(x, y),
+            draw: (x, y) => ct.lineTo(x, y),
+            curve: (x1, x2, cx1, cy1, cx2, cy2) => ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, x2),
+            arc: (x1, y1, x2, y2, x3, y3, ccw=true) => {
+              let dx = (x2 - x1);
+              let dy = (y2 - y1);
+              let r = Math.sqrt(dx * dx + dy * dy);
+              let ang1 = Math.atan2(y1 - y2, x1 - x2);
+              let ang2 = Math.atan2(y3 - y2, x3 - x2);
+              ctx.arc(x2, y2, r, ang1, ang2, ccw);
+            }
+          };
+          
+          real.draw = {
+            getDims: () => ({
+              w: canvasDom.width, h: canvasDom.height,
+              hw: canvasDom.width >> 1, hh: canvasDom.height >> 1
+            }),
+            frame: f => { ctx.save(); f(); ctx.restore(); },
+            rot: ang => ctx.rotate(ang),
+            trn: (x, y) => ctx.translate(x, y),
+            scl: (x, y=x) => ctx.scale(x, y),
+            rect: (x, y, w, h, style) => {
+              for (let k in style) ctx[k] = style[k];
+              if (style.fillStyle) ctx.fillRect(x, y, w, h);
+              if (style.strokeStyle) ctx.strokeRect(x, y, w, h);
+            },
+            circ: (x, y, r, style) => {
+              ctx.beginPath();
+              ctx.arc(x, y, r, Math.PI * 2, 0);
+              for (let k in style) ctx[k] = style[k];
+              if (style.fillStyle) ctx.fill();
+              if (style.strokeStyle) ctx.stroke();
+            },
+            path: (style, f) => {
+              let jump = (x, y) => ctx.moveTo(x, y);
+              let draw = (x, y) => ctx.lineTo(x, y);
+              ctx.beginPath(); f(pathFns); ctx.closePath();
+              for (let k in style) ctx[k] = style[k];
+              if (style.fillStyle) ctx.fill();
+              if (style.strokeStyle) ctx.stroke();
+            }
+          };
+          
+          let keys = Set();
+          real.keys = {
+            nozz: Nozz()
+          };
+          
+          canvasDom.addEventListener('keydown', evt => {
+            if (keys.has(evt.keyCode)) return;
+            keys.add(evt.keyCode);
+            real.keys.nozz.drip(keys);
+          });
+          canvasDom.addEventListener('keyup', evt => {
+            if (!keys.has(evt.keyCode)) return;
+            keys.rem(evt.keyCode);
+            real.keys.nozz.drip(keys);
+          });
+          
+          real.addedFn = () => canvasDom.focus();
         };
       });
       
@@ -503,7 +588,7 @@ U.buildRoom({
       },
       prepareAboveLands: async function(lands) {
         
-        let styleSaved = await foundation.getSavedFromData([ 'realHtmlCssMainStyles.css' ], this.genCss());
+        let styleSaved = await foundation.getSavedFromData([ 'realDomMainStyles.css' ], this.genCss());
         let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
         
         lands.comNozz('getInit').route(async ({ absConn, hut, msg, reply }) => {
@@ -545,12 +630,12 @@ U.buildRoom({
           let favicon = head.add(XmlElement('link', 'singleton'));
           favicon.setProp('rel', 'shortcut icon');
           favicon.setProp('type', 'image/x-icon');
-          favicon.setProp('href', urlFn({ command: 'realHtmlCssGetFavicon' }));
+          favicon.setProp('href', urlFn({ command: 'realDomGetFavicon' }));
           
           let css = head.add(XmlElement('link', 'singleton'));
           css.setProp('rel', 'stylesheet');
           css.setProp('type', 'text/css');
-          css.setProp('href', urlFn({ command: 'realHtmlCssGetStylesheet' }));
+          css.setProp('href', urlFn({ command: 'realDomGetStylesheet' }));
           
           // Make a `global` value available to browsers
           let setupScript = head.add(XmlElement('script', 'text'));
@@ -610,9 +695,9 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        lands.comNozz('realHtmlCssGetFavicon').route(({ absConn, hut, msg, reply }) => U.safe(() => reply(iconSaved), reply));
-        lands.comNozz('realHtmlCssGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
-        lands.comNozz('realHtmlCssGetQuadTest').route(({ reply }) => reply([
+        lands.comNozz('realDomGetFavicon').route(({ absConn, hut, msg, reply }) => U.safe(() => reply(iconSaved), reply));
+        lands.comNozz('realDomGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
+        lands.comNozz('realDomGetQuadTest').route(({ reply }) => reply([
           '<!DOCTYPE html>',
           '<html>',
           '  <head>',
@@ -628,10 +713,11 @@ U.buildRoom({
       
       /// =ABOVE}
       
-      getRealCls: function() { return HtmlCssReal; },
+      getRealCls: function() { return DomReal; },
       initReal0: function(real, layout, trail) {
         // Create dom element and add class for `layout.name`
         let cmps = this.getLayoutCmps(layout, ...trail);
+        
         let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
         if (makeDomElems.length > 1) throw Error('Conflicting domElemFuncs');
         
@@ -652,6 +738,7 @@ U.buildRoom({
       },
       addChildReal: function(parReal, childReal) {
         parReal.realized.appendChild(childReal.realized);
+        if (childReal.addedFn) childReal.addedFn();
       },
       remChildReal: function(childReal) {
         let dom = childReal.realized;
@@ -696,7 +783,7 @@ U.buildRoom({
         updStyle(dom, 'cursor', 'pointer');
       }
     })});
-    let HtmlCssReal = U.inspire({ name: 'HtmlCssReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
+    let DomReal = U.inspire({ name: 'DomReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
       init: function(...args) {
         insp.Real.init.call(this, ...args);
         this.dyn = null;

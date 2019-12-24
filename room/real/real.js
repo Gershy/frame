@@ -161,17 +161,20 @@ U.buildRoom({
         this.interactive = interactive;
       }
     })});
+    let Art = U.inspire({ name: 'Art', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
+      init: function() {}
+    })});
     
     // ==== SLOTS
     let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       insertViewPortItem: function() { return RootViewPortItem(); },
-      insertPageItem: function() { return RootPageItem(); }
+      insertFullPageItem: function() { return RootFullPageItem(); }
     })});
     let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: function(...trail) { return ViewPortMin(1); },
       getH: function(...trail) { return ViewPortMin(1); }
     })});
-    let RootPageItem = U.inspire({ name: 'RootPageItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
+    let RootFullPageItem = U.inspire({ name: 'RootFullPageItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: function(par, ...parTrail) { return UnitPc(1); },
       getH: function(par, ...parTrail) { return UnitPc(1); }
     })});
@@ -366,10 +369,14 @@ U.buildRoom({
         }
         return this.sense.feel;
       },
-      addReal: function(realName, dbg=false) {
-        if (!this.layout.children.has(realName)) throw Error(`No layout for "${realName}"`);
-        let real = this.reality.initReal(this, this.layout.children[realName]);
-        real.par = this;
+      addReal: function(real, dbg=false) {
+        if (U.isType(real, String)) {
+          if (!this.layout.children.has(real)) throw Error(`No layout for "${real}"`);
+          real = this.reality.initReal(this, this.layout.children[real]);
+          real.par = this;
+        } else {
+          real.reality = this.reality;
+        }
         this.reality.addChildReal(this, real);
         return real;
       },
@@ -392,8 +399,8 @@ U.buildRoom({
       Unit, UnitAmt, UnitPx, UnitPc, ViewPortMin, Calc, CalcAdd,
       
       RealLayoutCmp,
-      FillParent, WrapChildren, ShowText,
-      RootViewStyles, RootViewPortItem, RootPageItem,
+      FillParent, WrapChildren, ShowText, Art,
+      RootViewStyles, RootViewPortItem, RootFullPageItem,
       AxisSections, AxisSectionItem,
       LinearSlots, LinearItem,
       CenteredSlot, CenteredItem,
