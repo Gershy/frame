@@ -22,7 +22,7 @@ U.buildRoom({
     // 3 - All other Recs: May be referenced, and may dry up for any
     // reason! So we use `Lands.prototype.createRec`.
     
-    let { Rec, Rel } = record;
+    let { RecTypes, RecType, Rec } = record;
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
     
     let hutTerms = [];
@@ -53,23 +53,32 @@ U.buildRoom({
           let { type, val, memberUids, uid } = addVals;
           
           // Convert all members from uid to Rec
-          let memberRecs = [];
-          for (let memberUid of memberUids) {
-            let memberRec = getHeadOrTailRec(memberUid);
-            if (!memberRec) { memberRecs = null; break; }
-            else            memberRecs.push(memberRec);
-          }
+          let members = null;
+          if (U.isType(memberUids, Array)) { for (let uid of memberUids) {
+            // TODO: Use this!! Array `memberUids`
+            members = [];
+            let memberRec = getHeadOrTailRec(uid);
+            if (!memberRec) { members = null; break; }
+            members.push(memberRec);
+          }} else if (U.isType(memberUids, Object)) { for (let term in memberUids) {
+            members = {};
+            let uid = memberUids[term];
+            let memberRec = getHeadOrTailRec(uid);
+            if (!memberRec) { members = null; break; }
+            members[term] = memberRec;
+          }}
           
-          if (!memberRecs) { waiting.push(addVals); continue; }
+          if (!members) { waiting.push(addVals); continue; }
           
           // All members are available - create the Rec!
-          let newRec = ourHut.createRec(type, { uid, val }, ...memberRecs);
+          let newRec = ourHut.followRec(Rec(ourHut.getType(type), uid, members, val));
           tailRecs.set(uid, newRec);
           
         }
         
         if (waiting.length === attempt.length) { // If churn achieved nothing we're stuck
           console.log('Head Recs:\n', headRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
+          console.log('Tail Recs (created NOW):\n', tailRecs.toArr((rec, uid) => `- ${uid}: ${U.nameOf(rec)} (${rec.type.name})`).join('\n'));
           console.log(JSON.stringify(content, null, 2));
           throw Error(`Unresolvable Rec dependencies`);
         }
@@ -79,7 +88,7 @@ U.buildRoom({
       // Update Recs directly
       updRec.forEach((newValue, uid) => {
         if (!ourHut.allRecs.has(uid)) throw Error(`Tried to upd non-existent Rec @ ${uid}`);
-        ourHut.allRecs.get(uid).update(newValue);
+        ourHut.allRecs.get(uid).setVal(newValue);
       });
       
       // Remove Recs directly
@@ -93,16 +102,15 @@ U.buildRoom({
       
     };
     
-    let Lands = U.inspire({ name: 'Lands', methods: () => ({
-      init: function({ heartbeatMs=10000, recTypes={} }) {
+    let Lands = U.inspire({ name: 'Lands', insps: { RecTypes }, methods: (insp, Insp) => ({
+      init: function({ heartbeatMs=10000 }) {
         
-        if (recTypes.isEmpty()) throw Error('No "recTypes" provided');
         if (heartbeatMs < 3000) throw Error('Heartbeat too slow');
         
-        this.pool = U.setup.CpuPool();
+        insp.RecTypes.init.call(this);
         
+        this.pool = U.setup.CpuPool();
         this.heartbeatMs = heartbeatMs;
-        this.recTypes = recTypes;
         this.uidCnt = 0;
         this.comNozzes = {};
         
@@ -125,7 +133,7 @@ U.buildRoom({
         /// =BELOW}
         
         // Note that Arch and ArchHut don't use `this.createRec`
-        this.arch = this.recTypes.arch.create({ uid: '!arch' });
+        this.arch = Rec(this.getType('arch'), '!arch');
         this.allRecs.set('!arch', this.arch);
         
         this.addDefaultCommands();
@@ -156,7 +164,6 @@ U.buildRoom({
         /// =BELOW}
         
       },
-      nextUid: function() { return U.base62(this.uidCnt++).padHead(8, '0'); },
       genUniqueTerm: function() {
         // If we used `getTerm` we could get an infinite loop! Simply exclude
         // any Huts that don't yet have a term
@@ -169,19 +176,9 @@ U.buildRoom({
         throw Error('Too many huts! Not enough terms!! AHHHH!!!');
       },
       
-      createRec: function(name, params={}, ...args) {
-        
-        // Prefer this to `this.recTypes.<type>.create(...)` when:
-        // 1 - Want to supply automatic uid for recType
-        // 2 - Want to supply automatic "lands" param to Rec subclass
-        // 3 - Want to include createdRec in `this.allRecs`, and remove
-        // it when it dries up
-        
-        if (!this.recTypes.has(name)) throw Error(`Invalid RecType name: "${name}"`)
-        if (!params.has('uid')) params.uid = this.nextUid();
-        params.lands = this;
-        
-        let rec = this.recTypes[name].create(params, ...args);
+      getNextRecUid: function() { return U.base62(this.uidCnt++).padHead(8, '0'); },
+      createRec: function(...args) { return this.followRec(insp.RecTypes.createRec.call(this, ...args)); },
+      followRec: function(rec) {
         this.allRecs.set(rec.uid, rec);
         rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
         return rec;
@@ -267,7 +264,7 @@ U.buildRoom({
       /// =BELOW}
       
       getAllHuts: function() {
-        return this.arch.relRecs(rt.archHut, 0).toArr(archHut => archHut.members[1]);
+        return this.arch.relRecs('lands.archHut').toArr(archHut => archHut.members['lands.hut']);
       },
       
       // TODO: async functions shouldn't be named "open" and "shut"
@@ -296,13 +293,14 @@ U.buildRoom({
           let cpuId = cpu.cpuId;
           
           // Create a Hut; it will be throttled until it gives us a Tell
-          let hut = this.recTypes.hut.create({ drier: cpu.drier, uid: `!hut@${cpuId}`, cpu, lands: this });
+          let hut = Hut(this, cpu, this.getType('lands.hut'), `!hut@${cpuId}`);
+          
           let resolveGotCom = null;
           let hutGotComPrm = Promise(r => resolveGotCom = r);
           hut['throttleSyncBelow'] = () => hutGotComPrm;
           
           // Now that the Hut is safely throttled connect it to ArchHut
-          let archHut = this.recTypes.archHut.create({ uid: `!archHut@${cpuId}` }, this.arch, hut);
+          let archHut = Rec(this.getType('lands.archHut'), `!archHut@${cpuId}`, [ this.arch, hut ]);
           
           // Listen to each Conn of the Cpu
           dep.scp(cpu.connNozz, (conn, dep) => {
@@ -338,15 +336,14 @@ U.buildRoom({
         await Promise.allArr(this.servers.map(server => server.dry()));
       }
     })});
-    
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({
       
-      init: function({ lands, cpu, ...supArgs }) {
+      init: function(lands, cpu, type, uid, members, val) {
         
         if (!lands) throw Error('Missing "lands"'); // TODO: Can this property be removed? It's aaalmost unnecessary
         if (!cpu) throw Error('Missing "cpu"');
         
-        insp.Rec.init.call(this, supArgs);
+        insp.Rec.init.call(this, type, uid, members, val);
         this.lands = lands;   // TODO: Only needed for "getTerm" and "refreshExpiry"
         this.cpu = cpu;       // TODO: Only needed in "tell" (this.cpu.connNozz.set)
         this.term = null;
@@ -530,7 +527,7 @@ U.buildRoom({
       },
       follow: function(rec) {
         // Note: may pass Recs with "!"-prefixed uids - they're ignored
-        let drops = [ rec, ...rec.members ].map(r => r.uid[0] === '!' ? C.skip : this.followRec(r));
+        let drops = [ rec, ...rec.members.toArr(r => r) ].map(r => r.uid[0] === '!' ? C.skip : this.followRec(r));
         return Drop(null, () => drops.forEach(d => d.dry()));
       },
       modifyRec: function(rec, newVal) {
@@ -582,12 +579,7 @@ U.buildRoom({
       }
     })});
     
-    let { rt, add } = record.recTyper();
-    add('arch',     Rec);
-    add('hut',      Hut);
-    add('archHut',  Rec, '1M', rt.arch, rt.hut);
-    
-    return { Lands, Hut, rt };
+    return { Lands, Hut };
     
   }
 });

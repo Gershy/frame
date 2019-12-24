@@ -5,8 +5,7 @@
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let [  path,   fs,   crypto,   os ] =
-      [ 'path', 'fs', 'crypto', 'os' ].map(v => require(v));
+  let [ path, fs, crypto  ] = [ 'path', 'fs', 'crypto' ].map(v => require(v));
   
   let rootDir = path.join(__dirname, '..');
   let roomDir = path.join(rootDir, 'room');
@@ -40,6 +39,11 @@
     let f = path.join(...cmps);
     let err = Error(`Couldn't rem file "${f}"`);
     return Promise((rsv, rjc) => fs.unlink(f, e => e ? rjc(err) : rsv()));
+  };
+  let fsUpdDir = cmps => {
+    let f = path.join(...cmps);
+    let err = Error(`Couldn't upd file "${f}"`);
+    return Promise((rsv, rjc) => fs.mkdir(f, e => e ? rjc(err) : rsv()));
   };
   let fsRemDir = cmps => {
     let f = path.join(...cmps);
@@ -237,16 +241,23 @@
       
       this.usage0 = process.memoryUsage().map(v => v);
       
-      // These directories get purged (TODO: should happen when hut *ends*, not *begins*)
-      fsRemTreeSync(path.join(tempDir, 'storage'));
-      fsRemTreeSync(path.join(tempDir, 'room'));
-      
-      // Create all necessary directories
-      U.safe(() => fs.mkdirSync(tempDir));
-      U.safe(() => fs.mkdirSync(path.join(tempDir, 'habit')));
-      U.safe(() => fs.mkdirSync(path.join(tempDir, 'room')));
-      U.safe(() => fs.mkdirSync(path.join(tempDir, 'storage')));
-      U.safe(() => fs.mkdirSync(path.join(tempDir, 'cert')));
+      this.canSettlePrm = (async () => {
+        
+        await Promise.allArr([
+          // TODO: Ideally temp dirs should be purged when Hut *dries*
+          fsRemTree([ tempDir, 'storage' ]),
+          fsRemTree([ tempDir, 'room' ]),
+          
+          (async () => {
+            try { await fsUpdDir([ tempDir ]); } catch(err) {}
+            try { await fsUpdDir([ tempDir, 'habit'   ]); } catch(err) {}
+            try { await fsUpdDir([ tempDir, 'room'    ]); } catch(err) {}
+            try { await fsUpdDir([ tempDir, 'storage' ]); } catch(err) {}
+            try { await fsUpdDir([ tempDir, 'cert'    ]); } catch(err) {}
+          })()
+        ]);
+        
+      })();
       
     },
     defaultGoals: function() {
@@ -633,19 +644,17 @@
       let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
       let preLen = err.constructor.name.length + 2; // The classname plus ": "
       let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, file, bearing, lineInd) => {
-        
         let mappedLineData = this.mapLineToSource(file, parseInt(lineInd, 10));
         return mappedLineData
           ? `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src:${mappedLineData.srcLineInd}`
           : match;
-        
       }).split('\n');
       
       return [
         '='.repeat(46),
         ...moreLines.map(ln => `||  ${ln}`),
         '||' + ' -'.repeat(22),
-        ...(lines.length ? lines : [ 'Couldn\'t format error:', ...trace.split('\n') ]).map(ln => `||  ${ln}`)
+        ...(lines.length ? lines : [ `Showing unformatted "${type}":`, ...trace.split('\n').map(ln => `? ${ln.trim()}`) ]).map(ln => `||  ${ln}`)
       ].join('\n');
       
     },
@@ -663,7 +672,7 @@
     },
     
     getSaved: function(locator) {
-      // Assume the saved item is on the filesystem...
+      // TODO: This assumes the saved item is on the filesystem...
       return SavedFile(...locator);
     },
     getSavedFromData: async function(locator, data) {
@@ -673,7 +682,7 @@
     },
     getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
     getStaticIps: function(pref=[]) {
-      return os.networkInterfaces()
+      return require('os').networkInterfaces()
         .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
         .to(arr => Array.combine(...arr))
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
@@ -750,7 +759,7 @@
       }
       
     },
-    makeHttpServer: async function(pool, { host, port, keyPair = null, selfSign = null }) {
+    makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       
       if (!port) port = keyPair ? 443 : 80;
       
@@ -925,8 +934,7 @@
       
       return server;
     },
-    makeSoktServer: async function(pool, { host, port, selfSign = null, keyPair = null }) {
-      
+    makeSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       if (!port) port = keyPair ? 444 : 81;
       
       let makeSoktState = (status='initial') => ({
@@ -1046,7 +1054,11 @@
     },
     
     getPlatformName: function() { return 'nodejs'; },
-    establishHut: async function({ hut=null, bearing=null }) {
+    establishHut: async function(raiseArgs) {
+      
+      let { hut=null, bearing=null } = raiseArgs;
+      
+      await this.canSettlePrm;
       
       if (!hut) throw Error('Missing "hut" param');
       if (!bearing) throw Error('Missing "bearing" param');
@@ -1055,7 +1067,7 @@
       // We're establishing with known params! So set them on `this`
       this.hut = U.isType(hut, Object) ? hut.name : hut;
       this.bearing = bearing;
-      this.spoofEnabled = this.raiseArgs.mode === 'test';
+      this.spoofEnabled = raiseArgs.mode === 'test';
       
       // Compile everything!
       this.roomsInOrder = await this.compileRecursive(hut);

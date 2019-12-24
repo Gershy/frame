@@ -32,151 +32,128 @@ U.buildRoom({
     // 5. routes DrierNozzes to dry GroupRec upon MemberRec drying
     // 6. dries GroupRecs when any MemberRec dries
     
-    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     
-    let Tidy = U.inspire({ name: 'Tidy', methods: (insp, Insp) => ({
-      init: function(check=null) { if (check) this.check = check; },
-      check: C.notImplemented
-    })});
-    let TidyArr = U.inspire({ name: 'TidyArr', insps: { Tidy }, methods: (insp, Insp) => ({
-      init: function(min=null, max=null, innerTidy=null) {
-        insp.Tidy.init.call(this);
-        this.min = min;
-        this.max = max;
-        this.innerTidy = innerTidy;
+    let RecTypes = U.inspire({ name: 'RecTypes', insps: {}, methods: (insp, Insp) => ({
+      init: function() { this.typeMap = {}; },
+      ensure: function(name, type) {
+        if (this.typeMap.has(name) && this.typeMap[name] === type)
+          throw new Error(`Multiple instances of type "${name}"`);
+        this.typeMap[name] = type;
       },
-      check: function(arr) {
-        if (!U.isType(arr, Array)) throw Error(`Expected Array; got ${U.nameOf(arr)}`);
-        if (this.min !== null && arr.length < this.min) throw Error(`Array has ${arr.length} items; min is ${this.min}`);
-        if (this.max !== null && arr.length > this.max) throw Error(`Array has ${arr.length} items; max is ${this.max}`);
-        if (this.innerTidy) for (let v of arr) this.innerTidy.check(v);
+      getType: function(name) {
+        return this.typeMap.has(name) ? this.typeMap[name] : (this.typeMap[name] = RecType(name, this));
+      },
+      getNextRecUid: function() { return null; },
+      createRec: function(name, members, val) {
+        return Rec(this.getType(name), this.getNextRecUid(), members, val);
       }
     })});
-    let TidyObj = U.inspire({ name: 'TidyObj', insps: { Tidy }, methods: (insp, Insp) => ({
-      init: function(required=[], tidyMap={}) {
-        insp.Tidy.init.call(this);
-        this.required = required;
-        this.tidyMap = tidyMap;
-      },
-      check: function(obj) {
-        if (!U.isType(obj, Object)) throw Error(`Expected Object; got ${U.nameOf(obj)}`);
-        for (let r of this.required) if (!obj.has(r)) throw Error(`Object missing required property: ${r}`);
-        for (let k in obj) {
-          if (!this.tidyMap.has(k)) throw Error(`Object has unexpected property: ${k}`);
-          this.tidyMap[k].check(obj[k]);
-        }
-      }
-    })});
-    
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
-      
-      init: function(name, RecCls=Rec, cardinality=null, ...memberTypes) {
-        if (cardinality && cardinality.split('').find(v => v !== 'M' && v !== '1')) throw Error(`Invalid cardinality: "${cardinality}"`);
-        if (cardinality && cardinality.length !== memberTypes.length) throw Error(`Invalid: cardinality "${cardinality}", but member types [${memberTypes.map(c => c.name).join(', ')}]`);
+      init: function(name, types=RecTypes()) {
         
         this.name = name;
-        this.RecCls = RecCls;
-        this.cardinality = cardinality;
-        this.memberTypes = memberTypes;
+        this.types = types;
+        this.types.ensure(this.name, this);
+        
+        this.memberInfoNozz = TubSet(null, Nozz()); // TODO: A "TubMap" would serve this purpose better...
+        this.terms = {};
+        this.memberInfoNozz.route(mi => { this.terms[mi.term] = mi; });
+        
       },
-      create: function(params={}, ...members) {
+      updMembers: function(recTypes) {
         
-        if (members.length !== this.memberTypes.length)
-          throw Error(`RecType ${this.name} has ${this.memberTypes.length} MemberType(s), but tried to create with ${members.length}`);
+        let newRecTypes = []; // Terms that have never been seen before
+        let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
         
-        for (let i = 0; i < members.length; i++)
-          if (members[i].type !== this.memberTypes[i])
-            throw Error(`RecType ${this.name} expects [${this.memberTypes.map(mt => mt.name).join(', ')}] but got [${members.map(m => m.type.name).join(', ')}]`);
+        recTypes.forEach((recType, term) => {
+          let findMemInf = this.memberInfoNozz.set.find(mi => mi.term === term);
+          let curRt = findMemInf ? findMemInf[0].recType : null;
+          
+          if (findMemInf && curRt && curRt !== recType)
+            throw new Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
+          
+          if (!findMemInf) newRecTypes.push({ term, recType });
+          else if (!curRt) defRecTypes.push({ memInf: findMemInf[0], recType });
+        });
         
-        // Create GroupRec; Inform all MemberRecs of the new relation
-        let relRec = this.RecCls({ ...params, type: this, members });
-        members.forEach((m, i) => m.relNozz(this, i).nozz.drip(relRec));
-        
-        return relRec;
+        for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
+        for (let nrt of newRecTypes) this.memberInfoNozz.nozz.drip(nrt);
         
       }
-      
     })});
     let Rec = U.inspire({ name: 'Rec', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-      
-      $NEXT_UID: 0,
-      
-      init: function({ drier=null, val=null, type=null, uid=Rec.NEXT_UID++, members=[] }) {
-        if (type === null) throw Error(`Missing "type"`);
-        if (uid === null) throw Error(`Missing "uid"`);
+      init: function(type, uid, members={}, val=null) {
+        if (U.isType(members, Array)) members = members.toObj(mem => [ mem.type.name, mem ]);
         
-        if (!drier) drier = defDrier();
-        if (!drier.nozz) throw Error('Missing "drier.nozz"');
+        type.updMembers(members.map(m => m.type));
         
-        insp.Drop.init.call(this, drier);
+        insp.Drop.init.call(this, defDrier());
         insp.Nozz.init.call(this);
         
         this.type = type;
         this.uid = uid;
         this.val = val;
-        
+        this.members = members;
         this.relNozzes = {};
-        this.members = members; // GroupRecs link to all MemberRecs
-        this.memberDryRoutes = this.members.map(mem => mem.drierNozz().route(() => this.dry()));
+        
+        // Set us up to dry if any MemberRec dries
+        let dryMe = this.dry.bind(this);
+        this.memDryRoutes = Set(this.members.toArr(m => m ? m.drierNozz() : C.skip)) . toArr(dn => dn.route(dryMe));
+        
+        // Inform all MemberRecs of this GroupRec
+        this.members.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
       },
-      defaultRecTypeInd: function(recType) {
-        
-        // Without knowing which specific index is desired, we can still
-        // often make a 100% certain guess: when `recType` MemberRecs 
-        // have different RecTypes. In this case we can select the index
-        // of *our* type as the correct index. Note this breaks when
-        // `recType` contains multiple MemberRecs of the same RecType!
-        
-        let findMatchingType = recType.memberTypes.find(m => m === this.type);
-        if (!findMatchingType) throw Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
-        return findMatchingType[1];
-        
+      mem: function(termTail) {
+        if (termTail[0] !== '.') termTail = `.${termTail}`;
+        for (let term in this.members) if (term.has(termTail)) return this.members[term];
+        return null;
       },
-      relNozz: function(recType, ind=null) {
-        if (!recType) throw Error(`Invalid recType: ${U.nameOf(recType)}`);
-        if (ind === null) ind = this.defaultRecTypeInd(recType);
+      relNozz: function(recType, term = null) {
         
-        let key = `${recType.name}.${ind}`;
+        if (U.isType(recType, String)) recType = this.type.types.getType(recType);
+        
+        if (term === null) {
+          
+          let findMemInf = recType.memberInfoNozz.set.find(mi => mi.recType === this.type);
+          let memInf = null;
+          if (!findMemInf) {
+            // TODO: What if somehow `this.type.name` is already a term
+            // for a different type?? Then we'd need to try another
+            // "made up" term, like `${this.type.name}/2` or something
+            // silly like that
+            recType.updMembers({ [this.type.name]: this.type });
+            term = this.type.name;
+          } else {
+            term = findMemInf[0].term;
+          }
+          
+        }
+        
+        let key = `${recType.name}/${term}`;
         if (!this.relNozzes.has(key)) {
-          if (this.type !== recType.memberTypes[ind]) throw Error(`RecType "${this.type.name}" is not a Member of RecType "${recType.name}"`);
-          let cardinality = recType.cardinality[1 - ind]; // Note that cardinality is determined by OTHER type's cardinality
-          let relNozz = this.relNozzes[key] = (cardinality === 'M' ? TubSet : TubVal)(null, Nozz());
-          relNozz.desc = `RelNozz for ${this.type.name} -> ${recType.name}; crd: ${cardinality === 'M' ? 'plural' : 'single'}`;
+          this.relNozzes[key] = TubSet(null, Nozz());
+          this.relNozzes[key].desc = `RelNozz: ${this.type.name} -> ${recType.name} (${term})`;
         }
         
         return this.relNozzes[key];
       },
-      relRecs: function(recType, ind) { return this.relNozz(recType, ind).set; },
-      relRec: function(recType, ind) { let rec = this.relNozz(recType, ind).val; return rec === C.skip ? null : rec; },
-      isSafeForEther: function() {
-        
-        // TODO: WHAT ABOUT drierNozz??????
-        
-        // Our value and all our relNozzes must be free of Routes
-        return true
-          && this.routes.isEmpty()
-          && !this.relNozzes.find(rn => !rn.routes.isEmpty());
-        
-      },
-      update: function(newVal) {
+      relRecs: function(recType, term) { return this.relNozz(recType, term).set; },
+      relRec: function(recType, term) { for (let r of this.relNozz(recType, term).set) return r; return null; },
+      setVal: function(newVal) {
         if (newVal !== this.val || U.isType(newVal, Object)) this.drip(this.val = newVal);
+        return this;
       },
-      modify: function(fn) { this.update(fn(this.val)); },
+      modVal: function(fn) { return this.setVal(fn(this.val)); },
       newRoute: function(routeFn) { routeFn(this.val); },
       onceDry: function() {
-        for (let memRoute of this.memberDryRoutes) memRoute.dry();
+        for (let memRoute of this.memDryRoutes) memRoute.dry();
         this.relNozzes = {};
+        this.members = {};
       }
-      
     })});
     
-    let recTyper = () => {
-      let rt = {};
-      let add = (name, ...args) => rt[name] = RecType(name, ...args);
-      return { rt, add };
-    };
-    
-    return { Tidy, TidyArr, TidyObj, RecType, Rec, recTyper };
+    return { RecTypes, RecType, Rec };
     
   }
 });

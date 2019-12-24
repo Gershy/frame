@@ -153,9 +153,9 @@ Hut at the very bottom runs using a single Reality.
     // Setup
     raise: async function(raiseArgs) {
       
-      this.raiseArgs = { mode: 'prod', ...raiseArgs };
-      if (!this.raiseArgs.has('spoofEnabled')) this.raiseArgs.spoofEnabled = this.raiseArgs.mode === 'test';
+      if (!raiseArgs.has('mode')) raiseArgs.mode = 'prod';
       
+      this.raiseArgs = raiseArgs;
       let goalAchieved = false;
       for (let goal of this.goals) if (await goal.attempt(this, this.raiseArgs)) { goalAchieved = true; break; }
       if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.raiseArgs, null, 2)}`);

@@ -584,6 +584,7 @@ U.buildRoom({
           let raiseArgs = [];
           raiseArgs.push(`settle: '${foundation.hut}.below'`);
           if (foundation.raiseArgs.has('hutHosting')) raiseArgs.push(`hutHosting: '${foundation.raiseArgs.hutHosting}'`);
+          if (foundation.raiseArgs.has('ssl')) raiseArgs.push(`ssl: '${foundation.raiseArgs.ssl}'`);
           
           let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
             '// ==== File: hut.js (line count: 8)',

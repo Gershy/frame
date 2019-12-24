@@ -138,7 +138,7 @@ protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; return
   for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
   return ret;
 });
-protoDef(SetOrig, 'find', function(f) {
+protoDef(SetOrig, 'find', function(f) { // Returns [ VAL, null ]
   for (let v of this) if (f(v)) return [ v ];
   return null;
 });
@@ -157,6 +157,10 @@ protoDef(MapOrig, 'toArr', function(fn) { // Iterator args: [ VAL, KEY ]; return
   let ret = [];
   for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
+});
+protoDef(MapOrig, 'find', function(f) { // Returns [ VAL, KEY ]
+  for (let [ k, v ] of this.entries()) if (f(v, k)) return [ v, k ];
+  return null;
 });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
 protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
@@ -344,7 +348,17 @@ let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
     return Drop(null, () => this.routes.rem(routeFn));
   },
   newRoute: function(routeFn) {},
-  drip: function(...items) { for (let routeFn of this.routes) routeFn(...items); },
+  drip: function(...items) {
+    // The idea for preventing Routes during a Drip from receiving that
+    // drip: when intending to iterate over `this.routes` first take a
+    // snapshot of these Routes. Then iterate over that snapshot, at 
+    // each stage ensuring that each Route still exists in `this.routes`
+    // 1 - Only Routes present before Drip receive drip
+    // 2 - Routes which dry during Drip still don't receive drip
+    
+    let routesForDrip = Set(this.routes);
+    for (let routeFn of routesForDrip) if (this.routes.has(routeFn)) routeFn(...items);
+  },
   block: function(doDrip, ...dripVals) {
     // Cause any new Routes to receive "newRoute" functionality, but not
     // to be held (and return a dry Drop in indication of this)
