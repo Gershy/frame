@@ -51,16 +51,7 @@ Array.fill = (n, f=()=>null) => {
   for (let i = 0; i < n; i++) a[i] = f(i);
   return a;
 };
-Array.combine = (...as) => {
-  let len = 0;
-  for (let i = 0; i < as.length; i++) len += as[i].length;
-  
-  let ret = new Array(len);
-  let ind = 0;
-  for (let i = 0; i < as.length; i++) { let a = as[i]; for (let j = 0; j < a.length; j++) { ret[ind++] = a[j]; }}
-  
-  return ret;
-};
+Array.combine = (...as) => [].concat(...as);
 protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {
@@ -521,6 +512,9 @@ let TubCnt = U.inspire({ name: 'TubCnt', insps: { Drop, Nozz }, methods: (insp, 
   onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
 })});
 let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
+  
+  $addDep: (deps, dep) => { if (dep.isWet()) deps.add(dep); return dep; },
+  
   init: function(nozz, fn) {
     
     this.dryNozz = Funnel();
@@ -534,8 +528,8 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
       
       // Allow shorthand adding of Deps and SubScopes
       let deps = Set();
-      let addDep = dep => { if (dep.isWet()) deps.add(dep); return dep; };
-      addDep.scp = (subNozz, fn) => addDep(Scope(subNozz, fn));
+      let addDep = Insp.addDep.bind(null, deps);
+      addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
       
       // Unscope if the Scope or Drop (assuming dryable Drop) dries
       let dropUnscopedNozz = Funnel(this.dryNozz);
@@ -550,7 +544,6 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
       
     });
   },
-  
   onceDry: function() {
     this.fn = null;
     this.nozzRoute.dry();

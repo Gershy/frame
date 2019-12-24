@@ -4,7 +4,7 @@ U.buildRoom({
   build: (foundation, record, hinterlands, real, realHtmlCss) => {
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
-    let { Rec } = record;
+    let { Rec, RecScope } = record;
     let { Lands } = hinterlands;
     
     // Config values
@@ -367,7 +367,7 @@ U.buildRoom({
       let archChess2 = lands.createRec('chess2.archChess2', [ lands.arch, chess2 ]);
       /// =ABOVE}
       
-      let rootScp = Scope(lands.arch.relNozz('chess2.archChess2'), (archChess2, dep) => {
+      let rootScp = RecScope(lands.arch, 'chess2.archChess2', (archChess2, dep) => {
         
         let chess2 = global.chess2 = archChess2.mem('chess2');
         dep(Drop(null, () => { delete global.chess2; }));
@@ -380,32 +380,32 @@ U.buildRoom({
           lands.comNozz(key).route(({ reply }) => reply(savedItems[key]));
         }}
         
-        dep.scp(lands.arch.relNozz('lands.archHut'), (archHut, dep) => {
+        dep.scp(lands.arch, 'lands.archHut', (archHut, dep) => {
           
           let hut = archHut.mem('hut');
           let hutPlayerNozz = hut.relNozz('chess2.hutPlayer');
           
           // Follows
           dep(hut.follow(archChess2));
-          dep.scp(hut.relNozz('chess2.hutPlayer'), (hutPlayer, dep) => {
+          dep.scp(hut, 'chess2.hutPlayer', (hutPlayer, dep) => {
             
             // Careful not to Follow the HutPlayer!
             let player = hutPlayer.mem('player');
-            dep.scp(player.relNozz('chess2.chess2Player'), (chess2Player, dep) => {
+            dep.scp(player, 'chess2.chess2Player', (chess2Player, dep) => {
               
               // Follow the Player through the Chess2Player!
               dep(hut.follow(chess2Player));
               
-              dep.scp(player.relNozz('chess2.matchPlayer'), (matchPlayer, dep) => {
+              dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
                 
                 dep(hut.follow(matchPlayer)); // Follow Match
                 
                 // Follow Players, Pieces, Round, Conclusion of Match
                 let match = matchPlayer.mem('match');
-                dep.scp(match.relNozz('chess2.matchConclusion'), (mc, dep) => dep(hut.follow(mc)));
-                dep.scp(match.relNozz('chess2.matchRound'), (mr, dep) => dep(hut.follow(mr)));
-                dep.scp(match.relNozz('chess2.matchPlayer'), (mp, dep) => dep(hut.follow(mp)));
-                dep.scp(match.relNozz('chess2.matchPiece'), (mp, dep) => dep(hut.follow(mp)));
+                dep.scp(match, 'chess2.matchConclusion',  (r, dep) => dep(hut.follow(r)));
+                dep.scp(match, 'chess2.matchRound',       (r, dep) => dep(hut.follow(r)));
+                dep.scp(match, 'chess2.matchPlayer',      (r, dep) => dep(hut.follow(r)));
+                dep.scp(match, 'chess2.matchPiece',       (r, dep) => dep(hut.follow(r)));
                 
               });
               
@@ -434,7 +434,7 @@ U.buildRoom({
             
             // Huts with Players in Matches can leave their Match
             let player = hutPlayer.mem('player');
-            dep.scp(player.relNozz('chess2.matchPlayer'), (matchPlayer, dep) => {
+            dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
               dep(hut.comNozz('exitMatch').route(() => matchPlayer.dry()));
             });
             
@@ -445,9 +445,9 @@ U.buildRoom({
             // Allow moves while there is a RoundPlayer
             let player = hutPlayer.mem('player');
             
-            dep.scp(player.relNozz('chess2.matchPlayer'), (matchPlayer, dep) => {
+            dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
               
-              dep.scp(matchPlayer.relNozz('chess2.roundPlayer'), (roundPlayer, dep) => {
+              dep.scp(matchPlayer, 'chess2.roundPlayer', (roundPlayer, dep) => {
                 
                 let round = roundPlayer.mem('round');
                 
@@ -474,7 +474,7 @@ U.buildRoom({
         });
         
         // Gameplay
-        dep.scp(chess2.relNozz('chess2.chess2Match'), (chess2Match, dep) => {
+        dep.scp(chess2, 'chess2.chess2Match', (chess2Match, dep) => {
           
           let match = chess2Match.mem('match');
           let matchPlayerNozz = match.relNozz('chess2.matchPlayer');
@@ -505,9 +505,9 @@ U.buildRoom({
             let roundPlayerMoves = Set();
             let roundPlayerMoveNozz = Nozz();
             roundPlayerMoveNozz.newRoute = routeFn => routeFn(roundPlayerMoves);
-            dep.scp(round.relNozz('chess2.roundPlayer'), (roundPlayer, dep) => {
+            dep.scp(round, 'chess2.roundPlayer', (roundPlayer, dep) => {
               
-              dep.scp(roundPlayer.relNozz('chess2.roundPlayerMove'), (roundPlayerMove, dep) => {
+              dep.scp(roundPlayer, 'chess2.roundPlayerMove', (roundPlayerMove, dep) => {
                 
                 roundPlayerMoves.add(roundPlayerMove);
                 roundPlayerMoveNozz.drip(roundPlayerMoves);
@@ -648,7 +648,7 @@ U.buildRoom({
               let gameReal = dep(inReal.addReal('game'));
               
               // Show Player names
-              dep.scp(match.relNozz('chess2.matchPlayer'), (matchPlayer, dep) => {
+              dep.scp(match, 'chess2.matchPlayer', (matchPlayer, dep) => {
                 
                 let player = matchPlayer.mem('player');
                 let colour = matchPlayer.val.colour;
@@ -667,7 +667,7 @@ U.buildRoom({
                 
                 if (myMatchPlayer !== matchPlayer) return; // Stop here if this isn't our player
                 
-                dep.scp(match.relNozz('chess2.matchRound'), (matchRound, dep) => {
+                dep.scp(match, 'chess2.matchRound', (matchRound, dep) => {
                   let round = matchRound.mem('round');
                   let playerTimerReal = dep(playerContentReal.addReal('timer'));
                   let updTimer = () => {
@@ -700,7 +700,7 @@ U.buildRoom({
               let confirmedMoveNozz = dep(TubVal(null, Nozz()));
               let noConfirmedMoveNozz = dep(TubVal(null, Nozz()));
               
-              dep.scp(match.relNozz('chess2.matchPiece'), (matchPiece, dep) => {
+              dep.scp(match, 'chess2.matchPiece', (matchPiece, dep) => {
                 
                 let piece = matchPiece.mem('piece');
                 let pieceReal = dep(boardReal.addReal('piece'));
@@ -722,15 +722,6 @@ U.buildRoom({
                 }));
                 
                 dep(pieceReal.feelNozz().route(() => {
-                  // NOTE: "`selPiece` and `piece` always dry together"
-                  //    let selPiece = Drop(piece.drier); // Careful; `piece.drier.onceDry` will fire on `selPiece`
-                  
-                  // NOTE: "If `piece` dries, `selPiece` dries"
-                  //    let selPiece = Drop(defDrier(Funnel(piece.drierNozz()))); // Note `selPiece` drying does not dry `piece`
-                  
-                  // NOTE: "If `x`, `y` or `z` drip, `selPiece` dries"
-                  //    let selPiece = Drop(defDrier(Funnel(x, y, z)));
-                  
                   // Unselect previously selected piece (feeling the
                   // selected piece results in only an unselect)
                   let selPiece = selectedPieceNozz.val;
@@ -803,7 +794,7 @@ U.buildRoom({
               
               dep(myMatchPlayer.route(val => gameReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
               
-              dep.scp(match.relNozz('chess2.matchConclusion'), (matchConclusion, dep) => {
+              dep.scp(match, 'chess2.matchConclusion', (matchConclusion, dep) => {
                 
                 let conclusion = matchConclusion.mem('conclusion');
                 let result = conclusion.val;

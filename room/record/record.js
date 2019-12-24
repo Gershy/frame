@@ -153,7 +153,21 @@ U.buildRoom({
       }
     })});
     
-    return { RecTypes, RecType, Rec };
+    let RecScope = U.inspire({ name: 'RecScope', insps: { Scope }, methods: (insp, Insp) => ({
+      init: function(...args) {
+        if (args.length === 3) {
+          let [ rec, term, fn ] = args;
+          insp.Scope.init.call(this, rec.relNozz(term), fn);
+        } else if (args.length === 2) {
+          let [ nozz, fn ] = args;
+          insp.Scope.init.call(this, nozz, fn);
+        } else {
+          throw new Error(`Expected 3 or 2 args; received ${args.length}`);
+        }
+      }
+    })});
+    
+    return { RecTypes, RecType, Rec, RecScope };
     
   }
 });
