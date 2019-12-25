@@ -167,8 +167,8 @@ U.buildRoom({
     
     // ==== SLOTS
     let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-      insertViewPortItem: function() { return RootViewPortItem(); },
-      insertFullPageItem: function() { return RootFullPageItem(); }
+      insertViewPortItem: function(...args) { return RootViewPortItem(...args); },
+      insertFullPageItem: function(...args) { return RootFullPageItem(...args); }
     })});
     let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
       getW: function(...trail) { return ViewPortMin(1); },

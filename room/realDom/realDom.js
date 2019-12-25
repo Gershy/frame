@@ -95,7 +95,7 @@ U.buildRoom({
       }));
       zoneCss.set(real.RootViewPortItem, (rootViewPortItem, layout, ...trail) => ({
         main: {
-          position: 'relative', display: 'block', overflow: 'auto',
+          position: 'relative', display: 'block',// overflow: 'auto',
           width: real.ViewPortMin(1), height: real.ViewPortMin(1),
           ...cssTech.vAlignChild,
         }
@@ -410,6 +410,10 @@ U.buildRoom({
           textColour: 'color',
           textFont: 'fontFamily',
           contentMode: type => ({ overflow: ({ window: 'hidden', free: 'visible' })[type] }),
+          roundness: amt => {
+            if (amt === 0) return {};
+            return { overflow: 'hidden', borderRadius: `${tinyRound(amt * 100)}%` };
+          },
           text: v => { return { /* tricky! need to set javascript on the element */ }; },
           border: ({ type='in', ext, colour }) => {
             return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${getUnitCss(ext)} ${colour}` }
@@ -845,7 +849,14 @@ U.buildRoom({
         updStyle(dom, 'height', size && size[1] && getUnitCss(size[1]));
         
         if (loc) {
-          let [ w, h ] = size || dom.getBoundingClientRect().slice('width', 'height').toArr(UnitPx);
+          let w=null, h=null;
+          if (size) {
+            [ w, h ] = size;
+          } else {
+            let { width, height } = dom.getBoundingClientRect();
+            w = UnitPx(width); h = UnitPx(height);
+          }
+          
           updStyle(dom, 'left', getUnitCss(CalcAdd(loc[0] || UnitPx(0), w.mult(-0.5))));
           updStyle(dom, 'top', getUnitCss(CalcAdd(loc[1] || UnitPx(0), h.mult(-0.5))));
         } else {

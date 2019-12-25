@@ -123,6 +123,7 @@
         
         // Do XHR
         let req = new XMLHttpRequest();
+        req.timeout = 24 * 60 * 60 * 1000;
         req.open('POST', this.getUrl(), true);
         req.setRequestHeader('Content-Type', 'application/json');
         req.send(JSON.stringify(msg));

@@ -401,6 +401,16 @@ let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, 
       // Remove previous Item-Dry-Route if it exists
       if (this.itemDryRoute) throw Error('A value is already set');
       
+      /// // Remove previous Item-Dry-Route if it exists
+      /// if (this.itemDryRoute) {
+      ///   // If we have no val, no problem. If our val is a Drop, it's
+      ///   // being forced out by a new value - dry it! If we already has
+      ///   // a value that isn't a Drop we can't force it out - error!
+      ///   if (this.val === C.skip) {}
+      ///   else if (U.isInspiredBy(this.val, Drop)) { this.val.dry(); this.val = C.skip; }
+      ///   else { throw Error('A value is already set'); }
+      /// }
+      
       // If `item` is a Drop with a Drier-Nozz add additional Routes
       let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
       if (itemDryNozz) {
