@@ -182,7 +182,7 @@ U.buildRoom({
           ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
           ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
           whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
-          pointerEvents: 'auto',
+          ...(showText.embossed ? { pointerEvents: 'auto' } : {}),
           textOverflow: 'ellipsis'
         };
         

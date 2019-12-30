@@ -766,9 +766,10 @@
       // Translates a javascript value `msg` into http content type and payload
       let sendData = (res, msg) => {
         
+        // json, html, text, savd, error
         let type = (() => {
-          if (U.isType(msg, Object)) return 'json';
-          if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE html>\n') ? 'html' : 'text';
+          if (U.isTypes(msg, Object, Array)) return 'json';
+          if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
           if (U.isInspiredBy(msg, Saved)) return 'savd';
           if (U.isType(msg, Error)) return 'error';
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
@@ -902,7 +903,48 @@
         // have tells send the oldest, otherwise keep the response.
         // Finally return all but one poll. (TODO: Can raise this if the
         // browser allows us multiple connections?)
-        conn.waitTells.length ? sendData(res, conn.waitTells.shift()) : conn.waitResps.push(res);
+        if (conn.waitTells.isEmpty()) {
+          conn.waitResps.push(res);
+        } else {
+          // Bundle as many waiting responses as possible into a "multi"
+          // command
+          // TODO: This waits for `conn.waitTells[<index too big>]` to
+          // return undefined, and fail to compare to Object|Array. Is
+          // this ugly?
+          
+          // TODO: Do the json responses need to be contiguous? E.g. if
+          // current Tell queue is "json", "json", "html", "json", could
+          // we send all the json responses?
+          // What if "html" comes first? Could we delay it and send the
+          // 3 json responses first?
+          // TODO: What makes json special, in that it is bundle-able?
+          // What if the primary protocol switches to binary?
+          let bundleSize = 0;
+          while (U.isTypes(conn.waitTells[bundleSize], Object, Array)) bundleSize++;
+          
+          if (bundleSize <= 1) {
+            
+            // Either a leading contiguous string of 1 json Tell, or the
+            // 1st Tell is non-json.
+            // Send the single, unbundled Tell
+            sendData(res, conn.waitTells.shift());
+            
+          } else {
+            
+            console.log('Bundled', bundleSize, 'tells:', conn.waitTells.slice(0, bundleSize));
+            
+            // Send `bundleSize` bundled json Tells!
+            sendData(res, {
+              type: 'multi',
+              list: conn.waitTells.slice(0, bundleSize)
+            });
+            conn.waitTells = conn.waitTells.slice(bundleSize);
+            
+          }
+          
+        }
+        
+        // Bank a single response (conforms better with most clients)
         while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
         
       };
@@ -984,6 +1026,7 @@
         sokt.on('readable', () => {
           if (conn.isDry()) return;
           let newBuffer = sokt.read();
+          
           if (!newBuffer || !newBuffer.length) return;
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           

@@ -50,6 +50,7 @@ Hut at the very bottom runs using a single Reality.
       return (ret.length > this.dbgLimit) ? ret.substr(0, this.dbgLimit - 3) + '...' : ret;
     },
     makeCpuConn: function(server, decorateConn) {
+      
       let conn = Drop(defDrier());
       conn.desc = `Conn on ${server.desc}`;
       decorateConn(conn); // Note that decoration may apply a cpuId
@@ -91,16 +92,18 @@ Hut at the very bottom runs using a single Reality.
           return origTell(...args);
         };
         
-        conn.drierNozz().route(() => {
-          serverConns.rem(server);
-          if (this.dbgEnabled) console.log(`<-DROP ${dbgDesc} on ${server.desc} (${serverConns.size} remaining)`);
-          if (serverConns.isEmpty()) {
-            delete this.cpus[cpuId];
-            cpu.dry();
-            if (this.dbgEnabled) console.log(`<<EXIT ${cpuId}`);
-          }
-        });
       }
+      
+      conn.drierNozz().route(() => {
+        
+        serverConns.rem(server);
+        if (this.dbgEnabled) console.log(`<-DROP ${dbgDesc} on ${server.desc} (${serverConns.size} remaining)`);
+        if (serverConns.isEmpty()) {
+          delete this.cpus[cpuId];
+          cpu.dry();
+          if (this.dbgEnabled) console.log(`<<EXIT ${cpuId}`);
+        }
+      });
       
       serverConns.set(server, conn);
       cpu.connNozz.nozz.drip(conn);

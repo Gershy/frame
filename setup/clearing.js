@@ -276,6 +276,10 @@ let U = global.U = {
     try { return val.constructor === Cls; } catch (err) { return val === Cls; }
     return false;
   },
+  isTypes: (val, ...Classes) => {
+    for (let Cls of Classes) if (U.isType(val, Cls)) return true;
+    return false;
+  },
   isInspiredBy: (Insp1, Insp2) => {
     try {
       if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;

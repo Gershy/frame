@@ -138,27 +138,13 @@ U.buildRoom({
       init: function(params) {
         hvParams('pad', params, this);
         
-        // NOTE: Text origin has really wonky handling. Originally it
-        // could be specified in decals, and now it should only be
-        // provided to `ShowText` - but specifying under decals was
-        // advantageous: decals are applied after geometry is complete
-        // and after all other css. `ShowText` doesn't have knowledge
-        // of the total geometry of its target, so it can't make the
-        // same decisions (especially regarding line-height, with
-        // centered text) as "textOrigin" could as a decal. So instead
-        // of trying to get knowledge of the full geometry, we've just
-        // maintained the "textOrigin" decal, even though it shouldn't
-        // be used by anyone except `ShowText`. We set the
-        // "lateDecals" zone, and include "textOrigin" there, so the
-        // "textOrigin" value can finally apply when geometry is fully
-        // understood.
-        
-        let { multiLine=false, origin='cc', interactive=false } = params;
+        let { multiLine=false, origin='cc', interactive=false, embossed=interactive } = params;
         if (origin === 'c') origin = 'cc';
         if (!origin.match(/^[lrc][tbc]$/)) throw Error(`Invalid "origin": ${origin}`);
         this.multiLine = multiLine;
         this.origin = origin;
         this.interactive = interactive;
+        this.embossed = embossed;
       }
     })});
     let Art = U.inspire({ name: 'Art', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({

@@ -39,8 +39,8 @@ U.buildRoom({
       
       let lands = U.lands = Lands({ heartbeatMs: 10 * 1000 });
       lands.cpuPool.dbgEnabled = false;
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort), ...serverArgs }));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort), ...serverArgs }));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort, 10), ...serverArgs }));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort, 10), ...serverArgs }));
       
       /// {ABOVE=
       lands.setRealRooms([ realDom ]);
@@ -51,23 +51,23 @@ U.buildRoom({
       /// =ABOVE}
       
       let arenaRadius = 400;
-      let playersForChaser = 5;
+      let playersForDasher = 5;
       let typeAttrs = {
         chaser: {
           spd: 4,
-          radius: 5,
+          radius: 10,
           fillColour: 'rgba(255, 255, 255, 1)',
           bordColour: null
         },
-        transforming: {
+        shifter: {
           spd: 12,
-          radius: 3,
+          radius: 6,
           fillColour: 'rgba(255, 100, 100, 1)',
           bordColour: null
         },
-        runner: {
+        dasher: {
           spd: 7,
-          radius: 8,
+          radius: 14,
           fillColour: 'rgba(255, 200, 200, 1)',
           bordColour: 'rgba(200, 0, 0, 1)'
         }
@@ -152,20 +152,14 @@ U.buildRoom({
             let { keyVal } = player.val;
             
             let keys = [];
-            for (let i = 0; i < 4; i++) keys.push((keyVal & (1 << i)) ? 1 : 0);
+            for (let i = 0; i < 4; i++) keys.push((keyVal & (1 << i)) >> i);
             
             let vx = keys[1] - keys[0];
             let vy = keys[3] - keys[2];
-            
-            if (vx && vy) {
-              let div = 1 / Math.sqrt(vx * vx + vy * vy);
-              vx *= div;
-              vy *= div;
-            }
+            if (vx && vy) { let div = 1 / Math.sqrt(vx * vx + vy * vy); vx *= div; vy *= div; }
             
             if (vx || vy) {
-              
-              let { spd, radius } = typeAttrs[tagRunner.val.type];
+              let { spd, radius } = typeAttrs[type];
               
               let nx = runner.val.x + vx * spd;
               let ny = runner.val.y + vy * spd;
@@ -186,26 +180,27 @@ U.buildRoom({
             
           }
           
-          let runnerChaserTouchDist = typeAttrs.runner.radius + typeAttrs.chaser.radius;
-          let runnerChaserTouchDistSqr = runnerChaserTouchDist * runnerChaserTouchDist;
-          for (let tagRunner of typeRunners.runner) { for (let tagChaser of typeRunners.chaser) {
-            let runner = tagRunner.members['tag.runner'];
+          // TODO: Assumes static radius per type
+          let touchDist = typeAttrs.dasher.radius + typeAttrs.chaser.radius;
+          let touchDistSqr = touchDist * touchDist;
+          for (let tagDasher of typeRunners.dasher) { for (let tagChaser of typeRunners.chaser) {
+            let dasher = tagDasher.members['tag.runner'];
             let chaser = tagChaser.members['tag.runner'];
             
-            let rv = runner.val;
+            let dv = dasher.val;
             let cv = chaser.val;
             
-            let dx = rv.x - cv.x;
-            let dy = rv.y - cv.y;
+            let dx = dv.x - cv.x;
+            let dy = dv.y - cv.y;
             let distSqr = dx * dx + dy * dy;
-            if (distSqr < runnerChaserTouchDistSqr) tagRunner.modVal(v => (v.type = 'chaser', v));
+            if (distSqr < touchDistSqr) tagDasher.modVal(v => (v.type = 'chaser', v));
           }}
           
           let numChasers = typeRunners.chaser.length;
-          if (typeRunners.runner.length === 0 && typeRunners.transforming.length === 0 && numChasers >= playersForChaser) {
+          if (typeRunners.dasher.length === 0 && typeRunners.shifter.length === 0 && numChasers >= playersForDasher) {
             let randChaser = chance.elem(typeRunners.chaser);
-            randChaser.modVal(v => (v.type = 'transforming', v));
-            setTimeout(() => randChaser.modVal(v => (v.type = 'runner', v)), 5000);
+            randChaser.modVal(v => (v.type = 'shifter', v));
+            setTimeout(() => randChaser.modVal(v => (v.type = 'dasher', v)), 5000);
           }
           
           if (hasUpdate) tag.modVal(v => (v.cnt = U.base62(++updCnt), v));
@@ -271,6 +266,7 @@ U.buildRoom({
               ];
               let keyVal = 0;
               for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
+              
               lands.tell({ command: 'upd', keyVal });
               
             }));
@@ -287,7 +283,7 @@ U.buildRoom({
               let statusReal = null;
               
               dep(status.route(({ playerCount, type }) => {
-                let isShowing = type !== 'tagging';
+                let isShowing = playerCount < playersForDasher;
                 
                 if (!isShowing && statusReal) { statusReal.dry(); statusReal = null; }
                 if (isShowing && !statusReal) { statusReal = dep(mainReal.addReal('status')); }
@@ -295,7 +291,7 @@ U.buildRoom({
                 if (!isShowing) return;
                 
                 if (type === 'waiting') {
-                  statusReal.setText(`Got ${playerCount} / ${playersForChaser} players...`);
+                  statusReal.setText(`Got ${playerCount} / ${playersForDasher} players...`);
                 }
                 
                 statusReal.setLoc(UnitPc(0.5), UnitPc(1 / 3));

@@ -178,6 +178,19 @@ U.buildRoom({
         
         /// =BELOW}
         
+        this.comNozz('multi').route(({ absConn, hut, msg, reply }) => {
+          
+          let { list } = msg;
+          if (!U.isType(list, Array)) return hut.tell({ command: 'error', type: 'invalidMultiList', orig: msg });
+          
+          // TODO: Would be cool if enough info were present to form a
+          // multipart response when several files are requested...
+          // That will take collaboration between hinterlands and
+          // foundationNodejs' "makeHttpServer"
+          for (let item of list) this.hear(absConn, hut, item, reply);
+          
+        });
+        
       },
       genUniqueTerm: function() {
         // If we used `getTerm` we could get an infinite loop! Simply exclude
@@ -315,40 +328,11 @@ U.buildRoom({
           // Create a Hut; it will be throttled until it gives us a Tell
           let hut = Hut(this, cpu, this.getType('lands.hut'), `!hut@${cpuId}`);
           
-          let hutReadyPrmExt = Promise.ext();
-          hut['throttleSyncBelow'] = () => hutReadyPrmExt.prm;
-          let connectedServers = Set();
-          
           // Now that the Hut is safely throttled connect it to ArchHut
           let archHut = Rec(this.getType('lands.archHut'), `!archHut@${cpuId}`, [ this.arch, hut ]);
           
           // Listen to each Conn of the Cpu
           dep.scp(cpu.connNozz, (conn, dep) => {
-            
-            if (connectedServers) {
-              
-              // TODO: For any app the minimum requirement is to *hear
-              // from a single connection* before unthrottling the Hut.
-              // In the case of realtime apps the minimum requirement
-              // is to *gain a connection to the SOKT server*. Because
-              // this 2nd requirement is a subset of the 1st (if we've
-              // connected to SOKT we surely(?) heard from HTTP) there
-              // is one drawback: SOKT connections are no longer
-              // optional for any app, even simple, non-realtime ones!
-              // Any app which supports SOKTs is being held to a
-              // realtime standard. Does Hinterlands have enough info to
-              // detect this? Can it independently decide when to
-              // unthrottle a given hut for a given app?
-              
-              connectedServers.add(conn.server);
-              if (connectedServers.size === this.servers.length) {
-                connectedServers = null;
-                delete hut['throttleSyncBelow'];
-                hutReadyPrmExt.rsv();
-                hutReadyPrmExt = null;
-              }
-              
-            }
             
             // Listen to Commands coming from the Conn
             dep(conn.hear.route(args => this.hear(conn, hut, ...args))); // `args` is [ msg, reply ]

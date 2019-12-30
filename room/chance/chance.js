@@ -12,11 +12,9 @@ U.buildRoom({
       dscr: function(p) { // Sneakily use an object for notation (e.g. `{0:100}`)
         let [ max, min ] = p.find(v => 1);
         min = parseInt(min, 10);
-        return min + Math.floor(this.cntu() * (max - min));
+        return min + Math.floor(this.cntu(max - min));
       },
-      elem: function(arr) {
-        return arr[this.dscr({ 0 : arr.length })];
-      }
+      elem: function(arr) { return arr[this.dscr({ 0 : arr.length })]; }
     })});
     
     return { Chance };

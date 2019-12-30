@@ -258,8 +258,8 @@ U.buildRoom({
       }
       
       let lands = U.lands = Lands({ heartbeatMs });
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort), ...serverArgs }));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort), ...serverArgs }));
+      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort, 10), ...serverArgs }));
+      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort, 10), ...serverArgs }));
       
       // TODO: Insertions (the "Relation" equivalent for Reals) should
       // exist explicitly
@@ -801,8 +801,6 @@ U.buildRoom({
                 
                 let conclusionReal = dep(gameReal.addReal('conclusion'));
                 let conclusionContentReal = conclusionReal.addReal('content');
-                
-                console.log(conclusion, myMatchPlayer);
                 
                 let type = (result !== 'stalemate')
                   ? ((result === myMatchPlayer.val.colour) ? 'winner' : 'loser')
