@@ -68,7 +68,7 @@ U.buildRoom({
         dasher: {
           spd: 7,
           radius: 14,
-          fillColour: 'rgba(255, 200, 200, 1)',
+          fillColour: 'rgba(255, 0, 0, 1)',
           bordColour: 'rgba(200, 0, 0, 1)'
         }
       };

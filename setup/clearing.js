@@ -27,12 +27,13 @@ protoDef(Object, 'slice', function(...props) {
     let ret = {};
     for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]];
     return ret;
-  } else {
+  } else { // `props` is an Array of property names (Strings)
     let ret = {};
     for (let p of props) if (this.has(p)) ret[p] = this[p];
     return ret;
   }
 });
+protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
 protoDef(Object, 'find', function(f) { // Returns [ VAL, KEY ]
   for (let k in this) if (f(this[k], k)) return [ this[k], k ];
   return null;
@@ -46,11 +47,7 @@ protoDef(Object, 'gain', function(obj) {
 });
 protoDef(Object, 'to', function(f) { return f(this); });
 
-Array.fill = (n, f=()=>null) => {
-  let a = new Array(n);
-  for (let i = 0; i < n; i++) a[i] = f(i);
-  return a;
-};
+Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
 Array.combine = (...as) => [].concat(...as);
 protoDef(Array, 'map', function(it) {
   let ret = [];

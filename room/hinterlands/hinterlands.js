@@ -112,7 +112,10 @@ U.buildRoom({
         nextVersion++;
       }
       
-      if (ourHut.earlySyncs.size > 30) throw new Error('Too many pending syncs');
+      if (ourHut.earlySyncs.size > 30) {
+        console.log('QUEUE', ourHut.earlySyncs.toArr(content => U.nameOf(content)));
+        throw new Error('Too many pending syncs');
+      }
       
     };
     
@@ -224,14 +227,21 @@ U.buildRoom({
         hut.refreshExpiry(); // We heard from this Hut so renew!
         /// =ABOVE}
         
-        let { command } = msg;
+        let command = msg.command;
         
         // Note: We don't allow a new `comNozz` to be created for
         // `command`; that could allow exploitation from Below.
         let comVal = { lands: this, absConn, hut, msg, reply };
         
-        if (this.comNozzes.has(command))  this.comNozzes[command].drip(comVal);
-        if (hut.comNozzes.has(command))   hut.comNozzes[command].drip(comVal);
+        let landsCom = this.comNozzes.has(command) ? this.comNozzes[command] : null;
+        let hutCom = hut.comNozzes.has(command) ? hut.comNozzes[command] : null;
+        
+        // TODO: `reply` should always be available, default: `hut.tell`
+        if (!landsCom && !hutCom) return (reply || hut.tell)({ command: 'error', type: 'invalidCommand', orig: msg });
+        
+        if (landsCom) landsCom.drip(comVal);
+        if (hutCom) hutCom.drip(comVal);
+        
       },
       tell: async function(msg) {
         /// {BELOW=
@@ -239,11 +249,6 @@ U.buildRoom({
         /// =BELOW}
         this.getAllHuts().forEach(hut => hut.tell(msg));
       },
-      
-      /// {ABOVE=
-      setRealRooms: function(realRooms) { this.realRooms = realRooms; },
-      /// =ABOVE}
-      
       getRootReal: async function(realRoom=foundation.getDefaultRealRoom()) {
         let rootReal = await foundation.getRootReal();
         if (rootReal.reality) throw Error('Reality already applied');
@@ -254,7 +259,9 @@ U.buildRoom({
         return rootReal;
       },
       
-      /// {BELOW=
+      /// {ABOVE=
+      setRealRooms: function(realRooms) { this.realRooms = realRooms; },
+      /// =ABOVE} {BELOW=
       resetHeartbeatTimeout: function() {
         // After exactly `this.heartbeatMs` millis Above will shut us down
         // Therefore we need to be quicker - wait less millis than `this.heartbeatMs`
@@ -348,9 +355,9 @@ U.buildRoom({
         if (U.initData) await this.hear(null, aboveHut, U.initData); // Do the initial update
         /// =BELOW}
       },
-      shut: async function() {
+      onceDry: function() {
         this.cpuScope.dry();
-        await Promise.allArr(this.servers.map(server => server.dry()));
+        for (let server of this.servers) server.dry();
       }
     })});
     let Hut = U.inspire({ name: 'Hut', insps: { Rec }, methods: (insp, Insp) => ({

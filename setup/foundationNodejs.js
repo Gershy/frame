@@ -680,7 +680,7 @@
       await savedFile.update(data);
       return savedFile;
     },
-    getRootReal: async function() { return null; }, // TODO: Maybe someday, electron!
+    getRootReal: async function() { return null; }, // TODO: Maybe electron someday!
     getStaticIps: function(pref=[]) {
       return require('os').networkInterfaces()
         .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
@@ -775,7 +775,7 @@
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
-        // TODO: This is nice content-type-dependent information!
+        // TODO: This displays nice content-type-dependent information!
         if (this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
           text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
           html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
@@ -828,43 +828,40 @@
         try {
           body = body.length ? JSON.parse(body) : {};
           if (!U.isType(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
-        } catch(err) {
-          res.writeHead(400); res.end(); return;
-        }
+        } catch(err) { return res.writeHead(400).end(); }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
         let params = { ...body, ...query }; // Params are initially based on body and query
         
-        if (this.httpFullDebug) {
-          console.log('\n\n' + [
-            '==== INCOMING REQUEST ====',
-            `IP: ${req.connection.remoteAddress}`,
-            `METHOD: ${req.method}`,
-            `REQURL: ${req.url}`,
-            `REQQRY: ${JSON.stringify(query, null, 2)}`,
-            `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
-            `BODY: ${JSON.stringify(body, null, 2)}`
-          ].join('\n'));
-        }
+        if (this.httpFullDebug) console.log('\n\n' + [
+          '==== INCOMING REQUEST ====',
+          `IP: ${req.connection.remoteAddress}`,
+          `METHOD: ${req.method}`,
+          `REQURL: ${req.url}`,
+          `REQQRY: ${JSON.stringify(query, null, 2)}`,
+          `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
+          `BODY: ${JSON.stringify(body, null, 2)}`
+        ].join('\n'));
         
-        let conn = this.getCpuConn(server, pool, params.slice('spoof', 'cpuId'));
-        if (!conn) return res.writeHead(302, { 'Location': '/' }).end();
-        conn.knownHosts.add(req.connection.remoteAddress);
+        // Get identity-specifying props; remove them from the params.
+        // Past this point identity is based on the connection and cpu;
+        // best practice to remove identity info from params
+        let iden = params.splice('spoof', 'cpuId');
         
-        // Remove identity-specifying params
-        delete params.spoof;
-        delete params.cpuId;
-        
-        if (params.isEmpty()) { // If params are empty at this point, look at http path
-          params = (p => {
-            // Map typical http requests to their meaning within Hut
-            if (p === '/') return { command: 'getInit', reply: true };
-            return {};
-          })(urlPath);
-        }
+        // If params are empty at this point, look at http path
+        if (params.isEmpty()) params = (p => {
+          // Map typical http requests to their meaning within Hut
+          if (p === '/') return { command: 'getInit', reply: true };
+          if (p === '/favicon.ico') return { command: 'getIcon', reply: true };
+          return {};
+        })(urlPath);
         
         // Error response for invalid params
-        if (!params.has('command')) { conn.dry(); return res.writeHead(400).end(); };
+        if (!params.has('command')) return res.writeHead(400).end();
+        
+        let conn = this.getCpuConn(server, pool, iden);
+        if (!conn) return res.writeHead(302, { 'Location': '/' }).end();
+        conn.knownHosts.add(req.connection.remoteAddress);
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
