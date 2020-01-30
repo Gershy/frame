@@ -12,43 +12,14 @@ U.buildRoom({
     // - Oscillating invisibility
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
+    let { Reality } = realDom;
     let { Rec, RecScope } = record;
-    let { Lands } = hinterlands;
+    let { Hut } = hinterlands;
     
     // Config values
     let open = async () => {
       
-      let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
-        ? foundation.raiseArgs.hutHosting.split(':')
-        : [ 'localhost', '', '' ];
-      
-      let useSsl = foundation.raiseArgs.has('ssl') && !!foundation.raiseArgs.ssl;
-      let serverArgs = { keyPair: null, selfSign: null };
-      if (useSsl) {
-        /// {ABOVE=
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     foundation.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-          key:      foundation.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-          selfSign: foundation.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
-        });
-        serverArgs = { keyPair: { cert, key }, selfSign };
-        /// =ABOVE} {BELOW=
-        serverArgs = { keyPair: true, selfSign: true };
-        /// =BELOW}
-      }
-      
-      let lands = U.lands = Lands({ heartbeatMs: 10 * 1000 });
-      lands.cpuPool.dbgEnabled = false;
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort, 10), ...serverArgs }));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort, 10), ...serverArgs }));
-      
-      /// {ABOVE=
-      lands.setRealRooms([ realDom ]);
-      chance = chance.Chance();
-      let updCnt = 0;
-      let tag = lands.createRec('tag.tag', [], { cnt: U.base62(0).padHead(8, '0') });
-      let archTag = lands.createRec('tag.archTag', [ lands.arch, tag ]);
-      /// =ABOVE}
+      let tagHut = await Hut.getRootHut(foundation, 'test', { heartMs: 1000 * 30 });
       
       let arenaRadius = 400;
       let playersForDasher = 5;
@@ -76,7 +47,7 @@ U.buildRoom({
       let { UnitPx, UnitPc } = real;
       let { FillParent, WrapChildren, ShowText, Art } = real;
       let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
-      lands.realLayout = {
+      let flatLayouts = {
         'main': {
           slot: par => par.cmps.slots.insertViewPortItem(),
           decals: {
@@ -95,40 +66,54 @@ U.buildRoom({
         }
       };
       
-      let rootScp = RecScope(lands.arch, 'tag.archTag', (archTag, dep) => {
+      /// {ABOVE=
+      let chn = chance.Chance();
+      
+      let reality = Reality('testyReality');
+      reality.addFlatLayouts(flatLayouts);
+      await reality.prepareAboveHut(tagHut);
+      
+      let updCnt = 0;
+      let tag = tagHut.createRec('tag.tag', [ tagHut ], { cnt: U.base62(updCnt++).padHead(8, '0') });
+      /// =ABOVE}
+      
+      let rootScp = RecScope(tagHut, 'tag.tag', (tag, dep) => {
         
-        let tag = global.tag = archTag.members['tag.tag'];
+        console.log('GOT tag.tag', tag);
+        
+        global.tag = tag;
+        dep(Drop(null, () => { delete global.tag; }));
         
         /// {ABOVE=
         
-        let status = lands.createRec('tag.status', [], { playerCount: 0, type: 'waiting' });
-        lands.createRec('tag.tagStatus', [ tag, status ]);
+        let status = tagHut.createRec('tag.status', [], { playerCount: 0, type: 'waiting' });
+        tagHut.createRec('tag.tagStatus', [ tag, status ]);
         
-        dep.scp(lands.arch, 'lands.archHut', (archHut, dep) => {
+        dep.scp(tagHut, 'lands.kidHut/par', ({ members }, dep) => {
           
           status.modVal(v => (v.playerCount++, v));
           dep(Drop(null, () => status.modVal(v => (v.playerCount--, v))));
           
-          let hut = archHut.members['lands.hut'];
-          let player = dep(lands.createRec('tag.player', [], { keyVal: 0 }));
-          let hutPlayer = lands.createRec('tag.hutPlayer', [ hut, player ]);
-          let tagPlayer = lands.createRec('tag.tagPlayer', [ tag, player ], { term: hut.getTerm() });
+          let hut = members.kid; //kidHut.members['lands.kidHut'];
+          let player = dep(tagHut.createRec('tag.player', [], { keyVal: 0 }));
+          let hutPlayer = tagHut.createRec('tag.hutPlayer', [ hut, player ]);
+          let tagPlayer = tagHut.createRec('tag.tagPlayer', [ tag, player ], { hutId: hut.uid });
           
           // Runner value is a bitmasked "controls" value - indicating
           // which controls are depressed Below
-          let runner = dep(lands.createRec('tag.runner', [], { x: chance.cntuCen(50), y: chance.cntuCen(50), r: chance.cntu(Math.PI * 2) }));
-          let playerRunner = lands.createRec('tag.playerRunner', [ player, runner ]);
-          let tagRunner = lands.createRec('tag.tagRunner', [ tag, runner ], { term: hut.getTerm(), type: 'chaser' });
+          let runner = dep(tagHut.createRec('tag.runner', [], { x: chn.cntuCen(50), y: chn.cntuCen(50), r: chn.cntu(Math.PI * 2) }));
+          let playerRunner = tagHut.createRec('tag.playerRunner', [ player, runner ]);
+          let tagRunner = tagHut.createRec('tag.tagRunner', [ tag, runner ], { hutId: hut.uid, type: 'chaser' });
           
-          dep(hut.comNozz('upd').route(({ msg }) => {
+          dep(hut.roadNozz('upd').route(({ msg }) => {
             let { keyVal } = msg;
             if (!U.isType(keyVal, Number)) return;
             player.modVal(v => (v.keyVal = keyVal, v));
           }));
           
-          dep(hut.follow(archTag));
-          dep.scp(tag, 'tag.tagRunner', (tagRunner, dep) => dep(hut.follow(tagRunner)));
-          dep.scp(tag, 'tag.tagStatus', (tagStatus, dep) => dep(hut.follow(tagStatus)));
+          dep(hut.followRec(tag));
+          dep.scp(tag, 'tag.tagRunner', (tagRunner, dep) => dep(hut.followRec(tagRunner)));
+          dep.scp(tag, 'tag.tagStatus', (tagStatus, dep) => dep(hut.followRec(tagStatus)));
           
         });
         
@@ -198,12 +183,12 @@ U.buildRoom({
           
           let numChasers = typeRunners.chaser.length;
           if (typeRunners.dasher.length === 0 && typeRunners.shifter.length === 0 && numChasers >= playersForDasher) {
-            let randChaser = chance.elem(typeRunners.chaser);
+            let randChaser = chn.elem(typeRunners.chaser);
             randChaser.modVal(v => (v.type = 'shifter', v));
             setTimeout(() => randChaser.modVal(v => (v.type = 'dasher', v)), 5000);
           }
           
-          if (hasUpdate) tag.modVal(v => (v.cnt = U.base62(++updCnt), v));
+          if (hasUpdate) tag.modVal(v => (v.cnt = U.base62(updCnt++), v));
           
           if (((updCnt + 1) % 100) === 0) console.log(`Finished frame in ${foundation.getMs() - t}ms / ${Math.round(1000 / fps)}ms`);
           
@@ -212,7 +197,7 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        dep.scp(lands.getRootReal(), rootReal => {
+        dep.scp(tagHut.getRootReal(), rootReal => {
           
           let mainReal = dep(rootReal.addReal('main'));
           
@@ -267,7 +252,7 @@ U.buildRoom({
               let keyVal = 0;
               for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
               
-              lands.tell({ command: 'upd', keyVal });
+              tagHut.tell({ command: 'upd', keyVal });
               
             }));
             
@@ -306,8 +291,6 @@ U.buildRoom({
         /// =BELOW}
         
       });
-      
-      await lands.open();
       
     };
     

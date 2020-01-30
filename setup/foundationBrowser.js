@@ -105,8 +105,16 @@
     },
     getDefaultRealRoom: function() { return U.rooms.realDom.built; },
     getUrl: function(params) {
-      params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { cpuId: U.cpuId }) };
+      params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
       return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
+    },
+    getTerm: function() {
+      // TODO: Ensure this isn't used more than once - there should only
+      // be a single Above, for which to ascribe a term (assuming that
+      // FoundationBrowser can only run Below)
+      let d = Drop();
+      d.value = 'server';
+      return d;
     },
     
     // Functionality
@@ -114,17 +122,16 @@
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     getSaved: function(locator) { return HttpFileData(this.getUrl({ reply: '1', command: locator })); },
     makeHttpServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
-      
       if (!port) port = keyPair ? 443 : 80;
       
       let numPendingReqs = 0;
       
-      let tellAndHear = async (msg, conn) => {
+      let tellAndHear = async (msg, road) => {
         
         // Do XHR
         let req = new XMLHttpRequest();
         req.timeout = 24 * 60 * 60 * 1000;
-        req.open('POST', this.getUrl(), true);
+        req.open('POST', this.getUrl({}), true);
         req.setRequestHeader('Content-Type', 'application/json');
         req.send(JSON.stringify(msg));
         
@@ -139,23 +146,34 @@
         }}));
         
         // If any data was received, process it at a higher level
-        if (res) conn.hear.drip([ res, null ]);
+        if (res) road.hear.drip([ res, null ]);
         
         // Always have 1 pending req
         numPendingReqs--;
-        if (!numPendingReqs) tellAndHear({ command: 'bankPoll' }, conn);
+        if (!numPendingReqs) tellAndHear({ command: 'bankPoll' }, road);
         
       };
       
       let server = TubSet({ onceDry: () => tellAndHear = ()=>{} }, Nozz());
       server.desc = `HTTP @ ${host}:${port}`;
       server.cost = 100;
-      server.decorateConn = conn => {
-        conn.hear = Nozz();
-        conn.tell = msg => tellAndHear(msg, conn);
-        this.queueTask(() => conn.tell({ command: 'bankPoll' })); // Immediately bank a poll
+      server.decorateRoad = road => {
+        road.hear = Nozz();
+        road.tell = msg => tellAndHear(msg, road);
+        road.currentCost = () => 1.0;
+        
+        /// // TODO: ddos test!!! FoundationNodejs.prototype.makeHttpServer
+        /// // should handle this by detecting that the connection is being
+        /// // abused, and ignoring incoming requests
+        /// setTimeout(() => {
+        ///   while (true) road.tell({ command: 'ddos' });
+        /// }, 2000);
+        
+        this.queueTask(() => road.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };
       
+      // Allow communication with only a single Server: our AboveHut
+      pool.processNewRoad(server, roadedHut => roadedHut.hutId = 'above');
       return server;
     },
     makeSoktServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
@@ -169,12 +187,15 @@
       let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
       server.desc = `SOKT @ ${host}:${port}`;
       server.cost = 50;
-      server.decorateConn = conn => {
-        conn.hear = Nozz();
-        conn.tell = msg => sokt.send(JSON.stringify(msg));
-        sokt.onmessage = ({ data }) => data && conn.hear.drip([ JSON.parse(data), null ]);
+      server.decorateRoad = road => {
+        road.hear = Nozz();
+        road.tell = msg => sokt.send(JSON.stringify(msg));
+        road.currentCost = () => 0.5;
+        sokt.onmessage = ({ data }) => data && road.hear.drip([ JSON.parse(data), null ]);
       };
       
+      // Allow communication with only a single Server: our AboveHut
+      pool.processNewRoad(server, roadedHut => roadedHut.hutId = 'above');
       return server;
     },
     formatError: function(err) {
@@ -189,25 +210,29 @@
       let lines = trace.split('\n').map(ln => {
         try {
           
+          
           let full = null, lineInd = null, charInd = null;
           let match = ln.match(/([0-9]+):([0-9]+)/);
-          
           if (!match) return C.skip;
+          
           [ full, lineInd, charInd ] = match;
           
           lineInd -= U.debugLineData.scriptOffset; // Line number relative to full script, not full HTML document
           
-          let roomName = null;
-          for (let k in U.debugLineData.rooms) {
-            let { offsetWithinScript, offsets } = U.debugLineData.rooms[k];
+          let errRoomName = null;
+          for (let checkOvershootRoomName in U.debugLineData.rooms) {
+            let { offsetWithinScript } = U.debugLineData.rooms[checkOvershootRoomName];
             if (offsetWithinScript > lineInd) break;
-            roomName = k;
+            errRoomName = checkOvershootRoomName;
           }
           
-          let { offsetWithinScript, offsets = null } = U.debugLineData.rooms[roomName];
-          lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
+          
+          let { offsetWithinScript, offsets } = errRoomName
+            ? U.debugLineData.rooms[errRoomName]
+            : { offsetWithinScript: 0, offsets: null };
           
           let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
+          lineInd -= offsetWithinScript; // Line number relative to logical file, not full script
           
           if (offsets) {
             
@@ -222,16 +247,13 @@
               srcLineInd++;
             }
             
-            roomName += '.src';
-            
           } else {
             
             srcLineInd = lineInd;
-            roomName += '.js';
             
           }
           
-          let padRoom = (roomName + ': ').padTail(25);
+          let padRoom = `${errRoomName}.js: `.padTail(25);
           let padLine = `${srcLineInd}:${charInd}`.padTail(10);
           let traceLine = ln.has('(') ? ln.split('(')[1].crop(0, 1) : ln.trim().crop(3);
           

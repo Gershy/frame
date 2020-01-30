@@ -590,12 +590,12 @@ U.buildRoom({
         return cmpCssText;
         
       },
-      prepareAboveLands: async function(lands) {
+      prepareAboveHut: async function(parHut) {
         
         let styleSaved = await foundation.getSavedFromData([ 'realDomMainStyles.css' ], this.genCss());
         let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
         
-        lands.comNozz('getInit').route(async ({ absConn, hut, msg, reply }) => {
+        parHut.roadNozz('getInit').route(async ({ road, srcHut, msg, reply }) => {
           
           // NOTE: Need to reset and gen initial Tell before *any* async
           // behaviour - otherwise a Tell may occur between the start of
@@ -613,10 +613,10 @@ U.buildRoom({
           // (banked http polls, connected sokts, etc.) *before* running
           // the js embedded in the html
           
-          hut.resetSyncState(); // The FarHut starts from scratch
-          let initSyncTell = hut.genSyncTell();
+          srcHut.resetSyncState(); // The AfarHut starts from scratch
+          let initSyncTell = srcHut.consumePendingSync();
           
-          let baseParams = { [absConn.isSpoofed ? 'spoof' : 'cpuId']: absConn.cpuId };
+          let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
           let urlFn = p => {
             return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
           };
@@ -677,8 +677,7 @@ U.buildRoom({
           
           let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
             '// ==== File: hut.js (line count: 8)',
-            `U.cpuId = '${absConn.cpuId}';`,
-            `U.hutTerm = '${hut.getTerm()}';`,
+            `U.hutId = '${srcHut.uid}';`,
             `U.aboveMsAtResponseTime = ${foundation.getMs()};`,
             `U.initData = ${JSON.stringify(initSyncTell)};`,
             `U.debugLineData = ${JSON.stringify(debugLineData)};`,
@@ -699,9 +698,9 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        lands.comNozz('realDomGetFavicon').route(({ absConn, hut, msg, reply }) => U.safe(() => reply(iconSaved), reply));
-        lands.comNozz('realDomGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
-        lands.comNozz('realDomGetQuadTest').route(({ reply }) => reply([
+        parHut.roadNozz('realDomGetFavicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
+        parHut.roadNozz('realDomGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
+        parHut.roadNozz('realDomGetQuadTest').route(({ reply }) => reply([
           '<!DOCTYPE html>',
           '<html>',
           '  <head>',
@@ -712,7 +711,6 @@ U.buildRoom({
           '  </body>',
           '</html>'
         ].join('\n')));
-        
       },
       
       /// =ABOVE}

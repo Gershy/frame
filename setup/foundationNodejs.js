@@ -225,10 +225,8 @@
       
       insp.Foundation.init.call(this);
       
-      this.cpuCnt = 0;
       this.roomsInOrder = [];
       this.compilationData = {};
-      this.mountedFiles = {}; // TODO: with MANY files could save this index in its own file
       
       this.variantDefs = {
         above: { above: 1, below: 0 },
@@ -258,6 +256,9 @@
         ]);
         
       })();
+      
+      this.terms = null;
+      this.getSaved([ 'setup', 'terms.json' ]).getContent().then(terms => this.terms = JSON.parse(terms));
       
     },
     defaultGoals: function() {
@@ -670,12 +671,18 @@
         heapUsed: usage1.heapUsed - this.usage0.heapUsed
       };
     },
-    
     getSaved: function(locator) {
+      
+      // Returns a Saved based on a Locator
+      
       // TODO: This assumes the saved item is on the filesystem...
+      // Could verify that `locator` is an Array of Strings...
       return SavedFile(...locator);
     },
     getSavedFromData: async function(locator, data) {
+      
+      // Saves some Data, and returns the resulting Saved
+      
       let savedFile = SavedFile('mill', 'storage', ...locator); // Write to temporary location
       await savedFile.update(data);
       return savedFile;
@@ -715,7 +722,6 @@
         cmpNumLines: cmpLines.length,
         offsets
       };
-      
     },
     compactIp: function(verboseIp, verbosePort) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
@@ -725,39 +731,52 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getCpuConn: function(server, pool, query, decorate=null) {
+    getHutRoadForQuery: function(server, parHut, query, decorate=null) {
+      
+      // TODO: Right now a Road can be spoofed - this should be a
+      // property of the Hut, shouldn't it?
       
       if (this.spoofEnabled && query.has('spoof')) {
         
         // Return the current connection for `server` for the spoofed
         // identity, or create such a connection if none exists
-        let cpu = pool.getCpu(query.spoof);
-        if (cpu && cpu.serverConns.has(server)) return cpu.serverConns.get(server)
-        return pool.makeCpuConn(server, conn => {
-          conn.cpuId = query.spoof;
-          conn.isSpoofed = true;
-          if (decorate) decorate(conn);
+        let roadedHut = parHut.getRoadedHut(query.spoof);
+        if (roadedHut && roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
+        return parHut.processNewRoad(server, road => {
+          road.hutId = query.spoof;
+          road.isSpoofed = true;
+          if (decorate) decorate(road);
         });
         
-      } else if (query.has('cpuId')) {
+      } else if (query.has('hutId')) {
         
-        // If the given identity exists, returns a connection for the
-        // identity for `server`. Returns `null` if not recognized
-        let cpu = pool.getCpu(query.cpuId);
-        if (!cpu) return null;
-        if (cpu.serverConns.has(server)) return cpu.serverConns.get(server);
-        return pool.makeCpuConn(server, conn => {
-          conn.cpuId = query.cpuId;
-          if (decorate) decorate(conn);
+        let roadedHut = parHut.getRoadedHut(query.hutId);
+        if (!roadedHut) return null;
+        
+        if (roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
+        return parHut.processNewRoad(server, road => {
+          road.hutId = query.hutId;
+          if (decorate) decorate(road);
         });
         
       } else {
         
-        // Create a connection and identity for the unrecognized request
-        return pool.makeCpuConn(server, decorate || (conn => {}));
+        return parHut.processNewRoad(server, decorate || (road => {}));
         
       }
       
+    },
+    getTerm: function() {
+      if (!this.terms) throw Error('Terms list not yet ready');
+      if (!this.terms.length) throw Error('All terms exhausted X_X');
+      let ind = Math.floor(Math.random() * this.terms.length);
+      let term = this.terms[ind];
+      this.terms = [ ...this.terms.slice(0, ind), ...this.terms.slice(ind + 1) ];
+      console.log(term, this.terms.length, this.terms.includes(term));
+      
+      let d = Drop(null, () => this.terms.push(term))
+      d.value = term;
+      return d;
     },
     makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       
@@ -768,7 +787,7 @@
         
         // json, html, text, savd, error
         let type = (() => {
-          if (U.isTypes(msg, Object, Array)) return 'json';
+          if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
           if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
           if (U.isInspiredBy(msg, Saved)) return 'savd';
           if (U.isType(msg, Error)) return 'error';
@@ -776,7 +795,7 @@
         })();
         
         // TODO: This displays nice content-type-dependent information!
-        if (this.transportDebug) console.log(`??TELL ${'cpuId'}:`, ({
+        if (this.transportDebug) console.log(`??TELL ${'hutId'}:`, ({
           text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
           html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
@@ -820,6 +839,7 @@
       let serverFn = async (req, res) => {
         
         // Stream the body
+        // TODO: Watch for exploits; slow loris, etc.
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
         let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
@@ -846,7 +866,7 @@
         // Get identity-specifying props; remove them from the params.
         // Past this point identity is based on the connection and cpu;
         // best practice to remove identity info from params
-        let iden = params.splice('spoof', 'cpuId');
+        let iden = params.splice('spoof', 'hutId');
         
         // If params are empty at this point, look at http path
         if (params.isEmpty()) params = (p => {
@@ -859,53 +879,67 @@
         // Error response for invalid params
         if (!params.has('command')) return res.writeHead(400).end();
         
-        let conn = this.getCpuConn(server, pool, iden);
-        if (!conn) return res.writeHead(302, { 'Location': '/' }).end();
-        conn.knownHosts.add(req.connection.remoteAddress);
+        // Get the Road used. An absence of any such Road indicates that
+        // authentication failed - in this case redirect the user to a
+        // spot where they can request a new identity
+        let road = this.getHutRoadForQuery(server, pool, iden);
+        if (!road) return res.writeHead(302, { 'Location': '/' }).end();
+        
+        // Confirm that we've seen this Hut under this host
+        road.knownHosts.add(req.connection.remoteAddress);
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
           // getInit has effects at both transport- and hut-level
           getInit:  {
-            transport: conn => {
-              conn.waitResps.forEach(res => res.end());
-              conn.waitResps = [];
-              conn.waitTells = [];
+            transport: road => {
+              road.waitResps.forEach(res => res.end());
+              road.waitResps = [];
+              road.waitTells = [];
             },
             hut: true
           },
-          close: {
-            transport: conn => conn.dry()
-          },
-          bankPoll: {
-            transport: conn => { /* empty transport-level action */ }
-          }
+          close: { transport: road => road.dry() },
+          bankPoll: { transport: road => { /* empty transport-level action */ } }
         };
         
         // If no ComType found, default to Hut-level command!
         let comTypes = comTypesMap.has(params.command) ? comTypesMap[params.command] : { hut: true };
         
         // Run transport-level actions
-        if (comTypes.has('transport')) comTypes.transport(conn);
+        if (comTypes.has('transport')) comTypes.transport(road);
         
-        // Synced requests end here - `conn.hear.drip` MUST occur or the
+        // TODO: Ideally there should be NO SUCH THING AS `reply` - the
+        // implementation should always use `hut.tell`, and the server
+        // figures out which http response should get used... could be
+        // tricky to figure out which response an instance of `hut.tell`
+        // should correspond to tho. Imagine the following:
+        // 1. { command: 'login', reply: false } is received
+        // 2. { command: 'getRealDomFavicon', reply: true } is received
+        // 3. The `hut.tell` for #1 occurs - how to avoid the server
+        //    thinking that *this* is the response for { reply: true }??
+        
+        // TODO: Maybe there should be no such thing as `hut.tell`?? Or
+        // at least it should be inaccessible in situations where
+        
+        // Synced requests end here - `road.tell` MUST occur or the
         // request will hang indefinitely
         // TODO: Consider a timeout to deal with improper usage
-        if (params.reply) return conn.hear.drip([ params, msg => sendData(res, msg) ]);
+        if (params.reply) return road.hear.drip([ params, msg => sendData(res, msg) ]);
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) conn.hear.drip([ params, null ]);
+        if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null ]);
         
         // We now have an unspent, generic-purpose poll available. If we
-        // have tells send the oldest, otherwise keep the response.
+        // have tells then send the oldest, otherwise hold the response.
         // Finally return all but one poll. (TODO: Can raise this if the
         // browser allows us multiple connections?)
-        if (conn.waitTells.isEmpty()) {
-          conn.waitResps.push(res);
+        if (road.waitTells.isEmpty()) {
+          road.waitResps.push(res);
         } else {
           // Bundle as many waiting responses as possible into a "multi"
           // command
-          // TODO: This waits for `conn.waitTells[<index too big>]` to
+          // TODO: This waits for `road.waitTells[<index too big>]` to
           // return undefined, and fail to compare to Object|Array. Is
           // this ugly?
           
@@ -917,32 +951,32 @@
           // TODO: What makes json special, in that it is bundle-able?
           // What if the primary protocol switches to binary?
           let bundleSize = 0;
-          while (U.isTypes(conn.waitTells[bundleSize], Object, Array)) bundleSize++;
+          while (U.isTypes(road.waitTells[bundleSize], Object, Array)) bundleSize++; // TODO: This isn't working - waitTells[ind] is always a STRING!! :(
           
           if (bundleSize <= 1) {
             
             // Either a leading contiguous string of 1 json Tell, or the
             // 1st Tell is non-json.
             // Send the single, unbundled Tell
-            sendData(res, conn.waitTells.shift());
+            sendData(res, road.waitTells.shift());
             
           } else {
             
-            console.log('Bundled', bundleSize, 'tells:', conn.waitTells.slice(0, bundleSize));
+            console.log('Bundled', bundleSize, 'tells:', road.waitTells.slice(0, bundleSize));
             
             // Send `bundleSize` bundled json Tells!
             sendData(res, {
               type: 'multi',
-              list: conn.waitTells.slice(0, bundleSize)
+              list: road.waitTells.slice(0, bundleSize)
             });
-            conn.waitTells = conn.waitTells.slice(bundleSize);
+            road.waitTells = road.waitTells.slice(bundleSize);
             
           }
           
         }
         
-        // Bank a single response (conforms better with most clients)
-        while (conn.waitResps.length > 1) sendData(conn.waitResps.shift(), { command: 'fizzle' });
+        // Bank only a single response (otherwise most clients hang)
+        while (road.waitResps.length > 1) sendData(road.waitResps.shift(), { command: 'fizzle' });
         
       };
       
@@ -960,15 +994,16 @@
       let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
       server.desc = `HTTP @ ${host}:${port}`;
       server.cost = 100;
-      server.decorateConn = conn => {
-        conn.knownHosts = Set();
-        conn.waitResps = [];
-        conn.waitTells = [];
-        conn.hear = Nozz();
-        conn.tell = msg => conn.waitResps.length
-          ? sendData(conn.waitResps.shift(), msg)
-          : conn.waitTells.push(msg)
-        conn.drierNozz().route(() => { for (let res of conn.waitResps) res.end(); });
+      server.decorateRoad = road => {
+        road.knownHosts = Set();
+        road.waitResps = [];
+        road.waitTells = [];
+        road.hear = Nozz();
+        road.tell = msg => road.waitResps.length
+          ? sendData(road.waitResps.shift(), msg)
+          : road.waitTells.push(msg)
+        road.drierNozz().route(() => { for (let res of road.waitResps) res.end(); });
+        road.currentCost = () => 1.0;
       };
       
       return server;
@@ -1017,24 +1052,24 @@
         
         let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
         
-        let conn = this.getCpuConn(server, pool, query, conn => conn.sokt = sokt);
-        if (!conn) return sokt.end();
+        let road = this.getHutRoadForQuery(server, pool, query, road => road.sokt = sokt);
+        if (!road) return sokt.end();
         
         sokt.on('readable', () => {
-          if (conn.isDry()) return;
+          if (road.isDry()) return;
           let newBuffer = sokt.read();
           
           if (!newBuffer || !newBuffer.length) return;
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            for (let message of Insp.parseSoktMessages(soktState)) conn.hear.drip([ message, null ]);
+            for (let message of Insp.parseSoktMessages(soktState)) road.hear.drip([ message, null ]);
           } catch(err) { sokt.emit('error', err); }
           
-          if (soktState.status === 'ended') conn.dry();
+          if (soktState.status === 'ended') road.dry();
         });
-        sokt.on('close', () => { soktState = makeSoktState('ended'); conn.dry(); });
-        sokt.on('error', () => { soktState = makeSoktState('ended'); conn.dry(); });
+        sokt.on('close', () => { soktState = makeSoktState('ended'); road.dry(); });
+        sokt.on('error', () => { soktState = makeSoktState('ended'); road.dry(); });
         sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
       };
@@ -1053,9 +1088,9 @@
       let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
       server.desc = `SOKT @ ${host}:${port}`;
       server.cost = 50;
-      server.decorateConn = conn => {
-        conn.hear = Nozz();
-        conn.tell = msg => {
+      server.decorateRoad = road => {
+        road.hear = Nozz();
+        road.tell = msg => {
           let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
           let len = dataBuff.length;
           let metaBuff = null;
@@ -1085,9 +1120,10 @@
           }
           
           metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
-          conn.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
+          road.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
         };
-        conn.drierNozz().route(() => conn.sokt.end());
+        road.drierNozz().route(() => road.sokt.end());
+        road.currentCost = () => 0.5;
       };
       
       return server;

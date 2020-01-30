@@ -36,9 +36,10 @@ U.buildRoom({
     
     let RecTypes = U.inspire({ name: 'RecTypes', insps: {}, methods: (insp, Insp) => ({
       init: function() { this.typeMap = {}; },
+      desc: function() { return 'RecTypes'; },
       ensure: function(name, type) {
         if (this.typeMap.has(name) && this.typeMap[name] === type)
-          throw new Error(`Multiple instances of type "${name}"`);
+          throw Error(`Multiple instances of type "${name}"`);
         this.typeMap[name] = type;
       },
       getType: function(name) {
@@ -51,6 +52,9 @@ U.buildRoom({
     })});
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       init: function(name, types=RecTypes()) {
+        
+        if (!name.match(/[a-z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*/))
+          throw Error(`Invalid RecType name: ${name}`);
         
         this.name = name;
         this.types = types;
@@ -70,8 +74,9 @@ U.buildRoom({
           let findMemInf = this.memberInfoNozz.set.find(mi => mi.term === term);
           let curRt = findMemInf ? findMemInf[0].recType : null;
           
-          if (findMemInf && curRt && curRt !== recType)
-            throw new Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
+          if (findMemInf && curRt && curRt !== recType) {
+            throw Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
+          }
           
           if (!findMemInf) newRecTypes.push({ term, recType });
           else if (!curRt) defRecTypes.push({ memInf: findMemInf[0], recType });
@@ -88,6 +93,8 @@ U.buildRoom({
         
         type.updMembers(members.map(m => m.type));
         
+        console.log(`NEW ${type.name} @ ${uid} (${members.toArr((m, t) => `${t}: ${m.type.name}`)})`);
+        
         insp.Drop.init.call(this, defDrier());
         insp.Nozz.init.call(this);
         
@@ -103,7 +110,9 @@ U.buildRoom({
         
         // Inform all MemberRecs of this GroupRec
         this.members.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
+        
       },
+      desc: function() { return `${this.type.name} @ ${this.uid}`; },
       mem: function(termTail) {
         if (termTail[0] !== '.') termTail = `.${termTail}`;
         for (let term in this.members) if (term.has(termTail)) return this.members[term];
@@ -129,6 +138,8 @@ U.buildRoom({
           }
           
         }
+        
+        if (!U.isType(term, String)) throw Error(`Invalid "term" of type ${U.nameOf(term)}`);
         
         let key = `${recType.name}/${term}`;
         if (!this.relNozzes.has(key)) {
@@ -157,12 +168,12 @@ U.buildRoom({
       init: function(...args) {
         if (args.length === 3) {
           let [ rec, term, fn ] = args;
-          insp.Scope.init.call(this, rec.relNozz(term), fn);
+          insp.Scope.init.call(this, rec.relNozz(...term.split('/')), fn);
         } else if (args.length === 2) {
           let [ nozz, fn ] = args;
           insp.Scope.init.call(this, nozz, fn);
         } else {
-          throw new Error(`Expected 3 or 2 args; received ${args.length}`);
+          throw Error(`Expected 3 or 2 args; received ${args.length}`);
         }
       }
     })});

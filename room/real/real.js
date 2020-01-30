@@ -229,7 +229,7 @@ U.buildRoom({
     
     // ==== STRUCTURE
     let Reality = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
-      init: function(name, layoutsFlat) {
+      init: function(name) {
         this.name = name;
         this.rootLayout = {
           name: 'root',
@@ -237,6 +237,9 @@ U.buildRoom({
           children: {}
         };
       },
+      /// {ABOVE=
+      prepareAboveHut: async function(lands) {},
+      /// =ABOVE}
       addFlatLayouts: function(flatLayouts) {
         flatLayouts.forEach((cmps, chainName) => {
           let names = chainName.split('.');
@@ -371,7 +374,6 @@ U.buildRoom({
         this.par = null;
       }
     })});
-    
     
     return {
       
