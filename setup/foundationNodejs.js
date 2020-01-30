@@ -925,7 +925,14 @@
         // Synced requests end here - `road.tell` MUST occur or the
         // request will hang indefinitely
         // TODO: Consider a timeout to deal with improper usage
-        if (params.reply) return road.hear.drip([ params, msg => sendData(res, msg) ]);
+        if (params.reply) {
+          try {
+            return road.hear.drip([ params, msg => sendData(res, msg) ]);
+          } catch(err) {
+            // TODO: Stop leaking `err.message`!
+            sendData(res, { command: 'error', msg: err.message, orig: params });
+          }
+        }
         
         // Run hut-level actions
         if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null ]);

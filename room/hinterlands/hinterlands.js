@@ -225,7 +225,7 @@ U.buildRoom({
           this.allRecs = Map();
           this.allRecs.set(this.uid, this);
           
-          // Buffer pre-mature sync comms until gap is filled
+          // Buffer pre-mature syncs until gap is filled
           this.earlySyncs = Map();
           
           this.roadNozz('error').route(({ hut, msg, reply }) => { /* nothing */ });
@@ -264,7 +264,27 @@ U.buildRoom({
           this.roadNozz('fizzle').route(({ hut, msg, reply }) => { /* nothing */ });
           
           // BelowHuts are always open to syncs from Above
-          this.roadNozz('sync').route(({ msg }) => this.doSync(msg));
+          this.roadNozz('sync').route(({ msg }) => {
+            
+            let { version, content } = msg;
+            if (!U.isType(version, Number)) throw Error('Invalid "version"');
+            if (Math.round(version) !== version) throw Error('Invalid "version"');
+            if (!U.isType(content, Object)) throw Error('Invalid "content"');
+            if (version <= this.syncVersion) throw Error('Duplicated sync');
+            
+            this.earlySyncs.set(version, content);
+            
+            let nextVersion = this.syncVersion + 1;
+            while (this.earlySyncs.has(nextVersion)) {
+              let sync = this.earlySyncs.get(nextVersion);
+              this.doSync(sync);
+              this.earlySyncs.rem(nextVersion);
+              this.syncVersion = nextVersion++;
+            }
+            
+            if (this.earlySyncs.size > 30) throw Error('Too many pending syncs');
+            
+          });
           
           /// =BELOW}
           
@@ -448,9 +468,7 @@ U.buildRoom({
         return insp.RecTypes.getType.call(this, ...args);
       },
       getNextRecUid: function() { return this.foundation.getUid(); },
-      doSync: function({ command=null, add=[], upd=[], rem=[] }) {
-        
-        if (command) throw Error(`Bad format for "doSync"`);
+      doSync: function({ add=[], upd=[], rem=[] }) {
         
         // TODO: If Below is allowed to create Recs how do we ensure
         // that Rec uids never overlap?? Best way would be for Below
@@ -488,17 +506,29 @@ U.buildRoom({
           // Try to fulfill this attempt
           for (let addRec of attempt) {
             
-            let memArr = [];
-            for (let memUid of addRec.mems) {
-              if (!this.allRecs.has(memUid)) { memArr = null; break; }
-              memArr.push(this.allRecs.get(memUid));
+            let members = null;
+            if (U.isType(addRec.mems, Object)) {
+              members = {};
+              for (let term in addRec.mems) {
+                let uid = addRec.mems[term];
+                if (!this.allRecs.has(uid)) { members = null; break; }
+                members[term] = this.allRecs.get(uid);
+              }
+            } else if (U.isType(addRec.mems, Array)) {
+              members = [];
+              for (let uid in addRec.mems) {
+                if (!this.allRecs.has(uid)) { members = null; break; }
+                members.push(this.allRecs.get(uid));
+              }
+            } else {
+              throw Error(`Invalid type for "mems": ${U.nameOf(addRec.mems)}`);
             }
             
-            if (!members) { waiting.push(addRec); continue; } // Reattempt later
+            if (!members) { waiting.push(addRec); continue; } // Reattempt soon
             
             // All members are available - create the Rec!
             let recType = (this.parentHut || this).getType(addRec.type);
-            this.trackRec(Rec(recType, addRec.uid || this.getNextRecUid(), memArr, addRec.val));
+            this.trackRec(Rec(recType, addRec.uid || this.getNextRecUid(), members, addRec.val));
             
           }
           
@@ -697,15 +727,7 @@ U.buildRoom({
       
     })});
     
-    return { Hut, open: async () => {
-      
-      let hut = Hut(foundation, 'myHut', { term: 'MY_GUYEEE' });
-      
-      hut.roadNozz('hi').route(({ hut, msg, reply }) => reply({ lmao: 'lawl' }));
-      
-      foundation.makeHttpServer(hut, { host: 'localhost', port: 80 });
-      
-    }};
+    return { Hut };
     
   }
 });

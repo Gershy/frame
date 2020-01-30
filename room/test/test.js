@@ -20,8 +20,6 @@ U.buildRoom({
       
       let rootScope = RecScope(parHut, 'test.test', (test, dep) => {
         
-        console.log('GOT TESTTTT');
-        
         dep.scp(parHut, 'lands.kidHut/par', (kidHut, dep) => {
           dep(kidHut.members.kid.followRec(test));
         });
