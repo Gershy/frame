@@ -1,12 +1,12 @@
 U.buildRoom({
   name: 'test',
-  innerRooms: [ 'record', 'hinterlands', 'realDom' ],
-  build: (foundation, record, hinterlands, realDom) => {
+  innerRooms: [ 'record', 'hinterlands', 'realWebApp' ],
+  build: (foundation, record, hinterlands, realWebApp) => {
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Rec, RecScope } = record;
     let { Hut } = hinterlands;
-    let { Reality } = realDom;
+    let { Reality } = realWebApp;
     
     let open = async () => {
       
@@ -19,11 +19,9 @@ U.buildRoom({
       /// =ABOVE}
       
       let rootScope = RecScope(parHut, 'test.test', (test, dep) => {
-        
         dep.scp(parHut, 'lands.kidHut/par', (kidHut, dep) => {
           dep(kidHut.members.kid.followRec(test));
         });
-        
       });
       
     };

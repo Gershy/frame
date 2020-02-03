@@ -1,7 +1,7 @@
 U.buildRoom({
   name: 'tag',
-  innerRooms: [      'record', 'hinterlands', 'real', 'realDom', 'chance' ],
-  build: (foundation, record,   hinterlands,   real,   realDom,   chance) => {
+  innerRooms: [      'record', 'hinterlands', 'real', 'realWebApp', 'chance' ],
+  build: (foundation, record,   hinterlands,   real,   realWebApp,   chance) => {
     
     // Powerups:
     // - Slow all chasers in proximity
@@ -12,14 +12,17 @@ U.buildRoom({
     // - Oscillating invisibility
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
-    let { Reality } = realDom;
     let { Rec, RecScope } = record;
     let { Hut } = hinterlands;
+    let { WebApp } = realWebApp;
     
     // Config values
     let open = async () => {
       
-      let tagHut = await Hut.getRootHut(foundation, 'test', { heartMs: 1000 * 30 });
+      let tagHut = await foundation.getRootHut({ heartMs: 1000 * 30 });
+      
+      let webApp = WebApp('tag');
+      await webApp.decorateHut(tagHut);
       
       let arenaRadius = 400;
       let playersForDasher = 5;
@@ -45,41 +48,148 @@ U.buildRoom({
       };
       
       let { UnitPx, UnitPc } = real;
-      let { FillParent, WrapChildren, ShowText, Art } = real;
-      let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
-      let flatLayouts = {
-        'main': {
-          slot: par => par.cmps.slots.insertViewPortItem(),
+      let { MinExtSlotter, FillParentSlotter, Art, TextSized } = real;
+      // let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
+      
+      // TODO: {AB+OVE= and {BE+LOW= markers are used to control where
+      // code exists on the basis of security - what about markers to
+      // control code existence on the basic of BLOAT?? E.g. a Below
+      // which is going to do visuals 100% in the browser shouldn't have
+      // a single reference to electron or ascii visual frameworks...
+      
+      if (false) { // Here's how multiple Realities could work:
+        
+        // AT TOP:
+        
+        // If nesting apps, `foundation` should be a NestedFoundation,
+        // and the NestedFoundation's `getRootReal` should return some
+        // Real that has been dedicated for the SubApp
+        // Consider: what's the difference between nesting more dom
+        // elements, and nesting an iframe?
+        let rootReal = foundation.getRootReal();
+        
+        // Note: if `slotters` is a non-Object, it can be defaulted to
+        // an object whose only prop is "main", and points to the
+        // initial value!
+        rootReal.defineReal('tag.tag', {
+          slotters: { main: VMinSlot() },
+          decals: { colour: 'rgba(0, 0, 0, 1)' }
+        });
+        rootReal.defineReal('tag.view', {
           decals: {
             roundness: 1,
             colour: 'rgba(100, 100, 150, 1)'
           }
-        },
-        'main.art': { size: Art({}) },
-        'main.status': {
-          size: ShowText({ origin: 'cc', pad: UnitPx(10) }),
+        });
+        rootReal.defineReal('tag.art', {
+          size: Art({})
+        });
+        rootReal.defineReal('tag.status', {
+          size: TextSized({ origin: 'cc', pad: UnitPx(10) }),
           decals: {
             colour: 'rgba(100, 100, 200, 0.5)',
             textColour: 'rgba(255, 255, 255, 0.8)',
             textSize: UnitPx(30)
           }
+        });
+        
+        // Note: inserting into `null` really means "how to insert this
+        // 'tag.tag' into ANYTHING" rather than "how to insert 'tag.tag'
+        // into the root"
+        rootReal.defineInsert(null, 'tag.tag', {
+          // The term "main" is the default slotter-export-term. Reals
+          // like !dom, !electron, etc, should export this. In this case
+          // we'll just fill our parent, no matter what it is
+          main: (slotter, par) => FillParentSlotter() // nice to make `par` optional - `slotter === par.cmps.slotter`
+        });
+        rootReal.defineInsert('tag.tag', 'tag.view', {
+          main: (slotter, par) => slotter.insertVMinItem()
+        });
+        rootReal.defineInsert('tag.view', 'tag.art');
+        rootReal.defineInsert('tag.view', 'tag.status');
+        
+        // LATER:
+        
+        let sectionReal = rootReal.addReal('!electron');  // Works on Above
+        //let sectionReal = rootReal.addReal('!dom');       // Works on Below
+        //let sectionReal = rootReal.addReal('!root');      // Some default viable Reality
+        
+        let tagReal = sectionReal.addReal('tag.tag');
+        let viewReal = tagReal.addReal('tag.view');
+        let artReal = viewReal.addReal('tag.art');
+        
+        let mainReal = dep(rootReal.addReal('main'));
+        
+        
+        // All of tags styles
+        real.addLayout(tagLayout);
+        
+        
+        ({
+          'main': {
+            /// {ABOVE=
+            
+            slot: par => par.nested(ElectronReality(/* ... */)),
+            
+            /// =ABOVE} {BELOW=
+            
+            // simple:
+            slot: par => par.nested(HtmlCssReality(/* ... */)),
+            
+            // more complex:
+            slot: par => {
+              let Reality = foundation.preferredReality([ ElectronReality, HtmlCssReality ]);
+              par.nested((Reality === ElectronReality)
+                ? ElectronReality(/* ...args1 */)
+                : HtmlCssReality(/* ...args2 */));
+            },
+            
+            /// =BELOW}
+            decals: {
+              roundness: 1,
+              colour: 'rgba(100, 100, 150, 1)'
+            }
+          }
+        })
+        
+      }
+      
+      let rootReal = await foundation.getRootReal();
+      rootReal.defineReal('tag.tag', {
+        slotters: {
+          main: () => MinExtSlotter()
+        },
+        decals: { colour: 'rgba(0, 0, 0, 1)' }
+      });
+      rootReal.defineReal('tag.view', {
+        decals: { roundness: 1, colour: 'rgba(100, 100, 150, 1)' }
+      });
+      rootReal.defineReal('tag.art', {
+        size: Art({})
+      });
+      rootReal.defineReal('tag.status', {
+        size: TextSized({ origin: 'cc', pad: UnitPx(10) }),
+        decals: {
+          colour: 'rgba(100, 100, 200, 0.5)',
+          textColour: 'rgba(255, 255, 255, 0.8)',
+          textSize: UnitPx(30)
         }
-      };
+      });
+      
+      rootReal.defineInsert(null, 'tag.tag', () => FillParentSlotter());
+      rootReal.defineInsert('tag.tag', 'tag.view', {
+        main: (slotter, par) => slotter.insertVMinItem()
+      });
+      rootReal.defineInsert('tag.view', 'tag.art', () => FillParentSlotter());
+      rootReal.defineInsert('tag.view', 'tag.status', () => null);
       
       /// {ABOVE=
       let chn = chance.Chance();
-      
-      let reality = Reality('testyReality');
-      reality.addFlatLayouts(flatLayouts);
-      await reality.prepareAboveHut(tagHut);
-      
       let updCnt = 0;
       let tag = tagHut.createRec('tag.tag', [ tagHut ], { cnt: U.base62(updCnt++).padHead(8, '0') });
       /// =ABOVE}
       
-      let rootScp = RecScope(tagHut, 'tag.tag', (tag, dep) => {
-        
-        console.log('GOT tag.tag', tag);
+      let rootScp = RecScope(tagHut, 'tag.tag', async (tag, dep) => {
         
         global.tag = tag;
         dep(Drop(null, () => { delete global.tag; }));
@@ -93,6 +203,7 @@ U.buildRoom({
           
           status.modVal(v => (v.playerCount++, v));
           dep(Drop(null, () => status.modVal(v => (v.playerCount--, v))));
+          console.log('GOT A KID HUT:', status.val);
           
           let hut = members.kid; //kidHut.members['lands.kidHut'];
           let player = dep(tagHut.createRec('tag.player', [], { keyVal: 0 }));
@@ -197,92 +308,90 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        dep.scp(tagHut.getRootReal(), rootReal => {
+        let mainReal = dep(rootReal.techReals[0].addReal('tag.tag'));
+        let viewReal = mainReal.addReal('tag.view');
+        
+        let myTagRunnerNozz = dep(TubVal(null, tag.relNozz('tag.tagRunner'), tagRunner => {
+          return (tagRunner.val.hutId === U.hutId) ? tagRunner : C.skip;
+        }));
+        
+        dep.scp(myTagRunnerNozz, (myTagRunner, dep) => {
           
-          let mainReal = dep(rootReal.addReal('main'));
+          let artReal = dep(viewReal.addReal('tag.art'));
+          let { draw, keys } = artReal;
           
-          let myTagRunnerNozz = dep(TubVal(null, tag.relNozz('tag.tagRunner'), tagRunner => {
-            return (tagRunner.val.term === U.hutTerm) ? tagRunner : C.skip;
-          }));
+          let myRunner = myTagRunner.members['tag.runner'];
           
-          dep.scp(myTagRunnerNozz, (myTagRunner, dep) => {
+          let drawTimeout = null;
+          let doDraw = () => {
+            clearTimeout(drawTimeout);
+            drawTimeout = setTimeout(doDraw, 1000 / 30);
             
-            let artReal = dep(mainReal.addReal('art'));
-            let { draw, keys } = artReal;
-            
-            let myRunner = myTagRunner.members['tag.runner'];
-            
-            let drawTimeout = null;
-            let doDraw = () => {
-              clearTimeout(drawTimeout);
-              drawTimeout = setTimeout(doDraw, 1000 / 30);
+            let { w, h, hw, hh } = draw.getDims();
+            draw.rect(0, 0, w, h, { fillStyle: 'rgba(0, 0, 0, 1)' });
+            draw.frame(() => {
               
-              let { w, h, hw, hh } = draw.getDims();
-              draw.rect(0, 0, w, h, { fillStyle: 'rgba(0, 0, 0, 1)' });
-              draw.frame(() => {
-                
-                draw.trn(hw, hh); // Center of canvas and our runner are origin
-                draw.scl(0.8);
-                draw.trn(-myRunner.val.x, -myRunner.val.y);
-                
-                draw.circ(0, 0, arenaRadius + 5, {
-                  fillStyle: 'rgba(127, 127, 127, 1)',
-                  strokeStyle: 'rgba(255, 255, 255, 1)',
-                  lineWidth: 10
-                });
-                
-                for (let tagRunner of tag.relRecs('tag.tagRunner')) {
-                  let runner = tagRunner.members['tag.runner'];
-                  let { fillColour, bordColour, radius } = typeAttrs[tagRunner.val.type];
-                  let { x, y } = runner.val;
-                  draw.circ(x, y, radius, { fillStyle: fillColour, strokeStyle: bordColour, lineWidth: 1 });
-                }
-                
+              draw.trn(hw, hh); // Center of canvas and our runner are origin
+              draw.scl(0.8);
+              draw.trn(-myRunner.val.x, -myRunner.val.y);
+              
+              draw.circ(0, 0, arenaRadius + 5, {
+                fillStyle: 'rgba(127, 127, 127, 1)',
+                strokeStyle: 'rgba(255, 255, 255, 1)',
+                lineWidth: 10
               });
-            };
-            
-            dep(keys.nozz.route(keys => {
               
-              let keyNums = [
-                65, // l
-                68, // r
-                87, // u
-                83  // d
-              ];
-              let keyVal = 0;
-              for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
-              
-              tagHut.tell({ command: 'upd', keyVal });
-              
-            }));
-            
-            // TODO: do draw *after everything drips*! Should be
-            // accomplished with what was previously titled "WobSquad";
-            // for now accomplished with `foundation.queueTask`
-            dep(tag.route(() => foundation.queueTask(doDraw)));
-            doDraw();
-            
-            dep.scp(tag, 'tag.tagStatus', (tagStatus, dep) => {
-              
-              let status = tagStatus.members['tag.status'];
-              let statusReal = null;
-              
-              dep(status.route(({ playerCount, type }) => {
-                let isShowing = playerCount < playersForDasher;
-                
-                if (!isShowing && statusReal) { statusReal.dry(); statusReal = null; }
-                if (isShowing && !statusReal) { statusReal = dep(mainReal.addReal('status')); }
-                
-                if (!isShowing) return;
-                
-                if (type === 'waiting') {
-                  statusReal.setText(`Got ${playerCount} / ${playersForDasher} players...`);
-                }
-                
-                statusReal.setLoc(UnitPc(0.5), UnitPc(1 / 3));
-              }));
+              for (let tagRunner of tag.relRecs('tag.tagRunner')) {
+                let runner = tagRunner.members['tag.runner'];
+                let { fillColour, bordColour, radius } = typeAttrs[tagRunner.val.type];
+                let { x, y } = runner.val;
+                draw.circ(x, y, radius, { fillStyle: fillColour, strokeStyle: bordColour, lineWidth: 1 });
+              }
               
             });
+          };
+          
+          dep(keys.nozz.route(keys => {
+            
+            let keyNums = [
+              65, // l
+              68, // r
+              87, // u
+              83  // d
+            ];
+            let keyVal = 0;
+            for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
+            
+            let [ { hut: aboveHut } ] = tagHut.roadedHuts.toArr(v => v).find(v => true);
+            Hut.tell(tagHut, aboveHut, null, null, { command: 'upd', keyVal });
+            
+          }));
+          
+          // TODO: do draw *after everything drips*! Should be
+          // accomplished with what was previously titled "WobSquad";
+          // for now accomplished with `foundation.queueTask`
+          dep(tag.route(() => foundation.queueTask(doDraw)));
+          doDraw();
+          
+          dep.scp(tag, 'tag.tagStatus', (tagStatus, dep) => {
+            
+            let status = tagStatus.members['tag.status'];
+            let statusReal = null;
+            
+            dep(status.route(({ playerCount, type }) => {
+              let isShowing = playerCount < playersForDasher;
+              
+              if (!isShowing && statusReal) { statusReal.dry(); statusReal = null; }
+              if (isShowing && !statusReal) { statusReal = dep(viewReal.addReal('tag.status')); }
+              
+              if (!isShowing) return;
+              
+              if (type === 'waiting') {
+                statusReal.setText(`Got ${playerCount} / ${playersForDasher} players...`);
+              }
+              
+              statusReal.setLoc(UnitPc(0.5), UnitPc(1 / 3));
+            }));
             
           });
           

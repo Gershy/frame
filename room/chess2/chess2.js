@@ -1,7 +1,7 @@
 U.buildRoom({
   name: 'chess2',
-  innerRooms: [ 'record', 'hinterlands', 'real', 'realDom' ],
-  build: (foundation, record, hinterlands, real, realDom) => {
+  innerRooms: [ 'record', 'hinterlands', 'real', 'realWebApp' ],
+  build: (foundation, record, hinterlands, real, realWebApp) => {
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Rec, RecScope } = record;
@@ -362,7 +362,7 @@ U.buildRoom({
       };
       
       /// {ABOVE=
-      lands.setRealRooms([ realDom ]);
+      lands.setRealRooms([ realWebApp ]);
       let chess2 = lands.createRec('chess2.chess2');
       let archChess2 = lands.createRec('chess2.archChess2', [ lands.arch, chess2 ]);
       /// =ABOVE}

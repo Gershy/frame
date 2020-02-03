@@ -417,7 +417,6 @@
         ? depStr.split(',').map(v => { v = v.trim(); return v.substr(1, v.length - 2); })
         : [];
     },
-    
     compileRecursive: async function(roomName, compiledPrms={}, precedence=[]) {
       
       // Note that we deal with only the names of rooms instead of full-fledged
@@ -687,7 +686,37 @@
       await savedFile.update(data);
       return savedFile;
     },
-    getRootReal: async function() { return null; }, // TODO: Maybe electron someday!
+    
+    // High level
+    getRootHut: async function(options) {
+      return insp.Foundation.getRootHut.call(this, options);
+    },
+    getRootReal: async function() {
+      
+      // There is only a single RootReal for an instance of node,
+      // reflecting the deepest abstraction for visuals.
+      
+      if (!this.rootReal) {
+        
+        this.rootReal = rootReal = U.rooms.real.built.Real(null, 'nodejs.root');
+        rootReal.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
+        rootReal.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
+        
+        rootReal.defineInsert('nodejs.root', 'nodejs.ascii');
+        rootReal.defineInsert('nodejs.root', 'nodejs.system');
+        
+        rootReal.techReals = [
+          rootReal.addReal('nodejs.ascii'),
+          rootReal.addReal('nodejs.system')
+        ];
+        
+      }
+      
+      return this.rootReal;
+      
+    },
+    
+    // Functionality
     getStaticIps: function(pref=[]) {
       return require('os').networkInterfaces()
         .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
@@ -790,7 +819,7 @@
           if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
           if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
           if (U.isInspiredBy(msg, Saved)) return 'savd';
-          if (U.isType(msg, Error)) return 'error';
+          if (msg instanceof Error) throw msg; //return 'error';
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
@@ -871,7 +900,7 @@
         // If params are empty at this point, look at http path
         if (params.isEmpty()) params = (p => {
           // Map typical http requests to their meaning within Hut
-          if (p === '/') return { command: 'getInit', reply: true };
+          if (p === '/') return { command: 'syncInit', reply: true };
           if (p === '/favicon.ico') return { command: 'getIcon', reply: true };
           return {};
         })(urlPath);
@@ -890,9 +919,10 @@
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
-          // getInit has effects at both transport- and hut-level
-          getInit:  {
+          // syncInit has effects at both transport- and hut-level
+          syncInit:  {
             transport: road => {
+              // Clear any buffered responses and tells
               road.waitResps.forEach(res => res.end());
               road.waitResps = [];
               road.waitTells = [];
@@ -930,6 +960,7 @@
             return road.hear.drip([ params, msg => sendData(res, msg) ]);
           } catch(err) {
             // TODO: Stop leaking `err.message`!
+            console.log('Http error response:', this.formatError(err));
             sendData(res, { command: 'error', msg: err.message, orig: params });
           }
         }

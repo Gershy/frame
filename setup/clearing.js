@@ -170,10 +170,10 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
-let ErrorOrig = Error;
-Error = global.Error = function Error(...args) { return new ErrorOrig(...args); };
-Error.prototype = ErrorOrig.prototype;
-Error.captureStackTrace = ErrorOrig.captureStackTrace;
+//let ErrorOrig = Error;
+//Error = global.Error = function Error(...args) { return new ErrorOrig(...args); };
+//Error.prototype = ErrorOrig.prototype;
+//Error.captureStackTrace = ErrorOrig.captureStackTrace;
 protoDef(Error, 'update', function(msg) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 let U = global.U = {
@@ -269,9 +269,9 @@ let U = global.U = {
     return Insp;
   },
   isType: (val, Cls) => {
-    // Unboxed values (`null` and `undefined` hit the `catch`
-    try { return val.constructor === Cls; } catch (err) { return val === Cls; }
-    return false;
+    // Note: This is hopefully the *only* use of `!=` throughout Hut!
+    // Falsy for `null` and `undefined`; truthy for `0`, `''`
+    return val != null && (val.constructor === Cls || val === Cls);
   },
   isTypes: (val, ...Classes) => {
     for (let Cls of Classes) if (U.isType(val, Cls)) return true;

@@ -45,17 +45,9 @@
       // This is the root of all graphical entities
       this.rootReal = null;
       
-      // Detect when the Window loads
-      this.domAvailableNozz = Promise(r => window.addEventListener('load', r));
-      
-      // We want to be able to react when the browser is closed
-      // TODO: Still need to qualify what page-closing signifies...
-      // Does it mean pausing? Exiting immediately? Exiting after a delay?
-      this.unloadNozz = Nozz();
-      window.addEventListener('beforeunload', () => this.unloadNozz.drip());
-      
-      this.domAvailableNozz.route(() => document.body.classList.add('loaded'));
-      this.unloadNozz.route(() => document.body.classList.remove('loaded'));
+      // Nice visual changes when the window loads and unloads
+      window.addEventListener('load', () => document.body.classList.add('loaded'));
+      window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
       
     },
     getPlatformName: function() { return 'browser'; },
@@ -86,24 +78,6 @@
       return U.rooms[args.hut];
       
     },
-    getRootReal: async function() { 
-      
-      await this.domAvailableNozz; // Block until DOM is available
-      
-      if (!this.rootReal) {
-        let realDom = U.rooms.realDom.built;
-        let { Reality } = realDom;
-        
-        let Real = Reality.prototype.getRealCls();
-        this.rootReal = Real({});
-        this.rootReal.realized = document.body;
-        this.rootReal.realized.classList.add('root');
-      }
-      
-      return this.rootReal;
-      
-    },
-    getDefaultRealRoom: function() { return U.rooms.realDom.built; },
     getUrl: function(params) {
       params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
       return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
@@ -115,6 +89,26 @@
       let d = Drop();
       d.value = 'server';
       return d;
+    },
+    
+    // High level
+    getRootHut: async function() {
+      return insp.Foundation.getRootHut.call(this);
+    },
+    getRootReal: async function() { 
+      
+      if (!this.rootReal) {
+        
+        let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'browser.root');
+        rootReal.defineReal('browser.doc', { slotters: null, tech: 'BROWSER' });
+        rootReal.defineInsert('browser.root', 'browser.doc');
+        
+        rootReal.techReals = [ rootReal.addReal('browser.doc') ];
+        
+      }
+      
+      return this.rootReal;
+      
     },
     
     // Functionality
@@ -209,7 +203,6 @@
       
       let lines = trace.split('\n').map(ln => {
         try {
-          
           
           let full = null, lineInd = null, charInd = null;
           let match = ln.match(/([0-9]+):([0-9]+)/);

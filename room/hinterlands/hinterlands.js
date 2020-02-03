@@ -28,11 +28,11 @@ U.buildRoom({
         
         if (!trgHut) throw Error('Must supply TrgHut');
         if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
-        if (srcHut && srcHut.parentHut !== trgHut && trgHut.parentHut !== srcHut) throw Error(`Supplied unrelated Huts`);
+        if (srcHut && srcHut.parHut !== trgHut && trgHut.parHut !== srcHut) throw Error(`Supplied unrelated Huts`);
         
         // Debug output if any ParHut has debug enabled
         let [ dbgParHut=null ] = [ srcHut, trgHut ].find(h => h && h.isHere() && h.roadDbgEnabled) || [];
-        if (dbgParHut) console.log(`--COMM [${srcHut ? srcHut.uid : '<none>'}] -> [${trgHut.uid}] ${dbgParHut.dbgRoadsItem(msg)}`);
+        if (dbgParHut) console.log(`--COMM ${srcHut ? srcHut.uid : '<none>'} -> ${trgHut.uid}: ${dbgParHut.dbgRoadsItem(msg)}`);
         
         if (!srcHut) {
           if (trgHut.isAfar()) throw Error(`Can't tell TrgAfarHut when SrcHut is null`);
@@ -41,7 +41,7 @@ U.buildRoom({
           return trgHut.hear(null, null, () => { throw Error('Can\'t reply'); }, msg);
         }
         
-        if (srcHut.isAfar() && trgHut.isAfar()) throw new Error('Supplied two AfarHuts');
+        if (srcHut.isAfar() && trgHut.isAfar()) throw Error('Supplied two AfarHuts');
           
         /// {BELOW=
         // BelowSrcHuts telling upwards will have their tell naturally
@@ -65,11 +65,11 @@ U.buildRoom({
         
         if (srcHut.isHere() && trgHut.isAfar()) {
           
-          if (trgHut.parentHut !== srcHut)
+          if (trgHut.parHut !== srcHut)
             throw Error(`Supplied HereHut -> AfarHut, but not ParHut -> SrcHut`);
           
           // This is the trickiest possibility, because if no Road was
-          // provided we need to calculate which Road is best.
+          // provided we default to the cheapest Road
           if (!road) {
             
             // Find the cheapest available Road
@@ -93,95 +93,17 @@ U.buildRoom({
         throw Error(`Couldn't communicate between Huts`);
         
       },
-      $getRootHut: async (foundation, name, options={}) => {
-        
-        // TODO: Annoying that host, ports, sslArgs are computed even if
-        // they aren't needed because explicit options were given,
-        // making those values irrelevant. E.g. if `options.sslArgs` is
-        // provided as `null`, no need for ABOVE to `await` reading the
-        // cert files (but at the moment, it will...)
-        
-        let [ host, ...ports ] = foundation.raiseArgs.has('hutHosting')
-          ? foundation.raiseArgs.hutHosting.split(':')
-          : [ 'localhost', '', '' ];
-        
-        let sslArgs = { keyPair: null, selfSign: null };
-        if (foundation.raiseArgs.has('ssl') && !!foundation.raiseArgs.ssl) {
-          /// {ABOVE=
-          let { cert, key, selfSign } = await Promise.allObj({
-            cert:     foundation.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-            key:      foundation.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-            selfSign: foundation.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
-          });
-          sslArgs = { keyPair: { cert, key }, selfSign };
-          /// =ABOVE} {BELOW=
-          // Note we try to accomodate "BETWEEN"; `sslArgs` values 
-          // won't be overwritten if they were set in the "ABOVE" block
-          sslArgs = sslArgs.map(v => v || true);
-          /// =BELOW}
-        }
-        
-        // Ensure good defaults
-        if (!options.has('hosting')) options.hosting = { host, ports, sslArgs };
-        if (!options.hosting.has('host')) options.hosting.host = host;
-        if (!options.hosting.has('ports')) options.hosting.ports = ports;
-        if (!options.hosting.has('sslArgs')) options.hosting.ports = sslArgs;
-        if (!options.hosting.sslArgs) options.hosting.sslArgs = { keyPair: null, selfSign: null };
-        
-        if (!options.has('protocols')) options.protocols = { http: true, sokt: true };
-        if (!options.protocols.has('http')) options.protocols.http = true;
-        if (!options.protocols.has('sokt')) options.protocols.sokt = true;
-        
-        let { heartMs=1000 * 30 } = options;
-        let hut = Hut(foundation, name, { heartMs });
-        if (options.protocols.http)
-          foundation.makeHttpServer(hut, {
-            host: options.hosting.host,
-            port: options.hosting.ports[0],
-            ...options.hosting.sslArgs
-          });
-        
-        if (options.protocols.sokt)
-          foundation.makeSoktServer(hut, {
-            host: options.hosting.host,
-            port: options.hosting.ports[1],
-            ...options.hosting.sslArgs
-          });
-        
-        return hut;
-        
-        
-        /// let useSsl = foundation.raiseArgs.has('ssl') && !!foundation.raiseArgs.ssl;
-        /// let serverArgs = { keyPair: null, selfSign: null };
-        /// if (useSsl) {
-        ///   /// {ABOVE=
-        ///   let { cert, key, selfSign } = await Promise.allObj({
-        ///     cert:     foundation.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-        ///     key:      foundation.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-        ///     selfSign: foundation.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
-        ///   });
-        ///   serverArgs = { keyPair: { cert, key }, selfSign };
-        ///   /// =ABOVE} {BELOW=
-        ///   serverArgs = { keyPair: true, selfSign: true };
-        ///   /// =BELOW}
-        /// }
-        
-        /// let parHut = Hut(foundation, 'test', { heartMs: 1000 * 10 });
-        /// let httpServer = foundation.makeHttpServer(parHut, { host, port: parseInt(httpPort, 10), ...serverArgs });
-        /// let soktServer = foundation.makeSoktServer(parHut, { host, port: parseInt(soktPort, 10), ...serverArgs });
-        
-      },
       
-      init: function(foundation, uid, { parentHut=null, heartMs=15 * 1000, term=null }={}) {
+      init: function(foundation, uid, { parHut=null, heartMs=15 * 1000, term=null }={}) {
         
         this.uid = uid;
-        this.parentHut = parentHut;
+        this.parHut = parHut;
         this.foundation = foundation;
         
         // Only ParHuts truly have the capabilities of `RecTypes`
-        if (!parentHut) insp.RecTypes.init.call(this);
+        if (!parHut) insp.RecTypes.init.call(this);
         
-        let hutType = (parentHut || this).getType('lands.hut');
+        let hutType = (parHut || this).getType('lands.hut');
         insp.Rec.init.call(this, hutType, uid);
         
         // How regularly communication needed to confirm existence
@@ -290,7 +212,7 @@ U.buildRoom({
           
         }
         
-        if (!parentHut) {
+        if (!parHut) {
           
           // If no parent, we are a ParentHut. We have a responsibility
           // to manage ChildHuts.
@@ -330,7 +252,7 @@ U.buildRoom({
         
         let access = this.isHere() ? 'Here' : 'Afar';
         
-        let maturity = this.parentHut ? 'Kid' : 'Par';
+        let maturity = this.parHut ? 'Kid' : 'Par';
         
         let bearing = [];
         /// {ABOVE=
@@ -383,7 +305,7 @@ U.buildRoom({
             for (let [ s, road ] of roadedHut.serverRoads) road.dry();
             roadedHut.hut.dry();
           });
-          roadedHut.hut = Hut(null, hutId, { parentHut: this, heartMs: this.heartMs });
+          roadedHut.hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
           roadedHut.serverRoads = Map(); // Map Servers to the single Road for that Server
           this.roadedHuts.set(hutId, roadedHut);
           
@@ -391,7 +313,7 @@ U.buildRoom({
           roadedHut.hut.drierNozz().route(() => roadedHut.dry());
           
           // Do Record relation for this KidHut
-          let kidHutType = (this.parentHut || this).getType('lands.kidHut');
+          let kidHutType = (this.parHut || this).getType('lands.kidHut');
           Rec(kidHutType, `!kidHut@${hutId}`, { par: this, kid: roadedHut.hut });
           
           if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
@@ -399,7 +321,7 @@ U.buildRoom({
         } else {
           
           roadedHut = this.roadedHuts.get(hutId);
-          if (roadedHut.serverRoads.has(server)) throw new Error(`Hut ${hutId} roaded twice on ${server.desc}`);
+          if (roadedHut.serverRoads.has(server)) throw Error(`Hut ${hutId} roaded twice on ${server.desc}`);
           
         }
         
@@ -438,7 +360,6 @@ U.buildRoom({
       
       isHere: function() { return !!this.foundation; },
       isAfar: function() { return !this.foundation; },
-      getRootReal: async function() { throw new Error('Wtf, shouldn\'t be a part of Hut...'); },
       
       roadNozz: function(command) {
         if (!this.roadNozzes.has(command)) {
@@ -449,17 +370,20 @@ U.buildRoom({
       },
       hear: async function(srcHut, road, reply, msg) {
         
-        if (!reply) throw new Error(`Missing "reply"`);
+        if (!reply) throw Error(`Missing "reply"`);
+        if (srcHut === this) throw Error('Hut heard itself...');
         
         /// {ABOVE=
         if (srcHut.isAfar()) srcHut.refreshDryTimeout();
         /// =ABOVE}
         
         let command = msg.command;
-        if (!this.roadNozzes.has(command))
-          return (reply || srcHut.tell.bind(srcHut))({ command: 'error', type: 'invalidCommand', orig: msg });
+        if (srcHut && srcHut.roadNozzes.has(command)) return srcHut.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply });
+        if (this.roadNozzes.has(command)) return this.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply });
         
-        this.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply });
+        let resp = { command: 'error', type: 'invalidCommand', orig: msg };
+        if (reply) return reply(resp);
+        return Hut.tell(this, srcHut, road, null, resp);
         
       },
       
@@ -527,7 +451,7 @@ U.buildRoom({
             if (!members) { waiting.push(addRec); continue; } // Reattempt soon
             
             // All members are available - create the Rec!
-            let recType = (this.parentHut || this).getType(addRec.type);
+            let recType = (this.parHut || this).getType(addRec.type);
             this.trackRec(Rec(recType, addRec.uid || this.getNextRecUid(), members, addRec.val));
             
           }
@@ -541,12 +465,12 @@ U.buildRoom({
         }
         
         for (let { uid, val } of upd) {
-          if (!this.allRecs.has(uid)) throw new Error(`Tried to update non-existent Rec @ ${uid}`);
+          if (!this.allRecs.has(uid)) throw Error(`Tried to update non-existent Rec @ ${uid}`);
           this.allRecs.get(uid).setVal(val);
         }
         
         for (let uid of rem) {
-          if (!this.allRecs.has(uid)) throw new Error(`Tried to remove non-existent Rec @ ${uid}`);
+          if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`);
           this.allRecs.get(uid).dry();
         }
         
@@ -599,10 +523,7 @@ U.buildRoom({
         
         // Schedules Below to be synced if not already scheduled
         
-        
         if (this.throttleSyncPrm) return; // A request to sync already exists
-        
-        //console.log(foundation.formatError(Error('SYNC REQUESTED')));
         this.throttleSyncPrm = (async (ctxErr=Error('')) => {
           
           await this.makeThrottleSyncPrm();
@@ -612,7 +533,7 @@ U.buildRoom({
           if (this.isDry()) return;
           
           let updateTell = this.consumePendingSync(ctxErr);
-          if (updateTell) Insp.tell(this.parentHut, this, null, null, updateTell);
+          if (updateTell) Insp.tell(this.parHut, this, null, null, updateTell);
           
         })(ctxErr);
         
@@ -654,7 +575,7 @@ U.buildRoom({
         let str0 = fol ? fol.strength : 0;
         let str1 = str0 + delta;
         
-        if (str1 > str0 && rec.isDry()) throw new Error(`Tried to Follow dry ${rec.type.name}@${rec.uid}`);
+        if (str1 > str0 && rec.isDry()) throw Error(`Tried to Follow dry ${rec.type.name}@${rec.uid}`);
         
         if (str0 <= 0 && str1 > 0) {
           

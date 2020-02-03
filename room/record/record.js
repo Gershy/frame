@@ -93,8 +93,6 @@ U.buildRoom({
         
         type.updMembers(members.map(m => m.type));
         
-        console.log(`NEW ${type.name} @ ${uid} (${members.toArr((m, t) => `${t}: ${m.type.name}`)})`);
-        
         insp.Drop.init.call(this, defDrier());
         insp.Nozz.init.call(this);
         
