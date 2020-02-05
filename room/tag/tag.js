@@ -3,6 +3,12 @@ U.buildRoom({
   innerRooms: [      'record', 'hinterlands', 'real', 'realWebApp', 'chance' ],
   build: (foundation, record,   hinterlands,   real,   realWebApp,   chance) => {
     
+    // TODO: {AB+OVE= and {BE+LOW= markers are used to control where
+    // code exists on the basis of security - what about markers to
+    // control code existence on the basic of BLOAT?? E.g. a Below
+    // which is going to do visuals 100% in the browser shouldn't have
+    // a single reference to electron or ascii visual frameworks...
+    
     // Powerups:
     // - Slow all chasers in proximity
     // - Knock back chasers in proximity
@@ -21,8 +27,39 @@ U.buildRoom({
       
       let tagHut = await foundation.getRootHut({ heartMs: 1000 * 30 });
       
+      let { UnitPx, UnitPc } = real;
+      let { MinExtSlotter, FillParent, Art, TextSized } = real;
+      
+      let rootReal = await foundation.getRootReal();
+      rootReal.defineReal('tag.tag', {
+        slotters: {
+          main: () => MinExtSlotter()
+        },
+        decals: { colour: 'rgba(0, 0, 0, 1)' }
+      });
+      rootReal.defineReal('tag.view', {
+        decals: { roundness: 1, colour: 'rgba(100, 100, 150, 1)' }
+      });
+      rootReal.defineReal('tag.art', {
+        layouts: [ Art({}) ]
+      });
+      rootReal.defineReal('tag.status', {
+        layouts: [ TextSized({ origin: 'cc', size: UnitPx(30), pad: UnitPx(10) }) ],
+        decals: {
+          colour: 'rgba(100, 100, 200, 0.5)',
+          textColour: 'rgba(255, 255, 255, 0.8)',
+        }
+      });
+      
+      rootReal.defineInsert(null, 'tag.tag', { main: () => FillParent() });
+      rootReal.defineInsert('tag.tag', 'tag.view', {
+        main: (slotter, par) => slotter.getMinExtSlot()
+      });
+      rootReal.defineInsert('tag.view', 'tag.art', () => FillParent());
+      rootReal.defineInsert('tag.view', 'tag.status', () => null);
+      
       let webApp = WebApp('tag');
-      await webApp.decorateHut(tagHut);
+      await webApp.decorateHut(tagHut, rootReal);
       
       let arenaRadius = 400;
       let playersForDasher = 5;
@@ -47,142 +84,6 @@ U.buildRoom({
         }
       };
       
-      let { UnitPx, UnitPc } = real;
-      let { MinExtSlotter, FillParentSlotter, Art, TextSized } = real;
-      // let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
-      
-      // TODO: {AB+OVE= and {BE+LOW= markers are used to control where
-      // code exists on the basis of security - what about markers to
-      // control code existence on the basic of BLOAT?? E.g. a Below
-      // which is going to do visuals 100% in the browser shouldn't have
-      // a single reference to electron or ascii visual frameworks...
-      
-      if (false) { // Here's how multiple Realities could work:
-        
-        // AT TOP:
-        
-        // If nesting apps, `foundation` should be a NestedFoundation,
-        // and the NestedFoundation's `getRootReal` should return some
-        // Real that has been dedicated for the SubApp
-        // Consider: what's the difference between nesting more dom
-        // elements, and nesting an iframe?
-        let rootReal = foundation.getRootReal();
-        
-        // Note: if `slotters` is a non-Object, it can be defaulted to
-        // an object whose only prop is "main", and points to the
-        // initial value!
-        rootReal.defineReal('tag.tag', {
-          slotters: { main: VMinSlot() },
-          decals: { colour: 'rgba(0, 0, 0, 1)' }
-        });
-        rootReal.defineReal('tag.view', {
-          decals: {
-            roundness: 1,
-            colour: 'rgba(100, 100, 150, 1)'
-          }
-        });
-        rootReal.defineReal('tag.art', {
-          size: Art({})
-        });
-        rootReal.defineReal('tag.status', {
-          size: TextSized({ origin: 'cc', pad: UnitPx(10) }),
-          decals: {
-            colour: 'rgba(100, 100, 200, 0.5)',
-            textColour: 'rgba(255, 255, 255, 0.8)',
-            textSize: UnitPx(30)
-          }
-        });
-        
-        // Note: inserting into `null` really means "how to insert this
-        // 'tag.tag' into ANYTHING" rather than "how to insert 'tag.tag'
-        // into the root"
-        rootReal.defineInsert(null, 'tag.tag', {
-          // The term "main" is the default slotter-export-term. Reals
-          // like !dom, !electron, etc, should export this. In this case
-          // we'll just fill our parent, no matter what it is
-          main: (slotter, par) => FillParentSlotter() // nice to make `par` optional - `slotter === par.cmps.slotter`
-        });
-        rootReal.defineInsert('tag.tag', 'tag.view', {
-          main: (slotter, par) => slotter.insertVMinItem()
-        });
-        rootReal.defineInsert('tag.view', 'tag.art');
-        rootReal.defineInsert('tag.view', 'tag.status');
-        
-        // LATER:
-        
-        let sectionReal = rootReal.addReal('!electron');  // Works on Above
-        //let sectionReal = rootReal.addReal('!dom');       // Works on Below
-        //let sectionReal = rootReal.addReal('!root');      // Some default viable Reality
-        
-        let tagReal = sectionReal.addReal('tag.tag');
-        let viewReal = tagReal.addReal('tag.view');
-        let artReal = viewReal.addReal('tag.art');
-        
-        let mainReal = dep(rootReal.addReal('main'));
-        
-        
-        // All of tags styles
-        real.addLayout(tagLayout);
-        
-        
-        ({
-          'main': {
-            /// {ABOVE=
-            
-            slot: par => par.nested(ElectronReality(/* ... */)),
-            
-            /// =ABOVE} {BELOW=
-            
-            // simple:
-            slot: par => par.nested(HtmlCssReality(/* ... */)),
-            
-            // more complex:
-            slot: par => {
-              let Reality = foundation.preferredReality([ ElectronReality, HtmlCssReality ]);
-              par.nested((Reality === ElectronReality)
-                ? ElectronReality(/* ...args1 */)
-                : HtmlCssReality(/* ...args2 */));
-            },
-            
-            /// =BELOW}
-            decals: {
-              roundness: 1,
-              colour: 'rgba(100, 100, 150, 1)'
-            }
-          }
-        })
-        
-      }
-      
-      let rootReal = await foundation.getRootReal();
-      rootReal.defineReal('tag.tag', {
-        slotters: {
-          main: () => MinExtSlotter()
-        },
-        decals: { colour: 'rgba(0, 0, 0, 1)' }
-      });
-      rootReal.defineReal('tag.view', {
-        decals: { roundness: 1, colour: 'rgba(100, 100, 150, 1)' }
-      });
-      rootReal.defineReal('tag.art', {
-        size: Art({})
-      });
-      rootReal.defineReal('tag.status', {
-        size: TextSized({ origin: 'cc', pad: UnitPx(10) }),
-        decals: {
-          colour: 'rgba(100, 100, 200, 0.5)',
-          textColour: 'rgba(255, 255, 255, 0.8)',
-          textSize: UnitPx(30)
-        }
-      });
-      
-      rootReal.defineInsert(null, 'tag.tag', () => FillParentSlotter());
-      rootReal.defineInsert('tag.tag', 'tag.view', {
-        main: (slotter, par) => slotter.insertVMinItem()
-      });
-      rootReal.defineInsert('tag.view', 'tag.art', () => FillParentSlotter());
-      rootReal.defineInsert('tag.view', 'tag.status', () => null);
-      
       /// {ABOVE=
       let chn = chance.Chance();
       let updCnt = 0;
@@ -203,7 +104,6 @@ U.buildRoom({
           
           status.modVal(v => (v.playerCount++, v));
           dep(Drop(null, () => status.modVal(v => (v.playerCount--, v))));
-          console.log('GOT A KID HUT:', status.val);
           
           let hut = members.kid; //kidHut.members['lands.kidHut'];
           let player = dep(tagHut.createRec('tag.player', [], { keyVal: 0 }));

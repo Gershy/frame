@@ -11,8 +11,8 @@ U.buildRoom({
     // counted indentation, and determines the ignored block has
     // completed after indentation returns to where it started!
     
-    let { Art, TextSized /* ... */ } = real;
-    let { Unit, UnitPx, UnitPc, ViewPortMin, CalcAdd, Real, Tech } = real;
+    let { Art, FillParent, MinExtSlotter, TextSized /* ... */ } = real;
+    let { UnitPx, UnitPc, ViewPortMin, CalcAdd, Real, Tech } = real;
       
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
     let tinyRound = (val, epsilon=0.001) => {
@@ -22,18 +22,6 @@ U.buildRoom({
       return (Math.abs(val - round) < epsilon) ? round : val;
     };
     let customEvent = evt => evt.stopPropagation() || evt.preventDefault() || true;
-    let unitCss = Map();
-    let getUnitCss = unit => {
-      if (!unitCss.has(unit.constructor)) throw Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
-      return unitCss.get(unit.constructor)(unit);
-    };
-    unitCss.set(Unit, unit => { throw Error('Can\'t get css for Unit'); });
-    unitCss.set(UnitPx, unit => `${tinyRound(unit.amt)}px`);
-    unitCss.set(UnitPc, unit => `${tinyRound(unit.amt * 100)}%`);
-    unitCss.set(ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
-    unitCss.set(CalcAdd, calc => `calc(${calc.units.map(u => getUnitCss(u)).join(' + ')})`);
-      
-    
     
     /// {ABOVE=
     let XmlElement = U.inspire({ name: 'XmlElement', methods: (insp, Insp) => ({
@@ -85,11 +73,14 @@ U.buildRoom({
       // think about a way to process Layouts in a nice abstract manner!
       
       init: function() {},
-      decorateHut: async function(parHut) {
+      decorateHut: async function(parHut, rootReal) {
         
         /// {ABOVE=
+        
+        console.log('CSS:', this.genCss(parHut, rootReal));
+        
         let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
-        let styleSaved = await foundation.getSavedFromData([ 'realWebAppMainStyles.css' ], this.genCss());
+        let styleSaved = await foundation.getSavedFromData([ 'realWebAppMainStyles.css' ], this.genCss(parHut, rootReal));
         
         parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
           
@@ -231,21 +222,21 @@ U.buildRoom({
           reply(doc.toString());
           
         });
+        
         /// =ABOVE} {BELOW=
-        let [ rootReal ] = await Promise.allArr([
-          // TODO: This function is for decorating the Hut, but also
-          // touches the Foundation
-          foundation.getRootReal(),
-          Promise(r => window.addEventListener('load', r))
-        ]);
+        
+        await Promise(r => window.addEventListener('load', r))
         let webAppReal = rootReal.techReals[0]; // TODO: Assumes only a single Real exists for WebApps (may not be the case!)
         webAppReal.tech = this;
         webAppReal.techNode = document.body;
+        
         /// =BELOW}
         
       },
       
-      getClsMappedItem: function(clsMap, slottingMode, { defReal, defInsert }) {
+      getClsMappedItems: function(clsMap, parDef, parSm, kidDef, kidSm, defInserts, dbg=false) {
+        
+        // `sm` is "slottingMode"
         
         // Here in realWebApp many choices are resolved depending on the
         // Size and Slot for a Real somewhere in a chain. In all these
@@ -262,19 +253,52 @@ U.buildRoom({
         // We need something like a "ResolvedChain" (which sounds overly
         // intensive...)
         
-        let size = defReal.size;
-        let slot = defReal.slotters[slottingMode](); // TODO: Many redundant calls will occur because a "ResolvedSlot" is not available
-        let sizeGetter = size && clsMap.get(size.constructor);
-        let slotGetter = slot && clsMap.get(slot.constructor);
+        // TODO: `sm` is `defReal`'s SlottingMode - the one it will be
+        // using to insert children. But in order to know all potential
+        // Layouts being used to determine the ClassMapped item, we also
+        // need *the SlottingMode used to insert `defReal`*!! This means
+        // we need `parSlottingMode` AND `kidSlottingMode`...
         
-        if (sizeGetter && slotGetter && sizeGetter !== slotGetter)
-          // TODO: Include resolved chain name as part of error
-          throw Error(`Size ${U.nameOf(size)} and slot ${U.nameOf(slot)} conflict create conflict: ${U.nameOf(sizeGetter)} and ${U.nameOf(slotGetter)}`);
+        let insertKey = `${parDef ? parDef.name : '*'}->${kidDef.name}`;
+        if (!defInserts.has(insertKey)) insertKey = `*->${kidDef.name}`;
+        if (!defInserts.has(insertKey)) throw Error(`Invalid insertion: ${insertKey}`);
         
-        return sizeGetter || slotGetter;
+        let insertSlotFns = defInserts[insertKey];
+        
+        let layouts = [
+        
+          ...kidDef.layouts,
+          
+          // Note: No need to check `kidDef.slotters.has(kidSm)` - we
+          // assume a valid mode has been given, and the RealDef must
+          // include a Slotter for every mode!
+          kidDef.slotters[kidSm] && kidDef.slotters[kidSm](),
+          
+          // Note: We *do* need to check `insertSlotFns.has(parSm)` -
+          // because an insertion does *not* need to define a SlotFn for
+          // every slot available in the parent! So a SlotFn may not
+          // exist for a given SlottingName
+          insertSlotFns.has(parSm)
+            && insertSlotFns[parSm]
+            && insertSlotFns[parSm](
+              parDef
+              && parDef.slotters[parSm]
+              && parDef.slotters[parSm]()
+            )
+          
+        ].map(v => v || C.skip);
+        
+        // Return all results. In some cases multiple results indicates
+        // a conflict, but we'll let the more specific code handle that!
+        return layouts.map(layout => {
+          let result = clsMap.get(layout.constructor);
+          return result ? [ layout, result ] : C.skip;
+        });
         
       },
-      domGetElem: function(slottingMode, chain) {
+      domGetElem: function(slottingMode, chain, defInserts) {
+        
+        // TODO: Need both `parSm` and `kidSm`!!!
         
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
@@ -287,16 +311,23 @@ U.buildRoom({
           return canvas;
         });
         
-        let domGetter = this.getClsMappedItem(domGettersByCls, slottingMode, { defReal, defInsert });
-        return domGetter ? domGetter() : document.createElement('div');
+        let args = [ parChain.length && parChain[0].defReal, 'main', defReal, 'main' ];
+        let [ domGetter=null, ...conflicts ] = this.getClsMappedItems(domGettersByCls, ...args, defInserts);
+        if (!conflicts.isEmpty()) throw Error(`domGetElem conflict`);
+        
+        return domGetter ? domGetter[1]() : document.createElement('div');
         
       },
-      domGetUix: function(slottingMode, chain) {
+      domGetUixFns: function(slottingMode, chain, defInserts) {
+        
+        // TODO: Need both `parSm` and `kidSm`!!!
         
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
         let uixGettersByCls = Map();
         uixGettersByCls.set(Art, (real, canvasDom) => {
+          
+          console.log('APPLYING......');
           
           let ctx = canvasDom.getContext('2d');
           let pathFns = {
@@ -347,8 +378,9 @@ U.buildRoom({
           let keys = Set();
           real.keys = { nozz: Nozz() };
           
-          console.log('LISTEN:', canvasDom);
+          console.log(canvasDom);
           canvasDom.addEventListener('keydown', evt => {
+            console.log('KEY DOWN');
             if (keys.has(evt.keyCode)) return;
             keys.add(evt.keyCode);
             real.keys.nozz.drip(keys);
@@ -361,6 +393,8 @@ U.buildRoom({
           
           real.addedFn = () => canvasDom.focus();
           
+          setInterval(() => canvasDom.focus(), 500);
+          
         });
         uixGettersByCls.set(TextSized, (real, textDom) => {
           
@@ -372,66 +406,396 @@ U.buildRoom({
           
         });
         
-        let uixGetter = this.getClsMappedItem(uixGettersByCls, slottingMode, { defReal, defInsert });
-        return uixGetter || null;
+        let args = [ parChain.length && parChain[0].defReal, 'main', defReal, 'main' ];
+        return this.getClsMappedItems(uixGettersByCls, ...args, defInserts).map(([ lay, uixFn ]) => uixFn);
         
       },
-      domGetCss: function(slottingMode, chain) {
-        // TODO: `slottingMode` should NOT be a parameter. Getting the
-        // css involves looping through all possible SlottingModes!!
-        // Or, this function could be called from a loop which is
-        // accounting for all possible SlottingModes.
+      domGetZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
+        
+        // "absolute" and "relative" are awkwardly compound statements;
+        // each specifies multiple things. No convenient in-between,
+        // like "feature A of absolute with feature B of relative".
+        // Really, feature A and feature B should be directly accessible
+        // css directives. This issue probably occurs not only with
+        // "position", but also other attributes. Could consider
+        // extending "ZoneCss" to not only include zones, but also allow
+        // non-css, "atomic" properties (like feature A and feature B).
+        // This would resolve the sort of issue which occurs when one
+        // layout needs relative and the other needs absolute - in such
+        // cases conflicts most likely don't need to occur; they're just
+        // a result of how "multidimensional" "position" is
+        
+        // "relative" enables z-index, origin for children, etc.
+        // "relative" says "flow acknowledges parent and siblings"
+        // "relative" says "default W: parent W"
+        // "relative" says "default H: content H"
+        
+        // "absolute" enables z-index, origin for children, etc.
+        // "absolute" says "flow acknowledges parent *only*"
+        // "absolute" says "default W: content W"
+        // "absolute" says "default H: content H"
+        
+        // Imagine if an item is set "relative" simply to enable it as
+        // an origin for its children, but another Layout needs
+        // "absolute" in order to ignore siblings in flow - this is NOT
+        // a conflict; the fact that both "relative" and "absolute" have
+        // been requested is not an indication that the overall Layout
+        // is flawed!!
+        
+        let zoneCssGettersByCls = Map();
+        zoneCssGettersByCls.set(FillParent, fillParent => {
+          return { fixed: {
+            display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
+            left: '0', right: '0', top: '0', bottom: '0'
+          }};
+        });
+        zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => {
+          return { fixed: {} };
+        });
+        zoneCssGettersByCls.set(MinExtSlotter.MinExtSlot, minExtSlot => {
+          return { fixed: {} };
+        });
+        /// zoneCssGettersByCls.set(Art, art => {
+        ///   return { fixed: {
+        ///     display: 'block', position: 'absolute',
+        ///     left: '0', right: '0', top: '0', bottom: '0'
+        ///   }};
+        /// });
+        zoneCssGettersByCls.set(TextSized, textSized => {
+          return { fixed: {
+            display: 'block', fontSize: this.getUnitCss(textSized.size)
+          }};
+        });
+        
+        return this.getClsMappedItems(zoneCssGettersByCls, parDef, parSm, kidDef, kidSm, defInserts)
+          .map(([ layout, zoneCssGetter ]) => zoneCssGetter(layout));
+        
       },
       
       createTechNode: function(real) {
-        let elem = this.domGetElem('main', real.chain); // TODO: `'main'` should be CALCULATED!
+        let elem = this.domGetElem('main', real.chain, real.root.defInserts); // TODO: `'main'` should be CALCULATED!
         elem.classList.add(real.name.split('.').join('-'));
         
-        let uix = this.domGetUix('main', real.chain);
-        if (uix) uix(real, elem);
+        console.log('CHECK UI FNS FOR REAL:', real);
+        let uixFns = this.domGetUixFns('main', real.chain, real.root.defInserts);
+        for (let uixFn of uixFns) uixFn(real, elem);
+        console.log(uixFns);
+        
         return elem;
       },
       addTechNode: function(real) {
-        console.log(`Add tech node for: ${real.name}`);
         let { parReal } = real.chain[0];
         parReal.techNode.appendChild(real.techNode);
       },
       remTechNode: function(real) {
-        console.log(`Rem tech node for: ${real.name}`);
         let { parReal } = real.chain[0];
         parReal.techNode.removeChild(real.techNode);
       },
       
+      getUnitCss: function(unit) {
+        let unitCss = Map();
+        unitCss.set(String, str => str);
+        unitCss.set(UnitPx, unit => `${tinyRound(unit.amt)}px`);
+        unitCss.set(UnitPc, unit => `${tinyRound(unit.amt * 100)}%`);
+        unitCss.set(ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
+        unitCss.set(CalcAdd, calc => `calc(${calc.units.map(u => this.getUnitCss(u)).join(' + ')})`);
+    
+        if (!unitCss.has(unit.constructor)) throw Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
+        return unitCss.get(unit.constructor)(unit);
+      },
+      
       /// {ABOVE=
-      genCss: function() {
-        return [
-          'html, body {',
-          '  background-color: #ffffff;',
-          '  position: absolute;',
-          '  left: 0; right: 0; top: 0; bottom: 0;',
-          '  margin: 0; padding: 0;',
-          '  overflow: hidden;',
-          '}'
-        ].join('\n');
+      
+      /*
+      decalsToZoneCss: function(decals) {
         
-        return [
-          'body { text-align: center; }',
-          'body::before {',
-          '  content: ""; display: inline-block; position: relative;',
-          '  width: 0; height: 100%; vertical-align: middle;',
-          '}',
-          'body::after {',
-          '  content: "Under development"; display: inline-block; position: relative;',
-          '  vertical-align: middle; font-size: 200%;',
-          '}'
-        ].join('\n');
+        if (!decals) return {};
+        
+        let mapping = {
+          
+          // String values indicate direct mapping. Objects result in
+          // multiple css values for the single Real decal. Function
+          // values will be called to produce either Strings or Objects.
+          
+          colour: 'backgroundColor',
+          textSize: 'fontSize',
+          textColour: 'color',
+          textFont: 'fontFamily',
+          contentMode: type => ({ overflow: ({ window: 'hidden', free: 'visible' })[type] }),
+          roundness: amt => {
+            if (amt === 0) return {};
+            return { overflow: 'hidden', borderRadius: `${tinyRound(amt * 100)}%` };
+          },
+          text: v => { return 'tricky! need to set javascript on the element'; },
+          border: ({ type='in', ext, colour }) => {
+            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${getUnitCss(ext)} ${colour}` }
+          }
+        };
+        
+        let zoneDecals = { main: decals };
+        if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
+        if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
+        if (decals.has('disabled')) { zoneDecals.disabled = decals.disabled; delete decals.disabled; }
+        
+        // Zones are the same between css and Decals... for now
+        let zoneCss = zoneDecals.map((decals, zone) => {
+          
+          let css = {};
+          decals.forEach((decVal, decKey) => {
+            
+            if (!mapping.has(decKey)) throw Error(`Invalid decal name: "${decKey}"`);
+            let m = mapping[decKey];
+            
+            if (U.isType(m, Function)) m = m(decVal); // Resolve Function if necessary
+            if (U.isType(m, String)) m = { [m]: decVal }; // Resolve String if necessary
+            m.forEach((cssVal, cssKey) => {
+              if (css.has(cssKey)) throw Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
+              css[cssKey] = cssVal;
+            });
+            
+          });
+          return css;
+          
+        });
+        
+        return zoneCss;
+        
+      },
+      mergeZoneCss: function(cur, add) {
+        
+        // Zone is "main", "before", "after", "focus", "hover", etc.
+        add.forEach((css, zone) => {
+          
+          if (css.isEmpty()) return; // Don't merge empty zones
+          if (!cur.has(zone)) cur[zone] = {};
+          
+          css.forEach((cssVal, cssKey) => {
+            
+            if (cur[zone].has(cssKey)) {
+              
+              // We're trying to apply a property that already exists!
+              // Check if properties match, precisely - if they don't
+              // it means there's a conflict!
+              
+              let cssVal0 = cur[zone][cssKey];
+              if (!real.unitsEq(cssVal, cssVal0)) throw Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
+              
+            }
+            
+            cur[zone][cssKey] = cssVal; // Allow numeric shorthand
+            
+          });
+          
+        });
+        
+      },
+      */
+      
+      genSingleZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
+        
+        // CSS: Sucky
+        // ZoneCss: Better structure for pseudo elements + selectors
+        // AtomicZoneCss: ZoneCss, providing good fine-grained rules
+        //   instead of stupid macro package-deals like "position"
+        
+        let zoneCss = {};
+        
+        // TODO: This should be `atomicZoneCssResults`
+        let zoneCssResults = this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts);
+        
+        // TODO: Then, with `atomicZoneCssResults`:
+        // let zoneCssResults = atomicZoneCssResults.map(compileAtomicZoneCss);
+        // let css = mergeZoneCss(zoneCssResults);
+        // TODO: ACTUALLY, compileAtomic and merge should happen at once
+        // in order to properly convert atoms into macros!!!!
+        
+        for (let zoneCssResult of zoneCssResults) {
+          
+          for (let zoneName in zoneCssResult) {
+            let zoneProps = zoneCssResult[zoneName];
+            if (zoneProps.isEmpty()) continue;
+            
+            if (!zoneCss.has(zoneName)) zoneCss[zoneName] = {};
+            for (let k in zoneProps) {
+              if (zoneCss[zoneName].has(k) && zoneCss[zoneName][k] !== zoneProps[k]) {
+                console.log('ZoneCss items to be merged:', zoneCssResults);
+                throw Error(`ZoneCss conflict in zone "${zoneName}"; property "${k}"`);
+              }
+              zoneCss[zoneName][k] = zoneProps[k];
+            }
+            
+          }
+          
+        }
+        
+        // for (let layoutItem of layoutItems) {
+        //   
+        //   // Merge the css
+        //   let layoutZoneCss = this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts);
+        //   for (let zoneName in layoutZoneCss) {
+        //     
+        //     let propsForThisZone = zoneCss.has(zoneName)
+        //       ? zoneCss[zoneName]
+        //       : (zoneCss[zoneName] = {});
+        //     
+        //     let zoneProps = layoutZoneCss[zoneName];
+        //     for (let zonePropName in zoneProps) {
+        //       let zonePropVal = zoneProps[zonePropName];
+        //       if (propsForThisZone.has(zonePropName) && propsForThisZone[zonePropName] !== zonePropVal) {
+        //         console.log('EXISTING:', 
+        //         throw Error(`Insertion ${parDef ? parDef.name : '*'}->${kidDef.name} has conflict in zone "${zoneName}", prop "${zonePropName}"`);
+        //       }
+        //     }
+        //     
+        //     for (let zonePropName in zoneProps) propsForThisZone[zonePropName] = zonePropVal;
+        //     
+        //   }
+        //   
+        // }
+        return zoneCss;
+      },
+      genCss: function(parHut, rootReal) {
+        
+        let genCssSelector = (realName, sm) => {
+          let modeCssClass = sm === 'main' ? '' : `.-mode-${sm}`;
+          return `${modeCssClass}.${realName.replace('.', '-')}`;
+        };
+        
+        let dynamicZoneCss = [];
+        
+        let { defReals, defInserts } = rootReal;
+        for (let insertTerm in defInserts) {
+          
+          let [ parName, kidName ] = insertTerm.split('->');
+          let parDef = parName === '*' ? null : defReals[parName];
+          let kidDef = defReals[kidName];
+          
+          // Don't process Reals from another Tech
+          // TODO: Would be much better if the full list of defReals and
+          // defInserts was already filtered to contain only items under
+          // this Tech...
+          if (kidDef.tech && kidDef.tech !== this) continue;
+          
+          // Don't generate a "par > kid" css rule if the parent is
+          // from another Tech!
+          if (parDef && parDef.tech && parDef.tech !== this) continue;
+          
+          // NOTE: we could think of establishing slotNames by looking
+          // at defInserts instead of the defReals, but this establishs
+          // only a subset of the slotNames, since RealInsertions occur
+          // with *any* of the parent's SlottingModes
+          let parSlotNames = parDef ? parDef.slotters.toArr((v, k) => k) : [ 'main' ];
+          let kidSlotNames = kidDef.slotters.toArr((v, k) => k);
+          
+          for (let parSm of parSlotNames) { for (let kidSm of kidSlotNames) {
+            
+            let selector = parName !== '*'
+              ? `${genCssSelector(parName, parSm)} > ${genCssSelector(kidName, kidSm)}`
+              : `${genCssSelector(kidName, kidSm)}`;
+            
+            dynamicZoneCss.push({
+              selector,
+              zones: this.genSingleZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts)
+            });
+            
+          }}
+          
+          
+        }
+        
+        let standardZoneCss = [
+          { selector: 'html, body', zones: { fixed: {
+            position: 'absolute',
+            left: '0', top: '0', width: '100%', height: '100%',
+            margin: '0', padding: '0',
+            fontFamily: 'monospace',
+            overflow: 'hidden',
+            pointerEvents: 'none'
+          }}},
+          { selector: 'body', zones: { fixed: { opacity: '0', transition: 'opacity 600ms linear' } }},
+          { selector: 'body.loaded', zones: { fixed: { opacity: '1' } }},
+          { selector: ':focus', zones: { fixed: {
+            boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'
+          }}},
+          { selector: 'textarea, input', zones: { fixed: {
+            border: 'none',
+            outline: 'none',
+            fontFamily: 'inherit',
+            boxShadow: 'inset 0 0 0 2px rgba(0, 0, 0, 0.5)'
+          }}},
+          { selector: 'textarea', zones: { fixed: {
+            resize: 'none'
+          }}}
+        ];
+        
+        let cssItems = [];
+        for (let zcssItem of [ ...standardZoneCss, ...dynamicZoneCss ]) {
+          if (U.isType(zcssItem, String)) return cssItems.push(zcssItem);
+          
+          let { selector, zones } = zcssItem;
+          for (let zoneName in zones) {
+            
+            let zoneSelector = null
+            if (zoneName === 'fixed') zoneSelector = selector;
+            else if ([ 'focus', 'hover', 'disabled' ].has(zoneName)) zoneSelector = `${selector}:${zoneName}`;
+            else if ([ 'before', 'after' ].has(zoneName)) zoneSelector = `${selector}::${zoneName}`;
+            else { throw Error(`Invalid ZoneCss zoneName: ${zoneName}`); }
+            
+            let zone = zones[zoneName];
+            let rules = [];
+            for (let cssPropName in zone) {
+              let cssValue = zone[cssPropName];
+              rules.push(`${camelToKebab(cssPropName)}: ${this.getUnitCss(cssValue)};`);
+            }
+            
+            cssItems.push([ `${zoneSelector} {`, ...rules.map(r => `  ${r}`), '}' ].join('\n'));
+            
+          }
+          
+        }
+        
+        return cssItems.join('\n');
+        
+        let cmpCssText = cssRules.map(cssRule => {
+          
+          if (U.isType(cssRule, String)) return cssRule;
+          
+          let { nameChain=null, selector=null, zoneCss } = cssRule;
+          
+          if (selector === null) selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
+          
+          return zoneCss.toArr((css, zone) => {
+            
+            let zoneSelector = selector;
+            
+            if (zone === 'main') { // Main css - do nothing!
+            } else if ([ 'focus', 'hover', 'disabled' ].has(zone)) {  // Pseudo-selector
+              zoneSelector = `${selector}:${zone}`;
+            } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
+              zoneSelector = `${selector}::${zone}`;
+            } else {
+              throw Error(`Unexpected css zone: ${zone}`);
+            }
+            
+            return [
+              `${zoneSelector} {`,
+              ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};` : C.skip),
+              '}'
+            ].join('\n'); // Join together all lines of a CssBlock
+            
+          }).join('\n');  // Join together all Zones of a ZonedCssBlock
+          
+        }).join('\n');  // Join together all ZonedCssBlocks of a CssStyleSheet
+        
+        return [ ...standardZoneCss, ...dynamicZoneCss ];
+        
       },
       /// =ABOVE}
       
-      // Real Manipulation
-      initDynamic: function(r) {
-        if (!r.dyn) {
-          r.dyn = {
+      // Dynamic Real Manipulation
+      getDyn: function(r) {
+        if (!r.techNode.dyn) {
+          r.techNode.dyn = {
             size: null,
             loc: null,
             death: { ms: 0, fn: null },
@@ -439,18 +803,18 @@ U.buildRoom({
             transform: { scale: null, rotate: null }
           };
         }
-        return r.dyn;
+        return r.techNode.dyn;
       },
       setTransition: function(r, props, ms, type='steady', delay=0) {
-        let { transition } = this.initDynamic(r);
+        let { transition } = this.getDyn(r);
         if (!ms) return props.forEach(p => transition.rem(p));
         props.forEach(p => transition.set(p, [ ms, type, delay ]));
         this.updateTransition(r);
       },
-      setDeathTransition: function(r, ms, fn) { let dyn = this.initDynamic(r); dyn.death = { ms, fn }; },
-      setSize: function(r, w, h) { let dyn = this.initDynamic(r); dyn.size = [ w, h ]; this.updateLayout(r); },
-      setLoc: function(r, x, y) { let dyn = this.initDynamic(r); dyn.loc = [ x, y ]; this.updateLayout(r); },
-      setLayout: function(r, w, h, x, y) { let dyn = this.initDynamic(r); dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(r); },
+      setDeathTransition: function(r, ms, fn) { let dyn = this.getDyn(r); dyn.death = { ms, fn }; },
+      setSize: function(r, w, h) { let dyn = this.getDyn(r); dyn.size = [ w, h ]; this.updateLayout(r); },
+      setLoc: function(r, x, y) { let dyn = this.getDyn(r); dyn.loc = [ x, y ]; this.updateLayout(r); },
+      setLayout: function(r, w, h, x, y) { let dyn = this.getDyn(r); dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(r); },
       setImage: function(r, file) {
         if (file) {
           updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl()}')`) ;
@@ -470,11 +834,10 @@ U.buildRoom({
         updStyle(r.techNode, 'backgroundColor', colour);
       },
       setOpacity: function(r, amt) { updStyle(r.techNode, 'opacity', amt.toString()); },
-      setScale: function(r, w, h=w) { let dyn = this.initDynamic(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
-      setRotate: function(r, amt) { let dyn = this.initDynamic(r); dyn.transform.rotate = amt; this.updateTransform(r); },
-      
+      setScale: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
+      setRotate: function(r, amt) { let dyn = this.getDyn(r); dyn.transform.rotate = amt; this.updateTransform(r); },
       updateLayout: function(r) {
-        let { size, loc } = this.initDynamic(r);
+        let { size, loc } = this.getDyn(r);
         
         let dom = r.techNode;
         updStyle(dom, 'position', 'absolute');
@@ -490,14 +853,14 @@ U.buildRoom({
             w = UnitPx(width); h = UnitPx(height);
           }
           
-          updStyle(dom, 'left', getUnitCss(CalcAdd(loc[0] || UnitPx(0), w.mult(-0.5))));
-          updStyle(dom, 'top', getUnitCss(CalcAdd(loc[1] || UnitPx(0), h.mult(-0.5))));
+          updStyle(dom, 'left', this.getUnitCss(CalcAdd(loc[0] || UnitPx(0), w.mult(-0.5))));
+          updStyle(dom, 'top', this.getUnitCss(CalcAdd(loc[1] || UnitPx(0), h.mult(-0.5))));
         } else {
           [ 'left', 'top' ].forEach(p => updStyle(dom, p, null));
         }
       },
       updateTransform: function(r) {
-        let { transform } = this.initDynamic(r);
+        let { transform } = this.getDyn(r);
         
         let items = [];
         let { w, h } = transform.scale || { w: 1, h: 1 };
@@ -510,7 +873,7 @@ U.buildRoom({
       },
       updateTransition: function(r) {
         let dom = r.techNode;
-        let { transition } = this.initDynamic(r);
+        let { transition } = this.getDyn(r);
         if (transition.isEmpty()) return updStyle(dom, 'transition', null);
         
         let mapTrnProps = {
@@ -530,857 +893,6 @@ U.buildRoom({
     
     return { WebApp };
     
-    if (false) {
-      
-      let { Wob, WobVal, WobTmp, Hog } = U;
-      let { UnitPx, UnitPc, CalcAdd, Real } = real;
-      
-      let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
-      let tinyRound = (val, epsilon=0.001) => {
-        // If `val` is within `epsilon` distance of an integer, returns
-        // that nearby integer (otherwise returns `val`).
-        let round = Math.round(val);
-        return (Math.abs(val - round) < epsilon) ? round : val;
-      };
-      let customEvent = evt => evt.stopPropagation() || evt.preventDefault() || true;
-      
-      /// {ABOVE=
-      let cssTech = {
-        vAlignPar: { whiteSpace: 'nowrap' },
-        vAlignChild: { display: 'inline-block', verticalAlign: 'middle' }, // Should include `position: "relative if not absolute"`
-        vAlignBefore: { display: 'inline-block', verticalAlign: 'middle', content: `''`, width: '0', height: '100%' },
-      };
-      /// =ABOVE} {BELOW=
-      let updStyle = (dom, prop, newVal) => {
-        if (newVal === null) return dom.style.removeProperty(camelToKebab(prop));
-        if (newVal !== dom.style[prop]) dom.style[prop] = newVal;
-      };
-      /// =BELOW}
-      
-      let unitCss = Map();
-      let getUnitCss = unit => {
-        if (!unitCss.has(unit.constructor)) throw Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
-        return unitCss.get(unit.constructor)(unit);
-      };
-      unitCss.set(real.Unit, unit => { throw Error('Can\'t get css for Unit'); });
-      unitCss.set(real.UnitPx, unit => `${tinyRound(unit.amt)}px`);
-      unitCss.set(real.UnitPc, unit => `${tinyRound(unit.amt * 100)}%`);
-      unitCss.set(real.ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
-      unitCss.set(real.CalcAdd, calc => `calc(${calc.units.map(u => getUnitCss(u)).join(' + ')})`);
-      
-      // "zoneCss" gets ZoneCss
-      // "domElemFunc" gets a function returning a dom element
-      // "runTimeUixFunc" gets a function which applies uix to a Real
-      let getCssAspect = (() => { // Params: "type", "layoutCmp", "layout", "trail"
-        
-        let zoneCss = Map(), domElemFunc = Map(), runTimeUixFunc = Map();
-        
-        /// {ABOVE=
-        zoneCss.set(real.RootViewStyles, (rootViewStyles, layout, ...trail) => ({
-          main: { ...cssTech.vAlignPar, textAlign: 'center', fontSize: '0', overflow: 'hidden' },
-          before: cssTech.vAlignBefore
-        }));
-        zoneCss.set(real.RootViewPortItem, (rootViewPortItem, layout, ...trail) => ({
-          main: {
-            position: 'relative', display: 'block',// overflow: 'auto',
-            width: real.ViewPortMin(1), height: real.ViewPortMin(1),
-            ...cssTech.vAlignChild,
-          }
-        }));
-        zoneCss.set(real.RootFullPageItem, (rootPageItem, layout, ...trail) => ({
-          main: {
-            position: 'absolute', display: 'block', overflow: 'hidden auto',
-            left: '0', right: '0', top: '0', bottom: '0'
-          }
-        }));
-        zoneCss.set(real.FillParent, (fillParent, layout, ...trail) => ({
-          main: {
-            display: 'block', position: 'absolute',
-            left: fillParent.shrinkL, right: fillParent.shrinkR,
-            top: fillParent.shrinkT, bottom: fillParent.shrinkB
-          }
-        }));
-        zoneCss.set(real.WrapChildren, (wrapChildren, layout, ...trail) => {
-          let w = layout.getW(...trail);
-          let h = layout.getH(...trail);
-          if ((!!w) !== (!!h)) throw Error('WrapChildren mixes set and unset extents');
-          return { main: {
-            ...((w && h) ? { boxSizing: 'border-box' } : {}),
-            ...(wrapChildren.padL.amt ? { paddingLeft:    wrapChildren.padL } : {}),
-            ...(wrapChildren.padR.amt ? { paddingRight:   wrapChildren.padR } : {}),
-            ...(wrapChildren.padT.amt ? { paddingTop:     wrapChildren.padT } : {}),
-            ...(wrapChildren.padB.amt ? { paddingBottom:  wrapChildren.padB } : {})
-          }};
-        });
-        zoneCss.set(real.ShowText, (showText, layout, ...trail) => {
-          let w = layout.getW(...trail);
-          let h = layout.getH(...trail);
-          let absH = h && h.isAbsolute();
-          
-          let alignCss = null;
-          if (showText.interactive) {
-            if (showText.origin[1] !== 't' && showText.multiLine) throw Error('Tricky to vertically align textarea text anywhere but top');
-            alignCss = {
-              textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
-            };
-          } else {
-            if (showText.origin[1] === 'c' && (!h || h.isAbsolute())) {
-              // Vertically centered with absolute height: use line-height
-              // if a height is required; otherwise leave line-height
-              // unspecified (and container height will conform to text)
-              alignCss = {
-                textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]],
-                ...(h ? { lineHeight: h } : {})
-              };
-            } else if (showText.origin[1] === 'c' && !h.isAbsolute()) {
-              // Vertically centered with relative height: use flexbox
-              alignCss = {
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[showText.origin[0]]
-              };
-            } else if (showText.origin[1] === 't') {
-              // Vertically at the top: this happens by default!
-              alignCss = {
-                textAlign: ({ l: 'left', r: 'right', c: 'center' })[showText.origin[0]]
-              };
-            } else if (showText.origin[1] === 'b') {
-              // Vertically at the bottom: this also needs flexbox
-              alignCss = {
-                display: 'flex', flexDirection: 'row',
-                alignItems: 'flex-end',
-                justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[showText.origin[0]]
-              };
-            }
-          }
-          
-          // Note that if height for vertical centering is `null` there's
-          // no need to apply a line-height: the element's height will
-          // conform to the text, making it centered by default.
-          if ((!!w) !== (!!h)) throw Error('ShowText mixes set and unset extents');
-          
-          let zoneCss = {};
-          zoneCss.main = {
-            ...((w && h) ? { boxSizing: 'border-box' } : {}),
-            ...alignCss,
-            ...(showText.padL.amt ? { paddingLeft: showText.padL } : {}),
-            ...(showText.padR.amt ? { paddingRight: showText.padR } : {}),
-            ...(showText.padT.amt ? { paddingTop: showText.padT } : {}),
-            ...(showText.padB.amt ? { paddingBottom: showText.padB } : {}),
-            whiteSpace: showText.multiLine ? 'pre-wrap' : 'pre',
-            ...(showText.embossed ? { pointerEvents: 'auto' } : {}),
-            textOverflow: 'ellipsis'
-          };
-          
-          if (!showText.interactive) zoneCss.before = {
-            // We want '\200B' to appear in css
-            content: `'\\200B'`
-          };
-          
-          return zoneCss;
-        });
-        zoneCss.set(real.Art, (art, layout, ...trail) => {
-          return { main: {
-            display: 'block', position: 'absolute',
-            pointerEvents: 'all',
-            backgroundColor: 'rgba(0, 0, 0, 0.1)',
-            left: '0', right: '0', width: '100%', height: '100%'
-          }};
-        });
-        zoneCss.set(real.AxisSectionItem, (axisSectionItem, layout, parLayout, ...parTrail) => {
-          
-          let { cuts, axis, dir } = axisSectionItem.par;
-          let index = axisSectionItem.index;
-          
-          let h = axis === 'x'; // "horizontal"
-          let f = dir === '+';  // "forwards"
-          
-          let parW = parLayout.getW(...parTrail) || UnitPc(1); // TODO: Potentially don't need to calculate (based on "axis", and if it's the final index)
-          let parH = parLayout.getH(...parTrail) || UnitPc(1);
-          
-          let off = CalcAdd(...cuts.slice(0, index));
-          let ext = (index === cuts.length)
-            // For the final index, subtract all cuts from the parent's full extent along "axis"
-            ? CalcAdd(h ? parW : parH, ...cuts.map(u => u.mult(-1)))
-            // For other indexes, the size of the indexed cut is the extent of the AxisSectionItem
-            : cuts[index];
-          
-          let main = { position: 'absolute' };
-          if (h) main.gain({ top: UnitPx(0),  height: parH, [f ? 'left' : 'right'] : off, width: ext });
-          else   main.gain({ left: UnitPx(0), width:  parW, [f ? 'top' : 'bottom'] : off, height: ext });
-          
-          return { main };
-          
-        });
-        zoneCss.set(real.LinearSlots, (linearSlots, layout, ...trail) => {
-          return  (linearSlots.axis === 'x')
-            // X-axis alignment needs the vertical-align technique
-            ? { main: { overflow: 'auto hidden', ...cssTech.vAlignPar, textAlign: (linearSlots.dir === '+') ? 'left' : 'right' }, before: cssTech.vAlignBefore }
-            // Y-axis alignment is easy
-            : { main: { overflow: 'hidden auto' } };
-        });
-        zoneCss.set(real.LinearItem, (linearItem, layout, ...trail) => ({
-          // X-axis needs child vertical-alignment; Y-axis must not be absolute
-          main: (linearItem.par.axis === 'x') ? cssTech.vAlignChild : { position: 'relative' }
-        }));
-        zoneCss.set(real.CenteredSlot, (centeredSlot, layout, ...trail) => ({
-          main: { ...cssTech.vAlignPar, textAlign: 'center' },
-          before: cssTech.vAlignBefore
-        }));
-        zoneCss.set(real.CenteredItem, (centeredItem, layout, ...trail) => ({
-          main: cssTech.vAlignChild
-        }));
-        zoneCss.set(real.TextFlowSlots, (textFlowSlots, layout, ...trail) => ({
-          // TODO: Include `textFlowSlots.origin`, and apply origin here?
-          main: { whiteSpace: 'pre', overflow: 'hidden auto', textAlign: 'left' }
-        }));
-        zoneCss.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => ({
-          main: {
-            display: 'inline',
-            whiteSpace: 'pre-wrap',
-            ...(textFlowItem.par.gap.amt ? { marginRight: textFlowItem.par.gap } : {}),
-            ...(textFlowItem.par.lineHeight ? { lineHeight: textFlowItem.par.lineHeight } : {})
-          }
-        }));
-        /// =ABOVE}
-        
-        domElemFunc.set(real.ShowText, (showText, layout, ...trail) => {
-          if (!showText.interactive) return () => document.createElement('div');
-          return showText.multiLine
-            ? () => {
-                let dom = document.createElement('textarea');
-                dom.setAttribute('disabled', '');
-                return dom;
-              }
-            : () => {
-                let dom = document.createElement('input');
-                dom.setAttribute('type', 'text');
-                dom.setAttribute('disabled', '');
-                return dom;
-              }
-        });
-        domElemFunc.set(real.Art, (art, layout, ...trail) => {
-          return () => {
-            let g = document.createElement('canvas');
-            g.setAttribute('tabIndex', '0');
-            g.width = 500;
-            g.height = 500;
-            return g;
-          }
-        });
-        
-        runTimeUixFunc.set(real.ShowText, (showText, layout, ...trail) => {
-          
-          if (showText.interactive) {
-            return real => {
-              if (real.tellWob) throw Error(`Conflicting runTimeUix "tellWob" on ${real.layout.name}`);
-              if (real.setText) throw Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
-              let dom = real.realized;
-              let tellWob = U.WobVal('');
-              real.tellWob = () => (dom.removeAttribute('disabled'), tellWob);
-              real.setText = text => {
-                if (!U.isType(text, String)) throw Error('Non-string "text" param');
-                if (dom.value !== text) tellWob.wobble(dom.value = text);
-              };
-              dom.addEventListener('input', () => tellWob.wobble(dom.value));
-            };
-          } else {
-            return real => {
-              if (real.setText) throw Error(`Conflicting runTimeUix "setText" on ${real.layout.name}`);
-              real.setText = text => real.realized.textContent = text;
-            };
-          };
-          
-        });
-        runTimeUixFunc.set(real.TextFlowItem, (textFlowItem, layout, ...trail) => {
-          return real => {
-            real.setText = text => real.realized.textContent = text;
-          };
-        });
-        runTimeUixFunc.set(real.Art, (art, layout, ...trail) => {
-          return real => {
-            let canvasDom = real.realized;
-            let ctx = canvasDom.getContext('2d');
-            let pathFns = {
-              jump: (x, y) => ct.moveTo(x, y),
-              draw: (x, y) => ct.lineTo(x, y),
-              curve: (x1, x2, cx1, cy1, cx2, cy2) => ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, x2),
-              arc: (x1, y1, x2, y2, x3, y3, ccw=true) => {
-                let dx = (x2 - x1);
-                let dy = (y2 - y1);
-                let r = Math.sqrt(dx * dx + dy * dy);
-                let ang1 = Math.atan2(y1 - y2, x1 - x2);
-                let ang2 = Math.atan2(y3 - y2, x3 - x2);
-                ctx.arc(x2, y2, r, ang1, ang2, ccw);
-              }
-            };
-            
-            real.draw = {
-              getDims: () => ({
-                w: canvasDom.width, h: canvasDom.height,
-                hw: canvasDom.width >> 1, hh: canvasDom.height >> 1
-              }),
-              frame: f => { ctx.save(); f(); ctx.restore(); },
-              rot: ang => ctx.rotate(ang),
-              trn: (x, y) => ctx.translate(x, y),
-              scl: (x, y=x) => ctx.scale(x, y),
-              rect: (x, y, w, h, style) => {
-                for (let k in style) ctx[k] = style[k];
-                if (style.fillStyle) ctx.fillRect(x, y, w, h);
-                if (style.strokeStyle) ctx.strokeRect(x, y, w, h);
-              },
-              circ: (x, y, r, style) => {
-                ctx.beginPath();
-                ctx.arc(x, y, r, Math.PI * 2, 0);
-                for (let k in style) ctx[k] = style[k];
-                if (style.fillStyle) ctx.fill();
-                if (style.strokeStyle) ctx.stroke();
-              },
-              path: (style, f) => {
-                let jump = (x, y) => ctx.moveTo(x, y);
-                let draw = (x, y) => ctx.lineTo(x, y);
-                ctx.beginPath(); f(pathFns); ctx.closePath();
-                for (let k in style) ctx[k] = style[k];
-                if (style.fillStyle) ctx.fill();
-                if (style.strokeStyle) ctx.stroke();
-              }
-            };
-            
-            let keys = Set();
-            real.keys = {
-              nozz: Nozz()
-            };
-            
-            canvasDom.addEventListener('keydown', evt => {
-              if (keys.has(evt.keyCode)) return;
-              keys.add(evt.keyCode);
-              real.keys.nozz.drip(keys);
-            });
-            canvasDom.addEventListener('keyup', evt => {
-              if (!keys.has(evt.keyCode)) return;
-              keys.rem(evt.keyCode);
-              real.keys.nozz.drip(keys);
-            });
-            
-            real.addedFn = () => canvasDom.focus();
-          };
-        });
-        
-        let cssAspects = { zoneCss, domElemFunc, runTimeUixFunc };
-        return (type, layoutCmp, layout, trail) => {
-          if (!cssAspects.has(type)) throw Error('Invalid type');
-          let Cls = layoutCmp.constructor;
-          let aspects = cssAspects[type];
-          if (!aspects.has(Cls)) return null;
-          return aspects.get(Cls)(layoutCmp, layout, ...trail);
-        };
-        
-      })();
-      
-      let Reality = U.inspire({ name: 'Reality', insps: real.slice('Reality'), methods: (insp, Insp) => ({
-        /// {ABOVE=
-        
-        // Only Above needs to know how to generate css markup
-        decalsToZoneCss: function(decals) {
-          
-          if (!decals) return {};
-          
-          let mapping = {
-            
-            // String values indicate direct mapping. Objects result in
-            // multiple css values for the single Real decal. Function
-            // values will be called to produce either Strings or Objects.
-            
-            colour: 'backgroundColor',
-            textSize: 'fontSize',
-            textColour: 'color',
-            textFont: 'fontFamily',
-            contentMode: type => ({ overflow: ({ window: 'hidden', free: 'visible' })[type] }),
-            roundness: amt => {
-              if (amt === 0) return {};
-              return { overflow: 'hidden', borderRadius: `${tinyRound(amt * 100)}%` };
-            },
-            text: v => { return { /* tricky! need to set javascript on the element */ }; },
-            border: ({ type='in', ext, colour }) => {
-              return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${getUnitCss(ext)} ${colour}` }
-            }
-          };
-          
-          let zoneDecals = { main: decals };
-          if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
-          if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
-          if (decals.has('disabled')) { zoneDecals.disabled = decals.disabled; delete decals.disabled; }
-          
-          // Zones are the same between css and Decals... for now
-          let zoneCss = zoneDecals.map((decals, zone) => {
-            
-            let css = {};
-            decals.forEach((decVal, decKey) => {
-              
-              if (!mapping.has(decKey)) throw Error(`Invalid decal name: "${decKey}"`);
-              let m = mapping[decKey];
-              
-              if (U.isType(m, Function)) m = m(decVal); // Resolve Function if necessary
-              if (U.isType(m, String)) m = { [m]: decVal }; // Resolve String if necessary
-              m.forEach((cssVal, cssKey) => {
-                if (css.has(cssKey)) throw Error(`Calculated conflicting css "${cssKey}" properties (from "${decVal}" Decal)`);
-                css[cssKey] = cssVal;
-              });
-              
-            });
-            return css;
-            
-          });
-          
-          return zoneCss;
-          
-        },
-        mergeZoneCss: function(cur, add) {
-          
-          // Zone is "main", "before", "after", "focus", "hover", etc.
-          add.forEach((css, zone) => {
-            
-            if (css.isEmpty()) return; // Don't merge empty zones
-            if (!cur.has(zone)) cur[zone] = {};
-            
-            css.forEach((cssVal, cssKey) => {
-              
-              if (cur[zone].has(cssKey)) {
-                
-                // We're trying to apply a property that already exists!
-                // Check if properties match, precisely - if they don't
-                // it means there's a conflict!
-                
-                let cssVal0 = cur[zone][cssKey];
-                if (!real.unitsEq(cssVal, cssVal0)) throw Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
-                
-              }
-              
-              cur[zone][cssKey] = cssVal; // Allow numeric shorthand
-              
-            });
-            
-          });
-          
-        },
-        genCss: function() {
-          
-          // Generates everything needed to govern the UIX of Below. This
-          // includes stylesheet text, to govern static display rules, and
-          // javascript controls on an element-by-element basis, to govern
-          // any dynamic uix features.
-          
-          let cssRules = []; // [ { chain, zoneCss } ... ];
-          this.iterateLayouts((layout, trail) => {
-            
-            let nameChain = [ layout.name, ...trail.map(l => l.name) ].invert();
-            
-            try {
-              
-              let layoutCmps = this.getLayoutCmps(layout, ...trail);
-              let decals = layout.cmps.decals;
-              
-              // Merge ZoneCss for all LayoutCmps
-              let zoneCss = { main: {} };
-              for (let layoutCmp of layoutCmps) {
-                let zoneCssForLayoutCmp = getCssAspect('zoneCss', layoutCmp, layout, trail);
-                if (zoneCssForLayoutCmp) this.mergeZoneCss(zoneCss, zoneCssForLayoutCmp);
-              }
-              
-              // Merge in Decal ZoneCss
-              if (decals) this.mergeZoneCss(zoneCss, this.decalsToZoneCss(decals));
-              
-              // Note only the "main" zone may be empty by this point
-              if (zoneCss.main.isEmpty()) delete zoneCss.main;
-              
-              // TODO: Necessary??
-              zoneCss.forEach((css, zone) => {
-                if (css.isEmpty()) { delete zoneCss[zone]; return; }
-              });
-              
-              // The overall purpose here is to populate `cssRules`
-              if (!zoneCss.isEmpty()) cssRules.push({ nameChain, zoneCss });
-            
-            } catch(err) {
-              err.message = `Failed css for [${nameChain.join('.')}]: ${err.message}`;
-              throw err;
-            }
-            
-          });
-          
-          cssRules = [
-            { selector: 'html, body', zoneCss: {
-              main: {
-                position: 'absolute',
-                left: '0', top: '0', width: '100%', height: '100%',
-                margin: '0', padding: '0',
-                fontFamily: 'monospace',
-                overflow: 'hidden',
-                pointerEvents: 'none'
-              }
-            }},
-            { selector: 'body', zoneCss: { main: { opacity: '0', transition: 'opacity 600ms linear' } }},
-            { selector: 'body.loaded', zoneCss: { main: { opacity: '1' } }},
-            { selector: ':focus', zoneCss: {
-              main: {
-                boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'
-              }
-            }},
-            { selector: 'textarea, input', zoneCss: {
-              main: {
-                border: 'none',
-                outline: 'none',
-                fontFamily: 'inherit',
-                boxShadow: 'inset 0 0 0 2px rgba(0, 0, 0, 0.5)'
-              }
-            }},
-            { selector: 'textarea', zoneCss: {
-              main: {
-                resize: 'none'
-              }
-            }},
-            ...cssRules
-          ];
-          
-          let cmpCssText = cssRules.map(cssRule => {
-            
-            if (U.isType(cssRule, String)) return cssRule;
-            
-            let { nameChain=null, selector=null, zoneCss } = cssRule;
-            
-            if (selector === null) selector = [ ...nameChain.map(v => `.${v}`) ].join(' > ');
-            
-            return zoneCss.toArr((css, zone) => {
-              
-              let zoneSelector = selector;
-              
-              if (zone === 'main') { // Main css - do nothing!
-              } else if ([ 'focus', 'hover', 'disabled' ].has(zone)) {  // Pseudo-selector
-                zoneSelector = `${selector}:${zone}`;
-              } else if ([ 'before', 'after' ].has(zone)) { // Pseudo-element
-                zoneSelector = `${selector}::${zone}`;
-              } else {
-                throw Error(`Unexpected css zone: ${zone}`);
-              }
-              
-              return [
-                `${zoneSelector} {`,
-                ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};` : C.skip),
-                '}'
-              ].join('\n'); // Join together all lines of a CssBlock
-              
-            }).join('\n');  // Join together all Zones of a ZonedCssBlock
-            
-          }).join('\n');  // Join together all ZonedCssBlocks of a CssStyleSheet
-          
-          return cmpCssText;
-          
-        },
-        prepareAboveHut: async function(parHut) {
-          
-          let styleSaved = await foundation.getSavedFromData([ 'realWebAppMainStyles.css' ], this.genCss());
-          let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
-          
-          parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
-            
-            // NOTE: Need to reset and gen initial Tell before *any* async
-            // behaviour - otherwise a Tell may occur between the start of
-            // this function and the point where `hut.resetSyncState` is
-            // finally called. This intermediate Tell could have version 0
-            // and this would conflict with the initial sync included in
-            // the html <script>, which *always* has version set to 0
-            
-            // NOTE: Tells may be requested during async portions here but
-            // these will have the correct version. It is upon the client
-            // to ensure that they don't process these intermediate tells
-            // (which would have non-zero version) before receiving the
-            // initial html. It's unlikely that clients would ever even do
-            // this, as it would require them to have initiated Conns
-            // (banked http polls, connected sokts, etc.) *before* running
-            // the js embedded in the html
-            
-            srcHut.resetSyncState(); // The AfarHut starts from scratch
-            let initSyncTell = srcHut.consumePendingSync();
-            
-            let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
-            let urlFn = p => {
-              return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
-            };
-            
-            let doc = XmlElement(null, 'root');
-            
-            let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-            doctype.setProp('html');
-            
-            let html = doc.add(XmlElement('html', 'container'));
-            
-            let head = html.add(XmlElement('head', 'container'));
-            let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
-            
-            let favicon = head.add(XmlElement('link', 'singleton'));
-            favicon.setProp('rel', 'shortcut icon');
-            favicon.setProp('type', 'image/x-icon');
-            favicon.setProp('href', urlFn({ command: 'realWebAppGetFavicon' }));
-            
-            let css = head.add(XmlElement('link', 'singleton'));
-            css.setProp('rel', 'stylesheet');
-            css.setProp('type', 'text/css');
-            css.setProp('href', urlFn({ command: 'realWebAppGetStylesheet' }));
-            
-            // Make a `global` value available to browsers
-            let setupScript = head.add(XmlElement('script', 'text'));
-            setupScript.setProp('type', 'text/javascript');
-            setupScript.setText('window.global = window;');
-            
-            let mainScript = head.add(XmlElement('script', 'text'));
-            
-            // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
-            // TODO: Could memoize the static portion of the script
-            let roomNames = foundation.getOrderedRoomNames();
-            let files = {
-              clearing: [ 'setup', 'clearing' ],
-              foundation: [ 'setup', 'foundation' ],
-              foundationBrowser: [ 'setup', 'foundationBrowser' ],
-              ...roomNames.toObj(rn => [ rn, [ 'room', rn, 'below' ] ]) // Note that "below" might need to be "between" in some cases
-            };
-            
-            // "scriptOffset" is count of html lines preceeding javascript
-            let debugLineData = { scriptOffset: 8,  rooms: {} };
-            let fileSourceData = await Promise.allObj(files.map(v => foundation.getJsSource(...v)));
-            let scriptTextItems = [];
-            let totalLineCount = 0;
-            fileSourceData.forEach(({ content, offsets, cmpNumLines }, roomName) => {
-              scriptTextItems.push(`// ==== File: ${roomName} (line count: ${cmpNumLines})`); totalLineCount += 1;
-              debugLineData.rooms[roomName] = { offsetWithinScript: totalLineCount, offsets };
-              scriptTextItems.push(content); totalLineCount += cmpNumLines;
-              scriptTextItems.push(''); totalLineCount += 1;
-            });
-            
-            let raiseArgs = [];
-            raiseArgs.push(`settle: '${foundation.hut}.below'`);
-            if (foundation.raiseArgs.has('hutHosting')) raiseArgs.push(`hutHosting: '${foundation.raiseArgs.hutHosting}'`);
-            if (foundation.raiseArgs.has('ssl')) raiseArgs.push(`ssl: '${foundation.raiseArgs.ssl}'`);
-            
-            let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
-              '// ==== File: hut.js (line count: 8)',
-              `U.hutId = '${srcHut.uid}';`,
-              `U.aboveMsAtResponseTime = ${foundation.getMs()};`,
-              `U.initData = ${JSON.stringify(initSyncTell)};`,
-              `U.debugLineData = ${JSON.stringify(debugLineData)};`,
-              'let { FoundationBrowser } = U.setup;',
-              `let foundation = FoundationBrowser();`,
-              `foundation.raise({ ${raiseArgs.join(', ')} });`
-            ].join('\n');
-            
-            mainScript.setProp('type', 'text/javascript');
-            mainScript.setText(scriptContent);
-            
-            let mainStyle = head.add(XmlElement('style', 'text'));
-            mainStyle.setProp('type', 'text/css');
-            mainStyle.setText('html { background-color: #eaeaf2; }');
-            
-            let body = html.add(XmlElement('body', 'container'));
-            
-            reply(doc.toString());
-            
-          });
-          parHut.roadNozz('realWebAppGetFavicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
-          parHut.roadNozz('realWebAppGetStylesheet').route(({ reply }) => U.safe(() => reply(styleSaved), reply));
-          parHut.roadNozz('realWebAppGetQuadTest').route(({ reply }) => reply([
-            '<!DOCTYPE html>',
-            '<html>',
-            '  <head>',
-            '    <title>Quad Test</title>',
-            '  </head>',
-            '  <body>',
-            ...[ 'jim', 'bob', 'sal', 'fae' ].map(n => `    <iframe id="${n}Frame" width="400" height="400" src="?spoof=${n}"></iframe>`),
-            '  </body>',
-            '</html>'
-          ].join('\n')));
-        },
-        
-        /// =ABOVE}
-        
-        getRealCls: function() { return DomReal; },
-        initReal0: function(real, layout, trail) {
-          // Create dom element and add class for `layout.name`
-          let cmps = this.getLayoutCmps(layout, ...trail);
-          
-          let makeDomElems = cmps.map(cmp => getCssAspect('domElemFunc', cmp, layout, trail) || C.skip);
-          if (makeDomElems.length > 1) throw Error('Conflicting domElemFuncs');
-          
-          let domElem = makeDomElems.length ? makeDomElems[0]() : document.createElement('div');
-          domElem.classList.add(layout.name);
-          
-          // Link real to dom
-          real.realized = domElem;
-          
-          // Apply runtime uix
-          for (let cmp of cmps) {
-            let rtuc = getCssAspect('runTimeUixFunc', cmp, layout, trail);
-            if (rtuc) rtuc(real);
-          }
-          
-          // Now `real` should be ready!
-          return real;
-        },
-        addChildReal: function(parReal, childReal) {
-          parReal.realized.appendChild(childReal.realized);
-          if (childReal.addedFn) childReal.addedFn();
-        },
-        remChildReal: function(childReal) {
-          let dom = childReal.realized;
-          updStyle(dom, 'pointerEvents', 'none');
-          let { death: { ms, fn } } = childReal.dyn || { death: { ms: 0, fn: null } };
-          if (ms > 0) {
-            if (fn) fn(childReal, ms);
-            setTimeout(() => dom.parentNode.removeChild(dom), ms);
-          } else {
-            dom.parentNode.removeChild(dom);
-          }
-        },
-        initFeel: function(real) {
-          let dom = real.realized;
-          
-          let mouseDnFn = evt => {
-            customEvent(evt);
-            
-            let drop = real.sense.feel.feelDrop = Drop();
-            real.sense.feel.drip(drop);
-            
-            let mouseUpFn = evt => {
-              customEvent(evt);
-              dom.removeEventListener('mouseup', mouseUpFn, true);
-              drop.dry();
-            };
-            dom.addEventListener('mouseup', mouseUpFn, true);
-          };
-          dom.addEventListener('mousedown', mouseDnFn, true);
-          
-          // TODO: If bringing back in key-activation of feelable Reals,
-          // make sure that the same Real can't be felt simultaneously
-          // with mouse and keyboard!
-          
-          // TODO: Do we need to concern ourselves with drying the Feel
-          // Drop if the Real dries mid-feel? Or is it the responsibility
-          // of the user to design code that clears up Feel routes when
-          // the Real being felt dries up??
-          
-          dom.setAttribute('tabIndex', '0');
-          updStyle(dom, 'pointerEvents', 'auto');
-          updStyle(dom, 'cursor', 'pointer');
-        }
-      })});
-      let DomReal = U.inspire({ name: 'DomReal', insps: real.slice('Real'), methods: (insp, Insp) => ({
-        init: function(...args) {
-          insp.Real.init.call(this, ...args);
-          this.dyn = null;
-        },
-        
-        initDynamic: function() {
-          if (!this.dyn) {
-            this.dyn = {
-              size: null,
-              loc: null,
-              death: { ms: 0, fn: null },
-              transition: Map(),
-              transform: { scale: null, rotate: null }
-            };
-          }
-          return this.dyn;
-        },
-        
-        setTransition: function(props, ms, type='steady', delay=0) {
-          let { transition } = this.initDynamic();
-          if (!ms) return props.forEach(p => transition.rem(p));
-          props.forEach(p => transition.set(p, [ ms, type, delay ]));
-          this.updateTransition();
-        },
-        setDeathTransition: function(ms, fn) { this.initDynamic; this.dyn.death = { ms, fn }; },
-        setSize: function(w, h) { this.initDynamic(); this.dyn.size = [ w, h ]; this.updateLayout(); },
-        setLoc: function(x, y) { this.initDynamic(); this.dyn.loc = [ x, y ]; this.updateLayout(); },
-        setLayout: function(w, h, x, y) { this.initDynamic(); this.dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(); },
-        setImage: function(file) {
-          if (file) {
-            updStyle(this.realized, 'backgroundImage', `url('${file.getUrl()}')`) ;
-            updStyle(this.realized, 'backgroundSize', 'contain'); 
-          } else {
-            updStyle(this.realized, 'backgroundImage', null);
-            updStyle(this.realized, 'backgroundSize', null);
-          }
-        },
-        setRoundness: function(amt) {
-          updStyle(this.realized, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
-        },
-        setBorder: function(ext, colour) {
-          updStyle(this.realized, 'boxShadow', ext.amt ? `inset 0 0 0 ${getUnitCss(ext)} ${colour}` : null);
-        },
-        setColour: function(colour=null) {
-          updStyle(this.realized, 'backgroundColor', colour);
-        },
-        setOpacity: function(amt) { updStyle(this.realized, 'opacity', amt.toString()); },
-        setScale: function(w, h=w) { this.initDynamic(); this.dyn.transform.scale = { w, h }; this.updateTransform(); },
-        setRotate: function(amt) { this.initDynamic(); this.dyn.transform.rotate = amt; this.updateTransform(); },
-        
-        updateLayout: function() {
-          let dom = this.realized;
-          let { size, loc } = this.dyn;
-          
-          updStyle(dom, 'position', 'absolute');
-          updStyle(dom, 'width', size && size[0] && getUnitCss(size[0]));
-          updStyle(dom, 'height', size && size[1] && getUnitCss(size[1]));
-          
-          if (loc) {
-            let w=null, h=null;
-            if (size) {
-              [ w, h ] = size;
-            } else {
-              let { width, height } = dom.getBoundingClientRect();
-              w = UnitPx(width); h = UnitPx(height);
-            }
-            
-            updStyle(dom, 'left', getUnitCss(CalcAdd(loc[0] || UnitPx(0), w.mult(-0.5))));
-            updStyle(dom, 'top', getUnitCss(CalcAdd(loc[1] || UnitPx(0), h.mult(-0.5))));
-          } else {
-            [ 'left', 'top' ].forEach(p => updStyle(dom, p, null));
-          }
-        },
-        updateTransform: function() {
-          let { transform } = this.dyn;
-          
-          let items = [];
-          let { w, h } = transform.scale || { w: 1, h: 1 };
-          if (w !== 1 || h !== 1) items.push(`scale(${tinyRound(w)}, ${tinyRound(h)})`)
-          
-          let rot = transform.rotate || 0;
-          if (rot) items.push(`rotate(${tinyRound(rot * 360)}deg)`);
-          
-          updStyle(this.realized, 'transform', items.length ? items.join(' ') : null);
-        },
-        updateTransition: function() {
-          let dom = this.realized;
-          let { transition } = this.dyn;
-          if (transition.isEmpty()) return updStyle(dom, 'transition', null);
-          
-          let mapTrnProps = {
-            x: 'left', y: 'top', w: 'width', h: 'size',
-            opacity: 'opacity',
-            rotate: 'transform',
-            scale: 'transform'
-          };
-          let mapTrnTypes = { smooth: 'ease-in-out', steady: 'linear' };
-          updStyle(dom, 'transition', transition.toArr(([ ms, type, delay ], p) => {
-            return `${mapTrnProps[p]} ${ms}ms ${mapTrnTypes[type]} ${delay}ms`;
-          }).join(', '));
-          
-        }
-        
-      })});
-      
-      return { Reality };
-      
-    }
     
   }
 });

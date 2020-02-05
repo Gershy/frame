@@ -3,6 +3,30 @@
 // finally build the hut being run.
 // Server-side huts perform compilation, as part of the foundation.
 
+// "DesignerMode": view the site in admin mode (or whatever) with an
+// additional console that allows for selecting any element and
+// modifying decals (or maybe even extents, in some cases?) - changes
+// save directly to the Hut.
+
+// TrustedHutConsumers should be able to add their tests to some central
+// test suite. Tests which pass once should always be expected to pass.
+
+// ParadigmOptions could determine how various features are implemented
+// behind the scenes. For example, an animation: should it be rendered
+// with css+html (@keyframes), or as a gif? That would be a single
+// ParadigmOption. Others could involve storing data in an Object vs an
+// Array - which is faster? For gzip, which compression level is best?
+// Eventually we have a fixed vector of ParadigmOptions (or maybe it's
+// trickier, since certain POs could produce a variable number of
+// sub-POs?). If we had a way to measure the overall "cost" of an app,
+// AI could optimize values for all POs.
+
+// To save on precision-insensitive geometry updates from Below, could
+// slow the rate of updates from the server and have the client side
+// extrapolate finer-grained time-steps based on sampling the low-res
+// location data, and guessing velocity, acceleration, etc. More CPU
+// work for the client, much less network pressure on the server!
+
 // Keep-Alive headers
 // NODE_ENV should be production?
 

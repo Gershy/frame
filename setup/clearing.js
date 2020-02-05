@@ -170,10 +170,6 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
-//let ErrorOrig = Error;
-//Error = global.Error = function Error(...args) { return new ErrorOrig(...args); };
-//Error.prototype = ErrorOrig.prototype;
-//Error.captureStackTrace = ErrorOrig.captureStackTrace;
 protoDef(Error, 'update', function(msg) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 let U = global.U = {
@@ -198,6 +194,7 @@ let U = global.U = {
     return amts.join('');
   },
   safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
+  toss: v => { throw v; },
   inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
     
     let parInsps = insps;

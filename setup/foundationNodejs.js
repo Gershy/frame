@@ -412,7 +412,10 @@
       // anticipated room names...
       
       let roomFileContents = await fsGetFile([ roomDir, roomName, `${roomName}.js` ]);
-      let depStr = roomFileContents.match(/innerRooms:\s*\[([^\]]*)\]/)[1].trim();
+      let depStr = U.safe(
+        () => roomFileContents.match(/innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
+        () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
+      );
       return depStr
         ? depStr.split(',').map(v => { v = v.trim(); return v.substr(1, v.length - 2); })
         : [];

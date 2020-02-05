@@ -103,8 +103,6 @@ Hut at the very bottom runs using a single Reality.
         /// =BELOW}
       }
       
-      console.log({ options });
-      
       // Ensure good defaults
       if (!options.has('hosting')) options.hosting = { host, ports, sslArgs };
       if (!options.hosting.has('host')) options.hosting.host = host;
@@ -116,10 +114,8 @@ Hut at the very bottom runs using a single Reality.
       if (!options.protocols.has('http')) options.protocols.http = true;
       if (!options.protocols.has('sokt')) options.protocols.sokt = true;
       
-      console.log({ options });
-      
       let { heartMs=1000 * 30 } = options;
-      let hut = U.rooms.hinterlands.built.Hut(this, `root`, { heartMs });
+      let hut = U.rooms.hinterlands.built.Hut(this, 'root', { heartMs });
       if (options.protocols.http)
         this.makeHttpServer(hut, {
           host: options.hosting.host,

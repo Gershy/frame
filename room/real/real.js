@@ -113,28 +113,31 @@ U.buildRoom({
       // A Slotter defining a single Slot: one with both extents equal
       // to the shorter extent of the Slotter
       
-      init: function() {}
-    })});
-    let FillParentSlotter = U.inspire({ name: 'FillParentSlotter', insps: {}, methods: (insp, Insp) => ({
+      $MinExtSlot: U.inspire({ name: 'MinExtSlot', insps: {}, methods: (insp, Insp) => ({
+        init: function(slotter) { this.slotter = slotter; }
+      })}),
       
-      // A Slotter defining a single Slot: one with extents equal to the
-      // corresponding extents of the Slotter
-      
-      init: function() {}
+      init: function() {},
+      getMinExtSlot: function(...args) { return Insp.MinExtSlot(this, ...args); }
     })});
     let Art = U.inspire({ name: 'Art', insps: {}, methods: (insp, Insp) => ({
-      init: function() {}
+      init: function({ pixelDensityMult=1 }) {
+        this.pixelDensityMult = pixelDensityMult; // 1 is standard; 0.5 is low-res, 1.5 is hi-res
+      }
     })});
     let TextSized = U.inspire({ name: 'TextSized', insps: {}, methods: (insp, Insp) => ({
+      init: function({ origin='cc', size=UnitPx(18), pad=null }) {
+        this.origin = origin;
+        this.size = size;
+        this.pad = pad;
+      }
+    })});
+    let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({
       init: function() {}
     })});
     
-    let realFns = [
-      'setExt', 'setW', 'setH', 'setX', 'setY', 'setLoc', 'setRot', 'setScl'
-    ];
-    
+    let realFns = [ 'setExt', 'setW', 'setH', 'setX', 'setY', 'setLoc', 'setRot', 'setScl' ];
     let Real = U.inspire({ name: 'Real', insps: { Drop }, methods: (insp, Insp) => ({
-      
       init: function(root, name, chain=[], tech=null) {
         if (!name.match(/^[a-zA-Z0-9]*[.][a-zA-Z0-9]*$/)) throw Error(`Invalid Real name: ${name}`);
         
@@ -152,21 +155,20 @@ U.buildRoom({
         this.techNode = null;
         if (tech) this.setTech(tech);
       },
-      defineReal: function(name, { slotters=null, size=null, decals={}, tech=null }={}) {
+      defineReal: function(name, { slotters=null, layouts=[], decals={}, tech=null }={}) {
         
         // Defines a name for a new Real. This Real has a number of
         // different SlottingModes, defined as keys within `slotters`.
         // At any time the Real will insert its children using the
         // SlottingMode that is compatible for all of them. The Real
-        // also has an optional `size`, which can define its extents
-        // separate from the slot it's granted by its parent, and
+        // also has an optional set of `layouts`, which define extents
+        // separately from the slot it's granted by its parent, and
         // `decals`, which define aesthetic features.
         
         if (this.defReals.has(name)) throw Error(`Redefined Real: "${name}"`);
         
-        if (!slotters) slotters = () => FillParentSlotter();
         if (!U.isType(slotters, Object)) slotters = { main: slotters };
-        this.defReals[name] = { slotters, size, decals, tech };
+        this.defReals[name] = { name, slotters, layouts, decals, tech };
         
       },
       defineInsert: function(parName, kidName, slotters=null) {
@@ -185,7 +187,6 @@ U.buildRoom({
         if (this.defInserts.has(`key`)) throw Error(`Redefined insert "${key}"`);
         
         // TODO: Should there be a `FillParent` singleton??
-        if (!slotters) slotters = () => FillParent();
         if (!U.isType(slotters, Object)) slotters = { main: slotters };
         
         if (parName !== '*') {
@@ -241,7 +242,7 @@ U.buildRoom({
     return {
       Real,
       MinExtSlotter,
-      Art, TextSized,
+      FillParent, Art, TextSized,
       
       UnitPx, UnitPc, Calc, CalcAdd,
       
