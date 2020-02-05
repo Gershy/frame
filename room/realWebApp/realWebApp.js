@@ -230,6 +230,9 @@ U.buildRoom({
         webAppReal.tech = this;
         webAppReal.techNode = document.body;
         
+        // No mousedown on <html> element; everyone's life improves
+        document.body.parentNode.addEventListener('mousedown', customEvent);
+        
         /// =BELOW}
         
       },
@@ -327,8 +330,6 @@ U.buildRoom({
         let uixGettersByCls = Map();
         uixGettersByCls.set(Art, (real, canvasDom) => {
           
-          console.log('APPLYING......');
-          
           let ctx = canvasDom.getContext('2d');
           let pathFns = {
             jump: (x, y) => ct.moveTo(x, y),
@@ -380,7 +381,6 @@ U.buildRoom({
           
           console.log(canvasDom);
           canvasDom.addEventListener('keydown', evt => {
-            console.log('KEY DOWN');
             if (keys.has(evt.keyCode)) return;
             keys.add(evt.keyCode);
             real.keys.nozz.drip(keys);
@@ -392,8 +392,6 @@ U.buildRoom({
           });
           
           real.addedFn = () => canvasDom.focus();
-          
-          setInterval(() => canvasDom.focus(), 500);
           
         });
         uixGettersByCls.set(TextSized, (real, textDom) => {
@@ -455,12 +453,12 @@ U.buildRoom({
         zoneCssGettersByCls.set(MinExtSlotter.MinExtSlot, minExtSlot => {
           return { fixed: {} };
         });
-        /// zoneCssGettersByCls.set(Art, art => {
-        ///   return { fixed: {
-        ///     display: 'block', position: 'absolute',
-        ///     left: '0', right: '0', top: '0', bottom: '0'
-        ///   }};
-        /// });
+        zoneCssGettersByCls.set(Art, art => {
+          return {
+            fixed: { pointerEvents: 'all' },
+            focus: { boxShadow: '0 0 0 4px red' }
+          };
+        });
         zoneCssGettersByCls.set(TextSized, textSized => {
           return { fixed: {
             display: 'block', fontSize: this.getUnitCss(textSized.size)
@@ -476,16 +474,15 @@ U.buildRoom({
         let elem = this.domGetElem('main', real.chain, real.root.defInserts); // TODO: `'main'` should be CALCULATED!
         elem.classList.add(real.name.split('.').join('-'));
         
-        console.log('CHECK UI FNS FOR REAL:', real);
         let uixFns = this.domGetUixFns('main', real.chain, real.root.defInserts);
         for (let uixFn of uixFns) uixFn(real, elem);
-        console.log(uixFns);
         
         return elem;
       },
       addTechNode: function(real) {
         let { parReal } = real.chain[0];
         parReal.techNode.appendChild(real.techNode);
+        if (real.addedFn) real.addedFn();
       },
       remTechNode: function(real) {
         let { parReal } = real.chain[0];
@@ -751,7 +748,6 @@ U.buildRoom({
             cssItems.push([ `${zoneSelector} {`, ...rules.map(r => `  ${r}`), '}' ].join('\n'));
             
           }
-          
         }
         
         return cssItems.join('\n');

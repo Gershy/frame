@@ -115,7 +115,7 @@ Hut at the very bottom runs using a single Reality.
       if (!options.protocols.has('sokt')) options.protocols.sokt = true;
       
       let { heartMs=1000 * 30 } = options;
-      let hut = U.rooms.hinterlands.built.Hut(this, 'root', { heartMs });
+      let hut = U.rooms.hinterlands.built.Hut(this, '!root', { heartMs });
       if (options.protocols.http)
         this.makeHttpServer(hut, {
           host: options.hosting.host,
