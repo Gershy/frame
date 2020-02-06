@@ -126,10 +126,21 @@ U.buildRoom({
       }
     })});
     let TextSized = U.inspire({ name: 'TextSized', insps: {}, methods: (insp, Insp) => ({
-      init: function({ origin='cc', size=UnitPx(18), pad=null }) {
+      init: function(params) {
+        
+        hvParams('pad', params, this);
+        
+        let { multiLine=false, origin='cc', interactive=false, embossed=interactive, size=null } = params;
+        if (origin === 'c') origin = 'cc';
+        if (!origin.match(/^[lrc][tbc]$/)) throw Error(`Invalid "origin": ${origin}`);
+        this.multiLine = multiLine;
+        this.origin = origin;
+        this.interactive = interactive;
+        this.embossed = embossed;
+        this.size = size || UnitPx(18); // TODO: Should be able to supply integer (avoid many instances of UnitPx!)
+        
         this.origin = origin;
         this.size = size;
-        this.pad = pad;
       }
     })});
     let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({

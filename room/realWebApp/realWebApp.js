@@ -77,8 +77,6 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        console.log('CSS:', this.genCss(parHut, rootReal));
-        
         let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
         let styleSaved = await foundation.getSavedFromData([ 'realWebAppMainStyles.css' ], this.genCss(parHut, rootReal));
         
@@ -182,7 +180,7 @@ U.buildRoom({
           mainStyle.setProp('type', 'text/css');
           mainStyle.setText([
             'html, body { background-color: #ffffff; margin: 0; padding: 0; }',
-            'body { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }'
+            'body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }'
           ].join('\n'));
           
           let body = html.add(XmlElement('body', 'container'));
@@ -327,8 +325,11 @@ U.buildRoom({
         
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
+        // TODO: Why separate `domGetElem` and `domGetUixFns`? In case
+        // html is pre-existing! In that case we want only to apply the
+        // uix, and do no such dom element creation!
         let uixGettersByCls = Map();
-        uixGettersByCls.set(Art, (real, canvasDom) => {
+        uixGettersByCls.set(Art, (art, real, canvasDom) => {
           
           let ctx = canvasDom.getContext('2d');
           let pathFns = {
@@ -379,7 +380,6 @@ U.buildRoom({
           let keys = Set();
           real.keys = { nozz: Nozz() };
           
-          console.log(canvasDom);
           canvasDom.addEventListener('keydown', evt => {
             if (keys.has(evt.keyCode)) return;
             keys.add(evt.keyCode);
@@ -390,22 +390,32 @@ U.buildRoom({
             keys.rem(evt.keyCode);
             real.keys.nozz.drip(keys);
           });
+          canvasDom.addEventListener('blur', evt => {
+            if (keys.isEmpty()) return;
+            keys.clear();
+            real.keys.nozz.drip(keys);
+          });
           
           real.addedFn = () => canvasDom.focus();
           
         });
-        uixGettersByCls.set(TextSized, (real, textDom) => {
+        uixGettersByCls.set(TextSized, (textSized, real, textDom) => {
           
           // TODO: Sanitize string. Don't modify content if input string
           // and current string are the same. Provide
           // `real.getTextChangeNozz`; make sure it doesn't drip unless
           // the input string is different!
-          real.setText = str => real.textContent = str;
+          
+          if (textSized.interactive) {
+            real.setText = str => real.techNode.value = str;
+          } else {
+            real.setText = str => real.techNode.textContent = str;
+          }
           
         });
         
         let args = [ parChain.length && parChain[0].defReal, 'main', defReal, 'main' ];
-        return this.getClsMappedItems(uixGettersByCls, ...args, defInserts).map(([ lay, uixFn ]) => uixFn);
+        return this.getClsMappedItems(uixGettersByCls, ...args, defInserts).map(([ lay, uixFn ]) => uixFn.bind(null, lay));
         
       },
       domGetZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
@@ -426,12 +436,12 @@ U.buildRoom({
         // "relative" enables z-index, origin for children, etc.
         // "relative" says "flow acknowledges parent and siblings"
         // "relative" says "default W: parent W"
-        // "relative" says "default H: content H"
+        // "relative" says "default H: inner-content H"
         
         // "absolute" enables z-index, origin for children, etc.
         // "absolute" says "flow acknowledges parent *only*"
-        // "absolute" says "default W: content W"
-        // "absolute" says "default H: content H"
+        // "absolute" says "default W: inner-content W"
+        // "absolute" says "default H: inner-content H"
         
         // Imagine if an item is set "relative" simply to enable it as
         // an origin for its children, but another Layout needs
@@ -444,25 +454,107 @@ U.buildRoom({
         zoneCssGettersByCls.set(FillParent, fillParent => {
           return { fixed: {
             display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
-            left: '0', right: '0', top: '0', bottom: '0'
+            left: '0', top: '0', width: '100%', height: '100%'
           }};
         });
         zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => {
-          return { fixed: {} };
+          return {
+            fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
+            before: {
+              content: '""', position: 'relative', display: 'inline-block',
+              width: '0', height: '100%', verticalAlign: 'middle'
+            }
+          };
         });
         zoneCssGettersByCls.set(MinExtSlotter.MinExtSlot, minExtSlot => {
-          return { fixed: {} };
+          return {
+            fixed: {
+              position: 'relative', display: 'inline-block',
+              width: '100vmin', height: '100vmin', verticalAlign: 'middle'
+            }
+          };
         });
         zoneCssGettersByCls.set(Art, art => {
           return {
             fixed: { pointerEvents: 'all' },
-            focus: { boxShadow: '0 0 0 4px red' }
+            focus: { boxShadow: '0 0 0 10px rgba(255, 120, 0, 0.2)' }
           };
         });
         zoneCssGettersByCls.set(TextSized, textSized => {
-          return { fixed: {
-            display: 'block', fontSize: this.getUnitCss(textSized.size)
-          }};
+          
+          // TODO: Should calculate `w`, `h`, and `absH`!!
+          let w = null;
+          let h = null;
+          let absH = false;
+          
+          /// let w = layout.getW(...trail);
+          /// let h = layout.getH(...trail);
+          /// let absH = h && h.isAbsolute();
+          
+          let alignCss = null;
+          if (textSized.interactive) {
+            if (textSized.origin[1] !== 't' && textSized.multiLine) throw Error('Tricky to vertically align textarea text anywhere but top');
+            alignCss = {
+              textAlign: ({ l: 'left', r: 'right', c: 'center' })[textSized.origin[0]]
+            };
+          } else {
+            if (textSized.origin[1] === 'c' && (!h || h.isAbsolute())) {
+              // Vertically centered with absolute height: use line-height
+              // if a height is required; otherwise leave line-height
+              // unspecified (and container height will conform to text)
+              alignCss = {
+                textAlign: ({ l: 'left', r: 'right', c: 'center' })[textSized.origin[0]],
+                ...(h ? { lineHeight: h } : {})
+              };
+            } else if (textSized.origin[1] === 'c' && !h.isAbsolute()) {
+              // Vertically centered with relative height: use flexbox
+              alignCss = {
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[textSized.origin[0]]
+              };
+            } else if (textSized.origin[1] === 't') {
+              // Vertically at the top: this happens by default!
+              alignCss = {
+                textAlign: ({ l: 'left', r: 'right', c: 'center' })[textSized.origin[0]]
+              };
+            } else if (textSized.origin[1] === 'b') {
+              // Vertically at the bottom: this also needs flexbox
+              alignCss = {
+                display: 'flex', flexDirection: 'row',
+                alignItems: 'flex-end',
+                justifyContent: ({ l: 'flex-start', r: 'flex-end', c: 'center' })[textSized.origin[0]]
+              };
+            }
+          }
+          
+          // Note that if height for vertical centering is `null` there's
+          // no need to apply a line-height: the element's height will
+          // conform to the text, making it centered by default.
+          if ((!!w) !== (!!h)) throw Error('ShowText mixes set and unset extents');
+          
+          let zoneCss = {};
+          zoneCss.fixed = {
+            ///...((w && h) ? { boxSizing: 'border-box' } : {}),
+            ...alignCss,
+            ...(textSized.padL.amt ? { paddingLeft: textSized.padL } : {}),
+            ...(textSized.padR.amt ? { paddingRight: textSized.padR } : {}),
+            ...(textSized.padT.amt ? { paddingTop: textSized.padT } : {}),
+            ...(textSized.padB.amt ? { paddingBottom: textSized.padB } : {}),
+            whiteSpace: textSized.multiLine ? 'pre-wrap' : 'pre',
+            ...(textSized.embossed ? { pointerEvents: 'auto' } : {}),
+            textOverflow: 'ellipsis',
+            fontSize: textSized.size
+          };
+          
+          if (!textSized.interactive) zoneCss.before = {
+            // We want '\200B' to appear in css
+            content: `'\\200B'`
+          };
+          
+          return zoneCss;
+          
         });
         
         return this.getClsMappedItems(zoneCssGettersByCls, parDef, parSm, kidDef, kidSm, defInserts)
@@ -502,8 +594,6 @@ U.buildRoom({
       },
       
       /// {ABOVE=
-      
-      /*
       decalsToZoneCss: function(decals) {
         
         if (!decals) return {};
@@ -529,7 +619,7 @@ U.buildRoom({
           }
         };
         
-        let zoneDecals = { main: decals };
+        let zoneDecals = { fixed: decals };
         if (decals.has('focus')) { zoneDecals.focus = decals.focus; delete decals.focus; }
         if (decals.has('hover')) { zoneDecals.hover = decals.hover; delete decals.hover; }
         if (decals.has('disabled')) { zoneDecals.disabled = decals.disabled; delete decals.disabled; }
@@ -558,36 +648,6 @@ U.buildRoom({
         return zoneCss;
         
       },
-      mergeZoneCss: function(cur, add) {
-        
-        // Zone is "main", "before", "after", "focus", "hover", etc.
-        add.forEach((css, zone) => {
-          
-          if (css.isEmpty()) return; // Don't merge empty zones
-          if (!cur.has(zone)) cur[zone] = {};
-          
-          css.forEach((cssVal, cssKey) => {
-            
-            if (cur[zone].has(cssKey)) {
-              
-              // We're trying to apply a property that already exists!
-              // Check if properties match, precisely - if they don't
-              // it means there's a conflict!
-              
-              let cssVal0 = cur[zone][cssKey];
-              if (!real.unitsEq(cssVal, cssVal0)) throw Error(`Conflicting css props in zone "${zone}" for prop "${cssKey}"`);
-              
-            }
-            
-            cur[zone][cssKey] = cssVal; // Allow numeric shorthand
-            
-          });
-          
-        });
-        
-      },
-      */
-      
       genSingleZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
         
         // CSS: Sucky
@@ -598,7 +658,10 @@ U.buildRoom({
         let zoneCss = {};
         
         // TODO: This should be `atomicZoneCssResults`
-        let zoneCssResults = this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts);
+        let zoneCssResults = [
+          ...this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts),
+          this.decalsToZoneCss(kidDef.decals)
+        ];
         
         // TODO: Then, with `atomicZoneCssResults`:
         // let zoneCssResults = atomicZoneCssResults.map(compileAtomicZoneCss);
@@ -697,7 +760,6 @@ U.buildRoom({
             
           }}
           
-          
         }
         
         let standardZoneCss = [
@@ -707,12 +769,14 @@ U.buildRoom({
             margin: '0', padding: '0',
             fontFamily: 'monospace',
             overflow: 'hidden',
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            outline: 'none !important'
           }}},
           { selector: 'body', zones: { fixed: { opacity: '0', transition: 'opacity 600ms linear' } }},
           { selector: 'body.loaded', zones: { fixed: { opacity: '1' } }},
           { selector: ':focus', zones: { fixed: {
-            boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)'
+            boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)',
+            outline: 'none !important'
           }}},
           { selector: 'textarea, input', zones: { fixed: {
             border: 'none',
@@ -888,7 +952,6 @@ U.buildRoom({
     })});
     
     return { WebApp };
-    
     
   }
 });

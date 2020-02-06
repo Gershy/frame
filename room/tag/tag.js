@@ -26,6 +26,7 @@ U.buildRoom({
     let open = async () => {
       
       let tagHut = await foundation.getRootHut({ heartMs: 1000 * 30 });
+      tagHut.roadDbgEnabled = false;
       
       let { UnitPx, UnitPc } = real;
       let { MinExtSlotter, FillParent, Art, TextSized } = real;
@@ -33,15 +34,14 @@ U.buildRoom({
       let rootReal = await foundation.getRootReal();
       rootReal.defineReal('tag.tag', {
         slotters: {
-          main: () => MinExtSlotter()
+          main: () => MinExtSlotter({})
         },
-        decals: { colour: 'rgba(0, 0, 0, 1)' }
+        decals: { colour: '#000000' }
       });
-      rootReal.defineReal('tag.view', {
-        decals: { roundness: 1, colour: 'rgba(100, 100, 150, 1)' }
-      });
+      rootReal.defineReal('tag.view', {});
       rootReal.defineReal('tag.art', {
-        layouts: [ Art({}) ]
+        layouts: [ Art({}), FillParent({}) ],
+        decals: { roundness: 1 }
       });
       rootReal.defineReal('tag.status', {
         layouts: [ TextSized({ origin: 'cc', size: UnitPx(30), pad: UnitPx(10) }) ],
@@ -275,9 +275,12 @@ U.buildRoom({
           
           dep.scp(tag, 'tag.tagStatus', (tagStatus, dep) => {
             
+            // TODO: This is not being done correctly - a TubVal should
+            // probably keep track of when the status should display.
+            // Shouldn't manually handle it with `status` and
+            // `statusReal` variables
             let status = tagStatus.members['tag.status'];
             let statusReal = null;
-            
             dep(status.route(({ playerCount, type }) => {
               let isShowing = playerCount < playersForDasher;
               
@@ -287,6 +290,7 @@ U.buildRoom({
               if (!isShowing) return;
               
               if (type === 'waiting') {
+                console.log('SETTING TEXT...', statusReal.setText);
                 statusReal.setText(`Got ${playerCount} / ${playersForDasher} players...`);
               }
               
