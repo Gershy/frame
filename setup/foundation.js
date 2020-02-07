@@ -132,7 +132,7 @@ Hut at the very bottom runs using a single Reality.
       
       return hut;
     },
-    getRootReal: async function() { C.notImplemented.call(this); },
+    getRootReal: C.notImplemented,
     
     // Platform
     getMs: function() { return +new Date(); },

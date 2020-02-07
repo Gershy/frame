@@ -92,8 +92,8 @@
     },
     
     // High level
-    getRootHut: async function() {
-      return insp.Foundation.getRootHut.call(this);
+    getRootHut: async function(...args) {
+      return insp.Foundation.getRootHut.call(this, ...args);
     },
     getRootReal: async function() { 
       
@@ -121,6 +121,10 @@
       let numPendingReqs = 0;
       
       let tellAndHear = async (msg, road) => {
+        
+        // TODO: HEEERE - some requests are going to the url "localhost"
+        // without any query params or anything! I think it's upon
+        // heartbeat!
         
         // Do XHR
         let req = new XMLHttpRequest();
@@ -150,7 +154,6 @@
       
       let server = TubSet({ onceDry: () => tellAndHear = ()=>{} }, Nozz());
       server.desc = `HTTP @ ${host}:${port}`;
-      server.cost = 100;
       server.decorateRoad = road => {
         road.hear = Nozz();
         road.tell = msg => tellAndHear(msg, road);
@@ -180,7 +183,6 @@
       
       let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
       server.desc = `SOKT @ ${host}:${port}`;
-      server.cost = 50;
       server.decorateRoad = road => {
         road.hear = Nozz();
         road.tell = msg => sokt.send(JSON.stringify(msg));

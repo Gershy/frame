@@ -108,6 +108,7 @@ U.buildRoom({
         
         // How regularly communication needed to confirm existence
         this.heartMs = heartMs;
+        if (this.heartMs === 30000) throw Error('WHY THO');
         
         // The most current version this Hut has synced
         this.syncVersion = 0;

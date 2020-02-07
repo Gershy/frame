@@ -6,11 +6,13 @@ U.buildRoom({
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Rec, RecScope } = record;
     let { Lands } = hinterlands;
+    let { FillParent, CenteredSlotter, MinExtSlotter, LinearSlotter, TextSized } = real;
+    let { UnitPx, UnitPc } = real;
+    let { WebApp } = realWebApp;
     
     // Config values
     let moveMs = 50 * 1000;
     let matchmakeMs = ({ test: 1 * 1000, prod: 8 * 1000 })[foundation.raiseArgs.mode];
-    let heartbeatMs = 2 * 60 * 1000;
     let pieceDefs = {
       minimal: {
         white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
@@ -108,6 +110,224 @@ U.buildRoom({
     
     let open = async () => {
         
+      let c2Hut = await foundation.getRootHut({ heartMs: 1000 * 40 });
+      c2Hut.roadDbgEnabled = true;
+      
+      let rootReal = await foundation.getRootReal();
+      rootReal.layoutDef('c2', (real, insert, decals) => {
+        
+        /*
+        real('name');
+        real('name', null);
+        real('name', {});
+        real('name', { main: null });
+        real('name', { main: SlotterCls });
+        real('name', { main: SlotterCls1, secondary: SlotterCls2 });
+        real('name', { main: () => SlotterCls1({ ... }), secondary: () => SlotterCls2({ ... }) });
+        real('name', SlotterCls1);                // Default mode will be "main"
+        real('name', () => SlotterCls1({ ... })); // Default mode will be "main"
+        real('name', null, []);
+        real('name', null, [ Layout1, Layout2, ... ]);
+        real('name', SlotterCls1, [ Layout1, Layout2, ... ]);
+        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ Layout1, Layout2, ... ]);
+        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ () => Layout1({ ... }) ]);
+        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ () => Layout1({ ... }), () => Layout2({ ... }) ]);
+        
+        insert('name1 -> name2'); // SlotFns will be { main: null }
+        insert('name1 -> name2', null);
+        insert('name1 -> name2', {});
+        insert('name1 -> name2', { Layout });
+        insert('name1 -> name2', { main: Layout1, secondary: Layout2 });
+        insert('name1 -> name2', { main: () => Layout1({ ... }), secondary: Layout2 });
+        insert('name1 -> name2', { main: sl => sl.getSlotType1({ ... }), secondary: sl => sl.getSlotType2({ ... }) });
+        
+        decals('name', { colour: '#000000', textColour: '#ffffff' });
+        */
+        
+        real('root', MinExtSlotter);
+        insert('* -> root', FillParent);
+        insert('root -> main', sl => sl.getMinExtSlot());
+        
+        // Logged Out
+        real('loggedOut', CenteredSlotter);
+        real('welcomePane', () => LinearSlotter({ axis: 'y', dir: '+' }));
+        real('welcomePaneTitle', null, TextSized({ size: UnitPx(24), pad: UnitPx(10) }));
+        real('welcomePaneBody', null, TextSized({ size: UnitPx(14), pad: UnitPx(3) }));
+        insert('main -> loggedOut', () => FillParent({ shrink: UnitPc(0.2) }));
+        insert('loggedOut -> welcomePane', sl => sl.getCenteredSlot());
+        insert('welcomePane -> welcomePaneTitle', sl => sl.getLinearSlot());
+        insert('welcomePane -> welcomePaneBody', sl => sl.getLinearSlot());
+        
+        // Logged In
+        real('loggedIn', CenteredSlotter, FillParent());
+        real('lobby', null, TextSized({ size: UnitPx(12), pad: UnitPx(16) }));
+        real('game', () => LinearSlotter({ axis: 'y', dir: '+' })); // Insert [ p1, board, p2 ]
+        real('player', CenteredSlotter);
+        real('playerContent', () => LinearSlotter({ axis: 'x', dir: '+' }));
+        real('playerContentName', () => TextSized({ size: UnitPx(14), padH: UnitPx(6) }));
+        real('playerContentTimer', () => TextSized({ size: UnitPx(14) }));
+        real('conclusion', CenteredSlotter);
+        real('conclusionContent', () => TextSized({ size: UnitPx(30) }));
+        insert('main -> loggedIn', FillParent);
+        insert('loggedIn -> lobby', sl => sl.getCenteredSlot()); // TODO: Should the slotting functions each be able to return multiple layouts???
+        insert('loggedIn -> game', FillParent);
+        insert('game -> player', sl => [ sl.getLinearSlot(), FillParent({ x: 1, y: 0.1}) ]); // "player" inside "game" takes up 10% (two take up 20%)
+        insert('game -> board', sl => [ sl.getLinearSlot(), FillParent({ x: 0.8, y: 0.8 }) ]);
+        insert('player -> playerContent', sl => sl.getCenteredSlot());
+        insert('playerContent -> playerContentName', sl => sl.getLinearSlot());
+        insert('playerContent -> playerContentTimer', sl => sl.getLinearSlot());
+        insert('board -> tileWhite');
+        insert('board -> tileBlack');
+        insert('board -> piece');
+        insert('piece -> indicator');
+        insert('board -> showMovePiece');
+        insert('board -> showMoveTile');
+        insert('game -> conclusion', FillParent);
+        insert('conclusion -> conclusionContent', sl => sl.getCenteredSlot());
+        
+        // Decals
+        decals('root', { colour: 'rgba(100, 100, 150, 1)', textColour: '#ffffff' });
+        decals('loggedOut', { colour: 'rgba(120, 120, 170, 1)' });
+        decals('lobby', { colour: 'rgba(100, 100, 150, 1)' });
+        decals('game', { colour: 'rgba(100, 100, 150, 1)', contentMode: 'window' });
+        decals('board', { colour: 'transparent' });
+        decals('tileWhite', { colour: '#9a9abb', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
+        decals('tileBlack', { colour: '#8989af', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
+        decals('conclusion', { colour: 'rgba(0, 0, 0, 0.5)' });
+        
+      });
+      
+      /* // TODO: Above "layoutDef" function should have these results:
+      // Root layout
+      rootReal.defineReal('c2.c2', { slotters: MinExtSlotter, decals: {
+        colour: 'rgba(100, 100, 150, 1)'
+      }});
+      rootReal.defineReal('c2.main', {});
+      rootReal.defineInsert(null, 'c2.c2', () => FillParent());
+      rootReal.defineInsert('c2.c2', 'c2.main', slotter => slotter.getMinExtSlot());
+      
+      // Logged out
+      rootReal.defineReal('c2.loggedOut', { slotters: CenteredSlotter, decals: {
+        colour: 'rgba(120, 120, 170, 1)'
+      }});
+      rootReal.defineReal('c2.welcomePane', { slotters: () => LinearSlotter({ axis: 'y', dir: '+' }) });
+      rootReal.defineReal('c2.welcomePaneTitle', {
+        layouts: [ ShowText({ pad: UnitPx(10), size: UnitPx(24) }) ],
+        decals: { textColour: 'rgba(255, 255, 255, 1)' }
+      });
+      rootReal.defineReal('c2.welcomePaneBody', {
+        layouts: [ ShowText({ pad: UnitPx(3), size: UnitPx(14) }) ],
+        decals: { textColour: 'rgba(255, 255, 255, 1)' }
+      });
+      rootReal.defineInsert('c2.main', 'c2.loggedOut', () => FillParent({ shrink: UnitPc(0.2) }));
+      rootReal.defineInsert('c2.loggedOut', 'c2.welcomePane', slotter => slotter.getCenteredSlot());
+      rootReal.defineInsert('c2.welcomePane', 'c2.welcomePaneTitle', { slotter => slotter.getLinearSlot() });
+      rootReal.defineInsert('c2.welcomePane', 'c2.welcomePaneBody', { slotter => slotter.getLinearSlot() });
+      
+      rootReal.defineReal('c2.loggedIn', { slotters: CenteredSlot(), decals: {
+        colour: 'rgba(120, 120, 170, 1)'
+      }});*/
+      
+      /*
+      lands.realLayout = {
+        'main': {
+          slot: par => par.cmps.slots.insertViewPortItem(),
+          decals: { colour: 'rgba(100, 100, 150, 1)' }
+        },
+        'main.out': {
+          size: FillParent({ shrink: UnitPc(0.2) }),
+          decals: { colour: 'rgba(120, 120, 170, 1)' },
+          slots: CenteredSlot()
+        },
+        'main.out.content': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
+          slots: LinearSlots({ axis: 'y', dir: '+' })
+        },
+        'main.out.content.title': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ pad: UnitPx(10) }),
+          decals: { textSize: UnitPx(24), textColour: 'rgba(255, 255, 255, 1)' }
+        },
+        'main.out.content.text': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ pad: UnitPx(3) }),
+          decals: { textSize: UnitPx(12), textColour: 'rgba(255, 255, 255, 1)' }
+        },
+        'main.in': {
+          size: FillParent(),
+          decals: { colour: 'rgba(120, 120, 170, 1)' },
+          slots: CenteredSlot() // Regarding Real "Insertions" (Relations) - note that we want CenteredSlot when inserting "lobby", but FillParent when inserting "game"
+        },
+        'main.in.lobby': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
+          size: ShowText({ pad: UnitPx(15) }),
+          decals: { colour: 'rgba(100, 100, 150, 1)', textColour: 'rgba(255, 255, 255, 1)', textSize: UnitPx(12) }
+        },
+        'main.in.game': {
+          size: FillParent(),
+          decals: {
+            contentMode: 'window',
+            colour: 'rgba(100, 100, 150, 1)'
+          }
+        },
+        'main.in.game.player': {
+          slots: CenteredSlot()
+        },
+        'main.in.game.player.content': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
+          slots: LinearSlots({ axis: 'x', dir: '+' }),
+          decals: {
+            textSize: UnitPx(14),
+            textColour: 'rgba(255, 255, 255, 1)'
+          }
+        },
+        'main.in.game.player.content.name': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ padH: UnitPx(6) })
+        },
+        'main.in.game.player.content.timer': {
+          slot: par => par.cmps.slots.insertLinearItem(),
+          size: ShowText({ origin: 'cc' })
+        },
+        'main.in.game.board': { decals: { colour: 'rgba(255, 255, 255, 0)' } },
+        'main.in.game.board.tileWhite': {
+          decals: {
+            colour: 'rgba(154, 154, 187, 1)',
+            border: { ext: UnitPx(1), colour: '#c0c0d8' }
+          }
+        },
+        'main.in.game.board.tileBlack': {
+          decals: {
+            colour: 'rgba(137, 137, 175, 1)',
+            border: { ext: UnitPx(1), colour: '#c0c0d8' }
+          }
+        },
+        'main.in.game.board.piece': { decals: {} },
+        'main.in.game.board.move': { decals: {} },
+        'main.in.game.board.move.indicator': { decals: {} },
+        'main.in.game.board.showMovePiece': { decals: {} },
+        'main.in.game.board.showMoveTile': { decals: {} },
+        'main.in.game.conclusion': {
+          size: FillParent(),
+          slots: CenteredSlot(),
+          decals: {
+            colour: 'rgba(0, 0, 0, 0.5)'
+          }
+        },
+        'main.in.game.conclusion.content': {
+          slot: par => par.cmps.slots.insertCenteredItem(),
+          size: ShowText({ origin: 'cc' }),
+          decals: {
+            textSize: UnitPx(30),
+            textColour: 'rgba(255, 255, 255, 1)'
+          }
+        }
+      };
+      */
+      
+      let webApp = WebApp('c2');
+      await webApp.decorateHut(c2Hut, rootReal);
+      
       let validMoves = (matchPlayer, match, piece) => {
         
         if (piece.val.wait > 0) return [];
@@ -233,143 +453,13 @@ U.buildRoom({
         
       }
       
-      // TODO: Images should probably automatically get included by the
-      // real room - e.g. under decals, say `image: 'classicHorse'`, and
-      // then the real room will automatically mount that file and add
-      // a comWob to the lands to allow it to serve the file.
-      
-      let [ host, httpPort, soktPort ] = foundation.raiseArgs.has('hutHosting')
-        ? foundation.raiseArgs.hutHosting.split(':')
-        : [ 'localhost', '', '' ];
-      
-      let useSsl = foundation.raiseArgs.has('ssl') && !!foundation.raiseArgs.ssl;
-      let serverArgs = { keyPair: null, selfSign: null };
-      if (useSsl) {
-        /// {ABOVE=
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     foundation.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-          key:      foundation.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-          selfSign: foundation.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
-        });
-        serverArgs = { keyPair: { cert, key }, selfSign };
-        /// =ABOVE} {BELOW=
-        serverArgs = { keyPair: true, selfSign: true };
-        /// =BELOW}
-      }
-      
-      let lands = U.lands = Lands({ heartbeatMs });
-      lands.makeServers.push(pool => foundation.makeHttpServer(pool, { host, port: parseInt(httpPort, 10), ...serverArgs }));
-      lands.makeServers.push(pool => foundation.makeSoktServer(pool, { host, port: parseInt(soktPort, 10), ...serverArgs }));
-      
-      // TODO: Insertions (the "Relation" equivalent for Reals) should
-      // exist explicitly
-      let { UnitPx, UnitPc } = real;
-      let { FillParent, WrapChildren, ShowText } = real;
-      let { AxisSections, LinearSlots, CenteredSlot, TextFlowSlots } = real;
-      lands.realLayout = {
-        'main': {
-          slot: par => par.cmps.slots.insertViewPortItem(),
-          decals: { colour: 'rgba(100, 100, 150, 1)' }
-        },
-        'main.out': {
-          size: FillParent({ shrink: UnitPc(0.2) }),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot()
-        },
-        'main.out.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'y', dir: '+' })
-        },
-        'main.out.content.title': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(10) }),
-          decals: { textSize: UnitPx(24), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.out.content.text': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(3) }),
-          decals: { textSize: UnitPx(12), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.in': {
-          size: FillParent(),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot() // Regarding Real "Insertions" (Relations) - note that we want CenteredSlot when inserting "lobby", but FillParent when inserting "game"
-        },
-        'main.in.lobby': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ origin: 'cc', pad: UnitPx(15) }),
-          decals: { colour: 'rgba(100, 100, 150, 1)', textColour: 'rgba(255, 255, 255, 1)', textSize: UnitPx(12) }
-        },
-        'main.in.game': {
-          size: FillParent(),
-          decals: {
-            contentMode: 'window',
-            colour: 'rgba(100, 100, 150, 1)'
-          }
-        },
-        'main.in.game.player': {
-          slots: CenteredSlot()
-        },
-        'main.in.game.player.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'x', dir: '+' }),
-          decals: {
-            textSize: UnitPx(14),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        },
-        'main.in.game.player.content.name': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc', padH: UnitPx(6) })
-        },
-        'main.in.game.player.content.timer': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc' })
-        },
-        'main.in.game.board': { decals: { colour: 'rgba(255, 255, 255, 0)' } },
-        'main.in.game.board.tileWhite': {
-          decals: {
-            colour: 'rgba(154, 154, 187, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.tileBlack': {
-          decals: {
-            colour: 'rgba(137, 137, 175, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.piece': { decals: {} },
-        'main.in.game.board.move': { decals: {} },
-        'main.in.game.board.move.indicator': { decals: {} },
-        'main.in.game.board.showMovePiece': { decals: {} },
-        'main.in.game.board.showMoveTile': { decals: {} },
-        'main.in.game.conclusion': {
-          size: FillParent(),
-          slots: CenteredSlot(),
-          decals: {
-            colour: 'rgba(0, 0, 0, 0.5)'
-          }
-        },
-        'main.in.game.conclusion.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ origin: 'cc' }),
-          decals: {
-            textSize: UnitPx(30),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        }
-      };
-      
       /// {ABOVE=
-      lands.setRealRooms([ realWebApp ]);
-      let chess2 = lands.createRec('chess2.chess2');
-      let archChess2 = lands.createRec('chess2.archChess2', [ lands.arch, chess2 ]);
+      let chess2 = c2Hut.createRec('c2.chess2', [ c2Hut ]);
       /// =ABOVE}
       
-      let rootScp = RecScope(lands.arch, 'chess2.archChess2', (archChess2, dep) => {
+      let rootScp = RecScope(c2Hut, 'c2.chess2', async (chess2, dep) => {
         
-        let chess2 = global.chess2 = archChess2.mem('chess2');
+        global.chess2 = chess2;
         dep(Drop(null, () => { delete global.chess2; }));
         
         /// {ABOVE=
@@ -377,16 +467,15 @@ U.buildRoom({
         // Serve files (TODO: to be PICKY, could deny Huts without Matches)
         for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
           let key = `chess2Piece.${colour}.${pieceType}`;
-          lands.comNozz(key).route(({ reply }) => reply(savedItems[key]));
+          c2Hut.roadNozz(key).route(({ reply }) => reply(savedItems[key]));
         }}
         
-        dep.scp(lands.arch, 'lands.archHut', (archHut, dep) => {
+        dep.scp(c2Hut, 'lands.kidHut/par', ({ members: { kid: hut } }, dep) => { // Note we already have reference to `hut`!
           
-          let hut = archHut.mem('hut');
-          let hutPlayerNozz = hut.relNozz('chess2.hutPlayer');
+          let hutPlayerNozz = hut.relNozz('c2.hutPlayer');
           
           // Follows
-          dep(hut.follow(archChess2));
+          dep(hut.followRec(chess2));
           dep.scp(hut, 'chess2.hutPlayer', (hutPlayer, dep) => {
             
             // Careful not to Follow the HutPlayer!
@@ -416,7 +505,7 @@ U.buildRoom({
           // Actions for Huts (differentiate between logged-in and logged-out)
           let hutPlayerDryNozz = dep(TubDry(null, hutPlayerNozz));
           dep.scp(hutPlayerDryNozz, (_, dep) => {
-            dep(hut.comNozz('login').route(() => {
+            dep(hut.roadNozz('login').route(() => {
               // TODO: `chess2Player` should receive `hutPlayer`, not
               // `player`, as its second member (this would establish an
               // implicit dependency between the Hut and the Player)
@@ -430,12 +519,12 @@ U.buildRoom({
           dep.scp(hutPlayerNozz, (hutPlayer, dep) => {
             
             // Huts with Players can logout
-            dep(hut.comNozz('logout').route(({ user, pass }) => hutPlayer.dry()));
+            dep(hut.roadNozz('logout').route(({ user, pass }) => hutPlayer.dry()));
             
             // Huts with Players in Matches can leave their Match
             let player = hutPlayer.mem('player');
             dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
-              dep(hut.comNozz('exitMatch').route(() => matchPlayer.dry()));
+              dep(hut.roadNozz('exitMatch').route(() => matchPlayer.dry()));
             });
             
           });
@@ -451,7 +540,7 @@ U.buildRoom({
                 
                 let round = roundPlayer.mem('round');
                 
-                dep(hut.comNozz('doMove').route(({ msg }) => {
+                dep(hut.roadNozz('doMove').route(({ msg }) => {
                   
                   // Clear current move
                   roundPlayer.relNozz('chess2.roundPlayerMove').dryContents();
@@ -605,219 +694,219 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        dep.scp(lands.getRootReal(), rootReal => {
+        let c2RootReal = dep(rootReal.techReals[0].addReal('c2.root'));
+        let mainReal = c2RootReal.addReal('c2.main');
+        
+        let myPlayerNozz = dep(TubVal(null, chess2.relNozz('chess2.chess2Player'), chess2Player => {
+          let player = chess2Player.mem('player');
+          return (player.val.term === U.hutTerm) ? player : C.skip;
+        }));
+        let myPlayerDryNozz = dep(TubDry(null, myPlayerNozz));
+        
+        dep.scp(myPlayerDryNozz, (_, dep) => {
           
-          let mainReal = rootReal.addReal('main');
-          let myPlayerNozz = dep(TubVal(null, chess2.relNozz('chess2.chess2Player'), chess2Player => {
-            let player = chess2Player.mem('player');
-            return (player.val.term === U.hutTerm) ? player : C.skip;
-          }));
-          let myPlayerDryNozz = dep(TubDry(null, myPlayerNozz));
+          let outReal = dep(mainReal.addReal('c2.loggedOut'));
+          let contentReal = outReal.addReal('c2.welcomePane');
+          let titleReal = contentReal.addReal('c2.welcomePaneTitle');
+          let textReal = contentReal.addReal('c2.welcomePaneBody');
           
-          dep.scp(myPlayerDryNozz, (_, dep) => {
+          console.log('TITLE REAL:', titleReal);
+          
+          titleReal.setText('Chess2');
+          textReal.setText('Click to start playing!');
+          
+          //dep(outReal.feelNozz().route(() => lands.tell({ command: 'login' })));
+          
+        });
+        dep.scp(myPlayerNozz, (player, dep) => {
+          
+          let inReal = dep(mainReal.addReal('in'));
+          
+          let myMatchPlayerNozz = player.relNozz('chess2.matchPlayer');
+          let myMatchPlayerDryNozz = dep(TubDry(null, myMatchPlayerNozz));
+          
+          dep.scp(myMatchPlayerDryNozz, (_, dep) => {
             
-            let outReal = dep(mainReal.addReal('out'));
-            let contentReal = outReal.addReal('content');
-            let titleReal = contentReal.addReal('title');
-            let textReal = contentReal.addReal('text');
-            
-            titleReal.setText('Chess2');
-            textReal.setText('Click to start playing!');
-            
-            dep(outReal.feelNozz().route(() => lands.tell({ command: 'login' })));
+            let lobbyReal = dep(inReal.addReal('lobby'));
+            lobbyReal.setText('Waiting for match...');
             
           });
-          dep.scp(myPlayerNozz, (player, dep) => {
+          dep.scp(myMatchPlayerNozz, (myMatchPlayer, dep) => {
             
-            let inReal = dep(mainReal.addReal('in'));
+            let match = myMatchPlayer.mem('match');
+            let myColour = myMatchPlayer.val.colour;
             
-            let myMatchPlayerNozz = player.relNozz('chess2.matchPlayer');
-            let myMatchPlayerDryNozz = dep(TubDry(null, myMatchPlayerNozz));
+            let gameReal = dep(inReal.addReal('game'));
             
-            dep.scp(myMatchPlayerDryNozz, (_, dep) => {
+            // Show Player names
+            dep.scp(match, 'chess2.matchPlayer', (matchPlayer, dep) => {
               
-              let lobbyReal = dep(inReal.addReal('lobby'));
-              lobbyReal.setText('Waiting for match...');
+              let player = matchPlayer.mem('player');
+              let colour = matchPlayer.val.colour;
+              
+              let playerReal = dep(gameReal.addReal('player'));
+              let playerContentReal = playerReal.addReal('content');
+              let playerNameReal = playerContentReal.addReal('name');
+              playerNameReal.setText(player.val.term);
+              
+              playerReal.setLayout(...((colour === 'white')
+                ? [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.05) ]
+                : [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.95) ]
+              ));
+              
+              dep(myMatchPlayer.route(val => playerReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              
+              if (myMatchPlayer !== matchPlayer) return; // Stop here if this isn't our player
+              
+              dep.scp(match, 'chess2.matchRound', (matchRound, dep) => {
+                let round = matchRound.mem('round');
+                let playerTimerReal = dep(playerContentReal.addReal('timer'));
+                let updTimer = () => {
+                  let ms = round.val.endMs - foundation.getMs();
+                  let secs = Math.floor(ms / 1000);
+                  playerTimerReal.setText(`(${Math.max(0, secs)})`);
+                };
+                let interval = setInterval(updTimer, 500); updTimer();
+                dep(Drop(null, () => clearInterval(interval)));
+              });
               
             });
-            dep.scp(myMatchPlayerNozz, (myMatchPlayer, dep) => {
+            
+            let tileExt = (amt=1) => UnitPc(amt / 8);
+            let tileLoc = v => UnitPc((0.5 + v) / 8);
+            
+            let t = 1 / 8;
+            let p = t * 0.95;
+            let boardReal = gameReal.addReal('board');
+            boardReal.setLayout(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
+            
+            // Show board tiles
+            for (let col = 0; col < 8; col++) { for (let row = 0; row < 8; row++) {
+              let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'tileBlack' : 'tileWhite');
+              tile.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
+            }}
+            
+            let selectedPieceNozz = dep(TubVal(null, Nozz()));
+            let selectedPieceDryNozz = dep(TubDry(null, selectedPieceNozz));
+            let confirmedMoveNozz = dep(TubVal(null, Nozz()));
+            let noConfirmedMoveNozz = dep(TubVal(null, Nozz()));
+            
+            dep.scp(match, 'chess2.matchPiece', (matchPiece, dep) => {
               
-              let match = myMatchPlayer.mem('match');
-              let myColour = myMatchPlayer.val.colour;
-              
-              let gameReal = dep(inReal.addReal('game'));
-              
-              // Show Player names
-              dep.scp(match, 'chess2.matchPlayer', (matchPlayer, dep) => {
+              let piece = matchPiece.mem('piece');
+              let pieceReal = dep(boardReal.addReal('piece'));
+              pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
+              pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);
+              pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScale(8); });
+              dep(piece.route(({ colour, type, col, row, wait }) => {
                 
-                let player = matchPlayer.mem('player');
-                let colour = matchPlayer.val.colour;
-                
-                let playerReal = dep(gameReal.addReal('player'));
-                let playerContentReal = playerReal.addReal('content');
-                let playerNameReal = playerContentReal.addReal('name');
-                playerNameReal.setText(player.val.term);
-                
-                playerReal.setLayout(...((colour === 'white')
-                  ? [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.05) ]
-                  : [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.95) ]
-                ));
-                
-                dep(myMatchPlayer.route(val => playerReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
-                
-                if (myMatchPlayer !== matchPlayer) return; // Stop here if this isn't our player
-                
-                dep.scp(match, 'chess2.matchRound', (matchRound, dep) => {
-                  let round = matchRound.mem('round');
-                  let playerTimerReal = dep(playerContentReal.addReal('timer'));
-                  let updTimer = () => {
-                    let ms = round.val.endMs - foundation.getMs();
-                    let secs = Math.floor(ms / 1000);
-                    playerTimerReal.setText(`(${Math.max(0, secs)})`);
-                  };
-                  let interval = setInterval(updTimer, 500); updTimer();
-                  dep(Drop(null, () => clearInterval(interval)));
-                });
-                
-              });
-              
-              let tileExt = (amt=1) => UnitPc(amt / 8);
-              let tileLoc = v => UnitPc((0.5 + v) / 8);
-              
-              let t = 1 / 8;
-              let p = t * 0.95;
-              let boardReal = gameReal.addReal('board');
-              boardReal.setLayout(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
-              
-              // Show board tiles
-              for (let col = 0; col < 8; col++) { for (let row = 0; row < 8; row++) {
-                let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'tileBlack' : 'tileWhite');
-                tile.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
-              }}
-              
-              let selectedPieceNozz = dep(TubVal(null, Nozz()));
-              let selectedPieceDryNozz = dep(TubDry(null, selectedPieceNozz));
-              let confirmedMoveNozz = dep(TubVal(null, Nozz()));
-              let noConfirmedMoveNozz = dep(TubVal(null, Nozz()));
-              
-              dep.scp(match, 'chess2.matchPiece', (matchPiece, dep) => {
-                
-                let piece = matchPiece.mem('piece');
-                let pieceReal = dep(boardReal.addReal('piece'));
-                pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
-                pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);
-                pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScale(8); });
-                dep(piece.route(({ colour, type, col, row, wait }) => {
-                  
-                  // Reset selected and confirmed pieces when any piece updates
-                  selectedPieceNozz.dryContents();
-                  confirmedMoveNozz.dryContents();
-                  
-                  pieceReal.setRoundness(1);
-                  pieceReal.setLayout(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
-                  pieceReal.setImage(savedItems[`chess2Piece.${colour}.${type}`]);
-                  
-                  pieceReal.setColour((wait > 0) ? 'rgba(255, 120, 50, 0.55)' : null);
-                  
-                }));
-                
-                dep(pieceReal.feelNozz().route(() => {
-                  // Unselect previously selected piece (feeling the
-                  // selected piece results in only an unselect)
-                  let selPiece = selectedPieceNozz.val;
-                  selectedPieceNozz.dryContents();
-                  if (selPiece.piece === piece) return;
-                  
-                  // Select new piece
-                  selPiece = Drop(defDrier(Funnel(piece.drierNozz())));
-                  selPiece.piece = piece;
-                  selectedPieceNozz.nozz.drip(selPiece);
-                }));
-                
-                dep(myMatchPlayer.route(val => pieceReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
-                
-              });
-              
-              dep.scp(selectedPieceNozz, ({ piece }, dep) => {
-                
+                // Reset selected and confirmed pieces when any piece updates
+                selectedPieceNozz.dryContents();
                 confirmedMoveNozz.dryContents();
-                lands.tell({ command: 'doMove', type: 'retract' });
                 
-                validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
+                pieceReal.setRoundness(1);
+                pieceReal.setLayout(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
+                pieceReal.setImage(savedItems[`chess2Piece.${colour}.${type}`]);
+                
+                pieceReal.setColour((wait > 0) ? 'rgba(255, 120, 50, 0.55)' : null);
+                
+              }));
+              
+              dep(pieceReal.feelNozz().route(() => {
+                // Unselect previously selected piece (feeling the
+                // selected piece results in only an unselect)
+                let selPiece = selectedPieceNozz.val;
+                selectedPieceNozz.dryContents();
+                if (selPiece.piece === piece) return;
+                
+                // Select new piece
+                selPiece = Drop(defDrier(Funnel(piece.drierNozz())));
+                selPiece.piece = piece;
+                selectedPieceNozz.nozz.drip(selPiece);
+              }));
+              
+              dep(myMatchPlayer.route(val => pieceReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              
+            });
+            
+            dep.scp(selectedPieceNozz, ({ piece }, dep) => {
+              
+              confirmedMoveNozz.dryContents();
+              lands.tell({ command: 'doMove', type: 'retract' });
+              
+              validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
+                
+                let moveReal = dep(boardReal.addReal('move'));
+                moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
+                
+                let indReal = moveReal.addReal('indicator');
+                let colour = (piece.val.colour === 'white') ? '#e4e4f0' : '#191944';
+                indReal.setLayout(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
+                indReal.setRoundness(1);
+                
+                if (cap)  indReal.setBorder(UnitPx(5), colour);
+                else      indReal.setColour(colour);
+                
+                dep(moveReal.feelNozz().route(() => {
+                  lands.tell({ command: 'doMove', type: 'piece', pieceUid: piece.uid, tile: [ col, row ] });
+                  selectedPieceNozz.dryContents();
                   
-                  let moveReal = dep(boardReal.addReal('move'));
-                  moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
-                  
-                  let indReal = moveReal.addReal('indicator');
-                  let colour = (piece.val.colour === 'white') ? '#e4e4f0' : '#191944';
-                  indReal.setLayout(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
-                  indReal.setRoundness(1);
-                  
-                  if (cap)  indReal.setBorder(UnitPx(5), colour);
-                  else      indReal.setColour(colour);
-                  
-                  dep(moveReal.feelNozz().route(() => {
-                    lands.tell({ command: 'doMove', type: 'piece', pieceUid: piece.uid, tile: [ col, row ] });
-                    selectedPieceNozz.dryContents();
-                    
-                    let cmDrop = Drop(defDrier());
-                    cmDrop.confirmedMove = { piece, tile: [ col, row ], cap };
-                    confirmedMoveNozz.nozz.drip(cmDrop);
-                  }));
-                  
-                });
+                  let cmDrop = Drop(defDrier());
+                  cmDrop.confirmedMove = { piece, tile: [ col, row ], cap };
+                  confirmedMoveNozz.nozz.drip(cmDrop);
+                }));
                 
               });
               
-              dep.scp(confirmedMoveNozz, ({ confirmedMove }, dep) => {
-                
-                
-                let { piece, tile, cap } = confirmedMove;
-                let colour = '#40df15';
-                
-                let showPieceReal = dep(boardReal.addReal('showMovePiece'));
-                showPieceReal.setRoundness(1);
-                showPieceReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
-                showPieceReal.setBorder(UnitPx(5), colour);
-                
-                let showTileReal = dep(boardReal.addReal('showMoveTile'));
-                showTileReal.setRoundness(1);
-                if (cap) {
-                  showTileReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
-                  showTileReal.setBorder(UnitPx(5), colour);
-                } else {
-                  showTileReal.setLayout(tileExt(0.3), tileExt(0.3), tileLoc(tile[0]), tileLoc(tile[1]));
-                  showTileReal.setColour(colour);
-                }
-                
-              });
+            });
+            
+            dep.scp(confirmedMoveNozz, ({ confirmedMove }, dep) => {
               
-              dep(myMatchPlayer.route(val => gameReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
               
-              dep.scp(match, 'chess2.matchConclusion', (matchConclusion, dep) => {
-                
-                let conclusion = matchConclusion.mem('conclusion');
-                let result = conclusion.val;
-                
-                let conclusionReal = dep(gameReal.addReal('conclusion'));
-                let conclusionContentReal = conclusionReal.addReal('content');
-                
-                let type = (result !== 'stalemate')
-                  ? ((result === myMatchPlayer.val.colour) ? 'winner' : 'loser')
-                  : 'stalemate';
-                
-                conclusionContentReal.setText(({
-                  winner: 'You WIN!',
-                  loser: 'You LOSE!',
-                  stalemate: 'Tie game!'
-                })[type]);
-                
-                dep(myMatchPlayer.route(val => conclusionReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
-                
-                dep(conclusionReal.feelNozz().route(() => lands.tell({ command: 'exitMatch' })));
-                  
-              });
+              let { piece, tile, cap } = confirmedMove;
+              let colour = '#40df15';
               
+              let showPieceReal = dep(boardReal.addReal('showMovePiece'));
+              showPieceReal.setRoundness(1);
+              showPieceReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
+              showPieceReal.setBorder(UnitPx(5), colour);
+              
+              let showTileReal = dep(boardReal.addReal('showMoveTile'));
+              showTileReal.setRoundness(1);
+              if (cap) {
+                showTileReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
+                showTileReal.setBorder(UnitPx(5), colour);
+              } else {
+                showTileReal.setLayout(tileExt(0.3), tileExt(0.3), tileLoc(tile[0]), tileLoc(tile[1]));
+                showTileReal.setColour(colour);
+              }
+              
+            });
+            
+            dep(myMatchPlayer.route(val => gameReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+            
+            dep.scp(match, 'chess2.matchConclusion', (matchConclusion, dep) => {
+              
+              let conclusion = matchConclusion.mem('conclusion');
+              let result = conclusion.val;
+              
+              let conclusionReal = dep(gameReal.addReal('conclusion'));
+              let conclusionContentReal = conclusionReal.addReal('content');
+              
+              let type = (result !== 'stalemate')
+                ? ((result === myMatchPlayer.val.colour) ? 'winner' : 'loser')
+                : 'stalemate';
+              
+              conclusionContentReal.setText(({
+                winner: 'You WIN!',
+                loser: 'You LOSE!',
+                stalemate: 'Tie game!'
+              })[type]);
+              
+              dep(myMatchPlayer.route(val => conclusionReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              
+              dep(conclusionReal.feelNozz().route(() => lands.tell({ command: 'exitMatch' })));
+                
             });
             
           });
@@ -827,8 +916,6 @@ U.buildRoom({
         /// =BELOW}
         
       });
-      
-      await lands.open();
       
     };
     

@@ -32,12 +32,9 @@ U.buildRoom({
       let { MinExtSlotter, FillParent, Art, TextSized } = real;
       
       let rootReal = await foundation.getRootReal();
-      rootReal.defineReal('tag.tag', {
-        slotters: {
-          main: () => MinExtSlotter({})
-        },
-        decals: { colour: '#000000' }
-      });
+      rootReal.defineReal('tag.tag', { slotters: () => MinExtSlotter({}), decals: {
+        colour: '#000000'
+      }});
       rootReal.defineReal('tag.view', {});
       rootReal.defineReal('tag.art', {
         layouts: [ Art({}), FillParent({}) ],
@@ -51,10 +48,8 @@ U.buildRoom({
         }
       });
       
-      rootReal.defineInsert(null, 'tag.tag', { main: () => FillParent() });
-      rootReal.defineInsert('tag.tag', 'tag.view', {
-        main: (slotter, par) => slotter.getMinExtSlot()
-      });
+      rootReal.defineInsert(null, 'tag.tag', () => FillParent());
+      rootReal.defineInsert('tag.tag', 'tag.view', (slotter, par) => slotter.getMinExtSlot());
       rootReal.defineInsert('tag.view', 'tag.art', () => FillParent());
       rootReal.defineInsert('tag.view', 'tag.status', () => null);
       
@@ -105,7 +100,7 @@ U.buildRoom({
           status.modVal(v => (v.playerCount++, v));
           dep(Drop(null, () => status.modVal(v => (v.playerCount--, v))));
           
-          let hut = members.kid; //kidHut.members['lands.kidHut'];
+          let hut = members.kid;
           let player = dep(tagHut.createRec('tag.player', [], { keyVal: 0 }));
           let hutPlayer = tagHut.createRec('tag.hutPlayer', [ hut, player ]);
           let tagPlayer = tagHut.createRec('tag.tagPlayer', [ tag, player ], { hutId: hut.uid });

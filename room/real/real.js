@@ -108,7 +108,23 @@ U.buildRoom({
       op: function(...vals) { let v = 0; for (let vv of vals) v += vv; return v; }
     })});
     
-    let MinExtSlotter = U.inspire({ name: 'MinExtSlotter', insps: {}, methods: (insp, Insp) => ({
+    let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({
+      init: function() {}
+    })});
+    let CenteredSlotter = U.inspire({ name: 'CenteredSlotter', methods: (insp, Insp) => ({
+      
+      // A Slotter defining a single Slot: one which will be centered,
+      // along both axes, within its parent, no matter the dimensions of
+      // the Slot
+      
+      $CenteredSlot: U.inspire({ name: 'CenteredSlot', methods: (insp, Insp) => ({
+        init: function(slotter) { this.slotter = slotter }
+      })}),
+      
+      init: function() {},
+      getCenteredSlot: function(...args) { return Insp.CenteredSlot(this, ...args); }
+    })});
+    let MinExtSlotter = U.inspire({ name: 'MinExtSlotter', methods: (insp, Insp) => ({
       
       // A Slotter defining a single Slot: one with both extents equal
       // to the shorter extent of the Slotter
@@ -120,12 +136,24 @@ U.buildRoom({
       init: function() {},
       getMinExtSlot: function(...args) { return Insp.MinExtSlot(this, ...args); }
     })});
-    let Art = U.inspire({ name: 'Art', insps: {}, methods: (insp, Insp) => ({
-      init: function({ pixelDensityMult=1 }) {
-        this.pixelDensityMult = pixelDensityMult; // 1 is standard; 0.5 is low-res, 1.5 is hi-res
-      }
+    let LinearSlotter = U.inspire({ name: 'LinearSlotter', methods: (insp, Insp) => ({
+      
+      $LinearSlot: U.inspire({ name: 'LinearSlot', methods: (insp, Insp) => ({
+        init: function(slotter) { this.slotter = slotter; }
+      })}),
+      
+      init: function({ axis, dir='+' /*, initPad=UnitPx(0)*/ }) {
+        if (!axis) throw Error('Missing "axis" param');
+        if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
+        if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
+        this.axis = axis;
+        this.dir = dir;
+      },
+      getLinearSlot: function(...args) { return Insp.LinearSlot(this, ...args); }
     })});
-    let TextSized = U.inspire({ name: 'TextSized', insps: {}, methods: (insp, Insp) => ({
+    
+    
+    let TextSized = U.inspire({ name: 'TextSized', methods: (insp, Insp) => ({
       init: function(params) {
         
         hvParams('pad', params, this);
@@ -143,8 +171,10 @@ U.buildRoom({
         this.size = size;
       }
     })});
-    let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({
-      init: function() {}
+    let Art = U.inspire({ name: 'Art', methods: (insp, Insp) => ({
+      init: function({ pixelDensityMult=1 }) {
+        this.pixelDensityMult = pixelDensityMult; // 1 is standard; 0.5 is low-res, 1.5 is hi-res
+      }
     })});
     
     let realFns = [ 'setExt', 'setW', 'setH', 'setX', 'setY', 'setLoc', 'setRot', 'setScl' ];
@@ -166,7 +196,7 @@ U.buildRoom({
         this.techNode = null;
         if (tech) this.setTech(tech);
       },
-      defineReal: function(name, { slotters=null, layouts=[], decals={}, tech=null }={}) {
+      defineReal: function(name, { modeSlotters={ main: null }, layouts=[], decals={}, tech=null }={}) {
         
         // Defines a name for a new Real. This Real has a number of
         // different SlottingModes, defined as keys within `slotters`.
@@ -176,39 +206,76 @@ U.buildRoom({
         // separately from the slot it's granted by its parent, and
         // `decals`, which define aesthetic features.
         
-        if (this.defReals.has(name)) throw Error(`Redefined Real: "${name}"`);
+        let { defReals } = this.root;
         
-        if (!U.isType(slotters, Object)) slotters = { main: slotters };
-        this.defReals[name] = { name, slotters, layouts, decals, tech };
+        // TODO: Weird that arguments after `name` only apply on initial create
+        if (!defReals.has(name)) defReals[name] = { name, modeSlotters, layouts, decals, tech: null };
+        return defReals[name];
         
       },
-      defineInsert: function(parName, kidName, slotters=null) {
+      defineInsert: function(parName, kidName, { modeSlotFns={} }={}) {
         
         // Define a new Insertion; allow the named Kid to be inserted
         // into the named Par. This insertion can happen under any
         // SlottingMode within the keys of `slotters` (which must be a
         // subset of Par's SlottingModes)
         
-        if (parName === null) parName = '*';
-        
-        if (parName !== '*' && !this.defReals.has(parName)) throw Error(`Nonexistent par: "${parName}"`);
-        if (!this.defReals.has(kidName)) throw Error(`Nonexistent kid: "${kidName}"`);
+        let { defReals, defInserts } = this.root;
         
         let key = `${parName}->${kidName}`;
-        if (this.defInserts.has(`key`)) throw Error(`Redefined insert "${key}"`);
+        if (parName !== '*' && !defReals.has(parName)) throw Error(`Nonexistent par: "${parName}"`);
+        if (!defReals.has(kidName)) throw Error(`Nonexistent kid: "${kidName}"`);
         
-        // TODO: Should there be a `FillParent` singleton??
-        if (!U.isType(slotters, Object)) slotters = { main: slotters };
+        if (!defInserts.has(key)) defInserts[key] = { modeSlotFns };
         
-        if (parName !== '*') {
-          let parSlotters = this.defReals[parName].slotters;
-          for (let slotModeName in slotters) if (!parSlotters.has(slotModeName))
-            throw Error(`Par ${parName} doesn't support slot mode: "${slotModeName}"`);
-        }
-        
-        this.defInserts[key] = slotters;
+        return defInserts[key];
         
       },
+      
+      layoutDef: function (prefix, defFn) {
+        
+        let root = this.root;
+        let ensureDefReal = this.defineReal.bind(this);
+        let ensureDefInsert = this.defineInsert.bind(this);
+        let slotFnGivesArray = slotFn => (...args) => {
+          // If `slotFn` gives an Array, simply return it. Otherwise
+          // return an Array containing the single Slot returned by
+          // `slotFn`, or an empty Array if `slotFn` returned `null`.
+          let val = slotFn(...args);
+          return (U.isType(val, Array) ? val : (val ? [ val ] : []));
+        };
+        
+        let realFn = (name, modeSlotters=null, ...layouts) => {
+          let def = ensureDefReal(`${prefix}.${name}`);
+          
+          if (!modeSlotters) modeSlotters = {}; // Make no changes if no `modeSlotters` provided
+          if (!U.isType(modeSlotters, Object)) modeSlotters = { main: modeSlotters };
+          
+          def.modeSlotters.gain(modeSlotters);
+          def.layouts.gain(layouts);
+        };
+        let insertFn = (insertTerm, modeSlotFns=null) => {
+          let [ name1, name2 ] = insertTerm.split('->').map(v => `${prefix}.${v.trim()}`);
+          if (name1.slice(-1) === '*') name1 = '*';
+          
+          if (name1 !== '*') ensureRealName(name1);
+          ensureRealName(name2);
+          let def = ensureDefInsert(name1, name2);
+          
+          if (!modeSlotFns) modeSlotFns = {};
+          if (!U.isType(modeSlotFns, Object)) modeSlotFns = { main: modeSlotFns };
+          
+          def.modeSlotFns.gain(modeSlotFns.map(v => slotFnGivesArray(v)));
+        };
+        let decalFn = (name, decals={}) => {
+          ensureDefReal(`${prefix}.${name}`).decals.gain(decals);
+        };
+        
+        // Finally, call the provided function
+        defFn(realFn, insertFn, decalFn);
+        
+      },
+      
       addReal: function(name, tech=null) {
         
         let { defReals, defInserts } = this.root;
@@ -251,13 +318,12 @@ U.buildRoom({
     })});
     
     return {
-      Real,
-      MinExtSlotter,
-      FillParent, Art, TextSized,
+      FillParent, CenteredSlotter, MinExtSlotter, LinearSlotter,
+      TextSized, Art,
       
       UnitPx, UnitPc, Calc, CalcAdd,
       
-      Tech
+      Real, Tech
     };
     
     // ---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~

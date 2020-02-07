@@ -11,7 +11,7 @@ U.buildRoom({
     // counted indentation, and determines the ignored block has
     // completed after indentation returns to where it started!
     
-    let { Art, FillParent, MinExtSlotter, TextSized /* ... */ } = real;
+    let { Art, FillParent, CenteredSlotter, MinExtSlotter, TextSized /* ... */ } = real;
     let { UnitPx, UnitPc, ViewPortMin, CalcAdd, Real, Tech } = real;
       
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
@@ -65,12 +65,6 @@ U.buildRoom({
     /// =BELOW}
     
     let WebApp = U.inspire({ name: 'WebApp', insps: { Tech }, methods: (insp, Insp) => ({
-      
-      // TODO: HEEERE! Just add `Tech` as a subclass. `WebApp` needs to
-      // be able to add and remove Reals as dom elements, then write a
-      // bunch more abstract method stubs in `Tech` (e.g. setRotate,
-      // setText, setSize, etc.) and implement them under `WebApp`. Also
-      // think about a way to process Layouts in a nice abstract manner!
       
       init: function() {},
       decorateHut: async function(parHut, rootReal) {
@@ -264,8 +258,7 @@ U.buildRoom({
         if (!defInserts.has(insertKey)) insertKey = `*->${kidDef.name}`;
         if (!defInserts.has(insertKey)) throw Error(`Invalid insertion: ${insertKey}`);
         
-        let insertSlotFns = defInserts[insertKey];
-        
+        let { modeSlotFns } = defInserts[insertKey];
         let layouts = [
         
           ...kidDef.layouts,
@@ -273,21 +266,23 @@ U.buildRoom({
           // Note: No need to check `kidDef.slotters.has(kidSm)` - we
           // assume a valid mode has been given, and the RealDef must
           // include a Slotter for every mode!
-          kidDef.slotters[kidSm] && kidDef.slotters[kidSm](),
+          kidDef.modeSlotters[kidSm] && kidDef.modeSlotters[kidSm](),
           
-          // Note: We *do* need to check `insertSlotFns.has(parSm)` -
+          // Note: We *do* need to check `modeSlotFns.has(parSm)` -
           // because an insertion does *not* need to define a SlotFn for
           // every slot available in the parent! So a SlotFn may not
           // exist for a given SlottingName
-          insertSlotFns.has(parSm)
-            && insertSlotFns[parSm]
-            && insertSlotFns[parSm](
-              parDef
-              && parDef.slotters[parSm]
-              && parDef.slotters[parSm]()
-            )
+          ...((modeSlotFns.has(parSm)
+            && modeSlotFns[parSm]
+            && modeSlotFns[parSm](
+              parDef                            // TODO: SOOO UGLY!!
+              && parDef.modeSlotters[parSm]
+              && parDef.modeSlotters[parSm]()
+            )) || [])
           
         ].map(v => v || C.skip);
+        
+        if (dbg) console.log(`CLSMAP FOR ${kidDef.name}:`, layouts.map(U.nameOf));
         
         // Return all results. In some cases multiple results indicates
         // a conflict, but we'll let the more specific code handle that!
@@ -414,9 +409,9 @@ U.buildRoom({
           
         });
         
-        let args = [ parChain.length && parChain[0].defReal, 'main', defReal, 'main' ];
-        return this.getClsMappedItems(uixGettersByCls, ...args, defInserts).map(([ lay, uixFn ]) => uixFn.bind(null, lay));
-        
+        let args = [ parChain.length ? parChain[0].defReal : null, 'main', defReal, 'main' ];
+        return this.getClsMappedItems(uixGettersByCls, ...args, defInserts)
+          .map(([ lay, uixFn ]) => uixFn.bind(null, lay));
       },
       domGetZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
         
@@ -451,29 +446,35 @@ U.buildRoom({
         // is flawed!!
         
         let zoneCssGettersByCls = Map();
-        zoneCssGettersByCls.set(FillParent, fillParent => {
-          return { fixed: {
-            display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
-            left: '0', top: '0', width: '100%', height: '100%'
-          }};
-        });
-        zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => {
-          return {
-            fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
-            before: {
-              content: '""', position: 'relative', display: 'inline-block',
-              width: '0', height: '100%', verticalAlign: 'middle'
-            }
-          };
-        });
-        zoneCssGettersByCls.set(MinExtSlotter.MinExtSlot, minExtSlot => {
-          return {
-            fixed: {
-              position: 'relative', display: 'inline-block',
-              width: '100vmin', height: '100vmin', verticalAlign: 'middle'
-            }
-          };
-        });
+        zoneCssGettersByCls.set(FillParent, fillParent => ({ fixed: {
+          display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
+          left: '0', top: '0', width: '100%', height: '100%'
+        }}));
+        zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => ({
+          fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
+          before: {
+            content: '""', position: 'relative', display: 'inline-block',
+            width: '0', height: '100%', verticalAlign: 'middle'
+          }
+        }));
+        zoneCssGettersByCls.set(MinExtSlotter.MinExtSlot, minExtSlot => ({
+          fixed: {
+            position: 'relative', display: 'inline-block',
+            width: '100vmin', height: '100vmin', verticalAlign: 'middle'
+          }
+        }));
+        zoneCssGettersByCls.set(CenteredSlotter, centeredSlotter => ({
+          fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
+          before: {
+            content: '""', position: 'relative', display: 'inline-block',
+            width: '0', height: '100%', verticalAlign: 'middle'
+          }
+        }));
+        zoneCssGettersByCls.set(CenteredSlotter.CenteredSlot, centeredSlot => ({
+          fixed: {
+            position: 'relative', display: 'inline-block', verticalAlign: 'middle'
+          }
+        }));
         zoneCssGettersByCls.set(Art, art => {
           return {
             fixed: { pointerEvents: 'all' },
@@ -615,7 +616,7 @@ U.buildRoom({
           },
           text: v => { return 'tricky! need to set javascript on the element'; },
           border: ({ type='in', ext, colour }) => {
-            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${getUnitCss(ext)} ${colour}` }
+            return { boxShadow: `${type === 'in' ? 'inset ' : ''}0 0 0 ${this.getUnitCss(ext)} ${colour}` }
           }
         };
         
@@ -744,8 +745,8 @@ U.buildRoom({
           // at defInserts instead of the defReals, but this establishs
           // only a subset of the slotNames, since RealInsertions occur
           // with *any* of the parent's SlottingModes
-          let parSlotNames = parDef ? parDef.slotters.toArr((v, k) => k) : [ 'main' ];
-          let kidSlotNames = kidDef.slotters.toArr((v, k) => k);
+          let parSlotNames = parDef ? parDef.modeSlotters.toArr((v, k) => k) : [ 'main' ];
+          let kidSlotNames = kidDef.modeSlotters.toArr((v, k) => k);
           
           for (let parSm of parSlotNames) { for (let kidSm of kidSlotNames) {
             

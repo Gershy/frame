@@ -691,8 +691,8 @@
     },
     
     // High level
-    getRootHut: async function(options) {
-      return insp.Foundation.getRootHut.call(this, options);
+    getRootHut: async function(...args) {
+      return insp.Foundation.getRootHut.call(this, ...args);
     },
     getRootReal: async function() {
       
@@ -701,7 +701,7 @@
       
       if (!this.rootReal) {
         
-        this.rootReal = rootReal = U.rooms.real.built.Real(null, 'nodejs.root');
+        let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'nodejs.root');
         rootReal.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
         rootReal.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
         
@@ -1034,7 +1034,6 @@
       
       let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
       server.desc = `HTTP @ ${host}:${port}`;
-      server.cost = 100;
       server.decorateRoad = road => {
         road.knownHosts = Set();
         road.waitResps = [];
@@ -1128,7 +1127,6 @@
       
       let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
       server.desc = `SOKT @ ${host}:${port}`;
-      server.cost = 50;
       server.decorateRoad = road => {
         road.hear = Nozz();
         road.tell = msg => {

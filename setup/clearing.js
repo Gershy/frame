@@ -7,7 +7,7 @@ let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, 
 
 let C = global.C = {
   skip: { SKIP: 1 },
-  notImplemented: function() { throw Error(`Not implemented by ${this.constructor.name}`); }
+  notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); }
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
