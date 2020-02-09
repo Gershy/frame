@@ -40,12 +40,34 @@ Hut at the very bottom runs using a single Reality.
   
   // TODO: Merge `U` and `Foundation`??
   let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
+    
+    $protocols: {
+      http: { secure: false, defaultPort: 80 },
+      https: { secure: true, defaultPort: 443 },
+      ws: { secure: false, defaultPort: 80 },
+      wss: { secure: true, defaultPort: 443 },
+    },
+    
     init: function() {
       this.goals = this.defaultGoals();
       this.raiseArgs = {};
       this.uidCnt = 0;
-      
       this.rootReal = null;
+      
+      // TODO: `Foundation.prototype.getRootHut` should look at what
+      // "ServerTech" exists, and then process options based on that
+      // data, including checking to see the "enabledness" of every tech
+      // included here. A major advantage of this will be improving how
+      // BELOW handles adding the root server; right now every
+      // server-making function BELOW needs to add a single ABOVE server
+      // as a connection which is SUCKY. But if after `Foundation` has
+      // setup all servers, `FoundationBrowser` (or any FoundationBelow)
+      // can look at all the instances for each server tech, and add the
+      // ABOVE as a client to each. Much nicer! 
+      this.serverTech = {
+        http: { fn: (...args) => this.makeHttpServer(...args), instances: [] },
+        sokt: { fn: (...args) => this.makeSoktServer(...args), instances: [] }
+      };
     },
     defaultGoals: function() {
       
@@ -72,63 +94,37 @@ Hut at the very bottom runs using a single Reality.
     
     getRootHut: async function(options={}) {
       
-      // TODO: Annoying that host, ports, sslArgs are computed even if
-      // they aren't needed because explicit options were given,
-      // making those values irrelevant. E.g. if `options.sslArgs` is
-      // provided as `null`, no need for ABOVE to `await` reading the
-      // cert files (but at the moment, it will...)
+      // Note: An instance of node could have multiple RootHuts, each
+      // representing a server with a variety of Roads, and different
+      // servers could host entirely different applications - all within
+      // the same node VM context!
       
-      // An instance of node could actually have multiple RootHuts -
-      // each represents a server, and multiple servers could run at
-      // once, serving entirely different applications
-      
-      let [ host, ...ports ] = this.raiseArgs.has('hutHosting')
-        ? this.raiseArgs.hutHosting.split(':')
-        : [ 'localhost', '', '' ];
-      
-      let sslArgs = { keyPair: null, selfSign: null };
-      if (this.raiseArgs.has('ssl') && !!this.raiseArgs.ssl) {
-        // TODO: ABOVE/BELOW markers DON'T WORK IN FOUNDATION!!! :(
-        /// {ABOVE=
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     this.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-          key:      this.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-          selfSign: this.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
-        });
-        sslArgs = { keyPair: { cert, key }, selfSign };
-        /// =ABOVE} {BELOW=
-        // Note we try to accomodate "BETWEEN"; `sslArgs` values 
-        // won't be overwritten if they were set in the "ABOVE" block
-        sslArgs = sslArgs.map(v => v || true);
-        /// =BELOW}
-      }
-      
-      // Ensure good defaults
-      if (!options.has('hosting')) options.hosting = { host, ports, sslArgs };
-      if (!options.hosting.has('host')) options.hosting.host = host;
-      if (!options.hosting.has('ports')) options.hosting.ports = ports;
-      if (!options.hosting.has('sslArgs')) options.hosting.ports = sslArgs;
-      if (!options.hosting.sslArgs) options.hosting.sslArgs = { keyPair: null, selfSign: null };
-      
-      if (!options.has('protocols')) options.protocols = { http: true, sokt: true };
+      // Ensure good defaults inside `options`
+      if (!options.has('hosting')) options.hosting = {};
+      if (!options.hosting.has('host')) options.hosting.host = 'localhost';
+      if (!options.hosting.has('port')) options.hosting.port = 80;
+      if (!options.hosting.has('sslArgs')) options.hosting.sslArgs = null;
+      if (!options.hosting.sslArgs) options.hosting.sslArgs = {};
+      if (!options.hosting.sslArgs.has('keyPair')) options.hosting.sslArgs.keyPair = null;
+      if (!options.hosting.sslArgs.has('selfSign')) options.hosting.sslArgs.selfSign = null;
+      if (!options.has('protocols')) options.protocols = {};
       if (!options.protocols.has('http')) options.protocols.http = true;
       if (!options.protocols.has('sokt')) options.protocols.sokt = true;
+      if (!options.has('heartMs')) options.heartMs = 1000 * 30;
       
-      let { heartMs=1000 * 30 } = options;
-      let hut = U.rooms.hinterlands.built.Hut(this, '!root', { heartMs });
-      if (options.protocols.http)
-        this.makeHttpServer(hut, {
-          host: options.hosting.host,
-          port: options.hosting.ports[0],
-          ...options.hosting.sslArgs
-        });
+      let hut = U.rooms.hinterlands.built.Hut(this, '!root', { heartMs: options.heartMs });
       
-      if (options.protocols.sokt)
-        this.makeSoktServer(hut, {
-          host: options.hosting.host,
-          port: options.hosting.ports[1],
-          ...options.hosting.sslArgs
-        });
+      let { hosting, protocols, heartMs } = options;
+      if (protocols.http) {
+        console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
+        this.makeHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
+      }
+      if (protocols.sokt) {
+        console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
+        this.makeSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
+      }
+      /// if (protocols.tcp)
+      ///   this.makeTcpServer(hut, { host: hosting.host, port: hosting.port + 2, ...hosting.sslArgs });
       
       return hut;
     },
@@ -157,13 +153,18 @@ Hut at the very bottom runs using a single Reality.
     },
     establishHut: async function(args) { C.notImplemented.call(this); },
     parseUrl: function(url) {
-      let [ full, protocol, host, port=80, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
+      let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
+      
+      if (!Insp.protocols.has(protocol)) throw Error(`Invalid protocol: "${protocol}"`);
+      
       if (!path.hasHead('/')) path = `/${path}`;
+      if (!port) port = Insp.protocols[protocol].defaultPort;
       
       return {
-        protocol, host, port, path,
+        protocol, host, port: parseInt(port, 10), path,
         query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.split('=') : [ pc, null ])
       };
+      
     },
   })});
   

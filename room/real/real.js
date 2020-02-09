@@ -109,7 +109,7 @@ U.buildRoom({
     })});
     
     let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({
-      init: function() {}
+      init: function(params={}) { hvParams('shrink', params, this); }
     })});
     let CenteredSlotter = U.inspire({ name: 'CenteredSlotter', methods: (insp, Insp) => ({
       
@@ -152,7 +152,6 @@ U.buildRoom({
       getLinearSlot: function(...args) { return Insp.LinearSlot(this, ...args); }
     })});
     
-    
     let TextSized = U.inspire({ name: 'TextSized', methods: (insp, Insp) => ({
       init: function(params) {
         
@@ -177,7 +176,16 @@ U.buildRoom({
       }
     })});
     
-    let realFns = [ 'setExt', 'setW', 'setH', 'setX', 'setY', 'setLoc', 'setRot', 'setScl' ];
+    let realFns = [
+      // Dynamic geometry:
+      'setGeom', 'setW', 'setH', 'setLoc', 'setRot', 'setScl',
+      
+      // Additional style features
+      'setColour', 'setRoundness', 'setOpacity', 'setBorder', 'setImage', 'setTransition', 'setDeathTransition',
+      
+      // Interaction:
+      'feelNozz'
+    ];
     let Real = U.inspire({ name: 'Real', insps: { Drop }, methods: (insp, Insp) => ({
       init: function(root, name, chain=[], tech=null) {
         if (!name.match(/^[a-zA-Z0-9]*[.][a-zA-Z0-9]*$/)) throw Error(`Invalid Real name: ${name}`);
@@ -185,8 +193,9 @@ U.buildRoom({
         this.name = name;
         this.root = root || this;
         this.chain = chain;
+        this.senseNozzes = {};
         
-        if (this.root === this) {
+        if (!root) {
           this.defReals = {};
           this.defInserts = {};
           this.defineReal(this.name);
@@ -235,18 +244,9 @@ U.buildRoom({
       layoutDef: function (prefix, defFn) {
         
         let root = this.root;
-        let ensureDefReal = this.defineReal.bind(this);
-        let ensureDefInsert = this.defineInsert.bind(this);
-        let slotFnGivesArray = slotFn => (...args) => {
-          // If `slotFn` gives an Array, simply return it. Otherwise
-          // return an Array containing the single Slot returned by
-          // `slotFn`, or an empty Array if `slotFn` returned `null`.
-          let val = slotFn(...args);
-          return (U.isType(val, Array) ? val : (val ? [ val ] : []));
-        };
         
         let realFn = (name, modeSlotters=null, ...layouts) => {
-          let def = ensureDefReal(`${prefix}.${name}`);
+          let def = this.defineReal(`${prefix}.${name}`);
           
           if (!modeSlotters) modeSlotters = {}; // Make no changes if no `modeSlotters` provided
           if (!U.isType(modeSlotters, Object)) modeSlotters = { main: modeSlotters };
@@ -258,17 +258,17 @@ U.buildRoom({
           let [ name1, name2 ] = insertTerm.split('->').map(v => `${prefix}.${v.trim()}`);
           if (name1.slice(-1) === '*') name1 = '*';
           
-          if (name1 !== '*') ensureRealName(name1);
-          ensureRealName(name2);
-          let def = ensureDefInsert(name1, name2);
+          if (name1 !== '*') this.defineReal(name1);
+          this.defineReal(name2);
+          let def = this.defineInsert(name1, name2);
           
           if (!modeSlotFns) modeSlotFns = {};
           if (!U.isType(modeSlotFns, Object)) modeSlotFns = { main: modeSlotFns };
           
-          def.modeSlotFns.gain(modeSlotFns.map(v => slotFnGivesArray(v)));
+          def.modeSlotFns.gain(modeSlotFns);
         };
         let decalFn = (name, decals={}) => {
-          ensureDefReal(`${prefix}.${name}`).decals.gain(decals);
+          this.defineReal(`${prefix}.${name}`).decals.gain(decals);
         };
         
         // Finally, call the provided function
@@ -276,18 +276,18 @@ U.buildRoom({
         
       },
       
-      addReal: function(name, tech=null) {
+      addReal: function(name, ...insertArgs) {
         
         let { defReals, defInserts } = this.root;
-        if (!defReals.has(name)) throw Error(`No Real for "${name}"`);
+        if (!defReals.has(name)) throw Error(`No Real for "${this.name} -> ${name}"`);
         
         let key = `${this.name}->${name}`;
         if (!defInserts.has(key) && !defInserts.has(`*->${name}`)) throw Error(`No insert for "${key}"`);
         
         let defReal = defReals[name];
         let defInsert = defInserts.has(key) ? defInserts[key] : null; // `null` for generic inserts
-        let kidChain = [ { defReal, defInsert, parReal: this }, ...this.chain ];
-        return Real(this.root, name, kidChain, tech || defReal.tech || this.tech);
+        let kidChain = [ { defReal, defInsert, insertArgs, parReal: this }, ...this.chain ];
+        return Real(this.root, name, kidChain, defReal.tech || this.tech);
         
       },
       setTech: function(newTech) {
@@ -305,7 +305,7 @@ U.buildRoom({
         if (this.tech) this.tech.remTechNode(this);
       },
       
-      ...realFns.toObj(v => [ v, function(...args) { this.tech[v](this, ...args); } ])
+      ...realFns.toObj(v => [ v, function(...args) { return this.tech[v](this, ...args); } ])
     })});
     
     let Tech = U.inspire({ name: 'Tech', insps: {}, methods: (insp, Insp) => ({

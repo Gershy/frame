@@ -3,6 +3,36 @@ U.buildRoom({
   innerRooms: [ 'real' ],
   build: (foundation, real) => {
     
+    // RANT ABOUT "MACRO" CSS DECLARATIONS
+    // "absolute" and "relative" are awkwardly compound statements; each
+    // specifies multiple things. No convenient in-between, like
+    // "feature A of absolute with feature B of relative". Feature A and
+    // feature B should be directly accessible css directives. This
+    // occurs not only with "position", but also other attributes. Could
+    // consider extending "ZoneCss" to not only include zones, but also
+    // allow non-css, "atomic" properties (like feature A, feature B).
+    // This would resolve the sort of issue which occurs when one layout
+    // needs relative and the other needs absolute - in such cases
+    // conflicts most likely don't need to occur; they're just a result
+    // of how "multidimensional" "position" is
+    // NOTE RELATIVE:
+    // "relative" enables z-index, origin for children, etc.
+    // "relative" says "flow acknowledges parent and siblings"
+    // "relative" says "default W: parent W"
+    // "relative" says "default H: inner-content H"
+    // COMPARE THIS TO ABSOLUTE:
+    // "absolute" enables z-index, origin for children, etc.
+    // "absolute" says "flow acknowledges parent *only*"
+    // "absolute" says "default W: inner-content W"
+    // "absolute" says "default H: inner-content H"
+    // NOTE:
+    // Imagine if an item is set "relative" simply to enable it as
+    // an origin for its children, but another Layout needs
+    // "absolute" in order to ignore siblings in flow - this is NOT
+    // a conflict; the fact that both "relative" and "absolute" have
+    // been requested is not an indication that the overall Layout
+    // is flawed!!
+    
     // TODO: Would be cool if patterns to the compiler could be
     // dynamically defined on a per-file basis. So for example here,
     // we could ask the compiler to, when compiling Below, not only
@@ -11,7 +41,7 @@ U.buildRoom({
     // counted indentation, and determines the ignored block has
     // completed after indentation returns to where it started!
     
-    let { Art, FillParent, CenteredSlotter, MinExtSlotter, TextSized /* ... */ } = real;
+    let { Art, FillParent, CenteredSlotter, LinearSlotter, MinExtSlotter, TextSized /* ... */ } = real;
     let { UnitPx, UnitPc, ViewPortMin, CalcAdd, Real, Tech } = real;
       
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
@@ -184,7 +214,12 @@ U.buildRoom({
         });
         parHut.roadNozz('realWebAppGetFavicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
         parHut.roadNozz('realWebAppGetStylesheet').route(({ reply }) => U.safe(async () => reply(await styleSaved), reply));
-        parHut.roadNozz('realWebAppGetQuadTest').route(({ reply }) => {
+        parHut.roadNozz('realWebAppGetQuadTest').route(({ road, srcHut, reply }) => {
+          
+          let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
+          let urlFn = p => {
+            return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
+          };
           
           let doc = XmlElement(null, 'root');
           
@@ -192,6 +227,8 @@ U.buildRoom({
           doctype.setProp('html');
           
           let html = doc.add(XmlElement('html', 'container'));
+          
+          let head = doc.add(XmlElement('head', 'container'));
           
           let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
           
@@ -207,7 +244,7 @@ U.buildRoom({
             iframe.setProp('id', `${name}Frame`);
             iframe.setProp('width', '400');
             iframe.setProp('height', '400');
-            iframe.setProp('src', `?spoof=${n}`);
+            iframe.setProp('src', `?spoof=${name}`);
             
           }
           
@@ -254,47 +291,57 @@ U.buildRoom({
         // need *the SlottingMode used to insert `defReal`*!! This means
         // we need `parSlottingMode` AND `kidSlottingMode`...
         
-        let insertKey = `${parDef ? parDef.name : '*'}->${kidDef.name}`;
-        if (!defInserts.has(insertKey)) insertKey = `*->${kidDef.name}`;
-        if (!defInserts.has(insertKey)) throw Error(`Invalid insertion: ${insertKey}`);
-        
-        let { modeSlotFns } = defInserts[insertKey];
-        let layouts = [
-        
-          ...kidDef.layouts,
+        try {
           
-          // Note: No need to check `kidDef.slotters.has(kidSm)` - we
-          // assume a valid mode has been given, and the RealDef must
-          // include a Slotter for every mode!
-          kidDef.modeSlotters[kidSm] && kidDef.modeSlotters[kidSm](),
+          let insertKey = `${parDef ? parDef.name : '*'}->${kidDef.name}`;
+          if (!defInserts.has(insertKey)) insertKey = `*->${kidDef.name}`;
+          if (!defInserts.has(insertKey)) throw Error(`Invalid insertion: ${insertKey}`);
           
-          // Note: We *do* need to check `modeSlotFns.has(parSm)` -
-          // because an insertion does *not* need to define a SlotFn for
-          // every slot available in the parent! So a SlotFn may not
-          // exist for a given SlottingName
-          ...((modeSlotFns.has(parSm)
-            && modeSlotFns[parSm]
-            && modeSlotFns[parSm](
-              parDef                            // TODO: SOOO UGLY!!
-              && parDef.modeSlotters[parSm]
-              && parDef.modeSlotters[parSm]()
-            )) || [])
+          let { modeSlotFns } = defInserts[insertKey];
+          let layouts = [];
           
-        ].map(v => v || C.skip);
-        
-        if (dbg) console.log(`CLSMAP FOR ${kidDef.name}:`, layouts.map(U.nameOf));
-        
-        // Return all results. In some cases multiple results indicates
-        // a conflict, but we'll let the more specific code handle that!
-        return layouts.map(layout => {
-          let result = clsMap.get(layout.constructor);
-          return result ? [ layout, result ] : C.skip;
-        });
+          // Layouts Step 1: Add Kid's layouts
+          if (kidDef.layouts) layouts.gain(kidDef.layouts);
+          
+          // Layouts Step 2: Add Kid's active Slotter
+          let kidSlotter = kidDef.modeSlotters[kidSm] && kidDef.modeSlotters[kidSm]();
+          if (kidSlotter) layouts.gain([ kidSlotter ]);
+          
+          // Layouts Step 3: (trickiest) Add all Layouts for the Insertion
+          let insertion = defInserts[insertKey];  // Get the Insertion
+          let { modeSlotFns: msfs } = insertion;  // The SlotFns of the Insertion
+          let slotFn = msfs.has(parSm) && msfs[parSm];
+          if (slotFn) { // No SlotFn needs to exist for `parSm`!
+            // Earlier we got the Kid's Slotter - now get the ParSlotter
+            // since it's a parameter to the SlotFn
+            let parSlotterFn = parDef && parDef.modeSlotters[parSm];
+            let parSlotter = parSlotterFn && parSlotterFn();
+            let insertLayouts = slotFn(parSlotter);
+            
+            // Ensure that `layouts` is an Array
+            if (!U.isType(insertLayouts, Array)) insertLayouts = insertLayouts ? [ insertLayouts ] : null;
+            layouts.gain(insertLayouts);
+          }
+          
+          layouts = layouts.map(v => v || C.skip); // Filter out any null Layouts
+          
+          if (dbg) console.log(`CLSMAP FOR ${kidDef.name}:`, layouts.map(U.nameOf));
+          
+          // Return all results. In some cases multiple results indicates
+          // a conflict, but we'll let the more specific code handle that!
+          return layouts.map(layout => {
+            let result = clsMap.get(layout.constructor);
+            return result ? [ layout, result ] : C.skip;
+          });
+          
+        } catch(err) {
+          
+          throw Error(`Error in Layout: ${parDef ? parDef.name : '*'}:${parSm} -> ${kidDef.name}:${kidSm} (${err.message})`);
+          
+        }
         
       },
       domGetElem: function(slottingMode, chain, defInserts) {
-        
-        // TODO: Need both `parSm` and `kidSm`!!!
         
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
@@ -320,9 +367,9 @@ U.buildRoom({
         
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
-        // TODO: Why separate `domGetElem` and `domGetUixFns`? In case
+        // Note: Why separate `domGetElem` and `domGetUixFns`? In case
         // html is pre-existing! In that case we want only to apply the
-        // uix, and do no such dom element creation!
+        // uix, and do no dom element creation!
         let uixGettersByCls = Map();
         uixGettersByCls.set(Art, (art, real, canvasDom) => {
           
@@ -391,7 +438,7 @@ U.buildRoom({
             real.keys.nozz.drip(keys);
           });
           
-          real.addedFn = () => canvasDom.focus();
+          real.addFn = () => canvasDom.focus();
           
         });
         uixGettersByCls.set(TextSized, (textSized, real, textDom) => {
@@ -415,41 +462,43 @@ U.buildRoom({
       },
       domGetZoneCss: function(parDef, parSm, kidDef, kidSm, defReals, defInserts) {
         
-        // "absolute" and "relative" are awkwardly compound statements;
-        // each specifies multiple things. No convenient in-between,
-        // like "feature A of absolute with feature B of relative".
-        // Really, feature A and feature B should be directly accessible
-        // css directives. This issue probably occurs not only with
-        // "position", but also other attributes. Could consider
-        // extending "ZoneCss" to not only include zones, but also allow
-        // non-css, "atomic" properties (like feature A and feature B).
-        // This would resolve the sort of issue which occurs when one
-        // layout needs relative and the other needs absolute - in such
-        // cases conflicts most likely don't need to occur; they're just
-        // a result of how "multidimensional" "position" is
-        
-        // "relative" enables z-index, origin for children, etc.
-        // "relative" says "flow acknowledges parent and siblings"
-        // "relative" says "default W: parent W"
-        // "relative" says "default H: inner-content H"
-        
-        // "absolute" enables z-index, origin for children, etc.
-        // "absolute" says "flow acknowledges parent *only*"
-        // "absolute" says "default W: inner-content W"
-        // "absolute" says "default H: inner-content H"
-        
-        // Imagine if an item is set "relative" simply to enable it as
-        // an origin for its children, but another Layout needs
-        // "absolute" in order to ignore siblings in flow - this is NOT
-        // a conflict; the fact that both "relative" and "absolute" have
-        // been requested is not an indication that the overall Layout
-        // is flawed!!
-        
         let zoneCssGettersByCls = Map();
-        zoneCssGettersByCls.set(FillParent, fillParent => ({ fixed: {
-          display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
-          left: '0', top: '0', width: '100%', height: '100%'
-        }}));
+        zoneCssGettersByCls.set(FillParent, fillParent => {
+          return { fixed: {
+            display: 'block', position: 'absolute',
+            left: fillParent.shrinkL, right: fillParent.shrinkR,
+            top: fillParent.shrinkT, bottom: fillParent.shrinkB
+          }};
+          
+          
+          // { fixed: {
+          // display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
+          // left: '0', top: '0', width: '100%', height: '100%'
+          // }};
+        });
+        zoneCssGettersByCls.set(CenteredSlotter, centeredSlotter => ({
+          fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
+          before: {
+            content: '""', position: 'relative', display: 'inline-block',
+            width: '0', height: '100%', verticalAlign: 'middle'
+          }
+        }));
+        zoneCssGettersByCls.set(CenteredSlotter.CenteredSlot, centeredSlot => ({
+          fixed: {
+            position: 'relative', display: 'inline-block', verticalAlign: 'middle'
+          }
+        }));
+        zoneCssGettersByCls.set(LinearSlotter, linearSlotter => {
+          return  (linearSlotter.axis === 'y') ? { fixed: { overflow: 'hidden auto' } } : {
+            fixed: { overflow: 'auto hidden', whiteSpace: 'nowrap', textAlign: (linearSlotter.dir === '+') ? 'left' : 'right' },
+            before: { display: 'inline-block', verticalAlign: 'middle', content: `''`, width: '0', height: '100%' }
+          };
+        });
+        zoneCssGettersByCls.set(LinearSlotter.LinearSlot, linearSlot => {
+          return { fixed: linearSlot.slotter.axis === 'y' ? { /*position: 'relative' TODO: This conflicted with a style in chess2! Need AtomicZoneCss!!! */ } :{
+            display: 'inline-block', verticalAlign: 'middle'
+          }};
+        });
         zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => ({
           fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
           before: {
@@ -461,18 +510,6 @@ U.buildRoom({
           fixed: {
             position: 'relative', display: 'inline-block',
             width: '100vmin', height: '100vmin', verticalAlign: 'middle'
-          }
-        }));
-        zoneCssGettersByCls.set(CenteredSlotter, centeredSlotter => ({
-          fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
-          before: {
-            content: '""', position: 'relative', display: 'inline-block',
-            width: '0', height: '100%', verticalAlign: 'middle'
-          }
-        }));
-        zoneCssGettersByCls.set(CenteredSlotter.CenteredSlot, centeredSlot => ({
-          fixed: {
-            position: 'relative', display: 'inline-block', verticalAlign: 'middle'
           }
         }));
         zoneCssGettersByCls.set(Art, art => {
@@ -558,8 +595,7 @@ U.buildRoom({
           
         });
         
-        return this.getClsMappedItems(zoneCssGettersByCls, parDef, parSm, kidDef, kidSm, defInserts)
-          .map(([ layout, zoneCssGetter ]) => zoneCssGetter(layout));
+        return this.getClsMappedItems(zoneCssGettersByCls, parDef, parSm, kidDef, kidSm, defInserts);
         
       },
       
@@ -575,11 +611,23 @@ U.buildRoom({
       addTechNode: function(real) {
         let { parReal } = real.chain[0];
         parReal.techNode.appendChild(real.techNode);
-        if (real.addedFn) real.addedFn();
+        if (real.addFn) real.addFn();
       },
-      remTechNode: function(real) {
-        let { parReal } = real.chain[0];
-        parReal.techNode.removeChild(real.techNode);
+      remTechNode: function(kidReal) {
+        let { parReal } = kidReal.chain[0];
+        
+        updStyle(kidReal.techNode, 'pointerEvents', 'none');
+        
+        let { death: { ms=0, fn=null } } = kidReal.techNode.dyn || { death: {} };
+        if (ms > 0) {
+          if (fn) fn(kidReal, ms);
+          setTimeout(() => parReal.techNode.removeChild(kidReal.techNode), ms);
+        } else {
+          parReal.techNode.removeChild(kidReal.techNode);
+        }
+        
+        //parReal.techNode.removeChild(real.techNode);
+        //if (real.remFn) real.remFn();
       },
       
       getUnitCss: function(unit) {
@@ -612,7 +660,7 @@ U.buildRoom({
           contentMode: type => ({ overflow: ({ window: 'hidden', free: 'visible' })[type] }),
           roundness: amt => {
             if (amt === 0) return {};
-            return { overflow: 'hidden', borderRadius: `${tinyRound(amt * 100)}%` };
+            return { /* overflow: 'hidden', */ borderRadius: `${tinyRound(amt * 100)}%` };
           },
           text: v => { return 'tricky! need to set javascript on the element'; },
           border: ({ type='in', ext, colour }) => {
@@ -661,7 +709,8 @@ U.buildRoom({
         // TODO: This should be `atomicZoneCssResults`
         let zoneCssResults = [
           ...this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts),
-          this.decalsToZoneCss(kidDef.decals)
+            //.map(([ layout, zoneCssGetter ]) => zoneCssGetter(layout)),
+          [ null, () => this.decalsToZoneCss(kidDef.decals) ]
         ];
         
         // TODO: Then, with `atomicZoneCssResults`:
@@ -670,7 +719,9 @@ U.buildRoom({
         // TODO: ACTUALLY, compileAtomic and merge should happen at once
         // in order to properly convert atoms into macros!!!!
         
-        for (let zoneCssResult of zoneCssResults) {
+        for (let [ layout, zoneCssGetter ] of zoneCssResults) {
+          
+          let zoneCssResult = zoneCssGetter(layout);
           
           for (let zoneName in zoneCssResult) {
             let zoneProps = zoneCssResult[zoneName];
@@ -678,41 +729,26 @@ U.buildRoom({
             
             if (!zoneCss.has(zoneName)) zoneCss[zoneName] = {};
             for (let k in zoneProps) {
-              if (zoneCss[zoneName].has(k) && zoneCss[zoneName][k] !== zoneProps[k]) {
-                console.log('ZoneCss items to be merged:', zoneCssResults);
-                throw Error(`ZoneCss conflict in zone "${zoneName}"; property "${k}"`);
+              
+              let zoneUnitVal = this.getUnitCss(zoneProps[k]);
+              
+              // Note that if we aren't converting to unitCss early, this
+              // `if` may think that `'0'` and `UnitPx(0)` are different
+              if (zoneCss[zoneName].has(k) && zoneCss[zoneName][k].prop !== zoneUnitVal) {
+                console.log('ZoneCss items to be merged:', zoneCssResults.toObj(([ layout, fn ]) => {
+                  return [ U.nameOf(layout), fn(layout) ];
+                }));
+                throw Error(`ZoneCss conflict in zone "${zoneName}"; property "${k}"; ${zoneCss[zoneName][k].prop} vs ${zoneUnitVal}`);
               }
-              zoneCss[zoneName][k] = zoneProps[k];
+              
+              // TODO: Is it too early to convert to unitCss???
+              zoneCss[zoneName][k] = { prop: zoneUnitVal, layout };
             }
             
           }
           
         }
         
-        // for (let layoutItem of layoutItems) {
-        //   
-        //   // Merge the css
-        //   let layoutZoneCss = this.domGetZoneCss(parDef, parSm, kidDef, kidSm, defReals, defInserts);
-        //   for (let zoneName in layoutZoneCss) {
-        //     
-        //     let propsForThisZone = zoneCss.has(zoneName)
-        //       ? zoneCss[zoneName]
-        //       : (zoneCss[zoneName] = {});
-        //     
-        //     let zoneProps = layoutZoneCss[zoneName];
-        //     for (let zonePropName in zoneProps) {
-        //       let zonePropVal = zoneProps[zonePropName];
-        //       if (propsForThisZone.has(zonePropName) && propsForThisZone[zonePropName] !== zonePropVal) {
-        //         console.log('EXISTING:', 
-        //         throw Error(`Insertion ${parDef ? parDef.name : '*'}->${kidDef.name} has conflict in zone "${zoneName}", prop "${zonePropName}"`);
-        //       }
-        //     }
-        //     
-        //     for (let zonePropName in zoneProps) propsForThisZone[zonePropName] = zonePropVal;
-        //     
-        //   }
-        //   
-        // }
         return zoneCss;
       },
       genCss: function(parHut, rootReal) {
@@ -807,7 +843,13 @@ U.buildRoom({
             let rules = [];
             for (let cssPropName in zone) {
               let cssValue = zone[cssPropName];
-              rules.push(`${camelToKebab(cssPropName)}: ${this.getUnitCss(cssValue)};`);
+              let layout = null;
+              if (U.isType(cssValue, Object)) {
+                layout = cssValue.layout;
+                cssValue = cssValue.prop;
+              }
+              
+              rules.push(`${camelToKebab(cssPropName)}: ${this.getUnitCss(cssValue)};`.padTail(60) + `/* Layout: ${U.nameOf(layout)} */`);
             }
             
             cssItems.push([ `${zoneSelector} {`, ...rules.map(r => `  ${r}`), '}' ].join('\n'));
@@ -840,7 +882,7 @@ U.buildRoom({
             
             return [
               `${zoneSelector} {`,
-              ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : getUnitCss(v)};` : C.skip),
+              ...css.toArr((v, k) => v ? `  ${camelToKebab(k)}: ${U.isType(v, String) ? v : this.getUnitCss(v)};` : C.skip),
               '}'
             ].join('\n'); // Join together all lines of a CssBlock
             
@@ -853,7 +895,7 @@ U.buildRoom({
       },
       /// =ABOVE}
       
-      // Dynamic Real Manipulation
+      // Real Dynamic Manipulation:
       getDyn: function(r) {
         if (!r.techNode.dyn) {
           r.techNode.dyn = {
@@ -866,16 +908,11 @@ U.buildRoom({
         }
         return r.techNode.dyn;
       },
-      setTransition: function(r, props, ms, type='steady', delay=0) {
-        let { transition } = this.getDyn(r);
-        if (!ms) return props.forEach(p => transition.rem(p));
-        props.forEach(p => transition.set(p, [ ms, type, delay ]));
-        this.updateTransition(r);
-      },
-      setDeathTransition: function(r, ms, fn) { let dyn = this.getDyn(r); dyn.death = { ms, fn }; },
-      setSize: function(r, w, h) { let dyn = this.getDyn(r); dyn.size = [ w, h ]; this.updateLayout(r); },
+      setExts: function(r, w, h) { let dyn = this.getDyn(r); dyn.size = [ w, h ]; this.updateLayout(r); },
+      setGeom: function(r, w, h, x, y) { let dyn = this.getDyn(r); dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(r); },
       setLoc: function(r, x, y) { let dyn = this.getDyn(r); dyn.loc = [ x, y ]; this.updateLayout(r); },
-      setLayout: function(r, w, h, x, y) { let dyn = this.getDyn(r); dyn.gain({ size: [ w, h ], loc: [ x, y ] }); this.updateLayout(r); },
+      setRot: function(r, amt) { let dyn = this.getDyn(r); dyn.transform.rotate = amt; this.updateTransform(r); },
+      setScl: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
       setImage: function(r, file) {
         if (file) {
           updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl()}')`) ;
@@ -889,21 +926,26 @@ U.buildRoom({
         updStyle(r.techNode, 'borderRadius', amt ? `${tinyRound(amt * 100)}%` : null);
       },
       setBorder: function(r, ext, colour) {
-        updStyle(r.techNode, 'boxShadow', ext.amt ? `inset 0 0 0 ${getUnitCss(ext)} ${colour}` : null);
+        updStyle(r.techNode, 'boxShadow', ext.amt ? `inset 0 0 0 ${this.getUnitCss(ext)} ${colour}` : null);
       },
       setColour: function(r, colour=null) {
         updStyle(r.techNode, 'backgroundColor', colour);
       },
       setOpacity: function(r, amt) { updStyle(r.techNode, 'opacity', amt.toString()); },
-      setScale: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
-      setRotate: function(r, amt) { let dyn = this.getDyn(r); dyn.transform.rotate = amt; this.updateTransform(r); },
+      setTransition: function(r, props, ms, type='steady', delay=0) {
+        let { transition } = this.getDyn(r);
+        if (!ms) return props.forEach(p => transition.rem(p));
+        props.forEach(p => transition.set(p, [ ms, type, delay ]));
+        this.updateTransition(r);
+      },
+      setDeathTransition: function(r, ms, fn) { let dyn = this.getDyn(r); dyn.death = { ms, fn }; },
       updateLayout: function(r) {
         let { size, loc } = this.getDyn(r);
         
         let dom = r.techNode;
         updStyle(dom, 'position', 'absolute');
-        updStyle(dom, 'width', size && size[0] && getUnitCss(size[0]));
-        updStyle(dom, 'height', size && size[1] && getUnitCss(size[1]));
+        updStyle(dom, 'width', size && size[0] && this.getUnitCss(size[0]));
+        updStyle(dom, 'height', size && size[1] && this.getUnitCss(size[1]));
         
         if (loc) {
           let w=null, h=null;
@@ -947,8 +989,32 @@ U.buildRoom({
         updStyle(dom, 'transition', transition.toArr(([ ms, type, delay ], p) => {
           return `${mapTrnProps[p]} ${ms}ms ${mapTrnTypes[type]} ${delay}ms`;
         }).join(', '));
-        
-      }
+      },
+      
+      // Real Interaction:
+      feelNozz: function(r) {
+        if (!r.senseNozzes.has('feel')) {
+          r.senseNozzes.feel = TubVal(null, Nozz());
+          r.techNode.addEventListener('mousedown', evt => {
+            customEvent(evt);
+            r.senseNozzes.feel.nozz.drip(Drop());
+            
+            let upFn = evt => {
+              customEvent(evt);
+              r.senseNozzes.feel.val.dry();
+              r.techNode.removeEventListener('mouseup', upFn);
+            };
+            
+            r.techNode.addEventListener('mouseup', upFn);
+          });
+          
+          r.techNode.setAttribute('tabIndex', '0');
+          updStyle(r.techNode, 'pointerEvents', 'all');
+          updStyle(r.techNode, 'cursor', 'pointer');
+          
+        }
+        return r.senseNozzes.feel;
+      },
       
     })});
     

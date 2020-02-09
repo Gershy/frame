@@ -218,6 +218,11 @@ U.buildRoom({
           // If no parent, we are a ParentHut. We have a responsibility
           // to manage ChildHuts.
           
+          /// {BELOW=
+          // A reference to the Hut representing our Above (TODO: Are we certain there can only be 1 Above???)
+          this.aboveHut = null;
+          /// =BELOW}
+          
           // For debugging connections
           this.roadDbgEnabled = true;
           this.roadDbgCharLimit = 150;
@@ -225,26 +230,7 @@ U.buildRoom({
           // For managing ChildHuts
           this.roadedHutIdCnt = 0;
           this.roadedHuts = Map(); // Map a KidHut id to KidHut and connectivity
-          this.roadedHutNozz = TubSet(null, Nozz());
-          
-          /// {BELOW=
-          // BelowHuts automatically AboveHut with all Servers
-          if (U.initData) {
-            //let aboveRoadHut = this.roadedHuts.toArr(v => v)[0];
-            //let road = aboveRoadHut.serverRoads.toArr(v => v)[0];
-            
-            // TODO: Would like to pass our AboveHut (our only valid
-            // KidHut) as the first param here, but we don't have a
-            // reference yet. This is because servers are setup on a
-            // ParHut instance after it's initialized. We'll only have
-            // access to a ParAboveHut instance after the constructor
-            // finishes. Until then, this sync looks like it comes from
-            // nowhere.
-            // Note that any Road connecting us to the AboveHut would be
-            // appropriate for the `road` param (ideally cheapest Road)
-            Insp.tell(null, this, null, null, U.initData); // Do the initial update
-          }
-          /// =BELOW}
+          ///this.roadedHutNozz = TubSet(null, Nozz());
           
         }
         
@@ -298,6 +284,14 @@ U.buildRoom({
         
         if (!this.roadedHuts.has(hutId)) {
           
+          /// {BELOW=
+          // Note that if a hut is BELOW *and* ABOVE, we can't assume
+          // that the first Hut to connect is the Above - there will be
+          // a multitude of Huts connecting, and we can't simply throw
+          // Errors for each one past the first.....
+          if (this.aboveHut) throw Error(`Already have an aboveHut, but ${hutId} tried to connect`);
+          /// =BELOW}
+          
           // Create a new RoadedHut, Hut, and KidHut relation
           
           // The RoadedHut drying causes Hut and all Roads to dry
@@ -318,6 +312,12 @@ U.buildRoom({
           Rec(kidHutType, `!kidHut@${hutId}`, { par: this, kid: roadedHut.hut });
           
           if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
+          
+          /// {BELOW=
+          console.log('FINALLY GOT AN ABOVE HUT YAY!');
+          this.aboveHut = roadedHut.hut;
+          Insp.tell(this.aboveHut, this, road, null, U.initData);
+          /// =BELOW}
           
         } else {
           
@@ -628,17 +628,15 @@ U.buildRoom({
       
       /// =ABOVE} {BELOW=
       
-      getKidAboveHut: function() {
-        let [ findRoadedAboveHut=null ] = this.roadedHuts.toArr(v => v);
-        return findRoadedAboveHut && findRoadedAboveHut.hut;
+      tell: function(msg) {
+        if (!this.aboveHut) throw Error(`No aboveHut; can't tell`);
+        return Insp.tell(this, this.aboveHut, null, null, msg);
       },
       
       // Sending signs of life to AboveHut
       refreshTellTimeout: function() {
         clearTimeout(this.tellHeartTimeout);
-        this.tellHeartTimeout = setTimeout(() => {
-          Insp.tell(this, this.getKidAboveHut(), null, null, { command: 'thunThunk' });
-        }, this.safeHeartMs);
+        this.tellHeartTimeout = setTimeout(() => this.tell({ command: 'thunThunk' }), this.safeHeartMs);
       },
       
       /// =BELOW}

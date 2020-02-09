@@ -5,7 +5,7 @@ U.buildRoom({
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Rec, RecScope } = record;
-    let { Lands } = hinterlands;
+    let { Hut } = hinterlands;
     let { FillParent, CenteredSlotter, MinExtSlotter, LinearSlotter, TextSized } = real;
     let { UnitPx, UnitPc } = real;
     let { WebApp } = realWebApp;
@@ -145,7 +145,7 @@ U.buildRoom({
         */
         
         real('root', MinExtSlotter);
-        insert('* -> root', FillParent);
+        insert('* -> root', () => FillParent());
         insert('root -> main', sl => sl.getMinExtSlot());
         
         // Logged Out
@@ -168,10 +168,18 @@ U.buildRoom({
         real('playerContentTimer', () => TextSized({ size: UnitPx(14) }));
         real('conclusion', CenteredSlotter);
         real('conclusionContent', () => TextSized({ size: UnitPx(30) }));
-        insert('main -> loggedIn', FillParent);
+        insert('main -> loggedIn', () => FillParent());
         insert('loggedIn -> lobby', sl => sl.getCenteredSlot()); // TODO: Should the slotting functions each be able to return multiple layouts???
-        insert('loggedIn -> game', FillParent);
-        insert('game -> player', sl => [ sl.getLinearSlot(), FillParent({ x: 1, y: 0.1}) ]); // "player" inside "game" takes up 10% (two take up 20%)
+        insert('loggedIn -> game', () => FillParent());
+        /// // TODO: In the future, the way an insert resolves should be
+        /// // capable of varying based on contextual info surrounding
+        /// // the KidReal (or even the ParReal??? MINDBLOWING). All
+        /// // possible different insertion types must be listed here so
+        /// // that the css can be made aware of all possibilities...
+        /// insert('game -> player', () => FillParent({ x: 1, y: 0.1 }));
+        /// insert('game -> player:white', sl => sl.getFixedSlot(0));
+        /// insert('game -> player:black', sl => sl.getFixedSlot(1));
+        insert('game -> player', sl => [ sl.getLinearSlot(), FillParent({ w: UnitPc(1), h: UnitPc(0.1) }) ]); // "player" inside "game" takes up 10% (two take up 20%)
         insert('game -> board', sl => [ sl.getLinearSlot(), FillParent({ x: 0.8, y: 0.8 }) ]);
         insert('player -> playerContent', sl => sl.getCenteredSlot());
         insert('playerContent -> playerContentName', sl => sl.getLinearSlot());
@@ -179,151 +187,23 @@ U.buildRoom({
         insert('board -> tileWhite');
         insert('board -> tileBlack');
         insert('board -> piece');
-        insert('piece -> indicator');
         insert('board -> showMovePiece');
         insert('board -> showMoveTile');
-        insert('game -> conclusion', FillParent);
+        insert('showMoveTile -> indicator');
+        insert('game -> conclusion', () => FillParent());
         insert('conclusion -> conclusionContent', sl => sl.getCenteredSlot());
         
         // Decals
         decals('root', { colour: 'rgba(100, 100, 150, 1)', textColour: '#ffffff' });
         decals('loggedOut', { colour: 'rgba(120, 120, 170, 1)' });
         decals('lobby', { colour: 'rgba(100, 100, 150, 1)' });
-        decals('game', { colour: 'rgba(100, 100, 150, 1)', contentMode: 'window' });
+        decals('game', { colour: 'rgba(100, 100, 150, 1)' /* , contentMode: 'window' */ });
         decals('board', { colour: 'transparent' });
         decals('tileWhite', { colour: '#9a9abb', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
         decals('tileBlack', { colour: '#8989af', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
         decals('conclusion', { colour: 'rgba(0, 0, 0, 0.5)' });
         
       });
-      
-      /* // TODO: Above "layoutDef" function should have these results:
-      // Root layout
-      rootReal.defineReal('c2.c2', { slotters: MinExtSlotter, decals: {
-        colour: 'rgba(100, 100, 150, 1)'
-      }});
-      rootReal.defineReal('c2.main', {});
-      rootReal.defineInsert(null, 'c2.c2', () => FillParent());
-      rootReal.defineInsert('c2.c2', 'c2.main', slotter => slotter.getMinExtSlot());
-      
-      // Logged out
-      rootReal.defineReal('c2.loggedOut', { slotters: CenteredSlotter, decals: {
-        colour: 'rgba(120, 120, 170, 1)'
-      }});
-      rootReal.defineReal('c2.welcomePane', { slotters: () => LinearSlotter({ axis: 'y', dir: '+' }) });
-      rootReal.defineReal('c2.welcomePaneTitle', {
-        layouts: [ ShowText({ pad: UnitPx(10), size: UnitPx(24) }) ],
-        decals: { textColour: 'rgba(255, 255, 255, 1)' }
-      });
-      rootReal.defineReal('c2.welcomePaneBody', {
-        layouts: [ ShowText({ pad: UnitPx(3), size: UnitPx(14) }) ],
-        decals: { textColour: 'rgba(255, 255, 255, 1)' }
-      });
-      rootReal.defineInsert('c2.main', 'c2.loggedOut', () => FillParent({ shrink: UnitPc(0.2) }));
-      rootReal.defineInsert('c2.loggedOut', 'c2.welcomePane', slotter => slotter.getCenteredSlot());
-      rootReal.defineInsert('c2.welcomePane', 'c2.welcomePaneTitle', { slotter => slotter.getLinearSlot() });
-      rootReal.defineInsert('c2.welcomePane', 'c2.welcomePaneBody', { slotter => slotter.getLinearSlot() });
-      
-      rootReal.defineReal('c2.loggedIn', { slotters: CenteredSlot(), decals: {
-        colour: 'rgba(120, 120, 170, 1)'
-      }});*/
-      
-      /*
-      lands.realLayout = {
-        'main': {
-          slot: par => par.cmps.slots.insertViewPortItem(),
-          decals: { colour: 'rgba(100, 100, 150, 1)' }
-        },
-        'main.out': {
-          size: FillParent({ shrink: UnitPc(0.2) }),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot()
-        },
-        'main.out.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'y', dir: '+' })
-        },
-        'main.out.content.title': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(10) }),
-          decals: { textSize: UnitPx(24), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.out.content.text': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ pad: UnitPx(3) }),
-          decals: { textSize: UnitPx(12), textColour: 'rgba(255, 255, 255, 1)' }
-        },
-        'main.in': {
-          size: FillParent(),
-          decals: { colour: 'rgba(120, 120, 170, 1)' },
-          slots: CenteredSlot() // Regarding Real "Insertions" (Relations) - note that we want CenteredSlot when inserting "lobby", but FillParent when inserting "game"
-        },
-        'main.in.lobby': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ pad: UnitPx(15) }),
-          decals: { colour: 'rgba(100, 100, 150, 1)', textColour: 'rgba(255, 255, 255, 1)', textSize: UnitPx(12) }
-        },
-        'main.in.game': {
-          size: FillParent(),
-          decals: {
-            contentMode: 'window',
-            colour: 'rgba(100, 100, 150, 1)'
-          }
-        },
-        'main.in.game.player': {
-          slots: CenteredSlot()
-        },
-        'main.in.game.player.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          slots: LinearSlots({ axis: 'x', dir: '+' }),
-          decals: {
-            textSize: UnitPx(14),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        },
-        'main.in.game.player.content.name': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ padH: UnitPx(6) })
-        },
-        'main.in.game.player.content.timer': {
-          slot: par => par.cmps.slots.insertLinearItem(),
-          size: ShowText({ origin: 'cc' })
-        },
-        'main.in.game.board': { decals: { colour: 'rgba(255, 255, 255, 0)' } },
-        'main.in.game.board.tileWhite': {
-          decals: {
-            colour: 'rgba(154, 154, 187, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.tileBlack': {
-          decals: {
-            colour: 'rgba(137, 137, 175, 1)',
-            border: { ext: UnitPx(1), colour: '#c0c0d8' }
-          }
-        },
-        'main.in.game.board.piece': { decals: {} },
-        'main.in.game.board.move': { decals: {} },
-        'main.in.game.board.move.indicator': { decals: {} },
-        'main.in.game.board.showMovePiece': { decals: {} },
-        'main.in.game.board.showMoveTile': { decals: {} },
-        'main.in.game.conclusion': {
-          size: FillParent(),
-          slots: CenteredSlot(),
-          decals: {
-            colour: 'rgba(0, 0, 0, 0.5)'
-          }
-        },
-        'main.in.game.conclusion.content': {
-          slot: par => par.cmps.slots.insertCenteredItem(),
-          size: ShowText({ origin: 'cc' }),
-          decals: {
-            textSize: UnitPx(30),
-            textColour: 'rgba(255, 255, 255, 1)'
-          }
-        }
-      };
-      */
       
       let webApp = WebApp('c2');
       await webApp.decorateHut(c2Hut, rootReal);
@@ -334,7 +214,7 @@ U.buildRoom({
         if (matchPlayer.val.colour !== piece.val.colour) return [];
         
         // Get other pieces
-        let pieces = match.relRecs('chess2.matchPiece').toArr(matchPiece => matchPiece.mem('piece'));
+        let pieces = match.relRecs('c2.matchPiece').toArr(matchPiece => matchPiece.mem('piece'));
         
         // Make a nice 2d representation of the board
         let calc = Array.fill(8, () => Array.fill(8, () => null));
@@ -415,7 +295,7 @@ U.buildRoom({
       let applyMoves = (match, ...playerMoves) => {
         
         // Get all match pieces...
-        let matchPieceSet = match.relRecs('chess2.matchPiece');
+        let matchPieceSet = match.relRecs('c2.matchPiece');
         let pieces = matchPieceSet.toArr(matchPiece => matchPiece.mem('piece'));
         
         // All pieces refresh by 1 turn
@@ -459,9 +339,6 @@ U.buildRoom({
       
       let rootScp = RecScope(c2Hut, 'c2.chess2', async (chess2, dep) => {
         
-        global.chess2 = chess2;
-        dep(Drop(null, () => { delete global.chess2; }));
-        
         /// {ABOVE=
         
         // Serve files (TODO: to be PICKY, could deny Huts without Matches)
@@ -472,29 +349,34 @@ U.buildRoom({
         
         dep.scp(c2Hut, 'lands.kidHut/par', ({ members: { kid: hut } }, dep) => { // Note we already have reference to `hut`!
           
+          let kidHutDep = dep;
+          
+          // Actions for Huts (differentiate between logged-in and logged-out)
           let hutPlayerNozz = hut.relNozz('c2.hutPlayer');
+          let hutPlayerDryNozz = dep(TubDry(null, hutPlayerNozz));
           
           // Follows
           dep(hut.followRec(chess2));
-          dep.scp(hut, 'chess2.hutPlayer', (hutPlayer, dep) => {
+          dep.scp(hut, 'c2.hutPlayer', (hutPlayer, dep) => {
             
             // Careful not to Follow the HutPlayer!
             let player = hutPlayer.mem('player');
-            dep.scp(player, 'chess2.chess2Player', (chess2Player, dep) => {
+            dep.scp(player, 'c2.chess2Player', (chess2Player, dep) => {
               
               // Follow the Player through the Chess2Player!
-              dep(hut.follow(chess2Player));
+              dep(hut.followRec(chess2Player));
               
-              dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
+              dep.scp(player, 'c2.matchPlayer', (matchPlayer, dep) => {
                 
-                dep(hut.follow(matchPlayer)); // Follow Match
+                dep(hut.followRec(matchPlayer)); // Follow Match
                 
                 // Follow Players, Pieces, Round, Conclusion of Match
+                let followRecFn = (r, dep) => dep(hut.followRec(r));
                 let match = matchPlayer.mem('match');
-                dep.scp(match, 'chess2.matchConclusion',  (r, dep) => dep(hut.follow(r)));
-                dep.scp(match, 'chess2.matchRound',       (r, dep) => dep(hut.follow(r)));
-                dep.scp(match, 'chess2.matchPlayer',      (r, dep) => dep(hut.follow(r)));
-                dep.scp(match, 'chess2.matchPiece',       (r, dep) => dep(hut.follow(r)));
+                dep.scp(match, 'c2.matchConclusion',  followRecFn);
+                dep.scp(match, 'c2.matchRound',       followRecFn);
+                dep.scp(match, 'c2.matchPlayer',      followRecFn);
+                dep.scp(match, 'c2.matchPiece',       followRecFn);
                 
               });
               
@@ -502,18 +384,17 @@ U.buildRoom({
             
           });
           
-          // Actions for Huts (differentiate between logged-in and logged-out)
-          let hutPlayerDryNozz = dep(TubDry(null, hutPlayerNozz));
           dep.scp(hutPlayerDryNozz, (_, dep) => {
             dep(hut.roadNozz('login').route(() => {
+              
               // TODO: `chess2Player` should receive `hutPlayer`, not
               // `player`, as its second member (this would establish an
               // implicit dependency between the Hut and the Player)
-              let player =        lands.createRec('chess2.player', [], { term: hut.getTerm() });
-              let hutPlayer =     lands.createRec('chess2.hutPlayer', [ hut, player ]);
-              let chess2Player =  lands.createRec('chess2.chess2Player', [ chess2, player ]);
+              let player =        c2Hut.createRec('c2.player', [], { term: hut.uid });
+              let hutPlayer =     c2Hut.createRec('c2.hutPlayer', [ hut, player ]);
+              let chess2Player =  c2Hut.createRec('c2.chess2Player', [ chess2, player ]);
               
-              hut.drierNozz().route(() => player.dry());
+              kidHutDep(player); // The Player dries with the Hut
             }));
           });
           dep.scp(hutPlayerNozz, (hutPlayer, dep) => {
@@ -523,7 +404,7 @@ U.buildRoom({
             
             // Huts with Players in Matches can leave their Match
             let player = hutPlayer.mem('player');
-            dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
+            dep.scp(player, 'c2.matchPlayer', (matchPlayer, dep) => {
               dep(hut.roadNozz('exitMatch').route(() => matchPlayer.dry()));
             });
             
@@ -534,23 +415,23 @@ U.buildRoom({
             // Allow moves while there is a RoundPlayer
             let player = hutPlayer.mem('player');
             
-            dep.scp(player, 'chess2.matchPlayer', (matchPlayer, dep) => {
+            dep.scp(player, 'c2.matchPlayer', (matchPlayer, dep) => {
               
-              dep.scp(matchPlayer, 'chess2.roundPlayer', (roundPlayer, dep) => {
+              dep.scp(matchPlayer, 'c2.roundPlayer', (roundPlayer, dep) => {
                 
                 let round = roundPlayer.mem('round');
                 
                 dep(hut.roadNozz('doMove').route(({ msg }) => {
                   
                   // Clear current move
-                  roundPlayer.relNozz('chess2.roundPlayerMove').dryContents();
+                  roundPlayer.relNozz('c2.roundPlayerMove').dryContents();
                   
                   // Perform updated move:
                   let { type, pieceUid, tile } = msg;
                   if (type === 'retract') return; // "retract" means no move yet
                   
-                  let move = lands.createRec('chess2.move', [], { type, pieceUid, tile });
-                  lands.createRec('chess2.roundPlayerMove', [ roundPlayer, move ]);
+                  let move = c2Hut.createRec('c2.move', [], { type, pieceUid, tile });
+                  c2Hut.createRec('c2.roundPlayerMove', [ roundPlayer, move ]);
                   
                 }));
                 
@@ -563,14 +444,14 @@ U.buildRoom({
         });
         
         // Gameplay
-        dep.scp(chess2, 'chess2.chess2Match', (chess2Match, dep) => {
+        dep.scp(chess2, 'c2.chess2Match', (chess2Match, dep) => {
           
           let match = chess2Match.mem('match');
-          let matchPlayerNozz = match.relNozz('chess2.matchPlayer');
+          let matchPlayerNozz = match.relNozz('c2.matchPlayer');
           let matchPlayerCntNozz = dep(TubCnt(null, matchPlayerNozz));
           let matchPlayerDryNozz = dep(TubDry(null, matchPlayerNozz));
           
-          let matchRoundNozz = match.relNozz('chess2.matchRound');
+          let matchRoundNozz = match.relNozz('c2.matchRound');
           let noMatchRoundNozz = dep(TubDry(null, matchRoundNozz));
           
           dep.scp(matchRoundNozz, (matchRound, dep) => {
@@ -582,9 +463,9 @@ U.buildRoom({
               if (playerCnt === 2) return;
               
               round.dry();
-              let mp = match.relRec('chess2.matchPlayer');
-              let conclusion = lands.createRec('chess2.conclusion', [], mp ? mp.val.colour : 'stalemate');
-              let matchConclusion = lands.createRec('chess2.matchConclusion', [ match, conclusion ]);
+              let mp = match.relRec('c2.matchPlayer');
+              let conclusion = c2Hut.createRec('c2.conclusion', [], mp ? mp.val.colour : 'stalemate');
+              let matchConclusion = c2Hut.createRec('c2.matchConclusion', [ match, conclusion ]);
               
             }));
             
@@ -594,9 +475,9 @@ U.buildRoom({
             let roundPlayerMoves = Set();
             let roundPlayerMoveNozz = Nozz();
             roundPlayerMoveNozz.newRoute = routeFn => routeFn(roundPlayerMoves);
-            dep.scp(round, 'chess2.roundPlayer', (roundPlayer, dep) => {
+            dep.scp(round, 'c2.roundPlayer', (roundPlayer, dep) => {
               
-              dep.scp(roundPlayer, 'chess2.roundPlayerMove', (roundPlayerMove, dep) => {
+              dep.scp(roundPlayer, 'c2.roundPlayerMove', (roundPlayerMove, dep) => {
                 
                 roundPlayerMoves.add(roundPlayerMove);
                 roundPlayerMoveNozz.drip(roundPlayerMoves);
@@ -625,16 +506,16 @@ U.buildRoom({
               if (aliveCols.size === 2) {
                 
                 // Begin new Round
-                let nextRound = lands.createRec('chess2.round', [], { endMs: foundation.getMs() + moveMs });
-                for (let matchPlayer of match.relRecs('chess2.matchPlayer'))
-                  lands.createRec('chess2.roundPlayer', [ nextRound, matchPlayer ]);
-                lands.createRec('chess2.matchRound', [ match, nextRound ]);
+                let nextRound = c2Hut.createRec('c2.round', [], { endMs: foundation.getMs() + moveMs });
+                for (let matchPlayer of match.relRecs('c2.matchPlayer'))
+                  c2Hut.createRec('c2.roundPlayer', [ nextRound, matchPlayer ]);
+                c2Hut.createRec('c2.matchRound', [ match, nextRound ]);
                 
               } else {
                 
                 let [ val='stalemate' ] = aliveCols.toArr(v => v);
-                let conclusion = lands.createRec('chess2.conclusion', [], val);
-                lands.createRec('chess2.matchConclusion', [ match, conclusion ]);
+                let conclusion = c2Hut.createRec('c2.conclusion', [], val);
+                c2Hut.createRec('c2.matchConclusion', [ match, conclusion ]);
                 
               }
               
@@ -652,9 +533,9 @@ U.buildRoom({
         // Intermittently enter Players into Matches
         let interval = setInterval(() => {
           
-          let waitingPlayers = chess2.relNozz('chess2.chess2Player').set.toArr(v => {
+          let waitingPlayers = chess2.relNozz('c2.chess2Player').set.toArr(v => {
             let player = v.mem('player');
-            return player.relRec('chess2.matchPlayer') ? C.skip : player;
+            return player.relRec('c2.matchPlayer') ? C.skip : player;
           });
           
           for (let i = 0; i < waitingPlayers.length - 1; i += 2) {
@@ -663,7 +544,7 @@ U.buildRoom({
             // that Match, and then create Pieces and assign each Piece to the
             // Match and its appropriate Player.
             
-            let match = lands.createRec('chess2.match');
+            let match = c2Hut.createRec('c2.match');
             
             let playerPieceSets = [
               { colour: 'white', player: waitingPlayers[i + 0], pieces: pieceDefs.standard.white },
@@ -673,19 +554,19 @@ U.buildRoom({
             console.log('Matching:', playerPieceSets.map(({ player }) => player.val.term));
             
             for (let { colour, player, pieces } of playerPieceSets) {
-              let matchPlayer = lands.createRec('chess2.matchPlayer', [ match, player ], { colour });
+              let matchPlayer = c2Hut.createRec('c2.matchPlayer', [ match, player ], { colour });
               matchPlayer.desc = `For Player ${player.val.term}`;
               for (let [ type, col, row ] of pieces) {
-                let piece = lands.createRec('chess2.piece', [], { colour, type, col, row, wait: 0 });
-                let matchPiece = lands.createRec('chess2.matchPiece', [ match, piece ]);
+                let piece = c2Hut.createRec('c2.piece', [], { colour, type, col, row, wait: 0 });
+                let matchPiece = c2Hut.createRec('c2.matchPiece', [ match, piece ]);
               }
             }
             
-            let chess2Match = lands.createRec('chess2.chess2Match', [ chess2, match ]);
-            let initialRound = lands.createRec('chess2.round', [], { endMs: foundation.getMs() + moveMs });
-            for (let matchPlayer of match.relRecs('chess2.matchPlayer'))
-              lands.createRec('chess2.roundPlayer', [ initialRound, matchPlayer ]);
-            let matchRound = lands.createRec('chess2.matchRound', [ match, initialRound ]);
+            let chess2Match = c2Hut.createRec('c2.chess2Match', [ chess2, match ]);
+            let initialRound = c2Hut.createRec('c2.round', [], { endMs: foundation.getMs() + moveMs });
+            for (let matchPlayer of match.relRecs('c2.matchPlayer'))
+              c2Hut.createRec('c2.roundPlayer', [ initialRound, matchPlayer ]);
+            let matchRound = c2Hut.createRec('c2.matchRound', [ match, initialRound ]);
             
           }
           
@@ -694,12 +575,15 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
+        global.chess2 = chess2;
+        dep(Drop(null, () => { delete global.chess2; }));
+        
         let c2RootReal = dep(rootReal.techReals[0].addReal('c2.root'));
         let mainReal = c2RootReal.addReal('c2.main');
         
-        let myPlayerNozz = dep(TubVal(null, chess2.relNozz('chess2.chess2Player'), chess2Player => {
+        let myPlayerNozz = dep(TubVal(null, chess2.relNozz('c2.chess2Player'), chess2Player => {
           let player = chess2Player.mem('player');
-          return (player.val.term === U.hutTerm) ? player : C.skip;
+          return (player.val.term === U.hutId) ? player : C.skip;
         }));
         let myPlayerDryNozz = dep(TubDry(null, myPlayerNozz));
         
@@ -710,57 +594,55 @@ U.buildRoom({
           let titleReal = contentReal.addReal('c2.welcomePaneTitle');
           let textReal = contentReal.addReal('c2.welcomePaneBody');
           
-          console.log('TITLE REAL:', titleReal);
-          
           titleReal.setText('Chess2');
           textReal.setText('Click to start playing!');
           
-          //dep(outReal.feelNozz().route(() => lands.tell({ command: 'login' })));
+          dep(outReal.feelNozz().route(() => c2Hut.tell({ command: 'login' }));
           
         });
         dep.scp(myPlayerNozz, (player, dep) => {
           
-          let inReal = dep(mainReal.addReal('in'));
+          let loggedInReal = dep(mainReal.addReal('c2.loggedIn'));
           
-          let myMatchPlayerNozz = player.relNozz('chess2.matchPlayer');
+          let myMatchPlayerNozz = player.relNozz('c2.matchPlayer');
           let myMatchPlayerDryNozz = dep(TubDry(null, myMatchPlayerNozz));
           
           dep.scp(myMatchPlayerDryNozz, (_, dep) => {
             
-            let lobbyReal = dep(inReal.addReal('lobby'));
+            let lobbyReal = dep(loggedInReal.addReal('c2.lobby'));
             lobbyReal.setText('Waiting for match...');
             
           });
           dep.scp(myMatchPlayerNozz, (myMatchPlayer, dep) => {
             
-            let match = myMatchPlayer.mem('match');
+            let match = myMatchPlayer.members['c2.match'];
             let myColour = myMatchPlayer.val.colour;
             
-            let gameReal = dep(inReal.addReal('game'));
+            let gameReal = dep(loggedInReal.addReal('c2.game'));
             
             // Show Player names
-            dep.scp(match, 'chess2.matchPlayer', (matchPlayer, dep) => {
+            dep.scp(match, 'c2.matchPlayer', (matchPlayer, dep) => {
               
               let player = matchPlayer.mem('player');
               let colour = matchPlayer.val.colour;
               
-              let playerReal = dep(gameReal.addReal('player'));
-              let playerContentReal = playerReal.addReal('content');
-              let playerNameReal = playerContentReal.addReal('name');
+              let playerReal = dep(gameReal.addReal('c2.player'));
+              let playerContentReal = playerReal.addReal('c2.playerContent');
+              let playerNameReal = playerContentReal.addReal('c2.playerContentName');
               playerNameReal.setText(player.val.term);
               
-              playerReal.setLayout(...((colour === 'white')
+              playerReal.setGeom(...((colour === 'white')
                 ? [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.05) ]
                 : [ UnitPc(1), UnitPc(0.1), UnitPc(0.5), UnitPc(0.95) ]
               ));
               
-              dep(myMatchPlayer.route(val => playerReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              dep(myMatchPlayer.route(val => playerReal.setRot((val.colour === 'white') ? 0.5 : 0)));
               
               if (myMatchPlayer !== matchPlayer) return; // Stop here if this isn't our player
               
-              dep.scp(match, 'chess2.matchRound', (matchRound, dep) => {
+              dep.scp(match, 'c2.matchRound', (matchRound, dep) => {
                 let round = matchRound.mem('round');
-                let playerTimerReal = dep(playerContentReal.addReal('timer'));
+                let playerTimerReal = dep(playerContentReal.addReal('c2.playerContentTimer'));
                 let updTimer = () => {
                   let ms = round.val.endMs - foundation.getMs();
                   let secs = Math.floor(ms / 1000);
@@ -777,13 +659,13 @@ U.buildRoom({
             
             let t = 1 / 8;
             let p = t * 0.95;
-            let boardReal = gameReal.addReal('board');
-            boardReal.setLayout(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
+            let boardReal = gameReal.addReal('c2.board');
+            boardReal.setGeom(UnitPc(0.8), UnitPc(0.8), UnitPc(0.5), UnitPc(0.5));
             
             // Show board tiles
             for (let col = 0; col < 8; col++) { for (let row = 0; row < 8; row++) {
-              let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'tileBlack' : 'tileWhite');
-              tile.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
+              let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'c2.tileBlack' : 'c2.tileWhite');
+              tile.setGeom(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
             }}
             
             let selectedPieceNozz = dep(TubVal(null, Nozz()));
@@ -791,13 +673,13 @@ U.buildRoom({
             let confirmedMoveNozz = dep(TubVal(null, Nozz()));
             let noConfirmedMoveNozz = dep(TubVal(null, Nozz()));
             
-            dep.scp(match, 'chess2.matchPiece', (matchPiece, dep) => {
+            dep.scp(match, 'c2.matchPiece', (matchPiece, dep) => {
               
-              let piece = matchPiece.mem('piece');
-              let pieceReal = dep(boardReal.addReal('piece'));
+              let piece = matchPiece.members['c2.piece'];
+              let pieceReal = dep(boardReal.addReal('c2.piece'));
               pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
               pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);
-              pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScale(8); });
+              pieceReal.setDeathTransition(600, real => { real.setOpacity(0); real.setScl(8); });
               dep(piece.route(({ colour, type, col, row, wait }) => {
                 
                 // Reset selected and confirmed pieces when any piece updates
@@ -805,7 +687,7 @@ U.buildRoom({
                 confirmedMoveNozz.dryContents();
                 
                 pieceReal.setRoundness(1);
-                pieceReal.setLayout(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
+                pieceReal.setGeom(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
                 pieceReal.setImage(savedItems[`chess2Piece.${colour}.${type}`]);
                 
                 pieceReal.setColour((wait > 0) ? 'rgba(255, 120, 50, 0.55)' : null);
@@ -825,30 +707,31 @@ U.buildRoom({
                 selectedPieceNozz.nozz.drip(selPiece);
               }));
               
-              dep(myMatchPlayer.route(val => pieceReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              dep(myMatchPlayer.route(val => pieceReal.setRot((val.colour === 'white') ? 0.5 : 0)));
               
             });
             
             dep.scp(selectedPieceNozz, ({ piece }, dep) => {
               
               confirmedMoveNozz.dryContents();
-              lands.tell({ command: 'doMove', type: 'retract' });
+              
+              c2Hut.tell({ command: 'doMove', type: 'retract' });
               
               validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
                 
-                let moveReal = dep(boardReal.addReal('move'));
-                moveReal.setLayout(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
+                let moveReal = dep(boardReal.addReal('c2.showMoveTile'));
+                moveReal.setGeom(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
                 
-                let indReal = moveReal.addReal('indicator');
+                let indReal = moveReal.addReal('c2.indicator');
                 let colour = (piece.val.colour === 'white') ? '#e4e4f0' : '#191944';
-                indReal.setLayout(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
+                indReal.setGeom(UnitPc(cap ? 0.9 : 0.3), UnitPc(cap ? 0.9 : 0.3), UnitPc(0.5), UnitPc(0.5));
                 indReal.setRoundness(1);
                 
                 if (cap)  indReal.setBorder(UnitPx(5), colour);
                 else      indReal.setColour(colour);
                 
                 dep(moveReal.feelNozz().route(() => {
-                  lands.tell({ command: 'doMove', type: 'piece', pieceUid: piece.uid, tile: [ col, row ] });
+                  c2Hut.tell({ command: 'doMove', type: 'piece', pieceUid: piece.uid, tile: [ col, row ] });
                   selectedPieceNozz.dryContents();
                   
                   let cmDrop = Drop(defDrier());
@@ -866,32 +749,32 @@ U.buildRoom({
               let { piece, tile, cap } = confirmedMove;
               let colour = '#40df15';
               
-              let showPieceReal = dep(boardReal.addReal('showMovePiece'));
+              let showPieceReal = dep(boardReal.addReal('c2.showMovePiece'));
               showPieceReal.setRoundness(1);
-              showPieceReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
+              showPieceReal.setGeom(tileExt(0.9), tileExt(0.9), tileLoc(piece.val.col), tileLoc(piece.val.row));
               showPieceReal.setBorder(UnitPx(5), colour);
               
-              let showTileReal = dep(boardReal.addReal('showMoveTile'));
+              let showTileReal = dep(boardReal.addReal('c2.showMoveTile'));
               showTileReal.setRoundness(1);
               if (cap) {
-                showTileReal.setLayout(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
+                showTileReal.setGeom(tileExt(0.9), tileExt(0.9), tileLoc(tile[0]), tileLoc(tile[1]));
                 showTileReal.setBorder(UnitPx(5), colour);
               } else {
-                showTileReal.setLayout(tileExt(0.3), tileExt(0.3), tileLoc(tile[0]), tileLoc(tile[1]));
+                showTileReal.setGeom(tileExt(0.3), tileExt(0.3), tileLoc(tile[0]), tileLoc(tile[1]));
                 showTileReal.setColour(colour);
               }
               
             });
             
-            dep(myMatchPlayer.route(val => gameReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+            dep(myMatchPlayer.route(val => gameReal.setRot((val.colour === 'white') ? 0.5 : 0)));
             
-            dep.scp(match, 'chess2.matchConclusion', (matchConclusion, dep) => {
+            dep.scp(match, 'c2.matchConclusion', (matchConclusion, dep) => {
               
               let conclusion = matchConclusion.mem('conclusion');
               let result = conclusion.val;
               
-              let conclusionReal = dep(gameReal.addReal('conclusion'));
-              let conclusionContentReal = conclusionReal.addReal('content');
+              let conclusionReal = dep(gameReal.addReal('c2.conclusion'));
+              let conclusionContentReal = conclusionReal.addReal('c2.conclusionContent');
               
               let type = (result !== 'stalemate')
                 ? ((result === myMatchPlayer.val.colour) ? 'winner' : 'loser')
@@ -903,9 +786,9 @@ U.buildRoom({
                 stalemate: 'Tie game!'
               })[type]);
               
-              dep(myMatchPlayer.route(val => conclusionReal.setRotate((val.colour === 'white') ? 0.5 : 0)));
+              dep(myMatchPlayer.route(val => conclusionReal.setRot((val.colour === 'white') ? 0.5 : 0)));
               
-              dep(conclusionReal.feelNozz().route(() => lands.tell({ command: 'exitMatch' })));
+              dep(conclusionReal.feelNozz().route(() => c2Hut.tell({ command: 'exitMatch' })));
                 
             });
             

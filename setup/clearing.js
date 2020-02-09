@@ -136,16 +136,16 @@ Map = global.Map = function Map(...args) { return new MapOrig(...args); };
 Map.prototype = MapOrig.prototype;
 protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; returns [ KEY, VAL ] pairs
   let ret = {};
-  for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
+  for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
 protoDef(MapOrig, 'toArr', function(fn) { // Iterator args: [ VAL, KEY ]; returns VALs
   let ret = [];
-  for (let [ k, v ] of this.entries()) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
+  for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
 protoDef(MapOrig, 'find', function(f) { // Returns [ VAL, KEY ]
-  for (let [ k, v ] of this.entries()) if (f(v, k)) return [ v, k ];
+  for (let [ k, v ] of this) if (f(v, k)) return [ v, k ];
   return null;
 });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });

@@ -691,8 +691,31 @@
     },
     
     // High level
-    getRootHut: async function(...args) {
-      return insp.Foundation.getRootHut.call(this, ...args);
+    getRootHut: async function(options={}) {
+      
+      if (!options.has('hosting')) options.hosting = {};
+      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
+      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
+      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
+      
+      let [ host, port ] = this.raiseArgs.has('hutHosting')
+        ? this.raiseArgs.hutHosting.split(':')
+        : [ 'localhost', '80' ];
+      
+      let sslArgs = { keyPair: null, selfSign: null };
+      if (this.raiseArgs.has('ssl') && !!this.raiseArgs.ssl) {
+        let { cert, key, selfSign } = await Promise.allObj({
+          cert:     this.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
+          key:      this.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
+          selfSign: this.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
+        });
+        sslArgs = { keyPair: { cert, key }, selfSign };
+      }
+      
+      options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
+      
+      return insp.Foundation.getRootHut.call(this, options);
+      
     },
     getRootReal: async function() {
       
