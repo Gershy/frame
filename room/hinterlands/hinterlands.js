@@ -314,7 +314,6 @@ U.buildRoom({
           if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
           
           /// {BELOW=
-          console.log('FINALLY GOT AN ABOVE HUT YAY!');
           this.aboveHut = roadedHut.hut;
           Insp.tell(this.aboveHut, this, road, null, U.initData);
           /// =BELOW}
@@ -340,7 +339,7 @@ U.buildRoom({
           roadedHut.serverRoads.rem(server);
           routeRoad.dry(); // Also stop routing Road
           
-          if (this.roadDbgEnabled) console.log(`<-DROP ${hutId} on ${server.desc} (${roadedHut.serverRoads.size} remaining})`);
+          if (this.roadDbgEnabled) console.log(`<-DROP ${hutId} on ${server.desc} (${roadedHut.serverRoads.size} remaining)`);
           
           if (roadedHut.serverRoads.isEmpty()) {
             
@@ -393,6 +392,14 @@ U.buildRoom({
         return insp.RecTypes.getType.call(this, ...args);
       },
       getNextRecUid: function() { return this.foundation.getUid(); },
+      trackRec: function(rec) {
+        this.allRecs.set(rec.uid, rec);
+        rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
+        return rec;
+      },
+      createRec: function(name, members, val) {
+        return this.trackRec(insp.RecTypes.createRec.call(this, name, members, val));
+      },
       doSync: function({ add=[], upd=[], rem=[] }) {
         
         // TODO: If Below is allowed to create Recs how do we ensure
@@ -430,6 +437,19 @@ U.buildRoom({
           
           // Try to fulfill this attempt
           for (let addRec of attempt) {
+            
+            if (this.allRecs.has(addRec.uid)) {
+              /// TODO: Here's how this should look in the future:
+              /// throw HutError(null, `Duplicate id: ${addRec.uid}`, {
+              ///   scope: 'hinterlands:Hut.prototype.doSync',
+              ///   context: { add, upd, rem }
+              /// });
+              /// HutError's 1st param indicates a "deeper Error", which
+              /// optionally describes an error that later occurred from
+              /// this scope!
+              console.log(addRec);
+              throw Error(`Duplicate id: ${addRec.uid}`);
+            }
             
             let members = null;
             if (U.isType(addRec.mems, Object)) {
@@ -480,14 +500,6 @@ U.buildRoom({
         // became unordered from churning
         return add.map(({ uid }) => this.allRecs.get(uid));
         
-      },
-      trackRec: function(rec) {
-        this.allRecs.set(rec.uid, rec);
-        rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
-        return rec;
-      },
-      createRec: function(name, members, val) {
-        return this.trackRec(insp.RecTypes.createRec.call(this, name, members, val));
       },
       
       /// {ABOVE=
@@ -554,7 +566,12 @@ U.buildRoom({
         
         // Creates tell to sync the BelowHut and modifies its
         // representation to be considered fully up-to-date
-        let add = this.pendingSync.add.toArr(r => ({ type: r.type.name, uid: r.uid, val: r.val, mems: r.members.map(m => m.uid) }));
+        let add = this.pendingSync.add.toArr(r => ({
+          type: r.type.name, uid: r.uid, val: r.val,
+          
+          // Redirect all references from ParAboveHut to KidBelowHut
+          mems: r.members.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)
+        }));
         let upd = this.pendingSync.upd.toArr(r => ({ uid: r.uid, val: r.val }));
         let rem = this.pendingSync.rem.toArr(r => r.uid);
         
@@ -613,11 +630,11 @@ U.buildRoom({
         
       },
       followRec: function(rec) {
-        let recs = [ rec, ...rec.members.toArr(r => r) ].map(r => r.uid[0] === '!' ? C.skip : r);
+        let recs = [ rec, ...rec.members.toArr(r => r) ]
+          .map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
+        
         for (let rec of recs) this.modRecFollowStrength(rec, +1);
-        return Drop(null, () => {
-          for (let rec of recs) this.modRecFollowStrength(rec, -1);
-        });
+        return Drop(null, () => { for (let rec of recs) this.modRecFollowStrength(rec, -1); });
       },
       
       // Listening for signs of life from BelowHut

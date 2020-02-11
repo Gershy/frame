@@ -285,11 +285,11 @@ let U = global.U = {
   
   buildRoom: ({ name, innerRooms=[], build }) => {
     
+    if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
     if (U.rooms.has(name)) throw Error(`Tried to overwrite room "${name}"`);
     return U.rooms[name] = foundation => {
       
       if (!foundation) throw Error('Missing "foundation" param');
-      if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
       let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
       if (missingRoom) throw Error(`Missing innerRoom: ${missingRoom[0]}`);
       

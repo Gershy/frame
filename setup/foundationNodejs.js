@@ -221,9 +221,9 @@
       
     },
     
-    init: function() {
+    init: function(...args) {
       
-      insp.Foundation.init.call(this);
+      insp.Foundation.init.call(this, ...args);
       
       this.roomsInOrder = [];
       this.compilationData = {};
@@ -235,7 +235,6 @@
       
       this.transportDebug = false;
       this.httpFullDebug = false;
-      this.spoofEnabled = false;
       
       this.usage0 = process.memoryUsage().map(v => v);
       
@@ -257,9 +256,6 @@
         
       })();
       
-      this.terms = null;
-      this.getSaved([ 'setup', 'terms.json' ]).getContent().then(terms => this.terms = JSON.parse(terms));
-      
     },
     defaultGoals: function() {
       
@@ -277,6 +273,9 @@
         desc: 'List all habits',
         detect: args => U.isType(args.habit, Object) && args.habit.has('all'),
         enact: async (foundation, args) => {
+          
+          // TODO: Would be cool when DB is implemented to abstractly
+          // save habits into DB instead of filesystem
           
           let habits = fs.readdirSync(path.join(tempDir, 'habit'));
           if (habits.length) {
@@ -340,6 +339,8 @@
           let data = JSON.parse(await fsGetFile([ tempDir, 'habit', `${habitName}.json` ]));
           let newArgs = ({ ...data, ...args }).gain({ habit: C.skip });
           
+          // TODO: This won't work, now that `raiseArgs` are given to
+          // the constructor, not the `raise` function...
           await foundation.raise(newArgs);
           
         }
@@ -413,11 +414,12 @@
       
       let roomFileContents = await fsGetFile([ roomDir, roomName, `${roomName}.js` ]);
       let depStr = U.safe(
-        () => roomFileContents.match(/innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
+        () => roomFileContents.match(/[^\w]innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
         () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
       );
+      
       return depStr
-        ? depStr.split(',').map(v => { v = v.trim(); return v.substr(1, v.length - 2); })
+        ? depStr.split(',').map(v => v.trim()).map(v => v.substr(1, v.length - 2))
         : [];
     },
     compileRecursive: async function(roomName, compiledPrms={}, precedence=[]) {
@@ -693,17 +695,26 @@
     // High level
     getRootHut: async function(options={}) {
       
+      // TODO: Think about what is happening with `hutInstance.uid` -
+      // For Above the uid is hard-coded and basically arbitrary. For
+      // Below the uid is an unguessable, private base62 string.
+      // There are two different ways to add the AboveHut as a MemberRec
+      // of some arbitrary Rec:
+      // 1) Above-only: 
+      
+      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      
       if (!options.has('hosting')) options.hosting = {};
       if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
       if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
       if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
       
-      let [ host, port ] = this.raiseArgs.has('hutHosting')
-        ? this.raiseArgs.hutHosting.split(':')
+      let [ host, port ] = this.origArgs.has('hosting')
+        ? this.origArgs.hosting.split(':')
         : [ 'localhost', '80' ];
       
       let sslArgs = { keyPair: null, selfSign: null };
-      if (this.raiseArgs.has('ssl') && !!this.raiseArgs.ssl) {
+      if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
         let { cert, key, selfSign } = await Promise.allObj({
           cert:     this.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
           key:      this.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
@@ -712,6 +723,7 @@
         sslArgs = { keyPair: { cert, key }, selfSign };
       }
       
+      options.uid = 'nodejs.root';
       options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
       
       return insp.Foundation.getRootHut.call(this, options);
@@ -791,7 +803,10 @@
       // TODO: Right now a Road can be spoofed - this should be a
       // property of the Hut, shouldn't it?
       
-      if (this.spoofEnabled && query.has('spoof')) {
+      if (query.has('spoof')) {
+        
+        // Spoofing only available if allowed by Foundation
+        if (!this.spoofEnabled) return null;
         
         // Return the current connection for `server` for the spoofed
         // identity, or create such a connection if none exists
@@ -805,6 +820,7 @@
         
       } else if (query.has('hutId')) {
         
+        // Supplying a "hutId" means the Hut claims to be familiar
         let roadedHut = parHut.getRoadedHut(query.hutId);
         if (!roadedHut) return null;
         
@@ -814,24 +830,10 @@
           if (decorate) decorate(road);
         });
         
-      } else {
-        
-        return parHut.processNewRoad(server, decorate || (road => {}));
-        
       }
       
-    },
-    getTerm: function() {
-      if (!this.terms) throw Error('Terms list not yet ready');
-      if (!this.terms.length) throw Error('All terms exhausted X_X');
-      let ind = Math.floor(Math.random() * this.terms.length);
-      let term = this.terms[ind];
-      this.terms = [ ...this.terms.slice(0, ind), ...this.terms.slice(ind + 1) ];
-      console.log(term, this.terms.length, this.terms.includes(term));
+      return parHut.processNewRoad(server, decorate || (road => {}));
       
-      let d = Drop(null, () => this.terms.push(term))
-      d.value = term;
-      return d;
     },
     makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       
@@ -1192,9 +1194,7 @@
     },
     
     getPlatformName: function() { return 'nodejs'; },
-    establishHut: async function(raiseArgs) {
-      
-      let { hut=null, bearing=null } = raiseArgs;
+    establishHut: async function({ hut, bearing }) {
       
       await this.canSettlePrm;
       
@@ -1205,7 +1205,6 @@
       // We're establishing with known params! So set them on `this`
       this.hut = U.isType(hut, Object) ? hut.name : hut;
       this.bearing = bearing;
-      this.spoofEnabled = raiseArgs.mode === 'test';
       
       // Compile everything!
       this.roomsInOrder = await this.compileRecursive(hut);

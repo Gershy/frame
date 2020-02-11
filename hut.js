@@ -102,7 +102,7 @@ if (args.has('test')) {
   
   // Make the foundation
   let { FoundationNodejs } = U.setup;
-  let foundation = FoundationNodejs();
+  let foundation = FoundationNodejs(args);
   foundation.raise(args)
     .catch(err => console.log(foundation.formatError(err)));
   

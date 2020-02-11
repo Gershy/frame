@@ -15,8 +15,8 @@
     getNumBytes: async function() { return null; }
   })});
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
-    init: function() {
-      insp.Foundation.init.call(this);
+    init: function(...args) {
+      insp.Foundation.init.call(this, ...args);
       
       // GOAL: how long since Above generated `U.aboveMsAtResponseTime`?
       // - `firstContactMs` is our earliest timing of server response
@@ -33,8 +33,8 @@
       // at current value of Above's `foundation.getMs()` *right now*
       this.clockDeltaMs = nativeNow - (U.aboveMsAtResponseTime + knownLatencyMs);
       
-      let { host, port, query } = this.parseUrl(window.location.href);
-      this.spoof = query.has('spoof') ? query.spoof : null;
+      let { query } = this.parseUrl(window.location.href);
+      this.spoof = (this.spoofEnabled && query.has('spoof')) ? query.spoof : null;
       
       // Make sure that refreshes redirect to the same session
       window.history.replaceState({}, '', this.getUrl({}));
@@ -45,7 +45,7 @@
       // This is the root of all graphical entities
       this.rootReal = null;
       
-      // Nice visual changes when the window loads and unloads
+      // All css to react to window loading and unloading
       window.addEventListener('load', () => document.body.classList.add('loaded'));
       window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
       
@@ -60,7 +60,7 @@
       
       // Catch exceptions after building all Rooms
       window.addEventListener('unhandledrejection', evt => {
-        console.error(this.formatError(evt.reason));
+        console.error(this.formatError(evt.error || evt.reason));
         evt.preventDefault();
       });
       window.addEventListener('error', evt => {
@@ -82,17 +82,12 @@
       params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
       return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
     },
-    getTerm: function() {
-      // TODO: Ensure this isn't used more than once - there should only
-      // be a single Above, for which to ascribe a term (assuming that
-      // FoundationBrowser can only run Below)
-      let d = Drop();
-      d.value = 'server';
-      return d;
-    },
     
     // High level
     getRootHut: async function(options={}) {
+      
+      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      options.uid = U.hutId;
       
       if (!options.has('hosting')) options.hosting = {};
       if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
@@ -100,11 +95,8 @@
       if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
       
       let { protocol, host, port } = this.parseUrl(window.location.href);
-      
       let { secure } = Foundation.protocols[protocol];
-      sslArgs = { keyPair: secure, selfSign: secure };
-      
-      options.hosting.gain({ host, port, sslArgs });
+      options.hosting.gain({ host, port, sslArgs: { keyPair: secure, selfSign: secure } });
       
       return insp.Foundation.getRootHut.call(this, options);
       
@@ -184,7 +176,7 @@
       };
       
       // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, roadedHut => roadedHut.hutId = 'above');
+      pool.processNewRoad(server, roadedHut => roadedHut.hutId = '!above');
       return server;
     },
     makeSoktServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
@@ -205,7 +197,7 @@
       };
       
       // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, roadedHut => roadedHut.hutId = 'above');
+      pool.processNewRoad(server, roadedHut => roadedHut.hutId = '!above');
       return server;
     },
     formatError: function(err) {

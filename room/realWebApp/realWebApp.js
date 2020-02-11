@@ -64,10 +64,7 @@ U.buildRoom({
         this.text = '';
         this.setText(text);
       },
-      setText: function(text) {
-        if (text !== text.trim()) throw Error(`Text "${text}" has extra whitespace`);
-        this.text = text;
-      },
+      setText: function(text) { this.text = text.trim(); },
       setProp: function(name, value=null) { this.props[name] = value; },
       add: function(child) {
         if (![ 'root', 'container' ].has(this.type)) throw Error(`Can\'t add to type ${this.type}`);
@@ -102,7 +99,7 @@ U.buildRoom({
         /// {ABOVE=
         
         let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
-        let styleSaved = await foundation.getSavedFromData([ 'realWebAppMainStyles.css' ], this.genCss(parHut, rootReal));
+        let styleSaved = await foundation.getSavedFromData([ 'realWebApp.mainStyles.css' ], this.genCss(parHut, rootReal));
         
         parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
           
@@ -143,12 +140,12 @@ U.buildRoom({
           let favicon = head.add(XmlElement('link', 'singleton'));
           favicon.setProp('rel', 'shortcut icon');
           favicon.setProp('type', 'image/x-icon');
-          favicon.setProp('href', urlFn({ command: 'realWebAppGetFavicon' }));
+          favicon.setProp('href', urlFn({ command: 'realWebApp.favicon' }));
           
           let css = head.add(XmlElement('link', 'singleton'));
           css.setProp('rel', 'stylesheet');
           css.setProp('type', 'text/css');
-          css.setProp('href', urlFn({ command: 'realWebAppGetStylesheet' }));
+          css.setProp('href', urlFn({ command: 'realWebApp.stylesheet' }));
           
           // Make a `global` value available to browsers
           let setupScript = head.add(XmlElement('script', 'text'));
@@ -181,10 +178,9 @@ U.buildRoom({
             scriptTextItems.push(''); totalLineCount += 1;
           });
           
-          let raiseArgs = [];
-          raiseArgs.push(`settle: '${foundation.hut}.below'`);
-          if (foundation.raiseArgs.has('hutHosting')) raiseArgs.push(`hutHosting: '${foundation.raiseArgs.hutHosting}'`);
-          if (foundation.raiseArgs.has('ssl')) raiseArgs.push(`ssl: '${foundation.raiseArgs.ssl}'`);
+          // TODO: Is this risky? What if a sensitive filepath exists in
+          // `foundation.origArgs`??
+          let foundationArgs = { ...foundation.origArgs, settle: `${foundation.hut}.below` };
           
           let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
             '// ==== File: hut.js (line count: 8)',
@@ -193,8 +189,8 @@ U.buildRoom({
             `U.initData = ${JSON.stringify(initSyncTell)};`,
             `U.debugLineData = ${JSON.stringify(debugLineData)};`,
             'let { FoundationBrowser } = U.setup;',
-            `let foundation = FoundationBrowser();`,
-            `foundation.raise({ ${raiseArgs.join(', ')} });`
+            `let foundation = FoundationBrowser(${JSON.stringify(foundationArgs)});`,
+            `foundation.raise();`
           ].join('\n');
           
           mainScript.setProp('type', 'text/javascript');
@@ -212,9 +208,9 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        parHut.roadNozz('realWebAppGetFavicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
-        parHut.roadNozz('realWebAppGetStylesheet').route(({ reply }) => U.safe(async () => reply(await styleSaved), reply));
-        parHut.roadNozz('realWebAppGetQuadTest').route(({ road, srcHut, reply }) => {
+        parHut.roadNozz('realWebApp.favicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
+        parHut.roadNozz('realWebApp.stylesheet').route(({ reply }) => U.safe(async () => reply(await styleSaved), reply));
+        parHut.roadNozz('realWebApp.quadTest').route(({ road, srcHut, reply }) => {
           
           let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
           let urlFn = p => {
@@ -235,7 +231,15 @@ U.buildRoom({
           let favicon = head.add(XmlElement('link', 'singleton'));
           favicon.setProp('rel', 'shortcut icon');
           favicon.setProp('type', 'image/x-icon');
-          favicon.setProp('href', urlFn({ command: 'realWebAppGetFavicon' }));
+          favicon.setProp('href', urlFn({ command: 'realWebApp.favicon' }));
+          
+          let style = head.add(XmlElement('style', 'text'));
+          style.setProp('type', 'text/css');
+          style.setText([
+            'html, body { margin: 0; padding: 0; }',
+            'body { font-size: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; }',
+            'iframe { display: inline-block; border: none; box-shadow: 0 0 0 1px #000000; }'
+          ].join('\n'));
           
           let body = html.add(XmlElement('body', 'container'));
           for (let name of [ 'jim', 'bob', 'sal', 'fae' ]) {

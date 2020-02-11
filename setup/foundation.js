@@ -30,10 +30,10 @@ Hut at the very bottom runs using a single Reality.
     init: function({ name, desc, detect, enact }) {
       ({}).gain.call(this, { name, desc, detect, enact, children: Set() });
     },
-    attempt: async function(foundation, args) {
-      if (!this.detect(args)) return false;
-      await this.enact(foundation, args);
-      for (let child of this.children) await child.attempt(foundation, args);
+    attempt: async function(foundation) {
+      if (!this.detect(foundation.origArgs)) return false;
+      await this.enact(foundation, foundation.origArgs);
+      for (let child of this.children) await child.attempt(foundation);
       return true;
     }
   })});
@@ -48,9 +48,13 @@ Hut at the very bottom runs using a single Reality.
       wss: { secure: true, defaultPort: 443 },
     },
     
-    init: function() {
+    init: function(args={}) {
+      
+      this.origArgs = {};
+      this.spoofEnabled = false;
+      this.setArgs(args);
+      
       this.goals = this.defaultGoals();
-      this.raiseArgs = {};
       this.uidCnt = 0;
       this.rootReal = null;
       
@@ -68,6 +72,17 @@ Hut at the very bottom runs using a single Reality.
         http: { fn: (...args) => this.makeHttpServer(...args), instances: [] },
         sokt: { fn: (...args) => this.makeSoktServer(...args), instances: [] }
       };
+      
+    },
+    setArgs: function(args) {
+      
+      if (!args.has('mode')) args.mode = 'prod';
+      if (!args.has('hosting')) args.hosting = 'localhost:80';
+      if (!args.has('ssl')) args.ssl = '';
+      
+      this.origArgs = args;
+      this.spoofEnabled = args.mode === 'test';
+      
     },
     defaultGoals: function() {
       
@@ -77,7 +92,6 @@ Hut at the very bottom runs using a single Reality.
         detect: args => args.has('settle'),
         enact: async (foundation, args) => {
           let [ hut=null, bearing=null ] = args.settle.split('.');
-          if (!args.has('title')) args.title = U.isType(hut, Object) ? hut.name : hut;
           
           let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
           if (!rootRoom.built.has('open')) throw Error(`Room "${rootRoom.name}" isn't setup for settling`);
@@ -99,6 +113,8 @@ Hut at the very bottom runs using a single Reality.
       // servers could host entirely different applications - all within
       // the same node VM context!
       
+      if (!options.has('uid')) throw Error('Must provide "uid"');
+      
       // Ensure good defaults inside `options`
       if (!options.has('hosting')) options.hosting = {};
       if (!options.hosting.has('host')) options.hosting.host = 'localhost';
@@ -112,7 +128,7 @@ Hut at the very bottom runs using a single Reality.
       if (!options.protocols.has('sokt')) options.protocols.sokt = true;
       if (!options.has('heartMs')) options.heartMs = 1000 * 30;
       
-      let hut = U.rooms.hinterlands.built.Hut(this, '!root', { heartMs: options.heartMs });
+      let hut = U.rooms.hinterlands.built.Hut(this, options.uid, { heartMs: options.heartMs });
       
       let { hosting, protocols, heartMs } = options;
       if (protocols.http) {
@@ -123,8 +139,8 @@ Hut at the very bottom runs using a single Reality.
         console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
         this.makeSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
       }
-      /// if (protocols.tcp)
-      ///   this.makeTcpServer(hut, { host: hosting.host, port: hosting.port + 2, ...hosting.sslArgs });
+      /// if (protocols.ipc)
+      ///   this.makeIpcServer(hut, { host: hosting.host, port: hosting.port + 2, ...hosting.sslArgs });
       
       return hut;
     },
@@ -137,18 +153,14 @@ Hut at the very bottom runs using a single Reality.
     makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     formatError: C.notImplemented,
     getOrderedRoomNames: C.notImplemented,
-    getTerm: C.notImplemented,
     getUid: function() { return U.base62(this.uidCnt++).padHead(8, '0'); },
     
     // Setup
-    raise: async function(raiseArgs) {
+    raise: async function() {
       
-      if (!raiseArgs.has('mode')) raiseArgs.mode = 'prod';
-      
-      this.raiseArgs = raiseArgs;
       let goalAchieved = false;
-      for (let goal of this.goals) if (await goal.attempt(this, this.raiseArgs)) { goalAchieved = true; break; }
-      if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.raiseArgs, null, 2)}`);
+      for (let goal of this.goals) if (await goal.attempt(this)) { goalAchieved = true; break; }
+      if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.origArgs, null, 2)}`);
       
     },
     establishHut: async function(args) { C.notImplemented.call(this); },

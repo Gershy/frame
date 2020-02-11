@@ -1,7 +1,28 @@
 U.buildRoom({
+  
+  // TODO: Would be nice to include the 'term' room so that Above could
+  // grant a nice friendly term to each Hut (or more appropriately,
+  // Player), but then the big long list of hut terms would be need to
+  // be included Below as well, causing bloat! No good way to have such
+  // data appear on Above, only - the current method would be to mark
+  // the undesired sections of term.js with {ABO/VE= =ABO/VE}, but this
+  // would be a semantic Error: the undesired section isn't necessarily
+  // for Above, only in this one case...
+  // I think the best way to do this is to list "innerRooms" twice, once
+  // for Above, and once for Below. This will, however, require some
+  // changes to FoundationNodejs, which currently parses "innerRooms"
+  // *before* compiling each room (I think!). FoundationNodejs could
+  // find itself in an ambiguous situation if two "innerRooms"
+  // declarations exist in the plaintext of the file.
+  
+  // TODO: Why bother with "innerRooms" in the first place? Why not just
+  // parse the parameters of the "build" property's function? (This
+  // would require implementations to always name a parameter precisely
+  // after the room it corresponds to.)
+  
   name: 'chess2',
-  innerRooms: [ 'record', 'hinterlands', 'real', 'realWebApp' ],
-  build: (foundation, record, hinterlands, real, realWebApp) => {
+  innerRooms: [ 'record', 'hinterlands', 'real', 'realWebApp', 'term' ],
+  build: (foundation, record, hinterlands, real, realWebApp, term) => {
     
     let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
     let { Rec, RecScope } = record;
@@ -12,7 +33,7 @@ U.buildRoom({
     
     // Config values
     let moveMs = 50 * 1000;
-    let matchmakeMs = ({ test: 1 * 1000, prod: 8 * 1000 })[foundation.raiseArgs.mode];
+    let matchmakeMs = ({ test: (1/2) * 1000, prod: 8 * 1000 })[foundation.origArgs.mode];
     let pieceDefs = {
       minimal: {
         white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
@@ -109,9 +130,9 @@ U.buildRoom({
     }}
     
     let open = async () => {
-        
+      
       let c2Hut = await foundation.getRootHut({ heartMs: 1000 * 40 });
-      c2Hut.roadDbgEnabled = true;
+      c2Hut.roadDbgEnabled = true; // TODO: This doesn't affect the Below!
       
       let rootReal = await foundation.getRootReal();
       rootReal.layoutDef('c2', (real, insert, decals) => {
@@ -335,6 +356,7 @@ U.buildRoom({
       
       /// {ABOVE=
       let chess2 = c2Hut.createRec('c2.chess2', [ c2Hut ]);
+      let termBank = term.TermBank();
       /// =ABOVE}
       
       let rootScp = RecScope(c2Hut, 'c2.chess2', async (chess2, dep) => {
@@ -347,6 +369,7 @@ U.buildRoom({
           c2Hut.roadNozz(key).route(({ reply }) => reply(savedItems[key]));
         }}
         
+        // Manage Huts
         dep.scp(c2Hut, 'lands.kidHut/par', ({ members: { kid: hut } }, dep) => { // Note we already have reference to `hut`!
           
           let kidHutDep = dep;
@@ -358,6 +381,8 @@ U.buildRoom({
           // Follows
           dep(hut.followRec(chess2));
           dep.scp(hut, 'c2.hutPlayer', (hutPlayer, dep) => {
+            
+            dep(hut.followRec(hutPlayer));
             
             // Careful not to Follow the HutPlayer!
             let player = hutPlayer.mem('player');
@@ -386,11 +411,10 @@ U.buildRoom({
           
           dep.scp(hutPlayerDryNozz, (_, dep) => {
             dep(hut.roadNozz('login').route(() => {
-              
               // TODO: `chess2Player` should receive `hutPlayer`, not
               // `player`, as its second member (this would establish an
               // implicit dependency between the Hut and the Player)
-              let player =        c2Hut.createRec('c2.player', [], { term: hut.uid });
+              let player =        c2Hut.createRec('c2.player', [], { term: null });
               let hutPlayer =     c2Hut.createRec('c2.hutPlayer', [ hut, player ]);
               let chess2Player =  c2Hut.createRec('c2.chess2Player', [ chess2, player ]);
               
@@ -402,25 +426,15 @@ U.buildRoom({
             // Huts with Players can logout
             dep(hut.roadNozz('logout').route(({ user, pass }) => hutPlayer.dry()));
             
-            // Huts with Players in Matches can leave their Match
             let player = hutPlayer.mem('player');
             dep.scp(player, 'c2.matchPlayer', (matchPlayer, dep) => {
+              
+              // Players in a Match can leave that Match
               dep(hut.roadNozz('exitMatch').route(() => matchPlayer.dry()));
-            });
-            
-          });
-          
-          dep.scp(hutPlayerNozz, (hutPlayer, dep) => {
-            
-            // Allow moves while there is a RoundPlayer
-            let player = hutPlayer.mem('player');
-            
-            dep.scp(player, 'c2.matchPlayer', (matchPlayer, dep) => {
               
               dep.scp(matchPlayer, 'c2.roundPlayer', (roundPlayer, dep) => {
                 
-                let round = roundPlayer.mem('round');
-                
+                // Players in Rounds can submit a move for that Round
                 dep(hut.roadNozz('doMove').route(({ msg }) => {
                   
                   // Clear current move
@@ -440,6 +454,14 @@ U.buildRoom({
             });
             
           });
+          
+        });
+        
+        // Decorate chess2Players with a "term" from the Bank
+        dep.scp(chess2, 'c2.chess2Player', (chess2Player, dep) => {
+          
+          let { value: term } = dep(termBank.checkout());
+          chess2Player.members['c2.player'].modVal(v => v.gain({ term }));
           
         });
         
@@ -581,13 +603,10 @@ U.buildRoom({
         let c2RootReal = dep(rootReal.techReals[0].addReal('c2.root'));
         let mainReal = c2RootReal.addReal('c2.main');
         
-        let myPlayerNozz = dep(TubVal(null, chess2.relNozz('c2.chess2Player'), chess2Player => {
-          let player = chess2Player.mem('player');
-          return (player.val.term === U.hutId) ? player : C.skip;
-        }));
-        let myPlayerDryNozz = dep(TubDry(null, myPlayerNozz));
+        let myHutPlayerNozz = c2Hut.relNozz('c2.hutPlayer');
+        let myHutPlayerDryNozz = dep(TubDry(null, myHutPlayerNozz));
         
-        dep.scp(myPlayerDryNozz, (_, dep) => {
+        dep.scp(myHutPlayerDryNozz, (_, dep) => {
           
           let outReal = dep(mainReal.addReal('c2.loggedOut'));
           let contentReal = outReal.addReal('c2.welcomePane');
@@ -597,10 +616,12 @@ U.buildRoom({
           titleReal.setText('Chess2');
           textReal.setText('Click to start playing!');
           
-          dep(outReal.feelNozz().route(() => c2Hut.tell({ command: 'login' }));
+          dep(outReal.feelNozz().route(() => c2Hut.tell({ command: 'login' })));
           
         });
-        dep.scp(myPlayerNozz, (player, dep) => {
+        dep.scp(myHutPlayerNozz, (hutPlayer, dep) => {
+          
+          let player = hutPlayer.members['c2.player'];
           
           let loggedInReal = dep(mainReal.addReal('c2.loggedIn'));
           
