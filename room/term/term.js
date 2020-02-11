@@ -1,6 +1,7 @@
-U.buildRoom({ name: 'term', innerRooms: [], build: (foundation) => {
+U.buildRoom({ name: 'term', innerRooms: [ 'chance' ], build: (foundation, chance) => {
   
   let { Drop } = U.water;
+  let { Chance } = chance;
   
   let terms = [
     'academician', 'acceptor', 'ace', 'achiever', 'adept', 'adherent', 'administrator',
@@ -102,14 +103,14 @@ U.buildRoom({ name: 'term', innerRooms: [], build: (foundation) => {
   ];
   
   let TermBank = U.inspire({ name: 'TermBank', methods: (insp, Insp) => ({
-    init: function(chance=null) {
-      this.randElem = chance ? chance.elem.bind(chance) : arr => arr[Math.floor(Math.random() * arr.length)];
+    init: function(chance=Chance()) {
+      this.chance = chance;
       this.usedTerms = Set();
     },
     checkout: function() {
       let term = null;
       for (let i = 0; i < 100; i++) {
-        term = this.randElem(terms);
+        term = this.chance.elem(terms);
         if (!this.usedTerms.has(term)) break;
       }
       

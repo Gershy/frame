@@ -44,8 +44,8 @@ U.buildRoom({
           [ 'rook',     0, 0 ],
           [ 'knight',   1, 0 ],
           [ 'bishop',   2, 0 ],
-          [ 'queen',    3, 0 ],
-          [ 'king',     4, 0 ],
+          [ 'queen',    4, 0 ],
+          [ 'king',     3, 0 ],
           [ 'bishop',   5, 0 ],
           [ 'knight',   6, 0 ],
           [ 'rook',     7, 0 ],
@@ -62,10 +62,38 @@ U.buildRoom({
           [ 'rook',     0, 7 ],
           [ 'knight',   1, 7 ],
           [ 'bishop',   2, 7 ],
-          [ 'queen',    3, 7 ],
-          [ 'king',     4, 7 ],
+          [ 'queen',    4, 7 ],
+          [ 'king',     3, 7 ],
           [ 'bishop',   5, 7 ],
           [ 'knight',   6, 7 ],
+          [ 'rook',     7, 7 ],
+          [ 'pawn',     0, 6 ],
+          [ 'pawn',     1, 6 ],
+          [ 'pawn',     2, 6 ],
+          [ 'pawn',     3, 6 ],
+          [ 'pawn',     4, 6 ],
+          [ 'pawn',     5, 6 ],
+          [ 'pawn',     6, 6 ],
+          [ 'pawn',     7, 6 ]
+        ]
+      },
+      castlingTest: {
+        white: [
+          [ 'rook',     0, 0 ],
+          [ 'king',     3, 0 ],
+          [ 'rook',     7, 0 ],
+          [ 'pawn',     0, 1 ],
+          [ 'pawn',     1, 1 ],
+          [ 'pawn',     2, 1 ],
+          [ 'pawn',     3, 1 ],
+          [ 'pawn',     4, 1 ],
+          [ 'pawn',     5, 1 ],
+          [ 'pawn',     6, 1 ],
+          [ 'pawn',     7, 1 ]
+        ],
+        black: [
+          [ 'rook',     0, 7 ],
+          [ 'king',     3, 7 ],
           [ 'rook',     7, 7 ],
           [ 'pawn',     0, 6 ],
           [ 'pawn',     1, 6 ],
@@ -304,6 +332,40 @@ U.buildRoom({
             
           });
           
+          if (type === 'king' && piece.val.moves === 0) {
+            
+            // A king searches along ortho axes for castling moves. An
+            // axis+direction is "castleable" if it contains a rook, at
+            // least two tiles separate the rook and king, and all tiles
+            // between the rook and king are empty.
+            // A king may move 2 tiles in a "castleable" axis+direction
+            
+            for (let step of orth) {
+              
+              let numSteps = 0, castlePiece = null;
+              for (numSteps = 1; true; numSteps++) {
+                
+                let loc = [ col + Math.round(step[0] * numSteps), row + Math.round(step[1] * numSteps) ];
+                let check = checkTile(...loc);
+                
+                if (check === 'OOB') { break; }
+                if (check) { castlePiece = check; break; }
+                
+              }
+              
+              let canCastleThisStep = true
+                && castlePiece
+                && numSteps > 2
+                && castlePiece.val.type === 'rook'
+                && castlePiece.val.colour === piece.val.colour
+                && castlePiece.val.moves === 0;
+              
+              if (canCastleThisStep) moves.push([ col + Math.round(step[0] * 2), row + Math.round(step[1] * 2) ]);
+              
+            }
+            
+          }
+          
         } else {
           
           throw Error(`Invalid type: ${type}`);
@@ -317,17 +379,84 @@ U.buildRoom({
         
         // Get all match pieces...
         let matchPieceSet = match.relRecs('c2.matchPiece');
-        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.mem('piece'));
+        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.members['c2.piece']);
         
         // All pieces refresh by 1 turn
         for (let piece of pieces) if (piece.val.wait) piece.modVal(v => (v.wait--, v));
         
+        let pieceMoves = { white: [], black: [] };
+        let dangerTiles = { white: [], black: [] };
+        
         // Update piece positions
         playerMoves.forEach(({ type, pieceUid, tile }) => {
+          
           if (type === 'pass') return;
           let piece = pieces.find(p => p.uid === pieceUid)[0];
-          piece.modVal(v => v.gain({ col: tile[0], row: tile[1], wait: 1 }))
+          let gudColour = piece.val.colour;
+          let badColour = (gudColour === 'white') ? 'black' : 'white';
+          
+          let trnCol = tile[0] - piece.val.col;
+          let trnRow = tile[1] - piece.val.row;
+          
+          // Lots of logic required to sort out castling...
+          if (piece.val.type === 'king' && (Math.abs(trnCol) >= 2 || Math.abs(trnRow) >= 2)) {
+            
+            let gudKing = piece;
+            let [ gudRook=null ] = pieces.find(gp => { // "gudPiece"
+              
+              return true
+                && gp.val.colour === gudColour
+                && gp.val.type === 'rook'
+                && gp.val.moves === 0
+                && (false
+                  // The pieces are on the same row, and the rook is appropriately L/R from the king
+                  || (trnRow === 0 && (trnCol > 0 ? (gp.val.col > gudKing.val.col) : (gp.val.col < gudKing.val.col))) // A rook horizontally
+                  // The pieces are on the same col, and the rook is appropriately U/D from the king
+                  || (trnCol === 0 && (trnRow > 0 ? (gp.val.row > gudKing.val.row) : (gp.val.row < gudKing.val.row)))
+                );
+              
+            }) || [];
+            
+            if (!gudRook) throw Error(`No rook found for castling... yikes`);
+            
+            let kingLoc = { col: tile[0], row: tile[1] };
+            let rookLoc = (trnRow === 0)
+              ? { col: tile[0] + (trnCol > 0 ? -1 : +1), row: tile[1] }
+              : { col: tile[0], row: tile[1] + (trnRow > 0 ? -1 : +1) };
+            
+            pieceMoves[gudColour].push({ piece: gudKing, ...kingLoc });
+            pieceMoves[gudColour].push({ piece: gudRook, ...rookLoc });
+            
+            // No `dangerTiles` when castling!!
+            
+          } else {
+            
+            pieceMoves[gudColour].push({ piece, col: tile[0], row: tile[1] });
+            dangerTiles[badColour].push({ col: tile[0], row: tile[1] });
+            
+          }
+          
         });
+        
+        for (let moveColour in pieceMoves) {
+          
+          let moves = pieceMoves[moveColour];
+          let danger = dangerTiles[moveColour];
+          
+          for (let { piece, col, row } of moves) {
+            
+            // Apply promotions to pawns which make it all the way
+            if (piece.val.type === 'pawn' && row === ((moveColour === 'white') ? 7 : 0)) piece.modVal(v => (v.type = 'queen', v));
+            
+            // Change piece coords, make it wait, increment moves!
+            piece.modVal(v => v.gain({ col, row, wait: 1, moves: v.moves + 1 }));
+            
+            // Piece dies if it intersected a danger tile
+            if (danger.find(({ col: dc, row: dr }) => col === dc && row == dr)) piece.dry();
+            
+          }
+          
+        }
         
         // Look for promotions
         pieces.forEach(piece => {
@@ -573,13 +702,13 @@ U.buildRoom({
               { colour: 'black', player: waitingPlayers[i + 1], pieces: pieceDefs.standard.black }
             ];
             
-            console.log('Matching:', playerPieceSets.map(({ player }) => player.val.term));
+            console.log(`Matching ${playerPieceSets.map(({ player }) => player.val.term).join(' and ')}`);
             
             for (let { colour, player, pieces } of playerPieceSets) {
               let matchPlayer = c2Hut.createRec('c2.matchPlayer', [ match, player ], { colour });
               matchPlayer.desc = `For Player ${player.val.term}`;
               for (let [ type, col, row ] of pieces) {
-                let piece = c2Hut.createRec('c2.piece', [], { colour, type, col, row, wait: 0 });
+                let piece = c2Hut.createRec('c2.piece', [], { colour, type, col, row, wait: 0, moves: 0 });
                 let matchPiece = c2Hut.createRec('c2.matchPiece', [ match, piece ]);
               }
             }
@@ -685,7 +814,7 @@ U.buildRoom({
             
             // Show board tiles
             for (let col = 0; col < 8; col++) { for (let row = 0; row < 8; row++) {
-              let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'c2.tileBlack' : 'c2.tileWhite');
+              let tile = boardReal.addReal(((col % 2) === (row % 2)) ? 'c2.tileWhite' : 'c2.tileBlack');
               tile.setGeom(tileExt(), tileExt(), tileLoc(col), tileLoc(row));
             }}
             
