@@ -371,7 +371,6 @@ U.buildRoom({
       hear: async function(srcHut, road, reply, msg) {
         
         if (!reply) throw Error(`Missing "reply"`);
-        if (srcHut === this) throw Error('Hut heard itself...');
         
         /// {ABOVE=
         if (srcHut.isAfar()) srcHut.refreshDryTimeout();

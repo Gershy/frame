@@ -930,6 +930,7 @@
           // Map typical http requests to their meaning within Hut
           if (p === '/') return { command: 'syncInit', reply: true };
           if (p === '/favicon.ico') return { command: 'getIcon', reply: true };
+          if (urlPath.length > 1) return { command: urlPath.slice(1), reply: true };
           return {};
         })(urlPath);
         

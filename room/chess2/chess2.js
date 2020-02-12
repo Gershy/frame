@@ -215,10 +215,10 @@ U.buildRoom({
         insert('conclusion -> conclusionContent', sl => sl.getCenteredSlot());
         
         // Decals
-        decals('root', { colour: 'rgba(100, 100, 150, 1)', textColour: '#ffffff' });
+        decals('root', { colour: '#646496', textColour: '#ffffff' });
         decals('loggedOut', { colour: 'rgba(120, 120, 170, 1)' });
-        decals('lobby', { colour: 'rgba(100, 100, 150, 1)' });
-        decals('game', { colour: 'rgba(100, 100, 150, 1)' });
+        decals('lobby', { colour: '#646496' });
+        decals('game', { colour: '#646496' });
         decals('board', { colour: 'transparent' });
         decals('tileWhite', { colour: '#9a9abb', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
         decals('tileBlack', { colour: '#8989af', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
@@ -458,6 +458,13 @@ U.buildRoom({
       /// {ABOVE=
       let chess2 = c2Hut.createRec('c2.chess2', [ c2Hut ]);
       let termBank = term.TermBank();
+      
+      c2Hut.roadNozz('chess2.info').route(({ reply }) => {
+        
+        console.log('HERE', reply);
+        reply(foundation.getSaved([ 'room', 'chess2', 'chess2Info.html' ]));
+        
+      });
       /// =ABOVE}
       
       let rootScp = RecScope(c2Hut, 'c2.chess2', async (chess2, dep) => {
