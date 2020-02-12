@@ -492,9 +492,10 @@ U.buildRoom({
             position: 'relative', display: 'inline-block', verticalAlign: 'middle'
           }
         }));
-        zoneCssGettersByCls.set(LinearSlotter, linearSlotter => {
-          return  (linearSlotter.axis === 'y') ? { fixed: { overflow: 'hidden auto' } } : {
-            fixed: { overflow: 'auto hidden', whiteSpace: 'nowrap', textAlign: (linearSlotter.dir === '+') ? 'left' : 'right' },
+        zoneCssGettersByCls.set(LinearSlotter, ({ axis, dir, scroll }) => {
+          let overflow = scroll ? { overflow: axis === 'y' ? 'hidden auto' : 'auto hidden' } : {};
+          return  (axis === 'y') ? { fixed: { ...overflow } } : {
+            fixed: { textAlign: (dir === '+') ? 'left' : 'right', whiteSpace: 'nowrap', ...overflow },
             before: { display: 'inline-block', verticalAlign: 'middle', content: `''`, width: '0', height: '100%' }
           };
         });

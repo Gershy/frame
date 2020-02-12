@@ -142,12 +142,13 @@ U.buildRoom({
         init: function(slotter) { this.slotter = slotter; }
       })}),
       
-      init: function({ axis, dir='+' /*, initPad=UnitPx(0)*/ }) {
+      init: function({ axis, dir='+', scroll=true /*, initPad=UnitPx(0)*/ }) {
         if (!axis) throw Error('Missing "axis" param');
         if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
         if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
         this.axis = axis;
         this.dir = dir;
+        this.scroll = scroll;
       },
       getLinearSlot: function(...args) { return Insp.LinearSlot(this, ...args); }
     })});

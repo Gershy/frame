@@ -182,7 +182,7 @@ U.buildRoom({
         // Logged In
         real('loggedIn', CenteredSlotter, FillParent());
         real('lobby', null, TextSized({ size: UnitPx(12), pad: UnitPx(16) }));
-        real('game', () => LinearSlotter({ axis: 'y', dir: '+' })); // Insert [ p1, board, p2 ]
+        real('game', () => LinearSlotter({ axis: 'y', dir: '+', scroll: false })); // Insert [ p1, board, p2 ]
         real('player', CenteredSlotter);
         real('playerContent', () => LinearSlotter({ axis: 'x', dir: '+' }));
         real('playerContentName', () => TextSized({ size: UnitPx(14), padH: UnitPx(6) }));
@@ -218,7 +218,7 @@ U.buildRoom({
         decals('root', { colour: 'rgba(100, 100, 150, 1)', textColour: '#ffffff' });
         decals('loggedOut', { colour: 'rgba(120, 120, 170, 1)' });
         decals('lobby', { colour: 'rgba(100, 100, 150, 1)' });
-        decals('game', { colour: 'rgba(100, 100, 150, 1)' /* , contentMode: 'window' */ });
+        decals('game', { colour: 'rgba(100, 100, 150, 1)' });
         decals('board', { colour: 'transparent' });
         decals('tileWhite', { colour: '#9a9abb', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
         decals('tileBlack', { colour: '#8989af', border: { ext: UnitPx(1), colour: '#c0c0d8' } });
