@@ -300,7 +300,7 @@ U.buildRoom({
             for (let [ s, road ] of roadedHut.serverRoads) road.dry();
             roadedHut.hut.dry();
           });
-          roadedHut.hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
+          roadedHut.hut = road.hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
           roadedHut.serverRoads = Map(); // Map Servers to the single Road for that Server
           this.roadedHuts.set(hutId, roadedHut);
           
@@ -315,7 +315,7 @@ U.buildRoom({
           
           /// {BELOW=
           this.aboveHut = roadedHut.hut;
-          Insp.tell(this.aboveHut, this, road, null, U.initData);
+          if (U.initData) Insp.tell(this.aboveHut, this, road, null, U.initData);
           /// =BELOW}
           
         } else {

@@ -165,34 +165,6 @@ U.buildRoom({
       let rootReal = await foundation.getRootReal();
       rootReal.layoutDef('c2', (real, insert, decals) => {
         
-        /*
-        real('name');
-        real('name', null);
-        real('name', {});
-        real('name', { main: null });
-        real('name', { main: SlotterCls });
-        real('name', { main: SlotterCls1, secondary: SlotterCls2 });
-        real('name', { main: () => SlotterCls1({ ... }), secondary: () => SlotterCls2({ ... }) });
-        real('name', SlotterCls1);                // Default mode will be "main"
-        real('name', () => SlotterCls1({ ... })); // Default mode will be "main"
-        real('name', null, []);
-        real('name', null, [ Layout1, Layout2, ... ]);
-        real('name', SlotterCls1, [ Layout1, Layout2, ... ]);
-        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ Layout1, Layout2, ... ]);
-        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ () => Layout1({ ... }) ]);
-        real('name', { main: SlotterCls1, secondary: SlotterCls2 }, [ () => Layout1({ ... }), () => Layout2({ ... }) ]);
-        
-        insert('name1 -> name2'); // SlotFns will be { main: null }
-        insert('name1 -> name2', null);
-        insert('name1 -> name2', {});
-        insert('name1 -> name2', { Layout });
-        insert('name1 -> name2', { main: Layout1, secondary: Layout2 });
-        insert('name1 -> name2', { main: () => Layout1({ ... }), secondary: Layout2 });
-        insert('name1 -> name2', { main: sl => sl.getSlotType1({ ... }), secondary: sl => sl.getSlotType2({ ... }) });
-        
-        decals('name', { colour: '#000000', textColour: '#ffffff' });
-        */
-        
         real('root', MinExtSlotter);
         insert('* -> root', () => FillParent());
         insert('root -> main', sl => sl.getMinExtSlot());
