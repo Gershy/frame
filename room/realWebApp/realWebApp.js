@@ -248,7 +248,7 @@ U.buildRoom({
             iframe.setProp('id', `${name}Frame`);
             iframe.setProp('width', '400');
             iframe.setProp('height', '400');
-            iframe.setProp('src', `?spoof=${name}`);
+            iframe.setProp('src', `/?spoof=${name}`);
             
           }
           
@@ -258,7 +258,7 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        await Promise(r => window.addEventListener('load', r))
+        await Promise(r => window.addEventListener('DOMContentLoaded', r))
         let webAppReal = rootReal.techReals[0]; // TODO: Assumes only a single Real exists for WebApps (may not be the case!)
         webAppReal.tech = this;
         webAppReal.techNode = document.body;
