@@ -552,9 +552,6 @@ U.buildRoom({
       },
       resetSyncState: function() {
         
-        // TODO: It's actually RealDom which determines when to call
-        // this!
-        
         // Reset version and current delta, and recalculate all adds
         this.syncTellVersion = 0;
         this.pendingSync = this.pendingSync.map(v => ({}));

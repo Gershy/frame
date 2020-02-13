@@ -92,22 +92,18 @@ protoDef(String, 'hasTail', function(str) {
   return true;
 });
 protoDef(String, 'padHead', function(amt, char=' ') {
-  //return char.repeat(Math.max(0, amt - this.length)) + ret;
   let ret = this;
   while (ret.length < amt) ret = char + ret;
   return ret;
 });
 protoDef(String, 'padTail', function(amt, char=' ') {
-  //return char.repeat(Math.max(0, amt - this.length)) + ret;
   let ret = this;
   while (ret.length < amt) ret += char;
   return ret;
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
-protoDef(String, 'crop', function(amtL=0, amtR=0) {
-  return this.substr(amtL, this.length - amtR);
-});
+protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
 protoDef(String, 'polish', function(c=null) {
   if (c === null) return this.trim();
   let [ ind0, ind1 ] = [ 0, this.length - 1 ];
