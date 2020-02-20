@@ -102,61 +102,112 @@
     onceDry: function() { fsRemFile([ this.nativeDir ]); }
   })});
   
-  let KeepDirOrFile = U.inspire({ name: 'KeepDirOrFile', insps: { Keep }, methods: (insp, Insp) => ({
+  let KeepFileSystem = U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
+    
+    $fs: {
+      getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
+      getFolder: async (cmps, ...opts) => {
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(children);
+        }));
+      },
+      addFolder: async (cmps, ...opts) => {
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(null);
+        }));
+      },
+      remFolder: async (cmps, ...opts) => {
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(null);
+        }));
+      },
+      getLetter: async (cmps, ...opts) => {
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(content)
+        }));
+      },
+      setLetter: async (cmps, content, ...opts) => { // "set" is "'add' if nonexistent, otherwise 'upd'"
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.writeFile(path.join(...cmps), content, ...opts, err0 => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(null)
+        }));
+      },
+      remLetter: async(cmps, ...opts) => {
+        let err = Error('');
+        return Promise((rsv, rjc) => fs.unlink(path.join(...cmps), ...opts, err0 => {
+          if (err0) rjc(err.update(err0.message));
+          else      rsv(null)
+        }));
+      }
+    },
     
     init: function(absPath) {
       if (absPath.find(v => !U.isType(v, String))) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
       this.absPath = absPath;
     },
+    desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
     checkType: async function() {
-      return Promise(r => fs.stat(path.join(...this.absPath), (e, s) => r(e ? null : (s.size ? 'file' : 'dir'))));
+      let meta = await Insp.fs.getMeta(this.absPath);
+      if (!meta) return null;
+      if (meta.isDirectory()) return 'folder';
+      if (meta.isFile()) return 'letter';
+      throw Error(`${this.desc()} is non-folder, non-letter`);
     },
     innerKeep: async function(...dirNames) {
       let type = await this.checkType();
-      if (type === 'file') throw Error(`No "innerKeep" available for file-type KeepDirOrFile (${this.absPath.join(', ')})`);
-      return KeepDirOrFile([ ...this.absPath, ...dirNames ]);
+      if (type === 'letter') throw Error(`${this.desc()} is type "letter"; no inner keeps available`);
+      let KeepCls = this.constructor;
+      return KeepCls([ ...this.absPath, ...dirNames ]);
     },
     getContent: async function(...opts) {
       let type = await this.checkType();
       if (!type) return null;
-      return (type === 'file')
-        ? Keep.asyncFn(fs.readFile, path.join(...this.absPath), ...opts)
-        : Keep.asyncFn(fs.readdir, path.join(...this.absPath), ...opts);
+      return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
     },
     setContent: async function(content, ...opts) {
       let type = await this.checkType();
-      if (type === 'dir') throw Error(`No "setContent" available for dir-type KeepDirOrFile (${this.absPath.join(', ')})`);
+      if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set content`);
       
       if (content !== null) {
         
         // Create all ancestor dirs
         for (let depth = 1; depth < this.absPath.length; depth++) {
-          let p = path.join(...this.absPath.slice(0, depth));
-          let stat = await Promise(r => fs.stat(p, (e, s) => r(e ? null : s)));
-          if (stat && stat.size) throw Error(`No "setContent" available; absPath contains a file (${this.absPath.join(', ')})`);
-          if (!stat) await Keep.asyncFn(fs.mkdir, p);
+          let cmps = this.absPath.slice(0, depth);
+          let meta = await Insp.fs.getMeta(cmps);
+          
+          // If this ancestor is non-existent, create it
+          // If this ancestor exists but isn't a directory, throw error
+          if (!meta) await Insp.fs.addFolder(cmps);
+          else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
         }
         
         // Write content into file
-        await Keep.asyncFn(fs.writeFile, path.join(...this.absPath), content, ...opts);
+        await Insp.fs.setLetter(this.absPath, content, ...opts);
         
       } else {
         
         if (!type) return;
-        await Keep.asyncFn(fs.unlink, path.join(...this.absPath));
+        await Insp.fs.remLetter(this.absPath);
         
         // Include the root folder? Probably not...
         for (let depth = this.absPath.length - 1; depth >= 1; depth--) {
           
           let cmps = this.absPath.slice(0, depth);
-          let p = path.join(...cmps);
-          let contents = await Promise(r => fs.readdir(p, (e, c) => r(c)));
+          let children = await Insp.fs.getFolder(cmps);
           
-          if (!contents) throw Error(`Ancestor deletion encountered invalid contents: ${cmps.join(', ')}`);
-          if (contents.length) break; // An ancestor is populated - stop deleting!
+          if (children.length) break; // An ancestor is populated - stop deleting here!
           
           // Our ancestor is completely empty - delete it!
-          await Keep.asyncFn(fs.rmdir, p);
+          await Insp.fs.remFolder(cmps);
           
         }
         
@@ -164,8 +215,9 @@
     },
     getContentType: function() { return insp.Keep.getContentType.call(this); },
     getContentByteLength: function() {
-      return Promise(r => fs.stat(path.join(...this.absPath), (e, s) => e ? 0 : s.size));
-    },
+      let meta = Insp.fs.getMeta(this.absPath);
+      return meta ? meta.size : 0;
+    }
     
   })});
   
@@ -175,7 +227,7 @@
       init: function() {
         insp.Keep.init.call(this);
         this.keepsByType = {
-          filesystem: KeepDirOrFile([ __dirname, '..' ])
+          filesystem: KeepFileSystem([ __dirname, '..' ])
         };
       },
       innerKeep: function(type) {
@@ -323,6 +375,16 @@
       this.canSettlePrm = (async () => {
         
         await Promise.allArr([
+          
+          // TODO: Everything in this `Promise.allArr` should be
+          // converted to use KeepFileSystem:
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'storage' ]).setContent(null), // Treelike clearing of mill/storage
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'room' ]).setContent(null), // Treelike clearing of mill/room
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'habit' ]) -> NOT NEEDED; is auto-created when habit data is created
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'room' ]) -> NOT NEEDED; is auto-created when room data is created
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'storage' ]) -> NOT NEEDED; is auto-created when storage data is created
+          //  KeepFileSystem([ __dirname, '..', 'mill', 'cert' ]) -> NOT NEEDED; is auto-created when cert data is created
+          
           // TODO: Ideally temp dirs should be purged when Hut *dries*
           fsRemTree([ tempDir, 'storage' ]),
           fsRemTree([ tempDir, 'room' ]),
@@ -1322,6 +1384,6 @@
     }
   })});
   
-  U.setup.gain({ FoundationNodejs, KeepDirOrFile });
+  U.setup.gain({ FoundationNodejs, KeepFileSystem });
   
 })();
