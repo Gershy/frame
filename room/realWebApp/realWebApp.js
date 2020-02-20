@@ -272,7 +272,7 @@ U.buildRoom({
       
       getClsMappedItems: function(clsMap, parDef, parSm, kidDef, kidSm, defInserts, dbg=false) {
         
-        // `sm` is "slottingMode"
+        // "sm" is "slottingMode"
         
         // Here in realWebApp many choices are resolved depending on the
         // Size and Slot for a Real somewhere in a chain. In all these
@@ -284,10 +284,9 @@ U.buildRoom({
         // TODO: Need to know which SlottingMode is in use. An issue is
         // multiple redundant instantiations: if we only pass the NAME
         // of the SlottingMode, we'd need to call the function under
-        // that name EACH TIME we are interested in a Layout item within
-        // the chain...
-        // We need something like a "ResolvedChain" (which sounds overly
-        // intensive...)
+        // that name EACH TIME we become interested in a Layout item
+        // within the chain...
+        // We need something like a "ResolvedChain" (which sounds SICK)
         
         // TODO: `sm` is `defReal`'s SlottingMode - the one it will be
         // using to insert children. But in order to know all potential

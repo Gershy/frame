@@ -12,7 +12,7 @@ U.buildRoom({
         
         // How communication happens
         // | SrcHut  | TrgHut  | Road
-        // |---------|---------|------
+        // |---------|---------|-----------------
         // | Here    | Here    | Not needed - direct is possible
         // | Here    | Afar    | **Default to cheapest Road available**
         // | Afar    | Here    | REQUIRED - Afar must have used Road
@@ -22,7 +22,7 @@ U.buildRoom({
         // | None    | None    | N/A - Error!
         
         // Note that "unrelated" Huts are two Huts such that neither is
-        // the other's ParentHut
+        // the other's descendant
         // Note that "disjoint" Huts are non-neighbours (they require a
         // Road to communicate)
         

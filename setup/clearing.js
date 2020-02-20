@@ -279,6 +279,7 @@ let U = global.U = {
   nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   
+  // TODO: "buildRoom" probably doesn't belong in `U`
   buildRoom: ({ name, innerRooms=[], build }) => {
     
     if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
@@ -298,7 +299,6 @@ let U = global.U = {
     
   },
   
-  life: {},
   setup: {}, // Gains items used for setup
   rooms: {}
 };

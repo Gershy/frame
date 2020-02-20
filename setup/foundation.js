@@ -38,6 +38,20 @@ Hut at the very bottom runs using a single Reality.
     }
   })});
   
+  let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
+    
+    $asyncFn: (fn, ...args) => Promise((rsv, rjc) => fn(...args, (err, v) => err ? rjc(err) : rsv(v))),
+    
+    init: function() {},
+    innerKeep: async function() { throw Error(`${U.nameOf(this)} does not implement "innerKeep"`); },
+    getContent: async function() { throw Error(`${U.nameOf(this)} does not implement "getContent"`); },
+    setContent: async function() { throw Error(`${U.nameOf(this)} does not implement "setContent"`); },
+    getContentType: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentType"`); },
+    getContentByteLength: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentByteLength"`); },
+    getPipe: function() { throw Error(`${U.nameOf(this)} does not implement "getPipe"`); }
+    
+  })});
+  
   // TODO: Merge `U` and `Foundation`??
   let Foundation = U.inspire({ name: 'Foundation', methods: (insp, Insp) => ({
     
@@ -106,6 +120,7 @@ Hut at the very bottom runs using a single Reality.
     },
     getPlatformName: C.notImplemented,
     
+    getRootKeep: function() { throw Error(`${U.nameOf(this)} does not implement "getRootKeep"`); },
     getRootHut: async function(options={}) {
       
       // Note: An instance of node could have multiple RootHuts, each
@@ -180,5 +195,5 @@ Hut at the very bottom runs using a single Reality.
     },
   })});
   
-  U.setup.gain({ Saved, Goal, Foundation });
+  U.setup.gain({ Saved, Goal, Keep, Foundation });
 })();
