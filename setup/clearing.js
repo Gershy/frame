@@ -243,7 +243,7 @@ let U = global.U = {
       
       // All methods here are the single method of their name!
       // They may call inherited methods of the same name (or not)
-      if (methodName[0] === '$')  Insp[methodName.crop(1, 0)] = method;        // "$" = class-level property
+      if (methodName[0] === '$')  Insp[methodName.slice(1)] = method;        // "$" = class-level property
       else                        methodsByName[methodName] = Set([ method ]); // Guaranteed to be singular
       
     }
@@ -394,16 +394,6 @@ let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, 
       
       // Remove previous Item-Dry-Route if it exists
       if (this.itemDryRoute) throw Error('A value is already set');
-      
-      /// // Remove previous Item-Dry-Route if it exists
-      /// if (this.itemDryRoute) {
-      ///   // If we have no val, no problem. If our val is a Drop, it's
-      ///   // being forced out by a new value - dry it! If we already has
-      ///   // a value that isn't a Drop we can't force it out - error!
-      ///   if (this.val === C.skip) {}
-      ///   else if (U.isInspiredBy(this.val, Drop)) { this.val.dry(); this.val = C.skip; }
-      ///   else { throw Error('A value is already set'); }
-      /// }
       
       // If `item` is a Drop with a Drier-Nozz add additional Routes
       let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;

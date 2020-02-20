@@ -17,15 +17,6 @@ Hut at the very bottom runs using a single Reality.
 (() => {
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let Saved = U.inspire({ name: 'Saved', insps: { Drop }, methods: (insp, Insp) => ({
-    init: function() {},
-    getContentType: function() { return null; },
-    update: C.notImplemented,
-    getPipe: C.notImplemented,
-    getContent: C.notImplemented,
-    getNumBytes: C.notImplemented,
-    onceDry: C.notImplemented
-  })});
   let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
     init: function({ name, desc, detect, enact }) {
       ({}).gain.call(this, { name, desc, detect, enact, children: Set() });
@@ -40,10 +31,8 @@ Hut at the very bottom runs using a single Reality.
   
   let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
-    $asyncFn: (fn, ...args) => Promise((rsv, rjc) => fn(...args, (err, v) => err ? rjc(err) : rsv(v))),
-    
     init: function() {},
-    innerKeep: async function() { throw Error(`${U.nameOf(this)} does not implement "innerKeep"`); },
+    innerKeep: function() { throw Error(`${U.nameOf(this)} does not implement "innerKeep"`); },
     getContent: async function() { throw Error(`${U.nameOf(this)} does not implement "getContent"`); },
     setContent: async function() { throw Error(`${U.nameOf(this)} does not implement "setContent"`); },
     getContentType: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentType"`); },
@@ -143,7 +132,7 @@ Hut at the very bottom runs using a single Reality.
       if (!options.protocols.has('sokt')) options.protocols.sokt = true;
       if (!options.has('heartMs')) options.heartMs = 1000 * 30;
       
-      let hut = U.rooms.hinterlands.built.Hut(this, options.uid, { heartMs: options.heartMs });
+      let hut = U.rooms.hinterlands.built.Hut(this, options.uid, options.slice('heartMs'));
       
       let { hosting, protocols, heartMs } = options;
       if (protocols.http) {
@@ -154,8 +143,6 @@ Hut at the very bottom runs using a single Reality.
         console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
         this.makeSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
       }
-      /// if (protocols.ipc)
-      ///   this.makeIpcServer(hut, { host: hosting.host, port: hosting.port + 2, ...hosting.sslArgs });
       
       return hut;
     },
@@ -195,5 +182,5 @@ Hut at the very bottom runs using a single Reality.
     },
   })});
   
-  U.setup.gain({ Saved, Goal, Keep, Foundation });
+  U.setup.gain({ Goal, Keep, Foundation });
 })();

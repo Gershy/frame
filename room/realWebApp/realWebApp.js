@@ -98,8 +98,11 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        let iconSaved = foundation.getSaved([ 'setup', 'favicon.ico' ]);
-        let styleSaved = await foundation.getSavedFromData([ 'realWebApp.mainStyles.css' ], this.genCss(parHut, rootReal));
+        let keepFs = foundation.getRootKeep().innerKeep('fileSystem');
+        let keepIcon = await keepFs.innerKeep('setup', 'favicon.ico');
+        let keepCss = await keepFs.innerKeep('mill', 'storage', 'realWebApp', 'mainStyles.css');
+        
+        await keepCss.setContent(this.genCss(rootReal));
         
         parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
           
@@ -208,8 +211,8 @@ U.buildRoom({
           reply(doc.toString());
           
         });
-        parHut.roadNozz('realWebApp.favicon').route(({ road, reply }) => U.safe(() => reply(iconSaved), reply));
-        parHut.roadNozz('realWebApp.stylesheet').route(({ reply }) => U.safe(async () => reply(await styleSaved), reply));
+        parHut.roadNozz('realWebApp.favicon').route(({ road, reply }) => U.safe(() => reply(keepIcon), reply));
+        parHut.roadNozz('realWebApp.stylesheet').route(({ reply }) => U.safe(async () => reply(keepCss), reply));
         parHut.roadNozz('realWebApp.quadTest').route(({ road, srcHut, reply }) => {
           
           let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
@@ -236,9 +239,9 @@ U.buildRoom({
           let style = head.add(XmlElement('style', 'text'));
           style.setProp('type', 'text/css');
           style.setText([
-            'html, body { margin: 0; padding: 0; }',
+            'html, body { margin: 0; padding: 0; overflow: hidden; }',
             'body { font-size: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; }',
-            'iframe { display: inline-block; border: none; box-shadow: 0 0 0 1px #000000; }'
+            'iframe { display: inline-block; width: 50vmin; height: 50vmin; border: none; margin: 0; padding: 0; }'
           ].join('\n'));
           
           let body = html.add(XmlElement('body', 'container'));
@@ -529,10 +532,6 @@ U.buildRoom({
           let h = null;
           let absH = false;
           
-          /// let w = layout.getW(...trail);
-          /// let h = layout.getH(...trail);
-          /// let absH = h && h.isAbsolute();
-          
           let alignCss = null;
           if (textSized.interactive) {
             if (textSized.origin[1] !== 't' && textSized.multiLine) throw Error('Tricky to vertically align textarea text anywhere but top');
@@ -578,7 +577,7 @@ U.buildRoom({
           
           let zoneCss = {};
           zoneCss.fixed = {
-            ///...((w && h) ? { boxSizing: 'border-box' } : {}),
+            //...((w && h) ? { boxSizing: 'border-box' } : {}),
             ...alignCss,
             ...(textSized.padL.amt ? { paddingLeft: textSized.padL } : {}),
             ...(textSized.padR.amt ? { paddingRight: textSized.padR } : {}),
@@ -755,7 +754,7 @@ U.buildRoom({
         
         return zoneCss;
       },
-      genCss: function(parHut, rootReal) {
+      genCss: function(rootReal) {
         
         let genCssSelector = (realName, sm) => {
           let modeCssClass = sm === 'main' ? '' : `.-mode-${sm}`;
@@ -811,9 +810,9 @@ U.buildRoom({
             fontFamily: 'monospace',
             overflow: 'hidden',
             pointerEvents: 'none',
-            outline: 'none !important'
+            outline: 'none !important',
           }}},
-          { selector: 'body', zones: { fixed: { opacity: '0', transition: 'opacity 600ms linear' } }},
+          { selector: 'body', zones: { fixed: { opacity: '0', transition: 'opacity 600ms linear', fontSize: '115%' } }},
           { selector: 'body.loaded', zones: { fixed: { opacity: '1' } }},
           { selector: ':focus', zones: { fixed: {
             boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.5)',
@@ -919,7 +918,7 @@ U.buildRoom({
       setScl: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
       setImage: function(r, file) {
         if (file) {
-          updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl()}')`) ;
+          updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl(foundation)}')`) ;
           updStyle(r.techNode, 'backgroundSize', 'contain'); 
         } else {
           updStyle(r.techNode, 'backgroundImage', null);

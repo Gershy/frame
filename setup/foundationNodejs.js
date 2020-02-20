@@ -5,235 +5,187 @@
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let [ path, fs, crypto  ] = [ 'path', 'fs', 'crypto' ].map(v => require(v));
+  let [ path, crypto  ] = [ 'path', 'crypto' ].map(v => require(v));
   let { Foundation, Keep } = U.setup;
-  
-  let rootDir = path.join(__dirname, '..');
-  let roomDir = path.join(rootDir, 'room');
-  let tempDir = path.join(rootDir, 'mill');
-  
-  // TODO: Shouldn't need sync file functions!
-  let fsRemTreeSync = f => {
-    let stat = U.safe(() => fs.statSync(f), () => null);
-    if (!stat) return;
-    if (stat.isFile()) { fs.unlinkSync(f); return; }
-    let names = fs.readdirSync(f);
-    for (let name of names) fsRemTreeSync(path.join(f, name));
-    fs.rmdirSync(f);
-  };
-  let fsUpdFile = (cmps, data, opts='utf8') => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't upd file "${f}"`);
-    return Promise((rsv, rjc) => fs.writeFile(f, data, opts, e => e ? rjc(err) : rsv()));
-  };
-  let fsGetFile = (cmps, opts='utf8') => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't get file "${f}"`);
-    return Promise((rsv, rjc) => fs.readFile(f, opts, (e, v) => e ? rjc(err) : rsv(v)));
-  };
-  let fsGetChildren = cmps => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't get children for "${f}"`);
-    return Promise((rsv, rjc) => fs.readdir(f, (e, v) => e ? rjc(err) : rsv(v)));
-  };
-  let fsRemFile = cmps => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't rem file "${f}"`);
-    return Promise((rsv, rjc) => fs.unlink(f, e => e ? rjc(err) : rsv()));
-  };
-  let fsUpdDir = cmps => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't upd file "${f}"`);
-    return Promise((rsv, rjc) => fs.mkdir(f, e => e ? rjc(err) : rsv()));
-  };
-  let fsRemDir = cmps => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't rem dir "${f}"`);
-    return Promise((rsv, rjc) => fs.rmdir(f, e => e ? rjc(err) : rsv()));
-  };
-  let fsRemTree = async cmps => {
-    
-    let meta = null;
-    try         { meta = await fs.getFileMetadata(cmps); }
-    catch(err)  { return; }
-    
-    // Files are easy
-    if (meta.isFile()) return await fsRemFile(cmps);
-    
-    // Directories require more work
-    let names = fsGetChildren(cmps);
-    await Promise.allArr(names.map(n => fsRemTree([ ...cmps, n ])));
-    await fsRemDir(cmps);
-    
-  };
-  let fsGetFileMetadata = cmps => {
-    let f = path.join(...cmps);
-    let err = Error(`Couldn't check file "${f}"`);
-    return Promise((rsv, rjc) => fs.stat(f, (e, stat) => e ? rjc(err) : rsv(stat)));
-  };
-  
-  let { Saved } = U.setup;
-  let SavedFile = U.inspire({ name: 'SavedFile', insps: { Saved }, methods: (insp, Insp) => ({
-    
-    // All SavedFile uses filepaths relative to the root Hut directory
-    $extMap: {
-      '.html': 'text/html',
-      '.json': 'text/json',
-      '.css': 'text/css',
-      '.txt': 'text/plain',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.svg': 'image/svg'
-    },
-    
-    init: function(...pcs) {
-      insp.Saved.init.call(this);
-      this.nativeDir = path.join(rootDir, ...pcs);
-      this.desc = `File ${this.type} @ ${this.nativeDir}`;
-    },
-    getContentType: function() {
-      let ext = path.extname(this.nativeDir);
-      return Insp.extMap.has(ext) ? Insp.extMap[ext] : 'application/octet-stream';
-    },
-    update: async function(data, opts) { return fsUpdFile([ this.nativeDir ], data, opts); },
-    getPipe: function() { return fs.createReadStream(this.nativeDir); },
-    getContent: async function(opts) { return fsGetFile([ this.nativeDir ], opts); },
-    getNumBytes: async function() { return (await fsGetFileMetadata([ this.nativeDir ])).size; },
-    onceDry: function() { fsRemFile([ this.nativeDir ]); }
-  })});
-  
-  let KeepFileSystem = U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
-    
-    $fs: {
-      getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
-      getFolder: async (cmps, ...opts) => {
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(children);
-        }));
-      },
-      addFolder: async (cmps, ...opts) => {
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(null);
-        }));
-      },
-      remFolder: async (cmps, ...opts) => {
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(null);
-        }));
-      },
-      getLetter: async (cmps, ...opts) => {
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(content)
-        }));
-      },
-      setLetter: async (cmps, content, ...opts) => { // "set" is "'add' if nonexistent, otherwise 'upd'"
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.writeFile(path.join(...cmps), content, ...opts, err0 => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(null)
-        }));
-      },
-      remLetter: async(cmps, ...opts) => {
-        let err = Error('');
-        return Promise((rsv, rjc) => fs.unlink(path.join(...cmps), ...opts, err0 => {
-          if (err0) rjc(err.update(err0.message));
-          else      rsv(null)
-        }));
-      }
-    },
-    
-    init: function(absPath) {
-      if (absPath.find(v => !U.isType(v, String))) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
-      this.absPath = absPath;
-    },
-    desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
-    checkType: async function() {
-      let meta = await Insp.fs.getMeta(this.absPath);
-      if (!meta) return null;
-      if (meta.isDirectory()) return 'folder';
-      if (meta.isFile()) return 'letter';
-      throw Error(`${this.desc()} is non-folder, non-letter`);
-    },
-    innerKeep: async function(...dirNames) {
-      let type = await this.checkType();
-      if (type === 'letter') throw Error(`${this.desc()} is type "letter"; no inner keeps available`);
-      let KeepCls = this.constructor;
-      return KeepCls([ ...this.absPath, ...dirNames ]);
-    },
-    getContent: async function(...opts) {
-      let type = await this.checkType();
-      if (!type) return null;
-      return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
-    },
-    setContent: async function(content, ...opts) {
-      let type = await this.checkType();
-      if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set content`);
-      
-      if (content !== null) {
-        
-        // Create all ancestor dirs
-        for (let depth = 1; depth < this.absPath.length; depth++) {
-          let cmps = this.absPath.slice(0, depth);
-          let meta = await Insp.fs.getMeta(cmps);
-          
-          // If this ancestor is non-existent, create it
-          // If this ancestor exists but isn't a directory, throw error
-          if (!meta) await Insp.fs.addFolder(cmps);
-          else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
-        }
-        
-        // Write content into file
-        await Insp.fs.setLetter(this.absPath, content, ...opts);
-        
-      } else {
-        
-        if (!type) return;
-        await Insp.fs.remLetter(this.absPath);
-        
-        // Include the root folder? Probably not...
-        for (let depth = this.absPath.length - 1; depth >= 1; depth--) {
-          
-          let cmps = this.absPath.slice(0, depth);
-          let children = await Insp.fs.getFolder(cmps);
-          
-          if (children.length) break; // An ancestor is populated - stop deleting here!
-          
-          // Our ancestor is completely empty - delete it!
-          await Insp.fs.remFolder(cmps);
-          
-        }
-        
-      }
-    },
-    getContentType: function() { return insp.Keep.getContentType.call(this); },
-    getContentByteLength: function() {
-      let meta = Insp.fs.getMeta(this.absPath);
-      return meta ? meta.size : 0;
-    }
-    
-  })});
   
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
     
-    $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: (insp, Insp) => ({
+    $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
       init: function() {
         insp.Keep.init.call(this);
         this.keepsByType = {
-          filesystem: KeepFileSystem([ __dirname, '..' ])
+          fileSystem: Insp.KeepFileSystem()
         };
       },
       innerKeep: function(type) {
         if (this.keepsByType.has(type)) return this.keepsByType[type];
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
+    })}),
+    $KeepFileSystem: U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
+      
+      $fs: ((path, fs) => ({
+        
+        // "folder" = "directory"; "letter" = "file"
+        
+        hutRootCmps: __dirname.split(path.sep).slice(0, -1),
+        cmpsToFileUrl: cmps => path.join(...cmps),
+        getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
+        getFolder: async (cmps, ...opts) => {
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(children);
+          }));
+        },
+        addFolder: async (cmps, ...opts) => {
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(null);
+          }));
+        },
+        remFolder: async (cmps, ...opts) => {
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(null);
+          }));
+        },
+        getLetter: async (cmps, ...opts) => {
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(content)
+          }));
+        },
+        setLetter: async (cmps, content, ...opts) => { // "set" is "'add' if nonexistent, otherwise 'upd'"
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.writeFile(path.join(...cmps), content, ...opts, err0 => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(null)
+          }));
+        },
+        remLetter: async(cmps, ...opts) => {
+          let err = Error('');
+          return Promise((rsv, rjc) => fs.unlink(path.join(...cmps), ...opts, err0 => {
+            if (err0) rjc(err.update(err0.message));
+            else      rsv(null)
+          }));
+        },
+        getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
+        
+      }))(require('path'), require('fs')),
+      $extensionContentTypeMap: {
+        html: 'text/html',
+        json: 'text/json',
+        css: 'text/css',
+        txt: 'text/plain',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        svg: 'image/svg'
+      },
+      
+      init: function(absPath=Insp.fs.hutRootCmps) {
+        if (absPath.find(v => !U.isType(v, String))) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
+        this.absPath = absPath;
+      },
+      desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
+      getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
+      innerKeep: function(...dirNames) {
+        let KeepCls = this.constructor;
+        return KeepCls([ ...this.absPath, ...dirNames ]);
+      },
+      checkType: async function() {
+        let meta = await Insp.fs.getMeta(this.absPath);
+        if (!meta) return null;
+        if (meta.isDirectory()) return 'folder';
+        if (meta.isFile()) return 'letter';
+        throw Error(`${this.desc()} is non-folder, non-letter`);
+      },
+      getContent: async function(...opts) {
+        let type = await this.checkType();
+        if (!type) return null;
+        return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
+      },
+      setContent: async function(content, ...opts) {
+        let type = await this.checkType();
+        
+        if (content !== null) { // Insert new content
+          
+          if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
+          
+          // Create all ancestor dirs
+          for (let depth = 1; depth < this.absPath.length; depth++) {
+            let cmps = this.absPath.slice(0, depth);
+            let meta = await Insp.fs.getMeta(cmps);
+            
+            // If this ancestor is non-existent, create it
+            // If this ancestor exists but isn't a directory, throw error
+            if (!meta) await Insp.fs.addFolder(cmps);
+            else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
+          }
+          
+          // Write content into file
+          await Insp.fs.setLetter(this.absPath, content, ...opts);
+          
+        } else if (content === null && type === 'folder') {
+          
+          let items = await this.getContent();
+          
+          if (items) {
+            
+            // Set content of all items to `null`
+            await Promise.allArr(items.map(item => this.innerKeep(item).setContent(null)));
+            
+          } else {
+            
+            // Without a single child
+            await Insp.fs.remFolder(this.absPath);
+            await this.remNullAncestry();
+            
+          }
+          
+        } else if (content === null && type === 'letter') {
+          
+          await Insp.fs.remLetter(this.absPath);
+          await this.remNullAncestry();
+          
+        }
+        
+      },
+      remNullAncestry: async function() {
+        
+        // Starting with our immediate parent folder, continuously
+        // deletes each empty ancestor folder encountered. Stops as soon
+        // as any ancestor folder is non-empty.
+        
+        for (let depth = this.absPath.length - 1; depth > 1; depth--) {
+          
+          let cmps = this.absPath.slice(0, depth);
+          let children = await Insp.fs.getFolder(cmps);
+          
+          if (children === null) continue; // If `children` is `null` the ancestor is already deleted
+          if (children.length) break; // An ancestor is populated - stop deleting!
+          
+          await Insp.fs.remFolder(cmps); // This ancestor is empty - delete it!
+          
+        }
+        
+      },
+      getContentType: function() {
+        let lastCmp = this.absPath[this.absPath.length - 1];
+        let [ pcs, ext=null ] = lastCmp.split('.');
+        return Insp.extensionContentTypeMap.has(ext)
+          ? Insp.extensionContentTypeMap[ext]
+          : 'application/octet-stream'
+      },
+      getContentByteLength: async function() {
+        let meta = await Insp.fs.getMeta(this.absPath);
+        return meta ? meta.size : 0;
+      },
+      getPipe: function() { return Insp.fs.getPipe(this.absPath); }
+      
     })}),
     
     $parseSoktMessages: soktState => {
@@ -359,6 +311,8 @@
       insp.Foundation.init.call(this, ...args);
       
       this.rootKeep = Insp.KeepNodejs();
+      this.fsKeep = this.rootKeep.innerKeep('fileSystem');
+      
       this.roomsInOrder = [];
       this.compilationData = {};
       
@@ -373,31 +327,10 @@
       this.usage0 = process.memoryUsage().map(v => v);
       
       this.canSettlePrm = (async () => {
-        
         await Promise.allArr([
-          
-          // TODO: Everything in this `Promise.allArr` should be
-          // converted to use KeepFileSystem:
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'storage' ]).setContent(null), // Treelike clearing of mill/storage
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'room' ]).setContent(null), // Treelike clearing of mill/room
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'habit' ]) -> NOT NEEDED; is auto-created when habit data is created
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'room' ]) -> NOT NEEDED; is auto-created when room data is created
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'storage' ]) -> NOT NEEDED; is auto-created when storage data is created
-          //  KeepFileSystem([ __dirname, '..', 'mill', 'cert' ]) -> NOT NEEDED; is auto-created when cert data is created
-          
-          // TODO: Ideally temp dirs should be purged when Hut *dries*
-          fsRemTree([ tempDir, 'storage' ]),
-          fsRemTree([ tempDir, 'room' ]),
-          
-          (async () => {
-            try { await fsUpdDir([ tempDir ]); } catch(err) {}
-            try { await fsUpdDir([ tempDir, 'habit'   ]); } catch(err) {}
-            try { await fsUpdDir([ tempDir, 'room'    ]); } catch(err) {}
-            try { await fsUpdDir([ tempDir, 'storage' ]); } catch(err) {}
-            try { await fsUpdDir([ tempDir, 'cert'    ]); } catch(err) {}
-          })()
+          this.fsKeep.innerKeep('mill', 'storage').setContent(null),
+          this.fsKeep.innerKeep('mill', 'room').setContent(null)
         ]);
-        
       })();
       
     },
@@ -419,14 +352,14 @@
         enact: async (foundation, args) => {
           
           // TODO: Would be cool when DB is implemented to abstractly
-          // save habits into DB instead of filesystem
+          // save habits into DB instead of fileSystem
           
-          let habits = fs.readdirSync(path.join(tempDir, 'habit'));
-          if (habits.length) {
+          let habitNames = await this.fsKeep.innerKeep('mill', 'habit').getContent();
+          if (habitNames.length) {
             console.log('Available habits:');
-            habits.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
+            habitNames.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
           } else {
-            console.log('No habits available!');
+            console.log('-- No habits available --');
           }
           
         }
@@ -439,13 +372,11 @@
         enact: async (foundation, args) => {
           
           let habitName = args.habit.add;
-          
           if (!habitName) throw Error('Need to provide name for habit');
           
-          let habitData = ({ ...args }).gain({ habit: C.skip });
-          let jsonArgs = JSON.stringify(habitData, null, 2);
-          await fsUpdFile([ tempDir, 'habit', `${habitName}.json` ], jsonArgs);
-          console.log(`Saved habit "${habitName}"; args:`, jsonArgs);
+          let habitJson = JSON.stringify(({ ...args }).gain({ habit: C.skip }), null, 2);
+          await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).setContent(habitJson);
+          console.log(`Saved habit "${habitName}"; args:`, habitJson);
           
         }
       }));
@@ -460,12 +391,8 @@
           
           if (!habitName) throw Error('Need to provide name for habit');
           
-          try {
-            await fsRemFile([ tempDir, 'habit', `${habitName}.json` ]);
-            console.log(`Removed habit "${habitName}"`);
-          } catch(err) {
-            console.log(`No habit named "${habitName}"`);
-          }
+          await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).setContent(null);
+          console.log(`Removed habit "${habitName}"`);
           
         }
       }));
@@ -477,15 +404,12 @@
         enact: async (foundation, args) => {
           
           let habitName = args.habit.use.split('.');
-          
           if (!habitName) throw Error('Need to provide name for habit');
-          
-          let data = JSON.parse(await fsGetFile([ tempDir, 'habit', `${habitName}.json` ]));
-          let newArgs = ({ ...data, ...args }).gain({ habit: C.skip });
           
           // TODO: This won't work, now that `raiseArgs` are given to
           // the constructor, not the `raise` function...
-          await foundation.raise(newArgs);
+          let data = JSON.parse(await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).getContent());
+          await foundation.raise(({ ...data, ...args }).gain({ habit: C.skip }));
           
         }
       }));
@@ -556,7 +480,7 @@
       // uncache the room file. It will call U.buildRoom with the
       // anticipated room names...
       
-      let roomFileContents = await fsGetFile([ roomDir, roomName, `${roomName}.js` ]);
+      let roomFileContents = await this.fsKeep.innerKeep('room', roomName, `${roomName}.js`).getContent('utf8');
       let depStr = U.safe(
         () => roomFileContents.match(/[^\w]innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
         () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
@@ -619,17 +543,17 @@
       
       // Compile a single room; generate a new file for each variant
       
-      let contentLines = (await fsGetFile([ roomDir, roomName, `${roomName}.js` ])).split('\n');
+      let contentLines = (await this.fsKeep.innerKeep('room', roomName, `${roomName}.js`).getContent('utf8')).split('\n');
       this.compilationData[roomName] = {};
       
       for (let variantName in this.variantDefs) {
         
-        let compiledFilePcs = [ roomDir, roomName, `${roomName}.${variantName}.js` ];
+        let compiledFilePcs = [ 'room', roomName, `${roomName}.${variantName}.js` ];
         let { lines: cmpLines, offsets } = this.compileContent(variantName, contentLines);
-        await fsUpdFile(compiledFilePcs, cmpLines.join('\n'));
+        
+        await this.fsKeep.innerKeep(...compiledFilePcs).setContent(cmpLines.join('\n'));
         
         this.compilationData[roomName][variantName] = {
-          fileName: path.join(...compiledFilePcs),
           srcNumLines: contentLines.length,
           cmpNumLines: cmpLines.length,
           offsets
@@ -715,6 +639,7 @@
       // in the source
       
       fileName = path.basename(fileName);
+      
       let fileNameData = fileName.match(/^([^.]+)\.([^.]+)\.js/);
       if (!fileNameData) return null;
       
@@ -746,12 +671,12 @@
       
       let [ msg, type, stack ] = [ err.message, err.constructor.name, err.stack ];
       
+      let rootFileUrl = this.fsKeep.getFileUrl()
+      
       let traceBeginSearch = `${type}: ${msg}\n`;
       let traceInd = stack.indexOf(traceBeginSearch);
       let traceBegins = traceInd + traceBeginSearch.length;
       let trace = stack.substr(traceBegins);
-      
-      let pathSepReg = new RegExp(path.sep.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'g');
       
       let lines = trace.split('\n').map(line => {
         
@@ -768,8 +693,8 @@
           let codePointPcs = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/);
           let [ fileName, lineInd, charInd ] = codePointPcs.slice(1);
           
-          fileName = path.normalize(fileName);
-          if (!fileName.hasHead(rootDir)) return C.skip; // Skip non-hut files
+          fileName = Insp.KeepFileSystem.fs.cmpsToFileUrl([ fileName ]);
+          if (!fileName.hasHead(rootFileUrl)) return C.skip; // Skip non-hut files
           
           let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
           
@@ -777,7 +702,7 @@
             fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src`;
             lineInd = mappedLineData.srcLineInd;
           } else {
-            fileName = fileName.substr(rootDir.length + 1).split(path.sep).join('/');
+            fileName = fileName.substr(rootFileUrl.length + 1).split(/[^a-zA-Z0-9]/).join('/');
           }
           
           return `${fileName.padTail(36)} @ ${lineInd.toString()}`;
@@ -819,22 +744,6 @@
         heapUsed: usage1.heapUsed - this.usage0.heapUsed
       };
     },
-    getSaved: function(locator) {
-      
-      // Returns a Saved based on a Locator
-      
-      // TODO: This assumes the saved item is on the filesystem...
-      // Could verify that `locator` is an Array of Strings...
-      return SavedFile(...locator);
-    },
-    getSavedFromData: async function(locator, data) {
-      
-      // Saves some Data, and returns the resulting Saved
-      
-      let savedFile = SavedFile('mill', 'storage', ...locator); // Write to temporary location
-      await savedFile.update(data);
-      return savedFile;
-    },
     
     // High level
     getRootKeep: function() { return this.rootKeep; },
@@ -860,10 +769,11 @@
       
       let sslArgs = { keyPair: null, selfSign: null };
       if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
+        let certFolder = this.rootKeep.innerKeep('fileSystem').innerKeep('mill', 'cert');
         let { cert, key, selfSign } = await Promise.allObj({
-          cert:     this.getSaved([ 'mill', 'cert', 'server.cert' ]).getContent(),
-          key:      this.getSaved([ 'mill', 'cert', 'server.key' ]).getContent(),
-          selfSign: this.getSaved([ 'mill', 'cert', 'localhost.cert' ]).getContent()
+          cert:     certFolder.innerKeep('server.cert').getContent(),
+          key:      certFolder.innerKeep('server.key').getContent(),
+          selfSign: certFolder.innerKeep('localhost.cert').getContent()
         });
         sslArgs = { keyPair: { cert, key }, selfSign };
       }
@@ -906,13 +816,13 @@
         .to(arr => Array.combine(...arr))
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
-    getJsSource: async function(type, name, bearing, options) {
+    getJsSource: async function(type, name, bearing, ...opts) {
       if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
       let fp = (type === 'setup')
-        ? [ rootDir, 'setup', `${name}.js` ]
-        : [ rootDir, 'room', name, `${name}.${bearing}.js` ];
+        ? [ 'setup', `${name}.js` ]
+        : [ 'room', name, `${name}.${bearing}.js` ];
       
-      let srcContent = await fsGetFile(fp, options);
+      let srcContent = await this.fsKeep.innerKeep(...fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
       let offsets = [];
@@ -991,18 +901,18 @@
         let type = (() => {
           if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
           if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
-          if (U.isInspiredBy(msg, Saved)) return 'savd';
+          if (U.isInspiredBy(msg, Keep)) return 'keep';
           if (msg instanceof Error) throw msg; //return 'error';
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
         // TODO: This displays nice content-type-dependent information!
         if (this.transportDebug) console.log(`??TELL ${'hutId'}:`, ({
-          text: () => ({ ISTEXT: true, size: msg.length, val: msg }),
-          html: () => ({ ISHTML: true, size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
+          text: () => ({ type: 'text', size: msg.length, val: msg }),
+          html: () => ({ type: 'html', size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
           json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
-          savd: () => ({ ISSAVD: true, desc: msg.desc || null }),
-          error: () => ({ ISERROR: true, msg: msg.error })
+          keep: () => ({ type: 'keep', desc: msg.desc || null }),
+          error: () => ({ type: 'error', msg: msg.error })
         })[type]());
         
         return ({
@@ -1020,10 +930,10 @@
             res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
             res.end(msg);
           },
-          savd: async () => {
+          keep: async () => {
             res.writeHead(200, {
-              'Content-Type': msg.getContentType() || 'application/octet-stream',
-              'Content-Length': await msg.getNumBytes()
+              'Content-Type': (await msg.getContentType()) || 'application/octet-stream',
+              'Content-Length': await msg.getContentByteLength()
             });
             msg.getPipe().pipe(res);
           },
@@ -1384,6 +1294,6 @@
     }
   })});
   
-  U.setup.gain({ FoundationNodejs, KeepFileSystem });
+  U.setup.gain({ FoundationNodejs });
   
 })();

@@ -1,20 +1,37 @@
 (() => {
   
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
-  let { Foundation, Saved } = U.setup;
+  let { Nozz, TubSet } = U.water;
+  let { Foundation, Keep } = U.setup;
   
-  let HttpFileData = U.inspire({ name: 'HttpFileData', insps: { Saved }, methods: (insp, Insp) => ({
-    init: function(url) {
-      insp.Saved.init.call(this);
-      this.url = url;
-    },
-    getUrl: function() { return this.url; },
-    getContentType: function() { return null; },
-    getPipe: function() { return null; },
-    getContent: async function(opts) { return null; },
-    getNumBytes: async function() { return null; }
-  })});
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
+    
+    $KeepBrowser: U.inspire({ name: 'KeepBrowser', insps: { Keep }, methods: insp => ({
+      init: function() {
+        insp.Keep.init.call(this);
+        this.keepsByType = {
+          urlResource: Insp.KeepUrlResources()
+        };
+      },
+      innerKeep: function(type) {
+        if (this.keepsByType.has(type)) return this.keepsByType[type];
+        throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
+      }
+    })}),
+    $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
+      innerKeep: function(urlParams) { return Insp.KeepUrlResource(urlParams); }
+    })}),
+    $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
+      init: function(urlParams) {
+        insp.Keep.init.call(this);
+        this.urlParams = urlParams;
+      },
+      getUrl: function(foundation=null) {
+        return foundation
+          ? foundation.getUrl(this.urlParams)
+          : `/?${this.urlParams.toArr((v, k) => `${k}=${v}`).join('&')}`;
+      }
+    })}),
+    
     init: function(...args) {
       insp.Foundation.init.call(this, ...args);
       
@@ -42,7 +59,10 @@
       // This value shows up in stack traces (used to isolate line number)
       this.traceUrl = window.location.slice('origin', 'pathname', 'search').toArr(v => v).join('');
       
-      // This is the root of all graphical entities
+      // Root Keep
+      this.rootKeep = Insp.KeepBrowser();
+      
+      // Root Real
       this.rootReal = null;
       
       // All css to react to window loading and unloading
@@ -78,12 +98,13 @@
       return U.rooms[args.hut];
       
     },
-    getUrl: function(params) {
-      params = { ...params, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
-      return `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
+    getUrl: function(urlParams) {
+      urlParams = { ...urlParams, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
+      return `/?${urlParams.toArr((v, k) => `${k}=${v}`).join('&')}`;
     },
     
     // High level
+    getRootKeep: function() { return this.rootKeep; },
     getRootHut: async function(options={}) {
       
       if (options.has('uid')) throw Error(`Don't specify "uid"!`);
@@ -120,7 +141,6 @@
     // Functionality
     queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
-    getSaved: function(locator) { return HttpFileData(this.getUrl({ reply: '1', command: locator })); },
     makeHttpServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
       if (!port) port = keyPair ? 443 : 80;
       
@@ -165,12 +185,14 @@
         road.tell = msg => tellAndHear(msg, road);
         road.currentCost = () => 1.0;
         
-        /// // TODO: ddos test!!! FoundationNodejs.prototype.makeHttpServer
-        /// // should handle this by detecting that the connection is being
-        /// // abused, and ignoring incoming requests
-        /// setTimeout(() => {
-        ///   while (true) road.tell({ command: 'ddos' });
-        /// }, 2000);
+        /*
+        // TODO: ddos test!!! FoundationNodejs.prototype.makeHttpServer
+        // should handle this by detecting that the connection is being
+        // abused, and ignoring incoming requests
+        setTimeout(() => {
+          while (true) road.tell({ command: 'ddos' });
+        }, 2000);
+        */
         
         this.queueTask(() => road.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };

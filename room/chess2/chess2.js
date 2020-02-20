@@ -145,16 +145,17 @@ U.buildRoom({
     let pieceTypes = Set();
     pieceDefs.forEach(mode => mode.forEach(pl => pl.forEach(([ type ]) => pieceTypes.add(type))));
     
-    let savedItems  = {};
+    let rootKeep = foundation.getRootKeep();
+    let chess2Keeps  = {};
     for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
       let key = `chess2Piece.${colour}.${pieceType}`;
-      let locator = null;
+      let keep = null;
       /// {ABOVE=
-      locator = [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ];
+      keep = rootKeep.innerKeep('fileSystem').innerKeep('room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png`);
       /// =ABOVE} {BELOW=
-      locator = key;
+      keep = rootKeep.innerKeep('urlResource').innerKeep({ reply: 1, command: key });
       /// =BELOW}
-      savedItems[key] = foundation.getSaved(locator);
+      chess2Keeps[key] = keep;
     }}
     
     let open = async () => {
@@ -172,8 +173,8 @@ U.buildRoom({
         // Logged Out
         real('loggedOut', CenteredSlotter);
         real('welcomePane', () => LinearSlotter({ axis: 'y', dir: '+' }));
-        real('welcomePaneTitle', null, TextSized({ size: UnitPx(24), pad: UnitPx(10) }));
-        real('welcomePaneBody', null, TextSized({ size: UnitPx(14), pad: UnitPx(3) }));
+        real('welcomePaneTitle', null, TextSized({ size: UnitPc(1.8), pad: UnitPx(10) }));
+        real('welcomePaneBody', null, TextSized({ size: UnitPc(1), pad: UnitPx(3) }));
         insert('main -> loggedOut', () => FillParent({ shrink: UnitPc(0.2) }));
         insert('loggedOut -> welcomePane', sl => sl.getCenteredSlot());
         insert('welcomePane -> welcomePaneTitle', sl => sl.getLinearSlot());
@@ -181,25 +182,29 @@ U.buildRoom({
         
         // Logged In
         real('loggedIn', CenteredSlotter, FillParent());
-        real('lobby', null, TextSized({ size: UnitPx(12), pad: UnitPx(16) }));
+        real('lobby', null, TextSized({ size: UnitPc(0.85), pad: UnitPx(16) }));
         real('game', () => LinearSlotter({ axis: 'y', dir: '+', scroll: false })); // Insert [ p1, board, p2 ]
         real('player', CenteredSlotter);
         real('playerContent', () => LinearSlotter({ axis: 'x', dir: '+' }));
-        real('playerContentName', () => TextSized({ size: UnitPx(14), padH: UnitPx(6) }));
-        real('playerContentTimer', () => TextSized({ size: UnitPx(14) }));
+        real('playerContentName', () => TextSized({ size: UnitPc(1), padH: UnitPx(6) }));
+        real('playerContentTimer', () => TextSized({ size: UnitPc(1) }));
         real('conclusion', CenteredSlotter);
-        real('conclusionContent', () => TextSized({ size: UnitPx(30) }));
+        real('conclusionContent', () => TextSized({ size: UnitPc(2.5) }));
         insert('main -> loggedIn', () => FillParent());
         insert('loggedIn -> lobby', sl => sl.getCenteredSlot()); // TODO: Should the slotting functions each be able to return multiple layouts???
         insert('loggedIn -> game', () => FillParent());
-        /// // TODO: In the future, the way an insert resolves should be
-        /// // capable of varying based on contextual info surrounding
-        /// // the KidReal (or even the ParReal??? MINDBLOWING). All
-        /// // possible different insertion types must be listed here so
-        /// // that the css can be made aware of all possibilities...
-        /// insert('game -> player', () => FillParent({ x: 1, y: 0.1 }));
-        /// insert('game -> player:white', sl => sl.getFixedSlot(0));
-        /// insert('game -> player:black', sl => sl.getFixedSlot(1));
+        
+        /*
+        // TODO: In the future, the way an insert resolves should be
+        // capable of varying based on contextual info surrounding the
+        // KidReal (or even the ParReal??? MINDBLOWING). All possible
+        // different insertion types must be listed here so that the css
+        // can be made aware of all possibilities...
+        insert('game -> player', () => FillParent({ x: 1, y: 0.1 }));
+        insert('game -> player:white', sl => sl.getFixedSlot(0));
+        insert('game -> player:black', sl => sl.getFixedSlot(1));
+        */
+        
         insert('game -> player', sl => [ sl.getLinearSlot(), FillParent({ w: UnitPc(1), h: UnitPc(0.1) }) ]); // "player" inside "game" takes up 10% (two take up 20%)
         insert('game -> board', sl => [ sl.getLinearSlot(), FillParent({ x: 0.8, y: 0.8 }) ]);
         insert('player -> playerContent', sl => sl.getCenteredSlot());
@@ -460,10 +465,7 @@ U.buildRoom({
       let termBank = term.TermBank();
       
       c2Hut.roadNozz('chess2.info').route(({ reply }) => {
-        
-        console.log('HERE', reply);
-        reply(foundation.getSaved([ 'room', 'chess2', 'chess2Info.html' ]));
-        
+        reply(foundation.getRootKeep().innerKeep('fileSystem').innerKeep('room', 'chess2', 'chess2Info.html'));
       });
       /// =ABOVE}
       
@@ -474,7 +476,7 @@ U.buildRoom({
         // Serve files (TODO: to be PICKY, could deny Huts without Matches)
         for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
           let key = `chess2Piece.${colour}.${pieceType}`;
-          c2Hut.roadNozz(key).route(({ reply }) => reply(savedItems[key]));
+          c2Hut.roadNozz(key).route(({ reply }) => reply(chess2Keeps[key]));
         }}
         
         // Manage Huts
@@ -817,7 +819,7 @@ U.buildRoom({
                 
                 pieceReal.setRoundness(1);
                 pieceReal.setGeom(tileExt(0.95), tileExt(0.95), tileLoc(col), tileLoc(row));
-                pieceReal.setImage(savedItems[`chess2Piece.${colour}.${type}`]);
+                pieceReal.setImage(chess2Keeps[`chess2Piece.${colour}.${type}`]);
                 
                 pieceReal.setColour((wait > 0) ? 'rgba(255, 120, 50, 0.55)' : null);
                 

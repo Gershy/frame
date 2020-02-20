@@ -55,10 +55,10 @@ U.buildRoom({ name: 'dbTest',
       let DbSaved = U.inspire({ name: 'DbSaved', methods: (insp, Insp) => ({
         init: function(rootLoc=[ 'mill', 'db', 'default' ]) {
           
-          // TODO: HEEERE! Working with the filesystem through the
+          // TODO: HEEERE! Working with the fileSystem through the
           // abstract layer of "Saved" SUCKS BIG TIME. How do I even
           // create a directory? Or delete a directory? Really the
-          // filesystem is a whole bunch of nested "Saveds", a *very*
+          // fileSystem is a whole bunch of nested "Saveds", a *very*
           // awkward plural. We could say that only files can be deleted
           // and a directory should automatically be deleted when it
           // contains no more files. So want to delete a directory?
@@ -71,9 +71,8 @@ U.buildRoom({ name: 'dbTest',
           // it isn't midway through a sync where the file for a
           // MemberRec has been written, but the GroupRecs haven't been
           // written yet). Can also think about dealing with volatility.
-          // If the power-chord is yanked halfway through a sync, should
-          // be able to recover to a stable state when the Hut is run
-          // again!
+          // If the power is yanked halfway through a sync, should be
+          // able to recover to a stable state when hut.js is run again!
           
         }
       })});

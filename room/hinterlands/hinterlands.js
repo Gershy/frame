@@ -230,7 +230,6 @@ U.buildRoom({
           // For managing ChildHuts
           this.roadedHutIdCnt = 0;
           this.roadedHuts = Map(); // Map a KidHut id to KidHut and connectivity
-          ///this.roadedHutNozz = TubSet(null, Nozz());
           
         }
         
@@ -438,14 +437,14 @@ U.buildRoom({
           for (let addRec of attempt) {
             
             if (this.allRecs.has(addRec.uid)) {
-              /// TODO: Here's how this should look in the future:
-              /// throw HutError(null, `Duplicate id: ${addRec.uid}`, {
-              ///   scope: 'hinterlands:Hut.prototype.doSync',
-              ///   context: { add, upd, rem }
-              /// });
-              /// HutError's 1st param indicates a "deeper Error", which
-              /// optionally describes an error that later occurred from
-              /// this scope!
+              // // TODO: Here's how this should look in the future:
+              // throw HutError(null, `Duplicate id: ${addRec.uid}`, {
+              //   scope: 'hinterlands:Hut.prototype.doSync',
+              //   context: { add, upd, rem }
+              // });
+              // HutError's 1st param indicates a "deeper Error", which
+              // optionally describes an error that later occurred from
+              // this scope!
               console.log(addRec);
               throw Error(`Duplicate id: ${addRec.uid}`);
             }

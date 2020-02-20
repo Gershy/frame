@@ -94,19 +94,6 @@ if (args[0] === '{') {     // Process object literal
   
 }
 
-(async () => {
-  
-  let { KeepFileSystem } = U.setup;
-  let f0 = KeepFileSystem([ '/', 'fsTesty' ]);
-  let f1 = await f0.innerKeep('f1');
-  let f2 = await f1.innerKeep('f2');
-  let f3 = await f2.innerKeep('f3');
-  let letter = await f3.innerKeep('letter.txt');
-  await letter.setContent(null);
-  
-})();
-return;
-
 if (args.has('test')) {
   
   require(`./setup/test/${args.test}`)(args);
