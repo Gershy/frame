@@ -5,7 +5,7 @@
   
   let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let [ path, crypto  ] = [ 'path', 'crypto' ].map(v => require(v));
+  let path = require('path');
   let { Foundation, Keep } = U.setup;
   
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -1158,7 +1158,7 @@
         
         // Now we have the headers - send upgrade response
         soktState.status = 'upgrading';
-        let hash = crypto.createHash('sha1');
+        let hash = require('crypto').createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
         
         await new Promise(r => sokt.write([

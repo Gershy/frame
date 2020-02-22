@@ -148,10 +148,6 @@
       
       let tellAndHear = async (msg, road) => {
         
-        // TODO: HEEERE - some requests are going to the url "localhost"
-        // without any query params or anything! I think it's upon
-        // heartbeat!
-        
         // Do XHR
         let req = new XMLHttpRequest();
         req.timeout = 24 * 60 * 60 * 1000;

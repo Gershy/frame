@@ -191,7 +191,7 @@ let U = global.U = {
   },
   safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
   toss: v => { throw v; },
-  inspire: ({ name, insps={}, methods=()=>({}), statik={}, description='' }) => {
+  inspire: ({ name, insps={}, methods=()=>({}) }) => {
     
     let parInsps = insps;
     parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw Error(`Invalid Insp: "${k}"`); });
