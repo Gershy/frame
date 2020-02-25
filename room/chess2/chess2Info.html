@@ -14,9 +14,9 @@
         margin: 0; padding: 1em; box-sizing: border-box;
         overflow: hidden auto;
       }
-      .primary { font-size: 160%; margin-top: 0.7em; }
-      .secondary { font-size: 130%; margin-top: 1em; }
-      .tertiary { font-size: 100%; margin-top: 1em; }
+      .t1 { font-size: 160%; margin-top: 0.7em; }
+      .t2 { font-size: 130%; margin-top: 1em; }
+      .t3 { font-size: 100%; margin-top: 1em; }
       .sep {
         width: 100%; height: 0.2em; margin-top: 1em; margin-bottom: 1em;
         box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4);
@@ -27,27 +27,29 @@
     <link rel="shortcut icon" type="image/x-icon" href="./realWebApp.favicon"/>
   </head>
   <body>
-    <div class="primary">Chess2 Readme</div>
+    <div class="t1">Chess2 Readme</div>
     <div class="sep"></div>
-    <div class="tertiary">Welcome to Chess2!</div>
-    <div class="secondary">Instructions</div>
-    <div class="tertiary">
+    <div class="t3">Welcome to Chess2!</div>
+    <div class="t2">Instructions</div>
+    <div class="t3">
       Finally, fair chess, black and white matched evenly in a battle of strategy and mind!<br/>
       <ul>
         <li>All the standard rules of chess except...</li>
         <li>Players move at the same time</li>
         <li>The same piece may not move twice in a row</li>
+        <li>Kings are never considered to be in check</li>
+        <li>Win by capturing, not checkmating, the enemy king</li>
       </ul>
     </div>
     <div class="sep"></div>
-    <div class="secondary">Credits</div>
-    <div class="tertiary">
+    <div class="t2">Credits</div>
+    <div class="t3">
       Hut framework and Chess2 by Gershom Maes<br/>
       With endless emotional support from his marvelous girlfriend <span class="heart">&#x2665;</span>
     </div>
     <div class="sep"></div>
-    <div class="secondary">Changelog</div>
-    <div class="tertiary">
+    <div class="t2">Changelog</div>
+    <div class="t3">
       <ul>
         <li>[Feb. 10th 2020] - Fixed king/queen positions. Castling works properly.</li>
       </ul>
