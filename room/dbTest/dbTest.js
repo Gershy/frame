@@ -19,66 +19,143 @@ U.buildRoom({ name: 'dbTest',
       fakeServer.desc = 'FAKE server';
       fakeServer.decorateRoad = () => {};
       
-      let DbRam = U.inspire({ name: 'DbRam', methods: (insp, Insp) => ({
+      let DbRamAndDisk = U.inspire({ name: 'DbRamAndDisk', methods: (insp, Insp) => ({
         init: function() {
-          this.version = 0;
+          this.syncVersion = 0;
+          this.earlySyncs = Map();
+          
           this.recs = {};
+          this.keep = foundation.getKeep('fileSystem', [ 'mill', 'storage', 'diskDb' ]);
           
-          // `DbRam` is permanently stable - this is because it is
-          // completely synchronous.
-          this.stableNozz = TubVal(null, Nozz());
-          this.stableNozz.nozz.drip(Drop());
+          this.diskQueue = Promise.resolve();
+          this.diskQueueLen = 0;
+          
+          this.netRecs = Set();
         },
-        doSync: function({ version, content: { add=[], upd=[], rem=[] } }) {
+        uid2Nam: function(uid) {
+          let nam = [];
+          for (let char of uid) {
+            if (char.lower() === char.upper()) {
+              nam.push(` ${char}`);
+            } else if (char === char.lower()) {
+              nam.push(` ${char}`);
+            } else if (char === char.upper()) {
+              nam.push(`+${char.lower()}`);
+            }
+          }
+          return `[${nam.join('')}]`;
+        },
+        nam2Uid: function(nam) {
+          let uid = [];
+          for (let i = 0; i < nam.length - 2; i += 2) {
+            let [ mod, sym ] = nam.substr(1 + i); // 1 offsets the "[" character
+            uid.push(mod === '+' ? sym.upper() : sym.lower());
+          }
+          return uid.join('');
+        },
+        doSync: function({ version, content }) {
           
-          // TODO: Pay attention to `version`! May need to buffer syncs
-          // which come out-of-order!
+          this.earlySyncs.set(version, content);
           
           let recs = this.recs;
-          for (let addRec of add) recs[addRec.uid] = addRec;
-          for (let { uid, val } of upd) recs[uid].val = val;
-          for (let uid of rem) this.deleteWithDependencies(uid);
+          let nextVersion = this.syncVersion + 1;
+          while (this.earlySyncs.has(nextVersion)) {
+            
+            let { add=[], upd=[], rem=[] } = this.earlySyncs.get(nextVersion);
+            
+            this.diskQueueLen++;
+            
+            this.diskQueue = this.diskQueue.then(async () => {
+              
+              let promises = [];
+              
+              // Compile all "add" promises
+              for (let rec of add) {
+                let recKeep = this.keep.innerKeep(this.uid2Nam(rec.uid));
+                promises.push(recKeep.setContent(JSON.stringify(rec)));
+                this.netRecs.add(rec.uid);
+              }
+              
+              // Compile all "upd" promises
+              for (let { uid, val } of upd) {
+                let recKeep = this.keep.innerKeep(this.uid2Nam(rec.uid));
+                promises.push((async () => {
+                  let origVal = JSON.parse(await recKeep.getContent());
+                  await recKeep.setContent(JSON.stringify(origVal.gain({ val })));
+                })());
+              }
+              
+              // Compile all "rem" promises (the trickiest!!)
+              let remWithDeps = async (uid, deletedUids) => {
+                
+                // Returns when it has added all promises of deletion
+                // for all GroupRecs that contain MemberRec @ `uid`
+                // Note that this function returns when all promises of
+                // deletion have been compiled - these promises will
+                // still be resolving even after this function has
+                // returned!
+                
+                if (deletedUids.has(uid)) return;
+                deletedUids.add(uid);
+                this.netRecs.rem(uid);
+                
+                let recKeep = this.keep.innerKeep(this.uid2Nam(uid));
+                
+                // Even keeping track of `deletedUids` can't guarantee
+                // that the file exists! Do this in a try/catch. Errors
+                // will indicate that the file was unexpectedly missing.
+                let mems = null;
+                
+                // Read MemberRec list from the file before deleting
+                try { mems = JSON.parse(await recKeep.getContent()).mems; } catch(err) { return; }
+                
+                // Push the deletion promise for this Rec @ `uid`
+                promises.push(recKeep.setContent(null));
+                
+                // Wait to compile deletions from all MemberRecs
+                await Promise.allObj(mems.map(uid => remWithDeps(uid, deletedUids)));
+                
+              };
+              let deletedUids = Set();
+              
+              // This completes when all "rem" promises are compiled
+              await Promise.allArr(rem.map(uid => remWithDeps(uid, deletedUids)));
+              
+              // Now all add, upd, and rem promises are compiled. Wait
+              // for *everything* to finish!
+              await Promise.allArr(promises);
+              
+              this.diskQueueLen--;
+              
+            });
+            
+            this.earlySyncs.rem(nextVersion);
+            this.syncVersion = nextVersion++;
+            
+          }
+          
+          if (this.earlySyncs.size > 30) throw Error('Too many pending syncs');
+          
         },
-        deleteWithDependencies: function(uid) {
+        getFullSync: async function() {
           
-          if (!this.recs.has(uid)) return;
+          // Wait for writes to settle down
+          await this.diskQueue;
           
-          // Delete the Rec itself
-          delete this.recs[uid];
+          let prm = Promise.allArr(((await this.keep.getContent()) || []).map(async nam => {
+            let recKeep = this.keep.innerKeep(nam);
+            return JSON.parse(await recKeep.getContent());
+          }));
           
-          // Now delete every GroupRec with `uid` as a MemberRec...
-          let deps = this.recs.map(rec => rec.mems.find(memberUid => memberUid === uid) ? rec : C.skip);
-          for (let groupUid in deps) this.deleteWithDependencies(groupUid);
+          // Force writes to wait for the read to finish
+          this.diskQueue = this.diskQueue.then(() => prm);
           
-        }
-      })});
-      let DbSaved = U.inspire({ name: 'DbSaved', methods: (insp, Insp) => ({
-        init: function(rootLoc=[ 'mill', 'db', 'default' ]) {
-          
-          // TODO: HEEERE! Working with the fileSystem through the
-          // abstract layer of "Saved" SUCKS BIG TIME. How do I even
-          // create a directory? Or delete a directory? Really the
-          // fileSystem is a whole bunch of nested "Saveds", a *very*
-          // awkward plural. We could say that only files can be deleted
-          // and a directory should automatically be deleted when it
-          // contains no more files. So want to delete a directory?
-          // Just delete all its files.
-          
-          // That's the least of our concerns. Dbs should be able to run
-          // in a separate thread (this is actually quite important for
-          // performance!!). Think about how the Hut can be aware that
-          // the Db is "stable" (i.e it is in a good state to shut down,
-          // it isn't midway through a sync where the file for a
-          // MemberRec has been written, but the GroupRecs haven't been
-          // written yet). Can also think about dealing with volatility.
-          // If the power is yanked halfway through a sync, should be
-          // able to recover to a stable state when hut.js is run again!
+          return prm;
           
         }
       })});
       
-      let db = DbRam();
-      
+      let db = DbRamAndDisk();
       let { hut: dbHut } = dbtHut.processNewRoad(fakeServer, road => {
         road.hear = Nozz();
         road.currentCost = () => 0;
@@ -87,42 +164,59 @@ U.buildRoom({ name: 'dbTest',
         road.tell = sync => db.doSync(sync);
       });
       
-      let dbt = dbtHut.createRec('dbt.dbTest', [ dbtHut ], 'I AM THE ROOT GUY');
-      let thingA1 = dbtHut.createRec('dbt.thingA', [ dbt ], 'thingA1');
-      let thingB1 = dbtHut.createRec('dbt.thingB', [ thingA1 ], 'thingB1');
-      let thingB2 = dbtHut.createRec('dbt.thingB', [ thingA1 ], 'thingB2');
-      let thingC1 = dbtHut.createRec('dbt.thingC', [ thingA1, thingB1 ], 'thingC1');
-      let thingC2 = dbtHut.createRec('dbt.thingC', [ thingA1, thingB2 ], 'thingC2');
-      
-      let thingHH = dbtHut.createRec('dbt.thingH', [ thingB1, thingB1 ], 'thingHHLAWL');
-      
-      setTimeout(() => thingB1.dry(), 2000);
-      setTimeout(() => dbtHut.createRec('dbt.thingC', [ thingA1, thingB2 ], 'new-improved-C2-BOI'), 4000);
-      
-      let rootScp = RecScope(dbtHut, 'dbt.dbTest', (dbTest, dep) => {
+      let cnt = 0;
+      let rndRec = name => {
+        let r = dbtHut.relNozz(name).set.toArr(v => v);
+        return r[Math.floor(Math.random() * r.length)];
+      };
+      let f = async () => {
         
-        dep(dbHut.followRec(dbTest));
+        // NOTE: A Rec has a certain number of Holds - a Rec cannot be
+        // discarded while it has non-zero Holds. A newly created Rec
+        // has 1 Hold by default. `Hut.prototype.followRec` should
+        // increase the Holds on all relevant Recs.
         
-        dep.scp(dbTest, 'dbt.thingA', (thingA, dep) => {
-          
-          dep(dbHut.followRec(thingA));
-          
-          dep.scp(thingA, 'dbt.thingB', (thingB, dep) => {
-            
-            dep(dbHut.followRec(thingB));
-            
-            dep.scp(thingB, 'dbt.thingC', (thingC, dep) => {
-              
-              dep(dbHut.followRec(thingC));
-              
-            });
-            
-          });
-          
+        // Consider calling `rec.dry()`:
+        // 1 - If Rec has more than 1 Hold, an Error occurs: "You can't
+        //     dry this Rec; someone is holding it! (Like windows
+        //     filesystem lolol)
+        // 2 - Reduce Holds to 0 automatically. Anyone who was Holding
+        //     the Rec is out of luck
+        // 3 - Cause a series of cascading Drips which overall should
+        //     result in the Holds of the Rec being reduced to 1. Then,
+        //     Check if there really is only one Hold left. If so, all
+        //     good. Otherwise, whoever was Holding the Rec, but didn't
+        //     react to its DrierNozz dripping, is out of luck
+        
+        let t1 = dbtHut.createRec('dbt.thing1', { hut: dbtHut }, `thing1@${cnt}`);
+        console.log(`ADD ${t1.desc()}`);
+        
+        if (!((cnt - 1) % 3)) {
+          let t2 = dbtHut.createRec('dbt.thing2', { hut: dbtHut, t11: rndRec('dbt.thing1'), t12: rndRec('dbt.thing1') }, `thing2@${cnt}`);
+          console.log(`ADD ${t2.desc()}`);
+        }
+        
+        if (!((cnt - 2) % 4)) {
+          let del = rndRec('dbt.thing1');
+          console.log(`REM ${del.desc()}`);
+          del.dry();
+        }
+        
+        await Promise(r => setTimeout(r, 20)); // Just to get ahead of the sync-throttle-delay
+        
+        cnt++;
+        
+        let fullSync = await db.getFullSync();
+        console.log(`ALL RECS [${db.netRecs.size} vs ${fullSync.length}] (${db.diskQueueLen}):`);
+        fullSync.forEach(({ type, uid, val, mems }) => {
+          console.log(`    ${type.padTail(15)}${uid.padTail(15)}: ${mems.toArr((v, k) => `${k}@${v}`).join(', ')}`);
         });
         
-        
-      });
+      };
+      f(); setInterval(f, 3000);
+      
+      RecScope(dbtHut, 'dbt.thing1/hut', (thing1, dep) => dep(dbHut.followRec(thing1)));
+      RecScope(dbtHut, 'dbt.thing2/hut', (thing2, dep) => dep(dbHut.followRec(thing2)));
       
       /// =ABOVE}
       
