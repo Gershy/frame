@@ -114,6 +114,7 @@ protoDef(String, 'polish', function(c=null) {
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
+Set.Native = SetOrig;
 Set.prototype = SetOrig.prototype;
 protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; returns VAL
   let ret = [], ind = 0;
@@ -129,6 +130,7 @@ protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
 
 let MapOrig = Map;
 Map = global.Map = function Map(...args) { return new MapOrig(...args); };
+Map.Native = MapOrig;
 Map.prototype = MapOrig.prototype;
 protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; returns [ KEY, VAL ] pairs
   let ret = {};
@@ -149,6 +151,7 @@ protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 
 let PromiseOrig = Promise;
 Promise = global.Promise = function Promise(...args) { return new PromiseOrig(...args); };
+Promise.Native = PromiseOrig;
 Promise.prototype = PromiseOrig.prototype;
 Promise.allArr = (...args) => PromiseOrig.all(...args);
 Promise.allObj = async obj => {
@@ -166,7 +169,7 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
-protoDef(Error, 'update', function(msg) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
+protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 let U = global.U = {
   dbgCnt: name => {
@@ -264,6 +267,7 @@ let U = global.U = {
   isType: (val, Cls) => {
     // Note: This is hopefully the *only* use of `!=` throughout Hut!
     // Falsy for `null` and `undefined`; truthy for `0`, `''`
+    if (Cls && Cls.Native) Cls = Cls.Native;
     return val != null && (val.constructor === Cls || val === Cls);
   },
   isTypes: (val, ...Classes) => {
@@ -512,7 +516,7 @@ let TubCnt = U.inspire({ name: 'TubCnt', insps: { Drop, Nozz }, methods: (insp, 
 })});
 let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
   
-  $addDep: (deps, dep) => { if (dep.isWet()) deps.add(dep); return dep; },
+  $addDep: (deps, dep) => { if (dep && dep.isWet()) deps.add(dep); return dep; },
   
   init: function(nozz, fn) {
     

@@ -41,14 +41,16 @@
         addFolder: async (cmps, ...opts) => {
           let err = Error('');
           return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
-            if (err0) rjc(err.update(err0.message));
+            // Ignore EEXIST - it means the folder is already created!
+            if (err0 && err0.code !== 'EEXIST') rjc(err.update(err0.message));
             else      rsv(null);
           }));
         },
         remFolder: async (cmps, ...opts) => {
           let err = Error('');
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
-            if (err0) rjc(err.update(err0.message));
+            // Ignore ENOENT - it means the folder is already deleted!
+            if (err0 && err0.code !== 'ENOENT') rjc(err.update(err0.message));
             else      rsv(null);
           }));
         },
@@ -92,7 +94,8 @@
       },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
-      innerKeep: function(...dirNames) {
+      innerKeep: function(dirNames) {
+        if (U.isType(dirNames, String)) dirNames = [ dirNames ];
         let KeepCls = this.constructor;
         return KeepCls([ ...this.absPath, ...dirNames ]);
       },
@@ -328,8 +331,8 @@
       
       this.canSettlePrm = (async () => {
         await Promise.allArr([
-          this.fsKeep.innerKeep('mill', 'storage').setContent(null),
-          this.fsKeep.innerKeep('mill', 'room').setContent(null)
+          this.fsKeep.to([ 'mill', 'storage' ]).setContent(null),
+          this.fsKeep.to([ 'mill', 'room' ]).setContent(null)
         ]);
       })();
       
@@ -354,7 +357,7 @@
           // TODO: Would be cool when DB is implemented to abstractly
           // save habits into DB instead of fileSystem
           
-          let habitNames = await this.fsKeep.innerKeep('mill', 'habit').getContent();
+          let habitNames = await this.fsKeep.to([ 'mill', 'habit' ]).getContent();
           if (habitNames.length) {
             console.log('Available habits:');
             habitNames.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
@@ -375,7 +378,7 @@
           if (!habitName) throw Error('Need to provide name for habit');
           
           let habitJson = JSON.stringify(({ ...args }).gain({ habit: C.skip }), null, 2);
-          await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).setContent(habitJson);
+          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(habitJson);
           console.log(`Saved habit "${habitName}"; args:`, habitJson);
           
         }
@@ -391,7 +394,7 @@
           
           if (!habitName) throw Error('Need to provide name for habit');
           
-          await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).setContent(null);
+          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(null);
           console.log(`Removed habit "${habitName}"`);
           
         }
@@ -408,7 +411,7 @@
           
           // TODO: This won't work, now that `raiseArgs` are given to
           // the constructor, not the `raise` function...
-          let data = JSON.parse(await this.fsKeep.innerKeep('mill', 'habit', `${habitName}.json`).getContent());
+          let data = JSON.parse(await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).getContent());
           await foundation.raise(({ ...data, ...args }).gain({ habit: C.skip }));
           
         }
@@ -480,7 +483,7 @@
       // uncache the room file. It will call U.buildRoom with the
       // anticipated room names...
       
-      let roomFileContents = await this.fsKeep.innerKeep('room', roomName, `${roomName}.js`).getContent('utf8');
+      let roomFileContents = await this.fsKeep.to([ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
       let depStr = U.safe(
         () => roomFileContents.match(/[^\w]innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
         () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
@@ -543,7 +546,8 @@
       
       // Compile a single room; generate a new file for each variant
       
-      let contentLines = (await this.fsKeep.innerKeep('room', roomName, `${roomName}.js`).getContent('utf8')).split('\n');
+      let content = await this.getKeep('fileSystem', [ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
+      let contentLines = content.split('\n');
       this.compilationData[roomName] = {};
       
       for (let variantName in this.variantDefs) {
@@ -551,7 +555,7 @@
         let compiledFilePcs = [ 'room', roomName, `${roomName}.${variantName}.js` ];
         let { lines: cmpLines, offsets } = this.compileContent(variantName, contentLines);
         
-        await this.fsKeep.innerKeep(...compiledFilePcs).setContent(cmpLines.join('\n'));
+        await this.getKeep('fileSystem', compiledFilePcs).setContent(cmpLines.join('\n'));
         
         this.compilationData[roomName][variantName] = {
           srcNumLines: contentLines.length,
@@ -702,7 +706,7 @@
             fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src`;
             lineInd = mappedLineData.srcLineInd;
           } else {
-            fileName = fileName.substr(rootFileUrl.length + 1).split(/[^a-zA-Z0-9]/).join('/');
+            fileName = fileName.substr(rootFileUrl.length + 1).split(/[^a-zA-Z0-9.]/).join('/');
           }
           
           return `${fileName.padTail(36)} @ ${lineInd.toString()}`;
@@ -769,11 +773,11 @@
       
       let sslArgs = { keyPair: null, selfSign: null };
       if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
-        let certFolder = this.rootKeep.innerKeep('fileSystem').innerKeep('mill', 'cert');
+        let certFolder = this.getKeep('fileSystem', [ 'mill', 'cert' ]);
         let { cert, key, selfSign } = await Promise.allObj({
-          cert:     certFolder.innerKeep('server.cert').getContent(),
-          key:      certFolder.innerKeep('server.key').getContent(),
-          selfSign: certFolder.innerKeep('localhost.cert').getContent()
+          cert:     certFolder.to('server.cert').getContent(),
+          key:      certFolder.to('server.key').getContent(),
+          selfSign: certFolder.to('localhost.cert').getContent()
         });
         sslArgs = { keyPair: { cert, key }, selfSign };
       }
@@ -822,7 +826,7 @@
         ? [ 'setup', `${name}.js` ]
         : [ 'room', name, `${name}.${bearing}.js` ];
       
-      let srcContent = await this.fsKeep.innerKeep(...fp).getContent('utf8');
+      let srcContent = await this.getKeep('fileSystem', fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
       let offsets = [];

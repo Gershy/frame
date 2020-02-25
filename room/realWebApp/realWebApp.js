@@ -98,9 +98,9 @@ U.buildRoom({
         
         /// {ABOVE=
         
-        let keepFs = foundation.getRootKeep().innerKeep('fileSystem');
-        let keepIcon = await keepFs.innerKeep('setup', 'favicon.ico');
-        let keepCss = await keepFs.innerKeep('mill', 'storage', 'realWebApp', 'mainStyles.css');
+        let keepFs = foundation.getKeep('fileSystem');
+        let keepIcon = keepFs.to([ 'setup', 'favicon.ico' ]);
+        let keepCss = keepFs.to([ 'mill', 'storage', 'realWebApp', 'mainStyles.css' ]);
         
         await keepCss.setContent(this.genCss(rootReal));
         
@@ -261,7 +261,12 @@ U.buildRoom({
         
         /// =ABOVE} {BELOW=
         
-        await Promise(r => window.addEventListener('DOMContentLoaded', r))
+        await Promise(r => window.addEventListener('DOMContentLoaded', r));
+        let bodyContent = document.body.innerHTML;
+        let trimContent = bodyContent.trim();
+        if (bodyContent !== trimContent) document.body.innerHTML = trimContent;
+        document.body.innerHTML = document.body.innerHTML.trim();
+        
         let webAppReal = rootReal.techReals[0]; // TODO: Assumes only a single Real exists for WebApps (may not be the case!)
         webAppReal.tech = this;
         webAppReal.techNode = document.body;

@@ -32,6 +32,12 @@ Hut at the very bottom runs using a single Reality.
   let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
     init: function() {},
+    to: function(...args) {
+      let keep = this;
+      for (let arg of args)
+        keep = U.isType(keep, Promise) ? keep.then(k => k.innerKeep(arg)) : keep.innerKeep(arg);
+      return keep;
+    },
     innerKeep: function() { throw Error(`${U.nameOf(this)} does not implement "innerKeep"`); },
     getContent: async function() { throw Error(`${U.nameOf(this)} does not implement "getContent"`); },
     setContent: async function() { throw Error(`${U.nameOf(this)} does not implement "setContent"`); },
@@ -109,6 +115,7 @@ Hut at the very bottom runs using a single Reality.
     },
     getPlatformName: C.notImplemented,
     
+    getKeep: function(...args) { return this.getRootKeep().to(...args); },
     getRootKeep: function() { throw Error(`${U.nameOf(this)} does not implement "getRootKeep"`); },
     getRootHut: async function(options={}) {
       

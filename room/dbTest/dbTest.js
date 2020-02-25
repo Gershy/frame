@@ -64,7 +64,6 @@ U.buildRoom({ name: 'dbTest',
             let { add=[], upd=[], rem=[] } = this.earlySyncs.get(nextVersion);
             
             this.diskQueueLen++;
-            
             this.diskQueue = this.diskQueue.then(async () => {
               
               let promises = [];

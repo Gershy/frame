@@ -145,15 +145,14 @@ U.buildRoom({
     let pieceTypes = Set();
     pieceDefs.forEach(mode => mode.forEach(pl => pl.forEach(([ type ]) => pieceTypes.add(type))));
     
-    let rootKeep = foundation.getRootKeep();
     let chess2Keeps  = {};
     for (let pieceType of pieceTypes) { for (let colour of [ 'white', 'black' ]) {
       let key = `chess2Piece.${colour}.${pieceType}`;
       let keep = null;
       /// {ABOVE=
-      keep = rootKeep.innerKeep('fileSystem').innerKeep('room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png`);
+      keep = foundation.getKeep('fileSystem', [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ]);
       /// =ABOVE} {BELOW=
-      keep = rootKeep.innerKeep('urlResource').innerKeep({ reply: 1, command: key });
+      keep = foundation.getKeep('urlResource', { reply: 1, command: key });
       /// =BELOW}
       chess2Keeps[key] = keep;
     }}
@@ -465,7 +464,7 @@ U.buildRoom({
       let termBank = term.TermBank();
       
       c2Hut.roadNozz('chess2.info').route(({ reply }) => {
-        reply(foundation.getRootKeep().innerKeep('fileSystem').innerKeep('room', 'chess2', 'chess2Info.html'));
+        reply(foundation.getKeep('fileSystem', [ 'room', 'chess2', 'chess2Info.html' ]));
       });
       /// =ABOVE}
       
