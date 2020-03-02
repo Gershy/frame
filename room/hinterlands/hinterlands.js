@@ -155,6 +155,7 @@ U.buildRoom({
           this.roadNozz('multi').route(({ hut, msg, reply, road }) => {
             
             let { list } = msg;
+            
             if (!U.isType(list, Array)) return hut.tell({ command: 'error', type: 'invalidMultiList', orig: msg });
             
             // TODO: Would be cool if enough info were present to form a
@@ -199,13 +200,12 @@ U.buildRoom({
             
             let nextVersion = this.syncVersion + 1;
             while (this.earlySyncs.has(nextVersion)) {
-              let sync = this.earlySyncs.get(nextVersion);
-              this.doSync(sync);
+              this.doSync(this.earlySyncs.get(nextVersion));
               this.earlySyncs.rem(nextVersion);
               this.syncVersion = nextVersion++;
             }
             
-            if (this.earlySyncs.size > 30) throw Error('Too many pending syncs');
+            if (this.earlySyncs.size > 50) throw Error('Too many pending syncs');
             
           });
           
@@ -312,10 +312,8 @@ U.buildRoom({
           
           if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
           
-          /// {BELOW=
           this.aboveHut = roadedHut.hut;
           if (U.initData) Insp.tell(this.aboveHut, this, road, null, U.initData);
-          /// =BELOW}
           
         } else {
           
@@ -360,7 +358,8 @@ U.buildRoom({
       isHere: function() { return !!this.foundation; },
       isAfar: function() { return !this.foundation; },
       
-      roadNozz: function(command) {
+      roadNozz: function(command, ...args) {
+        if (args.length) throw Error(`Supplied more than 1 parameter to "roadNozz"`);
         if (!this.roadNozzes.has(command)) {
           this.roadNozzes[command] = Nozz();
           this.roadNozzes[command].desc = `Hut ComNozz for "${command}"`;
@@ -385,6 +384,14 @@ U.buildRoom({
         
       },
       
+      getCategorizedRecs: function() {
+        let ret = {};
+        for (let rec of this.allRecs.values()) {
+          if (!ret.has(rec.type.name)) ret[rec.type.name] = [];
+          ret[rec.type.name].push(rec);
+        }
+        return ret;
+      },
       getType: function(...args) {
         if (this.isAfar()) throw Error(`${this.desc()} is an AfarHut; it cannot do getType`);
         return insp.RecTypes.getType.call(this, ...args);
@@ -442,10 +449,10 @@ U.buildRoom({
               //   scope: 'hinterlands:Hut.prototype.doSync',
               //   context: { add, upd, rem }
               // });
-              // HutError's 1st param indicates a "deeper Error", which
+              // HutError's 1st param indicates a "causing Error", which
               // optionally describes an error that later occurred from
               // this scope!
-              console.log(addRec);
+              console.log(add, addRec);
               throw Error(`Duplicate id: ${addRec.uid}`);
             }
             
@@ -477,6 +484,10 @@ U.buildRoom({
           
           // If no attempted item succeeded we can't make progress
           if (waiting.length === attempt.length) {
+            console.log('RECS SUCCESSFULLY CREATED:', this.allRecs);
+            console.log('ALL RECS ATTEMPTED TO ADD:', add.map(({ uid }) => uid));
+            console.log('RECS THAT WEREN\'T ADDED:', waiting);
+            
             console.log(JSON.stringify(add, null, 2));
             throw Error(`Unresolvable Rec dependencies`);
           }
@@ -577,6 +588,7 @@ U.buildRoom({
         if (content.isEmpty()) return null;
         
         this.pendingSync = this.pendingSync.map(v => ({}));
+        
         return { command: 'sync', version: ++this.syncTellVersion, content };
         
       },
