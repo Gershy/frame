@@ -152,7 +152,7 @@ U.buildRoom({
       /// {ABOVE=
       keep = foundation.getKeep('fileSystem', [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ]);
       /// =ABOVE} {BELOW=
-      keep = foundation.getKeep('urlResource', { reply: 1, command: key });
+      keep = foundation.getKeep('urlResource', { path: `/${key}` });
       /// =BELOW}
       chess2Keeps[key] = keep;
     }}

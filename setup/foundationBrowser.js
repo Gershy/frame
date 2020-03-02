@@ -18,17 +18,33 @@
       }
     })}),
     $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
-      innerKeep: function(urlParams) { return Insp.KeepUrlResource(urlParams); }
+      init: function() {
+        this.urlImages = {};
+      },
+      innerKeep: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
     })}),
     $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
-      init: function(urlParams) {
+      init: function(par, path='', params={}) {
         insp.Keep.init.call(this);
-        this.urlParams = urlParams;
+        this.par = par;
+        this.path = path;
+        this.params = params;
       },
       getUrl: function(foundation=null) {
-        return foundation
-          ? foundation.getUrl(this.urlParams)
-          : `/?${this.urlParams.toArr((v, k) => `${k}=${v}`).join('&')}`;
+        let params = this.params;
+        if (foundation) params.gain(foundation.getIdenUrlParams());
+        
+        let url = `/${this.path}`;
+        if (!params.isEmpty()) url += `?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
+        return url;
+      },
+      getImage: function() {
+        let url = this.getUrl();
+        if (!this.par.urlImages.has(url)) {
+          this.par.urlImages[url] = new Image();
+          this.par.urlImages[url].src = url;
+        }
+        return this.par.urlImages[url];
       }
     })}),
     
@@ -98,8 +114,11 @@
       return U.rooms[args.hut];
       
     },
+    getIdenUrlParams: function() {
+      return this.spoof ? { spoof: this.spoof } : { hutId: U.hutId };
+    },
     getUrl: function(urlParams) {
-      urlParams = { ...urlParams, ...(this.spoof ? { spoof: this.spoof } : { hutId: U.hutId }) };
+      urlParams = { ...urlParams, ...this.getIdenUrlParams() };
       return `/?${urlParams.toArr((v, k) => `${k}=${v}`).join('&')}`;
     },
     

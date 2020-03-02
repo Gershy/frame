@@ -1088,11 +1088,9 @@
             
           } else {
             
-            console.log('Bundled', bundleSize, 'tells:', road.waitTells.slice(0, bundleSize));
-            
             // Send `bundleSize` bundled json Tells!
             sendData(res, {
-              type: 'multi',
+              command: 'multi',
               list: road.waitTells.slice(0, bundleSize)
             });
             road.waitTells = road.waitTells.slice(bundleSize);
@@ -1280,6 +1278,7 @@
         if (U.isType(room, String)) {
           // Install and run the room-building-function
           require(`../room/${room}/${room}.${this.bearing}.js`);
+          if (!U.rooms.has(room)) throw Error(`Room "${room}" didn't build correctly`);
           U.rooms[room](this);
         } else {
           U.rooms[room.name] = {
