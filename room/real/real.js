@@ -108,6 +108,9 @@ U.buildRoom({
       op: function(...vals) { let v = 0; for (let vv of vals) v += vv; return v; }
     })});
     
+    let FixedSize = U.inspire({ name: 'FixedSize', insps: {}, methods: (insp, Insp) => ({
+      init: function(w=null, h=null) { this.w = w; this.h = h; }
+    })});
     let FillParent = U.inspire({ name: 'FillParent', insps: {}, methods: (insp, Insp) => ({
       init: function(params={}) { hvParams('shrink', params, this); }
     })});
@@ -152,19 +155,44 @@ U.buildRoom({
       },
       getLinearSlot: function(...args) { return Insp.LinearSlot(this, ...args); }
     })});
+    let AxisSlotter = U.inspire({ name: 'AxisSections', methods: (insp, Insp) => ({
+      
+      $AxisSlot: U.inspire({ name: 'AxisSlot', methods: (insp, Insp) => ({
+        init: function(slotter, index) {
+          if (!U.isType(index, Number)) throw Error(`Invalid slot index`);
+          this.slotter = slotter;
+          this.index = index;
+        }
+      })}),
+      
+      init: function({ axis, dir='+', cuts }) {
+        if (!axis) throw Error('Missing "axis" param');
+        if (!cuts) throw Error('Missing "cuts" param');
+        if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
+        if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
+        
+        this.axis = axis;
+        this.dir = dir;
+        this.cuts = cuts;
+      },
+      getAxisSlot: function(index) { return Insp.AxisSlot(this, index); }
+    })});
+      
     
     let TextSized = U.inspire({ name: 'TextSized', methods: (insp, Insp) => ({
       init: function(params) {
         
         hvParams('pad', params, this);
         
-        let { multiLine=false, origin='cc', interactive=false, embossed=interactive, size=null } = params;
+        // TODO: Take out "desc"; implement `textSizedReal.setPlaceholder(...)`
+        let { multiLine=false, origin='cc', interactive=false, embossed=interactive, size=null, desc=null } = params;
         if (origin === 'c') origin = 'cc';
         if (!origin.match(/^[lrc][tbc]$/)) throw Error(`Invalid "origin": ${origin}`);
         this.multiLine = multiLine;
         this.origin = origin;
         this.interactive = interactive;
         this.embossed = embossed;
+        this.desc = desc;
         this.size = size || UnitPx(18); // TODO: Should be able to supply integer (avoid many instances of UnitPx!)
         
         this.origin = origin;
@@ -172,8 +200,11 @@ U.buildRoom({
       }
     })});
     let Art = U.inspire({ name: 'Art', methods: (insp, Insp) => ({
-      init: function({ pixelDensityMult=1 }) {
+      init: function({ pixelDensityMult=1, pixelCount=null }={}) {
+        if (pixelDensityMult !== 1 && pixelCount) throw Error(`Can't specify pixel density and pixel count`);
+        
         this.pixelDensityMult = pixelDensityMult; // 1 is standard; 0.5 is low-res, 1.5 is hi-res
+        this.pixelCount = pixelCount; // e.g. [ 620, 480 ]
       }
     })});
     
@@ -183,6 +214,7 @@ U.buildRoom({
       
       // Additional style features
       'setColour', 'setRoundness', 'setOpacity', 'setBorder', 'setImage', 'setTransition', 'setDeathTransition',
+      'setTangible',
       
       // Interaction:
       'feelNozz'
@@ -319,310 +351,13 @@ U.buildRoom({
     })});
     
     return {
-      FillParent, CenteredSlotter, MinExtSlotter, LinearSlotter,
+      FixedSize, FillParent, CenteredSlotter, MinExtSlotter, LinearSlotter, AxisSlotter,
       TextSized, Art,
       
       UnitPx, UnitPc, Calc, CalcAdd,
       
       Real, Tech
     };
-    
-    // ---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~
-    // ---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~
-    // ---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~
-    // ---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~---~~~
-    
-    if (false) {
-      
-      // ==== ABSTRACT
-      let RealLayoutCmp = U.inspire({ name: 'RealLayoutCmp', methods: (insp, Insp) => ({
-        init: function() {},
-        getW: function(...trail) { return null; },
-        getH: function(...trail) { return null; }
-      })});
-      
-      // ==== SIZE
-      let FillParent = U.inspire({ name: 'FillParent', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(params={}) {
-          hvParams('shrink', params, this);
-        },
-        getW: function(par, ...parTrail) {
-          return CalcAdd(par.getW(...parTrail) || UnitPc(1), this.shrinkL.mult(-1), this.shrinkR.mult(-1));
-        },
-        getH: function(par, ...parTrail) {
-          return CalcAdd(par.getH(...parTrail) || UnitPc(1), this.shrinkT.mult(-1), this.shrinkB.mult(-1));
-        }
-      })});
-      let WrapChildren = U.inspire({ name: 'WrapChildren', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(params) {
-          hvParams('pad', params, this);
-        }
-      })});
-      let ShowText = U.inspire({ name: 'ShowText', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(params) {
-          hvParams('pad', params, this);
-          
-          let { multiLine=false, origin='cc', interactive=false, embossed=interactive } = params;
-          if (origin === 'c') origin = 'cc';
-          if (!origin.match(/^[lrc][tbc]$/)) throw Error(`Invalid "origin": ${origin}`);
-          this.multiLine = multiLine;
-          this.origin = origin;
-          this.interactive = interactive;
-          this.embossed = embossed;
-        }
-      })});
-      let Art = U.inspire({ name: 'Art', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function() {}
-      })});
-      
-      // ==== SLOTS
-      let RootViewStyles = U.inspire({ name: 'RootViewStyles', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        insertViewPortItem: function(...args) { return RootViewPortItem(...args); },
-        insertFullPageItem: function(...args) { return RootFullPageItem(...args); }
-      })});
-      let RootViewPortItem = U.inspire({ name: 'RootViewPortItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        getW: function(...trail) { return ViewPortMin(1); },
-        getH: function(...trail) { return ViewPortMin(1); }
-      })});
-      let RootFullPageItem = U.inspire({ name: 'RootFullPageItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        getW: function(par, ...parTrail) { return UnitPc(1); },
-        getH: function(par, ...parTrail) { return UnitPc(1); }
-      })});
-      
-      let AxisSections = U.inspire({ name: 'AxisSections', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function({ axis, dir='+', cuts }) {
-          if (!axis) throw Error('Missing "axis" param');
-          if (!cuts) throw Error('Missing "cuts" param');
-          if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
-          if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
-          
-          this.axis = axis;
-          this.dir = dir;
-          this.cuts = cuts;
-        },
-        insertSectionItem: function(index) { return AxisSectionItem(this, index); }
-      })});
-      let AxisSectionItem = U.inspire({ name: 'AxisSectionItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(par, index) {
-          this.par = par;
-          this.index = index;
-        },
-        getCutExt: function(par, ...parTrail) {
-          if (this.index < this.par.cuts.length) return this.par.cuts[this.index];
-          let parExt = (this.par.axis === 'x') ? par.getW(...parTrail) : par.getH(...parTrail);
-          return CalcAdd(parExt, ...this.par.cuts.map(amt => amt.mult(-1)));
-        },
-        getW: function(par, ...parTrail) { return (this.par.axis === 'y') ? par.getW(...parTrail) || UnitPc(1) : this.getCutExt(par, ...parTrail); },
-        getH: function(par, ...parTrail) { return (this.par.axis === 'x') ? par.getH(...parTrail) || UnitPc(1) : this.getCutExt(par, ...parTrail); }
-      })});
-      
-      let LinearSlots = U.inspire({ name: 'LinearSlots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function({ axis, dir='+' /*, initPad=UnitPx(0)*/ }) {
-          if (!axis) throw Error('Missing "axis" param');
-          if (![ '+', '-' ].has(dir)) throw Error('Invalid "dir" param');
-          if (![ 'x', 'y' ].has(axis)) throw Error('Invalid "axis" param');
-          this.axis = axis;
-          this.dir = dir;
-        },
-        insertLinearItem: function() { return LinearItem(this); }
-      })});
-      let LinearItem = U.inspire({ name: 'LinearItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(par) {
-          this.par = par;
-        }
-      })});
-      
-      let CenteredSlot = U.inspire({ name: 'CenteredSlot', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        insertCenteredItem: function() { return CenteredItem(); }
-      })});
-      let CenteredItem = U.inspire({ name: 'CenteredItem', insps: { RealLayoutCmp } });
-      
-      let TextFlowSlots = U.inspire({ name: 'TextFlowSlots', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function({ gap=UnitPx(0), lineHeight=null }) {
-          // TODO: Include "origin"?
-          this.gap = gap;
-          this.lineHeight = lineHeight;
-        },
-        insertTextFlowItem: function() { return TextFlowItem(this); }
-      })});
-      let TextFlowItem = U.inspire({ name: 'TextFlowItem', insps: { RealLayoutCmp }, methods: (insp, Insp) => ({
-        init: function(par) {
-          this.par = par;
-        }
-      })});
-      
-      // ==== STRUCTURE
-      
-      let RealityOld = U.inspire({ name: 'Reality', methods: (insp, Insp) => ({
-        init: function(name) {
-          this.name = name;
-          this.rootLayout = {
-            name: 'root',
-            cmps: { slot: par => null, size: null, slots: RootViewStyles({}) },
-            children: {}
-          };
-        },
-        /// {ABOVE=
-        prepareAboveHut: async function(lands) {},
-        /// =ABOVE}
-        addFlatLayouts: function(flatLayouts) {
-          flatLayouts.forEach((cmps, chainName) => {
-            let names = chainName.split('.');
-            let layout = this.rootLayout;
-            for (let name of names) {
-              if (!layout.children.has(name)) layout.children[name] = { name, cmps: null, children: {} };
-              layout = layout.children[name];
-            }
-            layout.cmps = cmps; // Set "cmps"
-            layout.getW = this.getLayoutW.bind(this, layout);
-            layout.getH = this.getLayoutH.bind(this, layout);
-          });
-        },
-        getLayoutCmps: function(layout, ...trail) {
-          let cmps = [];
-          if (layout.cmps.size) cmps.push(layout.cmps.size);
-          if (layout.cmps.slots) cmps.push(layout.cmps.slots);
-          if (layout.cmps.slot) {
-            let slot = layout.cmps.slot(...trail);
-            if (slot) cmps.push(slot);
-          }
-          return cmps;
-        },
-        getLayoutW: function(layout, ...trail) {
-          let cmps = this.getLayoutCmps(layout, ...trail);
-          let w = null;
-          for (let cmp of cmps) w = updatedExtent(w, cmp.getW(...trail));
-          return w && (w.isAbsolute() ? w : UnitPc(1));
-        },
-        getLayoutH: function(layout, ...trail) {
-          let cmps = this.getLayoutCmps(layout, ...trail);
-          let h = null;
-          for (let cmp of cmps) h = updatedExtent(h, cmp.getH(...trail));
-          return h && (h.isAbsolute() ? h : UnitPc(1));
-        },
-        iterateLayouts: function(it, layout=this.rootLayout, trail=[]) {
-          it(layout, trail);
-          trail = [ layout, ...trail ];
-          layout.children.forEach(childLayout => this.iterateLayouts(it, childLayout, trail));
-        },
-        getCmpTimeFwkAssets: C.notImplemented,
-        initReal: function(parReal, layout) {
-          // Develop the trail
-          let trail = [];
-          while (parReal) { trail.push(parReal.layout); parReal = parReal.par; }
-          let Real = this.getRealCls();
-          let real = Real({ reality: this, layout });
-          
-          // Do `this.initReal0` - expect it to set `real.realized`!
-          this.initReal0(real, layout, trail);
-          if (!real.realized) throw Error(`${U.nameOf(this)} didn't realize Real @ ${[ layout, ...trail ].invert().join('.')}`);
-          
-          return real;
-        },
-        getRealCls: function() { return Real; },
-        initReal0: C.notImplemented,
-        addChildReal: C.notImplemented,
-        remChildReal: C.notImplemented,
-        initFeel: C.notImplemented
-      })});
-      let RealOld = U.inspire({ name: 'Real', insps: { Drop }, methods: (insp, Insp) => ({
-        init: function({ drier=null, reality=null, layout=null }={}) {
-          insp.Drop.init.call(drier, this);
-          
-          this.reality = reality; // Our link to a Reality instance
-          this.layout = layout;   // The list of names to specify our role
-          
-          this.realized = null;   // Reference to a node in a graphics framework
-          this.par = null;
-          this.sense = {};        // Collect various Real-sensing nozzes here
-        },
-        form: function(submitTerm, dep, act, items) {
-          
-          // TODO: This function should exist elsewhere...
-          
-          let vals = items.map(v => null);
-          let fields = [];
-          items.forEach(({ type, desc, v=null }, k) => {
-            
-            // TODO: More types?
-            
-            let item = this.addReal('item');
-            let title = item.addReal('title');
-            let field = item.addReal('field');
-            fields.push(field);
-            
-            dep(field.tellWob().hold(({
-              str: v => vals[k] = v,
-              int: v => vals[k] = (parseInt(v, 10) || null)
-            })[type]));
-            
-            title.setText(desc);
-            if (v !== null) field.setText(v);
-            
-          });
-          
-          let submit = this.addReal('submit');
-          submit.setText(submitTerm);
-          dep(submit.feelWob().hold(() => act(vals)));
-          
-          return {
-            clear: () => {
-              vals = items.map(v => null);
-              fields.forEach(f => f.setText(''));
-              return true;
-            }
-          };
-          
-        },
-        feelNozz: function() {
-          if (!this.sense.has('feel')) {
-            this.reality.initFeel(this);
-            this.sense.feel = TubVal(null, Nozz());
-            this.sense.feel.feelDrop = Drop();
-            this.sense.feel.feelDrop.dry();
-          }
-          return this.sense.feel;
-        },
-        addReal: function(real, dbg=false) {
-          if (U.isType(real, String)) {
-            if (!this.layout.children.has(real)) throw Error(`No layout for "${real}"`);
-            real = this.reality.initReal(this, this.layout.children[real]);
-            real.par = this;
-          } else {
-            real.reality = this.reality;
-          }
-          this.reality.addChildReal(this, real);
-          return real;
-        },
-        onceDry: function() {
-          this.reality.remChildReal(this);
-          this.par = null;
-        }
-      })});
-      
-      return {
-        
-        keys: {
-          activate: Set([ 13, 32 ]) // enter, space
-        },
-        
-        RealLayoutCmp,
-        
-        unitsEq,
-        Unit, UnitAmt, UnitPx, UnitPc, ViewPortMin, Calc, CalcAdd,
-        
-        RealLayoutCmp,
-        FillParent, WrapChildren, ShowText, Art,
-        RootViewStyles, RootViewPortItem, RootFullPageItem,
-        AxisSections, AxisSectionItem,
-        LinearSlots, LinearItem,
-        CenteredSlot, CenteredItem,
-        TextFlowSlots, TextFlowItem,
-        
-        Reality, Real
-      };
-      
-    }
     
   }
 });

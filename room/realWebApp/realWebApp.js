@@ -41,7 +41,7 @@ U.buildRoom({
     // counted indentation, and determines the ignored block has
     // completed after indentation returns to where it started!
     
-    let { Art, FillParent, CenteredSlotter, LinearSlotter, MinExtSlotter, TextSized /* ... */ } = real;
+    let { Art, FixedSize, FillParent, CenteredSlotter, LinearSlotter, AxisSlotter, MinExtSlotter, TextSized } = real;
     let { UnitPx, UnitPc, ViewPortMin, CalcAdd, Real, Tech } = real;
       
     let camelToKebab = camel => camel.replace(/([A-Z])/g, (m, chr) => `-${chr.lower()}`);
@@ -272,7 +272,7 @@ U.buildRoom({
         webAppReal.techNode = document.body;
         
         // No mousedown on <html> element; everyone's life improves
-        document.body.parentNode.addEventListener('mousedown', customEvent);
+        //document.body.parentNode.addEventListener('mousedown', customEvent);
         
         /// =BELOW}
         
@@ -357,11 +357,38 @@ U.buildRoom({
         let [ { parReal, defReal, defInsert }, ...parChain ] = chain;
         
         let domGettersByCls = Map();
-        domGettersByCls.set(Art, () => {
+        domGettersByCls.set(TextSized, textSized => {
+          
+          // Modes are Flat/Interactive, SingleLine/MultiLine
+          let mode = `${textSized.interactive ? 'i' : 'f'}${textSized.multiLine ? 'm' : 's'}`;
+          let elem = ({
+            fs: () => {
+              return document.createElement('div');
+            },
+            fm: () => {
+              return document.createElement('div');
+            },
+            is: () => {
+              let elem = document.createElement('input');
+              elem.setAttribute('type', 'text');
+              if (textSized.desc) elem.setAttribute('placeholder', textSized.desc);
+              return elem;
+            },
+            im: () => {
+              let elem = document.createElement('textarea');
+              if (textSized.desc) elem.setAttribute('placeholder', textSized.desc);
+              return elem;
+            }
+          })[mode]();
+          
+          return elem;
+          
+        });
+        domGettersByCls.set(Art, art => {
           let canvas = document.createElement('canvas');
           canvas.setAttribute('tabIndex', '0');
-          canvas.setAttribute('width', '500');
-          canvas.setAttribute('height', '500');
+          canvas.setAttribute('width', `${art.pixelCount ? art.pixelCount[0] : 500}`);
+          canvas.setAttribute('height', `${art.pixelCount ? art.pixelCount[1] : 500}`);
           return canvas;
         });
         
@@ -369,7 +396,10 @@ U.buildRoom({
         let [ domGetter=null, ...conflicts ] = this.getClsMappedItems(domGettersByCls, ...args, defInserts);
         if (!conflicts.isEmpty()) throw Error(`domGetElem conflict`);
         
-        return domGetter ? domGetter[1]() : document.createElement('div');
+        if (!domGetter) return document.createElement('div');
+        
+        let [ instance, fn ] = domGetter;
+        return fn(instance);
         
       },
       domGetUixFns: function(slottingMode, chain, defInserts) {
@@ -384,6 +414,10 @@ U.buildRoom({
         let uixGettersByCls = Map();
         uixGettersByCls.set(Art, (art, real, canvasDom) => {
           
+          let scalePxW = 1;
+          let scalePxH = 1;
+          let canvasW = canvasDom.width; // Only an initial value; later will reflect the client rect width of canvas
+          let canvasH = canvasDom.height; // Only an initial value; later will reflect the client rect height of canvas
           let ctx = canvasDom.getContext('2d');
           let pathFns = {
             jump: (x, y) => ct.moveTo(x, y),
@@ -401,8 +435,9 @@ U.buildRoom({
           
           real.draw = {
             getDims: () => ({
-              w: canvasDom.width, h: canvasDom.height,
-              hw: canvasDom.width >> 1, hh: canvasDom.height >> 1
+              pxW: canvasDom.width, pxH: canvasDom.height,
+              w: canvasW, h: canvasH,
+              hw: canvasW >> 1, hh: canvasH >> 1
             }),
             frame: f => { ctx.save(); f(); ctx.restore(); },
             rot: ang => ctx.rotate(ang),
@@ -419,6 +454,18 @@ U.buildRoom({
               for (let k in style) ctx[k] = style[k];
               if (style.fillStyle) ctx.fill();
               if (style.strokeStyle) ctx.stroke();
+            },
+            image: (keep, x, y, w, h) => {
+              let hw = w >> 1;
+              let hh = h >> 1;
+              let img = keep.getImage();
+              try {
+                ctx.imageSmoothingEnabled = false;
+                ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x - hw, y - hh, w, h);
+                ctx.imageSmoothingEnabled = true;
+              } catch(err) {
+                console.log('BAD IMG:', img);
+              }
             },
             path: (style, f) => {
               let jump = (x, y) => ctx.moveTo(x, y);
@@ -449,7 +496,32 @@ U.buildRoom({
             real.keys.nozz.drip(keys);
           });
           
-          real.addFn = () => canvasDom.focus();
+          let resizeInterval = null;
+          let resizeFn = () => {
+            let { width, height } = canvasDom.getBoundingClientRect();
+            if (width === canvasW && height === canvasH) return;
+            canvasW = width; canvasH = height;
+            
+            if (!art.pixelCount) {
+              canvasDom.width = Math.ceil(width * art.pixelDensityMult);
+              canvasDom.height = Math.ceil(height * art.pixelDensityMult);
+              scalePxW = canvasDom.width / (width * art.pixelDensityMult);
+              scalePxH = canvasDom.height / (height * art.pixelDensityMult);
+            } else {
+              scalePxW = canvasDom.width / width;
+              scalePxH = canvasDom.height / height;
+            }
+            
+          };
+          real.addFn = () => {
+            resizeFn();
+            resizeInterval = setInterval(resizeFn, 500);
+            canvasDom.focus();
+          };
+          real.remFn = () => {
+            console.log('Clearing canvas interval');
+            clearInterval(resizeInterval);
+          };
           
         });
         uixGettersByCls.set(TextSized, (textSized, real, textDom) => {
@@ -460,7 +532,20 @@ U.buildRoom({
           // the input string is different!
           
           if (textSized.interactive) {
-            real.setText = str => real.techNode.value = str;
+            let textNozz = null;
+            real.setText = text => {
+              if (text === real.techNode.value) return;
+              real.techNode.value = text;
+              if (textNozz) textNozz.nozz.drip(text);
+            }
+            real.textNozz = () => {
+              if (!textNozz) {
+                textNozz = TubVal(null, Nozz());
+                textNozz.nozz.drip(real.techNode.value);
+              }
+              return textNozz;
+            }
+            textDom.addEventListener('input', evt => customEvent(evt) && textNozz && textNozz.nozz.drip(real.techNode.value));
           } else {
             real.setText = str => real.techNode.textContent = str;
           }
@@ -480,12 +565,12 @@ U.buildRoom({
             left: fillParent.shrinkL, right: fillParent.shrinkR,
             top: fillParent.shrinkT, bottom: fillParent.shrinkB
           }};
-          
-          
-          // { fixed: {
-          // display: 'block', position: 'absolute', // TODO: Not position->absolute, but flowRegarding->parentOnly
-          // left: '0', top: '0', width: '100%', height: '100%'
-          // }};
+        });
+        zoneCssGettersByCls.set(FixedSize, fixedSize => {
+          return { fixed: {
+            ...(!fixedSize.w ? {} : { width: fixedSize.w }),
+            ...(!fixedSize.h ? {} : { height: fixedSize.h })
+          }};
         });
         zoneCssGettersByCls.set(CenteredSlotter, centeredSlotter => ({
           fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
@@ -510,6 +595,31 @@ U.buildRoom({
           return { fixed: linearSlot.slotter.axis === 'y' ? { /*position: 'relative' TODO: This conflicted with a style in chess2! Need AtomicZoneCss!!! */ } :{
             display: 'inline-block', verticalAlign: 'middle'
           }};
+        });
+        zoneCssGettersByCls.set(AxisSlotter.AxisSlot, axisSlot => {
+          
+          let { axis, dir, cuts } = axisSlot.slotter;
+          let { index } = axisSlot;
+          
+          let h = axis === 'x'; // "horizontal"
+          let f = dir === '+';  // "forwards"
+          
+          let parW = UnitPc(1);
+          let parH = UnitPc(1);
+          
+          let off = CalcAdd(...cuts.slice(0, index));
+          let ext = (index === cuts.length)
+            // For the final index subtract all cuts from the parent's full extent along "axis"
+            ? CalcAdd(h ? parW : parH, ...cuts.map(u => u.mult(-1)))
+            // For other indexes, the size of the indexed cut is the extent of the AxisSectionItem
+            : cuts[index];
+          
+          let fixed = { position: 'absolute' };
+          if (h) fixed.gain({ top: UnitPx(0),  height: parH, [f ? 'left' : 'right'] : off, width: ext });
+          else   fixed.gain({ left: UnitPx(0), width:  parW, [f ? 'top' : 'bottom'] : off, height: ext });
+          
+          return { fixed };
+          
         });
         zoneCssGettersByCls.set(MinExtSlotter, minExtSlotter => ({
           fixed: { textAlign: 'center', whiteSpace: 'nowrap' },
@@ -590,6 +700,8 @@ U.buildRoom({
             ...(textSized.padB.amt ? { paddingBottom: textSized.padB } : {}),
             whiteSpace: textSized.multiLine ? 'pre-wrap' : 'pre',
             ...(textSized.embossed ? { pointerEvents: 'auto' } : {}),
+            maxWidth: '100%',
+            overflow: 'hidden',
             textOverflow: 'ellipsis',
             fontSize: textSized.size
           };
@@ -629,13 +741,14 @@ U.buildRoom({
         let { death: { ms=0, fn=null } } = kidReal.techNode.dyn || { death: {} };
         if (ms > 0) {
           if (fn) fn(kidReal, ms);
-          setTimeout(() => parReal.techNode.removeChild(kidReal.techNode), ms);
+          setTimeout(() => {
+            parReal.techNode.removeChild(kidReal.techNode)
+            if (kidReal.remFn) kidReal.remFn();
+          }, ms);
         } else {
           parReal.techNode.removeChild(kidReal.techNode);
+          if (kidReal.remFn) kidReal.remFn();
         }
-        
-        //parReal.techNode.removeChild(real.techNode);
-        //if (real.remFn) real.remFn();
       },
       
       getUnitCss: function(unit) {
@@ -645,7 +758,7 @@ U.buildRoom({
         unitCss.set(UnitPc, unit => `${tinyRound(unit.amt * 100)}%`);
         unitCss.set(ViewPortMin, unit => `${tinyRound(unit.amt * 100)}vmin`);
         unitCss.set(CalcAdd, calc => `calc(${calc.units.map(u => this.getUnitCss(u)).join(' + ')})`);
-    
+        
         if (!unitCss.has(unit.constructor)) throw Error(`Can\'t get css for Unit: ${U.nameOf(unit)}`);
         return unitCss.get(unit.constructor)(unit);
       },
@@ -736,6 +849,7 @@ U.buildRoom({
             if (zoneProps.isEmpty()) continue;
             
             if (!zoneCss.has(zoneName)) zoneCss[zoneName] = {};
+            
             for (let k in zoneProps) {
               
               let zoneUnitVal = this.getUnitCss(zoneProps[k]);
@@ -746,7 +860,7 @@ U.buildRoom({
                 console.log('ZoneCss items to be merged:', zoneCssResults.toObj(([ layout, fn ]) => {
                   return [ U.nameOf(layout), fn(layout) ];
                 }));
-                throw Error(`ZoneCss conflict in zone "${zoneName}"; property "${k}"; ${zoneCss[zoneName][k].prop} vs ${zoneUnitVal}`);
+                throw Error(`ZoneCss conflict; "${parDef && parDef.name}" -> "${kidDef.name}" in zone "${zoneName}"; property "${k}"; ${zoneCss[zoneName][k].prop} vs ${zoneUnitVal}`);
               }
               
               // TODO: Is it too early to convert to unitCss???
@@ -824,10 +938,9 @@ U.buildRoom({
             outline: 'none !important'
           }}},
           { selector: 'textarea, input', zones: { fixed: {
-            border: 'none',
-            outline: 'none',
-            fontFamily: 'inherit',
-            boxShadow: 'inset 0 0 0 2px rgba(0, 0, 0, 0.5)'
+            border: '0', outline: '0', fontFamily: 'inherit',
+            boxSizing: 'border-box',
+            boxShadow: 'inset 0 0 0 2px rgba(0, 0, 0, 0.2)'
           }}},
           { selector: 'textarea', zones: { fixed: {
             resize: 'none'
@@ -907,6 +1020,7 @@ U.buildRoom({
       getDyn: function(r) {
         if (!r.techNode.dyn) {
           r.techNode.dyn = {
+            removedParent: null,
             size: null,
             loc: null,
             death: { ms: 0, fn: null },
@@ -939,7 +1053,7 @@ U.buildRoom({
       setColour: function(r, colour=null) {
         updStyle(r.techNode, 'backgroundColor', colour);
       },
-      setOpacity: function(r, amt) { updStyle(r.techNode, 'opacity', amt.toString()); },
+      setOpacity: function(r, amt) { updStyle(r.techNode, 'opacity', amt && amt.toString()); },
       setTransition: function(r, props, ms, type='steady', delay=0) {
         let { transition } = this.getDyn(r);
         if (!ms) return props.forEach(p => transition.rem(p));
@@ -947,6 +1061,21 @@ U.buildRoom({
         this.updateTransition(r);
       },
       setDeathTransition: function(r, ms, fn) { let dyn = this.getDyn(r); dyn.death = { ms, fn }; },
+      setTangible: function(r, isTangible) { updStyle(r.techNode, 'display', isTangible ? null : 'none'); },
+      setTangible: function(r, isTangible) {
+        let dyn = this.getDyn(r);
+        if (isTangible && !r.techNode.parentNode) {
+          
+          dyn.removedParent.appendChild(r.techNode);
+          dyn.removedParent = null;
+          
+        } else if (!isTangible && r.techNode.parentNode) {
+          
+          dyn.removedParent = r.techNode.parentNode;
+          dyn.removedParent.removeChild(r.techNode);
+          
+        }
+      },
       updateLayout: function(r) {
         let { size, loc } = this.getDyn(r);
         
