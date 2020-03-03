@@ -41,6 +41,7 @@ U.buildRoom({
     })});
     let Mortal = U.inspire({ name: 'Mortal', insps: {}, methods: (insp, Insp) => ({
       init: function({ hp=1 }) { this.hp = hp; },
+      damageFrom: function(rep, amt) { this.hp -= amt; },
       isAlive: function() { return this.hp > 0; }
     })});
     let Geom = U.inspire({ name: 'Geom', insps: { Entity }, methods: (insp, Insp) => ({
@@ -55,7 +56,7 @@ U.buildRoom({
     let Ace = U.inspire({ name: 'Ace', insps: { Geom, Mortal }, methods: (insp, Insp) => ({
       
       $render: (draw, game, { x, y }, imageKeep=null) => {
-        draw.circ(x, -y, 16, { fillStyle: 'rgba(100, 0, 0, 0.2)' });
+        draw.circ(x, -y, 20, { fillStyle: 'rgba(100, 0, 0, 0.2)' });
         if (imageKeep) draw.image(imageKeep, x, -y, 16, 16);
       },
       
@@ -72,7 +73,7 @@ U.buildRoom({
         
         let spd = this.spd;
         for (let slowMark of this.slowMarks) {
-          if (ms > slowMark.mark) this.slowMarks.rem(slowMark);
+          if (ms >= slowMark.mark) this.slowMarks.rem(slowMark);
           else                    spd *= slowMark.amt;
         }
         
@@ -113,21 +114,22 @@ U.buildRoom({
         let bar1H = w1Mark ? Math.min(1, (game.val.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
         let bar1W = w1State === 3 ? 10 : 8;
         let col = [
-          'rgba(0, 0, 0, 1)',         // Punished
-          'rgba(0, 255, 255, 0.7)',   // Side shot
+          'rgba(0, 0, 0, 1)',        // Punished
           'rgba(180, 180, 0, 0.75)', // Reload
-          'rgba(0, 255, 255, 0.8)'   // Laser!!
+          'rgba(0, 255, 255, 0.7)',  // Horz laser
+          'rgba(0, 255, 255, 0.8)'   // Vert laser
         ][w1State];
         
         draw.rect(x - bar1W * 0.5, -((y - 8) + bar1H), bar1W, bar1H, { fillStyle: col });
         
         let bar2W = (w2Ammo / Insp.w2MaxAmmo) * 16;
-        draw.rect(x - bar2W * 0.5, -(y - 10), bar2W, 4, { fillStyle: '#0000ff' });
+        draw.rectCen(x, -(y - 12), bar2W, 4, { fillStyle: '#0000ff' });
       },
       
       $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
-      $w1Charge1Ms: 1000, $w1Charge2Ms: 3000, $w1Charge3Ms: 6000, // How many millis of charging for various jousts
-      $w2MaxAmmo: 50, $w2Delay: 110, $w2Damage: 1,
+      $w1Charge1Ms: 1200, $w1Charge2Ms: 2400, $w1Charge3Ms: 5000, // How many millis of charging for various jousts
+      $w1Charge1Slow: 0.61, $w1Charge3Slow: 0.54,
+      $w2MaxAmmo: 65, $w2Delay: 130, $w2Dmg: 0.6, $w2Spd: 600,
       
       init: function({ ...args }={}) {
         insp.Ace.init.call(this, args);
@@ -141,8 +143,10 @@ U.buildRoom({
         
         let supResult = insp.Ace.updateAndGetResult.call(this, ms, game, entity);
         
+        // TODO: Swapped keys for JoustMan
+        
         // Activate weapon 1
-        if (entity.controls.a1) {
+        if (entity.controls.a2) {
           
           if (!this.w1Mark) this.w1Mark = ms;
           
@@ -158,17 +162,30 @@ U.buildRoom({
             
             // Activate the charged ability!!
             if (this.w1State === 0) {
+              
+              // JoustMan is punished for holding for too long
               this.slowMarks.add({ mark: ms + Insp.w1ChargePunishMs, amt: Insp.w1ChargePunishSlow });
-              // PUNISHED! HOLD TOO SHORT!!
+              
             } else if (this.w1State === 1) {
-              // Weapon 1 act 1: sideways jousts
-            } else if (this.w1State === 2) {
-              // Weapon 1 act 2: reload!
+              
+              // Weapon 1 act 1: reload!
               this.w2Ammo = Insp.w2MaxAmmo;
+              
+            } else if (this.w1State === 2) {
+              
+              // Weapon 1 act 2: sideways jousts
+              supResult.birth.gain([
+                JoustManLaserHorz({ joustMan: this, dir: +1 }),
+                JoustManLaserHorz({ joustMan: this, dir: -1 })
+              ]);
+              this.slowMarks.add({ mark: ms + JoustManLaserHorz.durationMs, amt: Insp.w1Charge1Slow });
+              
             } else if (this.w1State === 3) {
+              
               // Weapon 1 act 3: BIG LASER
               supResult.birth.gain([ JoustManLaserVert({ joustMan: this }) ]);
-              this.slowMarks.add({ mark: ms + JoustManLaserVert.durationMs, amt: 0.5 });
+              this.slowMarks.add({ mark: ms + JoustManLaserVert.durationMs, amt: Insp.w1Charge3Slow });
+              
             }
             
             this.w1State = 0;
@@ -179,23 +196,24 @@ U.buildRoom({
         }
         
         // Activate weapon 2
-        if (entity.controls.a2 && this.w2Ammo > 0) {
+        if (entity.controls.a1 && this.w2Ammo > 0 && (!this.w2Mark || ms > this.w2Mark)) {
           
-          let elapsed = ms - (this.w2Mark || 0);
-          if (elapsed > Insp.w2Delay) {
-            
-            // Enforce a cooldown
-            this.w2Mark = ms;
-            
-            // Subtract the bullet
-            this.w2Ammo = this.w2Ammo - 1;
-            
-            supResult.birth.gain([
-              SimpleBullet({ team: this.getTeam(), x: this.x - 4, y: this.y, spd: 700, dmg: 1, w: 2, h: 20, lifespanMs: 3000 }),
-              SimpleBullet({ team: this.getTeam(), x: this.x + 4, y: this.y, spd: 700, dmg: 1, w: 2, h: 20, lifespanMs: 3000 })
-            ]);
-            
-          }
+          // Enforce cooldown
+          this.w2Mark = (this.w2Mark || ms) + Insp.w2Delay;
+          
+          // Subtract the bullet
+          this.w2Ammo = this.w2Ammo - 1;
+          
+          // Spawn bullets
+          supResult.birth.gain([
+            SimpleBullet({ team: this.getTeam(), x: this.x - 4, y: this.y, spd: Insp.w2Spd, dmg: Insp.w2Dmg, w: 4, h: 6, lifespanMs: 3000 }),
+            SimpleBullet({ team: this.getTeam(), x: this.x + 4, y: this.y, spd: Insp.w2Spd, dmg: Insp.w2Dmg, w: 4, h: 6, lifespanMs: 3000 })
+          ]);
+          
+        } else if (this.w2Mark && ms >= this.w2Mark) {
+          
+          // Next shot is instantly available
+          this.w2Mark = null;
           
         }
         
@@ -206,73 +224,126 @@ U.buildRoom({
     })});
     let GunGirl = U.inspire({ name: 'GunGirl', insps: { Ace }, methods: (insp, Insp) => ({
       
-      $imageKeep: foundation.getKeep('urlResource', { path: `fly.sprite.gun` }),
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.gun' }),
       $render: (draw, game, args) => {
-        if (U.dbgCnt('joustArgs') === 1) console.log('JOUST:', args);
+        
         Insp.parents.Ace.render(draw, game, args, Insp.imageKeep);
+        
+        let { x, y, w2ReadyMark } = args;
+        let w2MsRemaining = w2ReadyMark - game.val.ms;
+        let barW = Math.min(1, (Insp.w2Delay - w2MsRemaining) / Insp.w2Delay) * 16;
+        draw.rectCen(x, -(y - 12), barW, 4, { fillStyle: (w2MsRemaining > 0) ? '#6060ff' : '#0000ff' });
+        
       },
       
-      $w1Delay: 80, $w1Dmg: 0.5, $w1LockoutMs: 1000,
+      $w1Delay: 86, $w1Dmg: 0.3, $w1LockMs: 800, $w1LockPunishSlow: 0.3, $w1LockPunishMs: 300,
+      $w2Delay: 12000, $w2Duration: 1900,
       
       init: function({ ...args }={}) {
         insp.Ace.init.call(this, { args });
-        this.w1Mark = this.ms - Insp.w1Delay; // Marks when last bullet fired
-        this.w1StartMark = null;
-        this.w1LockMark = this.ms - Insp.w1LockoutMs; // Marks when shooting last stopped
+        this.lockoutPunishMark = null;
+        this.w1Mark = null; // Marks when bullet ready to fire
+        this.w1StartMark = null; // Marks the time the first bullet of the series was fired
+        this.w1LockMark = this.ms; // Marks when lockout will end
+        this.w2ReadyMark = this.ms; // Marks when w2 can be used
+        this.w2Mark = null; // Marks when w2 ends
+        this.w2EffectiveShootDuration = null;
       },
-      normState: function() { return {}; },
+      normState: function() { return { w2ReadyMark: this.w2ReadyMark }; },
+      getAngForShootDuration: function(shootDurationMs) {
+        
+        shootDurationMs *= 0.5; // TODO: For now...
+        
+        // Sweep in, to -0.01, then out, all the way to 0.28
+        if (shootDurationMs < 500) {
+          let timeInStep = shootDurationMs;
+          let stepDur = 500;
+          return util.fadeAmt(0, -0.01, timeInStep / stepDur);
+        } else if (shootDurationMs < 1500) {
+          let timeInStep = shootDurationMs - 500;
+          let stepDur = 1000;
+          return util.fadeAmt(-0.01, 0.05, timeInStep / stepDur);
+        } else if (shootDurationMs < 4000) {
+          let timeInStep = shootDurationMs - 1500;
+          let stepDur = 2500;
+          return util.fadeAmt(0.05, 0.28, timeInStep / stepDur);
+        } else {
+          return 0.28;
+        }
+        
+      },
       updateAndGetResult: function(ms, game, entity) {
         
         let supResult = insp.Ace.updateAndGetResult.call(this, ms, game, entity);
         
-        if (entity.controls.a1) {
+        if (this.lockoutPunishMark && ms >= this.lockoutPunishMark) this.lockoutPunishMark = null;
+        
+        // End w2 when the duration elapses
+        if (this.w2Mark && ms >= this.w2Mark) {
+          this.w2Mark = null;
+          this.w1LockMark = ms + Insp.w1LockMs;
+        }
+        
+        if (entity.controls.a1 && ms >= this.w1LockMark && (!this.w1Mark || ms >= this.w1Mark)) {
           
-          let lockedOut = this.w1LockMark + Insp.w1LockoutMs > ms;
-          let reloading = this.w1Mark + Insp.w1Delay > ms;
+          // Mark the time of the first shot in the series
+          if (!this.w1StartMark) this.w1StartMark = ms;
           
-          console.log({ lockedOut, reloading });
           
-          if (!lockedOut && !reloading) {
+          if (!this.w2Mark) {
             
-            if (!this.w1StartMark) this.w1StartMark = ms;
-            let timeShooting = ms - this.w1StartMark;
+            // Enforce typical rate of fire
+            this.w1Mark = (this.w1Mark || ms) + Insp.w1Delay;
             
-            let ang;
-            if (timeShooting < 500) {
-              let timeInStep = timeShooting;
-              let stepDur = 500;
-              ang = util.fadeAmt(0, -0.01, timeInStep / stepDur);
-            } else if (timeShooting < 1500) {
-              let timeInStep = timeShooting - 500;
-              let stepDur = 1000;
-              ang = util.fadeAmt(-0.01, 0.05, timeInStep / stepDur);
-            } else if (timeShooting < 4000) {
-              let timeInStep = timeShooting - 1500;
-              let stepDur = 2500;
-              ang = util.fadeAmt(0.05, 0.3, timeInStep / stepDur);
-            } else {
-              ang = 0.3;
-            }
-            
-            // Sweep in, to -0.01, then out, all the way to 0.3
-            
-            
+            let ang = this.getAngForShootDuration(ms - this.w1StartMark);
             supResult.birth.gain([
-              DirectedBullet({ team: this.getTeam(), x: this.x - 4, y: this.y, ang: -ang, spd: 800, dmg: Insp.w1Dmg, w: 4, h: 4, lifespanMs: 2800 }),
-              DirectedBullet({ team: this.getTeam(), x: this.x + 4, y: this.y, ang: +ang, spd: 800, dmg: Insp.w1Dmg, w: 4, h: 4, lifespanMs: 2800 })
+              DirectedBullet({ team: this.getTeam(), x: this.x - 4, y: this.y, ang: -ang, spd: 800, dmg: Insp.w1Dmg, w: 6, h: 6, lifespanMs: 2800 }),
+              DirectedBullet({ team: this.getTeam(), x: this.x + 4, y: this.y, ang: +ang, spd: 800, dmg: Insp.w1Dmg, w: 6, h: 6, lifespanMs: 2800 })
+            ]);
+            
+          } else {
+            
+            // Enforce steroid rate of fire
+            this.w1Mark = (this.w1Mark || ms) + Insp.w1Delay * (1 / 3);
+            
+            let ang = this.getAngForShootDuration(this.w2EffectiveShootDuration);
+            supResult.birth.gain([
+              DirectedBullet({ team: this.getTeam(), x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.3, w: 10, h: 10, lifespanMs: 2800 }),
+              DirectedBullet({ team: this.getTeam(), x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.3, w: 10, h: 10, lifespanMs: 2800 }),
+              DirectedBullet({ team: this.getTeam(), x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.3, w: 10, h: 10, lifespanMs: 2800 }),
+              DirectedBullet({ team: this.getTeam(), x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.3, w: 10, h: 10, lifespanMs: 2800 }),
             ]);
             
           }
           
-        } else {
+        } else if (this.w1Mark && ms >= this.w1Mark) {
           
-          if (this.w1StartMark) { // Just stopped shooting! Lockout!
+          // Just stopped shooting! Lockout!
+          this.w1Mark = null;
+          this.w1StartMark = null;
+          this.w1LockMark = ms + Insp.w1LockMs;
+          this.slowMarks.add({ mark: ms + Insp.w1LockPunishMs, amt: Insp.w1LockPunishSlow });
+          
+        }
+        
+        if (entity.controls.a2) {
+          
+          if (ms < this.w2ReadyMark) {
+            
+            if (!this.lockoutPunishMark) {
+              this.lockoutPunishMark = ms + 500;
+              this.slowMarks.add({ mark: ms + 500, amt: 0.4 });
+            }
+            
+          } else {
+            
+            this.w2ReadyMark = ms + Insp.w2Duration + Insp.w2Delay;
+            this.w2Mark = ms + Insp.w2Duration;
+            this.w2EffectiveShootDuration = ms - (this.w1StartMark || ms)
             
           }
           
         }
-        
-        if (entity.controls.a2) {}
         
         return supResult;
         
@@ -280,9 +351,83 @@ U.buildRoom({
       
     })});
     let SlamKid = U.inspire({ name: 'SlamKid', insps: { Ace }, methods: (insp, Insp) => ({
+      
+      $slamSpd: 250, $slamDelay: 1000,
+      
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.slam' }),
+      $render: (draw, game, args) => {
+        
+        if (U.dbgCnt('slamArgs') === 1) console.log('SLAM:', args);
+        Insp.parents.Ace.render(draw, game, args, Insp.imageKeep);
+        
+      },
+      
       init: function({ ...args }={}) {
         insp.Ace.init.call(this, { args });
+        this.w1Mark = this.ms;
+        this.w2Mark = this.ms;
+        this.w1StartMark = null;
+        this.w2StartMark = null;
+        this.slamSpd = Insp.slamSpd / Math.sqrt(2);
+      },
+      updateAndGetResult: function(ms, game, entity) {
+        
+        let birth = [];
+        
+        if (entity.controls.a1 && ms > this.w1Mark) {
+          
+          this.x -= this.slamSpd * spf;
+          this.y += this.slamSpd * spf;
+          
+          if (!this.w1StartMark) {
+            this.w1StartMark = ms;
+            birth.gain([
+              SlamKidSlammer({ slamKid: this, dir: 'L', offX: +16 - 20, offY: +16 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'L', offX:  +8 - 20, offY:  +8 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'L', offX:   0 - 20, offY:   0 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'L', offX:  -8 - 20, offY:  -8 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'L', offX: -16 - 20, offY: -16 + 16 })
+            ]);
+          }
+          
+        } else if (this.w1StartMark) {
+          
+          // Slam ended
+          this.w1Mark = ms + Insp.slamDelay;
+          this.w1StartMark = null;
+          
+        }
+        
+        if (entity.controls.a2 && ms > this.w2Mark) {
+          
+          this.x += this.slamSpd * spf;
+          this.y += this.slamSpd * spf;
+          
+          if (!this.w2StartMark) {
+            this.w2StartMark = ms;
+            birth.gain([
+              SlamKidSlammer({ slamKid: this, dir: 'R', offX: -16 + 20, offY: +16 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'R', offX:  -8 + 20, offY:  +8 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'R', offX:   0 + 20, offY:   0 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'R', offX:  +8 + 20, offY:  -8 + 16 }),
+              SlamKidSlammer({ slamKid: this, dir: 'R', offX: +16 + 20, offY: -16 + 16 })
+            ]);
+          }
+          
+        } else if (this.w2StartMark) {
+          
+          // Slam ended
+          this.w2Mark = ms + Insp.slamDelay;
+          this.w2StartMark = null;
+          
+        }
+        
+        let supResult = insp.Ace.updateAndGetResult.call(this, ms, game, entity);
+        supResult.birth.gain(birth);
+        return supResult;
+        
       }
+      
     })});
     let SalvoLad = U.inspire({ name: 'SalvoLad', insps: { Ace }, methods: (insp, Insp) => ({
       init: function({ ...args }={}) {
@@ -290,9 +435,38 @@ U.buildRoom({
       }
     })});
     
+    let JoustManLaserHorz = U.inspire({ name: 'JoustManLaserHorz', insps: { Geom }, methods: (insp, Insp) => ({
+      
+      $durationMs: 2000, $dps: 8, $laserW: 300, $laserH: 14,
+      $render: (draw, game, { x, y }) => {
+        draw.rectCen(x, -y, Insp.laserW, Insp.laserH, { fillStyle: 'rgba(0, 255, 255, 0.8)' });
+        draw.rectCen(x, -y, Insp.laserW, Insp.laserH - 8, { fillStyle: 'rgba(255, 255, 255, 0.5)' });
+      },
+      
+      init: function({ joustMan, dir, ...args }={}) {
+        insp.Geom.init.call(this, args);
+        this.joustMan = joustMan;
+        this.dir = dir;
+      },
+      getTeam: function() { return this.joustMan.getTeam(); },
+      canCollide: function() { return true; },
+      collide: function(rep) {
+        if (!U.isInspiredBy(rep, Mortal)) return;
+        rep.hp -= Insp.dps * spf;
+      },
+      updateAndGetResult: function(ms, game, entity) {
+        this.x = this.joustMan.x + (Insp.laserW * 0.5 + 6) * this.dir;
+        this.y = this.joustMan.y;
+        return { birth: [], form: 'axisRect', x: this.x, y: this.y, w: Insp.laserW, h: Insp.laserH }
+      },
+      isAlive: function(ms, game) {
+        return this.joustMan.isAlive(ms, game) && (ms - this.ms) < Insp.durationMs;
+      }
+      
+    })});
     let JoustManLaserVert = U.inspire({ name: 'JoustManLaserVert', insps: { Geom }, methods: (insp, Insp) => ({
       
-      $durationMs: 3000, $dps: 10,
+      $durationMs: 3500, $dps: 16,
       $render: (draw, game, { x, y }) => {
         let w = 26;
         let h = 1200;
@@ -304,7 +478,7 @@ U.buildRoom({
         insp.Geom.init.call(this, args);
         this.joustMan = joustMan;
       },
-      getTeam: function() { return +1; },
+      getTeam: function() { return this.joustMan.getTeam(); },
       canCollide: function() { return true; },
       collide: function(rep) {
         if (!U.isInspiredBy(rep, Mortal)) return;
@@ -312,11 +486,43 @@ U.buildRoom({
       },
       updateAndGetResult: function(ms, game, entity) {
         this.x = this.joustMan.x;
-        this.y = this.joustMan.y + 600;
+        this.y = this.joustMan.y + 606;
         return { birth: [], form: 'axisRect', x: this.x, y: this.y, w: 22, h: 1200 }
       },
       isAlive: function(ms, game) {
         return this.joustMan.isAlive(ms, game) && (ms - this.ms) < Insp.durationMs;
+      }
+      
+    })});
+    let SlamKidSlammer = U.inspire({ name: 'SlamKidSlammer', insps: { Geom }, methods: (insp, Insp) => ({
+      
+      $slamW: 20, $slamH: 20, $dps: 16,
+      $render: (draw, game, { x, y }) => {
+        draw.circ(x, -y, Insp.slamW * 0.5, { fillStyle: '#f09900' });
+      },
+      
+      init: function({ slamKid, dir, offX, offY, ...args }={}) {
+        insp.Geom.init.call(this, args);
+        this.slamKid = slamKid;
+        this.dir = dir;
+        this.offX = offX; this.offY = offY;
+      },
+      getTeam: function() { return this.slamKid.getTeam(); },
+      canCollide: function() { return true; },
+      collide: function(rep) {
+        if (!U.isInspiredBy(rep, Mortal)) return;
+        rep.hp -= Insp.dps * spf;
+      },
+      updateAndGetResult: function(ms, game, entity) {
+        this.x = this.slamKid.x + this.offX;
+        this.y = this.slamKid.y + this.offY;
+        return { birth: [], form: 'axisRect', x: this.x, y: this.y, w: Insp.slamW, h: Insp.slamH };
+      },
+      isAlive: function(ms, game) {
+        return this.slamKid.isAlive(ms, game) && (this.dir === 'L'
+          ? !!this.slamKid.w1StartMark
+          : !!this.slamKid.w2StartMark
+        );
       }
       
     })});
@@ -365,10 +571,9 @@ U.buildRoom({
         this.initX = this.x;
       },
       updateAndGetResult: function(ms, game, entity) {
-        let supResult = insp.Enemy.updateAndGetResult.call(this, ms, game, entity);
         this.y += (game.val.aheadSpd + this.spd) * spf;
         this.x = this.initX + Math.sin(this.phase + (ms - this.ms) * 0.002 * Math.PI * this.swingHz) * this.swingAmt;
-        return supResult;
+        return insp.Enemy.updateAndGetResult.call(this, ms, game, entity);
       },
       isAlive: function(ms, game) {
         if (!insp.Enemy.isAlive.call(this, ms, game)) return false;
@@ -392,7 +597,6 @@ U.buildRoom({
       }
       
     })});
-    
     let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy }, methods: (insp, Insp) => ({
       
       $render: (draw, game, { x, y }) => {
@@ -420,8 +624,6 @@ U.buildRoom({
       },
       updateAndGetResult: function(ms, game, entity) {
         
-        let supResult = insp.Enemy.updateAndGetResult.call(this, ms, game, entity);
-        
         this.x += this.vx * spf;
         this.y += (this.vy + game.val.aheadSpd) * spf;
         
@@ -433,10 +635,12 @@ U.buildRoom({
         if (this.vy > 0 && this.y > ty) this.y = ty;
         if (this.vy < 0 && this.y < ty) this.y = ty;
         
+        let supResult = insp.Enemy.updateAndGetResult.call(this, ms, game, entity);
+        
         if (ms >= this.spawnMark) {
           
           let args = {
-            y: 0, spd: 60, swingHz: 0.22, swingAmt: 300,
+            y: 0, spd: 70, swingHz: 0.22, swingAmt: 200,
             ...this.spawnArgs
           };
           
@@ -456,23 +660,62 @@ U.buildRoom({
       }
       
     })});
-    
     let Drifter = U.inspire({ name: 'Drifter', insps: { Enemy }, methods: (insp, Insp) => ({
       
-      $render: (draw, game, args) => {
-        Insp.parents.Enemy.render(draw, game, args);
+      $render: (draw, game, { x, y, size }) => {
+        draw.circ(x, -y, size * 0.5, { fillStyle: '#000080' });
       },
       
-      init: function({ ...args }) {
-        insp.Enemy.init.call(this, args);
+      init: function({ spd=100, tx, ty, hp, minSize, hpPerSec, sizeMult, relDist=0, ...args }) {
+        insp.Enemy.init.call(this, { relDist, ...args });
+        this.hp = hp;
+        this.hpPerSec = hpPerSec;
+        this.sizeMult = sizeMult;
+        this.minSize = minSize;
+        this.w = this.minSize + this.hp * this.sizeMult;
+        this.h = this.minSize + this.hp * this.sizeMult;
+        
+        let dx = (tx - this.x);
+        let dy = ((ty + relDist) - this.y);
+        let tSpd = spd / Math.sqrt(dx * dx + dy * dy);
+        this.vx = dx * tSpd;
+        this.vy = dy * tSpd;
+      },
+      fluxState: function() { return { ...insp.Enemy.fluxState.call(this), size: this.w }; },
+      updateAndGetResult: function(ms, game, entity) {
+        
+        this.x += this.vx * spf;
+        this.y += (this.vy + game.val.aheadSpd) * spf;
+        
+        this.hp += this.hpPerSec * spf;
+        this.w = this.minSize + this.hp * this.sizeMult;
+        this.h = this.minSize + this.hp * this.sizeMult;
+        
+        return insp.Enemy.updateAndGetResult.call(this, ms, game, entity);
+        
+      },
+      isAlive: function(ms, game) {
+        if (!insp.Enemy.isAlive.call(this, ms, game)) return false;
+        
+        let x = this.x;
+        let y = this.y - game.val.dist;
+        
+        if (this.vx > 0 && x > +700) return false;
+        if (this.vx < 0 && x < -700) return false;
+        if (this.vy > 0 && y > +900) return false;
+        if (this.vy < 0 && y < -900) return false;
+        
+        return true;
+        
       }
+      
     })});
     
     // UTIL
     let SimpleBullet = U.inspire({ name: 'SimpleBullet', insps: { Geom }, methods: (insp, Insp) => ({
       
       $render: (draw, game, { x, y, w, h }) => {
-        draw.rectCen(x, y, w, h, { fillStyle: '#ff0000' });
+        draw.rectCen(x, -y, w, h, { fillStyle: '#ff0000' });
       },
       
       init: function({ team, x, y, spd=700, dmg=1, w=4, h=50, lifespanMs=3000, ...args }) {
@@ -546,7 +789,7 @@ U.buildRoom({
     
     let repClasses = {};
     repClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
-    repClasses.gain({ JoustManLaserVert });
+    repClasses.gain({ JoustManLaserVert, JoustManLaserHorz, SlamKidSlammer });
     repClasses.gain({ Winder, WinderMom, Drifter });
     repClasses.gain({ SimpleBullet, DirectedBullet });
     
@@ -591,7 +834,7 @@ U.buildRoom({
             [ 'Winder', { x: -150, y: -700, spd: +50, swingHz: 0.1, swingAmt: -60 } ],
             [ 'Winder', { x: +150, y: -700, spd: +50, swingHz: 0.1, swingAmt: +60 } ],
           ]},
-          { dist: 500, name: 'sideswipe1', entities: [
+          { dist: 700, name: 'sideswipe1', entities: [
             
             [ 'Winder', { x: -800, y: +300, spd: -120, swingHz: 0.03, swingAmt: +1200 } ],
             [ 'Winder', { x: -720, y: +320, spd: -120, swingHz: 0.03, swingAmt: +1200 } ],
@@ -599,7 +842,7 @@ U.buildRoom({
             [ 'Winder', { x: -560, y: +360, spd: -120, swingHz: 0.03, swingAmt: +1200 } ],
             
           ]},
-          { dist: 200, name: 'sideswipe2', entities: [
+          { dist: 250, name: 'sideswipe2', entities: [
             
             [ 'Winder', { x: -800, y: +250, spd: -210, swingHz: 0.06, swingAmt: +1200 } ],
             [ 'Winder', { x: -720, y: +290, spd: -210, swingHz: 0.06, swingAmt: +1200 } ],
@@ -607,12 +850,15 @@ U.buildRoom({
             [ 'Winder', { x: -560, y: +370, spd: -210, swingHz: 0.06, swingAmt: +1200 } ],
             
           ]},
-          { dist: 100, name: 'sideswipe3', entities: [
+          { dist: 250, name: 'sideswipe3', entities: [
             
             [ 'Winder', { x: +1000, y: +300, spd: -210, swingHz: 0.06, swingAmt: -1200 } ],
             [ 'Winder', { x:  +920, y: +340, spd: -210, swingHz: 0.06, swingAmt: -1200 } ],
             [ 'Winder', { x:  +840, y: +380, spd: -210, swingHz: 0.06, swingAmt: -1200 } ],
             [ 'Winder', { x:  +760, y: +420, spd: -210, swingHz: 0.06, swingAmt: -1200 } ],
+            
+            [ 'Winder', { x:  +100, y: -600, spd: +130, swingHz: 0.01, swingAmt: +50 } ],
+            [ 'Winder', { x:  -100, y: -600, spd: +130, swingHz: 0.01, swingAmt: -50 } ]
             
           ]},
           { dist: 250, name: 'sideswipe4', entities: [
@@ -632,7 +878,7 @@ U.buildRoom({
             [ 'Winder', { x: +1050, y: +175, spd: -180, swingHz: 0.03, swingAmt: -1200 } ]
             
           ]},
-          { dist: 350, name: 'sideswipe5', entities: [
+          { dist: 250, name: 'sideswipe5', entities: [
             
             // left-to-right
             [ 'Winder', { x: +800, y: +500, spd: -120, swingHz: 0.03, swingAmt: -1200 } ],
@@ -651,13 +897,13 @@ U.buildRoom({
             [ 'Winder', { x: -1050, y: +175, spd: -180, swingHz: 0.03, swingAmt: +1200 } ],
             
             // Sneak attack
-            [ 'Winder', { x: -360, y: -600, spd: +100, swingHz: 0.15, swingAmt: 300 } ],
-            [ 'Winder', { x: -240, y: -680, spd: +100, swingHz: 0.10, swingAmt: 300 } ],
-            [ 'Winder', { x: -120, y: -760, spd: +100, swingHz: 0.05, swingAmt: 300 } ],
-            [ 'Winder', { x:   +0, y: -600, spd: +100, swingHz: 0.00, swingAmt: 0 } ],
-            [ 'Winder', { x: +120, y: -760, spd: +100, swingHz: 0.05, swingAmt: 300 } ],
-            [ 'Winder', { x: +240, y: -680, spd: +100, swingHz: 0.10, swingAmt: 300 } ],
-            [ 'Winder', { x: +360, y: -600, spd: +100, swingHz: 0.15, swingAmt: 300 } ],
+            [ 'Winder', { x: -360, y: -600, spd: +140, swingHz: 0.06, swingAmt: +300 } ],
+            [ 'Winder', { x: -240, y: -680, spd: +140, swingHz: 0.04, swingAmt: +300 } ],
+            [ 'Winder', { x: -120, y: -760, spd: +140, swingHz: 0.02, swingAmt: +300 } ],
+            [ 'Winder', { x:   +0, y: -840, spd: +140, swingHz: 0.00, swingAmt:    0 } ],
+            [ 'Winder', { x: +120, y: -760, spd: +140, swingHz: 0.02, swingAmt: -300 } ],
+            [ 'Winder', { x: +240, y: -680, spd: +140, swingHz: 0.04, swingAmt: -300 } ],
+            [ 'Winder', { x: +360, y: -600, spd: +140, swingHz: 0.06, swingAmt: -300 } ],
             
           ]},
           { dist: 500, name: 'mom', entities: [
@@ -683,8 +929,8 @@ U.buildRoom({
           ]},
           { dist: 800, name: 'mom2', entities: [
             
-            [ 'WinderMom', { x: -400, y: +650, tx: -150, ty: +250, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } } ],
-            [ 'WinderMom', { x: +400, y: +650, tx: +150, ty: +250, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } } ],
+            [ 'WinderMom', { x: -450, y: +650, tx: -150, ty: +250, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } } ],
+            [ 'WinderMom', { x: +450, y: +650, tx: +150, ty: +250, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } } ],
             
             [ 'Winder', { x: -240, y: +720, spd: -210, swingHz: 0.06, swingAmt: -60 } ],
             [ 'Winder', { x: -160, y: +680, spd: -210, swingHz: 0.04, swingAmt: -60 } ],
@@ -702,6 +948,57 @@ U.buildRoom({
             [ 'Winder', { x: +160, y: +680, spd: -130, swingHz: 0.04, swingAmt: +60 } ],
             [ 'Winder', { x: +240, y: +720, spd: -130, swingHz: 0.06, swingAmt: +60 } ]
             
+          ]},
+          { dist: 1000, name: 'drifters1', entities: [
+            
+            [ 'Drifter', { x: -550, y: +600, tx: 0, ty: -300, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +550, y: +600, tx: 0, ty: -300, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ]
+            
+          ]},
+          { dist: 2000, name: 'drifters2', entities: [
+            
+            [ 'Drifter', { x: -300, y: +640, tx: -300, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: -150, y: +620, tx: -150, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x:    0, y: +600, tx:    0, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +150, y: +620, tx: +150, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +300, y: +640, tx: +300, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            
+          ]},
+          { dist: 1500, name: 'drifters3', entities: [
+            
+            [ 'Drifter', { x: -300, y: +640, tx: -300, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: -150, y: +620, tx: -150, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x:    0, y: +600, tx:    0, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +150, y: +620, tx: +150, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +300, y: +640, tx: +300, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            
+            [ 'Drifter', { x: -600, y: +550, tx: 0, ty: -250, spd: 70, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 6 } ],
+            [ 'Drifter', { x: +600, y: +550, tx: 0, ty: -250, spd: 70, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 6 } ]
+            
+          ]},
+          { dist: 1500, name: 'drifters4', entities: [
+            
+            [ 'Winder', { x: -200, y: +890, spd: -70, swingHz: 0.01, swingAmt: -100 } ],
+            [ 'Winder', { x: -150, y: +880, spd: -70, swingHz: 0.01, swingAmt: -100 } ],
+            [ 'Winder', { x: -100, y: +870, spd: -70, swingHz: 0.01, swingAmt: -100 } ],
+            [ 'Winder', { x:  -50, y: +860, spd: -70, swingHz: 0.01, swingAmt: -100 } ],
+            [ 'Winder', { x:    0, y: +850, spd: -70, swingHz: 0, swingAmt: 0 } ],
+            [ 'Winder', { x:  +50, y: +860, spd: -70, swingHz: 0.01, swingAmt: +100 } ],
+            [ 'Winder', { x: +100, y: +870, spd: -70, swingHz: 0.01, swingAmt: +100 } ],
+            [ 'Winder', { x: +150, y: +880, spd: -70, swingHz: 0.01, swingAmt: +100 } ],
+            [ 'Winder', { x: +200, y: +890, spd: -70, swingHz: 0.01, swingAmt: +100 } ],
+            
+            [ 'Drifter', { x: -300, y: +640, tx: -300, ty: 0, spd: 50, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 5 } ],
+            [ 'Drifter', { x: -150, y: +620, tx: -150, ty: 0, spd: 50, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 5 } ],
+            [ 'Drifter', { x:    0, y: +600, tx:    0, ty: 0, spd: 50, hp: 14, hpPerSec: 1.33, minSize: 16, sizeMult: 5 } ],
+            [ 'Drifter', { x: +150, y: +620, tx: +150, ty: 0, spd: 50, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 5 } ],
+            [ 'Drifter', { x: +300, y: +640, tx: +300, ty: 0, spd: 50, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 5 } ],
+            
+            [ 'Drifter', { x: -680, y: +680, tx: 0, ty: -220, spd: 100, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: -680, y: +600, tx: 0, ty: -300, spd: 100, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +680, y: +600, tx: 0, ty: -300, spd: 100, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ],
+            [ 'Drifter', { x: +680, y: +680, tx: 0, ty: -220, spd: 100, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 4 } ]
+            
           ]}
         ]
       }
@@ -712,6 +1009,8 @@ U.buildRoom({
       let updateEntity = (ms, game, entity, collideTeams) => {
         
         let rep = entity.rep;
+        
+        
         let updateResult = rep.updateAndGetResult(ms, game, entity);
         let { birth=[], y, h } = updateResult;
         
@@ -959,7 +1258,7 @@ U.buildRoom({
           let lobbyPlayer = flyHut.createRec('fly.lobbyPlayer', [ testLobby, player ], { model: null, score: 0 });
           let gamePlayer = flyHut.createRec('fly.gamePlayer', [ testGame, player ], { deaths: 0, damage: 0 });
           
-          let rep = repClasses['GunGirl']({ name: 'testy' });
+          let rep = repClasses['SlamKid']({ name: 'testy' });
           let aceEntity = flyHut.createRec('fly.entity', [ testGame ], { ...rep.permState(), ...rep.normState() });
           aceEntity.controls = { x: 0, y: 0, a1: false, a2: false };
           aceEntity.rep = rep;
@@ -1188,6 +1487,10 @@ U.buildRoom({
             // Do global updates! The Game moves Ahead...
             game.modVal(v => (v.dist += v.aheadSpd * spf, v.ms = ms, v));
             
+            
+            // TEST::
+            if (moments.isEmpty()) moments = levels[level].moments.toArr(v => v);
+            
             // We may encounter the next Moment. If we haven't reached
             // it yet, stop processing right here.
             if (moments.isEmpty() || game.val.dist < (momentTotalDist + moments[0].dist)) return;
@@ -1196,15 +1499,13 @@ U.buildRoom({
             let { dist, name='anonMoment', entities: momentEntities=[] } = moments.shift();
             momentTotalDist += dist;
             
-            console.log('ENTERED MOMENT:', name);
+            console.log('New moment:', name);
             
             for (let [ name, args ] of momentEntities) {
               let rep = repClasses[name]({ ms, game, relDist: momentTotalDist, ...args });
               let entity = flyHut.createRec('fly.entity', [ game ], { ...rep.permState(), ...rep.normState() });
               entity.rep = rep;
             }
-            
-            // TODO: When does a Level end???
             
           }, spf * 1000);
           dep(Drop(null, () => clearInterval(interval)));
@@ -1371,7 +1672,7 @@ U.buildRoom({
           let doDraw = () => {
             
             let { pxW, pxH } = draw.getDims();
-            draw.rect(0, 0, pxW, pxH, { fillStyle: `rgba(200, 180, 255, 1)` });
+            draw.rect(0, 0, pxW, pxH, { fillStyle: `rgba(225, 220, 255, 1)` });
             draw.frame(() => { draw.trn(pxW >> 1, pxH >> 1); draw.frame(() => {
               
               draw.trn(0, +game.val.dist); // We want to ADD to `hh` in order to translate everything downwards (things are very far up; we translate far up as a result)
