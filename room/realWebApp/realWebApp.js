@@ -445,8 +445,12 @@ U.buildRoom({
             scl: (x, y=x) => ctx.scale(x, y),
             rect: (x, y, w, h, style) => {
               for (let k in style) ctx[k] = style[k];
+              if (!U.isType(ctx.fillRect, Function)) console.log({ ctx, fillRect: ctx.fillRect });
               if (style.fillStyle) ctx.fillRect(x, y, w, h);
               if (style.strokeStyle) ctx.strokeRect(x, y, w, h);
+            },
+            rectCen: (x, y, w, h, style) => {
+              real.draw.rect(x - w * 0.5, y - h * 0.5, w, h, style);
             },
             circ: (x, y, r, style) => {
               ctx.beginPath();

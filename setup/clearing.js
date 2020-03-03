@@ -7,7 +7,8 @@ let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, 
 
 let C = global.C = {
   skip: { SKIP: 1 },
-  notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); }
+  notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
+  noFn: name => function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
@@ -206,6 +207,9 @@ let U = global.U = {
     let inheritedInsps = [ Insp ];
     parInsps.forEach(ParInsp => inheritedInsps.gain(ParInsp.allInsps.toArr(v => v)));
     Insp.allInsps = Set(inheritedInsps);
+    
+    // Keep track of parent classes directly
+    Insp.parents = insps;
     
     // Initialize prototype
     Insp.prototype = Object.create(null);

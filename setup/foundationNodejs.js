@@ -14,7 +14,8 @@
       init: function() {
         insp.Keep.init.call(this);
         this.keepsByType = {
-          fileSystem: Insp.KeepFileSystem()
+          fileSystem: Insp.KeepFileSystem(),
+          urlResource: Insp.KeepUrlResources()
         };
       },
       innerKeep: function(type) {
@@ -189,6 +190,22 @@
       },
       getPipe: function() { return Insp.fs.getPipe(this.absPath); }
       
+    })}),
+    $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
+      init: function() {},
+      innerKeep: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
+    })}),
+    $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
+      init: function(path='', params={}) {
+        insp.Keep.init.call(this);
+        this.path = path;
+        this.params = params;
+      },
+      getUrl: function() {
+        let url = `/${this.path}`;
+        if (!this.params.isEmpty()) url += `?${this.params.toArr((v, k) => `${k}=${v}`).join('&')}`;
+        return url;
+      }
     })}),
     
     $parseSoktMessages: soktState => {
