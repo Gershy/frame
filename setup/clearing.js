@@ -8,7 +8,11 @@ let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, 
 let C = global.C = {
   skip: { SKIP: 1 },
   notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
-  noFn: name => function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
+  noFn: name => {
+    let fn = function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
+    fn['~noInspCollision'] = true;
+    return fn;
+  }
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
@@ -239,6 +243,7 @@ let U = global.U = {
       for (let [ methodName, method ] of Object.entries(inspProto)) {
         // `inspProto` contains a "constructor" property that needs to be skipped
         if (methodName === 'constructor') continue;
+        if (method && method['~noInspCollision']) continue;
         if (!methodsByName.has(methodName)) methodsByName[methodName] = Set();
         methodsByName[methodName].add(method);
       }

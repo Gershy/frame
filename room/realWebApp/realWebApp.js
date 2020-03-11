@@ -420,10 +420,15 @@ U.buildRoom({
           let canvasH = canvasDom.height; // Only an initial value; later will reflect the client rect height of canvas
           let ctx = canvasDom.getContext('2d');
           let pathFns = {
-            jump: (x, y) => ct.moveTo(x, y),
-            draw: (x, y) => ct.lineTo(x, y),
-            curve: (x1, x2, cx1, cy1, cx2, cy2) => ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, x2),
+            jump: (x, y) => ctx.moveTo(x, -y),
+            draw: (x, y) => ctx.lineTo(x, -y),
+            curve: (x, y, cx1, cy1, cx2, cy2) => ctx.bezierCurveTo(cx1, -cy1, cx2, -cy2, x, y),
             arc: (x1, y1, x2, y2, x3, y3, ccw=true) => {
+              
+              // TODO: (x1,y1) is the most recent turtle-graphics point
+              
+              y1 *= -1; y2 *= -1; y3 *= -1;
+              
               let dx = (x2 - x1);
               let dy = (y2 - y1);
               let r = Math.sqrt(dx * dx + dy * dy);
@@ -441,39 +446,38 @@ U.buildRoom({
             }),
             frame: f => { ctx.save(); f(); ctx.restore(); },
             rot: ang => ctx.rotate(ang),
-            trn: (x, y) => ctx.translate(x, y),
+            trn: (x, y) => ctx.translate(x, -y),
             scl: (x, y=x) => ctx.scale(x, y),
             rect: (x, y, w, h, style) => {
               for (let k in style) ctx[k] = style[k];
-              if (!U.isType(ctx.fillRect, Function)) console.log({ ctx, fillRect: ctx.fillRect });
-              if (style.fillStyle) ctx.fillRect(x, y, w, h);
-              if (style.strokeStyle) ctx.strokeRect(x, y, w, h);
+              if (style.fillStyle) ctx.fillRect(x, -y - h, w, h);
+              if (style.strokeStyle) ctx.strokeRect(x, -y - h, w, h);
             },
             rectCen: (x, y, w, h, style) => {
               real.draw.rect(x - w * 0.5, y - h * 0.5, w, h, style);
             },
             circ: (x, y, r, style) => {
               ctx.beginPath();
-              ctx.arc(x, y, r, Math.PI * 2, 0);
+              ctx.arc(x, -y, r, Math.PI * 2, 0);
               for (let k in style) ctx[k] = style[k];
               if (style.fillStyle) ctx.fill();
               if (style.strokeStyle) ctx.stroke();
             },
-            image: (keep, x, y, w, h) => {
+            image: (keep, x, y, w, h, alpha=1) => {
               let hw = w >> 1;
               let hh = h >> 1;
               let img = keep.getImage();
               try {
                 ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x - hw, y - hh, w, h);
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x - hw, -y - hh, w, h);
+                ctx.globalAlpha = 1;
                 ctx.imageSmoothingEnabled = true;
               } catch(err) {
                 console.log('BAD IMG:', img);
               }
             },
             path: (style, f) => {
-              let jump = (x, y) => ctx.moveTo(x, y);
-              let draw = (x, y) => ctx.lineTo(x, y);
               ctx.beginPath(); f(pathFns); ctx.closePath();
               for (let k in style) ctx[k] = style[k];
               if (style.fillStyle) ctx.fill();
@@ -599,6 +603,9 @@ U.buildRoom({
           return { fixed: linearSlot.slotter.axis === 'y' ? { /*position: 'relative' TODO: This conflicted with a style in chess2! Need AtomicZoneCss!!! */ } :{
             display: 'inline-block', verticalAlign: 'middle'
           }};
+        });
+        zoneCssGettersByCls.set(AxisSlotter, axisSlotter => {
+          return { fixed: { relContainer: 'yes' } };
         });
         zoneCssGettersByCls.set(AxisSlotter.AxisSlot, axisSlot => {
           
@@ -954,8 +961,22 @@ U.buildRoom({
         let cssItems = [];
         for (let zcssItem of [ ...standardZoneCss, ...dynamicZoneCss ]) {
           if (U.isType(zcssItem, String)) return cssItems.push(zcssItem);
-          
           let { selector, zones } = zcssItem;
+          
+          // Normalize "atomicCss"
+          // "relContainer" sets ONLY unset "position" -> relative
+          for (let zoneName in zones) {
+            let zone = zones[zoneName];
+            if (zone.has('relContainer')) {
+              if (zone.relContainer.prop === 'yes' && !zone.has('position')) zone.position = 'relative';
+              delete zone.relContainer;
+            }
+          }
+          
+          // if (zcssItem.zones.has('fixed') && zcssItem.zones.fixed.has('relContainer')) {
+          //   console.log('WITH RELCONTAINER:', JSON.stringify(zcssItem, null, 2));
+          // }
+          
           for (let zoneName in zones) {
             
             let zoneSelector = null
@@ -969,10 +990,7 @@ U.buildRoom({
             for (let cssPropName in zone) {
               let cssValue = zone[cssPropName];
               let layout = null;
-              if (U.isType(cssValue, Object)) {
-                layout = cssValue.layout;
-                cssValue = cssValue.prop;
-              }
+              if (U.isType(cssValue, Object)) { layout = cssValue.layout; cssValue = cssValue.prop; }
               
               rules.push(`${camelToKebab(cssPropName)}: ${this.getUnitCss(cssValue)};`.padTail(60) + `/* Layout: ${U.nameOf(layout)} */`);
             }
@@ -1039,13 +1057,23 @@ U.buildRoom({
       setLoc: function(r, x, y) { let dyn = this.getDyn(r); dyn.loc = [ x, y ]; this.updateLayout(r); },
       setRot: function(r, amt) { let dyn = this.getDyn(r); dyn.transform.rotate = amt; this.updateTransform(r); },
       setScl: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
-      setImage: function(r, file) {
+      setImage: function(r, file, { smoothing=true, scale=1 }) {
         if (file) {
           updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl(foundation)}')`) ;
-          updStyle(r.techNode, 'backgroundSize', 'contain'); 
+          if (scale === 1) {
+            updStyle(r.techNode, 'backgroundSize', 'contain');
+          } else {
+            updStyle(r.techNode, 'backgroundSize', `${scale * 100}%`);
+          }
+          updStyle(r.techNode, 'backgroundPosition', 'center');
+          updStyle(r.techNode, 'backgroundRepeat', 'no-repeat');
+          updStyle(r.techNode, 'imageRendering', smoothing ? null : 'pixelated');
         } else {
           updStyle(r.techNode, 'backgroundImage', null);
           updStyle(r.techNode, 'backgroundSize', null);
+          updStyle(r.techNode, 'backgroundPosition', null);
+          updStyle(r.techNode, 'backgroundRepeat', null);
+          updStyle(r.techNode, 'imageRendering', null);
         }
       },
       setRoundness: function(r, amt) {

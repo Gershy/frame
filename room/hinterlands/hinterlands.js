@@ -500,7 +500,10 @@ U.buildRoom({
         }
         
         for (let uid of rem) {
-          if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`);
+          // TODO: Take this off, the play Fly and lose all lives. An
+          // invalid "rem" sync will be performed:
+          if (!this.allRecs.has(uid)) continue;
+          //if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`);
           this.allRecs.get(uid).dry();
         }
         
