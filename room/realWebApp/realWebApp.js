@@ -444,14 +444,21 @@ U.buildRoom({
               w: canvasW, h: canvasH,
               hw: canvasW >> 1, hh: canvasH >> 1
             }),
+            initFrameCen: (col, f) => {
+              real.draw.frame(() => {
+                real.draw.trn(canvasDom.width >> 1, -(canvasDom.height >> 1));
+                if (col) real.draw.rectCen(0, 0, canvasDom.width, canvasDom.height, { fillStyle: col });
+                f();
+              });
+            },
             frame: f => { ctx.save(); f(); ctx.restore(); },
             rot: ang => ctx.rotate(ang),
             trn: (x, y) => ctx.translate(x, -y),
             scl: (x, y=x) => ctx.scale(x, y),
             rect: (x, y, w, h, style) => {
               for (let k in style) ctx[k] = style[k];
-              if (style.fillStyle) ctx.fillRect(x, -y - h, w, h);
-              if (style.strokeStyle) ctx.strokeRect(x, -y - h, w, h);
+              if (style.fillStyle) ctx.fillRect(x, -(y + h), w, h);
+              if (style.strokeStyle) ctx.strokeRect(x, -(y + h), w, h);
             },
             rectCen: (x, y, w, h, style) => {
               real.draw.rect(x - w * 0.5, y - h * 0.5, w, h, style);
@@ -470,12 +477,27 @@ U.buildRoom({
               try {
                 ctx.imageSmoothingEnabled = false;
                 ctx.globalAlpha = alpha;
-                ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x - hw, -y - hh, w, h);
+                ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x, -(y + h), w, h);
                 ctx.globalAlpha = 1;
                 ctx.imageSmoothingEnabled = true;
               } catch(err) {
                 console.log('BAD IMG:', img);
               }
+            },
+            imageCen: (keep, x, y, w, h, alpha=1) => {
+              real.draw.image(keep, x - (w >> 1), y - (h >> 1), w, h);
+              // let hw = w >> 1;
+              // let hh = h >> 1;
+              // let img = keep.getImage();
+              // try {
+              //   ctx.imageSmoothingEnabled = false;
+              //   ctx.globalAlpha = alpha;
+              //   ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, x - hw, -y - hh, w, h);
+              //   ctx.globalAlpha = 1;
+              //   ctx.imageSmoothingEnabled = true;
+              // } catch(err) {
+              //   console.log('BAD IMG:', img);
+              // }
             },
             path: (style, f) => {
               ctx.beginPath(); f(pathFns); ctx.closePath();

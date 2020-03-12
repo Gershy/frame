@@ -243,7 +243,6 @@ let U = global.U = {
       for (let [ methodName, method ] of Object.entries(inspProto)) {
         // `inspProto` contains a "constructor" property that needs to be skipped
         if (methodName === 'constructor') continue;
-        if (method && method['~noInspCollision']) continue;
         if (!methodsByName.has(methodName)) methodsByName[methodName] = Set();
         methodsByName[methodName].add(method);
       }
@@ -263,11 +262,11 @@ let U = global.U = {
     if (!methodsByName.has('init')) throw Error('No "init" method available');
     
     for (let methodName in methodsByName) {
-      let methodsAtName = methodsByName[methodName];
-      if (methodsAtName.size > 1) {
-        throw Error(`Found ${methodsAtName.size} methods "${methodName}" for ${name}; declare a custom method`);
+      let methodsAtName = methodsByName[methodName].toArr(v => (v && v['~noInspCollision']) ? C.skip : v);
+      if (methodsAtName.length > 1) {
+        throw Error(`Found ${methodsAtName.length} methods "${methodName}" for ${name}; declare a custom method`);
       }
-      protoDef(Insp, methodName, methodsAtName.toArr(v=>v)[0]); // `methodsAtName.length` will certainly be `1`
+      protoDef(Insp, methodName, methodsAtName.length > 0 ? methodsAtName[0] : C.noFn(methodName)); // `methodsAtName.length` will certainly be `1`
     }
     
     protoDef(Insp, 'constructor', Insp);
