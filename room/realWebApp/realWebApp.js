@@ -485,7 +485,7 @@ U.buildRoom({
               }
             },
             imageCen: (keep, x, y, w, h, alpha=1) => {
-              real.draw.image(keep, x - (w >> 1), y - (h >> 1), w, h);
+              real.draw.image(keep, x - (w >> 1), y - (h >> 1), w, h, alpha);
               // let hw = w >> 1;
               // let hh = h >> 1;
               // let img = keep.getImage();

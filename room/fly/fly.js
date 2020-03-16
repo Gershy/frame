@@ -22,6 +22,10 @@ U.buildRoom({
           to: trg => fv.val = util.fadeAmt(fv.val, trg, amt)
         };
         return fv;
+      },
+      incCen: function*(n, stepAmt) {
+        let start = -0.5 * stepAmt * (n - 1);
+        for (let i = 0; i < n; i++) yield start + i * stepAmt;
       }
     };
     
@@ -108,8 +112,412 @@ U.buildRoom({
     let fps = 40;       // Server-side ticks per second
     let gameStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
-    let testLevel = null; //'desperation1'; // 'drifters1' / 'wanderers1'
+    let testing = {
+      levelName: 'killPlains',
+      momentName: 'winder1',
+      ace: 'SalvoLad' //[ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ][Math.floor(Math.random() * 4)]
+    };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
+    
+    let levels = {
+      rustlingMeadow: {
+        difficulty: 0,
+        moments: [
+          { name: 'practice1', type: 'MomentAhead', terrain: 'savanna', distance: 1500, spd: 100, 
+            bounds: { total: { w: 160, h: 200 }, player: { x: 0, y: 0, w: 160, h: 200 } },
+            modelsDef: []
+          },
+          { name: 'practice2', type: 'MomentAhead', terrain: 'savanna', distance: 1500, spd: 100, 
+            bounds: { total: { w: 240, h: 300 }, player: { x: 0, y: 0, w: 240, h: 300 } },
+            modelsDef: []
+          },
+          { name: 'winder1', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100, 
+            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+            modelsDef: [
+              { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:   0, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 }
+            ]
+          },
+          { name: 'winder2', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
+            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+            modelsDef: [
+              { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 },
+              { type: 'Winder', x:   0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
+              { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 }
+            ]
+          },
+          { name: 'winder3', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
+            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+            modelsDef: [
+              { type: 'Winder', x: -100, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 },
+              { type: 'Winder', x:  -50, y: +200, spd: -50, swingHz: 0.07, swingAmt: -50 },
+              { type: 'Winder', x:    0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
+              { type: 'Winder', x:  +50, y: +200, spd: -50, swingHz: 0.07, swingAmt: +50 },
+              { type: 'Winder', x: +100, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 }
+            ]
+          },
+          { name: 'winder4', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
+            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+            modelsDef: [
+              { type: 'Winder', x: -100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: +60 },
+              { type: 'Winder', x:  -50, y: +200, spd:  -50, swingHz: 0.075, swingAmt: -70 },
+              { type: 'Winder', x:    0, y: +300, spd: -100, swingHz:     0, swingAmt:   0 },
+              { type: 'Winder', x:  +50, y: +200, spd:  -50, swingHz: 0.075, swingAmt: +70 },
+              { type: 'Winder', x: +100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: -60 }
+            ]
+          },
+          { name: 'winder5', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100,
+            bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
+            modelsDef: [
+              { type: 'Winder', x: -200, y: 0, spd: -50, swingHz: 0.055, swingAmt: +100 },
+              { type: 'Winder', x: -30, y: +150, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +30, y: +150, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +200, y: 0, spd: -50, swingHz: 0.055, swingAmt: -100 },
+            ]
+          },
+          { name: 'winder6', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100,
+            bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
+            modelsDef: [
+              { type: 'Winder', x: -350, y: +100, spd: -50, swingHz: 0.050, swingAmt: +270 },
+              { type: 'Winder', x: -300, y:  +50, spd: -50, swingHz: 0.050, swingAmt: +240 },
+              { type: 'Winder', x: -250, y:    0, spd: -50, swingHz: 0.050, swingAmt: +210 },
+              { type: 'Winder', x: -200, y:  -50, spd: -50, swingHz: 0.050, swingAmt: +180 },
+              
+              { type: 'Winder', x: +350, y: +100, spd: -50, swingHz: 0.050, swingAmt: -270 },
+              { type: 'Winder', x: +300, y:  +50, spd: -50, swingHz: 0.050, swingAmt: -240 },
+              { type: 'Winder', x: +250, y:    0, spd: -50, swingHz: 0.050, swingAmt: -210 },
+              { type: 'Winder', x: +200, y:  -50, spd: -50, swingHz: 0.050, swingAmt: -180 }
+            ]
+          },
+          { name: 'winder7', type: 'MomentAhead', terrain: 'savanna', distance: 750, spd: 100,
+            bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
+            modelsDef: [
+              { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -120, y: +130, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -120, y: +160, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -120, y: +190, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              
+              { type: 'Winder', x: +40, y: +300, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +40, y: +330, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +40, y: +360, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +40, y: +390, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              
+              { type: 'Winder', x: -70, y: +500, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -70, y: +530, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -70, y: +560, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              { type: 'Winder', x: -70, y: +590, spd: -150, swingHz: 0.08, swingAmt: +22 },
+              
+              { type: 'Winder', x: +90, y: +600, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +90, y: +630, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +90, y: +660, spd: -150, swingHz: 0.08, swingAmt: -22 },
+              { type: 'Winder', x: +90, y: +690, spd: -150, swingHz: 0.08, swingAmt: -22 }
+            ]
+          },
+          { name: 'winder8', type: 'MomentAhead', terrain: 'savanna', distance: 750, spd: 100,
+            bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
+            modelsDef: [
+              { type: 'Winder', x: -120, y: +100, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: -120, y: +130, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: -120, y: +160, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: -120, y: +190, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              
+              { type: 'Winder', x: +40, y: +300, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: +40, y: +330, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: +40, y: +360, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: +40, y: +390, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              
+              { type: 'Winder', x: -70, y: +500, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: -70, y: +530, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: -70, y: +560, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: -70, y: +590, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              
+              { type: 'Winder', x: +90, y: +600, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: +90, y: +630, spd: -185, swingHz: 0.12, swingAmt: +22 },
+              { type: 'Winder', x: +90, y: +660, spd: -185, swingHz: 0.12, swingAmt: -22 },
+              { type: 'Winder', x: +90, y: +690, spd: -185, swingHz: 0.12, swingAmt: +22 }
+            ]
+          },
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: [
+              
+              { type: 'Weaver', x: -100, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +100, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Weaver', x: -120, y: +250, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:    0, y: +220, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +120, y: +250, spd: -50, swingHz: 0, swingAmt: 0 },
+              
+            ]
+          },
+          { name: 'weaver2', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: [
+              { type: 'Winder', x: -150, y: +450, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -50, y: +440, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +50, y: +440, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +150, y: +450, spd: -100, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Weaver', x: -120, y: +190, spd: -50, swingHz: 0.10, swingAmt: -20 },
+              { type: 'Weaver', x:  -40, y: +170, spd: -50, swingHz: 0.08, swingAmt: -20 },
+              { type: 'Weaver', x:  +40, y: +170, spd: -50, swingHz: 0.08, swingAmt: +20 },
+              { type: 'Weaver', x: +120, y: +190, spd: -50, swingHz: 0.10, swingAmt: +20 },
+              
+              { type: 'Weaver', x: -120, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  -40, y:  +85, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  +40, y:  +85, spd: -50, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +120, y: +100, spd: -50, swingHz: 0, swingAmt: 0 }
+            ]
+          },
+          { name: 'weaver3', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: [
+              { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: +430, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Weaver', x: -120, y: +190, spd: -50, swingHz: 0.10, swingAmt: -20 },
+              { type: 'Weaver', x:  -40, y: +170, spd: -50, swingHz: 0.08, swingAmt: -20 },
+              { type: 'Weaver', x:  +40, y: +170, spd: -50, swingHz: 0.08, swingAmt: +20 },
+              { type: 'Weaver', x: +120, y: +190, spd: -50, swingHz: 0.10, swingAmt: +20 },
+              
+              { type: 'Weaver', x: -160, y: +100, spd: -50, swingHz: 0.10, swingAmt: -15 },
+              { type: 'Weaver', x:  -80, y:  +85, spd: -50, swingHz: 0.08, swingAmt: -15 },
+              { type: 'Weaver', x:    0, y:  +70, spd: -50, swingHz: 0.00, swingAmt:   0 },
+              { type: 'Weaver', x:  +80, y:  +85, spd: -50, swingHz: 0.08, swingAmt: +15 },
+              { type: 'Weaver', x: +160, y: +100, spd: -50, swingHz: 0.10, swingAmt: +15 },
+              
+              { type: 'Winder', x: -100, y: -500, spd: +40, swingHz: 0.1, swingAmt: +50 },
+              { type: 'Winder', x: +100, y: -500, spd: +40, swingHz: 0.1, swingAmt: -50 }
+            ]
+          },
+          { name: 'weaver4', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: [
+              { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: +430, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Weaver', x: -120, y: +190, spd: -50, swingHz: 0.10, swingAmt: -20 },
+              { type: 'Weaver', x:  -40, y: +170, spd: -50, swingHz: 0.08, swingAmt: -20 },
+              { type: 'Weaver', x:  +40, y: +170, spd: -50, swingHz: 0.08, swingAmt: +20 },
+              { type: 'Weaver', x: +120, y: +190, spd: -50, swingHz: 0.10, swingAmt: +20 },
+              
+              { type: 'Weaver', x: -160, y: +100, spd: -50, swingHz: 0.10, swingAmt: -15 },
+              { type: 'Weaver', x:  -80, y:  +85, spd: -50, swingHz: 0.08, swingAmt: -15 },
+              { type: 'Weaver', x:    0, y:  +70, spd: -50, swingHz: 0.00, swingAmt:   0 },
+              { type: 'Weaver', x:  +80, y:  +85, spd: -50, swingHz: 0.08, swingAmt: +15 },
+              { type: 'Weaver', x: +160, y: +100, spd: -50, swingHz: 0.10, swingAmt: +15 },
+              
+              { type: 'Winder', x: -180, y: -500, spd: +40, swingHz: 0.05, swingAmt: +65 },
+              { type: 'Winder', x: -140, y: -525, spd: +40, swingHz: 0.05, swingAmt: +50 },
+              { type: 'Winder', x: -100, y: -550, spd: +40, swingHz: 0.05, swingAmt: +35 },
+              { type: 'Winder',  x: -60, y: -575, spd: +40, swingHz: 0.05, swingAmt: +20 },
+              { type: 'Winder',  x: -20, y: -600, spd: +40, swingHz: 0.05, swingAmt:  +5 },
+              { type: 'Winder',  x: +20, y: -600, spd: +40, swingHz: 0.05, swingAmt:  -5 },
+              { type: 'Winder',  x: +60, y: -575, spd: +40, swingHz: 0.05, swingAmt: -20 },
+              { type: 'Winder', x: +100, y: -550, spd: +40, swingHz: 0.05, swingAmt: -35 },
+              { type: 'Winder', x: +140, y: -525, spd: +40, swingHz: 0.05, swingAmt: -50 },
+              { type: 'Winder', x: +180, y: -500, spd: +40, swingHz: 0.05, swingAmt: -65 }
+            ]
+          },
+          
+          { name: 'finalTrn', type: 'MomentAhead', terrain: 'savannaToPlains', distance: 250, spd: 100, modelsDef: [] },
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100, modelsDef: [] }
+        ]
+      },
+      killPlains: {
+        difficulty: 0,
+        moments: [
+          { name: 'practice1', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: []
+          },
+          { name: 'practice2', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: []
+          },
+          { name: 'winder1', type: 'MomentAhead', terrain: 'plains', distance: 500, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.027, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -100, swingHz: 0.031, swingAmt: +580 },
+              { type: 'Winder', x: -600, y:  +50, spd: -100, swingHz: 0.035, swingAmt: +580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -100, swingHz: 0.035, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -100, swingHz: 0.031, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.027, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder2', type: 'MomentAhead', terrain: 'plains', distance: 500, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.032, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -100, swingHz: 0.036, swingAmt: +580 },
+              { type: 'Winder', x: -600, y:  +50, spd: -100, swingHz: 0.040, swingAmt: +580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -100, swingHz: 0.040, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -100, swingHz: 0.036, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.032, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder3', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper up
+              { type: 'Winder', x: -600, y: +250, spd: -130, swingHz: 0.047, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -130, swingHz: 0.051, swingAmt: +580 },
+              { type: 'Winder', x: -600, y:  +50, spd: -130, swingHz: 0.055, swingAmt: +580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -130, swingHz: 0.055, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -130, swingHz: 0.051, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +250, spd: -130, swingHz: 0.047, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder4', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper down
+              { type: 'Winder', x: -600, y:  +50, spd: -130, swingHz: 0.047, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -130, swingHz: 0.051, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +250, spd: -130, swingHz: 0.055, swingAmt: +580 },
+              { type: 'Winder', x: +600, y: +250, spd: -130, swingHz: 0.055, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -130, swingHz: 0.051, swingAmt: -580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -130, swingHz: 0.047, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder5', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper up
+              { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.057, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +580 },
+              { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.065, swingAmt: +580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -150, swingHz: 0.065, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -150, swingHz: 0.061, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +250, spd: -150, swingHz: 0.057, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder6', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper down
+              { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +580 },
+              { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.065, swingAmt: +580 },
+              { type: 'Winder', x: +600, y: +250, spd: -150, swingHz: 0.065, swingAmt: -580 },
+              { type: 'Winder', x: +600, y: +150, spd: -150, swingHz: 0.061, swingAmt: -580 },
+              { type: 'Winder', x: +600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: -580 }
+            ]
+          },
+          { name: 'winder7', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper down desync
+              { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +780 },
+              { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +780 },
+              { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.065, swingAmt: +780 },
+              
+              { type: 'Winder', x: +600, y: +300, spd: -150, swingHz: 0.065, swingAmt: -780 },
+              { type: 'Winder', x: +600, y: +200, spd: -150, swingHz: 0.061, swingAmt: -780 },
+              { type: 'Winder', x: +600, y: +100, spd: -150, swingHz: 0.057, swingAmt: -780 },
+              
+              { type: 'Weaver', x: -200, y: -600, spd: +40, swingHz: 0.04, swingAmt: +100 },
+              { type: 'Weaver', x: +200, y: -600, spd: +40, swingHz: 0.04, swingAmt: -100 }
+            ]
+          },
+          { name: 'winder8', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: [
+              // Zipper down desync
+              { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.075, swingAmt: -780 },
+              { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.071, swingAmt: -780 },
+              { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.067, swingAmt: -780 },
+              
+              { type: 'Winder', x: +600, y: +300, spd: -150, swingHz: 0.067, swingAmt: +780 },
+              { type: 'Winder', x: +600, y: +200, spd: -150, swingHz: 0.071, swingAmt: +780 },
+              { type: 'Winder', x: +600, y: +100, spd: -150, swingHz: 0.075, swingAmt: +780 },
+              
+              { type: 'Weaver', x: 0, y: -600, spd: +30, swingHz: 0.08, swingAmt: +160 },
+              { type: 'Weaver', x: 0, y: -600, spd: +30, swingHz: 0.08, swingAmt: -160 }
+            ]
+          },
+          { name: 'winder9', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+            bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
+            modelsDef: [
+              // Zipper down desync
+              { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +780 },
+              { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +780 },
+              { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.065, swingAmt: +780 },
+              
+              { type: 'Winder', x: +600, y: +300, spd: -150, swingHz: 0.065, swingAmt: -780 },
+              { type: 'Winder', x: +600, y: +200, spd: -150, swingHz: 0.061, swingAmt: -780 },
+              { type: 'Winder', x: +600, y: +100, spd: -150, swingHz: 0.057, swingAmt: -780 },
+              
+              { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.05, swingAmt: +200 },
+              { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.06, swingAmt: +200 },
+              { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.07, swingAmt: +200 },
+              { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.08, swingAmt: +200 },
+              { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.09, swingAmt: +200 }
+            ]
+          },
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', distance: 750, spd: 100,
+            bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
+            modelsDef: [
+              
+              { type: 'Weaver', x: -210, y: +630, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: -140, y: +620, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  -70, y: +610, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:    0, y: +600, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  +70, y: +610, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +140, y: +620, spd: -130, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +210, y: +630, spd: -130, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Weaver', x: -120, y: -580, spd: +30, swingHz: 0.05, swingAmt: +110 },
+              { type: 'Weaver', x: -120, y: -580, spd: +30, swingHz: 0.06, swingAmt: +110 },
+              { type: 'Weaver', x: -120, y: -580, spd: +30, swingHz: 0.07, swingAmt: +110 },
+              { type: 'Weaver', x: -120, y: -580, spd: +30, swingHz: 0.08, swingAmt: +110 },
+              { type: 'Weaver', x: -120, y: -580, spd: +30, swingHz: 0.09, swingAmt: +110 },
+              
+              { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.05, swingAmt: -110 },
+              { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.06, swingAmt: -110 },
+              { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.07, swingAmt: -110 },
+              { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.08, swingAmt: -110 },
+              { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.09, swingAmt: -110 }
+            ]
+          },
+          { name: 'furler1', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+            bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
+            modelsDef: [
+              { type: 'Furler', x: -120, y: +200, spd: -50, swingHz: 0.1, swingAmt: -80, shootDelayMs: 1500, bulletArgs: { spd: -300 } },
+              { type: 'Furler', x: +120, y: +200, spd: -50, swingHz: 0.1, swingAmt: +80, shootDelayMs: 1500, bulletArgs: { spd: -300 } }
+            ]
+          },
+          { name: 'bozz', type: 'MomentAhead', terrain: 'plains', distance: 8000, spd: 100,
+            bounds: { total: { w: 800, h: 1000 }, player: { x: 0, y: -150, w: 800, h: 700 } },
+            modelsDef: [
+              
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              
+              { type: 'WinderMom', x: -600, y: +500, tx: -250, ty: +280, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } },
+              { type: 'WinderMom', x:    0, y: +500, tx:    0, ty: +320, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } },
+              { type: 'WinderMom', x: +600, y: +500, tx: +250, ty: +280, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } }
+              
+            ]
+          },
+          
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100, modelsDef: [] }
+          
+        ]
+      }
+    };
     
     // BASE STUFF
     let Entity = U.inspire({ name: 'Entity', insps: {}, methods: (insp, Insp) => ({
@@ -147,17 +555,28 @@ U.buildRoom({
       fluxState: function() { return { x: this.x, y: this.y }; }
     })});
     let Mover = U.inspire({ name: 'Mover', methods: (insp, Insp) => ({
-      init: function({ tx, ty, spd=100, relDist=0, ang, dist, ...args }) {
+      init: function({ tx, ty, spd=100, relDist=0, aheadDist=0, ang, dist, ...args }) {
         if (!({}).has.call(this, 'x')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         if (!({}).has.call(this, 'y')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
+        
+        // Note that `relDist` is the y value of the minY of the Moment
+        // in which we are being initialized. It varies depending on the
+        // moment, but is used as the relative y value for spawning
+        // Models
+        
+        // Note that `aheadDist` is the y value of the total progression
+        // of the game at the. It is consistent regardless of the Moment
+        
+        // To get consistent movement we need to use `aheadDist`!
         
         this.tx = this.ty = null;
         this.vx = this.vy = null;
         this.spd = null;
         this.ang = null;
-        this.setDestination({ relDist, spd, tx, ty, ang, dist });
+        this.initAheadDist = aheadDist;
+        this.setDestination({ aheadDist, spd, tx, ty, ang, dist });
       },
-      setDestination: function({ relDist=0, spd=null, tx=null, ty=null, ang=null, dist=null }) {
+      setDestination: function({ aheadDist=0, spd=null, tx=null, ty=null, ang=null, dist=null }) {
         
         // Providing x and y with an optional `relDist` sets the
         // destination through that point (and optionally stopping at
@@ -173,8 +592,9 @@ U.buildRoom({
         
         if (tx !== null) {
           
+          let aheadDiff = aheadDist - this.initAheadDist;
           let dx = (tx - this.x);
-          let dy = ((ty + (this.moveWithGame() ? relDist : 0)) - this.y);
+          let dy = ((ty + (this.moveWithGame() ? aheadDist : 0)) - this.y);
           
           let tSpd = this.spd / Math.sqrt(dx * dx + dy * dy);
           this.tx = tx; this.ty = ty;
@@ -201,6 +621,12 @@ U.buildRoom({
           
         }
         
+      },
+      setSpd: function(spd) {
+        let m = spd / (this.spd || 1);
+        this.vx *= m;
+        this.vy *= m;
+        this.spd = spd;
       },
       moveWithGame: function() { return true; },
       stopAtDestination: function() { return false; },
@@ -251,7 +677,7 @@ U.buildRoom({
       },
       getTeam: function() { return this.owner.getTeam(); },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, updData) {
         if (!U.isInspiredBy(rep, Mortal)) return false;
         let dmg = this.dmg;
         if (this.pDmg[0]) dmg += Math.min(this.pDmg[0] * rep.getMaxHp(), this.pDmg[1] || rep.getMaxHp());
@@ -273,11 +699,12 @@ U.buildRoom({
         insp.Bullet.init.call(this, args);
         this.x = x; this.y = y;
         this.w = w; this.h = h;
+        
         this.spd = spd;
         this.lifespanMs = lifespanMs;
       },
-      collide: function(rep) {
-        if (insp.Bullet.collide.call(this, rep)) this.lifespanMs = 0;
+      collide: function(rep, updData) {
+        if (insp.Bullet.collide.call(this, rep, updData)) this.lifespanMs = 0;
       },
       permState: function() { return { ...insp.Geom.permState.call(this), team: this.getTeam(), w: this.w, h: this.h }; },
       updateAndGetResult: function(entity, { spf, aheadSpd }) {
@@ -292,20 +719,22 @@ U.buildRoom({
       $render: (draw, game, { x, y, r, team }) => {
         draw.circ(x, y, r, { fillStyle: Insp.parents.Bullet.getColour(team) });
       },
-      init: function({ r=8, lifespanMs=3000, ...args }) {
+      init: function({ r=8, lifespanMs=3000, acl=0, ...args }) {
         insp.Geom.init.call(this, args);
         insp.Mover.init.call(this, { spd: 500, ...args });
         insp.Bullet.init.call(this, args);
         this.r = r;
         this.lifespanMs = lifespanMs;
+        this.acl = acl;
       },
       moveWithGame: function() { return true; },
       stopAtDestination: function() { return false; },
       canCollide: function() { return true; },
-      collide: function(rep) { if (insp.Bullet.collide.call(this, rep)) this.lifespanMs = 0; },
+      collide: function(rep, updData) { if (insp.Bullet.collide.call(this, rep, updData)) this.lifespanMs = 0; },
       permState: function() { return { ...insp.Geom.permState.call(this), team: this.getTeam(), r: this.r }; },
       updateAndGetResult: function(entity, updData) {
         insp.Mover.moveToDestination.call(this, updData);
+        if (this.acl) this.setSpd(this.spd + this.acl * updData.spf);
         return { x: this.x, y: this.y, form: 'circle', r: this.r, birth: [] };
       },
       isAlive: function({ ms }) { return (ms - this.ms) < this.lifespanMs; }
@@ -344,10 +773,12 @@ U.buildRoom({
         this.scoreDeaths = 0;
       },
       canCollide: function(ms) { return ms >= this.invulnMark; },
-      collide: function(rep) {},
+      collide: function(rep, updData) {},
       getTeam: function() { return +1; },
       normState: function() { return { invulnMark: this.invulnMark }; },
-      updateAndGetResult: function(entity, { ms, spf, bounds, aheadSpd, victory }, spdMult=1) {
+      updateAndGetResult: function(entity, updData, spdMult=1) {
+        
+        let { ms, spf, bounds, aheadSpd, victory } = updData;
         
         if (victory) {
           if (ms >= this.invulnMark) this.invulnMark = ms + 1000;
@@ -370,12 +801,12 @@ U.buildRoom({
           let { mark, type=null, fn=null, endFn=null } = effect;
           if (ms > effect.mark) {
             this.effects.rem(effect);
-            if (effect.endFn) effect.endFn(ms, { birth });
+            if (effect.endFn) effect.endFn(this, updData, { birth });
           } else {
             if (effect.type === 'spdMult') spd *= effect.spdMult;
             if (effect.type === 'spdXMult') spdXMult *= effect.spdXMult;
             if (effect.type === 'spdYMult') spdYMult *= effect.spdYMult;
-            if (effect.fn) effect.fn(ms, { birth });
+            if (effect.fn) effect.fn(this, updData, { birth });
           }
         }
         
@@ -414,10 +845,10 @@ U.buildRoom({
           // Laser reload
           let bar1H = w1Mark ? Math.min(1, (game.val.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
           let [ bar1W, col ] = [
-            [ 16, 'rgba(255, 0, 0, 1)' ],      // Punished
-            [ 12, 'rgba(0, 0, 0, 0.75)' ],     // Reload
-            [ 6,  'rgba(0, 255, 255, 0.7)' ],  // Horz laser
-            [ 10, 'rgba(100, 255, 255, 0.8)' ] // Vert laser
+            [ 16, 'rgba(0, 0, 0, 1)' ],         // Punished
+            [ 16, 'rgba(0, 150, 150, 0.7)' ],      // Spread shot
+            [ 8,  'rgba(0, 255, 255, 0.7)' ],   // Butterfly
+            [ 12, 'rgba(100, 255, 255, 0.8)' ]  // Laser
           ][w1State];
           draw.rect(x + bar1W * -0.5, y - 8, bar1W, bar1H, { fillStyle: col });
           
@@ -432,7 +863,7 @@ U.buildRoom({
       },
       
       $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
-      $w1Charge1Ms: 660, $w1Charge2Ms: 1600, $w1Charge3Ms: 4800, // How many millis of charging for various jousts
+      $w1Charge1Ms: 750, $w1Charge2Ms: 1800, $w1Charge3Ms: 5000, // How many millis of charging for various jousts
       $w1Charge3Slow: 0.58,
       $w2Delay: 2500, $w2DashSpeed: 500, $w2OrbDps: 25, $w2DurationMs: 300,
       
@@ -480,12 +911,11 @@ U.buildRoom({
               
               let incAng = 0.018;
               let orbArgs = { ms, owner: this, x: this.x, y: this.y, spd: 500, dmg: 1, r: 6 };
-              birth.gain(Array.fill(10, n => JoustManOrb({
-                ...orbArgs,
-                ang: (n * incAng) - (5 * incAng) + (0.5 * incAng),
-                lifespanMs: 620,
-                dmg: 0.75
+              
+              birth.gain([ ...util.incCen(10, incAng) ].map(ang => JoustManBullet({
+                ...orbArgs, ang, lifespanMs: 620, dmg: 0.75
               })));
+              
               this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
               
             } else if (this.w1State === 2) {
@@ -521,7 +951,7 @@ U.buildRoom({
           
           let dir = entity.controls.x > 0 ? +1 : -1;
           this.invulnMark = Math.max(this.invulnMark, ms + 250);
-          this.effects.add({ mark: ms + 250, fn: () => this.x += dir * Insp.w2DashSpeed * spf });
+          this.effects.add({ mark: ms + 250, fn: (inst, { spf }) => this.x += dir * Insp.w2DashSpeed * spf });
           this.effects.add({ mark: ms + 250, type: 'spdMult', spdMult: 0 });
           
           birth.gain(Array.fill(4, n => JoustManLaserSphere({
@@ -559,11 +989,12 @@ U.buildRoom({
         { ms: 1500, ang: +0.02, dmgMult: 1   },  // Very slowly increase angle
         { ms: 3000, ang: +0.28, dmgMult: 1   }   // Slowly bend all the way outwards
       ],
-      $w1Delay: 86, $w1Dmg: 0.3, $w1LockMs: 1100,
+      $w1Delay: 86, $bulletDmg: 0.3, $w1LockMs: 1100,
       $w1ShortLockPunishSlow: 0.35, $w1ShortLockPunishMs: 300,
       $w1LongLockPunishSlow: 0.85, $w1LongLockPunishMs: 1100,
       $w1ReloadBoostMs: 800, $w1ReloadBoostAmt: 1.55,
       $w2Delay: 10000, $w2Duration: 1900,
+      $bulletDmg: 0.3, $bulletSpd: 740, $bulletMs: 800,
       
       init: function({ ...args }={}) {
         insp.Ace.init.call(this, args);
@@ -629,8 +1060,8 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.w1StartMark);
             supResult.birth.gain([
-              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, spd: 800, dmg: Insp.w1Dmg * dm, r: 3 * dm, lifespanMs: 2800 }),
-              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, spd: 800, dmg: Insp.w1Dmg * dm, r: 3 * dm, lifespanMs: 2800 })
+              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lifespanMs: Insp.bulletMs }),
+              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lifespanMs: Insp.bulletMs })
             ]);
             
           } else {
@@ -640,10 +1071,10 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.w2EffectiveShootDuration);
             supResult.birth.gain([
-              DirectedBullet({ ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.15 * dm, r: 5 * dm, lifespanMs: 2800 }),
-              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.15 * dm, r: 5 * dm, lifespanMs: 2800 }),
-              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.15 * dm, r: 5 * dm, lifespanMs: 2800 }),
-              DirectedBullet({ ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: 800 * 1.1, dmg: Insp.w1Dmg * 1.15 * dm, r: 5 * dm, lifespanMs: 2800 }),
+              DirectedBullet({ ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
+              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
+              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
+              DirectedBullet({ ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs })
             ]);
             
           }
@@ -668,11 +1099,9 @@ U.buildRoom({
             this.w2EffectiveShootDuration = ms - (this.w1StartMark || ms)
             
             let incAng = 0.029;
-            let bulletArgs = { ms, owner: this, x: this.x, y: this.y, spd: 150, dmg: 4, r: 7 };
-            supResult.birth.gain(Array.fill(20, n => DirectedBullet({
-              ...bulletArgs,
-              ang: 0.5 + (n * incAng) - (10 * incAng) + (0.5 * incAng),
-              lifespanMs: 2500
+            let bulletArgs = { ms, owner: this, x: this.x, y: this.y, spd: 150, r: 6 };
+            supResult.birth.gain([ ...util.incCen(20, incAng) ].map(ang => DirectedBullet({
+              ...bulletArgs, ang: 0.5 + ang, lifespanMs: 2500, dmg: 4
             })));
             
           } else {
@@ -697,7 +1126,7 @@ U.buildRoom({
       $slamCharge1Ms: 300, $slamCharge2Ms: 630, $slamCharge3Ms: 750,
       $slamPunishMs: 1500, $slamPunishSlow: 0.25,
       $missileSpd: 900, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
-      $shotgunCnt: 18, $shotgunInitAng: 0.019, $shotgunAng: 0.009,
+      $shotgunCnt: 18, $shotgunInitAng: 0.023, $shotgunAng: 0.009,
       $shotgunSpd: 650, $shotgunDmg: 0.09, $shotgunPDmg: [0.09,0.28], $shotgunLifespanMs: 305,
       $shotgunSlamDelayMult: 0.55,
       
@@ -781,7 +1210,7 @@ U.buildRoom({
                 SimpleBullet({ ...missileArgs, spd: +Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 }),
                 SimpleBullet({ ...missileArgs, spd: -Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 })
               ]);
-              this.effects.add({ mark: ms + 150, type: null, fn: ms => {
+              this.effects.add({ mark: ms + 150, type: null, fn: (inst, { spf }) => {
                 this.y -= 220 * spf;
               }});
               this[wMark] = ms + Insp.slamDelay;
@@ -789,17 +1218,20 @@ U.buildRoom({
             } else {
               
               // Shotgun!
-              let shotgunArgs = { ms, owner: this, x: this.x + (mult * 7), y: this.y - 7 };
-              birth.gain(Array.fill(Insp.shotgunCnt, n => DirectedBullet({
-                ...shotgunArgs,
-                dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg, r: 2, spd: Insp.shotgunSpd,
-                ang: mult * (Insp.shotgunInitAng + n * Insp.shotgunAng),
-                lifespanMs: Insp.shotgunLifespanMs
+              let shotgunArgs = {
+                ms, owner: this, x: this.x + (mult * 7), y: this.y - 7,
+                dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg,
+                spd: Insp.shotgunSpd,
+                lifespanMs: Insp.shotgunLifespanMs,
+                r: 2
+              };
+              birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => DirectedBullet({
+                ...shotgunArgs, ang: mult * (0.125 + ang)
               })));
               
-              this.effects.add({ mark: ms + 300, type: 'spdMult', spdMult: 1.2, fn: () => {
-                this.x -= mult * 50 * spf;
-                this.y -= 50 * spf;
+              this.effects.add({ mark: ms + 300, type: 'spdMult', spdMult: 1.2, fn: (inst, { spf }) => {
+                inst.x -= mult * 50 * spf;
+                inst.y -= 50 * spf;
               }});
               this[wMark] = ms + Insp.slamDelay * Insp.shotgunSlamDelayMult;
               
@@ -821,36 +1253,53 @@ U.buildRoom({
     })});
     let SalvoLad = U.inspire({ name: 'SalvoLad', insps: { Ace }, methods: (insp, Insp) => ({
       
+      $comboDelayMs: 800, $comboPunishDelayMs: 1000,
+      $decampDelayMs: 1200, $decampDurationMs: 350, $decampSpdMult: 0.5, $decampSpd: 430,
+      $diveBombDelayMs: 550, $diveBombDiveMs: 700,
+      $missileDelayMs: 800,
+      $suppressDelayMs: 700, $suppressDmg: 0.45,
+      
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSalvo' }),
       $render: (draw, game, args) => {
         
         Insp.parents.Ace.render(draw, game, args, Insp.imageKeep, () => {
           let { x, y, readyMark, combo } = args;
           
-          if (combo.length === 0) return;
-          
+          let waitMs = readyMark - game.val.ms;
           let dispY = y - 16;
-          
           let indSize = 8;
-          let hIndSize = indSize >> 1;
           let comboW = combo.length * indSize;
-          draw.rectCen(x, dispY, comboW + 4, indSize + 4, { strokeStyle: '#000000' });
           
-          let dispX = x - (comboW >> 1);
-          for (c of combo) {
-            draw.path({ fillStyle: '#000000' }, ({ jump, draw }) => {
-              if (c === '<') {
-                jump(dispX, dispY - hIndSize);
-                draw(dispX + indSize, dispY);
-                draw(dispX, dispY + hIndSize);
-              } else if (c === '>') {
-                jump(dispX + indSize, dispY - hIndSize);
-                draw(dispX, dispY);
-                draw(dispX + indSize, dispY + hIndSize);
-              }
-            });
-            dispX += indSize;
+          if (waitMs > 0) {
+            
+            let waitAmt = Math.min(waitMs / 750, 1);
+            if (combo.length < 3) comboW = 3 * indSize;
+            draw.rectCen(x, dispY, waitAmt * (comboW + 4), indSize + 4, { fillStyle: 'rgba(120, 120, 120, 0.6)' });
+            
           }
+          if (combo.length > 0) {
+          
+            let hIndSize = indSize >> 1;
+            let comboW = combo.length * indSize;
+            draw.rectCen(x, dispY, comboW + 4, indSize + 4, { strokeStyle: '#000000' });
+            
+            let dispX = x - (comboW >> 1);
+            for (c of combo) {
+              draw.path({ fillStyle: '#000000' }, ({ jump, draw }) => {
+                if (c === '<') {
+                  jump(dispX + indSize, dispY - hIndSize);
+                  draw(dispX, dispY);
+                  draw(dispX + indSize, dispY + hIndSize);
+                } else if (c === '>') {
+                  jump(dispX, dispY - hIndSize);
+                  draw(dispX + indSize, dispY);
+                  draw(dispX, dispY + hIndSize);
+                }
+              });
+              dispX += indSize;
+            }
+            
+          };
           
         });
         
@@ -859,70 +1308,119 @@ U.buildRoom({
       init: function({ ...args }={}) {
         insp.Ace.init.call(this, args);
         
-        this.readyMark = this.ms;
+        this.readyMark = null;
         this.combo = '';
         
         this.a1Up = false;
         this.a2Up = false;
+        
+        this.comboMapping = {
+          '<<<': this.comboDecamp.bind(this, -1),
+          '>>>': this.comboDecamp.bind(this, +1),
+          
+          '<<>': this.comboDiveBomb.bind(this, -1),
+          '>><': this.comboDiveBomb.bind(this, +1),
+          
+          '<>>': this.comboMissiles.bind(this, -1),
+          '><<': this.comboMissiles.bind(this, +1),
+          
+          '<><': this.comboSuppress.bind(this, -1),
+          '><>': this.comboSuppress.bind(this, +1)
+        };
       },
       normState: function() { return { ...insp.Ace.normState.call(this), readyMark: this.readyMark, combo: this.combo }; },
-      comboRetort: function(ms, birth, dir) {
+      comboDecamp: function(dir, ms, spf) {
         
-        this.effects.add({ mark: ms + 500,
-          type: 'spdMult', spdMult: 0.7,
-          fn: (ms1) => {
-            let amt = ((ms1 - ms) / 500) * 300 * spf;
-            this.y -= amt;
-            this.x += amt * dir;
-          }
+        let origX = this.x;
+        this.invulnMark = Math.max(this.invulnMark, ms + Insp.decampDurationMs);
+        this.effects.add({ mark: ms + Insp.decampDurationMs,
+          type: 'spdMult', spdMult: Insp.decampSpdMult,
+          fn: (inst, { spf }) => inst.x += Insp.decampSpd * spf * dir
         });
-        this.effects.add({ mark: ms + 100, endFn: (ms, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: this, x: this.x - (dir * n * 16), y: (this.y + 24) - (16 * n), ang: dir * -0.125, spd: 650, dmg: 1, r: 5, lifespanMs: 450
-          })));
-        }});
-        this.effects.add({ mark: ms + 250, endFn: (ms, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: this, x: this.x - (dir * n * 16), y: (this.y + 24) - (16 * n), ang: dir * -0.125, spd: 650, dmg: 1, r: 5, lifespanMs: 300
-          })));
-        }});
-        this.effects.add({ mark: ms + 350, endFn: (ms, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: this, x: this.x - dir * n * 16, y: this.y + 24 - 16 * n, ang: dir * -0.125, spd: 650, dmg: 1, r: 5, lifespanMs: 200
-          })));
-        }});
+        return {
+          delayMs: Insp.decampDelayMs,
+          birth: [ SalvoLadKaboom({ salvoLad: this, x: origX, y: this.y, durationMs: 1600 }) ]
+        };
         
       },
-      comboDiveBomb: function(ms, birth, dir) {
+      comboDiveBomb: function(dir, ms, spf) {
         
-        this.effects.add({ mark: ms + 500,
-          type: 'spdMult', spdMult: 0.7,
-          fn: (ms1) => {
-            this.y += ((ms1 - ms) / 500) * 550 * spf;
-            this.x += dir * 150 * spf;
+        this.effects.add({ mark: ms + Insp.diveBombDiveMs,
+          type: 'spdMult', spdMult: 0.45,
+          fn: (inst, { ms: ms1, spf }) => {
+            inst.y += ((ms1 - ms) / 500) * 410 * spf;
+            inst.x += dir * 140 * spf;
           },
-          endFn: (ms1, { birth }) => {
-            let missileArgs = { ms, salvoLad: this, x: this.x, y: this.y };
+          endFn: (inst, { ms }, { birth }) => {
+            let missileArgs = { ms, salvoLad: inst, x: inst.x, y: inst.y };
             birth.gain([
-              SalvoLadMissile({ ...missileArgs, ang: dir * 0.113, spd: 120, lifespanMs: 1320, kaboomArgs: { dps: 4.25, duration: 1900 } }),
-              SalvoLadMissile({ ...missileArgs, ang: dir * 0.085, spd: 138, lifespanMs: 1400, kaboomArgs: { dps: 4.25, duration: 2300 } }),
-              SalvoLadMissile({ ...missileArgs, ang: dir * 0.039, spd: 125, lifespanMs: 1350, kaboomArgs: { dps: 4.25, duration: 2150 } })
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, spd: 120, lifespanMs: 1320, kaboomArgs: { dps: 4.75, duration: 1900 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, spd: 138, lifespanMs: 1400, kaboomArgs: { dps: 4.75, duration: 2300 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, spd: 125, lifespanMs: 1350, kaboomArgs: { dps: 4.75, duration: 2150 } })
             ])
           }
         });
+        return { birth: [], delayMs: Insp.diveBombDelayMs };
         
       },
-      comboSpeedBoost: function(ms, birth) {
-        this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 1.3 });
+      comboMissiles: function(dir, ms, spf) {
+        
+        let args = { owner: this, w: 6, h: 16, spd: 700 };
+        for (let i = 0; i < 3; i++) {
+          this.effects.add({ mark: ms + 50 + i * 50, endFn: (inst, { ms }, { birth }) => birth.gain([
+            SalvoLadMissile({ ms, ...args, x: inst.x, y: inst.y, horzSpd: (50 + 100 * (i + 1)) * dir, horzMs: 400, delayMs: 120, dmg: 1, pDmg: [0.2,2.5] })
+          ])});
+        }
+        return { delayMs: Insp.missileDelayMs };
+        
+      },
+      comboSuppress: function(dir, ms, spf) {
+        
+        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lifespanMs: 600, spd: 320, acl: 700 };
+        for (let i = 0; i < 12; i++) {
+          
+          let alt = i % 3;
+          this.effects.add({ mark: ms + 100 + i * alt * 22, endFn: (inst, { ms }, { birth }) => {
+            let bullet = DirectedBullet({ ms, owner: inst, ...args,
+              x: inst.x + dir * alt * 6, y: inst.y + 24 - 12 * alt
+            });
+            birth.gain([ bullet ]);
+          }});
+          
+        }
+        
+        return { birth: [], delayMs: Insp.suppressDelayMs };
+        
+        this.effects.add({ mark: ms + 100, endFn: (inst, { ms }, { birth }) => {
+          birth.gain(Array.fill(3, n => DirectedBullet({
+            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 400
+          })));
+        }});
+        this.effects.add({ mark: ms + 250, endFn: (inst, { ms }, { birth }) => {
+          birth.gain(Array.fill(3, n => DirectedBullet({
+            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 310
+          })));
+        }});
+        this.effects.add({ mark: ms + 350, endFn: (inst, { ms }, { birth }) => {
+          birth.gain(Array.fill(3, n => DirectedBullet({
+            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 230
+          })));
+        }});
+        
+        return { birth: [], delayMs: Insp.suppressDelayMs };
+        
       },
       updateAndGetResult: function(entity, updData) {
         
         let { ms, spf, victory } = updData;
-        if (victory) return insp.Ace.updateAndGetResult.call(this, entity, updData);
+        let supResult = insp.Ace.updateAndGetResult.call(this, entity, updData);
+        if (victory) return supResult;
         
         let birth = [];
         
-        if (ms >= this.readyMark) {
+        if (this.readyMark && ms >= this.readyMark) { this.readyMark = null; this.combo = ''; }
+        
+        if (!this.readyMark) {
           
           if (entity.controls.a1) {
             if (!this.a1Up && !entity.controls.a2) { this.combo += '<'; this.a1Up = true; }
@@ -936,30 +1434,17 @@ U.buildRoom({
             this.a2Up = false;
           }
           
-          let combos = {
-            '<<<': () => this.comboRetort(ms, birth, -1),
-            '>>>': () => this.comboRetort(ms, birth, +1),
-            '<>>': () => this.comboDiveBomb(ms, birth, -1),
-            '><<': () => this.comboDiveBomb(ms, birth, +1),
-            '<<>': () => this.comboSpeedBoost(ms, birth),
-            '>><': () => {},
-            '<><<>': () => {},
-            '><>><': () => {}
-          };
-          
-          if (combos.has(this.combo)) {
-            combos[this.combo]();
-            this.combo = '';
-            this.readyMark = ms + 750;
+          if (this.comboMapping.has(this.combo)) {
+            let { birth=[], delayMs } = this.comboMapping[this.combo](ms, spf);
+            this.readyMark = ms + delayMs;
+            supResult.birth.gain(birth);
           } else if (this.combo.length >= 5) {
-            this.combo = '';
-            this.effects.add({ mark: ms + 1000, type: 'spdMult', spdMult: 0.45 });
-            this.readyMark = ms + 1000;
+            this.effects.add({ mark: ms + Insp.comboPunishDelayMs, type: 'spdMult', spdMult: 0.45 });
+            this.readyMark = ms + Insp.comboDelayMs;
           }
           
         }
         
-        let supResult = insp.Ace.updateAndGetResult.call(this, entity, updData);
         supResult.birth.gain(birth);
         return supResult;
         
@@ -967,7 +1452,7 @@ U.buildRoom({
     })});
     
     // Good guy util
-    let JoustManOrb = U.inspire({ name: 'JoustManOrb', insps: { DirectedBullet }, methods: (insp, Insp) => ({
+    let JoustManBullet = U.inspire({ name: 'JoustManBullet', insps: { DirectedBullet }, methods: (insp, Insp) => ({
       $render: (draw, game, { x, y, r, team }) => {
         draw.circ(x, y, r,       { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
@@ -990,7 +1475,7 @@ U.buildRoom({
       },
       getTeam: function() { return this.joustMan.getTeam(); },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, { spf }) {
         if (!U.isInspiredBy(rep, Mortal)) return;
         let dmg = Math.min(rep.hp, this.dps * spf);
         rep.hp -= dmg;
@@ -1023,7 +1508,7 @@ U.buildRoom({
       },
       getTeam: function() { return this.joustMan.getTeam(); },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, { spf }) {
         if (!U.isInspiredBy(rep, Mortal)) return;
         let dmg = Math.min(rep.hp, Insp.dps * spf);
         rep.hp -= dmg;
@@ -1055,7 +1540,7 @@ U.buildRoom({
       },
       getTeam: function() { return this.slamKid.getTeam(); },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, updData) {
         if (!U.isInspiredBy(rep, Mortal)) return;
         let dmg = Math.min(rep.hp, Insp.dmg);
         rep.hp -= dmg;
@@ -1075,9 +1560,9 @@ U.buildRoom({
       }
       
     })});
-    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { Geom, Mover }, methods: (insp, Insp) => ({
+    let SalvoLadDumbBomb = U.inspire({ name: 'SalvoLadDumbBomb', insps: { Geom, Mover }, methods: (insp, Insp) => ({
       
-      $r: 16,
+      $r: 13,
       $render: (draw, game, { x, y }) => {
         draw.circ(x, y, Insp.r, { fillStyle: '#ff0000', strokeStyle: '#ff8400' });
       },
@@ -1122,7 +1607,7 @@ U.buildRoom({
       getTeam: function() { return this.salvoLad.getTeam(); },
       fluxState: function() { return { ...insp.Geom.fluxState.call(this), r: this.r }; },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, { spf }) {
         if (!U.isInspiredBy(rep, Mortal)) return;
         let dmg = Math.min(rep.hp, this.dps * spf);
         rep.hp -= dmg;
@@ -1130,10 +1615,40 @@ U.buildRoom({
       },
       updateAndGetResult: function(entity, { spf, aheadSpd }) {
         this.r += this.sizePerSec * spf;
-        this.y += aheadSpd * spf;
+        this.y += (aheadSpd * 0.5) * spf;
         return { form: 'circle', x: this.x, y: this.y, r: this.r, birth: [] };
       },
       isAlive: function({ ms }) { return (ms - this.ms) < this.durationMs; }
+      
+    })});
+    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { SimpleBullet }, methods: (insp, Insp) => ({
+      
+      $render: (draw, game, args) => {
+        Insp.parents.SimpleBullet.render(draw, game, args);
+      },
+      
+      init: function({ horzSpd, backSpd=0, horzMs, delayMs, ...args }) {
+        insp.SimpleBullet.init.call(this, args);
+        this.horzSpd = horzSpd;
+        this.horzMs = horzMs;
+        this.delayMs = delayMs;
+        this.backSpd = backSpd;
+      },
+      updateAndGetResult: function(entity, updData) {
+        
+        let dur = updData.ms - this.ms;
+        if (dur < this.horzMs) {
+          this.x += this.horzSpd * updData.spf;
+          this.y += (updData.aheadSpd - this.backSpd) * updData.spf;
+          return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
+        } else if (dur < (this.horzMs + this.delayMs)) {
+          this.y += updData.aheadSpd * updData.spf;
+          return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
+        }
+        
+        return insp.SimpleBullet.updateAndGetResult.call(this, entity, updData);
+        
+      }
       
     })});
     
@@ -1156,11 +1671,10 @@ U.buildRoom({
         this.scoreDamage = 0;
       },
       canCollide: function() { return true; },
-      collide: function(rep) {
+      collide: function(rep, updData) {
         if (U.isInspiredBy(rep, Ace)) {
           let enemyHp = this.hp;
-          this.hp -= rep.hp;
-          rep.hp -= enemyHp;
+          rep.hp -= 1; // Pretty much kills the Ace instantly
         }
       },
       getTeam: function() { return -1; },
@@ -1175,28 +1689,33 @@ U.buildRoom({
       $bound: { form: 'circle', r: 20 },
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinder' }),
-      $render: (draw, game, { x, y, spd }) => {
-        Insp.parents.Enemy.render(draw, game, { imageKeep: Insp.imageKeep, x, y,
-          w: Insp.bound.r << 1,
-          rot: (spd < 0) ? Math.PI : 0
-        });
+      $render: (draw, game, { type, imageKeep=Insp.imageKeep, ext=Insp.bound.r << 1, ms, y, spd, ...args }) => {
+        let x = Insp.getXForDur(game.val.ms - ms, args);
+        Insp.parents.Enemy.render(draw, game, { imageKeep, x, y, w: ext, rot: (spd < 0) ? Math.PI : 0 });
+      },
+      $getXForDur: (dur, { initX, phase, swingHz, swingAmt }) => {
+        return initX + Math.sin(phase + dur * 0.002 * Math.PI * swingHz) * swingAmt;
       },
       
       init: function({ spd=100, swingHz=2, swingAmt=100, numSwings=0, phase=0, ...args }) {
         if (swingHz < 0) throw Error(`Negative "swingHz" param; use negative "swingAmt" instead`);
         insp.Enemy.init.call(this, args);
         this.spd = spd;
+        this.phase = phase * Math.PI * 2;
         this.swingHz = swingHz;
         this.swingAmt = swingAmt;
         this.numSwings = numSwings;
-        this.phase = phase * Math.PI * 2;
         this.initX = this.x;
       },
-      permState: function() { return { ...insp.Enemy.permState.call(this), spd: this.spd }; },
+      permState: function() { return {
+        ...insp.Enemy.permState.call(this),
+        initX: this.initX, phase: this.phase, swingHz: this.swingHz, swingAmt: this.swingAmt, spd: this.spd
+      };},
+      fluxState: function() { return { y: this.y }; },
       updateAndGetResult: function(entity, { ms, spf, aheadSpd }) {
         this.y += (aheadSpd + this.spd) * spf;
-        this.x = this.initX + Math.sin(this.phase + (ms - this.ms) * 0.002 * Math.PI * this.swingHz) * this.swingAmt;
-        return { x: this.x, y: this.y, ...Insp.bound };
+        this.x = Insp.getXForDur(ms - this.ms, this);
+        return { x: this.x, y: this.y, ...Insp.bound, birth: [] };
       },
       isAlive: function(updData) {
         if (!insp.Enemy.isAlive.call(this, updData)) return false;
@@ -1208,6 +1727,62 @@ U.buildRoom({
           && (this.spd > 0 || this.y > bounds.total.b - 30)
           && (this.spd < 0 || this.y < bounds.total.t + 30);
       }
+      
+    })});
+    let Weaver = U.inspire({ name: 'Weaver', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
+      
+      $bound: { form: 'circle', r: 34 }, $hp: 8,
+      
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWeaver' }),
+      $render: (draw, game, vals) => {
+        Insp.parents.Winder.render(draw, game, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
+      },
+      
+      ...insp.Winder.slice('init', 'permState', 'fluxState', 'isAlive', 'updateAndGetResult'),
+      getMaxHp: function() { return Insp.hp; }
+      
+    })});
+    let Furler = U.inspire({ name: 'Furler', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
+      
+      $bound: { form: 'circle', r: 28 }, $hp: 4,
+      
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyFurler' }),
+      $render: (draw, game, vals) => {
+        Insp.parents.Winder.render(draw, game, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
+      },
+      
+      init: function({ shootDelayMs, shootDelayInitMs=shootDelayMs, bulletArgs={}, ...args }) {
+        insp.Winder.init.call(this, args);
+        this.shootDelayMs = shootDelayMs;
+        this.bulletArgs = bulletArgs;
+        this.shootMark = this.ms + shootDelayInitMs;
+      },
+      ...insp.Winder.slice('permState', 'fluxState', 'isAlive'),
+      getMaxHp: function() { return Insp.hp; },
+      updateAndGetResult: function(entity, updData) {
+        
+        let supUpd = insp.Winder.updateAndGetResult.call(this, entity, updData);
+        
+        let { ms } = updData;
+        if (ms >= this.shootMark) {
+          this.shootMark += this.shootDelayMs;
+          let bulletOff = Insp.bound.r * 0.5;
+          supUpd.birth.gain([
+            SimpleBullet({ ms, owner: this, x: this.x - bulletOff, y: this.y,
+              spd: -380, dmg: 1, w: 4, h: 20, lifespanMs: 3000,
+              ...this.bulletArgs
+            }),
+            SimpleBullet({ ms, owner: this, x: this.x + bulletOff, y: this.y,
+              spd: -380, dmg: 1, w: 4, h: 20, lifespanMs: 3000,
+              ...this.bulletArgs
+            })
+          ]);
+        }
+        
+        return supUpd;
+        
+      },
+      isAlive: insp.Winder.isAlive
       
     })});
     let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -1435,61 +2010,6 @@ U.buildRoom({
       
     })});
     
-    // TERRAIN
-    let TileBg = U.inspire({ name: 'TileBg', insps: { Geom }, methods: (insp, Insp) => ({
-      
-      $imageKeeps: {
-        savanna: foundation.getKeep('urlResource', { path: 'fly.sprite.bgSavanna' }),
-        savannaToPlains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgSavannaToPlains' }),
-        plains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlains' }),
-        plainsToSavanna: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlainsToSavanna' })
-      },
-      $renderPriority: ({ priority }) => priority,
-      $render: (draw, game, { x, y, w, h, tw, th, def }) => {
-        
-        //w = 400;
-        //draw.rectCen(x, -y, w, h, { fillStyle: 'rgba(0, 0, 0, 0.1)', strokeStyle: '#000000', lineWidth: 10 });
-        
-        let ind = 0;
-        let xPermOff = x + (tw >> 1) - (w >> 1);
-        let yPermOff = y + (th >> 1) - (h >> 1);
-        for (let yOff = 0; yOff < h; yOff += th) { for (let xOff = 0; xOff < w; xOff += tw) {
-          if (def[ind]) draw.imageCen(Insp.imageKeeps[def[ind]], xPermOff + xOff, yPermOff + yOff, tw, th);
-          ind++;
-        }}
-        
-      },
-      
-      init: function({ relDist=0, x=0, y=0, w, h, tw=100, th=100, priority=1, tileDef, ...args }) {
-        insp.Geom.init.call(this, args);
-        this.w = w; this.hw = w >> 1;
-        this.h = h; this.hh = h >> 1;
-        this.tw = tw; this.th = th;
-        
-        this.x = x; this.y = relDist + y + this.hh + cnst.offscreenDist;
-        this.tileDef = tileDef;
-        this.priority = priority;
-        
-      },
-      canCollide: function() { return false; },
-      fluxState: function() { return {}; }, // Nothing changes about TileBg! (TODO: Should shift up to cover every so often, making "y" the only flux (or even norm) param)
-      permState: function() { return {
-        ...insp.Geom.permState.call(this),
-        priority: this.priority,
-        x: this.x, y: this.y, w: this.w, h: this.h, tw: this.tw, th: this.th, def: this.tileDef
-      };},
-      isAlive: function({ bound: total }) {
-        
-        let screenBot = total.b; //game.val.y - cnst.offscreenDist;
-        let topY = this.y + this.hh;
-        return screenBot <= topY;
-        
-      },
-      updateAndGetResult: function(entity, updData) {
-        return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
-      }
-    })});
-    
     // LEVEL
     let Level = U.inspire({ name: 'Level', methods: (insp, Insp) => ({
       
@@ -1590,7 +2110,7 @@ U.buildRoom({
             // Skip collisions involving dead Models
             if (!mod1.isAlive(updateData) || !mod2.isAlive(updateData)) continue;
             
-            if (collisionUtil.doCollide(colEnt1, colEnt2)) { mod1.collide(mod2); mod2.collide(mod1); }
+            if (collisionUtil.doCollide(colEnt1, colEnt2)) { mod1.collide(mod2, updateData); mod2.collide(mod1, updateData); }
             
             // There should be "collideHead" and "collideTail".
             // The head is the "instigating" collider. The priority
@@ -1671,9 +2191,13 @@ U.buildRoom({
             if (game.val.lives > 0) {
               game.modVal(v => (v.lives--, v));
               setTimeout(() => {
+                let { player: pb } = Level.getGameBounds(game);
                 let AceCls = entity.deadRep.constructor;
                 let { name, scoreDamage, scoreDeath } = entity.deadRep;
-                entity.rep = AceCls({ name, x: 0, y: game.val.y - 200 /*, stats: entity.deadRep.stats */ });
+                let x = pb.x + (Math.random() - 0.5) * 2 * 40;
+                
+                let y = pb.b + pb.h * 0.3;
+                entity.rep = AceCls({ name, x, y /*, stats: entity.deadRep.stats */ });
                 entity.rep.scoreDamage = scoreDamage;
                 entity.rep.scoreDeath = scoreDeath;
                 entity.deadRep = null;
@@ -1714,7 +2238,7 @@ U.buildRoom({
             }
           }
           
-          this.resolveTimeout = setTimeout(() => game.dry(), 1000);
+          this.resolveTimeout = setTimeout(() => game.dry(), 2500);
           
         }
         
@@ -1724,7 +2248,6 @@ U.buildRoom({
           let nextMomentDef = this.momentsDef.shift() || null;
           
           console.log(`Began new moment: ${nextMomentDef.name} (${nextMomentDef.type})`);
-          console.log(`PRV top: ${this.currentMoment && this.currentMoment.maxY}`);
           
           let prevMoment = this.currentMoment;
           let MomentCls = mdlClasses[nextMomentDef.type];
@@ -1738,21 +2261,27 @@ U.buildRoom({
           let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
           tickBirth.gain([ this.currentMoment, ...birth ]);
           
-          console.log(`NEW bot: ${this.currentMoment.minY}`);
-          
         }
         
-        // Step 7: Create an Entity for each birth this tick
-        for (let newRep of tickBirth) {
-          let entity = this.flyHut.createRec('fly.entity', [ game ], { ...newRep.permState(), ...newRep.normState() });
-          entity.rep = newRep;
-        }
-        
-        // Step 8: Check victory condition; no Moments remaining
+        // Step 7: Check victory condition; no Moments remaining
         let canWin = true;
         if (canWin && (!this.currentMoment || !this.currentMoment.isStanding(updateData)) && !this.resolveTimeout) {
           
+          // Mark that victory has occurred
           game.victory = true;
+          
+          // Set up a Moment to fill in terrain as the victory occurs
+          let prevMoment = this.currentMoment;
+          this.currentMoment = MomentAhead({
+            name: 'victory', terrain: prevMoment && prevMoment.terrain, distance: 10000,
+            spd: (prevMoment ? prevMoment.spd : 100) * 2,
+            modelsDef: []
+          });
+          this.currentMoment.applyGameEffects(game);
+          bounds.gain(Level.getGameBounds(game));
+          let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
+          tickBirth.gain([ this.currentMoment, ...birth ]);
+          
           this.resolveTimeout = setTimeout(() => {
             // Transfer Model stats to fly.player Records
             for (let gp of gamePlayers) {
@@ -1769,6 +2298,12 @@ U.buildRoom({
           
         }
         
+        // Step 8: Create an Entity for each birth this tick
+        for (let newRep of tickBirth) {
+          let entity = this.flyHut.createRec('fly.entity', [ game ], { ...newRep.permState(), ...newRep.normState() });
+          entity.rep = newRep;
+        }
+        
         // Step 9: Do global updates; e.g., the Game advances
         game.modVal(v => (v.ms = ms, v.y += v.aheadSpd * spf, v));
         
@@ -1782,20 +2317,58 @@ U.buildRoom({
         plains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlains' }),
         plainsToSavanna: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlainsToSavanna' })
       },
+      $tileExt: 250,
+      $renderPriority: () => 1,
+      $render: (draw, game, { bounds, minY, maxY, terrain }) => {
+        
+        if (!terrain) return;
+        
+        let tExt = Insp.tileExt;
+        let imgKeep = Insp.imageKeeps[terrain];
+        if (!imgKeep) throw Error(`Invalid terrain: ${terrain}`);
+        
+        let endMaxY = Math.min(maxY, bounds.total.t);
+        
+        let y = (minY > bounds.total.b)
+          // Bottom of this Moment is visible; simply start from it!
+          ? minY
+          // Bottom of the Moment is cut off; subtract the cut amount
+          : (bounds.total.b - ((bounds.total.b - minY) % Insp.tileExt));
+        
+        // If y lands right on `endMaxY` (not accounting for rounding
+        // errors) we stop drawing. So reduce `endMaxY` a tiny bit!
+        let x;
+        while (y < (endMaxY - 0.0001)) {
+          
+          x = 0;
+          while (x > bounds.total.l) { draw.image(imgKeep, x - tExt, y, tExt, tExt); x -= tExt; }
+          x = 0;
+          while (x < bounds.total.r) { draw.image(imgKeep, x, y, tExt, tExt); x += tExt; }
+          y += tExt;
+          
+        }
+        
+      },
       
       init: function({ prevMoment=null, gameBounds, name, modelsDef, terrain=null }) {
         this.name = name;
         this.modelsDef = modelsDef;
         this.terrain = terrain;
       },
-      permState: function() { return { ...insp.Entity.permState.call(this), name: this.name, terrain: this.terrain }; },
+      getMinY: C.noFn('getMinY'),
+      getMaxY: C.noFn('getMaxY'),
+      permState: function() { return {
+        ...insp.Entity.permState.call(this),
+        minY: this.getMinY(), maxY: this.getMaxY(), terrain: this.terrain
+      };},
       applyGameEffects: function(game) {
         // E.g. set `game.val.aheadSpd` to a new value
       },
       setupAndGetResult: function(prevMoment, { ms, aheadDist }) {
         return { birth: this.modelsDef.map(({ type, ...modelDef }) => {
           let ModelCls = mdlClasses[type];
-          return ModelCls({ ms, relDist: aheadDist, ...modelDef });
+          if (!ModelCls) throw Error(`Invalid type: "${type}"`);
+          return ModelCls({ ms, relDist: this.getMinY(), aheadDist, ...modelDef });
         })};
       },
       updateAndGetResult: C.noFn('updateAndGetResult'),
@@ -1804,68 +2377,8 @@ U.buildRoom({
     })});
     let MomentAhead = U.inspire({ name: 'MomentAhead', insps: { Moment }, methods: (insp, Insp) => ({
       
-      $tileExt: 250,
-      $defaultBounds: {
-        total: { w: 800, h: 1000 }, // The total bounds are always perfectly centered
-        player: { x: 0, y: -100, w: 780, h: 780 } // Player bounds are positioned relative to total bounds
-      },
-      $renderPriority: () => 1,
-      $render: (draw, game, { name, bounds, minY, maxY, terrain }) => {
-        
-        if (terrain) {
-          
-          let imgKeep = Insp.parents.Moment.imageKeeps[terrain];
-          if (!imgKeep) throw Error(`Invalid terrain: ${terrain}`);
-          let centerX = 0;
-          let cnt = 0;
-          let cntY = 0;
-          let xl;
-          
-          let startMinY = Math.max(minY, bounds.total.b);
-          let endMaxY = Math.min(maxY, bounds.total.t);
-          
-          let numHorz = Math.floor((endMaxY - startMinY) / Insp.tileExt) + 1;
-          let y = (minY > bounds.total.b)
-            // Bottom of this Moment is visible; simply start from it!
-            ? minY
-            // Bottom of the Moment is cut off; subtract the cut amount
-            : bounds.total.b - ((bounds.total.b - minY) % Insp.tileExt);
-          
-          // if (minY <= bounds.total.b) {
-          //   console.log('AHHH??', ((bounds.total.b - minY) % Insp.tileExt));
-          // }
-          
-          for (let i = 0; i < numHorz; i++) {
-            
-            xl = 0;
-            while (xl > bounds.total.l) {
-              draw.image(imgKeep, xl - Insp.tileExt, y, Insp.tileExt, Insp.tileExt, 0.7);
-              //draw.rect(xl - Insp.tileExt, y, Insp.tileExt, Insp.tileExt, { strokeStyle: 'rgba(255, 0, 0, 0.6)' });
-              cnt++;
-              xl -= Insp.tileExt;
-            }
-            xl = 0;
-            while (xl < bounds.total.r) {
-              draw.image(imgKeep, xl, y, Insp.tileExt, Insp.tileExt, 0.7);
-              //draw.rect(xl, y, Insp.tileExt, Insp.tileExt, { strokeStyle: 'rgba(255, 0, 0, 0.6)' });
-              cnt++;
-              xl += Insp.tileExt;
-            }
-            
-            y += Insp.tileExt;
-            cntY++;
-            
-          }
-          
-          if (Math.random() < 0.1)
-            console.log(`${name} rendered ${cnt} tiles (${cntY} vert)`);
-          
-        }
-        
-        // draw.rectCen(0, minY, 150, 10, { fillStyle: '#0000ff' });
-        // draw.rectCen(0, maxY, 200, 10, { fillStyle: '#ff0000' });
-        // draw.rect(-5 + minY * 0.01, minY, 10, maxY - minY, { fillStyle: '#000000' });
-      },
+      $render: Insp.parents.Moment.render,
+      $renderPriority: Insp.parents.Moment.renderPriority,
       
       init: function({ distance, bounds=null, spd=100, visiMult=1, ...args }) {
         
@@ -1884,11 +2397,12 @@ U.buildRoom({
         
         // Total bounds are always horizontally centered, and shifted
         // vertically relative to the aheadDist
-        this.bounds = bounds || Insp.defaultBounds;
+        this.bounds = bounds;
         
       },
+      getMinY: function() { return this.minY; },
+      getMaxY: function() { return this.maxY; },
       canCollide: function() { return false; },
-      permState: function() { return { ...insp.Moment.permState.call(this), minY: this.minY, maxY: this.maxY }; },
       applyGameEffects: function(game) {
         
         // TODO: Really should transition from previous bounds to new
@@ -1897,18 +2411,15 @@ U.buildRoom({
         // means that the Ace immediately snaps into the new bounds,
         // which is very janky
         
-        let { total, player } = this.bounds;
-        game.modVal(v => v.gain({
-          
-          tw: total.w, th: total.h,
-          
-          px: player.x, py: player.y, pw: player.w, ph: player.h,
-          
-          aheadSpd: this.spd,
-          
-          visiMult: this.visiMult,
-          
-        }));
+        if (this.bounds) {
+          let { total, player } = this.bounds;
+          game.modVal(v => v.gain({
+            tw: total.w, th: total.h,
+            px: player.x, py: player.y, pw: player.w, ph: player.h,
+          }));
+        }
+        
+        game.modVal(v => v.gain({ aheadSpd: this.spd, visiMult: this.visiMult }));
         
       },
       setupAndGetResult: function(prevMoment, updData) {
@@ -1936,23 +2447,10 @@ U.buildRoom({
     
     let mdlClasses = {};
     mdlClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
-    mdlClasses.gain({ JoustManOrb, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadMissile, SalvoLadKaboom });
-    mdlClasses.gain({ Winder, WinderMom, WandererMom, Drifter, Wanderer });
+    mdlClasses.gain({ JoustManBullet, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile });
+    mdlClasses.gain({ Winder, Weaver, Furler, WinderMom, WandererMom, Drifter, Wanderer });
     mdlClasses.gain({ SimpleBullet, DirectedBullet });
-    mdlClasses.gain({ TileBg });
     mdlClasses.gain({ Level, Moment, MomentAhead });
-    
-    let levels = {
-      quietMeadow: {
-        difficulty: 0,
-        moments: [
-          { name: 't1', type: 'MomentAhead', terrain: 'plains',  distance: 500, spd: 35, bounds: { total: { w: 520, h: 500 }, player: { x: 0, y: 0, w: 200, h: 200  } }, modelsDef: [] },
-          { name: 't2', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 35, bounds: { total: { w: 500, h: 250 }, player: { x: 0, y: 0, w: 100, h: 100  } }, modelsDef: [] },
-          { name: 't3', type: 'MomentAhead', terrain: 'plains',  distance: 500, spd: 35, bounds: { total: { w: 500, h: 1000 }, player: { x: 0, y: 0, w: 200, h: 200  } }, modelsDef: [] },
-          { name: 't4', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 35, bounds: { total: { w: 310, h: 500 }, player: { x: 0, y: 0, w: 200, h: 200  } }, modelsDef: [] }
-        ]
-      }
-    };
     
     let lobbyModelOptions = {
       joust: { name: 'Joust Man', size: [16,16], Cls: JoustMan },
@@ -2073,16 +2571,6 @@ U.buildRoom({
       
       let testLobby = null;
       let testGame = null;
-      let doTesting = false;
-      // TEST::doTesting = true;
-      if (doTesting) {
-        testLobby = flyHut.createRec('fly.lobby', [ fly ], { id: 'TEST', allReadyMs: null });
-        testGame = flyHut.createRec('fly.game', [ fly, testLobby ], {
-          lives: 100, ms: foundation.getMs(), aheadSpd: initialAheadSpd
-          // TODO: More attributes!!
-        });
-        testGame.victory = false;
-      }
       /// =ABOVE}
       
       let rootScp = RecScope(flyHut, 'fly.fly', async (fly, dep) => {
@@ -2168,25 +2656,65 @@ U.buildRoom({
           // TODO: The following Error produces a weird "cannot read property 'tell'..." error:
           // throw Error('HAH');
           
-          let doTest = false;
-          // TEST::doTest = true;
-          if (!doTest || hut.uid.length !==3) return; // Accept the 3-letter uids from quadTest
-          
-          player.modVal(v => (v.name = 'testy', v));
-          let lobbyPlayer = flyHut.createRec('fly.lobbyPlayer', [ testLobby, player ], { model: null });
-          let gamePlayer = flyHut.createRec('fly.gamePlayer', [ testGame, player ], { deaths: 0, damage: 0 });
-          
-          
-          let rep = mdlClasses['SlamKid']({ name: 'testy' });
-          rep.y = testGame.val.y;
-          let aceEntity = flyHut.createRec('fly.entity', [ testGame ], { ...rep.permState(), ...rep.normState() });
-          console.log('ENTITY:', aceEntity.val);
-          aceEntity.controls = { x: 0, y: 0, a1: false, a2: false };
-          aceEntity.rep = rep;
-          aceEntity.deadRep = null;
-          
-          // Connect this Entity to the GamePlayer
-          let gpe = flyHut.createRec('fly.gamePlayerEntity', [ gamePlayer, aceEntity ]);
+          if (testing && hut.uid.length === 3) setTimeout(() => {
+            
+            if (!testLobby) {
+              
+              // Corrupt the level definition
+              let { levelName, momentName } = testing;
+              if (momentName) {
+                let levelDef = levels[levelName];
+                let [ firstMoment, ind ] = levelDef.moments.find(m => m.name === momentName);
+                let testMoments = [
+                  { name: 'test', type: 'MomentAhead', terrain: 'plains',
+                    distance: firstMoment.bounds.total.h, spd: 200,
+                    bounds: firstMoment.bounds,
+                    modelsDef: []
+                  },
+                  { name: 'testTrn', type: 'MomentAhead', terrain: 'plainsToSavanna',
+                    distance: 250, spd: 200,
+                    bounds: firstMoment.bounds,
+                    modelsDef: []
+                  }
+                ];
+                levelDef.moments = [ ...testMoments, ...levelDef.moments.slice(ind) ];
+              }
+              
+              testLobby = flyHut.createRec('fly.lobby', [ fly ], { id: 'TEST', allReadyMs: null });
+              testGame = flyHut.createRec('fly.game', [ fly, testLobby ], {
+                
+                ms: foundation.getMs(), lives: 100, aheadSpd: 0, level: levelName,
+                x: 0, y: 0,
+                
+                // Total dimensions
+                tw: 200, th: 200,
+                
+                // Player dimensions
+                px: 0, py: 0, pw: 200, ph: 200,
+                
+                // See a percentage of the total dimensions visible
+                visiMult: 1
+                
+              });
+              testGame.victory = false;
+              
+            }
+            
+            player.modVal(v => (v.name = 'testy', v));
+            let lobbyPlayer = flyHut.createRec('fly.lobbyPlayer', [ testLobby, player ], { model: null });
+            let gamePlayer = flyHut.createRec('fly.gamePlayer', [ testGame, player ], { deaths: 0, damage: 0 });
+            
+            let rep = mdlClasses[testing.ace]({ name: 'testy' });
+            rep.y = testGame.val.y;
+            let aceEntity = flyHut.createRec('fly.entity', [ testGame ], { ...rep.permState(), ...rep.normState() });
+            aceEntity.controls = { x: 0, y: 0, a1: false, a2: false };
+            aceEntity.rep = rep;
+            aceEntity.deadRep = null;
+            
+            // Connect this Entity to the GamePlayer
+            flyHut.createRec('fly.gamePlayerEntity', [ gamePlayer, aceEntity ]);
+            
+          }, 500);
           
         });
         
@@ -2273,9 +2801,7 @@ U.buildRoom({
             let timeout = setTimeout(() => {
               let game = flyHut.createRec('fly.game', [ fly, lobby ], {
                 
-                ms: foundation.getMs(),
-                lives: 5,
-                aheadSpd: 0,
+                ms: foundation.getMs(), lives: 5, aheadSpd: 0, level: 'killPlains',
                 x: 0, y: 0,
                 
                 // Total dimensions
@@ -2347,14 +2873,10 @@ U.buildRoom({
         // Game
         dep.scp(fly, 'fly.game', (game, dep) => {
           
-          let levelName = 'quietMeadow';
-          let levelDef = levels[levelName];
-          
-          //let levelName = 'plains';
-          //let moments = levels[levelName].moments.toArr(v => v);
+          let levelDef = levels[game.val.level];
           
           let spf = 1 / fps;  // Seconds per server-side tick
-          let level = Level({ flyHut, game, name: levelName, momentsDef: levelDef.moments });
+          let level = Level({ flyHut, game, name: game.val.level, momentsDef: levelDef.moments });
           let interval = setInterval(() => level.update(foundation.getMs(), spf), spf * 1000);
           dep(Drop(null, () => clearInterval(interval)));
           
@@ -2604,8 +3126,8 @@ U.buildRoom({
               renders = renders.sort((v1, v2) => v2.priority - v1.priority);
               for (let { render: [ Cls, vals ] } of renders) Cls.render(draw, game, { bounds, ...vals });
               
-              draw.rectCen(tb.x, tb.y, tb.w - 10, tb.h - 10, { strokeStyle: 'rgba(0, 255, 0, 0.05)', lineWidth: 10 });
-              draw.rectCen(pb.x, pb.y, pb.w - 10, pb.h - 10, { strokeStyle: 'rgba(0, 120, 0, 0.05)', lineWidth: 10 });
+              draw.rectCen(tb.x, tb.y, tb.w - 4, tb.h - 4, { strokeStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 4 });
+              draw.rectCen(pb.x, pb.y, pb.w - 4, pb.h - 4, { strokeStyle: 'rgba(0, 120, 0, 0.1)', lineWidth: 4 });
               
             });
             
