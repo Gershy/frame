@@ -172,7 +172,7 @@ Hut at the very bottom runs using a single Reality.
       if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.origArgs, null, 2)}`);
       
     },
-    establishHut: async function(args) { C.notImplemented.call(this); },
+    establishHut: C.noFn('establishHut'),
     parseUrl: function(url) {
       let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
       

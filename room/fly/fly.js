@@ -15,6 +15,7 @@ U.buildRoom({
       distToConsiderEnemyClear: 700
     };
     let util = {
+      paragraph: str => str.split('\n').map(v => v.trim() || C.skip).join(' '),
       fadeAmt: (v1, v2, amt) => v1 * (1 - amt) + v2 * amt,
       fadeVal: (init, amt=0.5) => {
         let fv = {
@@ -109,29 +110,45 @@ U.buildRoom({
       }
     };
     
-    let fps = 40;       // Server-side ticks per second
+    let fps = 40; // Server-side ticks per second
     let gameStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
-    let testing = {
-      levelName: 'killPlains',
-      momentName: 'winder1',
+    let testing = null && {
+      lives: 10,
+      levelName: 'impendingFields',
+      momentName: 'box3',
       ace: 'SalvoLad' //[ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ][Math.floor(Math.random() * 4)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
     
     let levels = {
-      rustlingMeadow: {
-        difficulty: 0,
+      rustlingMeadow: { num: 0, name: 'Rustling Meadow', password: '',
+        desc: util.paragraph(`
+          Soft grass underfoot. Joust Man watches over his fellow Aces. Gun Girl lies back,
+          absorbing sun, Slam Kid devours his sandwich, and a gust of wind tousles Salvo Lad's mane
+          of hair. There is nothing like a picnic with the gang. Suddenly all four perk up. A
+          whining reaches their ears, far off and tiny, like the buzz of wasp wings. "Back in your
+          ships!" blares Joust Man. His eyes narrow as he turns from the sunlit field to his
+          death-delivering fighter jet. Wasps bring stingers. A grim thought runs through his mind:
+          "It Is Happening Again"
+        `),
+        winText: util.paragraph(`
+          "Bogies destroyed!" yells Salvo Lad. "Those ship's markings looked Yemenese!" shouts back
+          Slam Kid over the comms. "But Yemen would never stir up trouble in this region..." Gun
+          Girl has an uneasy note in her voice. Joust Man's eyes narrow. "Squad, it's time we paid
+          a visit to our friend the Governor." His eyes were narrowing further still. Governor
+          Stalbureaux was not likely to take kindly to their V1s1T1NG.
+        `),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'savanna', distance: 1500, spd: 100, 
-            bounds: { total: { w: 160, h: 200 }, player: { x: 0, y: 0, w: 160, h: 200 } },
-            modelsDef: []
-          },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'savanna', distance: 1500, spd: 100, 
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100, 
             bounds: { total: { w: 240, h: 300 }, player: { x: 0, y: 0, w: 240, h: 300 } },
             modelsDef: []
           },
-          { name: 'winder1', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100, 
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100, 
+            bounds: { total: { w: 260, h: 325 }, player: { x: 0, y: 0, w: 260, h: 325 } },
+            modelsDef: []
+          },
+          { name: 'winder1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100, 
             bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
             modelsDef: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 },
@@ -139,16 +156,14 @@ U.buildRoom({
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'winder2', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
-            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+          { name: 'winder2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 },
               { type: 'Winder', x:   0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 }
             ]
           },
-          { name: 'winder3', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
-            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+          { name: 'winder3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -100, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 },
               { type: 'Winder', x:  -50, y: +200, spd: -50, swingHz: 0.07, swingAmt: -50 },
@@ -157,8 +172,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 }
             ]
           },
-          { name: 'winder4', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100, 
-            bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
+          { name: 'winder4', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: +60 },
               { type: 'Winder', x:  -50, y: +200, spd:  -50, swingHz: 0.075, swingAmt: -70 },
@@ -167,7 +181,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: -60 }
             ]
           },
-          { name: 'winder5', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100,
+          { name: 'winder5', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -200, y: 0, spd: -50, swingHz: 0.055, swingAmt: +100 },
@@ -176,7 +190,7 @@ U.buildRoom({
               { type: 'Winder', x: +200, y: 0, spd: -50, swingHz: 0.055, swingAmt: -100 },
             ]
           },
-          { name: 'winder6', type: 'MomentAhead', terrain: 'savanna', distance: 500, spd: 100,
+          { name: 'winder6', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -350, y: +100, spd: -50, swingHz: 0.050, swingAmt: +270 },
@@ -190,7 +204,7 @@ U.buildRoom({
               { type: 'Winder', x: +200, y:  -50, spd: -50, swingHz: 0.050, swingAmt: -180 }
             ]
           },
-          { name: 'winder7', type: 'MomentAhead', terrain: 'savanna', distance: 750, spd: 100,
+          { name: 'winder7', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0.08, swingAmt: +22 },
@@ -214,7 +228,7 @@ U.buildRoom({
               { type: 'Winder', x: +90, y: +690, spd: -150, swingHz: 0.08, swingAmt: -22 }
             ]
           },
-          { name: 'winder8', type: 'MomentAhead', terrain: 'savanna', distance: 750, spd: 100,
+          { name: 'winder8', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -120, y: +100, spd: -185, swingHz: 0.12, swingAmt: +22 },
@@ -238,7 +252,7 @@ U.buildRoom({
               { type: 'Winder', x: +90, y: +690, spd: -185, swingHz: 0.12, swingAmt: +22 }
             ]
           },
-          { name: 'weaver1', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               
@@ -251,7 +265,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'weaver2', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+          { name: 'weaver2', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -100, swingHz: 0, swingAmt: 0 },
@@ -270,7 +284,7 @@ U.buildRoom({
               { type: 'Weaver', x: +120, y: +100, spd: -50, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'weaver3', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+          { name: 'weaver3', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -294,7 +308,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: -500, spd: +40, swingHz: 0.1, swingAmt: -50 }
             ]
           },
-          { name: 'weaver4', type: 'MomentAhead', terrain: 'savanna', distance: 1000, spd: 100,
+          { name: 'weaver4', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -315,34 +329,399 @@ U.buildRoom({
               { type: 'Weaver', x: +160, y: +100, spd: -50, swingHz: 0.10, swingAmt: +15 },
               
               { type: 'Winder', x: -180, y: -500, spd: +40, swingHz: 0.05, swingAmt: +65 },
-              { type: 'Winder', x: -140, y: -525, spd: +40, swingHz: 0.05, swingAmt: +50 },
               { type: 'Winder', x: -100, y: -550, spd: +40, swingHz: 0.05, swingAmt: +35 },
-              { type: 'Winder',  x: -60, y: -575, spd: +40, swingHz: 0.05, swingAmt: +20 },
               { type: 'Winder',  x: -20, y: -600, spd: +40, swingHz: 0.05, swingAmt:  +5 },
               { type: 'Winder',  x: +20, y: -600, spd: +40, swingHz: 0.05, swingAmt:  -5 },
-              { type: 'Winder',  x: +60, y: -575, spd: +40, swingHz: 0.05, swingAmt: -20 },
               { type: 'Winder', x: +100, y: -550, spd: +40, swingHz: 0.05, swingAmt: -35 },
-              { type: 'Winder', x: +140, y: -525, spd: +40, swingHz: 0.05, swingAmt: -50 },
               { type: 'Winder', x: +180, y: -500, spd: +40, swingHz: 0.05, swingAmt: -65 }
             ]
           },
           
-          { name: 'finalTrn', type: 'MomentAhead', terrain: 'savannaToPlains', distance: 250, spd: 100, modelsDef: [] },
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, modelsDef: [] }
         ]
       },
-      killPlains: {
-        difficulty: 0,
+      impendingFields: { num: 1, name: 'Impending Fields', password: 'V1s1T1NG',
+        desc: util.paragraph(`
+          Suddenly Slam Kid comes in over the comms: "More Bogies on the horizon!" Gun Girl's voice
+          jumps into the fray: "Do we find a route around them or ready our engines for another
+          round?" Salvo Lad scans the landscape intently as Joust Man barks: "If we don't go
+          straight through them we'll never get to Stalbureaux in time!" Joust Man's eyes narrow as
+          he looks up from his wristwatch, a gift from his father. Time is of the essence.
+        `),
+        winText: util.paragraph(`
+          "Haha, take that Bogies!" yells Slam kid as the final enemy ship crashes to the ground.
+          Smoldering wreckage paves the path now taken by the Aces. "Good shooting Gun Girl!" yells
+          Salvo Lad. "And your Salvos were brilliant!" she replies. Joust Man's eyes were
+          narrowing. "It's too early to celebrate, Aces! That fleet radioed for RE1NF0rCEMENTS -
+          prepare to engage again!"
+        `),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
-            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
+            bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: []
           },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: []
           },
-          { name: 'winder1', type: 'MomentAhead', terrain: 'plains', distance: 500, spd: 100,
+          { name: 'scout1', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Winder', x: -120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 }
+            ]
+          },
+          { name: 'scout2', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -40, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +40, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +120, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Winder', x: -160, y: -600, spd: +80, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -80, y: -600, spd: +80, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: -600, spd: +80, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +80, y: -600, spd: +80, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +160, y: -600, spd: +80, swingHz: 0, swingAmt: 0 }
+            ]
+          },
+          { name: 'sideswipe1', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1200 },
+              { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1100 },
+              { type: 'Winder', x: -300, y: +110, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1000 },
+              { type: 'Winder', x: -300, y:  +40, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +900 }
+            ]
+          },
+          { name: 'sideswipe2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: +300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1200 },
+              { type: 'Winder', x: +300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1100 },
+              { type: 'Winder', x: +300, y: +110, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1000 },
+              { type: 'Winder', x: +300, y:  +40, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -900 }
+            ]
+          },
+          { name: 'sideswipe3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1200 },
+              { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1100 },
+              { type: 'Winder', x: -300, y: +110, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1000 },
+              { type: 'Winder', x: -300, y:  +40, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +900 },
+              
+              { type: 'Winder', x: -300, y: +250, spd: -80, delayMs: 4000, swingHz: 0.07, swingAmt: +1200 },
+              { type: 'Winder', x: -300, y: +180, spd: -80, delayMs: 4000, swingHz: 0.07, swingAmt: +1100 },
+              { type: 'Winder', x: -300, y: +110, spd: -80, delayMs: 4000, swingHz: 0.07, swingAmt: +1000 },
+              { type: 'Winder', x: -300, y:  +40, spd: -80, delayMs: 4000, swingHz: 0.07, swingAmt: +900 },
+              
+              { type: 'Winder', x: -160, y: -550, spd: +20, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -80, y: -550, spd: +20, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: -550, spd: +20, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +80, y: -550, spd: +20, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +160, y: -550, spd: +20, swingHz: 0, swingAmt: 0 }
+            ]
+          },
+          { name: 'pillar1', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Winder', x: +40, y: +360, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: +40, y: +300, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: +40, y: +240, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: +40, y: +180, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: +40, y: +120, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Weaver', x: +40, y:  +60, spd: -120, swingHz: 0, swingAmt: 0 },
+              
+            ]
+          },
+          { name: 'pillar2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Winder', x: -20, y: +360, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: -20, y: +300, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: -20, y: +240, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: -20, y: +180, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: -20, y: +120, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Weaver', x: -40, y:  +60, spd: -140, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:   0, y:  +60, spd: -140, swingHz: 0, swingAmt: 0 }
+              
+            ]
+          },
+          { name: 'pillar3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Winder', x: +40, y: +360, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: +40, y: +300, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: +40, y: +240, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: +40, y: +180, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: +40, y: +120, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Weaver', x: +20, y:  +60, spd: -160, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +40, y:  +40, spd: -160, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +60, y:  +60, spd: -160, swingHz: 0, swingAmt: 0 }
+              
+            ]
+          },
+          { name: 'pillarBreak', type: 'MomentAhead', terrain: 'meadow', distance: 250, aheadSpd: 100, modelsDef: [] },
+          { name: 'pillar4', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Furler', x: -120, y: +240, spd: -110, delayMs: 3700, swingHz: 0.1, swingAmt: -100, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              { type: 'Furler', x:  -20, y: +240, spd: -110, delayMs: 3700, swingHz: 0.1, swingAmt: +100, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              { type: 'Winder', x: -70, y: +360, spd: -100, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: -70, y: +300, spd: -100, delayMs: 5000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: -70, y: +240, spd: -100, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Winder', x: -70, y: +180, spd: -100, delayMs: 5000, swingHz: 0.2, swingAmt: -200 },
+              { type: 'Winder', x: -70, y: +120, spd: -100, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
+              { type: 'Weaver', x: -90, y:  +60, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: -70, y:  +40, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: -50, y:  +60, spd: -100, swingHz: 0, swingAmt: 0 }
+              
+            ]
+          },
+          { name: 'box1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              { type: 'Weaver', x: -100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  -50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:    0, y: +430, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  +50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Furler', x: +150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              { type: 'Winder', x: -160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: +300 },
+              
+              { type: 'Winder', x: +160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: -300 }
+              
+            ]
+          },
+          { name: 'box2', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+            modelsDef: [
+              
+              { type: 'Furler', x: -50, y: +400, spd: -30, swingHz: 0.079, swingAmt: +130, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              { type: 'Furler', x: +50, y: +400, spd: -30, swingHz: 0.079, swingAmt: -130, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              { type: 'Weaver', x: -100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  -50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:    0, y: +430, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  +50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Furler', x: +150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              { type: 'Winder', x: -160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: +300 },
+              
+              { type: 'Winder', x: +160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: -300 }
+              
+            ]
+          },
+          { name: 'box3', type: 'MomentAhead', terrain: 'meadow', distance: 2000, aheadSpd: 100,
+            modelsDef: [
+              
+              //{ type: 'Furler', x: -50, y: +400, spd: -30, swingHz: 0.079, swingAmt: +130, shootDelayMs: 1100, bulletArgs: { spd: -300, lsMs: 3000 } },
+              //{ type: 'Furler', x: +50, y: +400, spd: -30, swingHz: 0.079, swingAmt: -130, shootDelayMs: 1100, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              { type: 'Weaver', x: -100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  -50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:    0, y: +430, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x:  +50, y: +420, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Weaver', x: +100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
+              { type: 'Furler', x: +150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
+              
+              // First layer
+              { type: 'Winder', x: -160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: +300 },
+              { type: 'Winder', x: -210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: +300 },
+              
+              { type: 'Winder', x: +160, y: +350, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +170, y: +300, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +180, y: +250, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +190, y: +200, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +200, y: +150, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: -300 },
+              { type: 'Winder', x: +210, y: +100, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: -300 },
+              
+              // Second layer
+              { type: 'Winder', x: -210, y: +360, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: +350 },
+              { type: 'Winder', x: -220, y: +310, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: +350 },
+              { type: 'Winder', x: -230, y: +260, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: +350 },
+              { type: 'Winder', x: -240, y: +210, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: +350 },
+              { type: 'Winder', x: -250, y: +160, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: +350 },
+              { type: 'Winder', x: -260, y: +110, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: +350 },
+              
+              { type: 'Winder', x: +210, y: +360, spd: -60, delayMs: 10500, swingHz: 0.03, swingAmt: -350 },
+              { type: 'Winder', x: +220, y: +310, spd: -60, delayMs: 10000, swingHz: 0.03, swingAmt: -350 },
+              { type: 'Winder', x: +230, y: +260, spd: -60, delayMs:  9500, swingHz: 0.03, swingAmt: -350 },
+              { type: 'Winder', x: +240, y: +210, spd: -60, delayMs:  9000, swingHz: 0.03, swingAmt: -350 },
+              { type: 'Winder', x: +250, y: +160, spd: -60, delayMs:  8500, swingHz: 0.03, swingAmt: -350 },
+              { type: 'Winder', x: +260, y: +110, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: -350 }
+            ]
+          },
+          { name: 'snake1', type: 'MomentAhead', terrain: 'meadow', distance: 1250, aheadSpd: 100,
+            modelsDef: [
+              // Left side
+              { type: 'Winder', x: -15, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +200, spd: -90, delayMs: 1200, swingHz: 0.040, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +250, spd: -90, delayMs: 1200, swingHz: 0.045, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +300, spd: -90, delayMs: 1200, swingHz: 0.050, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +350, spd: -90, delayMs: 1200, swingHz: 0.055, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +400, spd: -90, delayMs: 1200, swingHz: 0.060, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +450, spd: -90, delayMs: 1200, swingHz: 0.065, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +500, spd: -90, delayMs: 1200, swingHz: 0.070, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +550, spd: -90, delayMs: 1200, swingHz: 0.075, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +600, spd: -90, delayMs: 1200, swingHz: 0.080, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +650, spd: -90, delayMs: 1200, swingHz: 0.085, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +700, spd: -90, delayMs: 1200, swingHz: 0.090, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +750, spd: -90, delayMs: 1200, swingHz: 0.095, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
+              { type: 'Winder', x: -15, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
+              
+              // Right side
+              { type: 'Winder', x: +15, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +200, spd: -90, delayMs: 1200, swingHz: 0.040, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +250, spd: -90, delayMs: 1200, swingHz: 0.045, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +300, spd: -90, delayMs: 1200, swingHz: 0.050, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +350, spd: -90, delayMs: 1200, swingHz: 0.055, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +400, spd: -90, delayMs: 1200, swingHz: 0.060, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +450, spd: -90, delayMs: 1200, swingHz: 0.065, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +500, spd: -90, delayMs: 1200, swingHz: 0.070, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +550, spd: -90, delayMs: 1200, swingHz: 0.075, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +600, spd: -90, delayMs: 1200, swingHz: 0.080, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +650, spd: -90, delayMs: 1200, swingHz: 0.085, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +700, spd: -90, delayMs: 1200, swingHz: 0.090, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +750, spd: -90, delayMs: 1200, swingHz: 0.095, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
+              { type: 'Winder', x: +15, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
+              
+              { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1500, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } },
+            ]
+          },
+          { name: 'snake2', type: 'MomentAhead', terrain: 'meadow', distance: 1250, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Weaver', x: 0, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +200, spd: -90, delayMs: 1200, swingHz: 0.040, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +250, spd: -90, delayMs: 1200, swingHz: 0.045, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +300, spd: -90, delayMs: 1200, swingHz: 0.050, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +350, spd: -90, delayMs: 1200, swingHz: 0.055, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +400, spd: -90, delayMs: 1200, swingHz: 0.060, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +450, spd: -90, delayMs: 1200, swingHz: 0.065, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +500, spd: -90, delayMs: 1200, swingHz: 0.070, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +550, spd: -90, delayMs: 1200, swingHz: 0.075, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +600, spd: -90, delayMs: 1200, swingHz: 0.080, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +650, spd: -90, delayMs: 1200, swingHz: 0.085, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +700, spd: -90, delayMs: 1200, swingHz: 0.090, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +750, spd: -90, delayMs: 1200, swingHz: 0.095, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
+              
+              { type: 'Drifter', x: 0, y: +500, tx: 0, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              
+              { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1200, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } }
+            ]
+          },
+          { name: 'snake3', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Drifter', x: -150, y: +100, tx: -150, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  -50, y: +100, tx:  -50, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  +50, y: +100, tx:  +50, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: +150, y: +100, tx: +150, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              
+              { type: 'Weaver', x: 0, y:  +300, spd: -90, delayMs: 1500, swingHz: 0.030, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +350, spd: -90, delayMs: 1500, swingHz: 0.035, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +400, spd: -90, delayMs: 1500, swingHz: 0.040, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +450, spd: -90, delayMs: 1500, swingHz: 0.045, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +500, spd: -90, delayMs: 1500, swingHz: 0.050, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +550, spd: -90, delayMs: 1500, swingHz: 0.055, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +600, spd: -90, delayMs: 1500, swingHz: 0.060, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +650, spd: -90, delayMs: 1500, swingHz: 0.065, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +700, spd: -90, delayMs: 1500, swingHz: 0.070, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +750, spd: -90, delayMs: 1500, swingHz: 0.075, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +800, spd: -90, delayMs: 1500, swingHz: 0.080, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +850, spd: -90, delayMs: 1500, swingHz: 0.085, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +900, spd: -90, delayMs: 1500, swingHz: 0.090, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y:  +950, spd: -90, delayMs: 1500, swingHz: 0.095, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +1000, spd: -90, delayMs: 1500, swingHz: 0.100, swingAmt: +195 },
+              { type: 'Weaver', x: 0, y: +1050, spd: -90, delayMs: 1500, swingHz: 0.105, swingAmt: +195 },
+              
+              { type: 'Furler', x: 0, y: +1100, spd: -90, delayMs: 1500, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } }
+            ]
+          }
+        ]
+      },
+      imposingFields: { num: 2, name: 'Imposing Fields', password: 'RE1NF0rCEMENTS',
+        desc: util.paragraph(`
+          Joust Man checks his wristwatch again. Shapes loom over the horizon, a fleet ready to
+          test the Aces once more. Joust Man's eyes narrow as his squad whoops and shouts battle
+          cries. A shape looms towards the back of the fleet, much bigger than the others. "Let's
+          do this", Joust Man thinks, charging up his laser beam.
+        `),
+        winText: util.paragraph(`
+          "Damn damn!" Gun Girl was slurring her words, like most Thursdays. "We sure fucked those
+          Bogies right up their Yemenese dickholes, eh?"
+        `),
+        moments: [
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: []
+          },
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+            bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
+            modelsDef: []
+          },
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+            modelsDef: [
+              { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
+              { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 }
+            ]
+          }
+        ]
+      },
+      killPlains: { num: 1, name: 'Kill Plains', password: 'R4CIN6',
+        desc: [
+        
+        ].join(' '),
+        moments: [
+          { name: 'practice1', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+            bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
+            modelsDef: []
+          },
+          { name: 'practice2', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+            bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
+            modelsDef: []
+          },
+          { name: 'winder1', type: 'MomentAhead', terrain: 'plains', distance: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.027, swingAmt: +580 },
@@ -353,7 +732,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.027, swingAmt: -580 }
             ]
           },
-          { name: 'winder2', type: 'MomentAhead', terrain: 'plains', distance: 500, spd: 100,
+          { name: 'winder2', type: 'MomentAhead', terrain: 'plains', distance: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.032, swingAmt: +580 },
@@ -364,7 +743,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.032, swingAmt: -580 }
             ]
           },
-          { name: 'winder3', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder3', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper up
@@ -376,7 +755,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -130, swingHz: 0.047, swingAmt: -580 }
             ]
           },
-          { name: 'winder4', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder4', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down
@@ -388,7 +767,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y:  +50, spd: -130, swingHz: 0.047, swingAmt: -580 }
             ]
           },
-          { name: 'winder5', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder5', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper up
@@ -400,7 +779,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -150, swingHz: 0.057, swingAmt: -580 }
             ]
           },
-          { name: 'winder6', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder6', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down
@@ -412,7 +791,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: -580 }
             ]
           },
-          { name: 'winder7', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder7', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down desync
@@ -428,7 +807,7 @@ U.buildRoom({
               { type: 'Weaver', x: +200, y: -600, spd: +40, swingHz: 0.04, swingAmt: -100 }
             ]
           },
-          { name: 'winder8', type: 'MomentAhead', terrain: 'plains', distance: 250, spd: 100,
+          { name: 'winder8', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down desync
@@ -444,7 +823,7 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: -600, spd: +30, swingHz: 0.08, swingAmt: -160 }
             ]
           },
-          { name: 'winder9', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+          { name: 'winder9', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
             modelsDef: [
               // Zipper down desync
@@ -463,7 +842,7 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.09, swingAmt: +200 }
             ]
           },
-          { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', distance: 750, spd: 100,
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', distance: 750, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
             modelsDef: [
               
@@ -488,23 +867,23 @@ U.buildRoom({
               { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.09, swingAmt: -110 }
             ]
           },
-          { name: 'furler1', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100,
+          { name: 'furler1', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
             modelsDef: [
               { type: 'Furler', x: -120, y: +200, spd: -50, swingHz: 0.1, swingAmt: -80, shootDelayMs: 1500, bulletArgs: { spd: -300 } },
               { type: 'Furler', x: +120, y: +200, spd: -50, swingHz: 0.1, swingAmt: +80, shootDelayMs: 1500, bulletArgs: { spd: -300 } }
             ]
           },
-          { name: 'bozz', type: 'MomentAhead', terrain: 'plains', distance: 8000, spd: 100,
+          { name: 'bozz', type: 'MomentAhead', terrain: 'plains', distance: 8000, aheadSpd: 100,
             bounds: { total: { w: 800, h: 1000 }, player: { x: 0, y: -150, w: 800, h: 700 } },
             modelsDef: [
               
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lifespanMs: 10000 } },
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lifespanMs: 10000 } },
-              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lifespanMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lsMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lsMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lsMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.08, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3000, bulletArgs: { spd: -300, lsMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lsMs: 10000 } },
+              { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: +380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lsMs: 10000 } },
               
               { type: 'WinderMom', x: -600, y: +500, tx: -250, ty: +280, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } },
               { type: 'WinderMom', x:    0, y: +500, tx:    0, ty: +320, spd: 50, spawnMs: 1800, spawnArgs: { spd: -60 } },
@@ -513,11 +892,15 @@ U.buildRoom({
             ]
           },
           
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, spd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100, modelsDef: [] }
           
         ]
       }
     };
+    let getLevelData = name => ({
+      name, ...levels[name].slice('num', 'password'),
+      dispName: levels[name].name, dispDesc: levels[name].desc
+    });
     
     // BASE STUFF
     let Entity = U.inspire({ name: 'Entity', insps: {}, methods: (insp, Insp) => ({
@@ -555,7 +938,9 @@ U.buildRoom({
       fluxState: function() { return { x: this.x, y: this.y }; }
     })});
     let Mover = U.inspire({ name: 'Mover', methods: (insp, Insp) => ({
-      init: function({ tx, ty, spd=100, relDist=0, aheadDist=0, ang, dist, ...args }) {
+      init: function(vals) {
+        let { tx, ty, spd=100, relDist=0, aheadDist=0, ang, dist, ...args } = vals;
+        
         if (!({}).has.call(this, 'x')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         if (!({}).has.call(this, 'y')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         
@@ -573,7 +958,7 @@ U.buildRoom({
         this.vx = this.vy = null;
         this.spd = null;
         this.ang = null;
-        this.initAheadDist = aheadDist;
+        this.initDist = aheadDist;
         this.setDestination({ aheadDist, spd, tx, ty, ang, dist });
       },
       setDestination: function({ aheadDist=0, spd=null, tx=null, ty=null, ang=null, dist=null }) {
@@ -592,7 +977,7 @@ U.buildRoom({
         
         if (tx !== null) {
           
-          let aheadDiff = aheadDist - this.initAheadDist;
+          let aheadDiff = aheadDist - this.initDist;
           let dx = (tx - this.x);
           let dy = ((ty + (this.moveWithGame() ? aheadDist : 0)) - this.y);
           
@@ -690,71 +1075,114 @@ U.buildRoom({
     })});
     let SimpleBullet = U.inspire({ name: 'SimpleBullet', insps: { Geom, Bullet }, methods: (insp, Insp) => ({
       
-      $render: (draw, game, { x, y, w, h, team }) => {
+      $calcParams: (dur, { aheadDist }, { initX, initY, initDist, spd }) => {
+        return {
+          x: initX,
+          y: initY + (aheadDist - initDist) + (spd * dur * 0.001)
+        };
+      },
+      
+      $render: (draw, game, { type, ms, w, h, team, x, y }) => {
         draw.rectCen(x, y, w, h, { fillStyle: Insp.parents.Bullet.getColour(team) });
       },
       
-      init: function({ x, y, spd=700, w=4, h=50, lifespanMs=3000, ...args }) {
-        insp.Geom.init.call(this, args);
-        insp.Bullet.init.call(this, args);
+      init: function({ x, y, spd=700, w=4, h=50, lsMs=3000, aheadDist, ...args }) {
+        insp.Geom.init.call(this, { aheadDist, ...args });
+        insp.Bullet.init.call(this, { aheadDist, ...args });
         this.x = x; this.y = y;
         this.w = w; this.h = h;
         
+        this.initX = x; this.initY = y; this.initDist = aheadDist;
+        if (badN(this.initDist)) throw Error('BAD AHAED DIST');
+        
         this.spd = spd;
-        this.lifespanMs = lifespanMs;
+        this.lsMs = lsMs;
       },
       collide: function(rep, updData) {
-        if (insp.Bullet.collide.call(this, rep, updData)) this.lifespanMs = 0;
+        if (insp.Bullet.collide.call(this, rep, updData)) this.lsMs = 0;
       },
-      permState: function() { return { ...insp.Geom.permState.call(this), team: this.getTeam(), w: this.w, h: this.h }; },
-      updateAndGetResult: function(entity, { spf, aheadSpd }) {
-        this.y += (aheadSpd + this.spd) * spf;
+      permState: function() { return {
+        ...insp.Geom.permState.call(this),
+        initX: this.initX, initY: this.initY, initDist: this.initDist, spd: this.spd,
+        team: this.getTeam(), w: this.w, h: this.h
+      };},
+      fluxState: function() { return {}; /* Nothing! Deterministic */ },
+      updateAndGetResult: function(entity, updData) {
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        this.x = x;
+        this.y = y;
         return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
       },
-      isAlive: function({ ms }) { return (ms - this.ms) < this.lifespanMs; }
+      isAlive: function({ ms }) { return (ms - this.ms) < this.lsMs; }
       
     })});
     let DirectedBullet = U.inspire({ name: 'DirectedBullet', insps: { Geom, Mover, Bullet }, methods: (insp, Insp) => ({
       
+      $calcParams: (dur, { aheadDist }, { initX, initY, initDist, vx, vy, spd, acl }) => {
+        let addAcl = acl * acl;
+        return {
+          x: initX + (vx + addAcl) * dur * 0.001,
+          y: initY + (vy + addAcl + (aheadDist - initDist)) * dur * 0.001
+        };
+      },
       $render: (draw, game, { x, y, r, team }) => {
         draw.circ(x, y, r, { fillStyle: Insp.parents.Bullet.getColour(team) });
       },
-      init: function({ r=8, lifespanMs=3000, acl=0, ...args }) {
+      init: function({ r=8, lsMs=3000, acl=0, ...args }) {
         insp.Geom.init.call(this, args);
         insp.Mover.init.call(this, { spd: 500, ...args });
         insp.Bullet.init.call(this, args);
         this.r = r;
-        this.lifespanMs = lifespanMs;
+        this.lsMs = lsMs;
         this.acl = acl;
+        this.initX = this.x;
+        this.initY = this.y;
       },
       moveWithGame: function() { return true; },
       stopAtDestination: function() { return false; },
       canCollide: function() { return true; },
-      collide: function(rep, updData) { if (insp.Bullet.collide.call(this, rep, updData)) this.lifespanMs = 0; },
-      permState: function() { return { ...insp.Geom.permState.call(this), team: this.getTeam(), r: this.r }; },
+      collide: function(rep, updData) { if (insp.Bullet.collide.call(this, rep, updData)) this.lsMs = 0; },
+      permState: function() { return {
+        ...insp.Geom.permState.call(this),
+        team: this.getTeam(), r: this.r,
+        initX: this.initX, initY: this.initY, initDist: this.initDist,
+        vx: this.vx, vy: this.vy, acl: this.acl // TODO: HEEERE, moving all flux params to perm!
+      };},
+      fluxState: function() { return {}; /* Nothing! */ },
       updateAndGetResult: function(entity, updData) {
         insp.Mover.moveToDestination.call(this, updData);
-        if (this.acl) this.setSpd(this.spd + this.acl * updData.spf);
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        //if (this.acl) this.setSpd(this.spd + this.acl * updData.spf);
         return { x: this.x, y: this.y, form: 'circle', r: this.r, birth: [] };
       },
-      isAlive: function({ ms }) { return (ms - this.ms) < this.lifespanMs; }
+      isAlive: function({ ms }) { return (ms - this.ms) < this.lsMs; }
       
     })});
     
     // GOOD GUYS
     let Ace = U.inspire({ name: 'Ace', insps: { Geom, Mortal }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 8 }, $respawnMs: 2000, $invulnMs: 1500, $spd: 180,
+      $bound: { form: 'circle', r: 8 }, $respawnMs: 2000, $invulnMs: 1500, $spd: 165,
       //TEST::$respawnMs: 200,
-      $render: (draw, game, { x, y, invulnMark }, imageKeep=null, fn) => {
+      $render: (draw, game, { entity, myEntity, x, y, invulnMark }, imageKeep=null, fn) => {
         let size = Insp.bound.r << 1;
+        let mine = entity === myEntity;
         
         if (game.val.ms < invulnMark) {
-          draw.circ(x, y, size * 5,   { fillStyle: 'rgba(255, 255, 255, 0.3)' });
-          draw.circ(x, y, size * 1.6, { fillStyle: 'rgba(255, 255, 255, 0.7)' });
+          let outerStyle = mine
+            ? { fillStyle: 'rgba(255, 255, 255, 0.30)' }
+            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
+          let innerStyle = mine
+            ? { fillStyle: 'rgba(255, 255, 255, 0.35)', strokeStyle: 'rgba(255, 255, 255, 0.7)', lineWidth: 3 }
+            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
+          draw.circ(x, y, size * 5,   outerStyle);
+          draw.circ(x, y, size * 1.6, innerStyle);
           if (imageKeep) draw.imageCen(imageKeep, x, y, size, size, 0.25);
         } else {
-          draw.circ(x, y, size * 1.6, { fillStyle: 'rgba(250, 170, 170, 0.25)' });
+          let indStyle = mine
+            ? { fillStyle: 'rgba(255, 140, 140, 0.28)', strokeStyle: 'rgba(255, 100, 100, 0.5)', lineWidth: 3 }
+            : { fillStyle: 'rgba(255, 140, 140, 0.20)' };
+          draw.circ(x, y, size * 1.6, indStyle);
           if (imageKeep) draw.imageCen(imageKeep, x, y, size, size);
         }
         
@@ -770,7 +1198,7 @@ U.buildRoom({
         this.effects = Set();
         this.invulnMark = this.ms + Insp.invulnMs;
         this.scoreDamage = 0;
-        this.scoreDeaths = 0;
+        this.scoreDeath = 0;
       },
       canCollide: function(ms) { return ms >= this.invulnMark; },
       collide: function(rep, updData) {},
@@ -879,7 +1307,7 @@ U.buildRoom({
       };},
       updateAndGetResult: function(entity, updData) {
         
-        let { ms, spf, victory } = updData;
+        let { aheadDist, ms, spf, victory } = updData;
         if (victory) return insp.Ace.updateAndGetResult.call(this, entity, updData);
         
         let birth = [];
@@ -910,10 +1338,10 @@ U.buildRoom({
               // Weapon 1 act 1: Spread shot
               
               let incAng = 0.018;
-              let orbArgs = { ms, owner: this, x: this.x, y: this.y, spd: 500, dmg: 1, r: 6 };
+              let args = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: 450, dmg: 1, r: 6 };
               
               birth.gain([ ...util.incCen(10, incAng) ].map(ang => JoustManBullet({
-                ...orbArgs, ang, lifespanMs: 620, dmg: 0.75
+                ...args, ang, lsMs: 650, dmg: 0.75
               })));
               
               this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
@@ -987,10 +1415,10 @@ U.buildRoom({
         { ms: 1000, ang: -0.01, dmgMult: 1   },  // Inwards
         { ms: 1000, ang:  0.00, dmgMult: 1.4 },  // Parallel again
         { ms: 1500, ang: +0.02, dmgMult: 1   },  // Very slowly increase angle
-        { ms: 3000, ang: +0.28, dmgMult: 1   }   // Slowly bend all the way outwards
+        { ms: 4000, ang: +0.25, dmgMult: 1   }   // Slowly bend all the way outwards
       ],
-      $w1Delay: 86, $bulletDmg: 0.3, $w1LockMs: 1100,
-      $w1ShortLockPunishSlow: 0.35, $w1ShortLockPunishMs: 300,
+      $w1Delay: 90, $bulletDmg: 0.29, $w1LockMs: 1100,
+      $w1ShortLockPunishSlow: 0.33, $w1ShortLockPunishMs: 300,
       $w1LongLockPunishSlow: 0.85, $w1LongLockPunishMs: 1100,
       $w1ReloadBoostMs: 800, $w1ReloadBoostAmt: 1.55,
       $w2Delay: 10000, $w2Duration: 1900,
@@ -1030,7 +1458,7 @@ U.buildRoom({
       },
       updateAndGetResult: function(entity, updData) {
         
-        let { ms, spf, victory } = updData;
+        let { aheadDist, ms, spf, victory } = updData;
         if (victory) return insp.Ace.updateAndGetResult.call(this, entity, updData);
         
         // Reset `this.lockoutPunishMark` when the duration ends
@@ -1060,8 +1488,8 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.w1StartMark);
             supResult.birth.gain([
-              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lifespanMs: Insp.bulletMs }),
-              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lifespanMs: Insp.bulletMs })
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs })
             ]);
             
           } else {
@@ -1071,10 +1499,10 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.w2EffectiveShootDuration);
             supResult.birth.gain([
-              DirectedBullet({ ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
-              DirectedBullet({ ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
-              DirectedBullet({ ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs }),
-              DirectedBullet({ ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lifespanMs: Insp.bulletMs })
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs })
             ]);
             
           }
@@ -1099,9 +1527,9 @@ U.buildRoom({
             this.w2EffectiveShootDuration = ms - (this.w1StartMark || ms)
             
             let incAng = 0.029;
-            let bulletArgs = { ms, owner: this, x: this.x, y: this.y, spd: 150, r: 6 };
-            supResult.birth.gain([ ...util.incCen(20, incAng) ].map(ang => DirectedBullet({
-              ...bulletArgs, ang: 0.5 + ang, lifespanMs: 2500, dmg: 4
+            let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: 140, r: 5 };
+            supResult.birth.gain([ ...util.incCen(15, incAng) ].map(ang => DirectedBullet({
+              ...bulletArgs, ang: 0.5 + ang, lsMs: 2500, dmg: 4
             })));
             
           } else {
@@ -1125,9 +1553,9 @@ U.buildRoom({
       $slamSpd: 400, $slamDelay: 760,
       $slamCharge1Ms: 300, $slamCharge2Ms: 630, $slamCharge3Ms: 750,
       $slamPunishMs: 1500, $slamPunishSlow: 0.25,
-      $missileSpd: 900, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
+      $missileSpd: 750, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
       $shotgunCnt: 18, $shotgunInitAng: 0.023, $shotgunAng: 0.009,
-      $shotgunSpd: 650, $shotgunDmg: 0.09, $shotgunPDmg: [0.09,0.28], $shotgunLifespanMs: 305,
+      $shotgunSpd: 650, $shotgunDmg: 0.082, $shotgunPDmg: [0.09,0.28], $shotgunLsMs: 305,
       $shotgunSlamDelayMult: 0.55,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSlam' }),
@@ -1157,7 +1585,7 @@ U.buildRoom({
       }},
       updateAndGetResult: function(entity, updData) {
         
-        let { ms, spf, victory } = updData;
+        let { aheadDist, ms, spf, victory } = updData;
         if (victory) return insp.Ace.updateAndGetResult.call(this, entity, updData);
         
         let birth = [];
@@ -1205,7 +1633,7 @@ U.buildRoom({
             } else if (duration >= Insp.slamCharge1Ms) {
               
               // Missile!!
-              let missileArgs = { ms, owner: this, x: this.x + (mult * 9), y: this.y };
+              let missileArgs = { aheadDist, ms, owner: this, x: this.x + (mult * 9), y: this.y };
               birth.gain([
                 SimpleBullet({ ...missileArgs, spd: +Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 }),
                 SimpleBullet({ ...missileArgs, spd: -Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 })
@@ -1219,10 +1647,10 @@ U.buildRoom({
               
               // Shotgun!
               let shotgunArgs = {
-                ms, owner: this, x: this.x + (mult * 7), y: this.y - 7,
+                aheadDist, ms, owner: this, x: this.x + (mult * 7), y: this.y - 7,
                 dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg,
                 spd: Insp.shotgunSpd,
-                lifespanMs: Insp.shotgunLifespanMs,
+                lsMs: Insp.shotgunLsMs,
                 r: 2
               };
               birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => DirectedBullet({
@@ -1255,9 +1683,9 @@ U.buildRoom({
       
       $comboDelayMs: 800, $comboPunishDelayMs: 1000,
       $decampDelayMs: 1200, $decampDurationMs: 350, $decampSpdMult: 0.5, $decampSpd: 430,
-      $diveBombDelayMs: 550, $diveBombDiveMs: 700,
-      $missileDelayMs: 800,
-      $suppressDelayMs: 700, $suppressDmg: 0.45,
+      $diveDelayMs: 550, $diveMs: 700, $diveSpdMult: 0.58, $diveFwdMult: 450, $diveBombLsMs: 1100,
+      $missileDelayMs: 800, $missileDmg: 0.5, $missilePDmg:  [0.1,2],
+      $suppressDelayMs: 600, $suppressDmg: 0.4,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSalvo' }),
       $render: (draw, game, args) => {
@@ -1274,7 +1702,7 @@ U.buildRoom({
             
             let waitAmt = Math.min(waitMs / 750, 1);
             if (combo.length < 3) comboW = 3 * indSize;
-            draw.rectCen(x, dispY, waitAmt * (comboW + 4), indSize + 4, { fillStyle: 'rgba(120, 120, 120, 0.6)' });
+            draw.rectCen(x, dispY, waitAmt * (comboW + 4), indSize + 4, { fillStyle: 'rgba(110, 110, 110, 0.8)' });
             
           }
           if (combo.length > 0) {
@@ -1329,7 +1757,7 @@ U.buildRoom({
         };
       },
       normState: function() { return { ...insp.Ace.normState.call(this), readyMark: this.readyMark, combo: this.combo }; },
-      comboDecamp: function(dir, ms, spf) {
+      comboDecamp: function(dir, { ms, spf, aheadDist }) {
         
         let origX = this.x;
         this.invulnMark = Math.max(this.invulnMark, ms + Insp.decampDurationMs);
@@ -1337,76 +1765,70 @@ U.buildRoom({
           type: 'spdMult', spdMult: Insp.decampSpdMult,
           fn: (inst, { spf }) => inst.x += Insp.decampSpd * spf * dir
         });
+        
+        let missileArgs = { aheadDist, ms, salvoLad: this, x: origX, y: this.y };
         return {
           delayMs: Insp.decampDelayMs,
-          birth: [ SalvoLadKaboom({ salvoLad: this, x: origX, y: this.y, durationMs: 1600 }) ]
+          birth: [
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.000, spd:  15, lsMs:   400, kaboomArgs: { dps: 4.75, duration: 1900 } }),
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.005, spd: 100, lsMs:  800, kaboomArgs: { dps: 4.75, duration: 2300 } }),
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 - dir * 0.005, spd: 120, lsMs: 1300, kaboomArgs: { dps: 4.75, duration: 2150 } })
+          ]
+          //birth: [ SalvoLadKaboom({ salvoLad: this, x: origX, y: this.y, durationMs: 1600 }) ]
         };
         
       },
-      comboDiveBomb: function(dir, ms, spf) {
+      comboDiveBomb: function(dir, { ms, spf, aheadDist }) {
         
-        this.effects.add({ mark: ms + Insp.diveBombDiveMs,
-          type: 'spdMult', spdMult: 0.45,
+        this.effects.add({ mark: ms + Insp.diveMs,
+          type: 'spdMult', spdMult: Insp.diveSpdMult,
           fn: (inst, { ms: ms1, spf }) => {
-            inst.y += ((ms1 - ms) / 500) * 410 * spf;
-            inst.x += dir * 140 * spf;
+            inst.y += ((ms1 - ms) / Insp.diveMs) * Insp.diveFwdMult * spf;
+            inst.x += dir * 150 * spf;
           },
           endFn: (inst, { ms }, { birth }) => {
-            let missileArgs = { ms, salvoLad: inst, x: inst.x, y: inst.y };
+            let missileArgs = { aheadDist, ms, salvoLad: inst, x: inst.x, y: inst.y };
             birth.gain([
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, spd: 120, lifespanMs: 1320, kaboomArgs: { dps: 4.75, duration: 1900 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, spd: 138, lifespanMs: 1400, kaboomArgs: { dps: 4.75, duration: 2300 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, spd: 125, lifespanMs: 1350, kaboomArgs: { dps: 4.75, duration: 2150 } })
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, spd: 120, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, duration: 1900 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, spd: 138, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, duration: 2300 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, spd: 125, lsMs: Insp.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, duration: 2150 } })
             ])
           }
         });
-        return { birth: [], delayMs: Insp.diveBombDelayMs };
+        return { birth: [], delayMs: Insp.diveDelayMs };
         
       },
-      comboMissiles: function(dir, ms, spf) {
+      comboMissiles: function(dir, { ms, spf, aheadDist }) {
         
         let args = { owner: this, w: 6, h: 16, spd: 700 };
-        for (let i = 0; i < 3; i++) {
-          this.effects.add({ mark: ms + 50 + i * 50, endFn: (inst, { ms }, { birth }) => birth.gain([
-            SalvoLadMissile({ ms, ...args, x: inst.x, y: inst.y, horzSpd: (50 + 100 * (i + 1)) * dir, horzMs: 400, delayMs: 120, dmg: 1, pDmg: [0.2,2.5] })
+        for (let i = 0; i < 5; i++) {
+          this.effects.add({ mark: ms + 50 + i * 30, endFn: (inst, { ms }, { birth }) => birth.gain([
+            SalvoLadMissile({
+              aheadDist, ms, ...args, x: inst.x, y: inst.y,
+              horzSpd: (50 + 55 * (i + 1)) * dir, horzMs: 400, delayMs: 120,
+              dmg: Insp.missileDmg, pDmg: Insp.missilePDmg
+            })
           ])});
         }
         return { delayMs: Insp.missileDelayMs };
         
       },
-      comboSuppress: function(dir, ms, spf) {
+      comboSuppress: function(dir, { ms }) {
         
-        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lifespanMs: 600, spd: 320, acl: 700 };
-        for (let i = 0; i < 12; i++) {
+        this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 1.5 });
+        
+        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lsMs: 500, spd: 360, acl: 800 };
+        for (let i = 0; i < 11; i++) {
           
           let alt = i % 3;
-          this.effects.add({ mark: ms + 100 + i * alt * 22, endFn: (inst, { ms }, { birth }) => {
-            let bullet = DirectedBullet({ ms, owner: inst, ...args,
+          this.effects.add({ mark: ms + 50 + i * alt * 18, endFn: (inst, { aheadDist, ms }, { birth }) => {
+            let bullet = DirectedBullet({ aheadDist, ms, owner: inst, ...args,
               x: inst.x + dir * alt * 6, y: inst.y + 24 - 12 * alt
             });
             birth.gain([ bullet ]);
           }});
           
         }
-        
-        return { birth: [], delayMs: Insp.suppressDelayMs };
-        
-        this.effects.add({ mark: ms + 100, endFn: (inst, { ms }, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 400
-          })));
-        }});
-        this.effects.add({ mark: ms + 250, endFn: (inst, { ms }, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 310
-          })));
-        }});
-        this.effects.add({ mark: ms + 350, endFn: (inst, { ms }, { birth }) => {
-          birth.gain(Array.fill(3, n => DirectedBullet({
-            ms, owner: inst, ...args, x: inst.x + dir * n * 10, y: inst.y + 20 - 10 * n, spd: 600 - n * 60, lifespanMs: 230
-          })));
-        }});
-        
         return { birth: [], delayMs: Insp.suppressDelayMs };
         
       },
@@ -1435,7 +1857,7 @@ U.buildRoom({
           }
           
           if (this.comboMapping.has(this.combo)) {
-            let { birth=[], delayMs } = this.comboMapping[this.combo](ms, spf);
+            let { birth=[], delayMs } = this.comboMapping[this.combo](updData);
             this.readyMark = ms + delayMs;
             supResult.birth.gain(birth);
           } else if (this.combo.length >= 5) {
@@ -1456,7 +1878,8 @@ U.buildRoom({
       $render: (draw, game, { x, y, r, team }) => {
         draw.circ(x, y, r,       { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
-      }
+      },
+      $calcParams: Insp.parents.DirectedBullet.calcParams
     })});
     let JoustManLaserSphere = U.inspire({ name: 'JoustManLaserSphere', insps: { Geom }, methods: (insp, Insp) => ({
       
@@ -1567,17 +1990,17 @@ U.buildRoom({
         draw.circ(x, y, Insp.r, { fillStyle: '#ff0000', strokeStyle: '#ff8400' });
       },
       
-      init: function({ salvoLad, lifespanMs, kaboomArgs={}, ...args }) {
+      init: function({ salvoLad, lsMs, kaboomArgs={}, ...args }) {
         insp.Geom.init.call(this, args);
         insp.Mover.init.call(this, args);
         this.salvoLad = salvoLad;
-        this.lifespanMs = lifespanMs;
+        this.lsMs = lsMs;
         this.kaboomArgs = kaboomArgs;
       },
       canCollide: function() { return false; },
       isAlive: function(updData) {
         return true
-          && (updData.ms - this.ms) < this.lifespanMs
+          && (updData.ms - this.ms) < this.lsMs
           && insp.Mover.isAlive.call(this, updData);
       },
       updateAndGetResult: function(entity, updData) {
@@ -1623,32 +2046,43 @@ U.buildRoom({
     })});
     let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { SimpleBullet }, methods: (insp, Insp) => ({
       
-      $render: (draw, game, args) => {
-        Insp.parents.SimpleBullet.render(draw, game, args);
+      $calcParams: (dur, gameVal, { initX, initY, horzMs, horzSpd, delayMs, initDist, spd }) => {
+        
+        let { aheadDist } = gameVal;
+        
+        initY += (aheadDist - initDist) * dur * 0.001;
+        if (dur < horzMs) { // Horizontal moment
+          return {
+            x: initX + horzSpd * dur * 0.001,
+            y: initY
+          };
+        } else if (dur < (horzMs + delayMs)) { // Delay moment
+          return {
+            x: initX + horzSpd * horzMs * 0.001,
+            y: initY
+          };
+        } else { // Vertical moment
+          let vertDur = dur - horzMs - delayMs;
+          return {
+            x: initX + horzSpd * horzMs * 0.001,
+            y: initY + spd * vertDur * 0.001
+          };
+        }
+        
       },
       
-      init: function({ horzSpd, backSpd=0, horzMs, delayMs, ...args }) {
+      $render: Insp.parents.SimpleBullet.render,
+      
+      init: function({ horzSpd, horzMs, delayMs, ...args }) {
         insp.SimpleBullet.init.call(this, args);
         this.horzSpd = horzSpd;
         this.horzMs = horzMs;
         this.delayMs = delayMs;
-        this.backSpd = backSpd;
       },
-      updateAndGetResult: function(entity, updData) {
-        
-        let dur = updData.ms - this.ms;
-        if (dur < this.horzMs) {
-          this.x += this.horzSpd * updData.spf;
-          this.y += (updData.aheadSpd - this.backSpd) * updData.spf;
-          return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
-        } else if (dur < (this.horzMs + this.delayMs)) {
-          this.y += updData.aheadSpd * updData.spf;
-          return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
-        }
-        
-        return insp.SimpleBullet.updateAndGetResult.call(this, entity, updData);
-        
-      }
+      permState: function() { return {
+        ...insp.SimpleBullet.permState.call(this),
+        horzMs: this.horzMs, horzSpd: this.horzSpd, delayMs: this.delayMs
+      };}
       
     })});
     
@@ -1686,36 +2120,45 @@ U.buildRoom({
     })});
     let Winder = U.inspire({ name: 'Winder', insps: { Enemy }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 20 },
+      $calcParams: (dur, { aheadDist }, { initX, initY, delayMs, phase, swingHz, swingAmt, initDist, spd }) => {
+        return {
+          x: (dur >= delayMs)
+            ? initX + Math.sin(phase + (dur - delayMs) * 0.002 * Math.PI * swingHz) * swingAmt
+            : initX,
+          y: initY + (aheadDist - initDist) + (spd * dur * 0.001)
+        };
+      },
       
+      $bound: { form: 'circle', r: 20 },
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinder' }),
-      $render: (draw, game, { type, imageKeep=Insp.imageKeep, ext=Insp.bound.r << 1, ms, y, spd, ...args }) => {
-        let x = Insp.getXForDur(game.val.ms - ms, args);
+      $render: (draw, game, { imageKeep=Insp.imageKeep, ext=Insp.bound.r << 1, spd, x, y }) => {
         Insp.parents.Enemy.render(draw, game, { imageKeep, x, y, w: ext, rot: (spd < 0) ? Math.PI : 0 });
       },
-      $getXForDur: (dur, { initX, phase, swingHz, swingAmt }) => {
-        return initX + Math.sin(phase + dur * 0.002 * Math.PI * swingHz) * swingAmt;
-      },
-      
-      init: function({ spd=100, swingHz=2, swingAmt=100, numSwings=0, phase=0, ...args }) {
+      init: function({ aheadDist=0, spd=100, delayMs=0, swingHz=2, swingAmt=100, numSwings=0, phase=0, ...args }) {
         if (swingHz < 0) throw Error(`Negative "swingHz" param; use negative "swingAmt" instead`);
         insp.Enemy.init.call(this, args);
         this.spd = spd;
+        this.delayMs = delayMs;
         this.phase = phase * Math.PI * 2;
         this.swingHz = swingHz;
         this.swingAmt = swingAmt;
         this.numSwings = numSwings;
         this.initX = this.x;
+        this.initY = this.y;
+        this.initDist = aheadDist;
       },
       permState: function() { return {
         ...insp.Enemy.permState.call(this),
-        initX: this.initX, phase: this.phase, swingHz: this.swingHz, swingAmt: this.swingAmt, spd: this.spd
+        initX: this.initX, initY: this.initY, initDist: this.initDist,
+        spd: this.spd, delayMs: this.delayMs,
+        phase: this.phase, swingHz: this.swingHz, swingAmt: this.swingAmt
       };},
-      fluxState: function() { return { y: this.y }; },
-      updateAndGetResult: function(entity, { ms, spf, aheadSpd }) {
-        this.y += (aheadSpd + this.spd) * spf;
-        this.x = Insp.getXForDur(ms - this.ms, this);
-        return { x: this.x, y: this.y, ...Insp.bound, birth: [] };
+      fluxState: function() { return {}; /* Nothing! Winders are deterministic from their initial settings */ },
+      updateAndGetResult: function(entity, updData) {
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        this.x = x;
+        this.y = y;
+        return { x, y, ...this.constructor.bound, birth: [] };
       },
       isAlive: function(updData) {
         if (!insp.Enemy.isAlive.call(this, updData)) return false;
@@ -1723,7 +2166,7 @@ U.buildRoom({
         let { ms, bounds } = updData;
         
         return true
-          && (!this.numSwings || ((ms - this.ms) * 0.001 * this.swingHz) <= this.numSwings)
+          && (!this.numSwings || ((ms - this.ms - this.delayMs) * 0.001 * this.swingHz) <= this.numSwings)
           && (this.spd > 0 || this.y > bounds.total.b - 30)
           && (this.spd < 0 || this.y < bounds.total.t + 30);
       }
@@ -1731,8 +2174,9 @@ U.buildRoom({
     })});
     let Weaver = U.inspire({ name: 'Weaver', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 34 }, $hp: 8,
+      $calcParams: Insp.parents.Winder.calcParams,
       
+      $bound: { form: 'circle', r: 34 }, $hp: 8,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWeaver' }),
       $render: (draw, game, vals) => {
         Insp.parents.Winder.render(draw, game, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
@@ -1744,8 +2188,9 @@ U.buildRoom({
     })});
     let Furler = U.inspire({ name: 'Furler', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 28 }, $hp: 4,
+      $calcParams: Insp.parents.Winder.calcParams,
       
+      $bound: { form: 'circle', r: 28 }, $hp: 4,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyFurler' }),
       $render: (draw, game, vals) => {
         Insp.parents.Winder.render(draw, game, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
@@ -1763,17 +2208,17 @@ U.buildRoom({
         
         let supUpd = insp.Winder.updateAndGetResult.call(this, entity, updData);
         
-        let { ms } = updData;
+        let { aheadDist, ms } = updData;
         if (ms >= this.shootMark) {
           this.shootMark += this.shootDelayMs;
           let bulletOff = Insp.bound.r * 0.5;
           supUpd.birth.gain([
-            SimpleBullet({ ms, owner: this, x: this.x - bulletOff, y: this.y,
-              spd: -380, dmg: 1, w: 4, h: 20, lifespanMs: 3000,
+            SimpleBullet({ aheadDist, ms, owner: this, x: this.x - bulletOff, y: this.y,
+              spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
               ...this.bulletArgs
             }),
-            SimpleBullet({ ms, owner: this, x: this.x + bulletOff, y: this.y,
-              spd: -380, dmg: 1, w: 4, h: 20, lifespanMs: 3000,
+            SimpleBullet({ aheadDist, ms, owner: this, x: this.x + bulletOff, y: this.y,
+              spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
               ...this.bulletArgs
             })
           ]);
@@ -1783,131 +2228,6 @@ U.buildRoom({
         
       },
       isAlive: insp.Winder.isAlive
-      
-    })});
-    let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
-      
-      $bound: { form: 'rect', w: 160, h: 160 }, $maxHp: 90,
-      
-      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinderMom' }),
-      $render: (draw, game, { x, y }) => {
-        Insp.parents.Enemy.render(draw, game, { imageKeep: Insp.imageKeep, x, y,
-          w: Insp.bound.w, h: Insp.bound.h
-        });
-      },
-      
-      init: function({ spawnMs=3000, spawnArgs={}, ...args }) {
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        
-        this.spawnMs = spawnMs;
-        this.spawnMark = this.ms + this.spawnMs;
-        this.spawnArgs = spawnArgs;
-      },
-      getMaxHp: function() { return Insp.maxHp; },
-      ...insp.Enemy.slice('canCollide', 'collide'),
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return true; },
-      updateAndGetResult: function(entity, updData) {
-        
-        this.moveToDestination(updData);
-        let { ms } = updData;
-        
-        let birth = [];
-        if (ms >= this.spawnMark) {
-          
-          let args = {
-            ms, y: 0, spd: 70, swingHz: 0.22, swingAmt: 120,
-            ...this.spawnArgs
-          };
-          args.y += this.y;
-          if (Math.random() > 0.5) { args.x = this.x - 60; args.swingAmt *= -1; }
-          else                     { args.x = this.x + 60; args.swingAmt *= +1; }
-          
-          birth.gain([ Winder(args) ]);
-          
-          this.spawnMark = ms + this.spawnMs;
-          
-        }
-        
-        return { x: this.x, y: this.y, ...Insp.bound, birth };
-        
-      },
-      isAlive: function(updData) {
-        return true
-          && insp.Enemy.isAlive.call(this, updData)
-          && insp.Mover.isAlive.call(this, updData);
-      }
-      
-    })});
-    let WandererMom = U.inspire({ name: 'WandererMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
-      
-      $bound: { form: 'rect', w: 150, h: 210 },
-      $maxHp: 90, $numBullets: 7, $bulletSpd: 330,
-      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWandererMom' }),
-      $render: (draw, game, { x, y }) => {
-        Insp.parents.Enemy.render(draw, game, { imageKeep: Insp.imageKeep, x, y,
-          w: Insp.bound.w, h: Insp.bound.h
-        });
-      },
-      
-      init: function({ spawnMs=3000, shootDelayMs=2400, spawnArgs={}, ...args }) {
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        this.w = Insp.w; this.h = Insp.h;
-        
-        this.spawnMs = spawnMs;
-        this.spawnMark = this.ms + this.spawnMs;
-        this.spawnArgs = spawnArgs;
-        
-        this.shootDelayMs = shootDelayMs;
-      },
-      getMaxHp: function() { return Insp.maxHp; },
-      ...insp.Enemy.slice('canCollide', 'collide'),
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return true; },
-      updateAndGetResult: function(entity, updData) {
-        
-        this.moveToDestination(updData);
-        
-        let { ms, spf } = updData;
-        let birth = [];
-        
-        // Try to spawn a Wanderer
-        if (ms >= this.spawnMark) {
-          
-          let args = {
-            tx: 0, ty: 1,
-            ms, x: this.x, y: this.y, spd: 70, mode: 'random',
-            ...this.spawnArgs
-          };
-          args.tx += this.x;
-          args.ty += this.y;
-          
-          birth.gain([ Wanderer(args) ]);
-          
-          this.spawnMark = ms + this.spawnMs;
-          
-        }
-        
-        // Try to shoot `Insp.numBullets` bullets
-        if (Math.random() < ((spf * 1000) / this.shootDelayMs)) {
-          
-          let bulletArgs = { ms, owner: this, x: this.x, y: this.y, spd: Insp.bulletSpd, dmg: 1, r: 8 };
-          birth.gain(Array.fill(Insp.numBullets, () => DirectedBullet({
-            ...bulletArgs, ang: 0.5 + ((Math.random() - 0.5) * 2 * 0.05), lifespanMs: 3000
-          })));
-          
-        }
-        
-        return { x: this.x, y: this.y, ...Insp.bound, birth };
-        
-      },
-      isAlive: function(updData) {
-        return true
-          && insp.Enemy.isAlive.call(this, updData)
-          && insp.Mover.isAlive.call(this, updData);
-      }
       
     })});
     let Drifter = U.inspire({ name: 'Drifter', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -1995,12 +2315,137 @@ U.buildRoom({
               ms, owner: this,
               x: this.x, y: this.y,
               spd: -380, dmg: 1, w: 8, h: 20,
-              lifespanMs: 3000
+              lsMs: 3000
             })
           ]);
           this.shootMark += this.delayMs;
         }
         return { x: this.x, y: this.y, ...Insp.bound, birth };
+      },
+      isAlive: function(updData) {
+        return true
+          && insp.Enemy.isAlive.call(this, updData)
+          && insp.Mover.isAlive.call(this, updData);
+      }
+      
+    })});
+    let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
+      
+      $bound: { form: 'rect', w: 160, h: 160 }, $maxHp: 90,
+      
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinderMom' }),
+      $render: (draw, game, { x, y }) => {
+        Insp.parents.Enemy.render(draw, game, { imageKeep: Insp.imageKeep, x, y,
+          w: Insp.bound.w, h: Insp.bound.h
+        });
+      },
+      
+      init: function({ spawnMs=3000, spawnArgs={}, ...args }) {
+        insp.Enemy.init.call(this, args);
+        insp.Mover.init.call(this, args);
+        
+        this.spawnMs = spawnMs;
+        this.spawnMark = this.ms + this.spawnMs;
+        this.spawnArgs = spawnArgs;
+      },
+      getMaxHp: function() { return Insp.maxHp; },
+      ...insp.Enemy.slice('canCollide', 'collide'),
+      moveWithGame: function() { return true; },
+      stopAtDestination: function() { return true; },
+      updateAndGetResult: function(entity, updData) {
+        
+        this.moveToDestination(updData);
+        let { ms } = updData;
+        
+        let birth = [];
+        if (ms >= this.spawnMark) {
+          
+          let args = {
+            ms, y: 0, spd: 70, swingHz: 0.22, swingAmt: 120,
+            ...this.spawnArgs
+          };
+          args.y += this.y;
+          if (Math.random() > 0.5) { args.x = this.x - 60; args.swingAmt *= -1; }
+          else                     { args.x = this.x + 60; args.swingAmt *= +1; }
+          
+          birth.gain([ Winder(args) ]);
+          
+          this.spawnMark = ms + this.spawnMs;
+          
+        }
+        
+        return { x: this.x, y: this.y, ...Insp.bound, birth };
+        
+      },
+      isAlive: function(updData) {
+        return true
+          && insp.Enemy.isAlive.call(this, updData)
+          && insp.Mover.isAlive.call(this, updData);
+      }
+      
+    })});
+    let WandererMom = U.inspire({ name: 'WandererMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
+      
+      $bound: { form: 'rect', w: 150, h: 210 },
+      $maxHp: 90, $numBullets: 7, $bulletSpd: 330,
+      $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWandererMom' }),
+      $render: (draw, game, { x, y }) => {
+        Insp.parents.Enemy.render(draw, game, { imageKeep: Insp.imageKeep, x, y,
+          w: Insp.bound.w, h: Insp.bound.h
+        });
+      },
+      
+      init: function({ spawnMs=3000, shootDelayMs=2400, spawnArgs={}, ...args }) {
+        insp.Enemy.init.call(this, args);
+        insp.Mover.init.call(this, args);
+        this.w = Insp.w; this.h = Insp.h;
+        
+        this.spawnMs = spawnMs;
+        this.spawnMark = this.ms + this.spawnMs;
+        this.spawnArgs = spawnArgs;
+        
+        this.shootDelayMs = shootDelayMs;
+      },
+      getMaxHp: function() { return Insp.maxHp; },
+      ...insp.Enemy.slice('canCollide', 'collide'),
+      moveWithGame: function() { return true; },
+      stopAtDestination: function() { return true; },
+      updateAndGetResult: function(entity, updData) {
+        
+        this.moveToDestination(updData);
+        
+        let { aheadDist, ms, spf } = updData;
+        let birth = [];
+        
+        // Try to spawn a Wanderer
+        if (ms >= this.spawnMark) {
+          
+          let args = {
+            tx: 0, ty: 1,
+            ms, x: this.x, y: this.y, spd: 70, mode: 'random',
+            ...this.spawnArgs
+          };
+          args.tx += this.x;
+          args.ty += this.y;
+          
+          birth.gain([ Wanderer(args) ]);
+          
+          this.spawnMark = ms + this.spawnMs;
+          
+        }
+        
+        // Try to shoot `Insp.numBullets` bullets
+        if (Math.random() < ((spf * 1000) / this.shootDelayMs)) {
+          
+          let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: Insp.bulletSpd, dmg: 1, r: 8 };
+          birth.gain(Array.fill(Insp.numBullets, () => DirectedBullet({
+            ...bulletArgs, ang: 0.5 + ((Math.random() - 0.5) * 2 * 0.05), lsMs: 3000
+          })));
+          
+        }
+        
+        return { x: this.x, y: this.y, ...Insp.bound, birth };
+        
       },
       isAlive: function(updData) {
         return true
@@ -2181,6 +2626,9 @@ U.buildRoom({
             // Dry the fly.sprite Record if one exists
             if (entity.sprite) { entity.sprite.dry(); entity.sprite = null; }
             
+            // Increment death score
+            entity.rep.scoreDeath++;
+            
             // Keep track of the old Rep (to carry over stats)
             entity.deadRep = entity.rep;
             
@@ -2193,14 +2641,15 @@ U.buildRoom({
               setTimeout(() => {
                 let { player: pb } = Level.getGameBounds(game);
                 let AceCls = entity.deadRep.constructor;
-                let { name, scoreDamage, scoreDeath } = entity.deadRep;
-                let x = pb.x + (Math.random() - 0.5) * 2 * 40;
                 
+                let { name, scoreDamage, scoreDeath } = entity.deadRep;
+                entity.deadRep = null;
+                
+                let x = pb.x + (Math.random() - 0.5) * 2 * 100;
                 let y = pb.b + pb.h * 0.3;
-                entity.rep = AceCls({ name, x, y /*, stats: entity.deadRep.stats */ });
+                entity.rep = AceCls({ name, x, y });
                 entity.rep.scoreDamage = scoreDamage;
                 entity.rep.scoreDeath = scoreDeath;
-                entity.deadRep = null;
               }, Ace.respawnMs);
             } else {
               // Losing a life when all are already gone causes a Loss
@@ -2232,9 +2681,9 @@ U.buildRoom({
           for (let gp of gamePlayers) {
             for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
               let ent = gpe.members['fly.entity'];
-              let rep = ent.rep || ent.deadRep;
+              let rep = ent.rep || ent.deadRep || { scoreDamage: '?', scoreDeath: '?' };
               if (rep.isAlive(updateData)) rep.hp = 0; // Kill remaining Aces
-              gp.members['fly.player'].modVal(v => (v.score = rep.scoreDamage, v));
+              gp.members['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
             }
           }
           
@@ -2287,10 +2736,17 @@ U.buildRoom({
             for (let gp of gamePlayers) {
               for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
                 let ent = gpe.members['fly.entity'];
-                let rep = ent.rep || ent.deadRep;
-                gp.members['fly.player'].modVal(v => (v.score = rep ? rep.scoreDamage : 0, v));
+                let rep = ent.rep || ent.deadRep || { scoreDamage: 0, scoreDeath: 0 };
+                gp.members['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
               }
             }
+            
+            // Update the Lobby taking this win into account
+            game.members['fly.lobby'].modVal(v => {
+              v.level.dispName = `COMPLETE`;
+              v.level.dispDesc = levels[v.level.name].winText;
+              return v;
+            });
             
             // Dry the fly.game Record
             game.dry();
@@ -2312,14 +2768,14 @@ U.buildRoom({
     let Moment = U.inspire({ name: 'Moment', insps: { Entity }, methods: (insp, Insp) => ({
       
       $imageKeeps: {
-        savanna: foundation.getKeep('urlResource', { path: 'fly.sprite.bgSavanna' }),
-        savannaToPlains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgSavannaToPlains' }),
+        meadow: foundation.getKeep('urlResource', { path: 'fly.sprite.bgMeadow' }),
+        meadowToPlains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgMeadowToPlains' }),
         plains: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlains' }),
-        plainsToSavanna: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlainsToSavanna' })
+        plainsToMeadow: foundation.getKeep('urlResource', { path: 'fly.sprite.bgPlainsToMeadow' })
       },
       $tileExt: 250,
       $renderPriority: () => 1,
-      $render: (draw, game, { bounds, minY, maxY, terrain }) => {
+      $render: (draw, game, { type, bounds, minY, maxY, terrain }) => {
         
         if (!terrain) return;
         
@@ -2350,19 +2806,41 @@ U.buildRoom({
         
       },
       
-      init: function({ prevMoment=null, gameBounds, name, modelsDef, terrain=null }) {
+      init: function({ name, modelsDef, terrain=null, bounds=null, aheadSpd=100, visiMult=null }) {
         this.name = name;
         this.modelsDef = modelsDef;
         this.terrain = terrain;
+        
+        // Total bounds are always horizontally centered and shifted
+        // vertically relative to the aheadDist
+        this.bounds = bounds;
+        this.aheadSpd = aheadSpd;
+        this.visiMult = visiMult;
       },
       getMinY: C.noFn('getMinY'),
       getMaxY: C.noFn('getMaxY'),
-      permState: function() { return {
-        ...insp.Entity.permState.call(this),
-        minY: this.getMinY(), maxY: this.getMaxY(), terrain: this.terrain
-      };},
+      canCollide: function() { return false; },
+      permState: function() { return { ...insp.Entity.permState.call(this), terrain: this.terrain };},
+      normState: function() { return { ...insp.Entity.normState.call(this), minY: this.getMinY(), maxY: this.getMaxY() };},
       applyGameEffects: function(game) {
-        // E.g. set `game.val.aheadSpd` to a new value
+        
+        // TODO: Really should transition from previous bounds to new
+        // ones. Right now the Ace could be sitting in some previous
+        // Moment, when the new one shows its first lowest pixels. That
+        // means that the Ace immediately snaps into the new bounds -
+        // very janky!
+        
+        if (this.bounds) {
+          let { total, player } = this.bounds;
+          game.modVal(v => v.gain({
+            tw: total.w, th: total.h,
+            px: player.x, py: player.y, pw: player.w, ph: player.h,
+          }));
+        }
+        
+        if (this.aheadSpd !== null) game.modVal(v => v.gain({ aheadSpd: this.aheadSpd }));
+        if (this.visiMult !== null) game.modVal(v => v.gain({ visiMult: this.visiMult }));
+        
       },
       setupAndGetResult: function(prevMoment, { ms, aheadDist }) {
         return { birth: this.modelsDef.map(({ type, ...modelDef }) => {
@@ -2371,11 +2849,52 @@ U.buildRoom({
           return ModelCls({ ms, relDist: this.getMinY(), aheadDist, ...modelDef });
         })};
       },
-      updateAndGetResult: C.noFn('updateAndGetResult'),
+      updateAndGetResult: function(entity, updData) {
+        let { bounds: { total } } = updData;
+        let minY = this.getMinY();
+        let maxY = this.getMaxY();
+        return { form: 'rect', x: 0, y: (minY + maxY) * 0.5, w: total.w, h: maxY - minY, birth: [] };
+      },
       isStanding: C.noFn('isStanding'),
       isAlive: C.noFn('isAlive')
+      
     })});
     let MomentAhead = U.inspire({ name: 'MomentAhead', insps: { Moment }, methods: (insp, Insp) => ({
+      
+      $render: Insp.parents.Moment.render,
+      $renderPriority: Insp.parents.Moment.renderPriority,
+      
+      init: function({ distance, ...args }) {
+        
+        insp.Moment.init.call(this, args);
+        this.distance = distance;
+        this.minY = null; this.maxY = null;
+        
+      },
+      getMinY: function() { return this.minY; },
+      getMaxY: function() { return this.maxY; },
+      setupAndGetResult: function(prevMoment, updData) {
+        // TODO: Treats all Moment classes  like they define `this.maxY`
+        this.minY = prevMoment ? prevMoment.maxY : updData.bounds.total.b;
+        this.maxY = this.minY + this.distance;
+        return insp.Moment.setupAndGetResult.call(this, prevMoment, updData);
+      },
+      updateAndGetResult: function(entity, updData) {
+        return insp.Moment.updateAndGetResult.call(this, entity, updData);
+      },
+      isStanding: function(updData) {
+        // A MomentAhead stands while its top hasn't become visible
+        return this.maxY > updData.bounds.total.t;
+      },
+      isAlive: function(updData) {
+        // A MomentAhead lives while its top hasn't been passed entirely
+        // TODO: Keep MomentAhead instances alive for an additional 500
+        // units??
+        return (this.maxY + 500) > updData.bounds.total.b;
+      }
+      
+    })});
+    let MomentTargetType = U.inspire({ name: 'MomentTargetType', insps: { Moment }, methods: (insp, Insp) => ({
       
       $render: Insp.parents.Moment.render,
       $renderPriority: Insp.parents.Moment.renderPriority,
@@ -2445,6 +2964,9 @@ U.buildRoom({
       
     })});
     
+    // Ground buildings with 1-ups (need to slow down aheadSpd for this, or else they move toooo fast??)
+    // Move whatever possible from MomentAhead into Moment, then fill out MomentTargetType
+    
     let mdlClasses = {};
     mdlClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
     mdlClasses.gain({ JoustManBullet, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile });
@@ -2474,8 +2996,9 @@ U.buildRoom({
         real('content1', () => TextSized({ size: UnitPc(2) }));
         real('content2', () => TextSized({ size: UnitPc(1.5) }));
         real('content3', () => TextSized({ size: UnitPc(1) }));
+        real('paragraph', () => TextSized({ size: UnitPc(0.9), multiLine: true }));
         
-        let centeredText = (name, cNames=[ 'content1', 'content2', 'content3' ]) => {
+        let centeredText = (name, cNames=[ 'content1', 'content2', 'content3', 'paragraph' ]) => {
           for (let cName of cNames) insert(`${name} -> ${cName}`, sl => sl.getCenteredSlot());
         };
         
@@ -2498,9 +3021,7 @@ U.buildRoom({
         insert('lobbyChooserContent -> lobbyChooserButton', sl => sl.getAxisSlot(2));
         insert('lobbyChooserButton -> content1', sl => sl.getCenteredSlot());
         
-        real('lobby', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.2), UnitPc(0.7) ] }));
-        real('lobbyTitle', () => CenteredSlotter());
-        real('lobbyBackButton', () => CenteredSlotter());
+        real('lobby', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.1), UnitPc(0.3) ] }));
         real('teamList', () => LinearSlotter({ axis: 'y', dir: '+' }));
         centeredText('lobbyTitle');
         centeredText('lobbyBackButton');
@@ -2508,7 +3029,7 @@ U.buildRoom({
         real('teamMember', () => LinearSlotter({ axis: 'x', dir: '+', scroll: false }));
         real('playerName', () => CenteredSlotter());
         real('modelList', () => LinearSlotter({ axis: 'x', dir: '+', scroll: false }));
-        real('model', () => AxisSlotter({ axis: 'y', dir: '-', cuts: [ UnitPc(0.2) ] }));
+        real('model', () => AxisSlotter({ axis: 'y', dir: '-', cuts: [ UnitPc(0.15) ] }));
         real('modelName', () => CenteredSlotter());
         real('score', () => CenteredSlotter());
         centeredText('playerName');
@@ -2516,13 +3037,45 @@ U.buildRoom({
         centeredText('score');
         insert('model -> modelName', sl => sl.getAxisSlot(0));
         insert('main -> lobby', () => FillParent());
-        insert('lobby -> lobbyTitle',       sl => sl.getAxisSlot(0));
-        insert('lobby -> teamList',         sl => sl.getAxisSlot(1));
-        insert('lobby -> lobbyBackButton',  sl => sl.getAxisSlot(2));
+        
+        insert('lobby -> lobbyHeader',  sl => sl.getAxisSlot(0));
+        insert('lobby -> mapChoice',    sl => sl.getAxisSlot(1));
+        insert('lobby -> teamList',     sl => sl.getAxisSlot(2));
+        
+        // Lobby header
+        real('lobbyHeader', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.15), UnitPc(0.7) ] }));
+        real('lobbyTitle', () => CenteredSlotter());
+        real('lobbyBackButton', () => CenteredSlotter());
+        insert('lobbyHeader -> lobbyBackButton', sl => sl.getAxisSlot(0));
+        insert('lobbyHeader -> lobbyTitle', sl => sl.getAxisSlot(1));
+        
+        // Map chooser
+        real('mapChoice', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.01), UnitPc(0.24), UnitPc(0.01), UnitPc(0.73) ] }));
+        
+        real('mapChoiceEntry', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.2), UnitPc(0.3), UnitPc(0.05), UnitPc(0.3) ] }));
+        real('mapChoiceField', () => TextSized({ size: UnitPc(2), interactive: true, desc: 'Passcode' }));
+        real('mapChoiceButton', () => CenteredSlotter());
+        insert('mapChoice -> mapChoiceEntry', sl => sl.getAxisSlot(1));
+        insert('mapChoiceEntry -> mapChoiceField', sl => [ sl.getAxisSlot(1) ]);
+        insert('mapChoiceEntry -> mapChoiceButton', sl => [ sl.getAxisSlot(3) ]);
+        
+        real('mapChoiceContentHolder', () => CenteredSlotter());
+        real('mapChoiceContent', () => LinearSlotter({ axis: 'y', dir: '+' }));
+        real('mapChoiceTitle', () => CenteredSlotter());
+        real('mapChoiceDesc', () => CenteredSlotter());
+        insert('mapChoice -> mapChoiceContentHolder', sl => sl.getAxisSlot(3));
+        insert('mapChoiceContentHolder -> mapChoiceContent', sl => sl.getCenteredSlot());
+        insert('mapChoiceContent -> mapChoiceTitle', sl => sl.getLinearSlot());
+        insert('mapChoiceContent -> mapChoiceDesc', sl => sl.getLinearSlot());
+        centeredText('mapChoiceButton');
+        centeredText('mapChoiceTitle');
+        centeredText('mapChoiceDesc');
+        
+        // Player list
         insert('teamList -> teamMember',    sl => [ sl.getLinearSlot(), FixedSize(UnitPc(1), UnitPc(1/4)) ]);
         insert('teamMember -> playerName',  sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.2), UnitPc(1)) ]);
-        insert('teamMember -> modelList',   sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.7), UnitPc(1)) ]);
-        insert('teamMember -> score',       sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.1), UnitPc(1)) ]);
+        insert('teamMember -> modelList',   sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.6), UnitPc(1)) ]);
+        insert('teamMember -> score',       sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.2), UnitPc(1)) ]);
         insert('modelList -> model', sl => [ sl.getLinearSlot(), FixedSize(UnitPc(1/4), UnitPc(1)) ]);
         insert('playerName -> content1', sl => sl.getCenteredSlot());
         insert('score -> content1', sl => sl.getCenteredSlot());
@@ -2538,11 +3091,12 @@ U.buildRoom({
         insert('game -> gameRInfo', sl => sl.getAxisSlot(2));
         insert('gameLInfo -> gameDispLives', sl => sl.getCenteredSlot());
         
-        decals('lobbyTitle', { colour: 'rgba(0, 0, 0, 0.15)' });
+        decals('lobbyHeader', { colour: 'rgba(0, 0, 0, 0.15)' });
         decals('teamList', { colour: 'rgba(0, 0, 0, 0.07)' });
         decals('lobbyChooserButton', { colour: '#d0d0d0' });
         decals('lobbyBackButton', { colour: 'rgba(0, 0, 0, 0.5)', textColour: '#ffffff' });
         decals('playerName', { colour: 'rgba(0, 0, 0, 0.1)' });
+        decals('mapChoiceButton', { colour: 'rgba(0, 0, 0, 0.1)' });
         decals('score', { colour: 'rgba(0, 0, 0, 0.2)' });
         decals('game', { colour: '#000000', textColour: '#ffffff' });
         decals('gameLInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
@@ -2582,7 +3136,7 @@ U.buildRoom({
           
           let kidHutDep = dep;
           let { value: term } = dep(termBank.checkout());
-          let player = dep(flyHut.createRec('fly.player', [], { term, name: null, score: 0 }));
+          let player = dep(flyHut.createRec('fly.player', [], { term, name: null, score: 0, deaths: 0 }));
           let hutPlayer = flyHut.createRec('fly.hutPlayer', [ hut, player ]);
           
           let lobbyPlayerNozz = player.relNozz('fly.lobbyPlayer');
@@ -2610,9 +3164,23 @@ U.buildRoom({
                   // The id used to get into the lobby
                   id: `${U.base62(randInt).padHead(4, '0')}`,
                   
+                  // Level values
+                  level: getLevelData('rustlingMeadow'),
+                  
                   // The time in millis all Players signalled ready (or
                   // `null`, if a Player isn't ready)
                   allReadyMs: null
+                });
+                
+                // This route only occurs when the Lobby is initially
+                // created. It waits for the Lobby to be non-empty, then
+                // waits for it to become empty again (at which point
+                // the Lobby is cleaned up).
+                let lobbyHasPlayerNozz = lobby.relNozz('fly.lobbyPlayer');
+                let lobbyNoPlayersNozz = TubDry(null, lobbyHasPlayerNozz); // Don't `dep` this
+                let route = lobbyHasPlayerNozz.route(() => {
+                  route.dry();
+                  lobbyNoPlayersNozz.route(() => lobby.dry());
                 });
               }
               
@@ -2620,6 +3188,18 @@ U.buildRoom({
               
               flyHut.createRec('fly.lobbyPlayer', [ lobby, player ], { model: null });
               
+            }));
+            
+          });
+          dep.scp(lobbyPlayerNozz, (lobbyPlayer, dep) => {
+            
+            dep(hut.roadNozz('lobbyPass').route(({ msg: { pass } }) => {
+              let [ level=null, levelName ] = levels.find(v => v.password === pass) || [];
+              if (!level) return;
+              
+              let lobby = lobbyPlayer.members['fly.lobby'];
+              for (let lp of lobby.relNozz('fly.lobbyPlayer').set) lp.modVal(v => (v.model = null, v));
+              lobby.modVal(v => (v.level = getLevelData(levelName), v));
             }));
             
           });
@@ -2665,13 +3245,23 @@ U.buildRoom({
               if (momentName) {
                 let levelDef = levels[levelName];
                 let [ firstMoment, ind ] = levelDef.moments.find(m => m.name === momentName);
+                
+                if (!firstMoment.bounds) {
+                  for (let i = ind; i >= 0; i--) {
+                    if (levelDef.moments[i].has('bounds')) {
+                      firstMoment.bounds = levelDef.moments[i].bounds;
+                      break;
+                    }
+                  }
+                }
+                
                 let testMoments = [
                   { name: 'test', type: 'MomentAhead', terrain: 'plains',
                     distance: firstMoment.bounds.total.h, spd: 200,
                     bounds: firstMoment.bounds,
                     modelsDef: []
                   },
-                  { name: 'testTrn', type: 'MomentAhead', terrain: 'plainsToSavanna',
+                  { name: 'testTrn', type: 'MomentAhead', terrain: 'plainsToMeadow',
                     distance: 250, spd: 200,
                     bounds: firstMoment.bounds,
                     modelsDef: []
@@ -2680,10 +3270,13 @@ U.buildRoom({
                 levelDef.moments = [ ...testMoments, ...levelDef.moments.slice(ind) ];
               }
               
-              testLobby = flyHut.createRec('fly.lobby', [ fly ], { id: 'TEST', allReadyMs: null });
+              testLobby = flyHut.createRec('fly.lobby', [ fly ], { 
+                id: 'TEST', allReadyMs: null,
+                level: getLevelData(levelName)
+              });
               testGame = flyHut.createRec('fly.game', [ fly, testLobby ], {
                 
-                ms: foundation.getMs(), lives: 100, aheadSpd: 0, level: levelName,
+                ms: foundation.getMs(), lives: testing.lives, aheadSpd: 0, level: levelName,
                 x: 0, y: 0,
                 
                 // Total dimensions
@@ -2801,7 +3394,7 @@ U.buildRoom({
             let timeout = setTimeout(() => {
               let game = flyHut.createRec('fly.game', [ fly, lobby ], {
                 
-                ms: foundation.getMs(), lives: 5, aheadSpd: 0, level: 'killPlains',
+                ms: foundation.getMs(), lives: 7, aheadSpd: 0, level: lobby.val.level.name,
                 x: 0, y: 0,
                 
                 // Total dimensions
@@ -2925,11 +3518,37 @@ U.buildRoom({
             
             let myPlayer = myLobbyPlayer.members['fly.player'];
             let lobby = myLobbyPlayer.members['fly.lobby'];
-            
             let lobbyReal = dep(mainReal.addReal('fly.lobby'));
-            let lobbyTitle = lobbyReal.addReal('fly.lobbyTitle').addReal('fly.content1');
-            let teamListReal = lobbyReal.addReal('fly.teamList');
             
+            let lobbyHeaderReal = lobbyReal.addReal('fly.lobbyHeader');
+            let lobbyTitle = lobbyHeaderReal.addReal('fly.lobbyTitle').addReal('fly.content1');
+            let lobbyBackButton = lobbyHeaderReal.addReal('fly.lobbyBackButton');
+            dep(lobbyBackButton.feelNozz().route(() => flyHut.tell({ command: 'lobbyExit' })));
+            lobbyBackButton.addReal('fly.content3').setText(`Leave Lobby`);
+            
+            let mapChoiceReal = lobbyReal.addReal('fly.mapChoice');
+            let mapChoiceContentReal = mapChoiceReal.addReal('fly.mapChoiceContentHolder').addReal('fly.mapChoiceContent');
+            let mapChoiceTitleReal = mapChoiceContentReal.addReal('fly.mapChoiceTitle').addReal('fly.content2');
+            let mapChoiceDescReal = mapChoiceContentReal.addReal('fly.mapChoiceDesc').addReal('fly.paragraph');
+            
+            let mapChoiceEntryReal = mapChoiceReal.addReal('fly.mapChoiceEntry');
+            let mapChoiceFieldReal = mapChoiceEntryReal.addReal('fly.mapChoiceField');
+            let mapChoiceButtonReal = mapChoiceEntryReal.addReal('fly.mapChoiceButton');
+            let mapChoiceButtonTextReal = mapChoiceButtonReal.addReal('fly.content2');
+            dep(mapChoiceButtonReal.feelNozz().route(() => {
+              let pass = mapChoiceFieldReal.textNozz().val;
+              mapChoiceFieldReal.setText('');
+              flyHut.tell({ command: 'lobbyPass', pass });
+            }));
+            dep(lobby.route(({ level }) => {
+              let { num, name, password, dispName, dispDesc } = level;
+              mapChoiceTitleReal.setText(`Stage #${num + 1}: ${dispName}`);
+              mapChoiceDescReal.setText(dispDesc);
+              mapChoiceFieldReal.setText(password);
+            }));
+            mapChoiceButtonTextReal.setText('Submit');
+            
+            let teamListReal = lobbyReal.addReal('fly.teamList');
             dep.scp(lobby, 'fly.lobbyPlayer', (lobbyPlayer, dep) => {
               
               let isMine = lobbyPlayer === myLobbyPlayer;
@@ -2947,7 +3566,7 @@ U.buildRoom({
                 modelReal.addReal('fly.modelName').addReal('fly.content3').setText(name);
                 modelReal.setImage(
                   foundation.getKeep('urlResource', { path: `fly.sprite.ace${model[0].upper()}${model.slice(1)}` }),
-                  { smoothing: false, scale: 0.6 }
+                  { smoothing: false, scale: 0.5 }
                 );
                 
                 if (isMine) {
@@ -2962,9 +3581,9 @@ U.buildRoom({
               
               teamMemberReal.setColour(isMine ? '#f8c0a0' : '#f0f0f0');
               
-              dep(player.route(({ name, score }) => {
+              dep(player.route(({ name, score, deaths }) => {
                 nameReal.setText(name || '<anon>')
-                scoreReal.setText(`Dmg:\n${Math.round(score) * 100}`);
+                scoreReal.setText(`Dmg: ${Math.round(score) * 100}\nDeaths: ${deaths}`);
               }));
               dep(lobbyPlayer.route(({ model, score }) => {
                 modelReals.forEach((modelReal, k) => {
@@ -3004,10 +3623,6 @@ U.buildRoom({
               dep(Drop(null, () => { lobbyReal.setOpacity(null); clearInterval(interval); }));
               
             });
-            
-            let lobbyBackButton = lobbyReal.addReal('fly.lobbyBackButton');
-            dep(lobbyBackButton.feelNozz().route(() => flyHut.tell({ command: 'lobbyExit' })));
-            lobbyBackButton.addReal('fly.content3').setText(`Leave Lobby`);
             
             let myGamePlayerNozz = myPlayer.relNozz('fly.gamePlayer');
             let myGamePlayerDryNozz = dep(TubDry(null, myGamePlayerNozz));
@@ -3119,12 +3734,17 @@ U.buildRoom({
                 renders.push({
                   uid: entity.uid,
                   priority: Cls.renderPriority ? Cls.renderPriority(renderVals) : 0.5,
-                  render: [ Cls, renderVals ]
+                  render: [ Cls, renderVals, entity ]
                 });
               }
               
+              let updData = game.val.slice({ ms: 'ms', aheadDist: 'y' });
+              let ms = game.val.ms;
               renders = renders.sort((v1, v2) => v2.priority - v1.priority);
-              for (let { render: [ Cls, vals ] } of renders) Cls.render(draw, game, { bounds, ...vals });
+              for (let { render: [ Cls, vals, entity ] } of renders) {
+                let calcVals = Cls.calcParams ? Cls.calcParams(ms - vals.ms, updData, { bounds, ...vals }) : {};
+                Cls.render(draw, game, { entity, myEntity, bounds, ...vals, ...calcVals });
+              }
               
               draw.rectCen(tb.x, tb.y, tb.w - 4, tb.h - 4, { strokeStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 4 });
               draw.rectCen(pb.x, pb.y, pb.w - 4, pb.h - 4, { strokeStyle: 'rgba(0, 120, 0, 0.1)', lineWidth: 4 });

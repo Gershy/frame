@@ -735,7 +735,7 @@ U.buildRoom({
             ...(textSized.embossed ? { pointerEvents: 'auto' } : {}),
             maxWidth: '100%',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            ...(textSized.multiLine ? {} : { textOverflow: 'ellipsis' }),
             fontSize: textSized.size
           };
           

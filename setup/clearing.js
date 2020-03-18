@@ -494,9 +494,8 @@ let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, 
     insp.Nozz.init.call(this);
     this.nozz = nozz;
     
-    let count = 0;
+    this.count = 0;
     this.drop = Drop(defDrier());
-    this.drop.desc = `TubDry dryness-indicating Drop`;
     
     this.dropDryRoutes = Set();
     this.nozzRoute = this.nozz.route(drop => {
@@ -506,13 +505,12 @@ let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, 
       if (!drop.drier.nozz) throw Error('TubDry expects Drops to have "drier.nozz"');
       if (drop.isDry()) return;
       
-      if (count === 0) this.drop.dry();
-      count++;
+      if (this.count === 0) this.drop.dry();
+      this.count++;
       
       this.dropDryRoutes.add(drop.drier.nozz.route(() => {
-        count--;
-        if (count === 0) this.drip(this.drop = Drop(defDrier()));
-        this.drop.desc = `From TubDry`;
+        this.count--;
+        if (this.count === 0) this.drip(this.drop = Drop(defDrier()));
       }));
       
     });
