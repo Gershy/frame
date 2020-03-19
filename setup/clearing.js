@@ -226,6 +226,10 @@ let U = global.U = {
       let pNames = Object.getOwnPropertyNames(proto);
       return pNames.toObj(v => [ v, proto[v] ]);
     });
+    parInsps.allArr = (methodName, workFn) => {
+      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      return function(...args) { return workFn(this, methods.map(m => m.call(this, ...args))); };
+    };
     
     // If `methods` is a function it becomes the result of its call
     if (U.isType(methods, Function)) methods = methods(parInsps, Insp);

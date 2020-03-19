@@ -113,11 +113,11 @@ U.buildRoom({
     let fps = 40; // Server-side ticks per second
     let gameStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
-    let testing = null && {
+    let testing = {
       lives: 10,
       levelName: 'impendingFields',
       momentName: 'box3',
-      ace: 'SalvoLad' //[ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ][Math.floor(Math.random() * 4)]
+      ace: [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ][Math.floor(Math.random() * 4)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
     
@@ -646,17 +646,17 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
               { type: 'Weaver', x: 0, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
               
-              { type: 'Drifter', x: 0, y: +500, tx: 0, ty: 0, spd: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: 0,   y: +300, tx: 0, ty: 0, vel: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
               
               { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1200, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } }
             ]
           },
-          { name: 'snake3', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
+          { name: 'snake3', type: 'MomentAhead', terrain: 'meadow', distance: 2000, aheadSpd: 100,
             modelsDef: [
-              { type: 'Drifter', x: -150, y: +100, tx: -150, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x:  -50, y: +100, tx:  -50, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x:  +50, y: +100, tx:  +50, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x: +150, y: +100, tx: +150, ty: 0, spd: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: -150, y: +100, tx: -150, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  -50, y: +100, tx:  -50, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  +50, y: +100, tx:  +50, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: +150, y: +100, tx: +150, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
               
               { type: 'Weaver', x: 0, y:  +300, spd: -90, delayMs: 1500, swingHz: 0.030, swingAmt: +195 },
               { type: 'Weaver', x: 0, y:  +350, spd: -90, delayMs: 1500, swingHz: 0.035, swingAmt: +195 },
@@ -938,67 +938,77 @@ U.buildRoom({
       fluxState: function() { return { x: this.x, y: this.y }; }
     })});
     let Mover = U.inspire({ name: 'Mover', methods: (insp, Insp) => ({
-      init: function(vals) {
-        let { tx, ty, spd=100, relDist=0, aheadDist=0, ang, dist, ...args } = vals;
+      
+      $calcParams: (dur, { aheadDist }, { type, initDist, initX, initY, vx, vy, dist, vel, acl }) => {
         
+        let t = dur * 0.001;
+        let d = vel * t + 0.5 * acl * t * t; // Distance based on t, vel, acl
+        
+        // Non-null `dist` creates a cap on the distance
+        if (dist !== null && d > dist) d = dist;
+        
+        let x = initX + vx * d;
+        let y = initY + vy * d;
+        
+        // Non-null `initDist` causes movement relative to `aheadDist`
+        if (initDist !== null) y += aheadDist - initDist;
+        
+        return { x, y };
+        
+      },
+      
+      init: function({ aheadDist=0, vel=100, acl=0, tx, ty, ang, dist, spd=null }) {
+        
+        if (spd !== null) throw Error(`Don't provide "spd" (${spd}) - instead use "vel"!`);
         if (!({}).has.call(this, 'x')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         if (!({}).has.call(this, 'y')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         
-        // Note that `relDist` is the y value of the minY of the Moment
-        // in which we are being initialized. It varies depending on the
-        // moment, but is used as the relative y value for spawning
-        // Models
-        
         // Note that `aheadDist` is the y value of the total progression
-        // of the game at the. It is consistent regardless of the Moment
+        // of the game, and consistent regardless of the Moment. To get
+        // consistent movement we need to use `aheadDist`!
         
-        // To get consistent movement we need to use `aheadDist`!
-        
-        this.tx = this.ty = null;
-        this.vx = this.vy = null;
-        this.spd = null;
-        this.ang = null;
         this.initDist = aheadDist;
-        this.setDestination({ aheadDist, spd, tx, ty, ang, dist });
+        this.initX = this.x; this.initY = this.y;
+        this.vx = this.vy = this.dist = null;
+        this.vel = null; this.acl = null;
+        this.ang = null;
+        this.setDestination({ aheadDist, vel, acl, tx, ty, ang, dist });
+        
       },
-      setDestination: function({ aheadDist=0, spd=null, tx=null, ty=null, ang=null, dist=null }) {
+      setDestination: function({ aheadDist=0, vel=null, acl=null, tx=null, ty=null, ang=null, dist=null }) {
         
         // Providing x and y with an optional `relDist` sets the
         // destination through that point (and optionally stopping at
         // that point)
-        // Providing a angation and optional distance sets the
-        // destination at the angle relative to the current position
+        // Providing a angle and optional distance sets the destination
+        // at the angle relative to the current position
         
         if (ang !== null && (tx !== null || ty !== null))
           throw Error(`Specify either "ang", or "tx" and "ty"`);
         
         // Update speed if necessary
-        if (spd !== null) this.spd = spd;
+        if (vel !== null) this.vel = vel;
+        if (acl !== null) this.acl = acl;
         
         if (tx !== null) {
           
-          let aheadDiff = aheadDist - this.initDist;
-          let dx = (tx - this.x);
-          let dy = ((ty + (this.moveWithGame() ? aheadDist : 0)) - this.y);
+          let dx = tx - this.x;
+          let dy = ty - this.y + ((aheadDist !== null) ? aheadDist : 0);
+          this.dist = Math.sqrt(dx * dx + dy * dy);
           
-          let tSpd = this.spd / Math.sqrt(dx * dx + dy * dy);
-          this.tx = tx; this.ty = ty;
-          this.vx = dx * tSpd; this.vy = dy * tSpd;
+          let n = 1 / this.dist; // Normalizes dx, dy
+          this.vx = dx * n; this.vy = dy * n;
+          
           this.ang = Math.atan2(dx, dy) / (Math.PI * 2);
           
         } else if (ang !== null) {
           
-          if (dist === null) dist = 1;
-          
           let r = ang * Math.PI * 2;
-          let sin = Math.sin(r);
-          let cos = Math.cos(r);
+          this.vx = Math.sin(r);
+          this.vy = Math.cos(r);
           
+          this.dist = dist;
           this.ang = ang;
-          this.tx = this.x + sin * dist;
-          this.ty = this.y + cos * dist;
-          this.vx = this.spd * sin;
-          this.vy = this.spd * cos;
           
         } else {
           
@@ -1007,41 +1017,20 @@ U.buildRoom({
         }
         
       },
-      setSpd: function(spd) {
-        let m = spd / (this.spd || 1);
-        this.vx *= m;
-        this.vy *= m;
-        this.spd = spd;
-      },
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return false; },
-      moveToDestination: function({ spf, aheadSpd, aheadDist }) {
-        
-        this.x += this.vx * spf;
-        this.y += (this.vy + (this.moveWithGame() ? aheadSpd : 0)) * spf;
-        
-        let tx = this.tx;
-        let ty = this.ty + (this.moveWithGame() ? aheadDist : 0);
-        
-        if (this.stopAtDestination()) {
-          if (this.vx > 0 && this.x > tx) this.x = tx;
-          if (this.vx < 0 && this.x < tx) this.x = tx;
-          if (this.vy > 0 && this.y > ty) this.y = ty;
-          if (this.vy < 0 && this.y < ty) this.y = ty;
-        }
-        
-      },
-      isAlive: function({ aheadDist, bounds }) {
-        if (!this.stopAtDestination()) {
-          
-          let bnd = bounds.total;
+      permState: function() { return { initDist: this.initDist }; },
+      normState: function() { return {
+        initX: this.initX, initY: this.initY,
+        vx: this.vx, vy: this.vy, dist: this.dist,
+        vel: this.vel, acl: this.acl
+      };},
+      isAlive: function(updData) {
+        if (this.dist === null) {
+          let bnd = updData.bounds.total;
           if (this.vx > 0 && this.x > (bnd.r + 100)) return false;
           if (this.vx < 0 && this.x < (bnd.l - 100)) return false;
           if (this.vy > 0 && this.y > (bnd.t + 100)) return false;
           if (this.vy < 0 && this.y < (bnd.b - 100)) return false;
-          
         }
-        
         return true;
       }
     })});
@@ -1118,41 +1107,28 @@ U.buildRoom({
     })});
     let DirectedBullet = U.inspire({ name: 'DirectedBullet', insps: { Geom, Mover, Bullet }, methods: (insp, Insp) => ({
       
-      $calcParams: (dur, { aheadDist }, { initX, initY, initDist, vx, vy, spd, acl }) => {
-        let addAcl = acl * acl;
-        return {
-          x: initX + (vx + addAcl) * dur * 0.001,
-          y: initY + (vy + addAcl + (aheadDist - initDist)) * dur * 0.001
-        };
-      },
+      $calcParams: Insp.parents.Mover.calcParams,
+      
       $render: (draw, game, { x, y, r, team }) => {
         draw.circ(x, y, r, { fillStyle: Insp.parents.Bullet.getColour(team) });
       },
       init: function({ r=8, lsMs=3000, acl=0, ...args }) {
         insp.Geom.init.call(this, args);
-        insp.Mover.init.call(this, { spd: 500, ...args });
+        insp.Mover.init.call(this, { vel: 500, ...args });
         insp.Bullet.init.call(this, args);
         this.r = r;
         this.lsMs = lsMs;
         this.acl = acl;
-        this.initX = this.x;
-        this.initY = this.y;
       },
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return false; },
       canCollide: function() { return true; },
       collide: function(rep, updData) { if (insp.Bullet.collide.call(this, rep, updData)) this.lsMs = 0; },
-      permState: function() { return {
-        ...insp.Geom.permState.call(this),
-        team: this.getTeam(), r: this.r,
-        initX: this.initX, initY: this.initY, initDist: this.initDist,
-        vx: this.vx, vy: this.vy, acl: this.acl // TODO: HEEERE, moving all flux params to perm!
-      };},
-      fluxState: function() { return {}; /* Nothing! */ },
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, { team: i.getTeam(), r: i.r })),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return {}; },
       updateAndGetResult: function(entity, updData) {
-        insp.Mover.moveToDestination.call(this, updData);
         let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
-        //if (this.acl) this.setSpd(this.spd + this.acl * updData.spf);
+        this.x = x;
+        this.y = y;
         return { x: this.x, y: this.y, form: 'circle', r: this.r, birth: [] };
       },
       isAlive: function({ ms }) { return (ms - this.ms) < this.lsMs; }
@@ -1301,8 +1277,7 @@ U.buildRoom({
         this.w1State = 0;   // Integer indicating current stage
         this.w2Mark = this.ms; // Marks when next jump is available
       },
-      normState: function() { return {
-        ...insp.Ace.normState.call(this),
+      normState: function() { return { ...insp.Ace.normState.call(this),
         w1Mark: this.w1Mark, w1State: this.w1State, w2Mark: this.w2Mark
       };},
       updateAndGetResult: function(entity, updData) {
@@ -1338,7 +1313,7 @@ U.buildRoom({
               // Weapon 1 act 1: Spread shot
               
               let incAng = 0.018;
-              let args = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: 450, dmg: 1, r: 6 };
+              let args = { aheadDist, ms, owner: this, x: this.x, y: this.y, vel: 350, dmg: 1, r: 6 };
               
               birth.gain([ ...util.incCen(10, incAng) ].map(ang => JoustManBullet({
                 ...args, ang, lsMs: 650, dmg: 0.75
@@ -1488,8 +1463,8 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.w1StartMark);
             supResult.birth.gain([
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, spd: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs })
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -ang, vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +ang, vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs })
             ]);
             
           } else {
@@ -1499,10 +1474,10 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.w2EffectiveShootDuration);
             supResult.birth.gain([
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), spd: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs })
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 8, y: this.y, ang: -(ang * 1.5), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x - 4, y: this.y, ang: -(ang * 1.0), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 4, y: this.y, ang: +(ang * 1.0), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
+              DirectedBullet({ aheadDist, ms, owner: this, x: this.x + 8, y: this.y, ang: +(ang * 1.5), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs })
             ]);
             
           }
@@ -1527,7 +1502,7 @@ U.buildRoom({
             this.w2EffectiveShootDuration = ms - (this.w1StartMark || ms)
             
             let incAng = 0.029;
-            let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: 140, r: 5 };
+            let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, vel: 140, r: 5 };
             supResult.birth.gain([ ...util.incCen(15, incAng) ].map(ang => DirectedBullet({
               ...bulletArgs, ang: 0.5 + ang, lsMs: 2500, dmg: 4
             })));
@@ -1578,8 +1553,7 @@ U.buildRoom({
         
         this.slamSpd = Insp.slamSpd / Math.sqrt(2);
       },
-      normState: function() { return {
-        ...insp.Ace.normState.call(this),
+      normState: function() { return { ...insp.Ace.normState.call(this),
         w1Mark: this.w1Mark, w2Mark: this.w2Mark,
         w1StartMark: this.w1StartMark, w2StartMark: this.w2StartMark
       }},
@@ -1649,7 +1623,7 @@ U.buildRoom({
               let shotgunArgs = {
                 aheadDist, ms, owner: this, x: this.x + (mult * 7), y: this.y - 7,
                 dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg,
-                spd: Insp.shotgunSpd,
+                vel: Insp.shotgunSpd,
                 lsMs: Insp.shotgunLsMs,
                 r: 2
               };
@@ -1770,11 +1744,10 @@ U.buildRoom({
         return {
           delayMs: Insp.decampDelayMs,
           birth: [
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.000, spd:  15, lsMs:   400, kaboomArgs: { dps: 4.75, duration: 1900 } }),
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.005, spd: 100, lsMs:  800, kaboomArgs: { dps: 4.75, duration: 2300 } }),
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 - dir * 0.005, spd: 120, lsMs: 1300, kaboomArgs: { dps: 4.75, duration: 2150 } })
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.000, vel:  15, lsMs:   400, kaboomArgs: { dps: 4.75, duration: 1900 } }),
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.005, vel: 100, lsMs:  800, kaboomArgs: { dps: 4.75, duration: 2300 } }),
+            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 - dir * 0.005, vel: 120, lsMs: 1300, kaboomArgs: { dps: 4.75, duration: 2150 } })
           ]
-          //birth: [ SalvoLadKaboom({ salvoLad: this, x: origX, y: this.y, durationMs: 1600 }) ]
         };
         
       },
@@ -1786,12 +1759,12 @@ U.buildRoom({
             inst.y += ((ms1 - ms) / Insp.diveMs) * Insp.diveFwdMult * spf;
             inst.x += dir * 150 * spf;
           },
-          endFn: (inst, { ms }, { birth }) => {
-            let missileArgs = { aheadDist, ms, salvoLad: inst, x: inst.x, y: inst.y };
+          endFn: (inst, { aheadDist, ms }, { birth }) => {
+            let missileArgs = { aheadDist, ms, salvoLad: inst };
             birth.gain([
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, spd: 120, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, duration: 1900 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, spd: 138, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, duration: 2300 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, spd: 125, lsMs: Insp.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, duration: 2150 } })
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, vel: 120, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, duration: 1900 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, vel: 138, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, duration: 2300 } }),
+              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, vel: 125, lsMs: Insp.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, duration: 2150 } })
             ])
           }
         });
@@ -1800,7 +1773,7 @@ U.buildRoom({
       },
       comboMissiles: function(dir, { ms, spf, aheadDist }) {
         
-        let args = { owner: this, w: 6, h: 16, spd: 700 };
+        let args = { owner: this, w: 6, h: 16, vel: 700 };
         for (let i = 0; i < 5; i++) {
           this.effects.add({ mark: ms + 50 + i * 30, endFn: (inst, { ms }, { birth }) => birth.gain([
             SalvoLadMissile({
@@ -1817,10 +1790,10 @@ U.buildRoom({
         
         this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 1.5 });
         
-        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lsMs: 500, spd: 360, acl: 800 };
+        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lsMs: 500, vel: 360, acl: 800 };
         for (let i = 0; i < 11; i++) {
           
-          let alt = i % 3;
+          let alt = i % 4;
           this.effects.add({ mark: ms + 50 + i * alt * 18, endFn: (inst, { aheadDist, ms }, { birth }) => {
             let bullet = DirectedBullet({ aheadDist, ms, owner: inst, ...args,
               x: inst.x + dir * alt * 6, y: inst.y + 24 - 12 * alt
@@ -1985,15 +1958,17 @@ U.buildRoom({
     })});
     let SalvoLadDumbBomb = U.inspire({ name: 'SalvoLadDumbBomb', insps: { Geom, Mover }, methods: (insp, Insp) => ({
       
+      $calcParams: Insp.parents.Mover.calcParams,
+      
       $r: 13,
       $render: (draw, game, { x, y }) => {
         draw.circ(x, y, Insp.r, { fillStyle: '#ff0000', strokeStyle: '#ff8400' });
       },
       
       init: function({ salvoLad, lsMs, kaboomArgs={}, ...args }) {
-        insp.Geom.init.call(this, args);
-        insp.Mover.init.call(this, args);
         this.salvoLad = salvoLad;
+        insp.Geom.init.call(this, { ...args, x: salvoLad.x, y: salvoLad.y });
+        insp.Mover.init.call(this, args);
         this.lsMs = lsMs;
         this.kaboomArgs = kaboomArgs;
       },
@@ -2003,9 +1978,14 @@ U.buildRoom({
           && (updData.ms - this.ms) < this.lsMs
           && insp.Mover.isAlive.call(this, updData);
       },
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return {}; },
       updateAndGetResult: function(entity, updData) {
-        insp.Mover.moveToDestination.call(this, updData);
-        return { form: 'circle', x: this.x, y: this.y, r: this.r, birth: [] };
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        this.x = x;
+        this.y = y;
+        return { x, y, form: 'circle', r: this.r, birth: [] };
       },
       dieAndGetResult: function(updData) {
         return { birth: [
@@ -2190,7 +2170,7 @@ U.buildRoom({
       
       $calcParams: Insp.parents.Winder.calcParams,
       
-      $bound: { form: 'circle', r: 28 }, $hp: 4,
+      $bound: { form: 'circle', r: 24 }, $hp: 4,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyFurler' }),
       $render: (draw, game, vals) => {
         Insp.parents.Winder.render(draw, game, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
@@ -2232,6 +2212,8 @@ U.buildRoom({
     })});
     let Drifter = U.inspire({ name: 'Drifter', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
       
+      $calcParams: Insp.parents.Mover.calcParams,
+      
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyDrifter' }),
       $render: (draw, game, { x, y, vy, r }) => {
         
@@ -2250,17 +2232,19 @@ U.buildRoom({
         this.sizeMult = sizeMult;
         this.minSize = minSize;
         this.size = this.minSize + this.hp * this.sizeMult;
+        this.dist = null; // Move indefinitely
+        // this.initDist = null; // This unit is Grounded! (Ignores aheadSpd)
       },
       getRadius: function() { return this.minSize + this.hp * this.sizeMult; },
       getMaxHp: function() { return this.hp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return false; },
-      normState: function() { return { vy: this.vy }; },
-      fluxState: function() { return { ...insp.Enemy.fluxState.call(this), r: this.getRadius() }; },
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return { r: this.getRadius() }; },
       updateAndGetResult: function(entity, updData) {
         
-        this.moveToDestination(updData);
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        this.x = x; this.y = y;
         
         let { spf } = updData;
         this.hp += this.hpPerSec * spf;
@@ -2278,6 +2262,8 @@ U.buildRoom({
     })});
     let Wanderer = U.inspire({ name: 'Wanderer', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
       
+      $calcParams: Insp.parents.Mover.calcParams,
+      
       $bound: { form: 'circle', r: 22 }, $maxHp: 4.5,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWanderer' }),
       $render: (draw, game, { x, y, vy }) => {
@@ -2293,16 +2279,18 @@ U.buildRoom({
         this.mode = mode;
         this.delayMs = delayMs;
         this.shootMark = this.ms + initDelay;
+        this.dist = null;
       },
       ...insp.Enemy.slice('canCollide', 'collide'),
       getMaxHp: function() { return Insp.maxHp; },
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return false; },
-      normState: function() { return { vy: this.vy }; },
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return {}; },
       updateAndGetResult: function(entity, updData) {
-        this.moveToDestination(updData);
+        let { x, y } = this.constructor.calcParams(updData.ms - this.ms, updData, this);
+        this.x = x; this.y = y;
         
-        let { ms, spf } = updData;
+        let { aheadDist, ms, spf } = updData;
         let birth = [];
         
         let shootCondition = (this.mode === 'steady')
@@ -2312,21 +2300,17 @@ U.buildRoom({
         if (shootCondition) {
           birth.gain([
             SimpleBullet({
-              ms, owner: this,
-              x: this.x, y: this.y,
+              aheadDist, ms, owner: this, x: this.x, y: this.y,
               spd: -380, dmg: 1, w: 8, h: 20,
               lsMs: 3000
             })
           ]);
           this.shootMark += this.delayMs;
         }
+        
         return { x: this.x, y: this.y, ...Insp.bound, birth };
       },
-      isAlive: function(updData) {
-        return true
-          && insp.Enemy.isAlive.call(this, updData)
-          && insp.Mover.isAlive.call(this, updData);
-      }
+      isAlive: insp.allArr('isAlive', (i, arr) => !arr.find(alive => !alive))
       
     })});
     let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -2350,6 +2334,9 @@ U.buildRoom({
       },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return {}; },
       moveWithGame: function() { return true; },
       stopAtDestination: function() { return true; },
       updateAndGetResult: function(entity, updData) {
@@ -2386,6 +2373,8 @@ U.buildRoom({
     })});
     let WandererMom = U.inspire({ name: 'WandererMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
       
+      $calcParams: Insp.parents.Mover.calcParams,
+      
       $bound: { form: 'rect', w: 150, h: 210 },
       $maxHp: 90, $numBullets: 7, $bulletSpd: 330,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWandererMom' }),
@@ -2408,8 +2397,11 @@ U.buildRoom({
       },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
-      moveWithGame: function() { return true; },
-      stopAtDestination: function() { return true; },
+      //moveWithGame: function() { return true; },
+      //stopAtDestination: function() { return true; },
+      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
+      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
+      fluxState: function() { return {}; },
       updateAndGetResult: function(entity, updData) {
         
         this.moveToDestination(updData);
@@ -2437,7 +2429,7 @@ U.buildRoom({
         // Try to shoot `Insp.numBullets` bullets
         if (Math.random() < ((spf * 1000) / this.shootDelayMs)) {
           
-          let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, spd: Insp.bulletSpd, dmg: 1, r: 8 };
+          let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, vel: Insp.bulletSpd, dmg: 1, r: 8 };
           birth.gain(Array.fill(Insp.numBullets, () => DirectedBullet({
             ...bulletArgs, ang: 0.5 + ((Math.random() - 0.5) * 2 * 0.05), lsMs: 3000
           })));
@@ -2791,8 +2783,8 @@ U.buildRoom({
           // Bottom of the Moment is cut off; subtract the cut amount
           : (bounds.total.b - ((bounds.total.b - minY) % Insp.tileExt));
         
-        // If y lands right on `endMaxY` (not accounting for rounding
-        // errors) we stop drawing. So reduce `endMaxY` a tiny bit!
+        // If y lands right on `endMaxY` (before accounting for rounding
+        // errors) stop drawing - favour `endMaxY` avoids cut-off pixels
         let x;
         while (y < (endMaxY - 0.0001)) {
           
@@ -2895,72 +2887,6 @@ U.buildRoom({
       
     })});
     let MomentTargetType = U.inspire({ name: 'MomentTargetType', insps: { Moment }, methods: (insp, Insp) => ({
-      
-      $render: Insp.parents.Moment.render,
-      $renderPriority: Insp.parents.Moment.renderPriority,
-      
-      init: function({ distance, bounds=null, spd=100, visiMult=1, ...args }) {
-        
-        let tileExt = Insp.tileExt;
-        let maxNumHorz = distance / tileExt;
-        if (Math.abs(maxNumHorz -  Math.round(maxNumHorz)) > 0.00001)
-          throw Error(`Bad values for ${U.nameOf(this)}: distance (${distance}) not divisible by tileExt (${tileExt})`);
-        
-        insp.Moment.init.call(this, args);
-        
-        this.distance = distance;
-        this.minY = null; this.maxY = null;
-        
-        this.spd = spd;
-        this.visiMult = visiMult;
-        
-        // Total bounds are always horizontally centered, and shifted
-        // vertically relative to the aheadDist
-        this.bounds = bounds;
-        
-      },
-      getMinY: function() { return this.minY; },
-      getMaxY: function() { return this.maxY; },
-      canCollide: function() { return false; },
-      applyGameEffects: function(game) {
-        
-        // TODO: Really should transition from previous bounds to new
-        // ones. Right now the Ace could be sitting in some previous
-        // Moment, when the new one shows its first lowest pixels. That
-        // means that the Ace immediately snaps into the new bounds,
-        // which is very janky
-        
-        if (this.bounds) {
-          let { total, player } = this.bounds;
-          game.modVal(v => v.gain({
-            tw: total.w, th: total.h,
-            px: player.x, py: player.y, pw: player.w, ph: player.h,
-          }));
-        }
-        
-        game.modVal(v => v.gain({ aheadSpd: this.spd, visiMult: this.visiMult }));
-        
-      },
-      setupAndGetResult: function(prevMoment, updData) {
-        // TODO: Treats all Moment classes  like they define `this.maxY`
-        this.minY = prevMoment ? prevMoment.maxY : updData.bounds.total.b;
-        this.maxY = this.minY + this.distance;
-        return insp.Moment.setupAndGetResult.call(this, prevMoment, updData);
-      },
-      updateAndGetResult: function(entity, updData) {
-        return {
-          form: 'rect', x: 0, y: (this.minY + this.maxY) * 0.5, w: updData.bounds.total.w, h: this.maxY - this.minY,
-          birth: []
-        };
-      },
-      isStanding: function(updData) {
-        // A MomentAhead stands while its top hasn't become visible
-        return this.maxY > updData.bounds.total.t;
-      },
-      isAlive: function(updData) {
-        // A MomentAhead lives while its top hasn't been passed entirely
-        return this.maxY > updData.bounds.total.b;
-      }
       
     })});
     
@@ -3392,6 +3318,9 @@ U.buildRoom({
             // the Game is starting, and begin a Game after 5000ms
             lobby.modVal(v => v.gain({ allReadyMs: foundation.getMs() }));
             let timeout = setTimeout(() => {
+              let gameDims = flyHut.createRec('fly.gameDims', [], {
+                
+              });
               let game = flyHut.createRec('fly.game', [ fly, lobby ], {
                 
                 ms: foundation.getMs(), lives: 7, aheadSpd: 0, level: lobby.val.level.name,
@@ -3673,7 +3602,26 @@ U.buildRoom({
             let pixelDims = { w: 800, h: 1000, hw: 400, hh: 500 };
             let fadeXPanVal = util.fadeVal(0, 0.19);
             let fadeYPanVal = util.fadeVal(0, 0.19);
+            let lastMs = [ null, null ];
             let doDraw = () => draw.initFrameCen('rgba(220, 220, 255, 1)', () => {
+              
+              let updData = game.val.slice({ ms: 'ms', aheadDist: 'y' });
+              let ms = game.val.ms;
+              if (ms === lastMs[0]) {
+                
+                // Render before update; compensate for silky smoothness
+                let msExtra = foundation.getMs() - lastMs[1];
+                ms = lastMs[0] + msExtra;
+                
+                console.log('Increase aheadDist by', game.val.aheadSpd * msExtra * 0.001);
+                updData.aheadDist += game.val.aheadSpd * msExtra * 0.001;
+                
+              } else {
+                
+                // Remember the timing of this latest frame
+                lastMs = [ ms, foundation.getMs() ];
+                
+              }
               
               let [ mySprite=null ] = myEntity.relNozz('fly.sprite').set;
               
@@ -3720,7 +3668,7 @@ U.buildRoom({
               
               // TODO: Don't follow Ace upon victory!!
               draw.scl(scaleAmt, scaleAmt);
-              draw.trn(0, -game.val.y);
+              draw.trn(0, -updData.aheadDist);
               draw.trn(-fadeXPanVal.to(desiredTrn.x), -fadeYPanVal.to(desiredTrn.y));
               
               let renders = [];
@@ -3738,8 +3686,6 @@ U.buildRoom({
                 });
               }
               
-              let updData = game.val.slice({ ms: 'ms', aheadDist: 'y' });
-              let ms = game.val.ms;
               renders = renders.sort((v1, v2) => v2.priority - v1.priority);
               for (let { render: [ Cls, vals, entity ] } of renders) {
                 let calcVals = Cls.calcParams ? Cls.calcParams(ms - vals.ms, updData, { bounds, ...vals }) : {};
