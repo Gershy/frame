@@ -971,6 +971,8 @@
       };
       let serverFn = async (req, res) => {
         
+        let ms = this.getMs();
+        
         // Stream the body
         // TODO: Watch for exploits; slow loris, etc.
         let chunks = [];
@@ -1062,7 +1064,7 @@
         // TODO: Consider a timeout to deal with improper usage
         if (params.reply) {
           try {
-            return road.hear.drip([ params, msg => sendData(res, msg) ]);
+            return road.hear.drip([ params, msg => sendData(res, msg), ms ]);
           } catch(err) {
             // TODO: Stop leaking `err.message`!
             console.log('Http error response:', this.formatError(err));
@@ -1071,7 +1073,7 @@
         }
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null ]);
+        if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null, ms ]);
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells then send the oldest, otherwise hold the response.
@@ -1197,13 +1199,14 @@
         
         sokt.on('readable', () => {
           if (road.isDry()) return;
+          let ms = this.getMs();
           let newBuffer = sokt.read();
           
           if (!newBuffer || !newBuffer.length) return;
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            for (let message of Insp.parseSoktMessages(soktState)) road.hear.drip([ message, null ]);
+            for (let message of Insp.parseSoktMessages(soktState)) road.hear.drip([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
           
           if (soktState.status === 'ended') road.dry();

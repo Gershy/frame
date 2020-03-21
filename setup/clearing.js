@@ -270,7 +270,7 @@ let U = global.U = {
       if (methodsAtName.length > 1) {
         throw Error(`Found ${methodsAtName.length} methods "${methodName}" for ${name}; declare a custom method`);
       }
-      protoDef(Insp, methodName, methodsAtName.length > 0 ? methodsAtName[0] : C.noFn(methodName)); // `methodsAtName.length` will certainly be `1`
+      protoDef(Insp, methodName, methodsAtName.length ? methodsAtName[0] : C.noFn(methodName));
     }
     
     protoDef(Insp, 'constructor', Insp);

@@ -168,6 +168,7 @@
       let tellAndHear = async (msg, road) => {
         
         // Do XHR
+        let ms = null;
         let req = new XMLHttpRequest();
         req.timeout = 24 * 60 * 60 * 1000;
         req.open('POST', this.getUrl({}), true);
@@ -180,12 +181,13 @@
           if (req.readyState !== 4) return;
           if (req.status === 0) return rjc(Error('Got HTTP status 0'));
           
+          ms = this.getMs();
           try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
           catch(err) {  return rjc(Error('Malformed JSON')); }
         }}));
         
         // If any data was received, process it at a higher level
-        if (res) road.hear.drip([ res, null ]);
+        if (res) road.hear.drip([ res, null, ms ]);
         
         // Always have 1 pending req
         numPendingReqs--;
@@ -230,7 +232,7 @@
         road.hear = Nozz();
         road.tell = msg => sokt.send(JSON.stringify(msg));
         road.currentCost = () => 0.5;
-        sokt.onmessage = ({ data }) => data && road.hear.drip([ JSON.parse(data), null ]);
+        sokt.onmessage = ({ data }) => data && road.hear.drip([ JSON.parse(data), null, this.getMs() ]);
       };
       
       // Allow communication with only a single Server: our AboveHut

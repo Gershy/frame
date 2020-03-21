@@ -8,7 +8,10 @@ U.buildRoom({
     
     let Hut = U.inspire({ name: 'Hut', insps: { RecTypes, Rec }, methods: (insp, Insp) => ({
       
-      $tell: (srcHut, trgHut, road=null, reply=null, msg) => {
+      $tell: (srcHut, trgHut, road=null, reply=null, msg, ms=foundation.getMs()) => {
+        
+        // Note that `ms` should typically be provided, and should
+        // represent the high-precision time at which the tell occurred
         
         // How communication happens
         // | SrcHut  | TrgHut  | Road
@@ -38,7 +41,7 @@ U.buildRoom({
           if (trgHut.isAfar()) throw Error(`Can't tell TrgAfarHut when SrcHut is null`);
           if (road) throw Error(`Can't omit "srcHut" but provide "road"`);
           if (reply) throw Error(`Can't omit "srcHut" but provide "reply"`);
-          return trgHut.hear(null, null, () => { throw Error('Can\'t reply'); }, msg);
+          return trgHut.hear(null, null, () => { throw Error('Can\'t reply'); }, msg, ms);
         }
         
         if (srcHut.isAfar() && trgHut.isAfar()) throw Error('Supplied two AfarHuts');
@@ -60,7 +63,7 @@ U.buildRoom({
         if (srcHut.isAfar() && trgHut.isHere()) {
           if (!road) throw Error(`Supplied AfarSrcHut but omitted Road`);
           if (!reply) reply = msg => Insp.tell(trgHut, srcHut, road, null, msg);
-          return trgHut.hear(srcHut, road, reply, msg);
+          return trgHut.hear(srcHut, road, reply, msg, ms);
         }
         
         if (srcHut.isHere() && trgHut.isAfar()) {
@@ -327,7 +330,7 @@ U.buildRoom({
         if (this.roadDbgEnabled) console.log(`>-HOLD ${hutId} on ${server.desc}`);
         
         // Listen to communication on this Road
-        let routeRoad = road.hear.route(([ msg, reply ]) => Insp.tell(roadedHut.hut, this, road, reply, msg));
+        let routeRoad = road.hear.route(([ msg, reply, ms ]) => Insp.tell(roadedHut.hut, this, road, reply, msg, ms));
         
         // Listen for the Road to finish
         road.drierNozz().route(() => {
@@ -366,7 +369,7 @@ U.buildRoom({
         }
         return this.roadNozzes[command];
       },
-      hear: async function(srcHut, road, reply, msg) {
+      hear: async function(srcHut, road, reply, msg, ms=foundation.getMs()) {
         
         if (!reply) throw Error(`Missing "reply"`);
         
@@ -375,8 +378,8 @@ U.buildRoom({
         /// =ABOVE}
         
         let command = msg.command;
-        if (srcHut && srcHut.roadNozzes.has(command)) return srcHut.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply });
-        if (this.roadNozzes.has(command)) return this.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply });
+        if (srcHut && srcHut.roadNozzes.has(command)) return srcHut.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply, ms });
+        if (this.roadNozzes.has(command)) return this.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply, ms });
         
         let resp = { command: 'error', type: 'invalidCommand', orig: msg };
         if (reply) return reply(resp);
