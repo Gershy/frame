@@ -10,10 +10,6 @@ U.buildRoom({
     let { UnitPx, UnitPc } = real;
     let { WebApp } = realWebApp;
     
-    let cnst = {
-      offscreenDist: 500,
-      distToConsiderEnemyClear: 700
-    };
     let util = {
       paragraph: str => str.split('\n').map(v => v.trim() || C.skip).join(' '),
       fadeAmt: (v1, v2, amt) => v1 * (1 - amt) + v2 * amt,
@@ -29,16 +25,7 @@ U.buildRoom({
         for (let i = 0; i < n; i++) yield start + i * stepAmt;
       }
     };
-    
-    let containingRect = bound => {
-      if (bound.form === 'rect') return bound;
-      if (bound.form === 'circle') {
-        let size = bound.r << 1;
-        return { x: bound.x, y: bound.y, w: size, h: size };
-      }
-      throw Error(`No clue how to do containing rect for "${bound.form}"`);
-    };
-    let collisionUtil = {
+    let geom = {
       checkForms: (form1, form2, bound1, bound2) => {
         if (form1 === bound1.form && form2 === bound2.form) return [ bound1, bound2 ];
         if (form1 === bound2.form && form2 === bound1.form) return [ bound2, bound1 ];
@@ -89,24 +76,32 @@ U.buildRoom({
         // the radius of the colliding Circle.
         
         return false
-          || collisionUtil.doCollidePointRect(c, { x: r.x, y: r.y, w: r.w + roundingGap * 2, h: r.h })
-          || collisionUtil.doCollidePointRect(c, { x: r.x, y: r.y, w: r.w, h: r.h + roundingGap * 2 })
-          || collisionUtil.doCollidePointCircle(c, { x: r.x - hw, y: r.y - hh, r: roundingGap })
-          || collisionUtil.doCollidePointCircle(c, { x: r.x + hw, y: r.y - hh, r: roundingGap })
-          || collisionUtil.doCollidePointCircle(c, { x: r.x + hw, y: r.y + hh, r: roundingGap })
-          || collisionUtil.doCollidePointCircle(c, { x: r.x - hw, y: r.y + hh, r: roundingGap })
+          || geom.doCollidePointRect(c, { x: r.x, y: r.y, w: r.w + roundingGap * 2, h: r.h })
+          || geom.doCollidePointRect(c, { x: r.x, y: r.y, w: r.w, h: r.h + roundingGap * 2 })
+          || geom.doCollidePointCircle(c, { x: r.x - hw, y: r.y - hh, r: roundingGap })
+          || geom.doCollidePointCircle(c, { x: r.x + hw, y: r.y - hh, r: roundingGap })
+          || geom.doCollidePointCircle(c, { x: r.x + hw, y: r.y + hh, r: roundingGap })
+          || geom.doCollidePointCircle(c, { x: r.x - hw, y: r.y + hh, r: roundingGap })
         
       },
       doCollide: (bound1, bound2) => {
         if (bound1.form === bound2.form) {
-          if (bound1.form === 'circle') return collisionUtil.doCollideCircle(bound1, bound2);
-          if (bound1.form === 'rect') return collisionUtil.doCollideRect(bound1, bound2);
+          if (bound1.form === 'circle') return geom.doCollideCircle(bound1, bound2);
+          if (bound1.form === 'rect') return geom.doCollideRect(bound1, bound2);
         } else {
-          let [ rect=null, circle=null ] = collisionUtil.checkForms('rect', 'circle', bound1, bound2) || [];
-          if (rect) return collisionUtil.doCollideRectCircle(rect, circle);
+          let [ rect=null, circle=null ] = geom.checkForms('rect', 'circle', bound1, bound2) || [];
+          if (rect) return geom.doCollideRectCircle(rect, circle);
         }
         
         throw Error(`No method for colliding ${bound1.form} and ${bound2.form}`);
+      },
+      containingRect: bound => {
+        if (bound.form === 'rect') return bound;
+        if (bound.form === 'circle') {
+          let size = bound.r << 1;
+          return { x: bound.x, y: bound.y, w: size, h: size };
+        }
+        throw Error(`No clue how to do containing rect for "${bound.form}"`);
       }
     };
     
@@ -2546,7 +2541,7 @@ U.buildRoom({
           let updateResult = rep.updateAndGetResult(entity, updateData);
           
           // Manage sprite visibility
-          let visible = collisionUtil.doCollideRect(bounds.total, containingRect(updateResult));
+          let visible = geom.doCollideRect(bounds.total, geom.containingRect(updateResult));
           if (visible && !entity.sprite) {
             entity.sprite = this.flyHut.createRec('fly.sprite', [ game, entity ], rep.fluxState());
           } else if (!visible && entity.sprite) {
@@ -2581,7 +2576,7 @@ U.buildRoom({
             // Skip collisions involving dead Models
             if (!mod1.isAlive(updateData) || !mod2.isAlive(updateData)) continue;
             
-            if (collisionUtil.doCollide(colEnt1, colEnt2)) { mod1.collide(mod2, updateData); mod2.collide(mod1, updateData); }
+            if (geom.doCollide(colEnt1, colEnt2)) { mod1.collide(mod2, updateData); mod2.collide(mod1, updateData); }
             
             // There should be "collideHead" and "collideTail".
             // The head is the "instigating" collider. The priority
@@ -2709,10 +2704,10 @@ U.buildRoom({
           // Update GamePlayers with the stats from their Models
           for (let gp of gamePlayers) {
             for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
-              let ent = gpe.members['fly.entity'];
+              let ent = gpe.mems['fly.entity'];
               let rep = ent.rep || ent.deadRep || { scoreDamage: '?', scoreDeath: '?' };
               if (rep.isAlive(updateData)) rep.hp = 0; // Kill remaining Aces
-              gp.members['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
+              gp.mems['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
             }
           }
           
@@ -2764,14 +2759,14 @@ U.buildRoom({
             // Transfer Model stats to fly.player Records
             for (let gp of gamePlayers) {
               for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
-                let ent = gpe.members['fly.entity'];
+                let ent = gpe.mems['fly.entity'];
                 let rep = ent.rep || ent.deadRep || { scoreDamage: 0, scoreDeath: 0 };
-                gp.members['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
+                gp.mems['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
               }
             }
             
             // Update the Lobby taking this win into account
-            game.members['fly.lobby'].modVal(v => {
+            game.mems['fly.lobby'].modVal(v => {
               v.level.dispName = `COMPLETE`;
               v.level.dispDesc = levels[v.level.name].winText;
               return v;
@@ -3097,7 +3092,7 @@ U.buildRoom({
         /// {ABOVE=
         
         // Manage Huts
-        dep.scp(flyHut, 'lands.kidHut/par', ({ members: { kid: hut } }, dep) => {
+        dep.scp(flyHut, 'lands.kidHut/par', ({ mems: { kid: hut } }, dep) => {
           
           let kidHutDep = dep;
           let { value: term } = dep(termBank.checkout());
@@ -3162,7 +3157,7 @@ U.buildRoom({
               let [ level=null, levelName ] = levels.find(v => v.password === pass) || [];
               if (!level) return;
               
-              let lobby = lobbyPlayer.members['fly.lobby'];
+              let lobby = lobbyPlayer.mems['fly.lobby'];
               for (let lp of lobby.relNozz('fly.lobbyPlayer').set) lp.modVal(v => (v.model = null, v));
               lobby.modVal(v => (v.level = getLevelData(levelName), v));
             }));
@@ -3181,7 +3176,7 @@ U.buildRoom({
             // Follow Lobby, all LobbyPlayers, the Game, and all Sprites
             // that are visible within the Game
             
-            let lobby = myLobbyPlayer.members['fly.lobby'];
+            let lobby = myLobbyPlayer.mems['fly.lobby'];
             
             dep(hut.followRec(lobby));
             
@@ -3318,10 +3313,10 @@ U.buildRoom({
           let notAllPlayersReadyNozz = dep(TubDry(null, allPlayersReadyNozz));
           
           dep.scp(lobbyPlayerNozz, (lobbyPlayer, dep) => {
-            let player = lobbyPlayer.members['fly.player'];
+            let player = lobbyPlayer.mems['fly.player'];
             
             dep.scp(player, 'fly.hutPlayer', (hutPlayer, dep) => {
-              let hut = hutPlayer.members['lands.hut'];
+              let hut = hutPlayer.mems['lands.hut'];
               
               dep.scp(notAllPlayersReadyNozz, (notReady, dep) => {
                 
@@ -3382,7 +3377,7 @@ U.buildRoom({
               let ms = foundation.getMs();
               let lobbyPlayers = lobby.relNozz('fly.lobbyPlayer').set;
               for (let lobbyPlayer of lobbyPlayers) {
-                let player = lobbyPlayer.members['fly.player'];
+                let player = lobbyPlayer.mems['fly.player'];
                 let gamePlayer = flyHut.createRec('fly.gamePlayer', [ game, player ], { deaths: 0, damage: 0 });
                 
                 let { model } = lobbyPlayer.val;
@@ -3413,12 +3408,12 @@ U.buildRoom({
           // Get a GamePlayerEntity and a HutPlayer at the same time.
           // Overall commands from the HutPlayer's Hut effect the
           // GamePlayerEntity's Entity!
-          let player = gp.members['fly.player'];
-          dep.scp(gp, 'fly.gamePlayerEntity', ({ members: { 'fly.entity': entity } }, dep) => {
+          let player = gp.mems['fly.player'];
+          dep.scp(gp, 'fly.gamePlayerEntity', ({ mems: { 'fly.entity': entity } }, dep) => {
             
             dep.scp(player, 'fly.hutPlayer', (hutPlayer, dep) => {
               
-              let hut = hutPlayer.members['lands.hut'];
+              let hut = hutPlayer.mems['lands.hut'];
               dep(hut.roadNozz('keys').route(({ msg: { keyVal }, ms }) => {
                 
                 // Will contain "left", "right", "up", "down", "act1", "act2"
@@ -3467,7 +3462,7 @@ U.buildRoom({
         // Lobby
         dep.scp(flyHut, 'fly.hutPlayer', (myHutPlayer, dep) => {
           
-          let myPlayer = myHutPlayer.members['fly.player'];
+          let myPlayer = myHutPlayer.mems['fly.player'];
           let lobbyPlayerNozz = myPlayer.relNozz('fly.lobbyPlayer');
           let lobbyPlayerDryNozz = dep(TubDry(null, lobbyPlayerNozz));
           
@@ -3497,8 +3492,8 @@ U.buildRoom({
           });
           dep.scp(lobbyPlayerNozz, (myLobbyPlayer, dep) => {
             
-            let myPlayer = myLobbyPlayer.members['fly.player'];
-            let lobby = myLobbyPlayer.members['fly.lobby'];
+            let myPlayer = myLobbyPlayer.mems['fly.player'];
+            let lobby = myLobbyPlayer.mems['fly.lobby'];
             let lobbyReal = dep(mainReal.addReal('fly.lobby'));
             
             let lobbyHeaderReal = lobbyReal.addReal('fly.lobbyHeader');
@@ -3534,7 +3529,7 @@ U.buildRoom({
               
               let isMine = lobbyPlayer === myLobbyPlayer;
               
-              let player = lobbyPlayer.members['fly.player'];
+              let player = lobbyPlayer.mems['fly.player'];
               let teamMemberReal = dep(teamListReal.addReal('fly.teamMember'));
               let nameReal = teamMemberReal.addReal('fly.playerName').addReal('fly.content2');
               
@@ -3618,15 +3613,15 @@ U.buildRoom({
         });
         
         // Game
-        dep.scp(flyHut, 'fly.hutPlayer', ({ members: { 'fly.player': p } }, dep) => dep.scp(p, 'fly.gamePlayer', (gp, dep) => {
+        dep.scp(flyHut, 'fly.hutPlayer', ({ mems: { 'fly.player': p } }, dep) => dep.scp(p, 'fly.gamePlayer', (gp, dep) => {
           
           dep.scp(gp, 'fly.gamePlayerEntity', (gpe, dep) => {
             
             flyRootReal.setColour('#000000');
             dep(Drop(null, () => flyRootReal.setColour(null)));
             
-            let game = gp.members['fly.game'];
-            let myEntity = gpe.members['fly.entity'];
+            let game = gp.mems['fly.game'];
+            let myEntity = gpe.mems['fly.entity'];
             let entities = game.relNozz('fly.entity').set;
             let sprites = game.relNozz('fly.sprite').set;
             
@@ -3729,7 +3724,7 @@ U.buildRoom({
               
               let renders = [];
               for (let sprite of sprites) {
-                let entity = sprite.members['fly.entity'];
+                let entity = sprite.mems['fly.entity'];
                 let renderVals = { ...entity.val, ...sprite.val };
                 let Cls = mdlClasses[entity.val.type];
                 

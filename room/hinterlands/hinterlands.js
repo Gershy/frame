@@ -102,6 +102,7 @@ U.buildRoom({
         this.uid = uid;
         this.parHut = parHut;
         this.foundation = foundation;
+        this.typeToClsFns = {};
         
         // Only ParHuts truly have the capabilities of `RecTypes`
         if (!parHut) insp.RecTypes.init.call(this);
@@ -387,6 +388,10 @@ U.buildRoom({
         
       },
       
+      addTypeClsFn: function(name, fn) {
+        if (this.typeToClsFns.has(name)) throw Error(`Tried to overwrite class function for "${name}"`);
+        this.typeToClsFns[name] = fn;
+      },
       getCategorizedRecs: function() {
         let ret = {};
         for (let rec of this.allRecs.values()) {
@@ -400,13 +405,17 @@ U.buildRoom({
         return insp.RecTypes.getType.call(this, ...args);
       },
       getNextRecUid: function() { return this.foundation.getUid(); },
+      getRecCls: function(name, mems, val) {
+        if (this.typeToClsFns.has(name)) return this.typeToClsFns[name](val, mems);
+        return insp.RecTypes.getRecCls.call(this, name, mems, val);
+      },
       trackRec: function(rec) {
         this.allRecs.set(rec.uid, rec);
         rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
         return rec;
       },
-      createRec: function(name, members, val) {
-        return this.trackRec(insp.RecTypes.createRec.call(this, name, members, val));
+      createRec: function(name, mems, val) {
+        return this.trackRec(insp.RecTypes.createRec.call(this, name, mems, val));
       },
       doSync: function({ add=[], upd=[], rem=[] }) {
         
@@ -459,29 +468,30 @@ U.buildRoom({
               throw Error(`Duplicate id: ${addRec.uid}`);
             }
             
-            let members = null;
+            let mems = null;
             if (U.isType(addRec.mems, Object)) {
-              members = {};
+              mems = {};
               for (let term in addRec.mems) {
                 let uid = addRec.mems[term];
-                if (!this.allRecs.has(uid)) { members = null; break; }
-                members[term] = this.allRecs.get(uid);
+                if (!this.allRecs.has(uid)) { mems = null; break; }
+                mems[term] = this.allRecs.get(uid);
               }
             } else if (U.isType(addRec.mems, Array)) {
-              members = [];
+              mems = [];
               for (let uid in addRec.mems) {
-                if (!this.allRecs.has(uid)) { members = null; break; }
-                members.push(this.allRecs.get(uid));
+                if (!this.allRecs.has(uid)) { mems = null; break; }
+                mems.push(this.allRecs.get(uid));
               }
             } else {
               throw Error(`Invalid type for "mems": ${U.nameOf(addRec.mems)}`);
             }
             
-            if (!members) { waiting.push(addRec); continue; } // Reattempt soon
+            if (!mems) { waiting.push(addRec); continue; } // Reattempt soon
             
             // All members are available - create the Rec!
             let recType = (this.parHut || this).getType(addRec.type);
-            this.trackRec(Rec(recType, addRec.uid || this.getNextRecUid(), members, addRec.val));
+            let RecCls = this.getRecCls(addRec.name, addRec.mems, addRec.val);
+            this.trackRec(RecCls(recType, addRec.uid || this.getNextRecUid(), mems, addRec.val));
             
           }
           
@@ -582,7 +592,7 @@ U.buildRoom({
           type: r.type.name, uid: r.uid, val: r.val,
           
           // Redirect all references from ParAboveHut to KidBelowHut
-          mems: r.members.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)
+          mems: r.mems.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)
         }));
         let upd = this.pendingSync.upd.toArr(r => ({ uid: r.uid, val: r.val }));
         let rem = this.pendingSync.rem.toArr(r => r.uid);
@@ -643,7 +653,7 @@ U.buildRoom({
         
       },
       followRec: function(rec) {
-        let recs = [ rec, ...rec.members.toArr(r => r) ]
+        let recs = [ rec, ...rec.mems.toArr(r => r) ]
           .map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
         
         for (let rec of recs) this.modRecFollowStrength(rec, +1);

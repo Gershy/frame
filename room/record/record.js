@@ -46,8 +46,10 @@ U.buildRoom({
         return this.typeMap.has(name) ? this.typeMap[name] : (this.typeMap[name] = RecType(name, this));
       },
       getNextRecUid: function() { return null; },
-      createRec: function(name, members, val) {
-        return Rec(this.getType(name), this.getNextRecUid(), members, val);
+      getRecCls: function(name, mems, val) { return Rec; },
+      createRec: function(name, mems, val) {
+        let RecCls = this.getRecCls(name, mems, val);
+        return RecCls(this.getType(name), this.getNextRecUid(), mems, val);
       }
     })});
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
@@ -65,7 +67,7 @@ U.buildRoom({
         this.memberInfoNozz.route(mi => { this.terms[mi.term] = mi; });
         
       },
-      updMembers: function(recTypes) {
+      updMems: function(recTypes) {
         
         let newRecTypes = []; // Terms that have never been seen before
         let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
@@ -88,10 +90,10 @@ U.buildRoom({
       }
     })});
     let Rec = U.inspire({ name: 'Rec', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-      init: function(type, uid, members={}, val=null) {
-        if (U.isType(members, Array)) members = members.toObj(mem => [ mem.type.name, mem ]);
+      init: function(type, uid, mems={}, val=null) {
+        if (U.isType(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
         
-        type.updMembers(members.map(m => m.type));
+        type.updMems(mems.map(m => m.type));
         
         insp.Drop.init.call(this, defDrier());
         insp.Nozz.init.call(this);
@@ -99,21 +101,21 @@ U.buildRoom({
         this.type = type;
         this.uid = uid;
         this.val = val;
-        this.members = members;
+        this.mems = mems;
         this.relNozzes = {};
         
         // Set us up to dry if any MemberRec dries
         let dryMe = this.dry.bind(this);
-        this.memDryRoutes = Set(this.members.toArr(m => m ? m.drierNozz() : C.skip)) . toArr(dn => dn.route(dryMe));
+        this.memDryRoutes = Set(this.mems.toArr(m => m ? m.drierNozz() : C.skip)) . toArr(dn => dn.route(dryMe));
         
         // Inform all MemberRecs of this GroupRec
-        this.members.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
+        this.mems.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
         
       },
       desc: function() { return `${this.type.name} @ ${this.uid}`; },
       mem: function(termTail) {
         if (termTail[0] !== '.') termTail = `.${termTail}`;
-        for (let term in this.members) if (term.has(termTail)) return this.members[term];
+        for (let term in this.mems) if (term.has(termTail)) return this.mems[term];
         return null;
       },
       relNozz: function(recType, term = null) {
@@ -129,7 +131,7 @@ U.buildRoom({
             // for a different type?? Then we'd need to try another
             // "made up" term, like `${this.type.name}/2` or something
             // silly like that
-            recType.updMembers({ [this.type.name]: this.type });
+            recType.updMems({ [this.type.name]: this.type });
             term = this.type.name;
           } else {
             term = findMemInf[0].term;
@@ -158,7 +160,7 @@ U.buildRoom({
       onceDry: function() {
         for (let memRoute of this.memDryRoutes) memRoute.dry();
         this.relNozzes = {};
-        this.members = {};
+        this.mems = {};
       }
     })});
     
