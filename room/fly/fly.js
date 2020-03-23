@@ -106,7 +106,7 @@ U.buildRoom({
     };
     
     let fps = 40; // Server-side ticks per second
-    let gameStartingDelay = 1000; // Give players this long to unready
+    let levelStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
     let testing = {
       lives: 10,
@@ -939,7 +939,7 @@ U.buildRoom({
         if (!({}).has.call(this, 'y')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
         
         // Note that `aheadDist` is the y value of the total progression
-        // of the game, and consistent regardless of the Moment. To get
+        // of the level, and consistent regardless of the Moment. To get
         // consistent movement we need to use `aheadDist`!
         
         this.initDist = aheadDist;
@@ -2368,7 +2368,7 @@ U.buildRoom({
       ...insp.Enemy.slice('canCollide', 'collide'),
       permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
       normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      moveWithGame: function() { return true; },
+      moveWithLevel: function() { return true; },
       stopAtDestination: function() { return true; },
       updateAndGetResult: function(entity, updData) {
         
@@ -2426,7 +2426,7 @@ U.buildRoom({
       },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
-      //moveWithGame: function() { return true; },
+      //moveWithLevel: function() { return true; },
       //stopAtDestination: function() { return true; },
       permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
       normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
@@ -2478,10 +2478,10 @@ U.buildRoom({
     // LEVEL
     let Level = U.inspire({ name: 'Level', methods: (insp, Insp) => ({
       
-      $getGameBounds: game => {
+      $getLevelBounds: level => {
         
         // Total bound values
-        let val = game.val;
+        let val = level.val;
         let thw = val.tw * 0.5; let tl = val.x - thw; let tr = val.x + thw;
         let thh = val.th * 0.5; let tb = val.y - thh; let tt = val.y + thh;
         
@@ -2504,28 +2504,28 @@ U.buildRoom({
         
       },
       
-      init: function({ name, flyHut, game, momentsDef, ...args }) {
+      init: function({ name, flyHut, level, momentsDef, ...args }) {
         this.name = name;
         this.flyHut = flyHut;
-        this.game = game;
+        this.level = level;
         this.momentsDef = [ ...momentsDef ];
         this.currentMoment = null;
         this.resolveTimeout = null; // Gets set upon win or loss
       },
-      getGameMinY: function() { return this.game.val.y - (this.game.val.h || 1000) * 0.5; },
-      getGameMaxY: function() { return this.game.val.y + (this.game.val.h || 1000) * 0.5; },
+      getLevelMinY: function() { return this.level.val.y - (this.level.val.h || 1000) * 0.5; },
+      getLevelMaxY: function() { return this.level.val.y + (this.level.val.h || 1000) * 0.5; },
       update: function(ms, spf) {
         
-        let game = this.game;
-        //let entitiesSet = game.relNozz('fly.entity').set;
-        let entities = [ ...game.relNozz('fly.entity').set ]; // A snapshot
-        let gamePlayers = game.relNozz('fly.gamePlayer').set;
+        let level = this.level;
+        //let entitiesSet = level.relNozz('fly.entity').set;
+        let entities = [ ...level.relNozz('fly.entity').set ]; // A snapshot
+        let levelPlayers = level.relNozz('fly.levelPlayer').set;
         
-        let bounds = Level.getGameBounds(game);
+        let bounds = Level.getLevelBounds(level);
         let updateData = {
           entities: entities.toObj(rec => [ rec.uid, rec ]), ms, spf,
-          aheadSpd: game.val.aheadSpd, aheadDist: game.val.y,
-          victory: game.victory, bounds
+          aheadSpd: level.val.aheadSpd, aheadDist: level.val.y,
+          victory: level.victory, bounds
         };
         
         let didLose = false;
@@ -2543,7 +2543,7 @@ U.buildRoom({
           // Manage sprite visibility
           let visible = geom.doCollideRect(bounds.total, geom.containingRect(updateResult));
           if (visible && !entity.sprite) {
-            entity.sprite = this.flyHut.createRec('fly.sprite', [ game, entity ], rep.fluxState());
+            entity.sprite = this.flyHut.createRec('fly.sprite', [ level, entity ], rep.fluxState());
           } else if (!visible && entity.sprite) {
             entity.sprite.dry();
             entity.sprite = null;
@@ -2657,11 +2657,11 @@ U.buildRoom({
             entity.rep = null;
             
             // Try to respawn (if enough lives are available)
-            if (game.val.lives > 0) {
-              game.modVal(v => (v.lives--, v));
+            if (level.val.lives > 0) {
+              level.modVal(v => (v.lives--, v));
               setTimeout(() => {
                 
-                let { player: pb, total: tb } = Level.getGameBounds(game);
+                let { player: pb, total: tb } = Level.getLevelBounds(level);
                 let AceCls = entity.deadRep.constructor;
                 
                 let { name, initDist, scoreDamage, scoreDeath } = entity.deadRep;
@@ -2669,7 +2669,7 @@ U.buildRoom({
                 
                 let x = pb.x + (Math.random() - 0.5) * 2 * 100 - tb.x;
                 let y = (pb.y - tb.y) + pb.h * -0.2;
-                entity.rep = AceCls({ ms: game.val.ms, name, x, y });
+                entity.rep = AceCls({ ms: level.val.ms, name, x, y });
                 entity.rep.uid = entity.uid;
                 entity.rep.scoreDamage = scoreDamage;
                 entity.rep.scoreDeath = scoreDeath;
@@ -2701,9 +2701,9 @@ U.buildRoom({
         // Step 4: Check for initial loss frame (`!this.resolveTimeout`)
         if (didLose && !this.resolveTimeout) {
           
-          // Update GamePlayers with the stats from their Models
-          for (let gp of gamePlayers) {
-            for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
+          // Update LevelPlayers with the stats from their Models
+          for (let gp of levelPlayers) {
+            for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
               let ent = gpe.mems['fly.entity'];
               let rep = ent.rep || ent.deadRep || { scoreDamage: '?', scoreDeath: '?' };
               if (rep.isAlive(updateData)) rep.hp = 0; // Kill remaining Aces
@@ -2711,7 +2711,7 @@ U.buildRoom({
             }
           }
           
-          this.resolveTimeout = setTimeout(() => game.dry(), 2500);
+          this.resolveTimeout = setTimeout(() => level.dry(), 2500);
           
         }
         
@@ -2726,11 +2726,11 @@ U.buildRoom({
           let MomentCls = mdlClasses[nextMomentDef.type];
           this.currentMoment = MomentCls({ ms, ...nextMomentDef });
           
-          // Apply game effects; recalculate bounds!
-          this.currentMoment.applyGameEffects(game);
-          bounds.gain(Level.getGameBounds(game)); // Update instead of replacing `bounds` to preserve `updateData`
+          // Apply level effects; recalculate bounds!
+          this.currentMoment.applyLevelEffects(level);
+          bounds.gain(Level.getLevelBounds(level)); // Update instead of replacing `bounds` to preserve `updateData`
           
-          // Now setup considering the new game bounds
+          // Now setup considering the new level bounds
           let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
           tickBirth.gain([ this.currentMoment, ...birth ]);
           
@@ -2741,7 +2741,7 @@ U.buildRoom({
         if (canWin && (!this.currentMoment || !this.currentMoment.isStanding(updateData)) && !this.resolveTimeout) {
           
           // Mark that victory has occurred
-          game.victory = true;
+          level.victory = true;
           
           // Set up a Moment to fill in terrain as the victory occurs
           let prevMoment = this.currentMoment;
@@ -2750,15 +2750,15 @@ U.buildRoom({
             spd: (prevMoment ? prevMoment.spd : 100) * 2,
             modelsDef: []
           });
-          this.currentMoment.applyGameEffects(game);
-          bounds.gain(Level.getGameBounds(game));
+          this.currentMoment.applyLevelEffects(level);
+          bounds.gain(Level.getLevelBounds(level));
           let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
           tickBirth.gain([ this.currentMoment, ...birth ]);
           
           this.resolveTimeout = setTimeout(() => {
             // Transfer Model stats to fly.player Records
-            for (let gp of gamePlayers) {
-              for (let gpe of gp.relNozz('fly.gamePlayerEntity').set) {
+            for (let gp of levelPlayers) {
+              for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
                 let ent = gpe.mems['fly.entity'];
                 let rep = ent.rep || ent.deadRep || { scoreDamage: 0, scoreDeath: 0 };
                 gp.mems['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
@@ -2766,27 +2766,27 @@ U.buildRoom({
             }
             
             // Update the Lobby taking this win into account
-            game.mems['fly.lobby'].modVal(v => {
+            level.mems['fly.lobby'].modVal(v => {
               v.level.dispName = `COMPLETE`;
               v.level.dispDesc = levels[v.level.name].winText;
               return v;
             });
             
-            // Dry the fly.game Record
-            game.dry();
+            // Dry the fly.level Record
+            level.dry();
           }, 3000);
           
         }
         
         // Step 8: Create an Entity for each birth this tick
         for (let newRep of tickBirth) {
-          let entity = this.flyHut.createRec('fly.entity', [ game ], { ...newRep.permState(), ...newRep.normState() });
+          let entity = this.flyHut.createRec('fly.entity', [ level ], { ...newRep.permState(), ...newRep.normState() });
           entity.rep = newRep;
           entity.rep.uid = entity.uid;
         }
         
-        // Step 9: Do global updates; e.g., the Game advances
-        game.modVal(v => (v.ms = ms, v.y += v.aheadSpd * spf, v));
+        // Step 9: Do global updates; e.g., the Level advances
+        level.modVal(v => (v.ms = ms, v.y += v.aheadSpd * spf, v));
         
       }
     })});
@@ -2848,7 +2848,7 @@ U.buildRoom({
       permState: function() { return { ...insp.Entity.permState.call(this), terrain: this.terrain };},
       normState: function() { return { ...insp.Entity.normState.call(this), minY: this.getMinY(), maxY: this.getMaxY() };},
       calcState: function() { return {}; },
-      applyGameEffects: function(game) {
+      applyLevelEffects: function(level) {
         
         // TODO: Really should transition from previous bounds to new
         // ones. Right now the Ace could be sitting in some previous
@@ -2858,14 +2858,14 @@ U.buildRoom({
         
         if (this.bounds) {
           let { total, player } = this.bounds;
-          game.modVal(v => v.gain({
+          level.modVal(v => v.gain({
             tw: total.w, th: total.h,
             px: player.x, py: player.y, pw: player.w, ph: player.h,
           }));
         }
         
-        if (this.aheadSpd !== null) game.modVal(v => v.gain({ aheadSpd: this.aheadSpd }));
-        if (this.visiMult !== null) game.modVal(v => v.gain({ visiMult: this.visiMult }));
+        if (this.aheadSpd !== null) level.modVal(v => v.gain({ aheadSpd: this.aheadSpd }));
+        if (this.visiMult !== null) level.modVal(v => v.gain({ visiMult: this.visiMult }));
         
       },
       setupAndGetResult: function(prevMoment, { ms, aheadDist }) {
@@ -2945,6 +2945,10 @@ U.buildRoom({
       
       let flyHut = global.hut = await foundation.getRootHut({ heartMs: 1000 * 20 });
       flyHut.roadDbgEnabled = false; // TODO: This doesn't affect the Below!
+      
+      flyHut.addTypeClsFn('fly.entity', val => {
+        return record.Rec;
+      });
       
       let rootReal = await foundation.getRootReal();
       rootReal.layoutDef('fly', (real, insert, decals) => {
@@ -3040,16 +3044,16 @@ U.buildRoom({
         insert('playerName -> content1', sl => sl.getCenteredSlot());
         insert('score -> content1', sl => sl.getCenteredSlot());
         
-        real('game', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.1), UnitPc(0.8) ] }));
-        real('gameLInfo', () => CenteredSlotter());
-        real('gameContent', () => Art({ pixelCount: [ 800, 1000 ] }));
-        real('gameRInfo', () => CenteredSlotter());
-        real('gameDispLives', () => TextSized({ size: UnitPc(0.8) }));
-        insert('main -> game', () => FillParent());
-        insert('game -> gameLInfo', sl => sl.getAxisSlot(0));
-        insert('game -> gameContent', sl => sl.getAxisSlot(1));
-        insert('game -> gameRInfo', sl => sl.getAxisSlot(2));
-        insert('gameLInfo -> gameDispLives', sl => sl.getCenteredSlot());
+        real('level', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.1), UnitPc(0.8) ] }));
+        real('levelLInfo', () => CenteredSlotter());
+        real('levelContent', () => Art({ pixelCount: [ 800, 1000 ] }));
+        real('levelRInfo', () => CenteredSlotter());
+        real('levelDispLives', () => TextSized({ size: UnitPc(0.8) }));
+        insert('main -> level', () => FillParent());
+        insert('level -> levelLInfo', sl => sl.getAxisSlot(0));
+        insert('level -> levelContent', sl => sl.getAxisSlot(1));
+        insert('level -> levelRInfo', sl => sl.getAxisSlot(2));
+        insert('levelLInfo -> levelDispLives', sl => sl.getCenteredSlot());
         
         decals('lobbyHeader', { colour: 'rgba(0, 0, 0, 0.15)' });
         decals('teamList', { colour: 'rgba(0, 0, 0, 0.07)' });
@@ -3058,9 +3062,9 @@ U.buildRoom({
         decals('playerName', { colour: 'rgba(0, 0, 0, 0.1)' });
         decals('mapChoiceButton', { colour: 'rgba(0, 0, 0, 0.1)' });
         decals('score', { colour: 'rgba(0, 0, 0, 0.2)' });
-        decals('game', { colour: '#000000', textColour: '#ffffff' });
-        decals('gameLInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
-        decals('gameRInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
+        decals('level', { colour: '#000000', textColour: '#ffffff' });
+        decals('levelLInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
+        decals('levelRInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
         
       });
       
@@ -3084,7 +3088,7 @@ U.buildRoom({
       // Note that a commercial airliner flies at ~ 500 miles/hr, or 223 meters/sec
       
       let testLobby = null;
-      let testGame = null;
+      let testLevel = null;
       /// =ABOVE}
       
       let rootScp = RecScope(flyHut, 'fly.fly', async (fly, dep) => {
@@ -3101,7 +3105,7 @@ U.buildRoom({
           
           let lobbyPlayerNozz = player.relNozz('fly.lobbyPlayer');
           let lobbyPlayerDryNozz = dep(TubDry(null, lobbyPlayerNozz));
-          dep.scp(lobbyPlayerDryNozz, (noGame, dep) => {
+          dep.scp(lobbyPlayerDryNozz, (noLevel, dep) => {
             
             // Players outside of Lobbies can edit their name
             dep(hut.roadNozz('lobbySetName').route(({ msg: { name } }) => player.modVal(v => v.gain({ name }))));
@@ -3168,26 +3172,26 @@ U.buildRoom({
           let followFn = (v, dep) => dep(hut.followRec(v));
           followFn(fly, dep);
           followFn(hutPlayer, dep);
-          dep.scp(player, 'fly.gamePlayer', (gamePlayer, dep) => {
-            dep.scp(gamePlayer, 'fly.gamePlayerEntity', followFn);
+          dep.scp(player, 'fly.levelPlayer', (levelPlayer, dep) => {
+            dep.scp(levelPlayer, 'fly.levelPlayerEntity', followFn);
           });
           dep.scp(lobbyPlayerNozz, (myLobbyPlayer, dep) => {
             
-            // Follow Lobby, all LobbyPlayers, the Game, and all Sprites
-            // that are visible within the Game
+            // Follow Lobby, all LobbyPlayers, the Level, and all Sprites
+            // that are visible within the Level
             
             let lobby = myLobbyPlayer.mems['fly.lobby'];
             
             dep(hut.followRec(lobby));
             
             dep.scp(lobby, 'fly.lobbyPlayer', followFn);
-            dep.scp(lobby, 'fly.game', (game, dep) => {
+            dep.scp(lobby, 'fly.level', (level, dep) => {
               
-              // Follow the GamePlayer
-              dep.scp(game, 'fly.gamePlayer', followFn);
+              // Follow the LevelPlayer
+              dep.scp(level, 'fly.levelPlayer', followFn);
               
               // Follow Entities and Sprites when we can see the Sprite
-              dep.scp(game, 'fly.entity', (e, dep) => dep.scp(e, 'fly.sprite', followFn));
+              dep.scp(level, 'fly.entity', (e, dep) => dep.scp(e, 'fly.sprite', followFn));
               
             });
             
@@ -3234,7 +3238,7 @@ U.buildRoom({
                 id: 'TEST', allReadyMs: null,
                 level: getLevelData(levelName)
               });
-              testGame = flyHut.createRec('fly.game', [ fly, testLobby ], {
+              testLevel = flyHut.createRec('fly.level', [ fly, testLobby ], {
                 
                 ms: foundation.getMs(), lives: testing.lives, aheadSpd: 0, level: levelName,
                 x: 0, y: 0,
@@ -3249,25 +3253,25 @@ U.buildRoom({
                 visiMult: 1
                 
               });
-              testGame.victory = false;
+              testLevel.victory = false;
               
             }
             
             player.modVal(v => (v.name = 'testy', v));
             let lobbyPlayer = flyHut.createRec('fly.lobbyPlayer', [ testLobby, player ], { model: null });
-            let gamePlayer = flyHut.createRec('fly.gamePlayer', [ testGame, player ], { deaths: 0, damage: 0 });
+            let levelPlayer = flyHut.createRec('fly.levelPlayer', [ testLevel, player ], { deaths: 0, damage: 0 });
             
             let ms = foundation.getMs();
             let rep = mdlClasses[testing.ace]({ ms, name: 'testy' });
-            rep.y = testGame.val.y;
-            let entity = flyHut.createRec('fly.entity', [ testGame ], { ...rep.permState(), ...rep.normState() });
+            rep.y = testLevel.val.y;
+            let entity = flyHut.createRec('fly.entity', [ testLevel ], { ...rep.permState(), ...rep.normState() });
             entity.controls = [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ]);
             entity.rep = rep;
             entity.deadRep = null;
             entity.rep.uid = entity.uid;
             
-            // Connect this Entity to the GamePlayer
-            flyHut.createRec('fly.gamePlayerEntity', [ gamePlayer, entity ]);
+            // Connect this Entity to the LevelPlayer
+            flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, entity ]);
             
           }, 500);
           
@@ -3351,13 +3355,13 @@ U.buildRoom({
           dep.scp(allPlayersReadyNozz, (ready, dep) => {
             
             // When all Players are ready we modify the Lobby indicating
-            // the Game is starting, and begin a Game after 5000ms
+            // the Level is starting, and begin a Level after 5000ms
             lobby.modVal(v => v.gain({ allReadyMs: foundation.getMs() }));
             let timeout = setTimeout(() => {
-              let gameDims = flyHut.createRec('fly.gameDims', [], {
+              let levelDims = flyHut.createRec('fly.levelDims', [], {
                 
               });
-              let game = flyHut.createRec('fly.game', [ fly, lobby ], {
+              let level = flyHut.createRec('fly.level', [ fly, lobby ], {
                 
                 ms: foundation.getMs(), lives: 7, aheadSpd: 0, level: lobby.val.level.name,
                 x: 0, y: 0,
@@ -3372,13 +3376,13 @@ U.buildRoom({
                 visiMult: 1
                 
               });
-              game.victory = false;
+              level.victory = false;
               
               let ms = foundation.getMs();
               let lobbyPlayers = lobby.relNozz('fly.lobbyPlayer').set;
               for (let lobbyPlayer of lobbyPlayers) {
                 let player = lobbyPlayer.mems['fly.player'];
-                let gamePlayer = flyHut.createRec('fly.gamePlayer', [ game, player ], { deaths: 0, damage: 0 });
+                let levelPlayer = flyHut.createRec('fly.levelPlayer', [ level, player ], { deaths: 0, damage: 0 });
                 
                 let { model } = lobbyPlayer.val;
                 let rep = lobbyModelOptions[model].Cls({
@@ -3386,30 +3390,30 @@ U.buildRoom({
                   x: Math.round(Math.random() * 200 - 100), y: -200
                 });
                 
-                let entity = flyHut.createRec('fly.entity', [ game ], { ...rep.permState(), ...rep.normState() });
+                let entity = flyHut.createRec('fly.entity', [ level ], { ...rep.permState(), ...rep.normState() });
                 entity.controls = [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ]);
                 entity.rep = rep;
                 entity.deadRep = null;
                 entity.rep.uid = entity.uid;
                 
-                flyHut.createRec('fly.gamePlayerEntity', [ gamePlayer, entity ]);
+                flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, entity ]);
               }
               for (let lobbyPlayer of lobbyPlayers) lobbyPlayer.modVal(v => (v.model = null, v));
-            }, gameStartingDelay);
+            }, levelStartingDelay);
             dep(Drop(null, () => clearTimeout(timeout)));
             
           });
           
         });
         
-        // Game Controls per Player
-        dep.scp(fly, 'fly.game', (game, dep) => { dep.scp(game, 'fly.gamePlayer', (gp, dep) => {
+        // Level Controls per Player
+        dep.scp(fly, 'fly.level', (level, dep) => { dep.scp(level, 'fly.levelPlayer', (gp, dep) => {
           
-          // Get a GamePlayerEntity and a HutPlayer at the same time.
+          // Get a LevelPlayerEntity and a HutPlayer at the same time.
           // Overall commands from the HutPlayer's Hut effect the
-          // GamePlayerEntity's Entity!
+          // LevelPlayerEntity's Entity!
           let player = gp.mems['fly.player'];
-          dep.scp(gp, 'fly.gamePlayerEntity', ({ mems: { 'fly.entity': entity } }, dep) => {
+          dep.scp(gp, 'fly.levelPlayerEntity', ({ mems: { 'fly.entity': entity } }, dep) => {
             
             dep.scp(player, 'fly.hutPlayer', (hutPlayer, dep) => {
               
@@ -3439,14 +3443,20 @@ U.buildRoom({
           
         })});
         
-        // Game
-        dep.scp(fly, 'fly.game', (game, dep) => {
+        // Level
+        dep.scp(fly, 'fly.level', (level, dep) => {
           
-          let levelDef = levels[game.val.level];
+          let levelDef = levels[level.val.level];
           
           let spf = 1 / fps;  // Seconds per server-side tick
-          let level = Level({ flyHut, game, name: game.val.level, momentsDef: levelDef.moments });
-          let interval = setInterval(() => level.update(foundation.getMs(), spf), spf * 1000);
+          //let level = flyHut.createRec('fly.entity', [ level ], {
+          //  type: 'Level',
+          //  name: level.val.level,
+          //  momentsDef: levelDef.moments
+          //});
+          
+          let levelRep = Level({ flyHut, level, name: level.val.level, momentsDef: levelDef.moments });
+          let interval = setInterval(() => levelRep.update(foundation.getMs(), spf), spf * 1000);
           dep(Drop(null, () => clearInterval(interval)));
           
         });
@@ -3585,7 +3595,7 @@ U.buildRoom({
               let interval = setInterval(() => {
                 
                 let ms = foundation.getMs();
-                let amt = (ms - allReadyMs) / gameStartingDelay; // where 5000 is the delay before a Game starts
+                let amt = (ms - allReadyMs) / levelStartingDelay; // where 5000 is the delay before a Level starts
                 
                 if (amt < 1) {
                   lobbyReal.setOpacity(Math.pow(1 - amt, 1.5));
@@ -3594,47 +3604,47 @@ U.buildRoom({
                   clearInterval(interval);
                 }
                 
-              }, gameStartingDelay / 10);
+              }, levelStartingDelay / 10);
               
               dep(Drop(null, () => { lobbyReal.setOpacity(null); clearInterval(interval); }));
               
             });
             
-            let myGamePlayerNozz = myPlayer.relNozz('fly.gamePlayer');
-            let myGamePlayerDryNozz = dep(TubDry(null, myGamePlayerNozz));
-            dep.scp(myGamePlayerDryNozz, (noGamePlayer, dep) => {
+            let myLevelPlayerNozz = myPlayer.relNozz('fly.levelPlayer');
+            let myLevelPlayerDryNozz = dep(TubDry(null, myLevelPlayerNozz));
+            dep.scp(myLevelPlayerDryNozz, (noLevelPlayer, dep) => {
               lobbyReal.setTangible(true);
               lobbyReal.setOpacity(null);
             });
-            dep.scp(myGamePlayerNozz, (myGamePlayer, dep) => lobbyReal.setTangible(false));
+            dep.scp(myLevelPlayerNozz, (myLevelPlayer, dep) => lobbyReal.setTangible(false));
             
           });
           
         });
         
-        // Game
-        dep.scp(flyHut, 'fly.hutPlayer', ({ mems: { 'fly.player': p } }, dep) => dep.scp(p, 'fly.gamePlayer', (gp, dep) => {
+        // Level
+        dep.scp(flyHut, 'fly.hutPlayer', ({ mems: { 'fly.player': p } }, dep) => dep.scp(p, 'fly.levelPlayer', (gp, dep) => {
           
-          dep.scp(gp, 'fly.gamePlayerEntity', (gpe, dep) => {
+          dep.scp(gp, 'fly.levelPlayerEntity', (gpe, dep) => {
             
             flyRootReal.setColour('#000000');
             dep(Drop(null, () => flyRootReal.setColour(null)));
             
-            let game = gp.mems['fly.game'];
+            let level = gp.mems['fly.level'];
             let myEntity = gpe.mems['fly.entity'];
-            let entities = game.relNozz('fly.entity').set;
-            let sprites = game.relNozz('fly.sprite').set;
+            let entities = level.relNozz('fly.entity').set;
+            let sprites = level.relNozz('fly.sprite').set;
             
-            let gameContainerReal = dep(mainReal.addReal('fly.game'));
-            let lInfoReal = gameContainerReal.addReal('fly.gameLInfo');
-            let rInfoReal = gameContainerReal.addReal('fly.gameRInfo');
+            let levelContainerReal = dep(mainReal.addReal('fly.level'));
+            let lInfoReal = levelContainerReal.addReal('fly.levelLInfo');
+            let rInfoReal = levelContainerReal.addReal('fly.levelRInfo');
             
-            let dispLivesReal = lInfoReal.addReal('fly.gameDispLives');
-            dep(game.route(({ lives }) => dispLivesReal.setText(`[${lives}]`)));
+            let dispLivesReal = lInfoReal.addReal('fly.levelDispLives');
+            dep(level.route(({ lives }) => dispLivesReal.setText(`[${lives}]`)));
             
-            let gameReal = gameContainerReal.addReal('fly.gameContent');
+            let levelReal = levelContainerReal.addReal('fly.levelContent');
             
-            let { draw, keys } = gameReal;
+            let { draw, keys } = levelReal;
             
             // Listen to our keys
             dep(keys.nozz.route(keys => {
@@ -3654,10 +3664,10 @@ U.buildRoom({
             let doDraw = () => draw.initFrameCen('rgba(220, 220, 255, 1)', () => {
               
               let updData = {
-                ...game.val.slice({ ms: 'ms', aheadDist: 'y' }),
+                ...level.val.slice({ ms: 'ms', aheadDist: 'y' }),
                 entities: entities.toArr(r => r).toObj(r => [ r.uid, r ])
               };
-              let ms = game.val.ms;
+              let ms = level.val.ms;
               if (ms === lastMs[0]) {
                 
                 // Render before update; compensate for silky smoothness
@@ -3665,7 +3675,7 @@ U.buildRoom({
                 ms = lastMs[0] + msExtra;
                 
                 // Extrapolate aheadDist
-                updData.aheadDist += game.val.aheadSpd * msExtra * 0.001;
+                updData.aheadDist += level.val.aheadSpd * msExtra * 0.001;
                 
               } else {
                 
@@ -3676,9 +3686,9 @@ U.buildRoom({
               
               let [ mySprite=null ] = myEntity.relNozz('fly.sprite').set;
               
-              let bounds = Level.getGameBounds(game);
+              let bounds = Level.getLevelBounds(level);
               let { total: tb, player: pb } = bounds;
-              let visiMult = Math.min(tb.w / pixelDims.w, tb.h / pixelDims.h) * game.val.visiMult;
+              let visiMult = Math.min(tb.w / pixelDims.w, tb.h / pixelDims.h) * level.val.visiMult;
               let desiredTrn = { x: 0, y: 0 };
               let scaleAmt = 1 / visiMult;
               
