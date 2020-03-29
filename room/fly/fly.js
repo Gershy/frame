@@ -108,11 +108,12 @@ U.buildRoom({
     let fps = 40; // Server-side ticks per second
     let levelStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
+    let testAces = [ 'SlamKid', 'SalvoLad' ]; // [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ]
     let testing = {
       lives: 10,
       levelName: 'impendingFields',
-      momentName: 'box3',
-      ace: [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ][Math.floor(Math.random() * 4)]
+      momentName: 'box2',
+      ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
     
@@ -361,15 +362,15 @@ U.buildRoom({
           },
           { name: 'scout1', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
             modelsDef: [
-              { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x:  +80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x: +160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              
-              { type: 'Winder', x: -120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x:  -40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
-              { type: 'Winder', x:  +40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x:  +80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x: +160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              // 
+              // { type: 'Winder', x: -120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x:  -40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              // { type: 'Winder', x:  +40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x: +120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 }
             ]
           },
@@ -898,202 +899,213 @@ U.buildRoom({
     });
     
     // BASE STUFF
-    let Entity = U.inspire({ name: 'Entity', insps: {}, methods: (insp, Insp) => ({
-      init: function({ ms=foundation.getMs() }={}) {
-        this.ms = ms;
-      },
-      isAlive: function(updData) { return true; },
-      canCollide: C.noFn('canCollide'),
-      collide: C.noFn('collide'),
-      // canCollide: function() { return false; },
-      // collide: function(rep) {},
+    let Entity = U.inspire({ name: 'FlyEntity', insps: { Rec }, methods: (insp, Insp) => ({
       
-      // Get the state in various ways. The "perm" state may never ever
-      // change for an Entity. The "norm" state may change now and then.
-      // The "flux" state may change constantly.
-      permState: function() { return { type: U.nameOf(this), ms: this.ms }; },
-      normState: function() { return {}; },
-      fluxState: function() { return {}; },
-      calcState: C.noFn('calcState'),
-      updateAndGetResult: C.noFn('updateAndGetResult'),
-      dieAndGetResult: function(updData) { return { birth: [] }; }
-    })});
-    let Mortal = U.inspire({ name: 'Mortal', insps: {}, methods: (insp, Insp) => ({
-      init: function({ hp=1 }) { this.hp = this.getMaxHp(); },
-      getMaxHp: function() { return 1; },
-      damageFrom: function(rep, amt) { this.hp -= amt; },
-      isAlive: function(updData) { return this.hp > 0; }
-    })});
-    let Geom = U.inspire({ name: 'Geom', insps: { Entity }, methods: (insp, Insp) => ({
-      init: function({ x=0, y=0, ...args }) {
-        insp.Entity.init.call(this, args);
-        this.x = x; this.y = y;
+      initProps: function(val) {
+        let { ud=null, lsMs=null } = val;
+        if (!ud) throw Error(`Missing "ud" prop for init ${U.nameOf(this)}`);
+        
+        let { ms=null } = ud;
+        if (badN(ms)) throw Error(`Bad "ms" param for ${U.nameOf(this)} (${U.nameOf(val.ms)})`);
+        
+        // TODO: Annoying that we need to pass "ud" here...
+        return { ud: { ms }, ms, lsMs };
+      },
+      initSyncs: function() { return [ 'ud', 'ms' ]; },
+      init: function(rt, uid, mems, val) {
+        
+        if (!val) throw Error(`${U.nameOf(this)} missing "val" param`);
+        
+        // Move properties from `props` to `syncProps` as appropriate
+        let props = this.initProps(val);
+        
+        let sProps = this.initSyncs();
+        if (Set(sProps).size !== sProps.length) throw Error(`${U.nameOf(this)} defines sync properties multiple times`);
+        for (let spn of sProps) if (!props.has(spn)) throw Error(`${U.nameOf(this)} missing sync prop "${spn}"`);
+        
+        let syncProps = {};
+        for (let spn of sProps) {
+          syncProps[spn] = props[spn]; delete props[spn];
+        }
+        
+        // Attach all local properties
+        for (let localPropName in props) this[localPropName] = props[localPropName];
+        
+        // Initialize as Rec using sync properties
+        insp.Rec.init.call(this, rt, uid, mems, { ...syncProps, type: U.nameOf(this) });
+        
+      },
+      v: function(p, v=C.skip) {
+        if (v === C.skip) {  // Get
+          if (this.val.has(p))              return this.val[p];
+          else if (({}).has.call(this, p))  return this[p];
+          else                              throw Error(`${U.nameOf(this)} has no v prop "${p}"`);
+        } else {                  // Set
+          if (U.isType(v, Function)) v = v(this.val.has(p) ? this.val[p] : this[p]);
+          if (this.val.has(p))              this.dltVal({ [p]: v });
+          else if (({}).has.call(this, p))  this[p] = v;
+          else                              throw Error(`${U.nameOf(this)} has no v prop "${p}"`);
+        }
+      },
+      r: function(ud, p) { return this.v(p) || ud.entities.def(this.v(`${p}Uid`)); },
+      getAgeMs: function(updData) { return updData.ms - this.v('ms'); },
+      calcState: C.noFn('calcState'), // Returns current state, and any events (e.g. births) which occurred during the time delta
+      getCollideResult: C.noFn('getCollideResult'),
+      getStepResult: C.noFn('getStepResult'),
+      getDieResult: function(ud) {},
+      isAlive: function(ud) {
+        if (this.v('lsMs') !== null && this.getAgeMs(ud) > this.lsMs) return false;
+        return true;
+      },
+      
+      renderPriority: function() { return 0.5; },
+      render: function(updData, draw) {
+        let { x, y } = this.calcState(updData);
+        draw.circ(x, y, 10, { fillStyle: '#ff0000' });
       }
+      
+    })});
+    let Mortal = U.inspire({ name: 'Mortal', insps: { Entity }, methods: (insp, Insp) => ({
+      initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr, { hpDmg: 0 })),
+      getMaxHp: function() { return 1; },
+      getCurrentHp: function(ud) { return this.getMaxHp(ud) - this.v('hpDmg'); },
+      takeDamage: function(updData, srcEnt, amt) {
+        let fatalDmg = this.getMaxHp(updData) - this.v('hpDmg');
+        if (amt > fatalDmg) amt = Math.max(0, fatalDmg);
+        
+        // Mark damage on us
+        this.v('hpDmg', v => v + amt);
+        
+        // Give damage credit to `srcEnt`
+        srcEnt.v('scoreDamage', v => v + amt);
+      },
+      isAlive: function(updData) { return this.v('hpDmg') < this.getMaxHp(updData); }
     })});
     let Mover = U.inspire({ name: 'Mover', methods: (insp, Insp) => ({
       
-      init: function({ aheadDist=0, vel=100, acl=0, tx, ty, ang, dist, spd=null }) {
-        
-        if (spd !== null) throw Error(`Don't provide "spd" (${spd}) - instead use "vel"!`);
-        if (!({}).has.call(this, 'x')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
-        if (!({}).has.call(this, 'y')) throw Error(`${U.nameOf(this)} inherits Mover, but doesn't initialize an "x" property`);
-        
-        // Note that `aheadDist` is the y value of the total progression
-        // of the level, and consistent regardless of the Moment. To get
-        // consistent movement we need to use `aheadDist`!
-        
-        this.initDist = aheadDist;
-        this.initX = this.x; this.initY = this.y;
-        this.vx = this.vy = this.dist = null;
-        this.vel = null; this.acl = null;
-        this.ang = null;
-        this.setDestination({ aheadDist, vel, acl, tx, ty, ang, dist });
-        
+      $carteParams: (tx, ty) => {
+        let dist = Math.sqrt(tx * tx + ty * ty);
+        let n = 1 / dist;
+        return { nx: tx * n, ny: ty * n, ang: Math.atan2(tx, ty) / (Math.PI * 2), dist };
       },
-      setDestination: function({ aheadDist=0, vel=null, acl=null, tx=null, ty=null, ang=null, dist=null }) {
-        
-        // Providing x and y with an optional `relDist` sets the
-        // destination through that point (and optionally stopping at
-        // that point)
-        // Providing a angle and optional distance sets the destination
-        // at the angle relative to the current position
-        
-        if (ang !== null && (tx !== null || ty !== null))
-          throw Error(`Specify either "ang", or "tx" and "ty"`);
-        
-        // Update speed if necessary
-        if (vel !== null) this.vel = vel;
-        if (acl !== null) this.acl = acl;
-        
-        if (tx !== null) {
-          
-          let dx = tx - this.x;
-          let dy = ty - this.y + ((aheadDist !== null) ? aheadDist : 0);
-          this.dist = Math.sqrt(dx * dx + dy * dy);
-          
-          let n = 1 / this.dist; // Normalizes dx, dy
-          this.vx = dx * n; this.vy = dy * n;
-          
-          this.ang = Math.atan2(dx, dy) / (Math.PI * 2);
-          
-        } else if (ang !== null) {
-          
-          let r = ang * Math.PI * 2;
-          this.vx = Math.sin(r);
-          this.vy = Math.cos(r);
-          
-          this.dist = dist;
-          this.ang = ang;
-          
-        } else {
-          
-          throw Error(`Specify either "x" and "y", or "ang"`);
-          
-        }
-        
+      $polarParams: (ang, dist=null) => {
+        let rad = ang * Math.PI * 2;
+        return { nx: Math.sin(rad), ny: Math.cos(rad), ang, dist };
       },
-      permState: function() { return { initDist: this.initDist }; },
-      normState: function() { return {
-        initX: this.initX, initY: this.initY,
-        vx: this.vx, vy: this.vy, dist: this.dist,
-        vel: this.vel, acl: this.acl
-      };},
+      
+      init: C.noFn('init'),
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        
+        let { ud: { ms }, aMs=ms, ax=null, ay=null, vel=100, acl=0 } = val;
+        
+        let calc = null;
+        if (val.has('nx') && val.has('ny'))       calc = () => val.slice('nx', 'ny', 'dist');
+        else if (val.has('tx') && val.has('ty'))  calc = Insp.carteParams.bind(null, val.tx, val.ty);
+        else if (val.has('ang'))                  calc = Insp.polarParams.bind(null, val.ang, val.dist);
+        else                                      calc = () => { throw Error(`Supply either "tx" and "ty", or "ang"`); };
+        
+        let { nx, ny, dist, ang=Math.atan2(nx, ny) / (Math.PI * 2) } = calc();
+        
+        return Object.assign(...arr, { aMs, ax, ay, vel, acl, nx, ny, dist, ang });
+        
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'aMs', 'ax', 'ay', 'nx', 'ny', 'dist', 'vel', 'acl' ].concat(...arr)),
       calcState: function(updData) {
         
-        let dur = updData.ms - this.ms;
-        let t = dur * 0.001;
-        let d = this.vel * t + 0.5 * this.acl * t * t; // Distance based on t, vel, acl
+        let aMs = this.v('aMs');
+        let ax = this.v('ax'); let ay = this.v('ay');
+        let nx = this.v('nx'); let ny = this.v('ny');
+        let vel = this.v('vel');
+        let acl = this.v('acl');
+        let dist = this.v('dist');
+        
+        // Seconds the most recent anchor move has lasted
+        let t = (updData.ms - aMs) * 0.001;
         
         // Non-null `dist` creates a cap on the distance
-        if (this.dist !== null && d > this.dist) d = this.dist;
+        let d = vel * t + acl * 0.5 * t * t; // Distance based on t, vel, acl
+        if (dist !== null && d > dist) d = dist;
         
-        let x = this.initX + this.vx * d;
-        let y = this.initY + this.vy * d;
-        
-        // Non-null `initDist` causes movement relative to `aheadDist`
-        if (this.initDist !== null) y += updData.aheadDist - this.initDist;
-        
-        return { x, y };
+        return { x: ax + nx * d, y: ay + ny * d };
         
       },
-      isAlive: function(updData) {
-        if (this.dist === null) {
-          let bnd = updData.bounds.total;
-          if (this.vx > 0 && this.x > (bnd.r + 100)) return false;
-          if (this.vx < 0 && this.x < (bnd.l - 100)) return false;
-          if (this.vy > 0 && this.y > (bnd.t + 100)) return false;
-          if (this.vy < 0 && this.y < (bnd.b - 100)) return false;
-        }
+      getAgeMs: C.noFn('getAgeMs'),
+      setMoveAnchor: function(updData) {
+        let { x, y } = this.calcState(updData);
+        this.v('aMs', updData.ms); this.v('ax', x); this.v('ay', y);
+      },
+      setMoveSpd: function(updData, vel, acl) {
+        if (updData) this.setMoveAnchor(updData);
+        this.v('vel', vel); this.v('acl', acl);
+      },
+      setCarteDest: function(updData, tx, ty) {
+        
+        if (updData) this.setMoveAnchor(updData);
+        
+        let d = Math.sqrt(tx * tx + ty * ty);
+        this.v('dist', d);
+        
+        let n = 1 / d;
+        this.v('nx', tx * n); this.v('ny', ty * n);
+        this.v('ang', Math.atan2(nx, ny) / (Math.PI * 2));
+        
+      },
+      setPolarDest: function(updData, ang, dist=null) {
+        
+        if (updData) this.setMoveAnchor(updData);
+        
+        let r = ang * Math.PI * 2;
+        this.v('nx', Math.sin(r)); this.v('ny', Math.cos(r));
+        this.v('ang', ang); this.v('dist', dist);
+        
+      },
+      isAlive: function(ud) {
+        
+        let nx = this.v('nx'); let ny = this.v('ny');
+        let { x, y } = this.calcState(ud);
+        let tb = ud.bounds.total;
+        if (nx > 0 && x > (tb.r + 150)) return false;
+        if (nx < 0 && x < (tb.l - 150)) return false;
+        if (ny > 0 && y > (tb.t + 150)) return false;
+        if (ny < 0 && y < (tb.b - 150)) return false;
         return true;
+        
       }
+      
     })});
     
     // UTIL
     let Bullet = U.inspire({ name: 'Bullet', methods: (insp, Insp) => ({
       
-      $getColour: team => {
-        if (team === -1) return 'rgba(0, 135, 45, 0.88)';
-        if (team === +1) return 'rgba(230, 85, 0, 0.8)';
-        return '#000000';
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { team, owner=null, dmg=1, pDmg=[0,0], bound={ form: 'circle', r: 4 }, colour='rgba(0, 0, 0, 0.75)' } = val;
+        /// {ABOVE=
+        if (!owner) throw Error('Bullet missing "owner" property');
+        /// =ABOVE}
+        if (!U.isType(bound, Object) || !bound.has('form') || !U.isType(bound.form, String)) throw Error(`Bad bound! (${U.nameOf(bound)}, ${JSON.stringify(bound)})`);
+        return Object.assign(...arr, { team, owner, dmg, pDmg, bound, colour });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'bound', 'colour' ].concat(...arr)),
+      init: C.noFn('init'),
+      getCollideResult: function(updData, tail) {
+        if (!U.isInspiredBy(tail, Mortal)) return;
+        let dmg = this.v('dmg');
+        let pDmg = this.v('pDmg');
+        if (pDmg[0]) {
+          let maxHp = tail.getMaxHp(updData);
+          dmg += Math.min(pDmg[0] * maxHp, pDmg[1] || maxHp);
+        }
+        tail.takeDamage(updData, this.v('owner'), dmg);
+        this.v('lsMs', 0);
       },
-      
-      init: function({ owner, dmg=1, pDmg=[0,0] }) {
-        this.owner = owner;
-        this.dmg = dmg;
-        this.pDmg = pDmg;
-      },
-      getTeam: function() { return this.owner.getTeam(); },
-      canCollide: function() { return true; },
-      collide: function(rep, updData) {
-        if (!U.isInspiredBy(rep, Mortal)) return false;
-        let dmg = this.dmg;
-        if (this.pDmg[0]) dmg += Math.min(this.pDmg[0] * rep.getMaxHp(), this.pDmg[1] || rep.getMaxHp());
-        dmg = Math.min(dmg, rep.hp);
-        rep.hp -= dmg;
-        this.owner.scoreDamage += dmg;
-        return true;
+      getStepResult: function(ud) {
+        let { x, y } = this.calcState(ud);
+        return { tangibility: {
+          bound: { ...this.v('bound'), x, y },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
       }
-      
-    })});
-    let SimpleBullet = U.inspire({ name: 'SimpleBullet', insps: { Geom, Bullet }, methods: (insp, Insp) => ({
-      
-      $render: (draw, updData, { type, ms, w, h, team, x, y }) => {
-        draw.rectCen(x, y, w, h, { fillStyle: Insp.parents.Bullet.getColour(team) });
-      },
-      
-      init: function({ x, y, spd=700, w=4, h=50, lsMs=3000, aheadDist, ...args }) {
-        insp.Geom.init.call(this, { aheadDist, ...args });
-        insp.Bullet.init.call(this, { aheadDist, ...args });
-        this.x = x; this.y = y;
-        this.w = w; this.h = h;
-        
-        this.initX = x; this.initY = y; this.initDist = aheadDist;
-        if (badN(this.initDist)) throw Error('BAD AHAED DIST');
-        
-        this.spd = spd;
-        this.lsMs = lsMs;
-      },
-      collide: function(rep, updData) {
-        if (insp.Bullet.collide.call(this, rep, updData)) this.lsMs = 0;
-      },
-      permState: function() { return {
-        ...insp.Geom.permState.call(this),
-        initX: this.initX, initY: this.initY, initDist: this.initDist, spd: this.spd,
-        team: this.getTeam(), w: this.w, h: this.h
-      };},
-      calcState: function(updData) {
-        return {
-          x: this.initX,
-          y: this.initY + (updData.aheadDist - this.initDist) + (this.spd * (updData.ms - this.ms) * 0.001)
-        };
-      },
-      updateAndGetResult: function(entity, updData) {
-        let { x, y } = this.calcState(updData);
-        this.x = x;
-        this.y = y;
-        return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
-      },
-      isAlive: function({ ms }) { return (ms - this.ms) < this.lsMs; }
       
     })});
     let DirectedBullet = U.inspire({ name: 'DirectedBullet', insps: { Entity, Mover, Bullet }, methods: (insp, Insp) => ({
@@ -1101,105 +1113,70 @@ U.buildRoom({
       $render: (draw, updData, { x, y, r, team }) => {
         draw.circ(x, y, r, { fillStyle: Insp.parents.Bullet.getColour(team) });
       },
-      init: function({ r=8, lsMs=3000, acl=0, x, y, ...args }) {
-        this.x = x; this.y = y;
-        insp.Entity.init.call(this, args);
-        insp.Mover.init.call(this, { vel: 500, ...args });
-        insp.Bullet.init.call(this, args);
-        this.r = r;
-        this.lsMs = lsMs;
-        this.acl = acl;
+      initProps: insp.allArr('initProps', (i, arr, val) => Object.assign(...arr)),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+      isAlive: function(ud) {
+        return true
+          && insp.Entity.isAlive.call(this, ud)
+          && insp.Mover.isAlive.call(this, ud);
       },
-      canCollide: function() { return true; },
-      collide: function(rep, updData) { if (insp.Bullet.collide.call(this, rep, updData)) this.lsMs = 0; },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, { team: i.getTeam(), r: i.r })),
-      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      updateAndGetResult: function(entity, updData) {
-        let { x, y } = this.calcState(updData);
-        // this.x = x;
-        // this.y = y;
-        return { x, y, form: 'circle', r: this.r, birth: [] };
-      },
-      isAlive: function({ ms }) { return (ms - this.ms) < this.lsMs; }
+      render: function(ud, draw) {
+        let bound = this.v('bound');
+        let { x, y } = this.calcState(ud);
+        if (bound.form === 'circle') {
+          draw.circ(x, y, bound.r, { fillStyle: this.v('colour') });
+        } else if (bound.form === 'rect') {
+          draw.rectCen(x, y, bound.w, bound.h, { fillStyle: this.v('colour') });
+        } else {
+          throw Error(`Bad bound: "${bound.form}"`);
+        }
+      }
       
     })});
     
     // GOOD GUYS
-    let Ace = U.inspire({ name: 'Ace', insps: { Entity, Mortal }, methods: (insp, Insp) => ({
+    let Ace = U.inspire({ name: 'Ace', insps: { Mortal }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 8 }, $respawnMs: 2500, $invulnMs: 1500, $spd: 165,
-      $render: (draw, { ms }, { entity, myEntity, x, y, invulnMark }, imageKeep=null, fn) => {
-        let size = Insp.bound.r << 1;
-        let mine = entity === myEntity;
-        
-        if (ms < invulnMark) {
-          let outerStyle = mine
-            ? { fillStyle: 'rgba(255, 255, 255, 0.30)' }
-            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
-          let innerStyle = mine
-            ? { fillStyle: 'rgba(255, 255, 255, 0.35)', strokeStyle: 'rgba(255, 255, 255, 0.7)', lineWidth: 3 }
-            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
-          draw.circ(x, y, size * 5,   outerStyle);
-          draw.circ(x, y, size * 1.6, innerStyle);
-          if (imageKeep) draw.imageCen(imageKeep, x, y, size, size, 0.25);
-        } else {
-          let indStyle = mine
-            ? { fillStyle: 'rgba(255, 140, 140, 0.28)', strokeStyle: 'rgba(255, 100, 100, 0.5)', lineWidth: 3 }
-            : { fillStyle: 'rgba(255, 140, 140, 0.20)' };
-          draw.circ(x, y, size * 1.6, indStyle);
-          if (imageKeep) draw.imageCen(imageKeep, x, y, size, size);
-        }
-        
-        if (fn) fn();
-      },
+      $bound: { form: 'circle', r: 8 }, $respawnMs: 2750, $invulnMs: 1500, $spd: 165,
       
-      init: function(args) {
-        // TODO: Supply ms and aheadDist when creating Aces
-        if (!args.has('ms')) throw Error(`Missing "ms" param when creating ${U.nameOf(this)}`);
-        if (args.has('aheadDist')) throw Error(`DO NOT PROVIDE "aheadDist" param when creating ${U.nameOf(this)}`);
-        
-        insp.Entity.init.call(this, args);
-        insp.Mortal.init.call(this, args);
-        this.name = args.name;
-        this.spd = Insp.spd;
-        this.effects = Set();
-        this.invulnMark = this.ms + Insp.invulnMs;
-        this.scoreDamage = 0;
-        this.scoreDeath = 0;
-        
-        this.netVelX = 0; this.netVelY = 0;
-        this.netAclX = 0; this.netAclY = 0;
-        
-        this.ctrlX = args.has('x') ? args.x : 0; this.ctrlY = args.has('y') ? args.y : 0;
-        
-      },
-      canCollide: function(ms) { return ms >= this.invulnMark; },
-      collide: function(rep, updData) {},
-      getTeam: function() { return +1; },
-      normState: function() { return { invulnMark: this.invulnMark, victory: this.victory }; },
-      fluxState: function() { return { ctrlX: this.ctrlX, ctrlY: this.ctrlY }; },
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { ud: { ms }, name='<anon>', cx=0, cy=0 } = val;
+        return Object.assign(...arr, {
+          name, cx, cy,
+          spd: Insp.spd,
+          effects: Set(),
+          invulnMark: ms + Insp.invulnMs,
+          scoreDamage: 0,
+          scoreDeath: 0,
+          controls: [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ])
+        });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name', 'cx', 'cy' ].concat(...arr)),
       calcState: function(updData) {
-        return {
-          x: this.ctrlX,
-          y: this.ctrlY + updData.aheadDist
-        };
+        return { x: this.v('cx'), y: this.v('cy') + updData.bounds.total.y, rel: updData.level };
       },
-      updateAndGetResult: function(entity, updData) {
+      getCollideResult: function(updData, tail) {},
+      getTeam: function() { return +1; },
+      getStepResult: function(updData) {
         
-        let { ms, spf, bounds, aheadSpd, aheadDist, victory } = updData;
-        if (victory) {
-          if (ms >= this.invulnMark) this.invulnMark = ms + 1000;
-          this.ctrlY += (aheadSpd + Insp.spd * 4) * spf;
+        let { ms, spf, bounds, outcome } = updData;
+        if (outcome === 'win') {
+          //this.v('invulnMark', ms + 10000);
+          this.v('cy', v => v + Insp.spd * 4 * updData.spf);
           let { x, y } = this.calcState(updData);
-          return { x, y, ...Insp.bound, birth: [] };
+          return { tangibility: {
+            bound: { ...Insp.bound, x, y },
+            team: 'ace',
+            sides: []
+          }};
         }
         
-        let cx = entity.controls.r[0] - entity.controls.l[0];
-        let cy = entity.controls.u[0] - entity.controls.d[0];
-        let a1 = entity.controls.a1[0];
-        let a2 = entity.controls.a2[0];
-        let { birth=[], spdMult=1 } = this.aceUpdate({ cx, cy, a1, a2 }, updData);
-        let forces = [];
+        let cx = this.controls.r[0] - this.controls.l[0];
+        let cy = this.controls.u[0] - this.controls.d[0];
+        let a1 = this.controls.a1[0];
+        let a2 = this.controls.a2[0];
+        
+        let { spdMult=1 } = this.aceUpdate(updData, { cx, cy, a1, a2 }) || {};
         
         // The calculated speed for this tick
         spdMult *= this.spd;
@@ -1208,38 +1185,79 @@ U.buildRoom({
           let { mark, type=null, fn=null, endFn=null } = effect;
           if (ms > effect.mark) {
             this.effects.rem(effect);
-            if (effect.endFn) effect.endFn(this, updData, { birth });
+            if (effect.endFn) effect.endFn(this, updData);
           } else {
             if (effect.type === 'spdMult') spdMult *= effect.spdMult;
-            if (effect.type === 'force') forces.push(effect.force);
-            if (effect.fn) effect.fn(this, updData, { birth });
+            if (effect.fn) effect.fn(this, updData);
           }
         }
         
-        let vx, vy;
         if (cx && cy) spdMult /= Math.sqrt(cx * cx + cy * cy);
-        vx = cx * spdMult;
-        vy = cy * spdMult;
+        let vx = cx * spdMult;
+        let vy = cy * spdMult;
         
-        //vy += aheadSpd;
-        if (vx || vy) { this.ctrlX += vx * spf; this.ctrlY += vy * spf; }
+        let cx0 = this.v('cx'); let cy0 = this.v('cy'); let cx1 = cx0; let cy1 = cy0;
+        if (vx || vy) { cx1 += vx * spf; cy1 += vy * spf; }
         
         let rad = Insp.bound.r;
         let { l, r, b, t } = bounds.player;
-        if (this.ctrlX < (l + rad)) this.ctrlX = l + rad;
-        if (this.ctrlX > (r - rad)) this.ctrlX = r - rad;
-        if (this.ctrlY < (b + rad - aheadDist)) this.ctrlY = b + rad - aheadDist;
-        if (this.ctrlY > (t - rad - aheadDist)) this.ctrlY = t - rad - aheadDist;
+        let ahd = updData.bounds.total.y;
+        if (cx1 < (l + rad)) cx1 = l + rad;
+        if (cx1 > (r - rad)) cx1 = r - rad;
+        if (cy1 < (b + rad - ahd)) cy1 = b + rad - ahd;
+        if (cy1 > (t - rad - ahd)) cy1 = t - rad - ahd;
         
-        let { x, y } = this.calcState(updData);
-        return { x, y, ...Insp.bound, birth };
+        if (cx1 !== cx0) this.v('cx', cx1);
+        if (cy1 !== cy0) this.v('cy', cy1);
+        
+        if (this.isAlive(updData)) {
+          let { x, y } = this.calcState(updData);
+          return { tangibility: {
+            bound: { ...Insp.bound, x, y },
+            team: 'ace',
+            sides: (this.v('invulnMark') > ms) ? [] : [ 'tail' ]
+          }};
+        } else {
+          return { tangibility: {
+            bound: { ...Insp.bound, x: 0, y: -10101010 },
+            team: 'ace', 
+            sides: []
+          }};
+        }
         
       },
+      
       aceUpdate: C.noFn('aceUpdate'),
-      isAlive: insp.Mortal.isAlive
+      
+      render: function(updData, draw) {
+        
+        if (!this.isAlive(updData)) return;
+        
+        let size = Insp.bound.r << 1;
+        let mine = this === updData.myEntity;
+        let { x, y } = this.calcState(updData);
+        
+        if (updData.ms < this.v('invulnMark')) {
+          let outerStyle = mine
+            ? { fillStyle: 'rgba(255, 255, 255, 0.30)' }
+            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
+          let innerStyle = mine
+            ? { fillStyle: 'rgba(255, 255, 255, 0.35)', strokeStyle: 'rgba(255, 255, 255, 0.7)', lineWidth: 3 }
+            : { fillStyle: 'rgba(255, 255, 255, 0.15)' };
+          draw.circ(x, y, size * 5,   outerStyle);
+          draw.circ(x, y, size * 1.6, innerStyle);
+          draw.imageCen(this.constructor.imageKeep, x, y, size, size, 0.25);
+        } else {
+          let indStyle = mine
+            ? { fillStyle: 'rgba(255, 140, 140, 0.28)', strokeStyle: 'rgba(255, 100, 100, 0.5)', lineWidth: 3 }
+            : { fillStyle: 'rgba(255, 140, 140, 0.20)' };
+          draw.circ(x, y, size * 1.6, indStyle);
+          draw.imageCen(this.constructor.imageKeep, x, y, size, size);
+        }
+        
+      }
       
     })});
-    
     let JoustMan = U.inspire({ name: 'JoustMan', insps: { Ace }, methods: (insp, Insp) => ({
       
       $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
@@ -1272,76 +1290,68 @@ U.buildRoom({
         });
       },
       
-      init: function({ ...args }={}) {
-        insp.Ace.init.call(this, args);
-        this.w1Mark = null; // Marks when charging began
-        this.w1State = 0;   // Integer indicating current stage
-        this.w2Mark = this.ms; // Marks when next jump is available
-      },
-      normState: function() { return { ...insp.Ace.normState.call(this),
-        w1Mark: this.w1Mark, w1State: this.w1State, w2Mark: this.w2Mark
-      };},
-      aceUpdate: function({ cx, cy, a1, a2 }, updData) {
+      initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr, { w1Mark: null, w1State: 0, w2Mark: null })),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'w1Mark', 'w1State', 'w2Mark' ].concat(...arr)),
+      aceUpdate: function(updData, { cx, cy, a1, a2 }) {
         
         let { aheadDist, ms, spf } = updData;
-        let birth = [];
         
         // Activate weapon 1
         if (a1) {
           
-          if (!this.w1Mark) this.w1Mark = ms;
+          if (!this.v('w1Mark')) this.v('w1Mark', ms);
           
-          let duration = ms - this.w1Mark;
-          if (duration > Insp.w1Charge3Ms)      this.w1State = 3;
-          else if (duration > Insp.w1Charge2Ms) this.w1State = 2;
-          else if (duration > Insp.w1Charge1Ms) this.w1State = 1;
-          else                                  this.w1State = 0;
+          let duration = ms - this.v('w1Mark');
+          if (duration > Insp.w1Charge3Ms)      this.v('w1State', 3);
+          else if (duration > Insp.w1Charge2Ms) this.v('w1State', 2);
+          else if (duration > Insp.w1Charge1Ms) this.v('w1State', 1);
+          else                                  this.v('w1State', 0);
           
         } else {
           
-          if (this.w1Mark) {
+          if (this.v('w1Mark')) {
             
             // Activate the charged ability!!
-            if (this.w1State === 0) {
+            if (this.v('w1State') === 0) {
               
               // JoustMan is punished for holding for too short a time
-              this.effects.add({ mark: ms + Insp.w1ChargePunishMs, type: 'spdMult', spdMult: Insp.w1ChargePunishSlow });
+              this.v('effects').add({ mark: ms + Insp.w1ChargePunishMs, type: 'spdMult', spdMult: Insp.w1ChargePunishSlow });
               
-            } else if (this.w1State === 1) {
+            } else if (this.v('w1State') === 1) {
               
               // Weapon 1 act 1: Spread shot
               
               let { x, y } = this.calcState(updData);
               let incAng = 0.018;
-              let args = { aheadDist, ms, owner: this, x, y, vel: 350, dmg: 1, r: 6 };
+              let args = { owner: this, team: 'ace', ax: x, ay: y, vel: 350, dmg: 0.75, lsMs: 700, bound: { form: 'circle', r: 6 } };
+              for (let ang of util.incCen(9, incAng)) updData.spawnEntity({ type: 'JoustManBullet', ...args, ang });
               
-              birth.gain([ ...util.incCen(9, incAng) ].map(ang => JoustManBullet({
-                ...args, ang, lsMs: 650, dmg: 0.75
-              })));
+              this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
               
-              this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
-              
-            } else if (this.w1State === 2) {
+            } else if (this.v('w1State') === 2) {
               
               // Weapon 1 act 2: Spheres
-              birth.gain([
-                JoustManLaserSphere({ ms, joustMan: this, xOff: -66, yOff: +12, durationMs: 1400, dps: 15, r: 26 }),
-                JoustManLaserSphere({ ms, joustMan: this, xOff: +66, yOff: +12, durationMs: 1400, dps: 15, r: 26 }),
-                JoustManLaserSphere({ ms, joustMan: this, xOff: +24, yOff: -27, durationMs: 1400, dps: 11, r: 18 }),
-                JoustManLaserSphere({ ms, joustMan: this, xOff: -24, yOff: -27, durationMs: 1400, dps: 11, r: 18 })
-              ]);
-              this.effects.add({ mark: ms + 1150, type: 'spdMult', spdMult: 1.3 });
+              let args = { joustMan: this, team: 'ace', lsMs: 1400 };
+              let offs = [
+                { xOff: -66, yOff: +12, r: 26, dps: 15 },
+                { xOff: +66, yOff: +12, r: 26, dps: 15 },
+                { xOff: +24, yOff: -27, r: 18, dps: 11 },
+                { xOff: -24, yOff: -27, r: 18, dps: 11 }
+              ];
+              for (let off of offs) updData.spawnEntity({ type: 'JoustManLaserSphere', ...args, ...off });
               
-            } else if (this.w1State === 3) {
+              this.v('effects').add({ mark: ms + 1150, type: 'spdMult', spdMult: 1.3 });
+              
+            } else if (this.v('w1State') === 3) {
               
               // Weapon 1 act 3: BIG LASER
-              birth.gain([ JoustManLaserVert({ ms, joustMan: this }) ]);
-              this.effects.add({ mark: ms + JoustManLaserVert.durationMs, type: 'spdMult', spdMult: Insp.w1Charge3Slow });
+              updData.spawnEntity({ type: 'JoustManLaserVert', joustMan: this, team: 'ace', lsMs: 3000 });
+              this.v('effects').add({ mark: ms + 3000, type: 'spdMult', spdMult: Insp.w1Charge3Slow });
               
             }
             
-            this.w1State = 0;
-            this.w1Mark = 0;
+            this.v('w1State', 0);
+            this.v('w1Mark', 0);
             
           }
           
@@ -1353,19 +1363,44 @@ U.buildRoom({
           this.w2Mark = ms + Insp.w2Delay;
           
           let dir = cx > 0 ? +1 : -1;
-          this.invulnMark = Math.max(this.invulnMark, ms + 250);
-          this.effects.add({ mark: ms + 250, fn: (inst, { spf }) => this.ctrlX += dir * Insp.w2DashSpeed * spf });
-          this.effects.add({ mark: ms + 250, type: 'spdMult', spdMult: 0 });
+          this.v('invulnMark', v => Math.max(v || 0, ms + 250));
+          this.v('effects').add({ mark: ms + 250, fn: (inst, { spf }) => this.v('cx', v => v + dir * Insp.w2DashSpeed * spf) });
+          this.v('effects').add({ mark: ms + 250, type: 'spdMult', spdMult: 0 });
           
-          birth.gain(Array.fill(4, n => JoustManLaserSphere({
-            ms, joustMan: this, xOff: -dir * (n + 1) * 30, yOff: 0, durationMs: Insp.w2DurationMs, dps: Insp.w2OrbDps, r: 9
-          })));
+          let args = { joustMan: this, team: 'ace', lsMs: Insp.w2DurationMs, yOff: 0, r: 9, dps: Insp.w2OrbDps };
+          for (let i = 0; i < 4; i++)
+            updData.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: -dir * (i + 1) * 30 });
           
-          birth.gain([ JoustManLaserSphere({ ms, joustMan: this, xOff: 0, yOff: 0, durationMs: Insp.w2DurationMs, dps: Insp.w2OrbDps, r: 20 }) ]);
+          updData.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: 0, yOff: 0, r: 20 });
           
         }
         
-        return { birth };
+      },
+      render: function(updData, draw) {
+        
+        insp.Ace.render.call(this, updData, draw);
+        
+        let { x, y } = this.calcState(updData);
+        let w1Mark = this.v('w1Mark');
+        let w1State = this.v('w1State');
+        let w2Mark = this.v('w2Mark');
+        
+        // Laser reload
+        let bar1H = w1Mark ? Math.min(1, (updData.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
+        let [ bar1W, col ] = [
+          [ 16, 'rgba(0, 0, 0, 1)' ],         // Punished
+          [ 16, 'rgba(0, 150, 150, 0.7)' ],   // Spread shot
+          [ 8,  'rgba(0, 255, 255, 0.7)' ],   // Butterfly
+          [ 12, 'rgba(100, 255, 255, 0.8)' ]  // Laser
+        ][w1State];
+        draw.rect(x + bar1W * -0.5, y - 8, bar1W, bar1H, { fillStyle: col });
+        
+        // Flash reload
+        let msRemaining = w2Mark - updData.ms;
+        let bar2W = (msRemaining > 0)
+          ? Math.max(0, Math.min(1, (Insp.w2Delay - msRemaining) / Insp.w2Delay))
+          : 1;
+        draw.rectCen(x, y - 12, bar2W * 16, 4, { fillStyle: `rgba(0, 0, 255, ${msRemaining > 0 ? 0.4 : 1})` });
         
       }
       
@@ -1374,7 +1409,7 @@ U.buildRoom({
       
       $shootSteps: [
         { ms: 1000, ang: -0.01, dmgMult: 1   },  // Inwards
-        { ms: 1000, ang:  0.00, dmgMult: 1.4 },  // Parallel again
+        { ms: 1000, ang: +0.00, dmgMult: 1.4 },  // Parallel again
         { ms: 1500, ang: +0.02, dmgMult: 1   },  // Very slowly increase angle
         { ms: 4000, ang: +0.25, dmgMult: 1   }   // Slowly bend all the way outwards
       ],
@@ -1397,18 +1432,17 @@ U.buildRoom({
         
       },
       
-      init: function({ ...args }={}) {
-        insp.Ace.init.call(this, args);
-        this.lockoutPunishMark = null;
-        this.w1Mark = null; // Marks when bullet ready to fire
-        this.w1StartMark = null; // Marks the time the first bullet of the series was fired
-        this.w1LockMark = this.ms; // Marks when lockout will end
-        this.w2ReadyMark = this.ms; // Marks when w2 can be used
-        this.w2Mark = null; // Marks when w2 ends
-        this.w2EffectiveShootDuration = null;
-      },
-      normState: function() { return { ...insp.Ace.normState.call(this), w2ReadyMark: this.w2ReadyMark };},
-      getAngForShootDuration: function(shootDurationMs) {
+      initProps: insp.allArr('initProps', (i, arr, { ud: { ms } }) => Object.assign(...arr, {
+        lockoutPunishMark: null,
+        w1Mark: null,                   // Marks when bullet ready to fire
+        w1StartMark: null,              // Marks the time the first bullet of the series was fired
+        w1LockMark: ms,                 // Marks when lockout will end
+        w2ReadyMark: ms,                // Marks when w2 can be used
+        w2Mark: ms,                     // Marks when w2 ends
+        w2EffectiveShootDuration: null
+      })),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'w2ReadyMark' ].concat(...arr)),
+      getAngForShootDuration: function(ms) {
         
         let prevMs = 0;
         let prevAng = 0;
@@ -1416,8 +1450,8 @@ U.buildRoom({
           
           let curMs = prevMs + step.ms;
           
-          if (shootDurationMs < curMs) {
-            return { ...step, smoothAng: util.fadeAmt(prevAng, step.ang, (shootDurationMs - prevMs) / step.ms) };
+          if (ms < curMs) {
+            return { ...step, smoothAng: util.fadeAmt(prevAng, step.ang, (ms - prevMs) / step.ms) };
           }
           
           prevMs += step.ms;
@@ -1429,105 +1463,104 @@ U.buildRoom({
         return { ...result, smoothAng: result.ang };
         
       },
-      aceUpdate: function({ a1, a2 }, updData) {
+      aceUpdate: function(updData, { a1, a2 }) {
         
         let { aheadDist, ms, spf } = updData;
-        let birth = [];
         
         // Reset `this.lockoutPunishMark` when the duration ends
-        if (this.lockoutPunishMark && ms >= this.lockoutPunishMark) this.lockoutPunishMark = null;
+        if (this.v('lockoutPunishMark') && ms >= this.v('lockoutPunishMark')) this.v('lockoutPunishMark', null);
         
-        if (this.w1LockMark && ms >= this.w1LockMark) {
-          this.w1LockMark = null;
+        if (this.v('w1LockMark') && ms >= this.v('w1LockMark')) {
+          this.v('w1LockMark', null);
           
           // Upon reload, get a speed boost
-          this.effects.add({ mark: ms + Insp.w1ReloadBoostMs, type: 'spdMult', spdMult: Insp.w1ReloadBoostAmt });
+          this.v('effects').add({ mark: ms + Insp.w1ReloadBoostMs, type: 'spdMult', spdMult: Insp.w1ReloadBoostAmt });
         }
         
         // End w2 when the duration elapses
-        if (this.w2Mark && ms >= this.w2Mark) { this.w2Mark = null; this.w1LockMark = ms + Insp.w1LockMs; }
+        if (this.v('w2Mark') && ms >= this.v('w2Mark')) {
+          this.v('w2Mark', null);
+          this.v('w1LockMark', ms + Insp.w1LockMs);
+        }
         
-        if (a1 && !this.w1LockMark && (!this.w1Mark || ms >= this.w1Mark)) {
+        if (a1 && !this.v('w1LockMark') && (!this.v('w1Mark') || ms >= this.v('w1Mark'))) {
           
           // Mark the time of the first shot in the series
-          if (!this.w1StartMark) this.w1StartMark = ms;
+          if (!this.v('w1StartMark')) this.v('w1StartMark', ms);
           
           let { x, y } = this.calcState(updData);
-          if (!this.w2Mark) {
+          if (!this.v('w2Mark')) {
             
             // Enforce typical rate of fire
-            this.w1Mark = (this.w1Mark || ms) + Insp.w1Delay;
+            this.v('w1Mark', v => (v || ms) + Insp.w1Delay);
             
-            let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.w1StartMark);
-            birth.gain([
-              DirectedBullet({ aheadDist, ms, owner: this, x: x - 4, y, ang: -ang, vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: x + 4, y, ang: +ang, vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, r: 3 * dm, lsMs: Insp.bulletMs })
-            ]);
+            let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.v('w1StartMark'));
+            let args = { owner: this, team: 'ace', vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, bound: { form: 'circle', r: 3 * dm }, lsMs: Insp.bulletMs };
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 4, ay: y, ang: -ang });
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 4, ay: y, ang: +ang });
             
           } else {
             
             // Enforce steroid rate of fire
-            this.w1Mark = (this.w1Mark || ms) + Insp.w1Delay * (1 / 2);
+            this.v('w1Mark', v => (v || ms) + Insp.w1Delay * 0.65);
             
-            let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.w2EffectiveShootDuration);
-            birth.gain([
-              DirectedBullet({ aheadDist, ms, owner: this, x: x - 8, y, ang: -(ang * 1.5), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: x - 4, y, ang: -(ang * 1.0), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: x + 4, y, ang: +(ang * 1.0), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs }),
-              DirectedBullet({ aheadDist, ms, owner: this, x: x + 8, y, ang: +(ang * 1.5), vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, r: 5 * dm, lsMs: Insp.bulletMs })
-            ]);
+            let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.v('w2EffectiveShootDuration'));
+            let args = { owner: this, team: 'ace', vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, bound: { form: 'circle', r: 5 * dm }, lsMs: Insp.bulletMs };
+            
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 8, ay: y, ang: -(ang * 1.5) });
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 4, ay: y, ang: -(ang * 1.0) });
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 4, ay: y, ang: +(ang * 1.0) });
+            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 8, ay: y, ang: +(ang * 1.5) });
             
           }
           
-        } else if (this.w1Mark && ms >= this.w1Mark) {
+        } else if (this.v('w1Mark') && ms >= this.v('w1Mark')) {
           
           // Just stopped shooting! Lockout!
-          this.w1Mark = null;
-          this.w1StartMark = null;
-          this.w1LockMark = ms + Insp.w1LockMs;
+          this.v('w1Mark', null);
+          this.v('w1StartMark', null);
+          this.v('w1LockMark', ms + Insp.w1LockMs);
           
-          this.effects.add({ mark: ms + Insp.w1ShortLockPunishMs, type: 'spdMult', spdMult: Insp.w1ShortLockPunishSlow });
-          this.effects.add({ mark: ms + Insp.w1LongLockPunishMs, type: 'spdMult', spdMult: Insp.w1LongLockPunishSlow });
+          this.v('effects').add({ mark: ms + Insp.w1ShortLockPunishMs, type: 'spdMult', spdMult: Insp.w1ShortLockPunishSlow });
+          this.v('effects').add({ mark: ms + Insp.w1LongLockPunishMs, type: 'spdMult', spdMult: Insp.w1LongLockPunishSlow });
           
         }
         
         if (a2) {
           
-          if (ms >= this.w2ReadyMark) {
+          if (ms >= this.v('w2ReadyMark')) {
             
-            this.w2ReadyMark = ms + Insp.w2Duration + Insp.w2Delay;
-            this.w2Mark = ms + Insp.w2Duration;
-            this.w2EffectiveShootDuration = ms - (this.w1StartMark || ms)
+            this.v('w2ReadyMark', ms + Insp.w2Duration + Insp.w2Delay);
+            this.v('w2Mark', ms + Insp.w2Duration);
+            this.v('w2EffectiveShootDuration', ms - (this.v('w1StartMark') || ms));
             
             let incAng = 0.029;
             let { x, y } = this.calcState(updData);
-            let bulletArgs = { aheadDist, ms, owner: this, x, y, vel: 140, r: 5 };
-            birth.gain([ ...util.incCen(15, incAng) ].map(ang => DirectedBullet({
-              ...bulletArgs, ang: 0.5 + ang, lsMs: 2500, dmg: 4
-            })));
+            let bulletArgs = { owner: this, team: 'ace', ax: x, ay: y, vel: 140, bound: { form: 'circle', r: 5 }, lsMs: 2500, dmg: 4 };
+            for (let ang of util.incCen(15, incAng)) {
+              updData.spawnEntity({ type: 'DirectedBullet', ...bulletArgs, ang: 0.5 + ang });
+            }
             
           } else {
             
-            if (!this.lockoutPunishMark) {
-              this.lockoutPunishMark = ms + 500;
-              this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 0.4 });
+            if (!this.v('lockoutPunishMark')) {
+              this.v('lockoutPunishMark', ms + 500);
+              this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.4 });
             }
             
           }
           
         }
         
-        return { birth };
-        
       }
       
     })});
     let SlamKid = U.inspire({ name: 'SlamKid', insps: { Ace }, methods: (insp, Insp) => ({
       
-      $slamSpd: 400, $slamDelay: 760,
+      $slamSpd: 400 / Math.sqrt(2), $slamDelay: 760,
       $slamCharge1Ms: 300, $slamCharge2Ms: 630, $slamCharge3Ms: 750,
       $slamPunishMs: 1500, $slamPunishSlow: 0.25,
-      $missileSpd: 750, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
+      $missileVel: 550, $missileAcl: 800, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
       $shotgunCnt: 18, $shotgunInitAng: 0.023, $shotgunAng: 0.009,
       $shotgunSpd: 650, $shotgunDmg: 0.082, $shotgunPDmg: [0.09,0.28], $shotgunLsMs: 305,
       $shotgunSlamDelayMult: 0.55,
@@ -1541,22 +1574,12 @@ U.buildRoom({
         
       },
       
-      init: function({ ...args }={}) {
-        insp.Ace.init.call(this, args);
-        
-        this.w1Mark = this.ms;
-        this.w1StartMark = null;
-        
-        this.w2Mark = this.ms;
-        this.w2StartMark = null;
-        
-        this.slamSpd = Insp.slamSpd / Math.sqrt(2);
-      },
-      normState: function() { return { ...insp.Ace.normState.call(this),
-        w1Mark: this.w1Mark, w2Mark: this.w2Mark,
-        w1StartMark: this.w1StartMark, w2StartMark: this.w2StartMark
-      }},
-      aceUpdate: function({ a1, a2 }, updData) {
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { ud: { ms }, w1Mark=ms, w1StartMark=null, w2Mark=ms, w2StartMark=null, slamSpd=Insp.slamSpd } = val;
+        return Object.assign(...arr, { w1Mark, w1StartMark, w2Mark, w2StartMark, slamSpd });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+      aceUpdate: function(updData, { a1, a2 }) {
         
         let { aheadDist, ms, spf } = updData;
         let birth = [];
@@ -1565,77 +1588,87 @@ U.buildRoom({
         let dirs = [ [ -1, a1, 'w1Mark', 'w1StartMark' ], [ +1, a2, 'w2Mark', 'w2StartMark' ] ];
         for (let [ mult, act, wMark, wMarkStart ] of dirs) {
           
-          if (act && ms > this[wMark] && (!this[wMarkStart] || ms < this[wMarkStart] + Insp.slamCharge3Ms)) {
+          if (act && ms > this.v(wMark) && (!this.v(wMarkStart) || ms < this.v(wMarkStart) + Insp.slamCharge3Ms)) {
             
-            if (!this[wMarkStart]) {
-              this[wMarkStart] = ms;
+            if (!this.v(wMarkStart)) {
+              this.v(wMarkStart, ms);
               
               let inc1 = 10; let inc2 = 20;
-              birth.gain([
-                SlamKidSlammer({ ms, slamKid: this, dir: mult, xOff: +inc2 + (mult * 20), yOff: (-inc2 * mult) + 16 }),
-                SlamKidSlammer({ ms, slamKid: this, dir: mult, xOff: +inc1 + (mult * 20), yOff: (-inc1 * mult) + 16 }),
-                SlamKidSlammer({ ms, slamKid: this, dir: mult, xOff:     0 + (mult * 20), yOff: (    0 * mult) + 16 }),
-                SlamKidSlammer({ ms, slamKid: this, dir: mult, xOff: -inc1 + (mult * 20), yOff: (+inc1 * mult) + 16 }),
-                SlamKidSlammer({ ms, slamKid: this, dir: mult, xOff: -inc2 + (mult * 20), yOff: (+inc2 * mult) + 16 })
-              ])
+              let args = { slamKid: this, dir: mult };
+              updData.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: +inc2 + (mult * 20), yOff: (-inc2 * mult) + 16 });
+              updData.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: +inc1 + (mult * 20), yOff: (-inc1 * mult) + 16 });
+              updData.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff:     0 + (mult * 20), yOff: (    0 * mult) + 16 });
+              updData.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: -inc1 + (mult * 20), yOff: (+inc1 * mult) + 16 });
+              updData.spawnEntity({ type: 'SlamKidSlammer', ...args, xOff: -inc2 + (mult * 20), yOff: (+inc2 * mult) + 16 });
+              
             }
             
-            let duration = ms - this[wMarkStart];
+            let duration = ms - this.v(wMarkStart);
             let durFade = Math.pow(util.fadeAmt(1, 0.1, duration / Insp.slamCharge3Ms), 0.95);
-            this.ctrlX += this.slamSpd * spf * durFade * mult;
-            this.ctrlY += this.slamSpd * spf * durFade;
+            this.v('cx', v => v + this.v('slamSpd') * spf * durFade * mult);
+            this.v('cy', v => v + this.v('slamSpd') * spf * durFade);
             
-          } else if (this[wMarkStart]) {
+          } else if (this.v(wMarkStart)) {
             
-            let duration = ms - this[wMarkStart];
+            let duration = ms - this.v(wMarkStart);
             if (duration >= Insp.slamCharge3Ms){
               
               // Nothing right now for exceeding charge duration
-              this[wMark] = ms + Insp.slamDelay;
+              this.v(wMark, ms + Insp.slamDelay);
               
             } else if (duration >= Insp.slamCharge2Ms) {
               
               // No effect for releasing in the last part of the charge
-              this[wMark] = ms + Insp.slamDelay;
+              this.v(wMark, ms + Insp.slamDelay);
               
             } else if (duration >= Insp.slamCharge1Ms) {
               
               // Missile!!
               let { x, y } = this.calcState(updData);
-              let missileArgs = { aheadDist, ms, owner: this, x: x + (mult * 9), y };
-              birth.gain([
-                SimpleBullet({ ...missileArgs, spd: +Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 }),
-                SimpleBullet({ ...missileArgs, spd: -Insp.missileSpd, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg, w: 7, h: 20 })
-              ]);
+              let missileArgs = {
+                owner: this, team: 'ace',
+                ax: x + (mult * 9), ay: y,
+                vel: Insp.missileVel, acl: Insp.missileAcl,
+                dmg: Insp.missileDmg, pDmg: Insp.missilePDmg,
+                bound: { form: 'rect', w: 7, h: 20 },
+                lsMs: 2000
+              };
+              updData.spawnEntity({ type: 'DirectedBullet', ...missileArgs, ang: 0.0 });
+              updData.spawnEntity({ type: 'DirectedBullet', ...missileArgs, ang: 0.5 });
+              
               this.effects.add({ mark: ms + 150, type: null, fn: (inst, { spf }) => {
                 this.ctrlY -= 220 * spf;
               }});
-              this[wMark] = ms + Insp.slamDelay;
+              this.v(wMark, ms + Insp.slamDelay);
               
             } else {
               
               // Shotgun!
               let { x, y } = this.calcState(updData);
               let shotgunArgs = {
-                aheadDist, ms, owner: this, x: x + mult * 7, y: y - 7,
+                aheadDist, ms, owner: this, team: 'ace', ax: x + mult * 7, ay: y - 7,
                 dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg,
                 vel: Insp.shotgunSpd,
                 lsMs: Insp.shotgunLsMs,
-                r: 2
+                bound: { form: 'circle', r: 2 }
               };
-              birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => DirectedBullet({
-                ...shotgunArgs, ang: mult * (0.125 + ang)
-              })));
+              for (let ang of util.incCen(Insp.shotgunCnt, Insp.shotgunAng)) updData.spawnEntity({
+                type: 'DirectedBullet', ...shotgunArgs, ang: mult * (0.125 + ang)
+              });
+              
+              // birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => DirectedBullet({
+              //   ...shotgunArgs, ang: mult * (0.125 + ang)
+              // })));
               
               this.effects.add({ mark: ms + 300, type: 'spdMult', spdMult: 1.2, fn: (inst, { spf }) => {
-                inst.ctrlX -= mult * 50 * spf;
-                inst.ctrlY -= 50 * spf;
+                inst.v('cx', v => v - mult * 50 * spf);
+                inst.v('cy', v => v - 50 * spf);
               }});
-              this[wMark] = ms + Insp.slamDelay * Insp.shotgunSlamDelayMult;
+              this.v(wMark, ms + Insp.slamDelay * Insp.shotgunSlamDelayMult);
               
             }
             
-            this[wMarkStart] = null;
+            this.v(wMarkStart, null);
             
           }
           
@@ -1656,289 +1689,255 @@ U.buildRoom({
       $suppressDelayMs: 600, $suppressDmg: 0.4,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSalvo' }),
-      $render: (draw, updData, args) => {
-        
-        Insp.parents.Ace.render(draw, updData, args, Insp.imageKeep, () => {
-          let { x, y, readyMark, combo } = args;
-          
-          let waitMs = readyMark - updData.ms;
-          let dispY = y - 16;
-          let indSize = 8;
-          let comboW = combo.length * indSize;
-          
-          if (waitMs > 0) {
-            
-            let waitAmt = Math.min(waitMs / 750, 1);
-            if (combo.length < 3) comboW = 3 * indSize;
-            draw.rectCen(x, dispY, waitAmt * (comboW + 4), indSize + 4, { fillStyle: 'rgba(80, 80, 80, 0.4)' });
-            
-          }
-          if (combo.length > 0) {
-          
-            let hIndSize = indSize >> 1;
-            let comboW = combo.length * indSize;
-            draw.rectCen(x, dispY, comboW + 4, indSize + 4, { strokeStyle: 'rgba(80, 80, 80, 0.4)', lineWidth: 1 });
-            
-            let dispX = x - (comboW >> 1);
-            for (c of combo) {
-              draw.path({ fillStyle: '#000000' }, ({ jump, draw }) => {
-                if (c === '<') {
-                  jump(dispX + indSize, dispY - hIndSize);
-                  draw(dispX, dispY);
-                  draw(dispX + indSize, dispY + hIndSize);
-                } else if (c === '>') {
-                  jump(dispX, dispY - hIndSize);
-                  draw(dispX + indSize, dispY);
-                  draw(dispX, dispY + hIndSize);
-                }
-              });
-              dispX += indSize;
-            }
-            
-          };
-          
-        });
-        
-      },
       
-      init: function({ ...args }={}) {
-        insp.Ace.init.call(this, args);
-        
-        this.readyMark = null;
-        this.combo = '';
-        
-        this.a1Up = false;
-        this.a2Up = false;
-        
-        this.comboMapping = {
-          '<<<': this.comboDecamp.bind(this, -1),
-          '>>>': this.comboDecamp.bind(this, +1),
+      initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr, {
+        readyMark: null,
+        combo: '',
+        a1Up: false,
+        a2Up: false,
+        comboMapping: {
+          '<<<': i.comboDecamp.bind(i, -1),
+          '>>>': i.comboDecamp.bind(i, +1),
           
-          '<<>': this.comboDiveBomb.bind(this, -1),
-          '>><': this.comboDiveBomb.bind(this, +1),
+          '<<>': i.comboDiveBomb.bind(i, -1),
+          '>><': i.comboDiveBomb.bind(i, +1),
           
-          '<>>': this.comboMissiles.bind(this, -1),
-          '><<': this.comboMissiles.bind(this, +1),
+          '<>>': i.comboMissiles.bind(i, -1),
+          '><<': i.comboMissiles.bind(i, +1),
           
-          '<><': this.comboSuppress.bind(this, -1),
-          '><>': this.comboSuppress.bind(this, +1)
-        };
-      },
-      normState: function() { return { ...insp.Ace.normState.call(this), readyMark: this.readyMark, combo: this.combo }; },
-      comboDecamp: function(dir, updData) {
+          '<><': i.comboSuppress.bind(i, -1),
+          '><>': i.comboSuppress.bind(i, +1)
+        }
+      })),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'readyMark', 'combo' ].concat(...arr)),
+      comboDecamp: function(dir, ud) {
         
-        let { ms, spf, aheadDist } = updData;
-        this.invulnMark = Math.max(this.invulnMark, ms + Insp.decampDurationMs);
-        this.effects.add({ mark: ms + Insp.decampDurationMs,
+        this.v('invulnMark', v => Math.max(v, ud.ms + Insp.decampDurationMs));
+        this.effects.add({ mark: ud.ms + Insp.decampDurationMs,
           type: 'spdMult', spdMult: Insp.decampSpdMult,
-          fn: (inst, { spf }) => inst.ctrlX += Insp.decampSpd * spf * dir
+          fn: (inst, ud) => inst.v('cx', v => v + Insp.decampSpd * ud.spf * dir)
         });
         
-        let { x, y } = this.calcState(updData);
-        let missileArgs = { aheadDist, ms, salvoLad: this, x, y };
-        return {
-          delayMs: Insp.decampDelayMs,
-          birth: [
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.000, vel:  15, lsMs:  400, kaboomArgs: { dps: 4.75, duration: 1900 } }),
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 + dir * 0.005, vel: 100, lsMs:  800, kaboomArgs: { dps: 4.75, duration: 2300 } }),
-            SalvoLadDumbBomb({ ...missileArgs, ang: 0.5 - dir * 0.005, vel: 120, lsMs: 1400, kaboomArgs: { dps: 4.75, duration: 2150 } })
-          ]
-        };
+        let { x, y } = this.calcState(ud);
+        let missileArgs = { salvoLad: this, team: 'ace', ax: x, ay: y };
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel:  15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 100, lsMs:  800, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 - dir * 0.005, vel: 120, lsMs: 1400, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
+        
+        return { delayMs: Insp.decampDelayMs };
         
       },
       comboDiveBomb: function(dir, { ms, spf, aheadDist }) {
         
         this.effects.add({ mark: ms + Insp.diveMs,
           type: 'spdMult', spdMult: Insp.diveSpdMult,
-          fn: (inst, { ms: ms1, spf }) => {
-            inst.ctrlX += dir * 150 * spf;
-            inst.ctrlY += ((ms1 - ms) / Insp.diveMs) * Insp.diveFwdMult * spf;
+          fn: (i, ud) => {
+            i.v('cx', v => v + dir * 150 * ud.spf);
+            i.v('cy', v => v + ((ud.ms - ms) / Insp.diveMs) * Insp.diveFwdMult * ud.spf);
+            //inst.ctrlX += dir * 150 * spf;
+            //inst.ctrlY += ((ms1 - ms) / Insp.diveMs) * Insp.diveFwdMult * spf;
           },
-          endFn: (inst, updData, { birth }) => {
-            let { aheadDist, ms } = updData;
-            let { x, y } = inst.calcState(updData);
-            let missileArgs = { aheadDist, ms, salvoLad: inst, x, y };
-            birth.gain([
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.113, vel: 120, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, duration: 1900 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.085, vel: 138, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, duration: 2300 } }),
-              SalvoLadDumbBomb({ ...missileArgs, ang: dir * 0.039, vel: 125, lsMs: Insp.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, duration: 2150 } })
-            ])
+          endFn: (i, ud) => {
+            let { x, y } = i.calcState(ud);
+            let missileArgs = { type: 'SalvoLadDumbBomb', salvoLad: i, team: 'ace', ax: x, ay: y };
+            ud.spawnEntity({ ...missileArgs, ang: dir * 0.109, vel: 140, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
+            ud.spawnEntity({ ...missileArgs, ang: dir * 0.078, vel: 158, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
+            ud.spawnEntity({ ...missileArgs, ang: dir * 0.030, vel: 148, lsMs: Insp.diveBombLsMs * 0.989, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
           }
         });
         return { birth: [], delayMs: Insp.diveDelayMs };
         
       },
-      comboMissiles: function(dir, { ms, aheadDist }) {
+      comboMissiles: function(dir, ud) {
         
-        let args = { owner: this, w: 6, h: 16, vel: 700 };
-        for (let i = 0; i < 5; i++) {
-          this.effects.add({ mark: ms + 50 + i * 30, endFn: (inst, updData, { birth }) => birth.gain([
-            SalvoLadMissile({
-              aheadDist: updData.aheadDist, ms: updData.ms, ...args, ...inst.calcState(updData).slice('x', 'y'),
-              horzSpd: (50 + 55 * (i + 1)) * dir, horzMs: 400, delayMs: 120,
-              dmg: Insp.missileDmg, pDmg: Insp.missilePDmg
-            })
-          ])});
-        }
-        return { birth: [], delayMs: Insp.missileDelayMs };
+        let args = { owner: this, team: 'ace', w: 6, h: 16, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
+        Array.fill(5, n => n).forEach(n => {
+          this.effects.add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
+            type: 'SalvoLadMissile', ...args, ...i.calcState(ud).slice({ ax: 'a', ay: 'y' }),
+            horzSpd: (50 + 55 * (n + 1)) * dir
+          })});
+        });
+        
+        return { delayMs: Insp.missileDelayMs };
         
       },
-      comboSuppress: function(dir, { ms }) {
+      comboSuppress: function(dir, ud) {
         
-        this.effects.add({ mark: ms + 500, type: 'spdMult', spdMult: 1.5 });
+        this.effects.add({ mark: ud.ms + 500, type: 'spdMult', spdMult: 1.5 });
         
-        let args = { ang: dir * 0.125, dmg: Insp.suppressDmg, r: 4, lsMs: 500, vel: 360, acl: 800 };
+        let args = { team: 'ace', ang: dir * 0.125, dmg: Insp.suppressDmg, bound: { form: 'circle', r: 4 }, lsMs: 500, vel: 360, acl: 800 };
         for (let i = 0; i < 11; i++) {
           
           let alt = i % 4;
-          this.effects.add({ mark: ms + 50 + i * alt * 18, endFn: (inst, updData, { birth }) => {
-            let { aheadDist, ms } = updData;
-            let { x, y } = inst.calcState(updData);
-            let bullet = DirectedBullet({ aheadDist, ms, owner: inst, ...args,
-              x: x + dir * alt * 6, y: y + 24 - 12 * alt
-            });
-            birth.gain([ bullet ]);
+          this.effects.add({ mark: ud.ms + 50 + i * alt * 18, endFn: (i, ud) => {
+            let { x, y } = i.calcState(ud);
+            x += 6 * alt * dir;
+            y += 24 - 12 * alt
+            ud.spawnEntity({ type: 'DirectedBullet', owner: i, ...args, ax: x, ay: y });
           }});
           
         }
-        return { birth: [], delayMs: Insp.suppressDelayMs };
+        return { delayMs: Insp.suppressDelayMs };
         
       },
-      aceUpdate: function({ a1, a2 }, updData) {
+      aceUpdate: function(updData, { a1, a2 }) {
         
         let { ms, spf } = updData;
-        let birth = [];
         
-        if (this.readyMark && ms >= this.readyMark) { this.readyMark = null; this.combo = ''; }
+        if (this.v('readyMark') && ms >= this.v('readyMark')) { this.v('readyMark', null); this.v('combo', ''); }
         
-        if (!this.readyMark) {
+        if (!this.v('readyMark')) {
           
           if (a1) {
-            if (!this.a1Up && !a2) { this.combo += '<'; this.a1Up = true; }
-          } else {
-            this.a1Up = false;
+            if (!this.v('a1Up') && !a2) { this.v('combo', v => v + '<'); this.v('a1Up', true); }
+          } else if (this.v('a1Up')) {
+            this.v('a1Up', false);
           }
           
           if (a2) {
-            if (!this.a2Up && !a1) { this.combo += '>'; this.a2Up = true; }
-          } else {
-            this.a2Up = false;
+            if (!this.v('a2Up') && !a1) { this.v('combo', v => v + '>'); this.v('a2Up', true); }
+          } else if (this.v('a2Up')) {
+            this.v('a2Up', false);
           }
           
-          if (this.comboMapping.has(this.combo)) {
-            let comboResult = this.comboMapping[this.combo](updData);
-            this.readyMark = ms + comboResult.delayMs;
-            birth.gain(comboResult.birth);
-          } else if (this.combo.length >= 5) {
-            this.effects.add({ mark: ms + Insp.comboPunishDelayMs, type: 'spdMult', spdMult: 0.45 });
-            this.readyMark = ms + Insp.comboDelayMs;
+          if (this.v('comboMapping').has(this.v('combo'))) {
+            let comboResult = this.v('comboMapping')[this.v('combo')](updData);
+            this.v('readyMark', ms + comboResult.delayMs);
+          } else if (this.v('combo').length >= 5) {
+            this.v('effects').add({ mark: ms + Insp.comboPunishDelayMs, type: 'spdMult', spdMult: 0.45 });
+            this.v('readyMark', ms + Insp.comboDelayMs);
           }
           
         }
         
-        return { birth };
+      },
+      
+      render: function(updData, draw) {
+        
+        insp.Ace.render.call(this, updData, draw);
+        
+        let { x, y } = this.calcState(updData);
+        let readyMark = this.v('readyMark');
+        let combo = this.v('combo');
+        
+        let waitMs = readyMark - updData.ms;
+        let dispY = y - 16;
+        let indSize = 8;
+        let comboW = combo.length * indSize;
+        
+        if (waitMs > 0) {
+          
+          let waitAmt = Math.min(waitMs / 750, 1);
+          if (combo.length < 3) comboW = 3 * indSize;
+          draw.rectCen(x, dispY, waitAmt * (comboW + 4), indSize + 4, { fillStyle: 'rgba(80, 80, 80, 0.4)' });
+          
+        }
+        if (combo.length > 0) {
+        
+          let hIndSize = indSize >> 1;
+          let comboW = combo.length * indSize;
+          draw.rectCen(x, dispY, comboW + 4, indSize + 4, { strokeStyle: 'rgba(80, 80, 80, 0.4)', lineWidth: 1 });
+          
+          let dispX = x - (comboW >> 1);
+          for (c of combo) {
+            draw.path({ fillStyle: '#000000' }, ({ jump, draw }) => {
+              if (c === '<') {
+                jump(dispX + indSize, dispY - hIndSize);
+                draw(dispX, dispY);
+                draw(dispX + indSize, dispY + hIndSize);
+              } else if (c === '>') {
+                jump(dispX, dispY - hIndSize);
+                draw(dispX + indSize, dispY);
+                draw(dispX, dispY + hIndSize);
+              }
+            });
+            dispX += indSize;
+          }
+          
+        };
         
       }
+      
       
     })});
     
     // Good guy util
     let JoustManBullet = U.inspire({ name: 'JoustManBullet', insps: { DirectedBullet }, methods: (insp, Insp) => ({
-      $render: (draw, updData, { x, y, r, team }) => {
+      render: function(ud, draw) {
+        let { x, y } = this.calcState(ud);
+        let r = this.v('bound').r;
         draw.circ(x, y, r,       { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
       }
     })});
     let JoustManLaserSphere = U.inspire({ name: 'JoustManLaserSphere', insps: { Entity }, methods: (insp, Insp) => ({
       
-      $render: (draw, updData, { x, y, r }) => {
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { xOff, yOff, r, dps, joustMan=null, joustManUid=joustMan.uid, team } = val;
+        return Object.assign(...arr, { xOff, yOff, r, dps, joustMan, joustManUid, team });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'xOff', 'yOff', 'r', 'joustManUid' ].concat(...arr)),
+      getCollideResult: function(ud, tail) {
+        if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), this.dps * ud.spf);
+      },
+      calcState: function(ud) {
+        let { x, y } = this.r(ud, 'joustMan').calcState(ud);
+        return { x: x + this.v('xOff'), y: y + this.v('yOff') };
+      },
+      getStepResult: function(ud) {
+        let { x, y } = this.calcState(ud);
+        return { tangibility: {
+          bound: { form: 'circle', r: this.v('r'), x, y },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
+      },
+      isAlive: function(ud) {
+        return true
+          && insp.Entity.isAlive.call(this, ud)
+          && this.r(ud, 'joustMan').isAlive(ud);
+      },
+      render: function(ud, draw) {
+        let { x, y } = this.calcState(ud);
+        let r = this.v('r');
         draw.circ(x, y, r, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
-      },
-      
-      init: function({ joustMan, xOff, yOff, durationMs, dps, r, ...args }) {
-        insp.Entity.init.call(this, args);
-        this.joustMan = joustMan;
-        this.joustManUid = joustMan.uid;
-        this.xOff = xOff; this.yOff = yOff;
-        this.durationMs = durationMs;
-        this.dps = dps;
-        this.r = r;
-      },
-      getTeam: function() { return this.joustMan.getTeam(); },
-      canCollide: function() { return true; },
-      collide: function(rep, { spf }) {
-        if (!U.isInspiredBy(rep, Mortal)) return;
-        let dmg = Math.min(rep.hp, this.dps * spf);
-        rep.hp -= dmg;
-        this.joustMan.scoreDamage += dmg;
-      },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, { joustManUid: i.joustManUid, xOff: i.xOff, yOff: i.yOff, r: i.r })),
-      calcState: function(updData) {
-        
-        let { entities } = updData;
-        let joustManEnt = entities.has(this.joustManUid) && entities[this.joustManUid];
-        let joustManSpt = joustManEnt && joustManEnt.relNozz('fly.sprite').set.toArr(v => v)[0];
-        if (!joustManSpt) return { x: 0, y: 0 };
-        
-        let val = { ...joustManEnt.val, ...joustManSpt.val };
-        let { x, y } = mdlClasses[val.type].prototype.calcState.call(val, updData);
-        
-        return { x: x + this.xOff, y: y + this.yOff };
-        
-      },
-      updateAndGetResult: function(entity, updData) {
-        let { x, y } = this.calcState(updData);
-        //this.x = this.joustMan.x + this.xOff;
-        //this.y = this.joustMan.y + this.yOff;
-        return { x, y, form: 'circle', r: this.r, birth: [] };
-      },
-      isAlive: function(updData) {
-        return this.joustMan.isAlive(updData) && (updData.ms - this.ms) < this.durationMs;
       }
       
     })});
     let JoustManLaserVert = U.inspire({ name: 'JoustManLaserVert', insps: { Entity }, methods: (insp, Insp) => ({
       
-      $durationMs: 3000, $dps: 12,
-      $render: (draw, updData, { x, y }) => {
-        let w = 26;
-        let h = 1200;
-        draw.rectCen(x, y, w, h, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
-        draw.rectCen(x, y, w * 0.6, h, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
-      },
+      $dps: 12, $w: 26, $h: 1200,
       
-      init: function({ joustMan, ...args }={}) {
-        insp.Entity.init.call(this, args);
-        this.joustMan = joustMan;
-        this.joustManUid = joustMan.uid;
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { joustMan=null, joustManUid=joustMan.uid, team } = val;
+        return Object.assign(...arr, { joustMan, joustManUid, team });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'joustManUid' ].concat(...arr)),
+      getCollideResult: function(ud, tail) {
+        if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), Insp.dps * ud.spf);
       },
-      getTeam: function() { return this.joustMan.getTeam(); },
-      canCollide: function() { return true; },
-      collide: function(rep, { spf }) {
-        if (!U.isInspiredBy(rep, Mortal)) return;
-        let dmg = Math.min(rep.hp, Insp.dps * spf);
-        rep.hp -= dmg;
-        this.joustMan.scoreDamage += dmg;
+      calcState: function(ud) {
+        let { x, y } = this.r(ud, 'joustMan').calcState(ud);
+        return { x, y: y + 8 + Insp.h * 0.5 };
       },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, { joustManUid: i.joustManUid })),
-      calcState: function(updData) {
-        let { entities } = updData;
-        let joustManEnt = entities.has(this.joustManUid) && entities[this.joustManUid];
-        let joustManSpt = joustManEnt && joustManEnt.relNozz('fly.sprite').set.toArr(v => v)[0];
-        if (!joustManSpt) return { x: 0, y: 0 };
-        
-        let val = { ...joustManEnt.val, ...joustManSpt.val };
-        let { x, y } = mdlClasses[val.type].prototype.calcState.call(val, updData);
-        
-        return { x, y: y + 606 };
+      getStepResult: function(ud) {
+        let { x, y } = this.calcState(ud);
+        return { tangibility: {
+          bound: { form: 'rect', w: Insp.w, h: Insp.h, x, y },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
       },
-      updateAndGetResult: function(entity, updData) {
-        let { x, y } = this.calcState(updData);
-        return { x, y, form: 'rect', w: 22, h: 1200, birth: [] };
+      isAlive: function(ud) {
+        return true
+          && insp.Entity.isAlive.call(this, ud)
+          && this.r(ud, 'joustMan').isAlive(ud);
       },
-      isAlive: function(updData) {
-        return this.joustMan.isAlive(updData) && (updData.ms - this.ms) < Insp.durationMs;
+      render: function (ud, draw) {
+        let { x, y } = this.calcState(ud);
+        draw.rectCen(x, y, Insp.w, Insp.h, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
+        draw.rectCen(x, y, Insp.w * 0.6, Insp.h, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
       }
       
     })});
@@ -1949,151 +1948,112 @@ U.buildRoom({
         draw.circ(x, y, Insp.bound.r, { fillStyle: Bullet.getColour(+1) });
       },
       
-      init: function({ slamKid, dir, xOff, yOff, ...args }={}) {
-        insp.Entity.init.call(this, args);
-        this.slamKid = slamKid;
-        this.dir = dir;
-        this.xOff = xOff; this.yOff = yOff;
-        this.integrity = 1;
-        this.slamKidUid = this.slamKid.uid;
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { team, slamKid=null, slamKidUid=slamKid.uid, dir, xOff, yOff, integrity=1 } = val;
+        return Object.assign(...arr, { team, slamKid, slamKidUid, dir, xOff, yOff, integrity });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'slamKidUid', 'xOff', 'yOff' ].concat(...arr)),
+      getCollideResult: function(ud, tail) {
+        if (U.isInspiredBy(tail, Mortal)) {
+          tail.takeDamage(ud, this.r(ud, 'slamKid'), Insp.dmg);
+          this.v('integrity', 0);
+        }
       },
-      getTeam: function() { return this.slamKid.getTeam(); },
-      canCollide: function() { return true; },
-      collide: function(rep, updData) {
-        if (!U.isInspiredBy(rep, Mortal)) return;
-        let dmg = Math.min(rep.hp, Insp.dmg);
-        rep.hp -= dmg;
-        this.slamKid.scoreDamage += dmg;
-        this.integrity = 0;
+      calcState: function(ud) {
+        let { x, y } = this.r(ud, 'slamKid').calcState(ud);
+        return { x: x + this.v('xOff'), y: y + this.v('yOff') };
       },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, { slamKidUid: i.slamKidUid, xOff: i.xOff, yOff: i.yOff })),
-      calcState: function(updData) {
-        let { entities } = updData;
-        let slamKidEnt = entities.has(this.slamKidUid) && entities[this.slamKidUid];
-        let slamKidSpt = slamKidEnt && slamKidEnt.relNozz('fly.sprite').set.toArr(v => v)[0];
-        if (!slamKidSpt) return { x: 0, y: 0 };
-        
-        let val = { ...slamKidEnt.val, ...slamKidSpt.val };
-        let { x, y } = mdlClasses[val.type].prototype.calcState.call(val, updData);
-        
-        return { x: x + this.xOff, y: y + this.yOff };
+      getStepResult: function(ud) {
+        let { x, y } = this.calcState(ud);
+        return { tangibility: {
+          bound: { ...Insp.bound, x, y },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
       },
-      updateAndGetResult: function(entity, updData) {
-        let { x, y } = this.calcState(updData);
-        this.x = x;// this.slamKid.x + this.xOff;
-        this.y = y;// this.slamKid.y + this.yOff;
-        return { x, y, ...Insp.bound };
-      },
-      isAlive: function(updData) {
+      isAlive: function(ud) {
+        if (this.v('integrity') <= 0) return false;
+        let sk = this.r(ud, 'slamKid');
         return true
-          && this.integrity > 0
-          && this.slamKid.isAlive(updData) // SlamKid is alive
-          && this.slamKid[(this.dir === -1) ? 'w1StartMark' : 'w2StartMark'] // Slammer is used
-      }
+          && sk.isAlive(ud) // SlamKid is alive
+          && sk.v((this.v('dir') === -1) ? 'w1StartMark' : 'w2StartMark') // Slammer is held
+      },
+      
+      render: function(ud, draw) {
+        let { x, y } = this.calcState(ud);
+        draw.circ(x, y, Insp.bound.r, { fillStyle: '#ff8000' });
+      },
       
     })});
-    let SalvoLadDumbBomb = U.inspire({ name: 'SalvoLadDumbBomb', insps: { Geom, Mover }, methods: (insp, Insp) => ({
+    let SalvoLadDumbBomb = U.inspire({ name: 'SalvoLadDumbBomb', insps: { Entity, Mover }, methods: (insp, Insp) => ({
       
       $r: 13,
       $render: (draw, updData, { x, y }) => {
         draw.circ(x, y, Insp.r, { fillStyle: '#ff0000', strokeStyle: '#ff8400' });
       },
       
-      init: function({ salvoLad, x, y, lsMs, kaboomArgs={}, ...args }) {
-        this.salvoLad = salvoLad;
-        insp.Geom.init.call(this, { ...args, x, y });
-        insp.Mover.init.call(this, args);
-        this.lsMs = lsMs;
-        this.kaboomArgs = kaboomArgs;
-      },
-      canCollide: function() { return false; },
-      isAlive: function(updData) {
-        return true
-          && (updData.ms - this.ms) < this.lsMs
-          && insp.Mover.isAlive.call(this, updData);
-      },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
-      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      updateAndGetResult: function(entity, updData) {
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { team=null, salvoLad=null, kaboomArgs={} } = val;
+        return Object.assign(...arr, { team, salvoLad, kaboomArgs });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+      getStepResult: function(updData) {
         let { x, y } = this.calcState(updData);
-        this.x = x;
-        this.y = y;
-        return { x, y, form: 'circle', r: this.r, birth: [] };
+        return { tangibility: {
+          bound: { form: 'circle', r: Insp.r, x, y },
+          team: this.v('team'),
+          sides: []
+        }};
       },
-      dieAndGetResult: function({ aheadDist, ms }) {
-        return { birth: [
-          SalvoLadKaboom({ aheadDist, ms, salvoLad: this.salvoLad, x: this.x, y: this.y, ...this.kaboomArgs })
-        ]};
-      }
+      getDieResult: function(ud) {
+        let { x, y } = this.calcState(ud);
+        let iy = ud.bounds.total.y;
+        ud.spawnEntity({ type: 'SalvoLadKaboom', team: this.v('team'), salvoLad: this.r(ud, 'salvoLad'), ax: x, ay: y, iy, ...this.kaboomArgs });
+      },
+      isAlive: insp.Entity.isAlive
     })});
-    let SalvoLadKaboom = U.inspire({ name: 'SalvoLadKaboom', insps: { Geom }, methods: (insp, Insp) => ({
+    let SalvoLadKaboom = U.inspire({ name: 'SalvoLadKaboom', insps: { Entity }, methods: (insp, Insp) => ({
       
-      $render: (draw, updData, args) => {
-        let { x, y, r } = args;
-        draw.circ(x, y, r, { fillStyle: 'rgba(255, 50, 30, 0.2)', strokeStyle: '#ff8400' });
-      },
-      
-      init: function({ aheadDist, salvoLad, dps=3.1, durationMs=2000, sizePerSec=40, ...args }) {
-        insp.Geom.init.call(this, args);
-        this.salvoLad = salvoLad;
-        this.r = 0;
-        this.dps = dps;
-        this.durationMs = durationMs;
-        this.sizePerSec = sizePerSec;
-        this.initDist = aheadDist;
-        this.initX = this.x;
-        this.initY = this.y;
-      },
-      getTeam: function() { return this.salvoLad.getTeam(); },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr, {
-        initX: i.initX, initY: i.initY, initDist: i.initDist, durationMs: i.durationMs, sizePerSec: i.sizePerSec
-      })),
-      calcState: function(updData) {
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { team=null, salvoLad=null, ax, ay, iy, r=0, dps=3.1, sizePerSec=30, lsMs=null } = val;
+        /// {ABOVE=
+        if (lsMs === null) throw Error(`Kaboom without lsMs`);
+        /// =ABOVE}
+        return Object.assign(...arr, { team, salvoLad, ax, ay, iy, r, dps, sizePerSec });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'iy', 'sizePerSec' ].concat(...arr)),
+      calcState: function(ud) {
         return {
-          x: this.initX,
-          y: this.initY + (updData.aheadDist - this.initDist) * 0.5,
-          r: this.sizePerSec * (updData.ms - this.ms) * 0.001
+          x: this.v('ax'), y: this.v('ay') + (ud.bounds.total.y - this.v('iy')),
+          r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001
         };
       },
-      canCollide: function() { return true; },
-      collide: function(rep, { spf }) {
-        if (!U.isInspiredBy(rep, Mortal)) return;
-        let dmg = Math.min(rep.hp, this.dps * spf);
-        rep.hp -= dmg;
-        this.salvoLad.scoreDamage += dmg;
+      getCollideResult: function(ud, tail) {
+        if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.v('salvoLad'), this.v('dps') * ud.spf);
       },
-      updateAndGetResult: function(entity, updData) {
+      getStepResult: function(updData) {
         let { x, y, r } = this.calcState(updData);
-        this.x = x;
-        this.y = y;
-        this.r = r;
-        // let { ms, spf, aheadSpd } = updData;
-        // this.r += this.sizePerSec * spf;
-        // this.y += (aheadSpd * 0.5) * spf;
-        return { form: 'circle', x, y, r, birth: [] };
+        return { tangibility: {
+          bound: { form: 'circle', x, y, r },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
       },
-      isAlive: function({ ms }) { return (ms - this.ms) < this.durationMs; }
+      render: function(ud, draw) {
+        let { x, y, r } = this.calcState(ud);
+        draw.circ(x, y, r, { fillStyle: 'rgba(255, 50, 30, 0.2)', strokeStyle: '#ff8400' });
+      }
       
     })});
-    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { SimpleBullet }, methods: (insp, Insp) => ({
+    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { DirectedBullet }, methods: (insp, Insp) => ({
       
-      $render: Insp.parents.SimpleBullet.render,
-      
-      init: function({ horzSpd, horzMs, delayMs, ...args }) {
-        insp.SimpleBullet.init.call(this, args);
-        this.horzSpd = horzSpd;
-        this.horzMs = horzMs;
-        this.delayMs = delayMs;
-      },
-      permState: function() { return {
-        ...insp.SimpleBullet.permState.call(this),
-        horzMs: this.horzMs, horzSpd: this.horzSpd, delayMs: this.delayMs
-      };},
-      calcState: function(updData) {
+      initProps: insp.allArr('initProps', (i, arr, val) => Object.assign(...arr, ({ horzSpd: 0, horzMs: 0, delayMs: 0 }).pref(val))),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].concat(...arr)),
+      calcState: function(ud) {
         
-        let durMs = updData.ms - this.ms;
+        let durMs = this.getAgeMs(ud);
         let x = this.initX;;
-        let y = this.initY + (updData.aheadDist - this.initDist) * durMs * 0.001;
+        let y = this.initY + (ud.aheadDist - this.initDist) * durMs * 0.001;
         
         // X changes for horzMs, then stays put
         if (durMs < this.horzMs)  x += this.horzSpd * durMs * 0.001
@@ -2109,7 +2069,7 @@ U.buildRoom({
     })});
     
     // BAD GUYS
-    let Enemy = U.inspire({ name: 'Enemy', insps: { Geom, Mortal }, methods: (insp, Insp) => ({
+    let Enemy = U.inspire({ name: 'Enemy', insps: { Mortal }, methods: (insp, Insp) => ({
       
       $render: (draw, updData, { imageKeep, x, y, w, h=w, rot=Math.PI }) => {
         draw.frame(() => {
@@ -2119,81 +2079,160 @@ U.buildRoom({
         });
       },
       
-      init: function({ relDist=0, x, y, ...args }) {
-        insp.Geom.init.call(this, args);
-        insp.Mortal.init.call(this, args);
-        this.x = x; this.y = relDist + y;
-        this.w = 40; this.h = 40;
-        this.scoreDamage = 0;
+      initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr, { scoreDamage: 0 })),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
+      getCollideResult: function(updData, ent) {
+        console.log(`${U.nameOf(this)} -> ${U.nameOf(ent)}`);
+        if (U.isInspiredBy(ent, Mortal)) ent.takeDamage(updData, this, 1);
       },
-      canCollide: function() { return true; },
-      collide: function(rep, updData) {
-        if (U.isInspiredBy(rep, Ace)) {
-          let enemyHp = this.hp;
-          rep.hp -= 1; // Pretty much kills the Ace instantly
-        }
+      getStepResult: function(updData) {
+        
+        let { x, y } = this.calcState(updData);
+        return {
+          tangibility: {
+            bound: { form: 'circle', x, y, r: 30 },
+            team: 'enemy',
+            sides: [ 'head', 'tail' ]
+          }
+        };
+        
       },
-      getTeam: function() { return -1; },
-      updateAndGetResult: function(entity, updData) {
-        return { birth: [], form: 'rect', x: this.x, y: this.y, w: this.w, h: this.h };
-      },
-      isAlive: insp.Mortal.isAlive
+      isAlive: insp.Mortal.isAlive,
+      
+      render: function(updData, draw) {
+        
+        let { x, y, r=null } = this.calcState(updData);
+        
+        if (r === null && this.constructor.bound && this.constructor.bound.r) r = this.constructor.bound.r;
+        if (r === null) r = 8;
+        draw.circ(x, y, r, { fillStyle: '#00a000' });
+        
+      }
       
     })});
+    let Spawner = U.inspire({ name: 'Spawner', methods: (insp, Insp) => ({
+      
+      init: C.noFn('init'),
+      getSpawnTypes: function() { return { spawn: { type: this.constructor.name } }; },
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let ms = val.ms;
+        let spawnTypes = i.getSpawnTypes();
+        let props = {};
+        for (let st in spawnTypes) {
+          props[`${st}Mode`] = val.has(`${st}Mode`) ? val[`${st}Mode`] : 'steady';
+          props[`${st}DelayMs`] = val.has(`${st}DelayMs`) ? val[`${st}DelayMs`] : 2500;
+          props[`${st}Props`] = spawnTypes[st].gain(val.has(`${st}Props`) ? val[`${st}Props`] : {});
+          props[`${st}Mark`] = ms + (val.has(`${st}InitDelayMs`) ? val[`${st}InitDelayMs`] : props[`${st}DelayMs`]);
+        }
+        return Object.assign(...arr, props, { spawnTypes: spawnTypes.toArr((v, k) => k) });
+      }),
+      doSpawn: function(updData, spawnType, state, props) {
+        let { ms } = updData;
+        return updData.spawnEntity({ ms, ...props, owner: this, ...state.slice('x', 'y') });
+      },
+      getStepResult: function(updData) {
+        
+        let state = this.calcState(updData);
+        let { ms, spf } = updData;
+        
+        for (let st of this.v('spawnTypes')) {
+          
+          let mode = this.v(`${st}Mode`);
+          let delayMs = this.v(`${st}DelayMs`);
+          let mark = this.v(`${st}Mark`);
+          
+          let shootCnd = (mode === 'steady')
+            ? (ms >= mark)
+            : (Math.random() < ((spf * 1000) / delayMs));
+          
+          if (shootCnd) {
+            this.doSpawn(updData, st, state, this.v(`${st}Props`));
+            this.v(`${st}Mark`, v => v + delayMs);
+          }
+          
+        }
+        
+      }
+      
+    })});
+    
     let Winder = U.inspire({ name: 'Winder', insps: { Enemy }, methods: (insp, Insp) => ({
       
-      $bound: { form: 'circle', r: 20 },
+      $bound: { form: 'circle', r: 20 }, $hp: 1,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinder' }),
       $render: (draw, updData, { imageKeep=Insp.imageKeep, ext=Insp.bound.r << 1, spd, x, y }) => {
         Insp.parents.Enemy.render(draw, updData, { imageKeep, x, y, w: ext, rot: (spd < 0) ? Math.PI : 0 });
       },
-      init: function({ aheadDist=0, spd=100, delayMs=0, swingHz=2, swingAmt=100, numSwings=0, phase=0, ...args }) {
+      
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { x, y, ax=x, ay=y, spd=100, delayMs=0, phase=0, swingHz=0, swingAmt=0, numSwings=0 } = val;
         if (swingHz < 0) throw Error(`Negative "swingHz" param; use negative "swingAmt" instead`);
-        insp.Enemy.init.call(this, args);
-        this.spd = spd;
-        this.delayMs = delayMs;
-        this.phase = phase * Math.PI * 2;
-        this.swingHz = swingHz;
-        this.swingAmt = swingAmt;
-        this.numSwings = numSwings;
-        this.initX = this.x;
-        this.initY = this.y;
-        this.initDist = aheadDist;
-      },
-      permState: function() { return {
-        ...insp.Enemy.permState.call(this),
-        initX: this.initX, initY: this.initY, initDist: this.initDist,
-        spd: this.spd, delayMs: this.delayMs,
-        phase: this.phase, swingHz: this.swingHz, swingAmt: this.swingAmt
-      };},
+        return Object.assign(...arr, { ax, ay, spd, delayMs, phase, swingHz, swingAmt, numSwings });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'spd', 'delayMs', 'phase', 'swingHz', 'swingAmt' ].concat(...arr)),
       calcState: function(updData) {
-        let durMs = updData.ms - this.ms;
+        let durMs = this.getAgeMs(updData);
+        let ax = this.v('ax'); let ay = this.v('ay');
+        let spd = this.v('spd');
+        let delayMs = this.v('delayMs');
+        let phase = this.v('phase');
+        let swingHz = this.v('swingHz');
+        let swingAmt = this.v('swingAmt');
+        
         return {
-          x: (durMs >= this.delayMs)
-            ? this.initX + Math.sin(this.phase + (durMs - this.delayMs) * 0.002 * Math.PI * this.swingHz) * this.swingAmt
-            : this.initX,
-          y: this.initY + (updData.aheadDist - this.initDist) + (this.spd * durMs * 0.001)
+          x: (durMs >= delayMs)
+            ? ax + Math.sin(phase + (durMs - delayMs) * 0.002 * Math.PI * swingHz) * swingAmt
+            : ax,
+          y: ay + updData.bounds.total.y + spd * durMs * 0.001
         };
       },
-      updateAndGetResult: function(entity, updData) {
+      getMaxHp: function() { return this.constructor.hp; },
+      getStepResult: function(updData) {
         let { x, y } = this.calcState(updData);
-        this.x = x;
-        this.y = y;
-        return { x, y, ...this.constructor.bound, birth: [] };
+        return {
+          tangibility: {
+            bound: { ...this.constructor.bound, x, y },
+            team: 'enemy',
+            sides: [ 'head', 'tail' ]
+          }
+        };
       },
       isAlive: function(updData) {
         if (!insp.Enemy.isAlive.call(this, updData)) return false;
         
-        let { ms, bounds } = updData;
+        let { bounds } = updData;
+        let durMs = this.getAgeMs(updData);
         
-        return true
-          && (!this.numSwings || ((ms - this.ms - this.delayMs) * 0.001 * this.swingHz) <= this.numSwings)
-          && (this.spd > 0 || this.y > bounds.total.b - 30)
-          && (this.spd < 0 || this.y < bounds.total.t + 30);
+        if (this.v('numSwings') && ((durMs - this.delayMs) * 0.001 * this.v('swingHz') > this.v('numSwings')))
+          return false;
+        
+        let { x, y } = this.calcState(updData);
+        if (this.v('spd') > 0 && this.y > bounds.total.t + 30) return false;
+        if (this.v('spd') < 0 && this.y < bounds.total.b - 30) return false;
+        
+        return true;
+      },
+      
+      render: function(updData, draw) {
+        
+        let { x, y } = this.calcState(updData);
+        let ext = this.constructor.bound.r * 2;
+        draw.frame(() => {
+          draw.trn(x, y);
+          draw.rot((this.v('spd') < 0) ? Math.PI : 0);
+          draw.imageCen(this.constructor.imageKeep, 0, 0, ext, ext);
+        });
+        
+        // let { x, y, r=null } = this.calcState(updData);
+        // 
+        // if (r === null && this.constructor.bound && this.constructor.bound.r) r = this.constructor.bound.r;
+        // if (r === null) r = 16;
+        // draw.circ(x, y, r, { fillStyle: '#00a000' });
+        
       }
       
     })});
-    let Weaver = U.inspire({ name: 'Weaver', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
+    let Weaver = U.inspire({ name: 'Weaver', insps: { Winder }, methods: (insp, Insp) => ({
       
       $bound: { form: 'circle', r: 34 }, $hp: 8,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWeaver' }),
@@ -2201,11 +2240,8 @@ U.buildRoom({
         Insp.parents.Winder.render(draw, updData, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
       },
       
-      ...insp.Winder.slice('init', 'permState', 'fluxState', 'isAlive', 'updateAndGetResult'),
-      getMaxHp: function() { return Insp.hp; }
-      
     })});
-    let Furler = U.inspire({ name: 'Furler', insps: { Winder, Enemy }, methods: (insp, Insp) => ({
+    let Furler = U.inspire({ name: 'Furler', insps: { Winder, Spawner }, methods: (insp, Insp) => ({
       
       $bound: { form: 'circle', r: 24 }, $hp: 4,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyFurler' }),
@@ -2213,38 +2249,48 @@ U.buildRoom({
         Insp.parents.Winder.render(draw, updData, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
       },
       
-      init: function({ shootDelayMs, shootDelayInitMs=shootDelayMs, bulletArgs={}, ...args }) {
-        insp.Winder.init.call(this, args);
-        this.shootDelayMs = shootDelayMs;
-        this.bulletArgs = bulletArgs;
-        this.shootMark = this.ms + shootDelayInitMs;
+      getSpawnTypes: function() {
+        return {
+          shoot: { type: 'SimpleBullet', spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000 }
+        };
       },
-      ...insp.Winder.slice('permState', 'fluxState', 'isAlive'),
-      getMaxHp: function() { return Insp.hp; },
-      updateAndGetResult: function(entity, updData) {
+      initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr)),
+      syncProps: insp.allArr('syncProps', (i, arr) => [].concat(...arr)),
+      doSpawn: function(updData, spawnType, state, props) {
+        if (spawnType !== 'shoot')
+          return insp.Spawner.doSpawn.call(this, updData, spawnType, state, props);
         
-        let supUpd = insp.Winder.updateAndGetResult.call(this, entity, updData);
+        let { ms } = updData;
+        let { x, y } = state;
+        updData.spawnEntity({ ms, ...props, owner: this, x: x - Insp.bound.r * 0.5, y });
+        updData.spawnEntity({ ms, ...props, owner: this, x: x + Insp.bound.r * 0.5, y });
+      },
+      getStepResult: function(updData) {
         
+        insp.Spawner.getStepResult.call(this, updData);
+        return insp.Winder.getStepResult.call(this, updData);
+        
+        /*
         let { aheadDist, ms } = updData;
         if (ms >= this.shootMark) {
           this.shootMark += this.shootDelayMs;
           let bulletOff = Insp.bound.r * 0.5;
-          supUpd.birth.gain([
-            SimpleBullet({ aheadDist, ms, owner: this, x: this.x - bulletOff, y: this.y,
-              spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
-              ...this.bulletArgs
-            }),
-            SimpleBullet({ aheadDist, ms, owner: this, x: this.x + bulletOff, y: this.y,
-              spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
-              ...this.bulletArgs
-            })
-          ]);
+          let { x, y } = this.calcState(updData);
+          updData.spawnEntity({
+            type: 'SimpleBullet', ms, owner: this, x: x - bulletOff, y: y - updData.bounds.total.y,
+            spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
+            ...this.bulletArgs
+          });
+          updData.spawnEntity({
+            type: 'SimpleBullet', ms, owner: this, x: x + bulletOff, y: y - updData.bounds.total.y,
+            spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
+            ...this.bulletArgs
+          });
         }
         
-        return supUpd;
-        
-      },
-      isAlive: insp.Winder.isAlive
+        return insp.Winder.getStepResult.call(this, updData);
+        */
+      }
       
     })});
     let Drifter = U.inspire({ name: 'Drifter', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -2259,40 +2305,43 @@ U.buildRoom({
         
       },
       
-      init: function({ hp, minSize, hpPerSec, sizeMult, ...args }) {
-        this.hp = hp;
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        this.hpPerSec = hpPerSec;
-        this.sizeMult = sizeMult;
-        this.minSize = minSize;
-        this.size = this.minSize + this.hp * this.sizeMult;
-        this.dist = null; // Move indefinitely
-        // this.initDist = null; // This unit is Grounded! (Ignores aheadSpd)
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { initHp=2, minSize=16, hpPerSec=1.33, sizeMult=1.75 } = val;
+        
+        // Setting `dist` to `null` enables indefinite movement
+        return Object.assign(...arr, { initHp, minSize, hpPerSec, sizeMult, dist: null });
+      }),
+      initSyncs: insp.allArr('syncProps', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].concat(...arr)),
+      calcState: function(updData) {
+        
+        let { x, y } = insp.Mover.calcState.call(this, updData);
+        let hpLost = this.v('hpDmg');
+        let sizeMult = this.v('sizeMult');
+        let minSize = this.v('minSize');
+        return { x, y, r: minSize + (this.getMaxHp(updData) - hpLost) * sizeMult };
+        
       },
-      getRadius: function() { return this.minSize + this.hp * this.sizeMult; },
-      getMaxHp: function() { return this.hp; },
-      ...insp.Enemy.slice('canCollide', 'collide'),
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
-      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      fluxState: function() { return { r: this.getRadius() }; },
-      updateAndGetResult: function(entity, updData) {
+      getMaxHp: function(ud) {
+        return this.v('initHp') + this.v('hpPerSec') * this.getAgeMs(ud) * 0.001;
+      },
+      getStepResult: function(updData) {
         
-        let { x, y } = this.calcState(updData);
+        let { x, y, r } = this.calcState(updData);
         this.x = x; this.y = y;
-        
-        let { spf } = updData;
-        this.hp += this.hpPerSec * spf;
-        this.size = this.minSize + this.hp * this.sizeMult;
-        
-        return { x: this.x, y: this.y, form: 'circle', r: this.getRadius() };
+        return { tangibility: {
+          bound: { form: 'circle', x, y, r },
+          team: 'enemy',
+          sides: [ 'head', 'tail' ]
+        }};
         
       },
       isAlive: function(updData) {
         return true
           && insp.Enemy.isAlive.call(this, updData)
           && insp.Mover.isAlive.call(this, updData);
-      }
+      },
+      
+      render: insp.Enemy.render
       
     })});
     let Wanderer = U.inspire({ name: 'Wanderer', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -2306,41 +2355,39 @@ U.buildRoom({
         });
       },
       
-      init: function({ mode, delayMs, initDelay=0, bulletArgs={}, ...args }) {
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        this.mode = mode;
-        this.delayMs = delayMs;
-        this.shootMark = this.ms + initDelay;
-        this.dist = null;
-      },
-      ...insp.Enemy.slice('canCollide', 'collide'),
+      // TODO: HEEERE! Replace "getSyncProps", "initEntity", "init",
+      // with "initProps" and "initSyncs"! Allow "calcState" to return
+      // relative coordinates, and a reference to the "node" the Entity
+      // is considered relative to!
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { ud: { ms }, mode='steady', shootDelayMs=2500, shootDelayInitMs=shootDelayMs, bulletArgs={} } = val;
+        return Object.assign(...arr, { mode, shootDelayMs, bulletArgs, shootMark: ms + shootDelayInitMs });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
       getMaxHp: function() { return Insp.maxHp; },
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
-      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      updateAndGetResult: function(entity, updData) {
+      getStepResult: function(updData) {
         let { x, y } = this.calcState(updData);
-        this.x = x; this.y = y;
-        
-        let { aheadDist, ms, spf } = updData;
+        let { ms, spf } = updData;
         let birth = [];
         
-        let shootCondition = (this.mode === 'steady')
-          ? (ms >= this.shootMark)
-          : (Math.random() < ((spf * 1000) / this.delayMs));
+        let shootCondition = (this.v('mode') === 'steady')
+          ? (ms >= this.v('shootMark'))
+          : (Math.random() < ((spf * 1000) / this.v('shootDelayMs')));
         
         if (shootCondition) {
-          birth.gain([
-            SimpleBullet({
-              aheadDist, ms, owner: this, x: this.x, y: this.y,
-              spd: -380, dmg: 1, w: 8, h: 20,
-              lsMs: 3000
-            })
-          ]);
-          this.shootMark += this.delayMs;
+          updData.spawnEntity({ type: 'SimpleBullet', ms, owner: this, x, y,
+            spd: -380, dmg: 1, w: 8, h: 20,
+            lsMs: 3000
+          });
+          this.v('shootDelayMs', v => v + this.delayMs);
         }
         
-        return { x: this.x, y: this.y, ...Insp.bound, birth };
+        return { tangibility: {
+          bound: { ...Insp.bound, x, y },
+          team: 'enemy',
+          sides: [ 'head', 'tail' ]
+        }};
+        
       },
       isAlive: insp.allArr('isAlive', (i, arr) => !arr.find(alive => !alive))
       
@@ -2356,21 +2403,19 @@ U.buildRoom({
         });
       },
       
-      init: function({ spawnMs=3000, spawnArgs={}, ...args }) {
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        
-        this.spawnMs = spawnMs;
-        this.spawnMark = this.ms + this.spawnMs;
-        this.spawnArgs = spawnArgs;
-      },
+      initProps: C.noFn('initProps'),
+      initSyncs: C.noFn('initSyncs'),
+      // init: function({ spawnMs=3000, spawnArgs={}, ...args }) {
+      //   insp.Enemy.init.call(this, args);
+      //   insp.Mover.init.call(this, args);
+      //   
+      //   this.spawnMs = spawnMs;
+      //   this.spawnMark = this.ms + this.spawnMs;
+      //   this.spawnArgs = spawnArgs;
+      // },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
-      permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
-      normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      moveWithLevel: function() { return true; },
-      stopAtDestination: function() { return true; },
-      updateAndGetResult: function(entity, updData) {
+      getStepResult: function(updData) {
         
         this.moveToDestination(updData);
         let { ms } = updData;
@@ -2413,24 +2458,26 @@ U.buildRoom({
         });
       },
       
-      init: function({ spawnMs=3000, shootDelayMs=2400, spawnArgs={}, ...args }) {
-        insp.Enemy.init.call(this, args);
-        insp.Mover.init.call(this, args);
-        this.w = Insp.w; this.h = Insp.h;
-        
-        this.spawnMs = spawnMs;
-        this.spawnMark = this.ms + this.spawnMs;
-        this.spawnArgs = spawnArgs;
-        
-        this.shootDelayMs = shootDelayMs;
-      },
+      initProps: C.noFn('initProps'),
+      initSyncs: C.noFn('initSyncs'),
+      // init: function({ spawnMs=3000, shootDelayMs=2500, spawnArgs={}, ...args }) {
+      //   insp.Enemy.init.call(this, args);
+      //   insp.Mover.init.call(this, args);
+      //   this.w = Insp.w; this.h = Insp.h;
+      //   
+      //   this.spawnMs = spawnMs;
+      //   this.spawnMark = this.ms + this.spawnMs;
+      //   this.spawnArgs = spawnArgs;
+      //   
+      //   this.shootDelayMs = shootDelayMs;
+      // },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
       //moveWithLevel: function() { return true; },
       //stopAtDestination: function() { return true; },
       permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
       normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
-      updateAndGetResult: function(entity, updData) {
+      updateAndGetResult: function(updData) {
         
         this.moveToDestination(updData);
         
@@ -2476,7 +2523,7 @@ U.buildRoom({
     })});
     
     // LEVEL
-    let Level = U.inspire({ name: 'Level', methods: (insp, Insp) => ({
+    let Level = U.inspire({ name: 'Level', insps: { Entity }, methods: (insp, Insp) => ({
       
       $getLevelBounds: level => {
         
@@ -2504,289 +2551,246 @@ U.buildRoom({
         
       },
       
-      init: function({ name, flyHut, level, momentsDef, ...args }) {
-        this.name = name;
-        this.flyHut = flyHut;
-        this.level = level;
-        this.momentsDef = [ ...momentsDef ];
-        this.currentMoment = null;
-        this.resolveTimeout = null; // Gets set upon win or loss
-      },
-      getLevelMinY: function() { return this.level.val.y - (this.level.val.h || 1000) * 0.5; },
-      getLevelMaxY: function() { return this.level.val.y + (this.level.val.h || 1000) * 0.5; },
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        
+        let { levelDef=null } = val;
+        let momentsDef = (levelDef ? levelDef.moments : []).toArr(v => v);
+        
+        let { ud: { ms }, flyHut, lives=5, outcome='none', aheadSpd=0, x=0, y=0 } = val;
+        let { tw=280, th=350, px=0, py=0, pw=280, ph=350, visiMult=1 } = val;
+        
+        return Object.assign(...arr, {
+          flyHut,
+          momentsDef,
+          currentMoment: null, resolveTimeout: null,
+          outcome,
+          lives, aheadSpd, x, y, tw, th, px, py, pw, ph, visiMult 
+        });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult' ].concat(...arr)),
+      
       update: function(ms, spf) {
         
-        let level = this.level;
-        //let entitiesSet = level.relNozz('fly.entity').set;
-        let entities = [ ...level.relNozz('fly.entity').set ]; // A snapshot
-        let levelPlayers = level.relNozz('fly.levelPlayer').set;
+        let timingMs = foundation.getMs();
         
-        let bounds = Level.getLevelBounds(level);
+        //let entitiesSet = level.relNozz('fly.entity').set;
+        let entities = [ ...this.relNozz('fly.entity').set ]; // A snapshot
+        let levelPlayers = this.relNozz('fly.levelPlayer').set;
+        let flyHut = this.v('flyHut');
+        
+        let bounds = Insp.getLevelBounds(this); // TODO: Should become an instance method
         let updateData = {
-          entities: entities.toObj(rec => [ rec.uid, rec ]), ms, spf,
-          aheadSpd: level.val.aheadSpd, aheadDist: level.val.y,
-          victory: level.victory, bounds
+          ms,
+          spf,
+          level: this,
+          entities: entities.toObj(rec => [ rec.uid, rec ]),
+          bounds,
+          outcome: this.v('outcome'),
+          spawnEntity: vals => flyHut.createRec('fly.entity', [ this ], { ...vals, ud: updateData })
         };
         
         let didLose = false;
         
         // Step 1: Update all Entities (tracking collidables and births)
         let collideTeams = {};
-        let tickBirth = [];
-        for (let entity of entities) { if (!entity.rep) continue;
-          
-          let rep = entity.rep;
+        let allEvents = [];
+        for (let ent of entities) {
           
           // Allow the Model to update
-          let updateResult = rep.updateAndGetResult(entity, updateData);
+          let stepResult = ent.getStepResult(updateData);
+          
+          if (!stepResult.has('tangibility')) throw Error(`${U.nameOf(ent)} missing "tangibility"`);
+          if (!stepResult.tangibility.has('bound')) throw Error(`${U.nameOf(ent)} missing "tangibility.bound"`);
+          if (!stepResult.tangibility.has('team')) throw Error(`${U.nameOf(ent)} missing "tangibility.team"`);
+          if (!stepResult.tangibility.has('sides')) throw Error(`${U.nameOf(ent)} missing "tangibility.sides"`);
+          
+          /// stepResult ~= {
+          ///   // events: [
+          ///   //   { type: 'birth', birth: { type: 'Winder', x: 0, y: +100, swingHz: 0.01, swingAmt: +200 } },
+          ///   //   { type: 'birth', birth: { type: 'Winder', x: 0, y: +100, swingHz: 0.01, swingAmt: -200 } }
+          ///   // ],
+          ///   tangibility: {
+          ///     bound: { form: 'circle', x: 0, y: 0, r: 16 },
+          ///     team: 'ace',
+          ///     sides: [ 'head', 'tail' ],
+          ///   }
+          /// }
+          
+          //let updateResult = ent.updateAndGetResult(updateData);
           
           // Manage sprite visibility
-          let visible = geom.doCollideRect(bounds.total, geom.containingRect(updateResult));
-          if (visible && !entity.sprite) {
-            entity.sprite = this.flyHut.createRec('fly.sprite', [ level, entity ], rep.fluxState());
-          } else if (!visible && entity.sprite) {
-            entity.sprite.dry();
-            entity.sprite = null;
+          let visible = geom.doCollideRect(bounds.total, geom.containingRect(stepResult.tangibility.bound));
+          if (visible && !ent.sprite) {
+            ent.sprite = flyHut.createRec('fly.sprite', [ this, ent ], 'visible');
+          } else if (!visible && ent.sprite) {
+            ent.sprite.dry();
+            ent.sprite = null;
           }
           
           // Track this Model
-          if (rep.canCollide(ms)) {
-            let team = rep.getTeam();
-            if (!collideTeams.has(team)) collideTeams[team] = [];
-            collideTeams[team].push({ entity, rep, ...updateResult });
+          if (stepResult.tangibility.sides.length > 0) {
+            let team = stepResult.tangibility.team;
+            if (!collideTeams.has(team)) collideTeams[team] = { head: [], tail: [] };
+            let coll = { ent, stepResult };
+            for (let side of stepResult.tangibility.sides) collideTeams[team][side].push(coll);
           }
-          
-          // Track new Models which resulted from this Model's update
-          tickBirth.gain(updateResult.has('birth') ? updateResult.birth : []);
           
         }
         
         // Step 2: Collide all Teams against each together
+        let tryCollide = (updateData, headCd, tailCd) => {
+          if (!headCd.ent.isAlive(updateData) || !tailCd.ent.isAlive(updateData)) return;
+          
+          let bound1 = headCd.stepResult.tangibility.bound;
+          let bound2 = tailCd.stepResult.tangibility.bound;
+          if (!geom.doCollide(headCd.stepResult.tangibility.bound, tailCd.stepResult.tangibility.bound)) return;
+          headCd.ent.getCollideResult(updateData, tailCd.ent);
+          
+        };
         collideTeams = collideTeams.toArr(v => v);
         let len = collideTeams.length;
         for (let i = 0; i < len - 1; i++) { for (let j = i + 1; j < len; j++) {
           
           let team1 = collideTeams[i]; let team2 = collideTeams[j];
-          
-          for (let colEnt1 of team1) { for (let colEnt2 of team2) {
-            
-            let mod1 = colEnt1.rep;
-            let mod2 = colEnt2.rep;
-            
-            // Skip collisions involving dead Models
-            if (!mod1.isAlive(updateData) || !mod2.isAlive(updateData)) continue;
-            
-            if (geom.doCollide(colEnt1, colEnt2)) { mod1.collide(mod2, updateData); mod2.collide(mod1, updateData); }
-            
-            // There should be "collideHead" and "collideTail".
-            // The head is the "instigating" collider. The priority
-            // of collisions is (filtering out dead Entities at
-            // every step):
-            // 
-            // Entity1 | Entity2 | Collision priority          
-            // --------|---------|-----------------------------
-            // ht      | ht      | Lower (Enemy hits Enemy)    
-            // ht      | h       | n/a                         
-            // ht      | t       | Lower (Enemy hits Ace)      
-            // ht      | /       | n/a                         
-            // h       | ht      | Highest (bullet hits enemy) 
-            // h       | h       | n/a                         
-            // h       | t       | Highest (bullet hits ace)   
-            // h       | /       | n/a                         
-            // t       | ht      | n/a                         
-            // t       | h       | n/a                         
-            // t       | t       | n/a                         
-            // t       | /       | n/a                         
-            // /       | ht      | n/a                         
-            // /       | h       | n/a                         
-            // /       | t       | n/a                         
-            // /       | /       | n/a                         
-            
-            // Render order:
-            // 1st: Background
-            // 2nd: Ground units
-            // 3rd: Anything in the air with no specific priority, (aces, enemies, bullets)
-            // 4th: Explosions/debris
-            // 5th: Decals; clouds/rain, etc
-            
-            // Entity2 | Render order
-            // --------|-------------
-            // ht      | Medium
-            // h       | Medium
-            // t       | Medium
-            // /       | Dynamic! (bg 1st, explosions medium, clouds/rain last)
-            
-            // E.g. of "ht"? Enemies: damagING and damagABLE
-            // E.g. of "h"? Bullets: damagING, but can't be hit
-            // E.g. of "t"? Ace. Aren't intended to hit anything, but damagABLE
-            // E.g. of "/"? Terrain tiles
-            //
-            // Note that the left column needs to contain a "h", and
-            // the right column needs to contain a "t", for a
-            // collision to be possible in the first place
-            
-          }}
+          for (let head of team1.head) for (let tail of team2.tail) tryCollide(updateData, head, tail);
+          for (let head of team2.head) for (let tail of team1.tail) tryCollide(updateData, head, tail);
           
         }}
         
         // Step 3: Check deaths and update "fly.entity" Records
-        for (let entity of entities) { if (!entity.rep) continue;
+        for (let entity of entities) {
           
-          let rep = entity.rep;
+          if (entity.isAlive(updateData)) continue;
           
-          // Handle Models which just died
-          let isAlive = rep.isAlive(updateData);
-          let isAce = U.isInspiredBy(rep, Ace);
+          let isAce = U.isInspiredBy(entity, Ace);
           
           // Non-Aces are trivial to handle
-          if (!isAlive && !isAce) { entity.dry(); }
+          if (!isAce) entity.dry();
           
           // Aces have a more complex way of dying
-          if (!isAlive && isAce) {
+          if (isAce && !entity.deathMarked) {
             
-            // Dry the fly.sprite Record if one exists
-            if (entity.sprite) { entity.sprite.dry(); entity.sprite = null; }
-            
-            // Increment death score
-            entity.rep.scoreDeath++;
-            
-            // Keep track of the old Rep (to carry over stats)
-            entity.deadRep = entity.rep;
-            
-            // Clear the old Model reference
-            entity.rep = null;
+            entity.deathMarked = true;
             
             // Try to respawn (if enough lives are available)
-            if (level.val.lives > 0) {
-              level.modVal(v => (v.lives--, v));
+            if (this.v('lives') > 0) {
+              
+              this.v('lives', v => v - 1);
               setTimeout(() => {
                 
-                let { player: pb, total: tb } = Level.getLevelBounds(level);
-                let AceCls = entity.deadRep.constructor;
-                
-                let { name, initDist, scoreDamage, scoreDeath } = entity.deadRep;
-                entity.deadRep = null;
-                
-                let x = pb.x + (Math.random() - 0.5) * 2 * 100 - tb.x;
-                let y = (pb.y - tb.y) + pb.h * -0.2;
-                entity.rep = AceCls({ ms: level.val.ms, name, x, y });
-                entity.rep.uid = entity.uid;
-                entity.rep.scoreDamage = scoreDamage;
-                entity.rep.scoreDeath = scoreDeath;
+                console.log('RESPAWN:', updateData.ms + Ace.respawnMs + Ace.invulnMs);
+                let { player: pb, total: tb } = Level.getLevelBounds(this);
+                entity.deathMarked = false;
+                entity.v('hpDmg', 0);
+                entity.v('invulnMark', this.v('ms') + Ace.invulnMs);
+                entity.v('cx', 0);
+                entity.v('cy', (pb.y - tb.y) + pb.h * -0.2);
                 
               }, Ace.respawnMs);
+              
             } else {
-              // Losing a life when all are already gone causes a Loss
+              
+              // Losing a life without any respawns
               didLose = true;
+              
             }
             
           }
           
           // All deaths may have births, and short-circuit this stage
-          if (!isAlive) { tickBirth.gain(rep.dieAndGetResult(updateData).birth); continue; }
-          
-          // Update the sprite if it exists and flux has new values
-          let sprite = entity.sprite;
-          if (sprite) {
-            let fluxState = rep.fluxState();
-            if (fluxState.find((v, k) => v !== sprite.val[k])) sprite.modVal(v => v.gain(fluxState));
-          }
-          
-          // Update the entity if norm has new values
-          let normState = rep.normState();
-          if (normState.find((v, k) => v !== entity.val[k])) entity.modVal(v => v.gain(normState));
+          entity.getDieResult(updateData);
           
         }
         
         // Step 4: Check for initial loss frame (`!this.resolveTimeout`)
-        if (didLose && !this.resolveTimeout) {
+        if (didLose && !this.v('resolveTimeout')) {
           
           // Update LevelPlayers with the stats from their Models
           for (let gp of levelPlayers) {
             for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
               let ent = gpe.mems['fly.entity'];
-              let rep = ent.rep || ent.deadRep || { scoreDamage: '?', scoreDeath: '?' };
-              if (rep.isAlive(updateData)) rep.hp = 0; // Kill remaining Aces
-              gp.mems['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
+              if (ent.isAlive(updateData)) rep.v('hpDmg', 1); // Kill remaining Aces
+              gp.mems['fly.player'].modVal(v => (v.score = ent.v('scoreDamage'), v.deaths = ent.v('scoreDeath'), v));
             }
           }
           
-          this.resolveTimeout = setTimeout(() => level.dry(), 2500);
+          this.v('outcome', 'lose');
+          this.v('resolveTimeout', setTimeout(() => this.dry(), 2500));
           
         }
         
         // Step 6: Advance as many Moments as possible (some may instantly cease standing)
-        while ((!this.currentMoment || !this.currentMoment.isStanding(updateData)) && this.momentsDef.length) {
+        let currentMoment = this.v('currentMoment');
+        let momentsDef = this.v('momentsDef');
+        while (momentsDef.length && (!currentMoment || !currentMoment.isStanding(updateData))) {
           
-          let nextMomentDef = this.momentsDef.shift() || null;
+          let nextMomentDef = momentsDef.shift();
+          let newMoment = updateData.spawnEntity({ ...nextMomentDef, prevMoment: currentMoment });
+          console.log(`Began moment: ${nextMomentDef.name} (${U.nameOf(newMoment)})`);
           
-          console.log(`Began new moment: ${nextMomentDef.name} (${nextMomentDef.type})`);
+          // Apply global effects and update bounds
+          newMoment.applyLevelEffects(this);
+          bounds.gain(Level.getLevelBounds(this));
           
-          let prevMoment = this.currentMoment;
-          let MomentCls = mdlClasses[nextMomentDef.type];
-          this.currentMoment = MomentCls({ ms, ...nextMomentDef });
+          // Allow the new Moment to setup under the new global settings
+          // Note we pass the previous Moment
+          newMoment.doSetup(updateData, currentMoment);
           
-          // Apply level effects; recalculate bounds!
-          this.currentMoment.applyLevelEffects(level);
-          bounds.gain(Level.getLevelBounds(level)); // Update instead of replacing `bounds` to preserve `updateData`
-          
-          // Now setup considering the new level bounds
-          let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
-          tickBirth.gain([ this.currentMoment, ...birth ]);
+          // Consider this new moment the CurrentMoment
+          currentMoment = newMoment;
           
         }
         
         // Step 7: Check victory condition; no Moments remaining
         let canWin = true;
-        if (canWin && (!this.currentMoment || !this.currentMoment.isStanding(updateData)) && !this.resolveTimeout) {
-          
-          // Mark that victory has occurred
-          level.victory = true;
+        if (canWin && !this.v('resolveTimeout') && (!currentMoment || !currentMoment.isStanding(updateData))) {
           
           // Set up a Moment to fill in terrain as the victory occurs
-          let prevMoment = this.currentMoment;
-          this.currentMoment = MomentAhead({
-            name: 'victory', terrain: prevMoment && prevMoment.terrain, distance: 10000,
-            spd: (prevMoment ? prevMoment.spd : 100) * 2,
-            modelsDef: []
+          let newMoment = updateData.spawnEntity({
+            type: 'MomentAhead',
+            name: 'outcomeWin', terrain: currentMoment && currentMoment.terrain,
+            distance: 10000, spd: (currentMoment ? currentMoment.spd : 100) * 2,
+            modelsDef: [],
+            prevMoment: currentMoment
           });
-          this.currentMoment.applyLevelEffects(level);
-          bounds.gain(Level.getLevelBounds(level));
-          let { birth=[] } = this.currentMoment.setupAndGetResult(prevMoment, updateData);
-          tickBirth.gain([ this.currentMoment, ...birth ]);
           
-          this.resolveTimeout = setTimeout(() => {
+          newMoment.applyLevelEffects(this);
+          bounds.gain(Level.getLevelBounds(this));
+          
+          newMoment.doSetup(updateData, currentMoment);
+          currentMoment = newMoment;
+          
+          // Mark that victory has occurred
+          this.v('outcome', 'win');
+          this.v('resolveTimeout', setTimeout(() => {
             // Transfer Model stats to fly.player Records
             for (let gp of levelPlayers) {
               for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
                 let ent = gpe.mems['fly.entity'];
-                let rep = ent.rep || ent.deadRep || { scoreDamage: 0, scoreDeath: 0 };
-                gp.mems['fly.player'].modVal(v => (v.score = rep.scoreDamage, v.deaths = rep.scoreDeath, v));
+                gp.mems['fly.player'].modVal(v => (v.score = ent.v('scoreDamage'), v.deaths = ent.v('scoreDeath'), v));
               }
             }
             
             // Update the Lobby taking this win into account
-            level.mems['fly.lobby'].modVal(v => {
-              v.level.dispName = `COMPLETE`;
+            this.mems['fly.lobby'].modVal(v => {
+              v.level.dispName = `${v.level.dispName} - COMPLETE`;
               v.level.dispDesc = levels[v.level.name].winText;
               return v;
             });
             
             // Dry the fly.level Record
-            level.dry();
-          }, 3000);
+            this.dry();
+          }, 3000));
           
         }
         
-        // Step 8: Create an Entity for each birth this tick
-        for (let newRep of tickBirth) {
-          let entity = this.flyHut.createRec('fly.entity', [ level ], { ...newRep.permState(), ...newRep.normState() });
-          entity.rep = newRep;
-          entity.rep.uid = entity.uid;
-        }
+        if (currentMoment !== this.v('currentMoment')) this.v('currentMoment', currentMoment);
         
-        // Step 9: Do global updates; e.g., the Level advances
-        level.modVal(v => (v.ms = ms, v.y += v.aheadSpd * spf, v));
+        // Step 8: Do global updates; e.g., the Level advances
+        this.v('ms', ms);
+        this.v('y', y => y + this.v('aheadSpd') * spf);
+        
+        if (Math.random() < 0.01) console.log(`Processed ${entities.length} entities in ${foundation.getMs() - timingMs}ms`);
         
       }
     })});
@@ -2831,23 +2835,21 @@ U.buildRoom({
         
       },
       
-      init: function({ name, modelsDef, terrain=null, bounds=null, aheadSpd=100, visiMult=null }) {
-        this.name = name;
-        this.modelsDef = modelsDef;
-        this.terrain = terrain;
-        
-        // Total bounds are always horizontally centered and shifted
-        // vertically relative to the aheadDist
-        this.bounds = bounds;
-        this.aheadSpd = aheadSpd;
-        this.visiMult = visiMult;
-      },
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { name, modelsDef=[], terrain=null, bounds=null, aheadSpd=100, visiMult=1 } = val;
+        return Object.assign(...arr, { name, modelsDef, terrain, bounds, aheadSpd, visiMult });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'name', 'terrain' ].concat(...arr)),
       getMinY: C.noFn('getMinY'),
       getMaxY: C.noFn('getMaxY'),
-      canCollide: function() { return false; },
-      permState: function() { return { ...insp.Entity.permState.call(this), terrain: this.terrain };},
-      normState: function() { return { ...insp.Entity.normState.call(this), minY: this.getMinY(), maxY: this.getMaxY() };},
-      calcState: function() { return {}; },
+      calcState: function(updData) {
+        let minY = this.getMinY(updData);
+        let maxY = this.getMaxY(updData);
+        return {
+          x: 0, y: (minY + maxY) * 0.5,
+          w: updData.bounds.total.w, h: maxY - minY
+        };
+      },
       applyLevelEffects: function(level) {
         
         // TODO: Really should transition from previous bounds to new
@@ -2856,33 +2858,80 @@ U.buildRoom({
         // means that the Ace immediately snaps into the new bounds -
         // very janky!
         
-        if (this.bounds) {
-          let { total, player } = this.bounds;
+        if (this.v('bounds')) {
+          let { total, player } = this.v('bounds');
           level.modVal(v => v.gain({
             tw: total.w, th: total.h,
             px: player.x, py: player.y, pw: player.w, ph: player.h,
           }));
         }
         
-        if (this.aheadSpd !== null) level.modVal(v => v.gain({ aheadSpd: this.aheadSpd }));
-        if (this.visiMult !== null) level.modVal(v => v.gain({ visiMult: this.visiMult }));
+        if (this.v('aheadSpd') !== null) level.modVal(v => v.gain({ aheadSpd: this.v('aheadSpd') }));
+        if (this.v('visiMult') !== null) level.modVal(v => v.gain({ visiMult: this.v('visiMult') }));
         
       },
-      setupAndGetResult: function(prevMoment, { ms, aheadDist }) {
-        return { birth: this.modelsDef.map(({ type, ...modelDef }) => {
-          let ModelCls = mdlClasses[type];
-          if (!ModelCls) throw Error(`Invalid type: "${type}"`);
-          return ModelCls({ ms, relDist: this.getMinY(), aheadDist, ...modelDef });
-        })};
+      doSetup: function(updData, prevMoment) {
+        
+        // Y-coordinate is relative to the top of the screen!
+        let relY = updData.bounds.total.h * 0.5;
+        for (let modelDef of this.modelsDef) {
+          // Make the "y" property relative to the Moment's bottom
+          updData.spawnEntity({ ud: updData, ...modelDef, y: relY + modelDef.y });
+        }
+        
       },
-      updateAndGetResult: function(entity, updData) {
+      getStepResult: function(updData) {
         let { bounds: { total } } = updData;
-        let minY = this.getMinY();
-        let maxY = this.getMaxY();
-        return { form: 'rect', x: 0, y: (minY + maxY) * 0.5, w: total.w, h: maxY - minY, birth: [] };
+        let minY = this.getMinY(updData);
+        let maxY = this.getMaxY(updData);
+        
+        let { x, y, w, h } = this.calcState(updData);
+        return {
+          tangibility: {
+            bound: { form: 'rect', x, y, w, h },
+            team: null,
+            sides: []
+          }
+        };
       },
       isStanding: C.noFn('isStanding'),
-      isAlive: C.noFn('isAlive')
+      isAlive: C.noFn('isAlive'),
+      
+      renderPriority: function() { return 1; },
+      render: function(updData, draw) {
+        
+        let terrain = this.v('terrain');
+        let minY = this.getMinY(updData);
+        let maxY = this.getMaxY(updData);
+        let tb = updData.bounds.total;
+        
+        if (!terrain) return;
+        
+        let tExt = Insp.tileExt;
+        let imgKeep = Insp.imageKeeps[terrain];
+        if (!imgKeep) throw Error(`Invalid terrain: ${terrain}`);
+        
+        let endMaxY = Math.min(maxY, tb.t);
+        let y = (minY > tb.b)
+          // Bottom of this Moment is visible; simply start from it!
+          ? minY
+          // Bottom of the Moment is cut off; subtract the cut amount
+          : (tb.b - ((tb.b - minY) % Insp.tileExt));
+        
+        // If y lands right on `endMaxY` (before accounting for rounding
+        // errors) stop drawing - favour `endMaxY` avoids cut-off pixels
+        let x;
+        while (y < (endMaxY - 0.0001)) {
+          
+          x = 0;
+          while (x > tb.l) { draw.image(imgKeep, x - tExt, y, tExt, tExt); x -= tExt; }
+          x = 0;
+          while (x < tb.r) { draw.image(imgKeep, x, y, tExt, tExt); x += tExt; }
+          y += tExt;
+          
+        }
+        
+      }
       
     })});
     let MomentAhead = U.inspire({ name: 'MomentAhead', insps: { Moment }, methods: (insp, Insp) => ({
@@ -2890,33 +2939,26 @@ U.buildRoom({
       $render: Insp.parents.Moment.render,
       $renderPriority: Insp.parents.Moment.renderPriority,
       
-      init: function({ distance, ...args }) {
-        
-        insp.Moment.init.call(this, args);
-        this.distance = distance;
-        this.minY = null; this.maxY = null;
-        
-      },
-      getMinY: function() { return this.minY; },
-      getMaxY: function() { return this.maxY; },
-      setupAndGetResult: function(prevMoment, updData) {
-        // TODO: Treats all Moment classes  like they define `this.maxY`
-        this.minY = prevMoment ? prevMoment.maxY : updData.bounds.total.b;
-        this.maxY = this.minY + this.distance;
-        return insp.Moment.setupAndGetResult.call(this, prevMoment, updData);
-      },
-      updateAndGetResult: function(entity, updData) {
-        return insp.Moment.updateAndGetResult.call(this, entity, updData);
-      },
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { ud, name, bounds, distance, prevMoment=null, startY=null } = val;
+        if (startY === null) {
+          startY = prevMoment ? prevMoment.getMaxY(ud) : (bounds.total.h * -0.5);
+          //prevMoment ? prevMoment.getMaxY(ud) : ud.bounds.total.b
+        }
+        return Object.assign(...arr, { distance, startY });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'distance', 'startY' ].concat(...arr)),
+      getMinY: function() { return this.v('startY'); },
+      getMaxY: function() { return this.v('startY') + this.v('distance'); },
       isStanding: function(updData) {
         // A MomentAhead stands while its top hasn't become visible
-        return this.maxY > updData.bounds.total.t;
+        return this.getMaxY(updData) > updData.bounds.total.t;
       },
       isAlive: function(updData) {
         // A MomentAhead lives while its top hasn't been passed entirely
         // TODO: Keep MomentAhead instances alive for an additional 500
         // units??
-        return (this.maxY + 500) > updData.bounds.total.b;
+        return (this.getMaxY(updData) + 500) > updData.bounds.total.b;
       }
       
     })});
@@ -2931,7 +2973,7 @@ U.buildRoom({
     mdlClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
     mdlClasses.gain({ JoustManBullet, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile });
     mdlClasses.gain({ Winder, Weaver, Furler, WinderMom, WandererMom, Drifter, Wanderer });
-    mdlClasses.gain({ SimpleBullet, DirectedBullet });
+    mdlClasses.gain({ DirectedBullet });
     mdlClasses.gain({ Level, Moment, MomentAhead });
     
     let lobbyModelOptions = {
@@ -2946,8 +2988,13 @@ U.buildRoom({
       let flyHut = global.hut = await foundation.getRootHut({ heartMs: 1000 * 20 });
       flyHut.roadDbgEnabled = false; // TODO: This doesn't affect the Below!
       
+      flyHut.addTypeClsFn('fly.level', val => mdlClasses.Level);
       flyHut.addTypeClsFn('fly.entity', val => {
-        return record.Rec;
+        if (!mdlClasses.has(val.type)) {
+          console.log(val);
+          throw Error(`No model class for "${val.type}"`);
+        }
+        return mdlClasses[val.type];
       });
       
       let rootReal = await foundation.getRootReal();
@@ -3206,8 +3253,9 @@ U.buildRoom({
               
               // Corrupt the level definition
               let { levelName, momentName } = testing;
+              let levelDef = levels[levelName];
               if (momentName) {
-                let levelDef = levels[levelName];
+                levelDef.moments = levelDef.moments.toArr(v => v);
                 let [ firstMoment, ind ] = levelDef.moments.find(m => m.name === momentName);
                 
                 if (!firstMoment.bounds) {
@@ -3234,26 +3282,12 @@ U.buildRoom({
                 levelDef.moments = [ ...testMoments, ...levelDef.moments.slice(ind) ];
               }
               
+              let ms = foundation.getMs();
               testLobby = flyHut.createRec('fly.lobby', [ fly ], { 
                 id: 'TEST', allReadyMs: null,
                 level: getLevelData(levelName)
               });
-              testLevel = flyHut.createRec('fly.level', [ fly, testLobby ], {
-                
-                ms: foundation.getMs(), lives: testing.lives, aheadSpd: 0, level: levelName,
-                x: 0, y: 0,
-                
-                // Total dimensions
-                tw: 200, th: 200,
-                
-                // Player dimensions
-                px: 0, py: 0, pw: 200, ph: 200,
-                
-                // See a percentage of the total dimensions visible
-                visiMult: 1
-                
-              });
-              testLevel.victory = false;
+              testLevel = flyHut.createRec('fly.level', [ fly, testLobby ], { ud: { ms }, levelDef, flyHut });
               
             }
             
@@ -3262,13 +3296,7 @@ U.buildRoom({
             let levelPlayer = flyHut.createRec('fly.levelPlayer', [ testLevel, player ], { deaths: 0, damage: 0 });
             
             let ms = foundation.getMs();
-            let rep = mdlClasses[testing.ace]({ ms, name: 'testy' });
-            rep.y = testLevel.val.y;
-            let entity = flyHut.createRec('fly.entity', [ testLevel ], { ...rep.permState(), ...rep.normState() });
-            entity.controls = [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ]);
-            entity.rep = rep;
-            entity.deadRep = null;
-            entity.rep.uid = entity.uid;
+            let entity = flyHut.createRec('fly.entity', [ testLevel ], { ud: { ms }, type: testing.ace });
             
             // Connect this Entity to the LevelPlayer
             flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, entity ]);
@@ -3358,45 +3386,23 @@ U.buildRoom({
             // the Level is starting, and begin a Level after 5000ms
             lobby.modVal(v => v.gain({ allReadyMs: foundation.getMs() }));
             let timeout = setTimeout(() => {
-              let levelDims = flyHut.createRec('fly.levelDims', [], {
-                
-              });
-              let level = flyHut.createRec('fly.level', [ fly, lobby ], {
-                
-                ms: foundation.getMs(), lives: 7, aheadSpd: 0, level: lobby.val.level.name,
-                x: 0, y: 0,
-                
-                // Total dimensions
-                tw: 200, th: 200,
-                
-                // Player dimensions
-                px: 0, py: 0, pw: 200, ph: 200,
-                
-                // See a percentage of the total dimensions visible
-                visiMult: 1
-                
-              });
-              level.victory = false;
-              
               let ms = foundation.getMs();
+              let levelDef = levels[lobby.val.level.name];
+              let level = flyHut.createRec('fly.level', [ fly, lobby ], { ms, levelDef, flyHut });
+              
               let lobbyPlayers = lobby.relNozz('fly.lobbyPlayer').set;
               for (let lobbyPlayer of lobbyPlayers) {
                 let player = lobbyPlayer.mems['fly.player'];
                 let levelPlayer = flyHut.createRec('fly.levelPlayer', [ level, player ], { deaths: 0, damage: 0 });
                 
                 let { model } = lobbyPlayer.val;
-                let rep = lobbyModelOptions[model].Cls({
-                  ms, name: player.val.name,
-                  x: Math.round(Math.random() * 200 - 100), y: -200
+                let ace = flyHut.createRec('fly.entity', [ level ], {
+                  ms, type: lobbyModelOptions[model].Cls.name, name: player.val.name,
+                  ctrlX: Math.round(Math.random() * 200 - 100), ctrlY: -200
                 });
                 
-                let entity = flyHut.createRec('fly.entity', [ level ], { ...rep.permState(), ...rep.normState() });
-                entity.controls = [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ]);
-                entity.rep = rep;
-                entity.deadRep = null;
-                entity.rep.uid = entity.uid;
+                flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, ace ]);
                 
-                flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, entity ]);
               }
               for (let lobbyPlayer of lobbyPlayers) lobbyPlayer.modVal(v => (v.model = null, v));
             }, levelStartingDelay);
@@ -3449,15 +3455,22 @@ U.buildRoom({
           let levelDef = levels[level.val.level];
           
           let spf = 1 / fps;  // Seconds per server-side tick
-          //let level = flyHut.createRec('fly.entity', [ level ], {
-          //  type: 'Level',
-          //  name: level.val.level,
-          //  momentsDef: levelDef.moments
-          //});
           
-          let levelRep = Level({ flyHut, level, name: level.val.level, momentsDef: levelDef.moments });
-          let interval = setInterval(() => levelRep.update(foundation.getMs(), spf), spf * 1000);
-          dep(Drop(null, () => clearInterval(interval)));
+          let running = true;
+          dep(Drop(null, () => running = false));
+          
+          let frame = () => {
+            
+            let ms = foundation.getMs();
+            if (!running) return;
+            
+            level.update(ms, spf)
+            
+            let frameDurMs = foundation.getMs() - ms;
+            setTimeout(frame, spf * 1000 - frameDurMs);
+            
+          };
+          frame();
           
         });
         
@@ -3631,6 +3644,8 @@ U.buildRoom({
             dep(Drop(null, () => flyRootReal.setColour(null)));
             
             let level = gp.mems['fly.level'];
+            level.flyHut = flyHut;
+            
             let myEntity = gpe.mems['fly.entity'];
             let entities = level.relNozz('fly.entity').set;
             let sprites = level.relNozz('fly.sprite').set;
@@ -3640,7 +3655,7 @@ U.buildRoom({
             let rInfoReal = levelContainerReal.addReal('fly.levelRInfo');
             
             let dispLivesReal = lInfoReal.addReal('fly.levelDispLives');
-            dep(level.route(({ lives }) => dispLivesReal.setText(`[${lives}]`)));
+            dep(level.route(v => dispLivesReal.setText(`[${level.val.lives}]`)));
             
             let levelReal = levelContainerReal.addReal('fly.levelContent');
             
@@ -3660,34 +3675,40 @@ U.buildRoom({
             let pixelDims = { w: 800, h: 1000, hw: 400, hh: 500 };
             let fadeXPanVal = util.fadeVal(0, 0.19);
             let fadeYPanVal = util.fadeVal(0, 0.19);
-            let lastMs = [ null, null ];
+            let lastMs = [ level.val.ms, foundation.getMs() ];
             let doDraw = () => draw.initFrameCen('rgba(220, 220, 255, 1)', () => {
               
+              let bounds = Level.getLevelBounds(level);
+              let { total: tb, player: pb } = bounds;
+              
               let updData = {
-                ...level.val.slice({ ms: 'ms', aheadDist: 'y' }),
-                entities: entities.toArr(r => r).toObj(r => [ r.uid, r ])
+                ms: level.val.ms,
+                spf: (level.val.ms - lastMs[0]) * 0.001,
+                level,
+                myEntity,
+                entities: entities.toObj(r => [ r.uid, r ]),
+                createRec: level.flyHut.createRec.bind(this, flyHut),
+                bounds
               };
-              let ms = level.val.ms;
-              if (ms === lastMs[0]) {
+              if (updData.ms === lastMs[0]) {
                 
                 // Render before update; compensate for silky smoothness
                 let msExtra = foundation.getMs() - lastMs[1];
-                ms = lastMs[0] + msExtra;
+                updData.ms = lastMs[0] + msExtra;
                 
                 // Extrapolate aheadDist
-                updData.aheadDist += level.val.aheadSpd * msExtra * 0.001;
+                updData.bounds.total.y += level.val.aheadSpd * msExtra * 0.001;
+                updData.bounds.player.y += level.val.aheadSpd * msExtra * 0.001;
                 
               } else {
                 
                 // Remember the timing of this latest frame
-                lastMs = [ ms, foundation.getMs() ];
+                lastMs = [ updData.ms, foundation.getMs() ];
                 
               }
               
               let [ mySprite=null ] = myEntity.relNozz('fly.sprite').set;
               
-              let bounds = Level.getLevelBounds(level);
-              let { total: tb, player: pb } = bounds;
               let visiMult = Math.min(tb.w / pixelDims.w, tb.h / pixelDims.h) * level.val.visiMult;
               let desiredTrn = { x: 0, y: 0 };
               let scaleAmt = 1 / visiMult;
@@ -3716,11 +3737,6 @@ U.buildRoom({
                   b: desiredTrn.y - seeDistY, t: desiredTrn.y + seeDistY
                 };
                 
-                // desiredTrn = {
-                //   x: ((x - pb.x) / (pb.w * 0.5)) * (tb.w * 0.5 - pixelDims.hw * visiMult),
-                //   y: ((y - pb.y) / (pb.h * 0.5)) * (tb.h * 0.5 - pixelDims.hh * visiMult) 
-                // };
-                
               } else {
                 
                 bounds.visible = bounds.total;
@@ -3729,28 +3745,24 @@ U.buildRoom({
               
               // TODO: Don't follow Ace upon victory!!
               draw.scl(scaleAmt, scaleAmt);
-              draw.trn(0, -updData.aheadDist); // TODO: HEEERE! Because Aces are discontinuous, they're very jittery when smoothing is applied
+              draw.trn(0, -updData.bounds.total.y);
               draw.trn(-fadeXPanVal.to(desiredTrn.x), -fadeYPanVal.to(desiredTrn.y));
               
               let renders = [];
               for (let sprite of sprites) {
                 let entity = sprite.mems['fly.entity'];
-                let renderVals = { ...entity.val, ...sprite.val };
-                let Cls = mdlClasses[entity.val.type];
+                //let renderVals = { ...entity.val, ...sprite.val };
+                //let Cls = mdlClasses[entity.val.type];
+                //if (!Cls) { console.log(entity.val); throw Error(`Bad type: ${entity.val.type}`); }
                 
-                if (!Cls) { console.log(entity.val); throw Error(`Bad type: ${entity.val.type}`); }
+                renders.push({ priority: entity.renderPriority(), entity });
                 
-                renders.push({
-                  uid: entity.uid,
-                  priority: Cls.renderPriority ? Cls.renderPriority(renderVals) : 0.5,
-                  render: [ Cls, renderVals, entity ]
-                });
               }
               
-              renders = renders.sort((v1, v2) => v2.priority - v1.priority);
-              for (let { render: [ Cls, vals, entity ] } of renders) {
-                let calcVals = Cls.prototype.calcState.call(vals, updData);
-                Cls.render(draw, updData, { entity, myEntity, bounds, ...vals, ...calcVals }, entities);
+              for (let { entity } of renders.sort((v1, v2) => v2.priority - v1.priority)) {
+                entity.render(updData, draw);
+                //let calcVals = Cls.prototype.calcState.call(vals, updData);
+                //Cls.render(draw, updData, { entity, myEntity, bounds, ...vals, ...calcVals }, entities);
               }
               
               draw.rectCen(tb.x, tb.y, tb.w - 4, tb.h - 4, { strokeStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 4 });

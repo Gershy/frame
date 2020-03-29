@@ -410,6 +410,7 @@ U.buildRoom({
         return insp.RecTypes.getRecCls.call(this, name, mems, val);
       },
       trackRec: function(rec) {
+        if (!U.isInspiredBy(rec, Rec)) throw Error(`Can't track; ${U.nameOf(rec)} isn't a Rec!`);
         this.allRecs.set(rec.uid, rec);
         rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
         return rec;
@@ -490,7 +491,7 @@ U.buildRoom({
             
             // All members are available - create the Rec!
             let recType = (this.parHut || this).getType(addRec.type);
-            let RecCls = this.getRecCls(addRec.name, addRec.mems, addRec.val);
+            let RecCls = this.getRecCls(addRec.type, addRec.mems, addRec.val);
             this.trackRec(RecCls(recType, addRec.uid || this.getNextRecUid(), mems, addRec.val));
             
           }
@@ -509,7 +510,12 @@ U.buildRoom({
         
         for (let { uid, val } of upd) {
           if (!this.allRecs.has(uid)) throw Error(`Tried to update non-existent Rec @ ${uid}`);
-          this.allRecs.get(uid).setVal(val);
+          let rec = this.allRecs.get(uid);
+          if (!U.isType(val, Object) || !U.isType(rec.val, Object)) {
+            rec.setVal(val);
+          } else {
+            rec.dltVal(val);
+          }
         }
         
         for (let uid of rem) {
@@ -530,7 +536,7 @@ U.buildRoom({
       /// {ABOVE=
       
       // Handle syncing for AfarAboveHuts
-      toSync: function(type, rec) {
+      toSync: function(type, rec, val=null) {
         
         if (!this.pendingSync.has(type)) throw Error(`Invalid type: ${type}`);
         let { add, upd, rem } = this.pendingSync;
@@ -550,7 +556,12 @@ U.buildRoom({
           else                  rem[rec.uid] = rec;
         } else if (type === 'upd') {
           if (add.has(rec.uid)) return; // No "upd" necessary: already adding!
-          else                  upd[rec.uid] = rec;
+          
+          if (!upd.has(rec.uid) || !U.isType(upd[rec.uid], Object) || !U.isType(val, Object)) {
+            upd[rec.uid] = val;
+          } else {
+            upd[rec.uid].gain(val);
+          }
         }
         
         this.requestSendPendingSync();
@@ -594,7 +605,7 @@ U.buildRoom({
           // Redirect all references from ParAboveHut to KidBelowHut
           mems: r.mems.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)
         }));
-        let upd = this.pendingSync.upd.toArr(r => ({ uid: r.uid, val: r.val }));
+        let upd = this.pendingSync.upd.toArr((val, uid) => ({ uid, val }));
         let rem = this.pendingSync.rem.toArr(r => r.uid);
         
         let content = {};
@@ -623,7 +634,7 @@ U.buildRoom({
           // The Rec wasn't Followed, and now it is!
           
           this.toSync('add', rec);
-          let updRecRoute = rec.route(() => this.toSync('upd', rec));
+          let updRecRoute = rec.route(v => this.toSync('upd', rec, v));
           let recDryRoute = rec.drierNozz().route(() => followDrop.dry());
           
           let followDrop = Drop(null, () => {

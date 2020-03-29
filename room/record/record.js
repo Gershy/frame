@@ -156,6 +156,16 @@ U.buildRoom({
         return this;
       },
       modVal: function(fn) { return this.setVal(fn(this.val)); },
+      dltVal: function(delta=null) {
+        // Note that if we have `rec.route(v => { ... })` and a drip
+        // occurs, `v` may not be the Rec's full value - to work with
+        // the full value one needs to consult `rec.val` at the time of
+        // the drip!
+        if (!delta || delta.isEmpty()) return;
+        this.val.gain(delta);
+        this.drip(delta);
+        return this;
+      },
       newRoute: function(routeFn) { routeFn(this.val); },
       onceDry: function() {
         for (let memRoute of this.memDryRoutes) memRoute.dry();

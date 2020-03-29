@@ -51,6 +51,8 @@ protoDef(Object, 'gain', function(obj) {
   return this;
 });
 protoDef(Object, 'to', function(f) { return f(this); });
+protoDef(Object, 'pref', function(obj) { for (let k in obj) if (this.has(k)) this[k] = obj[k]; return this; });
+protoDef(Object, 'def', function(k, def=null) { return this.has(k) ? this[k] : def; });
 
 Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
 Array.combine = (...as) => [].concat(...as);
@@ -64,11 +66,7 @@ protoDef(Array, 'map', function(it) {
 });
 protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
   let ret = {};
-  for (let i = 0, len = this.length; i < len; i++) {
-    let v = it(this[i], i);
-    if (v === C.skip) continue;
-    ret[v[0]] = v[1];
-  }
+  for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
 protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
@@ -124,6 +122,11 @@ Set.prototype = SetOrig.prototype;
 protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; returns VAL
   let ret = [], ind = 0;
   for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
+  return ret;
+});
+protoDef(SetOrig, 'toObj', function(fn) {
+  let ret = {};
+  for (let v of this) { v = fn(v); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
 protoDef(SetOrig, 'find', function(f) { // Returns [ VAL, null ]
@@ -226,9 +229,16 @@ let U = global.U = {
       let pNames = Object.getOwnPropertyNames(proto);
       return pNames.toObj(v => [ v, proto[v] ]);
     });
+    parInsps.all = (methodName, workFn) => {
+      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      return function(...args) {
+        for (let m of methods) m.call(this, ...args);
+        if (workFn) return workFn(...args);
+      };
+    };
     parInsps.allArr = (methodName, workFn) => {
       let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
-      return function(...args) { return workFn(this, methods.map(m => m.call(this, ...args))); };
+      return function(...args) { return workFn(this, methods.map(m => m.call(this, ...args)), ...args); };
     };
     
     // If `methods` is a function it becomes the result of its call
@@ -278,9 +288,9 @@ let U = global.U = {
   },
   isType: (val, Cls) => {
     // Note: This is hopefully the *only* use of `!=` throughout Hut!
-    // Falsy for `null` and `undefined`; truthy for `0`, `''`
+    // Falsy only for unboxed values (`null` and `undefined`)
     if (Cls && Cls.Native) Cls = Cls.Native;
-    return val != null && (val.constructor === Cls || val === Cls);
+    return val != null && val.constructor === Cls;
   },
   isTypes: (val, ...Classes) => {
     for (let Cls of Classes) if (U.isType(val, Cls)) return true;
