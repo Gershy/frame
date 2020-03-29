@@ -108,7 +108,7 @@ U.buildRoom({
     let fps = 40; // Server-side ticks per second
     let levelStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
-    let testAces = [ 'SlamKid', 'SalvoLad' ]; // [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ]
+    let testAces = [ 'GunGirl' ];//[ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ]
     let testing = {
       lives: 10,
       levelName: 'impendingFields',
@@ -902,8 +902,8 @@ U.buildRoom({
     let Entity = U.inspire({ name: 'FlyEntity', insps: { Rec }, methods: (insp, Insp) => ({
       
       initProps: function(val) {
-        let { ud=null, lsMs=null } = val;
-        if (!ud) throw Error(`Missing "ud" prop for init ${U.nameOf(this)}`);
+        let { ud={ ms: val.ms }, lsMs=null } = val;
+        //if (!ud) throw Error(`Missing "ud" prop for init ${U.nameOf(this)}`);
         
         let { ms=null } = ud;
         if (badN(ms)) throw Error(`Bad "ms" param for ${U.nameOf(this)} (${U.nameOf(val.ms)})`);
@@ -1010,7 +1010,7 @@ U.buildRoom({
         
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'aMs', 'ax', 'ay', 'nx', 'ny', 'dist', 'vel', 'acl' ].concat(...arr)),
-      calcState: function(updData) {
+      calcState: function(updData, ms=updData.ms) {
         
         let aMs = this.v('aMs');
         let ax = this.v('ax'); let ay = this.v('ay');
@@ -1020,7 +1020,7 @@ U.buildRoom({
         let dist = this.v('dist');
         
         // Seconds the most recent anchor move has lasted
-        let t = (updData.ms - aMs) * 0.001;
+        let t = (ms - aMs) * 0.001;
         
         // Non-null `dist` creates a cap on the distance
         let d = vel * t + acl * 0.5 * t * t; // Distance based on t, vel, acl
@@ -1108,7 +1108,7 @@ U.buildRoom({
       }
       
     })});
-    let DirectedBullet = U.inspire({ name: 'DirectedBullet', insps: { Entity, Mover, Bullet }, methods: (insp, Insp) => ({
+    let MBullet = U.inspire({ name: 'MBullet', insps: { Entity, Mover, Bullet }, methods: (insp, Insp) => ({
       
       $render: (draw, updData, { x, y, r, team }) => {
         draw.circ(x, y, r, { fillStyle: Insp.parents.Bullet.getColour(team) });
@@ -1263,7 +1263,7 @@ U.buildRoom({
       $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
       $w1Charge1Ms: 750, $w1Charge2Ms: 1800, $w1Charge3Ms: 5000, // How many millis of charging for various jousts
       $w1Charge3Slow: 0.58,
-      $w2Delay: 2500, $w2DashSpeed: 500, $w2OrbDps: 25, $w2DurationMs: 300,
+      $w2Delay: 3500, $w2DashSpeed: 500, $w2OrbDps: 25, $w2DurationMs: 300,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceJoust' }),
       $render: (draw, updData, args) => {
@@ -1307,60 +1307,56 @@ U.buildRoom({
           else if (duration > Insp.w1Charge1Ms) this.v('w1State', 1);
           else                                  this.v('w1State', 0);
           
-        } else {
+        } else if (this.v('w1Mark')) {
           
-          if (this.v('w1Mark')) {
+          // Activate the charged ability!!
+          if (this.v('w1State') === 0) {
             
-            // Activate the charged ability!!
-            if (this.v('w1State') === 0) {
-              
-              // JoustMan is punished for holding for too short a time
-              this.v('effects').add({ mark: ms + Insp.w1ChargePunishMs, type: 'spdMult', spdMult: Insp.w1ChargePunishSlow });
-              
-            } else if (this.v('w1State') === 1) {
-              
-              // Weapon 1 act 1: Spread shot
-              
-              let { x, y } = this.calcState(updData);
-              let incAng = 0.018;
-              let args = { owner: this, team: 'ace', ax: x, ay: y, vel: 350, dmg: 0.75, lsMs: 700, bound: { form: 'circle', r: 6 } };
-              for (let ang of util.incCen(9, incAng)) updData.spawnEntity({ type: 'JoustManBullet', ...args, ang });
-              
-              this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
-              
-            } else if (this.v('w1State') === 2) {
-              
-              // Weapon 1 act 2: Spheres
-              let args = { joustMan: this, team: 'ace', lsMs: 1400 };
-              let offs = [
-                { xOff: -66, yOff: +12, r: 26, dps: 15 },
-                { xOff: +66, yOff: +12, r: 26, dps: 15 },
-                { xOff: +24, yOff: -27, r: 18, dps: 11 },
-                { xOff: -24, yOff: -27, r: 18, dps: 11 }
-              ];
-              for (let off of offs) updData.spawnEntity({ type: 'JoustManLaserSphere', ...args, ...off });
-              
-              this.v('effects').add({ mark: ms + 1150, type: 'spdMult', spdMult: 1.3 });
-              
-            } else if (this.v('w1State') === 3) {
-              
-              // Weapon 1 act 3: BIG LASER
-              updData.spawnEntity({ type: 'JoustManLaserVert', joustMan: this, team: 'ace', lsMs: 3000 });
-              this.v('effects').add({ mark: ms + 3000, type: 'spdMult', spdMult: Insp.w1Charge3Slow });
-              
-            }
+            // JoustMan is punished for holding for too short a time
+            this.v('effects').add({ mark: ms + Insp.w1ChargePunishMs, type: 'spdMult', spdMult: Insp.w1ChargePunishSlow });
             
-            this.v('w1State', 0);
-            this.v('w1Mark', 0);
+          } else if (this.v('w1State') === 1) {
+            
+            // Weapon 1 act 1: Spread shot
+            
+            let { x, y } = this.calcState(updData);
+            let incAng = 0.018;
+            let args = { owner: this, team: 'ace', ax: x, ay: y, vel: 350, dmg: 0.75, lsMs: 700, bound: { form: 'circle', r: 6 } };
+            for (let ang of util.incCen(9, incAng)) updData.spawnEntity({ type: 'JoustManBullet', ...args, ang });
+            
+            this.v('effects').add({ mark: ms + 500, type: 'spdMult', spdMult: 0.5 });
+            
+          } else if (this.v('w1State') === 2) {
+            
+            // Weapon 1 act 2: Spheres
+            let args = { joustMan: this, team: 'ace', lsMs: 1400 };
+            let offs = [
+              { xOff: -64, yOff: +16, r: 28, dps: 15 },
+              { xOff: +64, yOff: +16, r: 28, dps: 15 },
+              { xOff: +24, yOff: -30, r: 20, dps: 11 },
+              { xOff: -24, yOff: -30, r: 20, dps: 11 }
+            ];
+            for (let off of offs) updData.spawnEntity({ type: 'JoustManLaserSphere', ...args, ...off });
+            
+            this.v('effects').add({ mark: ms + 1150, type: 'spdMult', spdMult: 1.3 });
+            
+          } else if (this.v('w1State') === 3) {
+            
+            // Weapon 1 act 3: BIG LASER
+            updData.spawnEntity({ type: 'JoustManLaserVert', joustMan: this, team: 'ace', lsMs: 3000 });
+            this.v('effects').add({ mark: ms + 3000, type: 'spdMult', spdMult: Insp.w1Charge3Slow });
             
           }
+          
+          this.v('w1State', 0);
+          this.v('w1Mark', 0);
           
         }
         
         // Activate weapon 2
-        if (a2 && cx && (!this.w2Mark || ms > this.w2Mark)) {
+        if (a2 && cx && (!this.v('w2Mark') || ms > this.v('w2Mark'))) {
           
-          this.w2Mark = ms + Insp.w2Delay;
+          this.v('w2Mark', ms + Insp.w2Delay);
           
           let dir = cx > 0 ? +1 : -1;
           this.v('invulnMark', v => Math.max(v || 0, ms + 250));
@@ -1376,17 +1372,17 @@ U.buildRoom({
         }
         
       },
-      render: function(updData, draw) {
+      render: function(ud, draw) {
         
-        insp.Ace.render.call(this, updData, draw);
+        insp.Ace.render.call(this, ud, draw);
         
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.calcState(ud);
         let w1Mark = this.v('w1Mark');
         let w1State = this.v('w1State');
         let w2Mark = this.v('w2Mark');
         
         // Laser reload
-        let bar1H = w1Mark ? Math.min(1, (updData.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
+        let bar1H = w1Mark ? Math.min(1, (ud.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
         let [ bar1W, col ] = [
           [ 16, 'rgba(0, 0, 0, 1)' ],         // Punished
           [ 16, 'rgba(0, 150, 150, 0.7)' ],   // Spread shot
@@ -1396,7 +1392,7 @@ U.buildRoom({
         draw.rect(x + bar1W * -0.5, y - 8, bar1W, bar1H, { fillStyle: col });
         
         // Flash reload
-        let msRemaining = w2Mark - updData.ms;
+        let msRemaining = ((w2Mark || ud.ms) - ud.ms);
         let bar2W = (msRemaining > 0)
           ? Math.max(0, Math.min(1, (Insp.w2Delay - msRemaining) / Insp.w2Delay))
           : 1;
@@ -1421,16 +1417,6 @@ U.buildRoom({
       $bulletDmg: 0.3, $bulletSpd: 740, $bulletMs: 800,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceGun' }),
-      $render: (draw, updData, args) => {
-        
-        Insp.parents.Ace.render(draw, updData, args, Insp.imageKeep, () => {
-          let { x, y, w2ReadyMark } = args;
-          let w2MsRemaining = w2ReadyMark - updData.ms;
-          let barW = Math.min(1, (Insp.w2Delay - w2MsRemaining) / Insp.w2Delay) * 16;
-          draw.rectCen(x, y - 12, barW, 4, { fillStyle: (w2MsRemaining > 0) ? '#6060ff' : '#0000ff' });
-        });
-        
-      },
       
       initProps: insp.allArr('initProps', (i, arr, { ud: { ms } }) => Object.assign(...arr, {
         lockoutPunishMark: null,
@@ -1496,8 +1482,8 @@ U.buildRoom({
             
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(ms - this.v('w1StartMark'));
             let args = { owner: this, team: 'ace', vel: Insp.bulletSpd, dmg: Insp.bulletDmg * dm, bound: { form: 'circle', r: 3 * dm }, lsMs: Insp.bulletMs };
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 4, ay: y, ang: -ang });
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 4, ay: y, ang: +ang });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x - 4, ay: y, ang: -ang });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x + 4, ay: y, ang: +ang });
             
           } else {
             
@@ -1507,10 +1493,10 @@ U.buildRoom({
             let { dmgMult: dm, smoothAng: ang } = this.getAngForShootDuration(this.v('w2EffectiveShootDuration'));
             let args = { owner: this, team: 'ace', vel: Insp.bulletSpd, dmg: Insp.bulletDmg * 1.15 * dm, bound: { form: 'circle', r: 5 * dm }, lsMs: Insp.bulletMs };
             
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 8, ay: y, ang: -(ang * 1.5) });
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x - 4, ay: y, ang: -(ang * 1.0) });
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 4, ay: y, ang: +(ang * 1.0) });
-            updData.spawnEntity({ type: 'DirectedBullet', ...args, ax: x + 8, ay: y, ang: +(ang * 1.5) });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x - 8, ay: y, ang: -(ang * 1.5) });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x - 4, ay: y, ang: -(ang * 1.0) });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x + 4, ay: y, ang: +(ang * 1.0) });
+            updData.spawnEntity({ type: 'MBullet', ...args, ax: x + 8, ay: y, ang: +(ang * 1.5) });
             
           }
           
@@ -1538,7 +1524,7 @@ U.buildRoom({
             let { x, y } = this.calcState(updData);
             let bulletArgs = { owner: this, team: 'ace', ax: x, ay: y, vel: 140, bound: { form: 'circle', r: 5 }, lsMs: 2500, dmg: 4 };
             for (let ang of util.incCen(15, incAng)) {
-              updData.spawnEntity({ type: 'DirectedBullet', ...bulletArgs, ang: 0.5 + ang });
+              updData.spawnEntity({ type: 'MBullet', ...bulletArgs, ang: 0.5 + ang });
             }
             
           } else {
@@ -1551,6 +1537,17 @@ U.buildRoom({
           }
           
         }
+        
+      },
+      
+      render: function(ud, draw) {
+        
+        insp.Ace.render.call(this, ud, draw);
+        
+        let { x, y } = this.calcState(ud);
+        let w2MsRemaining = this.v('w2ReadyMark') - ud.ms;
+        let barW = Math.min(1, (Insp.w2Delay - w2MsRemaining) / Insp.w2Delay) * 16;
+        draw.rectCen(x, y - 12, barW, 4, { fillStyle: (w2MsRemaining > 0) ? '#6060ff' : '#0000ff' });
         
       }
       
@@ -1630,14 +1627,14 @@ U.buildRoom({
                 ax: x + (mult * 9), ay: y,
                 vel: Insp.missileVel, acl: Insp.missileAcl,
                 dmg: Insp.missileDmg, pDmg: Insp.missilePDmg,
-                bound: { form: 'rect', w: 7, h: 20 },
+                bound: { form: 'rect', w: 5, h: 18 },
                 lsMs: 2000
               };
-              updData.spawnEntity({ type: 'DirectedBullet', ...missileArgs, ang: 0.0 });
-              updData.spawnEntity({ type: 'DirectedBullet', ...missileArgs, ang: 0.5 });
+              updData.spawnEntity({ type: 'MBullet', ...missileArgs, ang: 0.0 });
+              updData.spawnEntity({ type: 'MBullet', ...missileArgs, ang: 0.5 });
               
               this.effects.add({ mark: ms + 150, type: null, fn: (inst, { spf }) => {
-                this.ctrlY -= 220 * spf;
+                this.v('cy', v => v - 220 * spf);
               }});
               this.v(wMark, ms + Insp.slamDelay);
               
@@ -1653,10 +1650,10 @@ U.buildRoom({
                 bound: { form: 'circle', r: 2 }
               };
               for (let ang of util.incCen(Insp.shotgunCnt, Insp.shotgunAng)) updData.spawnEntity({
-                type: 'DirectedBullet', ...shotgunArgs, ang: mult * (0.125 + ang)
+                type: 'MBullet', ...shotgunArgs, ang: mult * (0.125 + ang)
               });
               
-              // birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => DirectedBullet({
+              // birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => MBullet({
               //   ...shotgunArgs, ang: mult * (0.125 + ang)
               // })));
               
@@ -1684,8 +1681,8 @@ U.buildRoom({
       
       $comboDelayMs: 800, $comboPunishDelayMs: 1000,
       $decampDelayMs: 1200, $decampDurationMs: 350, $decampSpdMult: 0.5, $decampSpd: 430,
-      $diveDelayMs: 550, $diveMs: 700, $diveSpdMult: 0.58, $diveFwdMult: 450, $diveBombLsMs: 1100,
-      $missileDelayMs: 800, $missileDmg: 0.5, $missilePDmg:  [0.1,2],
+      $diveDelayMs: 600, $diveMs: 700, $diveSpdMult: 0.58, $diveFwdMult: 450, $diveBombLsMs: 1200,
+      $missileDelayMs: 600, $missileDmg: 0.5, $missilePDmg:  [0.1,2],
       $suppressDelayMs: 600, $suppressDmg: 0.4,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSalvo' }),
@@ -1720,9 +1717,9 @@ U.buildRoom({
         
         let { x, y } = this.calcState(ud);
         let missileArgs = { salvoLad: this, team: 'ace', ax: x, ay: y };
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel:  15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 100, lsMs:  800, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 - dir * 0.005, vel: 120, lsMs: 1400, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel: 15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 60, lsMs:  700, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 - dir * 0.005, vel: 70, lsMs: 1050, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
         
         return { delayMs: Insp.decampDelayMs };
         
@@ -1734,8 +1731,6 @@ U.buildRoom({
           fn: (i, ud) => {
             i.v('cx', v => v + dir * 150 * ud.spf);
             i.v('cy', v => v + ((ud.ms - ms) / Insp.diveMs) * Insp.diveFwdMult * ud.spf);
-            //inst.ctrlX += dir * 150 * spf;
-            //inst.ctrlY += ((ms1 - ms) / Insp.diveMs) * Insp.diveFwdMult * spf;
           },
           endFn: (i, ud) => {
             let { x, y } = i.calcState(ud);
@@ -1753,8 +1748,8 @@ U.buildRoom({
         let args = { owner: this, team: 'ace', w: 6, h: 16, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
         Array.fill(5, n => n).forEach(n => {
           this.effects.add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
-            type: 'SalvoLadMissile', ...args, ...i.calcState(ud).slice({ ax: 'a', ay: 'y' }),
-            horzSpd: (50 + 55 * (n + 1)) * dir
+            type: 'SalvoLadMissile', ...args, ...i.calcState(ud).slice({ ax: 'x', ay: 'y' }),
+            horzSpd: (115 + 30 * (n + 1)) * dir
           })});
         });
         
@@ -1765,15 +1760,15 @@ U.buildRoom({
         
         this.effects.add({ mark: ud.ms + 500, type: 'spdMult', spdMult: 1.5 });
         
-        let args = { team: 'ace', ang: dir * 0.125, dmg: Insp.suppressDmg, bound: { form: 'circle', r: 4 }, lsMs: 500, vel: 360, acl: 800 };
+        let args = { team: 'ace', ang: dir * 0.11, dmg: Insp.suppressDmg, bound: { form: 'circle', r: 4 }, lsMs: 500, vel: 360, acl: 800 };
         for (let i = 0; i < 11; i++) {
           
           let alt = i % 4;
           this.effects.add({ mark: ud.ms + 50 + i * alt * 18, endFn: (i, ud) => {
             let { x, y } = i.calcState(ud);
             x += 6 * alt * dir;
-            y += 24 - 12 * alt
-            ud.spawnEntity({ type: 'DirectedBullet', owner: i, ...args, ax: x, ay: y });
+            y += 30 - 12 * alt
+            ud.spawnEntity({ type: 'MBullet', owner: i, ...args, ax: x, ay: y });
           }});
           
         }
@@ -1858,11 +1853,10 @@ U.buildRoom({
         
       }
       
-      
     })});
     
     // Good guy util
-    let JoustManBullet = U.inspire({ name: 'JoustManBullet', insps: { DirectedBullet }, methods: (insp, Insp) => ({
+    let JoustManBullet = U.inspire({ name: 'JoustManBullet', insps: { MBullet }, methods: (insp, Insp) => ({
       render: function(ud, draw) {
         let { x, y } = this.calcState(ud);
         let r = this.v('bound').r;
@@ -2024,7 +2018,7 @@ U.buildRoom({
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'iy', 'sizePerSec' ].concat(...arr)),
       calcState: function(ud) {
         return {
-          x: this.v('ax'), y: this.v('ay') + (ud.bounds.total.y - this.v('iy')),
+          x: this.v('ax'), y: this.v('ay') + (ud.bounds.total.y - this.v('iy')) * 0.5,
           r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001
         };
       },
@@ -2045,22 +2039,26 @@ U.buildRoom({
       }
       
     })});
-    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { DirectedBullet }, methods: (insp, Insp) => ({
+    let SalvoLadMissile = U.inspire({ name: 'SalvoLadMissile', insps: { MBullet }, methods: (insp, Insp) => ({
       
-      initProps: insp.allArr('initProps', (i, arr, val) => Object.assign(...arr, ({ horzSpd: 0, horzMs: 0, delayMs: 0 }).pref(val))),
+      initProps: insp.allArr('initProps', (i, arr, val) => Object.assign(...arr, ({ horzSpd: 0, horzMs: 0, delayMs: 0, bound: { form: 'rect', w: 3, h: 14 } }).pref(val))),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].concat(...arr)),
       calcState: function(ud) {
         
         let durMs = this.getAgeMs(ud);
-        let x = this.initX;;
-        let y = this.initY + (ud.aheadDist - this.initDist) * durMs * 0.001;
+        let x = this.v('ax');
+        let y = this.v('ay'); // + (ud.aheadDist - this.initDist) * durMs * 0.001;
+        let horzMs = this.v('horzMs');
+        let horzSpd = this.v('horzSpd');
+        let delayMs = this.v('delayMs');
         
         // X changes for horzMs, then stays put
-        if (durMs < this.horzMs)  x += this.horzSpd * durMs * 0.001
-        else                      x += this.horzSpd * this.horzMs * 0.001
+        if (durMs < horzMs) x += horzSpd * durMs * 0.001;
+        else                x += horzSpd * horzMs * 0.001;
         
-        // Y changes after X is done changing, and the delay expires
-        if (durMs >= (this.horzMs + this.delayMs)) y += this.spd * (durMs - this.horzMs - this.delayMs) * 0.001;
+        if (durMs > horzMs + delayMs) {
+          y = insp.MBullet.calcState.call(this, ud, ud.ms - (horzMs + delayMs)).y;
+        }
         
         return { x, y };
         
@@ -2115,14 +2113,13 @@ U.buildRoom({
       init: C.noFn('init'),
       getSpawnTypes: function() { return { spawn: { type: this.constructor.name } }; },
       initProps: insp.allArr('initProps', (i, arr, val) => {
-        let ms = val.ms;
         let spawnTypes = i.getSpawnTypes();
         let props = {};
         for (let st in spawnTypes) {
           props[`${st}Mode`] = val.has(`${st}Mode`) ? val[`${st}Mode`] : 'steady';
           props[`${st}DelayMs`] = val.has(`${st}DelayMs`) ? val[`${st}DelayMs`] : 2500;
           props[`${st}Props`] = spawnTypes[st].gain(val.has(`${st}Props`) ? val[`${st}Props`] : {});
-          props[`${st}Mark`] = ms + (val.has(`${st}InitDelayMs`) ? val[`${st}InitDelayMs`] : props[`${st}DelayMs`]);
+          props[`${st}Mark`] = val.ud.ms + (val.has(`${st}InitDelayMs`) ? val[`${st}InitDelayMs`] : props[`${st}DelayMs`]);
         }
         return Object.assign(...arr, props, { spawnTypes: spawnTypes.toArr((v, k) => k) });
       }),
@@ -2130,23 +2127,23 @@ U.buildRoom({
         let { ms } = updData;
         return updData.spawnEntity({ ms, ...props, owner: this, ...state.slice('x', 'y') });
       },
-      getStepResult: function(updData) {
+      getStepResult: function(ud) {
         
-        let state = this.calcState(updData);
-        let { ms, spf } = updData;
+        let state = this.calcState(ud);
+        
         
         for (let st of this.v('spawnTypes')) {
           
           let mode = this.v(`${st}Mode`);
           let delayMs = this.v(`${st}DelayMs`);
           let mark = this.v(`${st}Mark`);
-          
+
           let shootCnd = (mode === 'steady')
-            ? (ms >= mark)
-            : (Math.random() < ((spf * 1000) / delayMs));
+            ? (ud.ms >= mark)
+            : (Math.random() < ((ud.spf * 1000) / delayMs));
           
           if (shootCnd) {
-            this.doSpawn(updData, st, state, this.v(`${st}Props`));
+            this.doSpawn(ud, st, state, this.v(`${st}Props`));
             this.v(`${st}Mark`, v => v + delayMs);
           }
           
@@ -2160,9 +2157,6 @@ U.buildRoom({
       
       $bound: { form: 'circle', r: 20 }, $hp: 1,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWinder' }),
-      $render: (draw, updData, { imageKeep=Insp.imageKeep, ext=Insp.bound.r << 1, spd, x, y }) => {
-        Insp.parents.Enemy.render(draw, updData, { imageKeep, x, y, w: ext, rot: (spd < 0) ? Math.PI : 0 });
-      },
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
         let { x, y, ax=x, ay=y, spd=100, delayMs=0, phase=0, swingHz=0, swingAmt=0, numSwings=0 } = val;
@@ -2170,8 +2164,8 @@ U.buildRoom({
         return Object.assign(...arr, { ax, ay, spd, delayMs, phase, swingHz, swingAmt, numSwings });
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'spd', 'delayMs', 'phase', 'swingHz', 'swingAmt' ].concat(...arr)),
-      calcState: function(updData) {
-        let durMs = this.getAgeMs(updData);
+      calcState: function(ud) {
+        let durMs = this.getAgeMs(ud);
         let ax = this.v('ax'); let ay = this.v('ay');
         let spd = this.v('spd');
         let delayMs = this.v('delayMs');
@@ -2183,10 +2177,10 @@ U.buildRoom({
           x: (durMs >= delayMs)
             ? ax + Math.sin(phase + (durMs - delayMs) * 0.002 * Math.PI * swingHz) * swingAmt
             : ax,
-          y: ay + updData.bounds.total.y + spd * durMs * 0.001
+          y: ay + ud.bounds.total.y + spd * durMs * 0.001
         };
       },
-      getMaxHp: function() { return this.constructor.hp; },
+      getMaxHp: function(ud) { return this.constructor.hp; },
       getStepResult: function(updData) {
         let { x, y } = this.calcState(updData);
         return {
@@ -2206,9 +2200,9 @@ U.buildRoom({
         if (this.v('numSwings') && ((durMs - this.delayMs) * 0.001 * this.v('swingHz') > this.v('numSwings')))
           return false;
         
-        let { x, y } = this.calcState(updData);
-        if (this.v('spd') > 0 && this.y > bounds.total.t + 30) return false;
-        if (this.v('spd') < 0 && this.y < bounds.total.b - 30) return false;
+        let { y } = this.calcState(updData);
+        if (this.v('spd') > 0 && y > bounds.total.t + 30) return false;
+        if (this.v('spd') < 0 && y < bounds.total.b - 30) return false;
         
         return true;
       },
@@ -2251,19 +2245,20 @@ U.buildRoom({
       
       getSpawnTypes: function() {
         return {
-          shoot: { type: 'SimpleBullet', spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000 }
+          shoot: { type: 'MBullet', vel: 150, ang: 0.5, dmg: 1, lsMs: 3000, bound: { form: 'rect', w: 3, h: 12 } }
         };
       },
       initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr)),
       syncProps: insp.allArr('syncProps', (i, arr) => [].concat(...arr)),
       doSpawn: function(updData, spawnType, state, props) {
+        
         if (spawnType !== 'shoot')
           return insp.Spawner.doSpawn.call(this, updData, spawnType, state, props);
         
-        let { ms } = updData;
         let { x, y } = state;
-        updData.spawnEntity({ ms, ...props, owner: this, x: x - Insp.bound.r * 0.5, y });
-        updData.spawnEntity({ ms, ...props, owner: this, x: x + Insp.bound.r * 0.5, y });
+        let b1 = updData.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x - Insp.bound.r * 0.55, ay: y });
+        let b2 = updData.spawnEntity({ ...props, team: 'enemy', owner: this, ax: x + Insp.bound.r * 0.55, ay: y });
+        
       },
       getStepResult: function(updData) {
         
@@ -2505,7 +2500,7 @@ U.buildRoom({
         if (Math.random() < ((spf * 1000) / this.shootDelayMs)) {
           
           let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, vel: Insp.bulletSpd, dmg: 1, r: 8 };
-          birth.gain(Array.fill(Insp.numBullets, () => DirectedBullet({
+          birth.gain(Array.fill(Insp.numBullets, () => MBullet({
             ...bulletArgs, ang: 0.5 + ((Math.random() - 0.5) * 2 * 0.05), lsMs: 3000
           })));
           
@@ -2678,7 +2673,6 @@ U.buildRoom({
               this.v('lives', v => v - 1);
               setTimeout(() => {
                 
-                console.log('RESPAWN:', updateData.ms + Ace.respawnMs + Ace.invulnMs);
                 let { player: pb, total: tb } = Level.getLevelBounds(this);
                 entity.deathMarked = false;
                 entity.v('hpDmg', 0);
@@ -2790,7 +2784,15 @@ U.buildRoom({
         this.v('ms', ms);
         this.v('y', y => y + this.v('aheadSpd') * spf);
         
-        if (Math.random() < 0.01) console.log(`Processed ${entities.length} entities in ${foundation.getMs() - timingMs}ms`);
+        if (Math.random() < 0.001) {
+          console.log(`Processed ${entities.length} entities in ${foundation.getMs() - timingMs}ms:`);
+          let types = Map();
+          for (let entity of entities) {
+            let t = U.nameOf(entity);
+            types.set(t, (types.get(t) || 0) + 1);
+          }
+          for (let [ t, n ] of types) console.log(`    ${n.toString().padHead(3, ' ')} x ${t}`);
+        }
         
       }
     })});
@@ -2973,7 +2975,7 @@ U.buildRoom({
     mdlClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
     mdlClasses.gain({ JoustManBullet, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile });
     mdlClasses.gain({ Winder, Weaver, Furler, WinderMom, WandererMom, Drifter, Wanderer });
-    mdlClasses.gain({ DirectedBullet });
+    mdlClasses.gain({ MBullet });
     mdlClasses.gain({ Level, Moment, MomentAhead });
     
     let lobbyModelOptions = {
@@ -3388,7 +3390,7 @@ U.buildRoom({
             let timeout = setTimeout(() => {
               let ms = foundation.getMs();
               let levelDef = levels[lobby.val.level.name];
-              let level = flyHut.createRec('fly.level', [ fly, lobby ], { ms, levelDef, flyHut });
+              let level = flyHut.createRec('fly.level', [ fly, lobby ], { ud: { ms }, levelDef, flyHut });
               
               let lobbyPlayers = lobby.relNozz('fly.lobbyPlayer').set;
               for (let lobbyPlayer of lobbyPlayers) {
@@ -3397,7 +3399,7 @@ U.buildRoom({
                 
                 let { model } = lobbyPlayer.val;
                 let ace = flyHut.createRec('fly.entity', [ level ], {
-                  ms, type: lobbyModelOptions[model].Cls.name, name: player.val.name,
+                  ud: { ms }, type: lobbyModelOptions[model].Cls.name, name: player.val.name,
                   ctrlX: Math.round(Math.random() * 200 - 100), ctrlY: -200
                 });
                 
