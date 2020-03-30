@@ -108,14 +108,15 @@ U.buildRoom({
     let fps = 40; // Server-side ticks per second
     let levelStartingDelay = 1000; // Give players this long to unready
     let initialAheadSpd = 100;
-    let testAces = [ 'GunGirl' ];//[ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ]
+    let testAces = [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ];
     let testing = {
       lives: 10,
       levelName: 'impendingFields',
-      momentName: 'box2',
+      momentName: 'snake2',
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
+    let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     
     let levels = {
       rustlingMeadow: { num: 0, name: 'Rustling Meadow', password: '',
@@ -136,15 +137,15 @@ U.buildRoom({
           Stalbureaux was not likely to take kindly to their V1s1T1NG.
         `),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100, 
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, 
             bounds: { total: { w: 240, h: 300 }, player: { x: 0, y: 0, w: 240, h: 300 } },
             modelsDef: []
           },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100, 
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, 
             bounds: { total: { w: 260, h: 325 }, player: { x: 0, y: 0, w: 260, h: 325 } },
             modelsDef: []
           },
-          { name: 'winder1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100, 
+          { name: 'winder1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100, 
             bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
             modelsDef: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 },
@@ -152,14 +153,14 @@ U.buildRoom({
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'winder2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
+          { name: 'winder2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 },
               { type: 'Winder', x:   0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 }
             ]
           },
-          { name: 'winder3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
+          { name: 'winder3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -100, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 },
               { type: 'Winder', x:  -50, y: +200, spd: -50, swingHz: 0.07, swingAmt: -50 },
@@ -168,7 +169,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 }
             ]
           },
-          { name: 'winder4', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, 
+          { name: 'winder4', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
             modelsDef: [
               { type: 'Winder', x: -100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: +60 },
               { type: 'Winder', x:  -50, y: +200, spd:  -50, swingHz: 0.075, swingAmt: -70 },
@@ -177,7 +178,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: -60 }
             ]
           },
-          { name: 'winder5', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'winder5', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -200, y: 0, spd: -50, swingHz: 0.055, swingAmt: +100 },
@@ -186,7 +187,7 @@ U.buildRoom({
               { type: 'Winder', x: +200, y: 0, spd: -50, swingHz: 0.055, swingAmt: -100 },
             ]
           },
-          { name: 'winder6', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'winder6', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -350, y: +100, spd: -50, swingHz: 0.050, swingAmt: +270 },
@@ -200,7 +201,7 @@ U.buildRoom({
               { type: 'Winder', x: +200, y:  -50, spd: -50, swingHz: 0.050, swingAmt: -180 }
             ]
           },
-          { name: 'winder7', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+          { name: 'winder7', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0.08, swingAmt: +22 },
@@ -224,7 +225,7 @@ U.buildRoom({
               { type: 'Winder', x: +90, y: +690, spd: -150, swingHz: 0.08, swingAmt: -22 }
             ]
           },
-          { name: 'winder8', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+          { name: 'winder8', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: [
               { type: 'Winder', x: -120, y: +100, spd: -185, swingHz: 0.12, swingAmt: +22 },
@@ -248,7 +249,7 @@ U.buildRoom({
               { type: 'Winder', x: +90, y: +690, spd: -185, swingHz: 0.12, swingAmt: +22 }
             ]
           },
-          { name: 'weaver1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               
@@ -261,7 +262,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'weaver2', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'weaver2', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -100, swingHz: 0, swingAmt: 0 },
@@ -280,7 +281,7 @@ U.buildRoom({
               { type: 'Weaver', x: +120, y: +100, spd: -50, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'weaver3', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'weaver3', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -304,7 +305,7 @@ U.buildRoom({
               { type: 'Winder', x: +100, y: -500, spd: +40, swingHz: 0.1, swingAmt: -50 }
             ]
           },
-          { name: 'weaver4', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'weaver4', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -333,7 +334,7 @@ U.buildRoom({
             ]
           },
           
-          { name: 'final', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, modelsDef: [] }
         ]
       },
       impendingFields: { num: 1, name: 'Impending Fields', password: 'V1s1T1NG',
@@ -352,29 +353,29 @@ U.buildRoom({
           prepare to engage again!"
         `),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
             modelsDef: []
           },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 1500, aheadSpd: 100,
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: []
           },
-          { name: 'scout1', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+          { name: 'scout1', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             modelsDef: [
-              // { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x:  +80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x: +160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
-              // 
-              // { type: 'Winder', x: -120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x:  -40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
-              // { type: 'Winder', x:  +40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x: +160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
+              
+              { type: 'Winder', x: -120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  -40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
+              { type: 'Winder', x:  +40, y: -600, spd: +50, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x: +120, y: -600, spd: +50, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'scout2', type: 'MomentAhead', terrain: 'meadow', distance: 750, aheadSpd: 100,
+          { name: 'scout2', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             modelsDef: [
               { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -40, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -388,7 +389,7 @@ U.buildRoom({
               { type: 'Winder', x: +160, y: -600, spd: +80, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'sideswipe1', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'sideswipe1', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1200 },
               { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1100 },
@@ -396,7 +397,7 @@ U.buildRoom({
               { type: 'Winder', x: -300, y:  +40, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +900 }
             ]
           },
-          { name: 'sideswipe2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'sideswipe2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               { type: 'Winder', x: +300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1200 },
               { type: 'Winder', x: +300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1100 },
@@ -404,7 +405,7 @@ U.buildRoom({
               { type: 'Winder', x: +300, y:  +40, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -900 }
             ]
           },
-          { name: 'sideswipe3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'sideswipe3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1200 },
               { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1100 },
@@ -423,7 +424,7 @@ U.buildRoom({
               { type: 'Winder', x: +160, y: -550, spd: +20, swingHz: 0, swingAmt: 0 }
             ]
           },
-          { name: 'pillar1', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'pillar1', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Winder', x: +40, y: +360, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
@@ -435,7 +436,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'pillar2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'pillar2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Winder', x: -20, y: +360, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: +200 },
@@ -448,7 +449,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'pillar3', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'pillar3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Winder', x: +40, y: +360, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: +200 },
@@ -462,8 +463,8 @@ U.buildRoom({
               
             ]
           },
-          { name: 'pillarBreak', type: 'MomentAhead', terrain: 'meadow', distance: 250, aheadSpd: 100, modelsDef: [] },
-          { name: 'pillar4', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'pillarBreak', type: 'MomentAhead', terrain: 'meadow', dist: 250, aheadSpd: 100, modelsDef: [] },
+          { name: 'pillar4', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Furler', x: -120, y: +240, spd: -110, delayMs: 3700, swingHz: 0.1, swingAmt: -100, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -480,7 +481,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'box1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'box1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -507,7 +508,7 @@ U.buildRoom({
               
             ]
           },
-          { name: 'box2', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'box2', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             modelsDef: [
               
               { type: 'Furler', x: -50, y: +400, spd: -30, swingHz: 0.079, swingAmt: +130, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -537,11 +538,9 @@ U.buildRoom({
               
             ]
           },
-          { name: 'box3', type: 'MomentAhead', terrain: 'meadow', distance: 2000, aheadSpd: 100,
+          { name: 'box3', type: 'MomentAhead', terrain: 'meadow', dist: 2000, aheadSpd: 100,
             modelsDef: [
               
-              //{ type: 'Furler', x: -50, y: +400, spd: -30, swingHz: 0.079, swingAmt: +130, shootDelayMs: 1100, bulletArgs: { spd: -300, lsMs: 3000 } },
-              //{ type: 'Furler', x: +50, y: +400, spd: -30, swingHz: 0.079, swingAmt: -130, shootDelayMs: 1100, bulletArgs: { spd: -300, lsMs: 3000 } },
               
               { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
               { type: 'Weaver', x: -100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
@@ -582,7 +581,7 @@ U.buildRoom({
               { type: 'Winder', x: +260, y: +110, spd: -60, delayMs:  8000, swingHz: 0.03, swingAmt: -350 }
             ]
           },
-          { name: 'snake1', type: 'MomentAhead', terrain: 'meadow', distance: 1250, aheadSpd: 100,
+          { name: 'snake1', type: 'MomentAhead', terrain: 'meadow', dist: 1250, aheadSpd: 100,
             modelsDef: [
               // Left side
               { type: 'Winder', x: -15, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
@@ -623,7 +622,7 @@ U.buildRoom({
               { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1500, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } },
             ]
           },
-          { name: 'snake2', type: 'MomentAhead', terrain: 'meadow', distance: 1250, aheadSpd: 100,
+          { name: 'snake2', type: 'MomentAhead', terrain: 'meadow', dist: 1250, aheadSpd: 100,
             modelsDef: [
               { type: 'Weaver', x: 0, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
               { type: 'Weaver', x: 0, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
@@ -642,17 +641,18 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
               { type: 'Weaver', x: 0, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
               
-              { type: 'Drifter', x: 0,   y: +300, tx: 0, ty: 0, vel: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: 0, y: +300, tx: 0, ty: 1, vel: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
               
               { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1200, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, bulletArgs: { spd: -300, lsMs: 6000 } }
             ]
           },
-          { name: 'snake3', type: 'MomentAhead', terrain: 'meadow', distance: 2000, aheadSpd: 100,
+          { name: 'snake3', type: 'MomentAhead', terrain: 'plains', dist: 2000, aheadSpd: 100,
             modelsDef: [
-              { type: 'Drifter', x: -150, y: +100, tx: -150, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x:  -50, y: +100, tx:  -50, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x:  +50, y: +100, tx:  +50, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-              { type: 'Drifter', x: +150, y: +100, tx: +150, ty: 0, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              
+              { type: 'Drifter', x: -150, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  -50, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x:  +50, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+              { type: 'Drifter', x: +150, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
               
               { type: 'Weaver', x: 0, y:  +300, spd: -90, delayMs: 1500, swingHz: 0.030, swingAmt: +195 },
               { type: 'Weaver', x: 0, y:  +350, spd: -90, delayMs: 1500, swingHz: 0.035, swingAmt: +195 },
@@ -688,20 +688,18 @@ U.buildRoom({
           Bogies right up their Yemenese dickholes, eh?"
         `),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', distance: 1000, aheadSpd: 100,
+          { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: []
           },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', distance: 500, aheadSpd: 100,
+          { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
             modelsDef: []
           },
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
-            modelsDef: [
-              { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
-              { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 }
-            ]
-          }
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, modelsDef: [
+            { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
+            { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 }
+          ]}
         ]
       },
       killPlains: { num: 1, name: 'Kill Plains', password: 'R4CIN6',
@@ -709,15 +707,15 @@ U.buildRoom({
         
         ].join(' '),
         moments: [
-          { name: 'practice1', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+          { name: 'practice1', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
             modelsDef: []
           },
-          { name: 'practice2', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+          { name: 'practice2', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: []
           },
-          { name: 'winder1', type: 'MomentAhead', terrain: 'plains', distance: 500, aheadSpd: 100,
+          { name: 'winder1', type: 'MomentAhead', terrain: 'plains', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.027, swingAmt: +580 },
@@ -728,7 +726,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.027, swingAmt: -580 }
             ]
           },
-          { name: 'winder2', type: 'MomentAhead', terrain: 'plains', distance: 500, aheadSpd: 100,
+          { name: 'winder2', type: 'MomentAhead', terrain: 'plains', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.032, swingAmt: +580 },
@@ -739,7 +737,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -100, swingHz: 0.032, swingAmt: -580 }
             ]
           },
-          { name: 'winder3', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder3', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper up
@@ -751,7 +749,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -130, swingHz: 0.047, swingAmt: -580 }
             ]
           },
-          { name: 'winder4', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder4', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down
@@ -763,7 +761,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y:  +50, spd: -130, swingHz: 0.047, swingAmt: -580 }
             ]
           },
-          { name: 'winder5', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder5', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper up
@@ -775,7 +773,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y: +250, spd: -150, swingHz: 0.057, swingAmt: -580 }
             ]
           },
-          { name: 'winder6', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder6', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down
@@ -787,7 +785,7 @@ U.buildRoom({
               { type: 'Winder', x: +600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: -580 }
             ]
           },
-          { name: 'winder7', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder7', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down desync
@@ -803,7 +801,7 @@ U.buildRoom({
               { type: 'Weaver', x: +200, y: -600, spd: +40, swingHz: 0.04, swingAmt: -100 }
             ]
           },
-          { name: 'winder8', type: 'MomentAhead', terrain: 'plains', distance: 250, aheadSpd: 100,
+          { name: 'winder8', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
             modelsDef: [
               // Zipper down desync
@@ -819,7 +817,7 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: -600, spd: +30, swingHz: 0.08, swingAmt: -160 }
             ]
           },
-          { name: 'winder9', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+          { name: 'winder9', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
             modelsDef: [
               // Zipper down desync
@@ -838,7 +836,7 @@ U.buildRoom({
               { type: 'Weaver', x: 0, y: -580, spd: +30, swingHz: 0.09, swingAmt: +200 }
             ]
           },
-          { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', distance: 750, aheadSpd: 100,
+          { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
             modelsDef: [
               
@@ -863,14 +861,14 @@ U.buildRoom({
               { type: 'Weaver', x: +120, y: -580, spd: +30, swingHz: 0.09, swingAmt: -110 }
             ]
           },
-          { name: 'furler1', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100,
+          { name: 'furler1', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
             modelsDef: [
               { type: 'Furler', x: -120, y: +200, spd: -50, swingHz: 0.1, swingAmt: -80, shootDelayMs: 1500, bulletArgs: { spd: -300 } },
               { type: 'Furler', x: +120, y: +200, spd: -50, swingHz: 0.1, swingAmt: +80, shootDelayMs: 1500, bulletArgs: { spd: -300 } }
             ]
           },
-          { name: 'bozz', type: 'MomentAhead', terrain: 'plains', distance: 8000, aheadSpd: 100,
+          { name: 'bozz', type: 'MomentAhead', terrain: 'plains', dist: 8000, aheadSpd: 100,
             bounds: { total: { w: 800, h: 1000 }, player: { x: 0, y: -150, w: 800, h: 700 } },
             modelsDef: [
               
@@ -888,7 +886,7 @@ U.buildRoom({
             ]
           },
           
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', distance: 1000, aheadSpd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, modelsDef: [] }
           
         ]
       }
@@ -906,7 +904,10 @@ U.buildRoom({
         //if (!ud) throw Error(`Missing "ud" prop for init ${U.nameOf(this)}`);
         
         let { ms=null } = ud;
-        if (badN(ms)) throw Error(`Bad "ms" param for ${U.nameOf(this)} (${U.nameOf(val.ms)})`);
+        if (badN(ms)) {
+          console.log(val);
+          throw Error(`Bad "ms" param for ${U.nameOf(this)} (${U.nameOf(val.ms)})`);
+        }
         
         // TODO: Annoying that we need to pass "ud" here...
         return { ud: { ms }, ms, lsMs };
@@ -996,7 +997,7 @@ U.buildRoom({
       init: C.noFn('init'),
       initProps: insp.allArr('initProps', (i, arr, val) => {
         
-        let { ud: { ms }, aMs=ms, ax=null, ay=null, vel=100, acl=0 } = val;
+        let { ud: { ms }, aMs=ms, x, y, ax=x, ay=y, vel=100, acl=0 } = val;
         
         let calc = null;
         if (val.has('nx') && val.has('ny'))       calc = () => val.slice('nx', 'ny', 'dist');
@@ -1005,7 +1006,6 @@ U.buildRoom({
         else                                      calc = () => { throw Error(`Supply either "tx" and "ty", or "ang"`); };
         
         let { nx, ny, dist, ang=Math.atan2(nx, ny) / (Math.PI * 2) } = calc();
-        
         return Object.assign(...arr, { aMs, ax, ay, vel, acl, nx, ny, dist, ang });
         
       }),
@@ -1022,10 +1022,12 @@ U.buildRoom({
         // Seconds the most recent anchor move has lasted
         let t = (ms - aMs) * 0.001;
         
-        // Non-null `dist` creates a cap on the distance
+        // Non-null `dist` creates a cap on the dist
         let d = vel * t + acl * 0.5 * t * t; // Distance based on t, vel, acl
         if (dist !== null && d > dist) d = dist;
         
+        let x = ax + nx * d;
+        let y = ay + ny * d;
         return { x: ax + nx * d, y: ay + ny * d };
         
       },
@@ -1072,6 +1074,81 @@ U.buildRoom({
         
       }
       
+    })});
+    let Physical = U.inspire({ name: 'Physical', methods: (insp, Insp) => ({
+      init: C.noFn('init'),
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { ud: { ms }, ax=null, ay=null, aMs=ms, forces=[] } = val;
+        return Object.assign(...arr, { ax, ay, aMs, forces });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'aMs', 'forces' ].concat(...arr)),
+      calcForceState: function(ud, force, durMs=ud.ms - force[0]) {
+        
+        let t = durMs * 0.001;
+        let [ aMs, type ] = force;
+        
+        if (type === 'vel') {
+          
+          let [ vx, vy ] = force.slice(2);
+          return { fx: vx * t, fy: vy * t }
+          
+        } else if (type === 'acl') {
+          
+          let aclMult = 0.5 * t * t;
+          let [ vx, vy, ax, ay ] = force.slice(2);
+          return { fx: vx * t + ax * aclMult, fy: vy * t + ay * aclMult }
+          
+        }
+        
+        throw Error(`Unknown force type: ${type}`);
+        
+      },
+      calcForce: function(ud, force) {
+        
+        let fx = 0; let fy = 0;
+        let aMs = force[0];
+        if (this.v('aMs') > aMs) {
+          let dt = this.v('aMs') - aMs;
+          let { fx: subFx, fy: subFy } = this.calcForceState(ud, force, dt);
+          fx -= subFx; fy -= subFy;
+        }
+        
+        let { fx: addFx, fy: addFy } = this.calcForceState(ud, force);
+        fx += addFx; fy += addFy;
+        return { fx, fy };
+        
+      },
+      calcState: function(ud) {
+        let fx = 0; let fy = 0;
+        
+        for (let force of this.v('forces')) {
+          let { fx: addFx, fy: addFy } = this.calcForce(ud, force);
+          fx += addFx; fy += addFy;
+        }
+        
+        return { x: this.v('ax') + fx, y: this.v('ay') + fy };
+      },
+      setAnchor: function(ud, ax, ay) {
+        this.v('ax', ax); this.v('ay', ay); this.v('aMs', ud.ms);
+      },
+      setForces: function(ud, forces) {
+        let isDiff = (() => {
+          let len = forces.length;
+          if (len !== this.v('forces').length) return true;
+          for (let i = 0; i < len; i++) {
+            let f0 = forces[i];
+            let f1 = this.v('forces')[i];
+            if (f0.length !== f1.length) return true;
+            for (let j = 0; j < f0.length; j++) if (f0[j] !== f1[j]) return true;
+          }
+          return false;
+        })();
+        
+        if (!isDiff) return;
+        let { x, y } = insp.Physical.calcState.call(this, ud);
+        this.setAnchor(ud, x, y);
+        this.v('forces', forces);
+      }
     })});
     
     // UTIL
@@ -1135,34 +1212,54 @@ U.buildRoom({
     })});
     
     // GOOD GUYS
-    let Ace = U.inspire({ name: 'Ace', insps: { Mortal }, methods: (insp, Insp) => ({
+    let Ace = U.inspire({ name: 'Ace', insps: { Mortal, Physical }, methods: (insp, Insp) => ({
       
       $bound: { form: 'circle', r: 8 }, $respawnMs: 2750, $invulnMs: 1500, $spd: 165,
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
         let { ud: { ms }, name='<anon>', cx=0, cy=0 } = val;
         return Object.assign(...arr, {
-          name, cx, cy,
-          spd: Insp.spd,
-          effects: Set(),
+          name, spd: Insp.spd, effects: Set(),
           invulnMark: ms + Insp.invulnMs,
           scoreDamage: 0,
           scoreDeath: 0,
           controls: [ 'l', 'r', 'd', 'u', 'a1', 'a2' ].toObj(k => [ k, [ 0, ms ] ])
         });
       }),
-      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name', 'cx', 'cy' ].concat(...arr)),
-      calcState: function(updData) {
-        return { x: this.v('cx'), y: this.v('cy') + updData.bounds.total.y, rel: updData.level };
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name' ].concat(...arr)),
+      calcState: function(ud) {
+        let { x, y } = insp.Physical.calcState.call(this, ud);
+        
+        let pb = ud.bounds.player;
+        y += ud.bounds.total.y;
+        
+        let bounded = false;
+        if (!ud.outcome !== 'win') {
+          if (x < pb.l) { x = pb.l; bounded = true; }
+          if (x > pb.r) { x = pb.r; bounded = true; }
+          if (y < pb.b) { y = pb.b; bounded = true; }
+          if (y > pb.t) { y = pb.t; bounded = true; }
+        }
+        return { x, y, bounded };
       },
       getCollideResult: function(updData, tail) {},
       getTeam: function() { return +1; },
       getStepResult: function(updData) {
         
         let { ms, spf, bounds, outcome } = updData;
+        
+        if (!this.isAlive(updData)) {
+          return { tangibility: {
+            bound: { ...Insp.bound, x: -7070707070, y: -7070707070 },
+            team: 'ace', 
+            sides: []
+          }};
+        }
+        
         if (outcome === 'win') {
-          //this.v('invulnMark', ms + 10000);
-          this.v('cy', v => v + Insp.spd * 4 * updData.spf);
+          if (!this.winTime) this.winTime = ms;
+          if (this.v('invulnMark') < ms) this.v('invulnMark', ms + 10000);
+          this.setForces(updData, [ [ this.winTime, 'vel', 0, Insp.spd * 4 ] ]);
           let { x, y } = this.calcState(updData);
           return { tangibility: {
             bound: { ...Insp.bound, x, y },
@@ -1171,12 +1268,10 @@ U.buildRoom({
           }};
         }
         
-        let cx = this.controls.r[0] - this.controls.l[0];
-        let cy = this.controls.u[0] - this.controls.d[0];
-        let a1 = this.controls.a1[0];
-        let a2 = this.controls.a2[0];
-        
-        let { spdMult=1 } = this.aceUpdate(updData, { cx, cy, a1, a2 }) || {};
+        let { r, l, u, d, a1, a2 } = this.controls;
+        let cx = r[0] - l[0];
+        let cy = u[0] - d[0];
+        let { spdMult=1, forces=[] } = this.aceUpdate(updData, { cx, cy, a1: a1[0], a2: a2[0] }) || {};
         
         // The calculated speed for this tick
         spdMult *= this.spd;
@@ -1184,46 +1279,31 @@ U.buildRoom({
         for (let effect of this.effects) {
           let { mark, type=null, fn=null, endFn=null } = effect;
           if (ms > effect.mark) {
-            this.effects.rem(effect);
+            this.v('effects').rem(effect);
             if (effect.endFn) effect.endFn(this, updData);
           } else {
+            // Note: effects that aren't "spdMult" may need to be added to `forces`
             if (effect.type === 'spdMult') spdMult *= effect.spdMult;
+            if (effect.type === 'force') forces.push(effect.force);
             if (effect.fn) effect.fn(this, updData);
           }
         }
         
-        if (cx && cy) spdMult /= Math.sqrt(cx * cx + cy * cy);
-        let vx = cx * spdMult;
-        let vy = cy * spdMult;
+        // TODO: If moving on both axes, normalize speed!
+        if (r[0]) forces.push([ r[1], 'vel', r[0] * +spdMult, 0               ]);
+        if (l[0]) forces.push([ l[1], 'vel', l[0] * -spdMult, 0               ]);
+        if (u[0]) forces.push([ u[1], 'vel', 0,               u[0] * +spdMult ]);
+        if (d[0]) forces.push([ d[1], 'vel', 0,               d[0] * -spdMult ]);
         
-        let cx0 = this.v('cx'); let cy0 = this.v('cy'); let cx1 = cx0; let cy1 = cy0;
-        if (vx || vy) { cx1 += vx * spf; cy1 += vy * spf; }
+        this.setForces(updData, forces);
         
-        let rad = Insp.bound.r;
-        let { l, r, b, t } = bounds.player;
-        let ahd = updData.bounds.total.y;
-        if (cx1 < (l + rad)) cx1 = l + rad;
-        if (cx1 > (r - rad)) cx1 = r - rad;
-        if (cy1 < (b + rad - ahd)) cy1 = b + rad - ahd;
-        if (cy1 > (t - rad - ahd)) cy1 = t - rad - ahd;
-        
-        if (cx1 !== cx0) this.v('cx', cx1);
-        if (cy1 !== cy0) this.v('cy', cy1);
-        
-        if (this.isAlive(updData)) {
-          let { x, y } = this.calcState(updData);
-          return { tangibility: {
-            bound: { ...Insp.bound, x, y },
-            team: 'ace',
-            sides: (this.v('invulnMark') > ms) ? [] : [ 'tail' ]
-          }};
-        } else {
-          return { tangibility: {
-            bound: { ...Insp.bound, x: 0, y: -10101010 },
-            team: 'ace', 
-            sides: []
-          }};
-        }
+        let { x, y, bounded } = this.calcState(updData);
+        if (bounded) this.setAnchor(updData, x, y - updData.bounds.total.y);
+        return { tangibility: {
+          bound: { ...Insp.bound, x, y },
+          team: 'ace',
+          sides: (this.v('invulnMark') > ms) ? [] : [ 'tail' ]
+        }};
         
       },
       
@@ -1360,8 +1440,8 @@ U.buildRoom({
           
           let dir = cx > 0 ? +1 : -1;
           this.v('invulnMark', v => Math.max(v || 0, ms + 250));
-          this.v('effects').add({ mark: ms + 250, fn: (inst, { spf }) => this.v('cx', v => v + dir * Insp.w2DashSpeed * spf) });
-          this.v('effects').add({ mark: ms + 250, type: 'spdMult', spdMult: 0 });
+          this.v('effects').add({ mark: ms + 250, type: 'force', force: [ ms, 'vel', Insp.w2DashSpeed * dir, 0 ] });
+          this.v('effects').add({ mark: ms + 270, type: 'spdMult', spdMult: 0 });
           
           let args = { joustMan: this, team: 'ace', lsMs: Insp.w2DurationMs, yOff: 0, r: 9, dps: Insp.w2OrbDps };
           for (let i = 0; i < 4; i++)
@@ -1409,7 +1489,7 @@ U.buildRoom({
         { ms: 1500, ang: +0.02, dmgMult: 1   },  // Very slowly increase angle
         { ms: 4000, ang: +0.25, dmgMult: 1   }   // Slowly bend all the way outwards
       ],
-      $w1Delay: 85, $bulletDmg: 0.31, $w1LockMs: 1100,
+      $w1Delay: 85, $bulletDmg: 0.35, $w1LockMs: 1100,
       $w1ShortLockPunishSlow: 0.36, $w1ShortLockPunishMs: 300,
       $w1LongLockPunishSlow: 0.80, $w1LongLockPunishMs: 800,
       $w1ReloadBoostMs: 800, $w1ReloadBoostAmt: 1.55,
@@ -1554,9 +1634,9 @@ U.buildRoom({
     })});
     let SlamKid = U.inspire({ name: 'SlamKid', insps: { Ace }, methods: (insp, Insp) => ({
       
-      $slamSpd: 400 / Math.sqrt(2), $slamDelay: 760,
+      $slamSpd: 450 / Math.sqrt(2), $slamDelay: 690,
       $slamCharge1Ms: 300, $slamCharge2Ms: 630, $slamCharge3Ms: 750,
-      $slamPunishMs: 1500, $slamPunishSlow: 0.25,
+      $slamPunishMs: 1500, $slamPunishSlow: 0.25, $slamDecel: 550 / Math.sqrt(2),
       $missileVel: 550, $missileAcl: 800, $missileDmg: 2.1, $missilePDmg: [0.3,4.5],
       $shotgunCnt: 18, $shotgunInitAng: 0.023, $shotgunAng: 0.009,
       $shotgunSpd: 650, $shotgunDmg: 0.082, $shotgunPDmg: [0.09,0.28], $shotgunLsMs: 305,
@@ -1579,7 +1659,7 @@ U.buildRoom({
       aceUpdate: function(updData, { a1, a2 }) {
         
         let { aheadDist, ms, spf } = updData;
-        let birth = [];
+        let forces = [];
         
         // Slam Kid is symmetrical; do the same thing in two directions:
         let dirs = [ [ -1, a1, 'w1Mark', 'w1StartMark' ], [ +1, a2, 'w2Mark', 'w2StartMark' ] ];
@@ -1602,8 +1682,8 @@ U.buildRoom({
             
             let duration = ms - this.v(wMarkStart);
             let durFade = Math.pow(util.fadeAmt(1, 0.1, duration / Insp.slamCharge3Ms), 0.95);
-            this.v('cx', v => v + this.v('slamSpd') * spf * durFade * mult);
-            this.v('cy', v => v + this.v('slamSpd') * spf * durFade);
+            let spd = this.v('slamSpd');
+            forces.push([ this.v(wMarkStart), 'acl', spd * mult, spd, Insp.slamDecel * mult * -1, Insp.slamDecel * -1 ]);
             
           } else if (this.v(wMarkStart)) {
             
@@ -1633,9 +1713,7 @@ U.buildRoom({
               updData.spawnEntity({ type: 'MBullet', ...missileArgs, ang: 0.0 });
               updData.spawnEntity({ type: 'MBullet', ...missileArgs, ang: 0.5 });
               
-              this.effects.add({ mark: ms + 150, type: null, fn: (inst, { spf }) => {
-                this.v('cy', v => v - 220 * spf);
-              }});
+              this.v('effects').add({ mark: ms + 150, type: 'force', force: [ ms, 'vel', 0, -220 ] });
               this.v(wMark, ms + Insp.slamDelay);
               
             } else {
@@ -1653,14 +1731,9 @@ U.buildRoom({
                 type: 'MBullet', ...shotgunArgs, ang: mult * (0.125 + ang)
               });
               
-              // birth.gain([ ...util.incCen(Insp.shotgunCnt, Insp.shotgunAng) ].map(ang => MBullet({
-              //   ...shotgunArgs, ang: mult * (0.125 + ang)
-              // })));
+              this.v('effects').add({ mark: ms + 300, type: 'spdMult', spdMult: 1.2 });
+              this.v('effects').add({ mark: ms + 300, type: 'force', force: [ ms, 'vel', -50 * mult, -50 ] });
               
-              this.effects.add({ mark: ms + 300, type: 'spdMult', spdMult: 1.2, fn: (inst, { spf }) => {
-                inst.v('cx', v => v - mult * 50 * spf);
-                inst.v('cy', v => v - 50 * spf);
-              }});
               this.v(wMark, ms + Insp.slamDelay * Insp.shotgunSlamDelayMult);
               
             }
@@ -1672,7 +1745,7 @@ U.buildRoom({
         }
         
         let spdMult = (this.w1StartMark || this.w2StartMark) ? 0.55 : 1;
-        return { spdMult, birth };
+        return { spdMult, forces };
         
       }
       
@@ -1710,10 +1783,8 @@ U.buildRoom({
       comboDecamp: function(dir, ud) {
         
         this.v('invulnMark', v => Math.max(v, ud.ms + Insp.decampDurationMs));
-        this.effects.add({ mark: ud.ms + Insp.decampDurationMs,
-          type: 'spdMult', spdMult: Insp.decampSpdMult,
-          fn: (inst, ud) => inst.v('cx', v => v + Insp.decampSpd * ud.spf * dir)
-        });
+        this.v('effects').add({ mark: ud.ms + Insp.decampDurationMs, type: 'force', force: [ ud.ms, 'vel', Insp.decampSpd * dir, 0 ] });
+        this.v('effects').add({ mark: ud.ms + Insp.decampDurationMs, type: 'spdMult', spdMult: Insp.decampSpdMult });
         
         let { x, y } = this.calcState(ud);
         let missileArgs = { salvoLad: this, team: 'ace', ax: x, ay: y };
@@ -1726,12 +1797,9 @@ U.buildRoom({
       },
       comboDiveBomb: function(dir, { ms, spf, aheadDist }) {
         
-        this.effects.add({ mark: ms + Insp.diveMs,
-          type: 'spdMult', spdMult: Insp.diveSpdMult,
-          fn: (i, ud) => {
-            i.v('cx', v => v + dir * 150 * ud.spf);
-            i.v('cy', v => v + ((ud.ms - ms) / Insp.diveMs) * Insp.diveFwdMult * ud.spf);
-          },
+        this.v('effects').add({ mark: ms + Insp.diveMs, type: 'spdMult', spdMult: Insp.diveSpdMult });
+        this.v('effects').add({ mark: ms + Insp.diveMs, type: 'force', force: [ ms, 'acl', 150 * dir, 0, 0, 750 ] });
+        this.v('effects').add({ mark: ms + Insp.diveMs,
           endFn: (i, ud) => {
             let { x, y } = i.calcState(ud);
             let missileArgs = { type: 'SalvoLadDumbBomb', salvoLad: i, team: 'ace', ax: x, ay: y };
@@ -1747,30 +1815,27 @@ U.buildRoom({
         
         let args = { owner: this, team: 'ace', w: 6, h: 16, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
         Array.fill(5, n => n).forEach(n => {
-          this.effects.add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
+          this.v('effects').add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
             type: 'SalvoLadMissile', ...args, ...i.calcState(ud).slice({ ax: 'x', ay: 'y' }),
             horzSpd: (115 + 30 * (n + 1)) * dir
           })});
         });
-        
         return { delayMs: Insp.missileDelayMs };
         
       },
       comboSuppress: function(dir, ud) {
         
-        this.effects.add({ mark: ud.ms + 500, type: 'spdMult', spdMult: 1.5 });
+        this.v('effects').add({ mark: ud.ms + 500, type: 'spdMult', spdMult: 1.5 });
         
         let args = { team: 'ace', ang: dir * 0.11, dmg: Insp.suppressDmg, bound: { form: 'circle', r: 4 }, lsMs: 500, vel: 360, acl: 800 };
         for (let i = 0; i < 11; i++) {
-          
           let alt = i % 4;
-          this.effects.add({ mark: ud.ms + 50 + i * alt * 18, endFn: (i, ud) => {
+          this.v('effects').add({ mark: ud.ms + 50 + i * alt * 18, endFn: (i, ud) => {
             let { x, y } = i.calcState(ud);
             x += 6 * alt * dir;
             y += 30 - 12 * alt
             ud.spawnEntity({ type: 'MBullet', owner: i, ...args, ax: x, ay: y });
           }});
-          
         }
         return { delayMs: Insp.suppressDelayMs };
         
@@ -2217,12 +2282,6 @@ U.buildRoom({
           draw.imageCen(this.constructor.imageKeep, 0, 0, ext, ext);
         });
         
-        // let { x, y, r=null } = this.calcState(updData);
-        // 
-        // if (r === null && this.constructor.bound && this.constructor.bound.r) r = this.constructor.bound.r;
-        // if (r === null) r = 16;
-        // draw.circ(x, y, r, { fillStyle: '#00a000' });
-        
       }
       
     })});
@@ -2302,17 +2361,16 @@ U.buildRoom({
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
         let { initHp=2, minSize=16, hpPerSec=1.33, sizeMult=1.75 } = val;
-        
-        // Setting `dist` to `null` enables indefinite movement
         return Object.assign(...arr, { initHp, minSize, hpPerSec, sizeMult, dist: null });
       }),
-      initSyncs: insp.allArr('syncProps', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].concat(...arr)),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].concat(...arr)),
       calcState: function(updData) {
         
         let { x, y } = insp.Mover.calcState.call(this, updData);
         let hpLost = this.v('hpDmg');
         let sizeMult = this.v('sizeMult');
         let minSize = this.v('minSize');
+        
         return { x, y, r: minSize + (this.getMaxHp(updData) - hpLost) * sizeMult };
         
       },
@@ -2400,14 +2458,6 @@ U.buildRoom({
       
       initProps: C.noFn('initProps'),
       initSyncs: C.noFn('initSyncs'),
-      // init: function({ spawnMs=3000, spawnArgs={}, ...args }) {
-      //   insp.Enemy.init.call(this, args);
-      //   insp.Mover.init.call(this, args);
-      //   
-      //   this.spawnMs = spawnMs;
-      //   this.spawnMark = this.ms + this.spawnMs;
-      //   this.spawnArgs = spawnArgs;
-      // },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
       getStepResult: function(updData) {
@@ -2455,21 +2505,8 @@ U.buildRoom({
       
       initProps: C.noFn('initProps'),
       initSyncs: C.noFn('initSyncs'),
-      // init: function({ spawnMs=3000, shootDelayMs=2500, spawnArgs={}, ...args }) {
-      //   insp.Enemy.init.call(this, args);
-      //   insp.Mover.init.call(this, args);
-      //   this.w = Insp.w; this.h = Insp.h;
-      //   
-      //   this.spawnMs = spawnMs;
-      //   this.spawnMark = this.ms + this.spawnMs;
-      //   this.spawnArgs = spawnArgs;
-      //   
-      //   this.shootDelayMs = shootDelayMs;
-      // },
       getMaxHp: function() { return Insp.maxHp; },
       ...insp.Enemy.slice('canCollide', 'collide'),
-      //moveWithLevel: function() { return true; },
-      //stopAtDestination: function() { return true; },
       permState: insp.allArr('permState', (i, arr) => Object.assign({}, ...arr)),
       normState: insp.allArr('normState', (i, arr) => Object.assign({}, ...arr)),
       updateAndGetResult: function(updData) {
@@ -2562,13 +2599,12 @@ U.buildRoom({
           lives, aheadSpd, x, y, tw, th, px, py, pw, ph, visiMult 
         });
       }),
-      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult' ].concat(...arr)),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult', 'outcome' ].concat(...arr)),
       
       update: function(ms, spf) {
         
         let timingMs = foundation.getMs();
         
-        //let entitiesSet = level.relNozz('fly.entity').set;
         let entities = [ ...this.relNozz('fly.entity').set ]; // A snapshot
         let levelPlayers = this.relNozz('fly.levelPlayer').set;
         let flyHut = this.v('flyHut');
@@ -2610,8 +2646,6 @@ U.buildRoom({
           ///     sides: [ 'head', 'tail' ],
           ///   }
           /// }
-          
-          //let updateResult = ent.updateAndGetResult(updateData);
           
           // Manage sprite visibility
           let visible = geom.doCollideRect(bounds.total, geom.containingRect(stepResult.tangibility.bound));
@@ -2677,8 +2711,7 @@ U.buildRoom({
                 entity.deathMarked = false;
                 entity.v('hpDmg', 0);
                 entity.v('invulnMark', this.v('ms') + Ace.invulnMs);
-                entity.v('cx', 0);
-                entity.v('cy', (pb.y - tb.y) + pb.h * -0.2);
+                entity.setAnchor(updateData, 0, (pb.y - tb.y) + pb.h * -0.2);
                 
               }, Ace.respawnMs);
               
@@ -2742,8 +2775,8 @@ U.buildRoom({
           // Set up a Moment to fill in terrain as the victory occurs
           let newMoment = updateData.spawnEntity({
             type: 'MomentAhead',
-            name: 'outcomeWin', terrain: currentMoment && currentMoment.terrain,
-            distance: 10000, spd: (currentMoment ? currentMoment.spd : 100) * 2,
+            name: 'outcomeWin', terrain: currentMoment && currentMoment.v('terrain'),
+            dist: 10000, spd: (currentMoment ? currentMoment.spd : 100) * 2,
             modelsDef: [],
             prevMoment: currentMoment
           });
@@ -2752,6 +2785,7 @@ U.buildRoom({
           bounds.gain(Level.getLevelBounds(this));
           
           newMoment.doSetup(updateData, currentMoment);
+          
           currentMoment = newMoment;
           
           // Mark that victory has occurred
@@ -2942,16 +2976,16 @@ U.buildRoom({
       $renderPriority: Insp.parents.Moment.renderPriority,
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
-        let { ud, name, bounds, distance, prevMoment=null, startY=null } = val;
+        let { ud, name, bounds, dist, prevMoment=null, startY=null } = val;
         if (startY === null) {
           startY = prevMoment ? prevMoment.getMaxY(ud) : (bounds.total.h * -0.5);
           //prevMoment ? prevMoment.getMaxY(ud) : ud.bounds.total.b
         }
-        return Object.assign(...arr, { distance, startY });
+        return Object.assign(...arr, { dist, startY });
       }),
-      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'distance', 'startY' ].concat(...arr)),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'dist', 'startY' ].concat(...arr)),
       getMinY: function() { return this.v('startY'); },
-      getMaxY: function() { return this.v('startY') + this.v('distance'); },
+      getMaxY: function() { return this.v('startY') + this.v('dist'); },
       isStanding: function(updData) {
         // A MomentAhead stands while its top hasn't become visible
         return this.getMaxY(updData) > updData.bounds.total.t;
@@ -3271,12 +3305,12 @@ U.buildRoom({
                 
                 let testMoments = [
                   { name: 'test', type: 'MomentAhead', terrain: 'plains',
-                    distance: firstMoment.bounds.total.h, spd: 200,
+                    dist: firstMoment.bounds.total.h, spd: 200,
                     bounds: firstMoment.bounds,
                     modelsDef: []
                   },
                   { name: 'testTrn', type: 'MomentAhead', terrain: 'plainsToMeadow',
-                    distance: 250, spd: 200,
+                    dist: 250, spd: 200,
                     bounds: firstMoment.bounds,
                     modelsDef: []
                   }
@@ -3298,7 +3332,11 @@ U.buildRoom({
             let levelPlayer = flyHut.createRec('fly.levelPlayer', [ testLevel, player ], { deaths: 0, damage: 0 });
             
             let ms = foundation.getMs();
-            let entity = flyHut.createRec('fly.entity', [ testLevel ], { ud: { ms }, type: testing.ace });
+            let entity = flyHut.createRec('fly.entity', [ testLevel ], {
+              ud: { ms },
+              type: testing.ace,
+              ax: Math.round(Math.random() * 200 - 100), ay: -200
+            });
             
             // Connect this Entity to the LevelPlayer
             flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, entity ]);
@@ -3400,7 +3438,7 @@ U.buildRoom({
                 let { model } = lobbyPlayer.val;
                 let ace = flyHut.createRec('fly.entity', [ level ], {
                   ud: { ms }, type: lobbyModelOptions[model].Cls.name, name: player.val.name,
-                  ctrlX: Math.round(Math.random() * 200 - 100), ctrlY: -200
+                  ax: Math.round(Math.random() * 200 - 100), ay: -200
                 });
                 
                 flyHut.createRec('fly.levelPlayerEntity', [ levelPlayer, ace ]);
@@ -3438,10 +3476,6 @@ U.buildRoom({
                 if (keys[3] !== entity.controls.d[0]) entity.controls.d = [ keys[3], ms ];
                 if (keys[4] !== entity.controls.a1[0]) entity.controls.a1 = [ keys[4], ms ];
                 if (keys[5] !== entity.controls.a2[0]) entity.controls.a2 = [ keys[5], ms ];
-                
-                // TODO: Maintain a history of keypresses? Finally,
-                // convert Aces to use continuous updating
-                // console.log('CONTROLS:', entity.controls);
                 
               }));
               
@@ -3686,6 +3720,7 @@ U.buildRoom({
               let updData = {
                 ms: level.val.ms,
                 spf: (level.val.ms - lastMs[0]) * 0.001,
+                outcome: level.v('outcome'),
                 level,
                 myEntity,
                 entities: entities.toObj(r => [ r.uid, r ]),
@@ -3699,8 +3734,13 @@ U.buildRoom({
                 updData.ms = lastMs[0] + msExtra;
                 
                 // Extrapolate aheadDist
-                updData.bounds.total.y += level.val.aheadSpd * msExtra * 0.001;
-                updData.bounds.player.y += level.val.aheadSpd * msExtra * 0.001;
+                let addY = level.val.aheadSpd * msExtra * 0.001;
+                updData.bounds.total.y += addY;
+                updData.bounds.total.t += addY;
+                updData.bounds.total.b += addY;
+                updData.bounds.player.y += addY;
+                updData.bounds.player.t += addY;
+                updData.bounds.player.b += addY;
                 
               } else {
                 
@@ -3719,7 +3759,7 @@ U.buildRoom({
                 
                 let { x, y } = mySprite.val;
                 
-                // Percentage of horz/vert distance travelled
+                // Percentage of horz/vert dist travelled
                 let xAmt = (x - pb.x) / (pb.w * 0.5);
                 let yAmt = (y - pb.y) / (pb.h * 0.5);
                 
@@ -3753,18 +3793,11 @@ U.buildRoom({
               let renders = [];
               for (let sprite of sprites) {
                 let entity = sprite.mems['fly.entity'];
-                //let renderVals = { ...entity.val, ...sprite.val };
-                //let Cls = mdlClasses[entity.val.type];
-                //if (!Cls) { console.log(entity.val); throw Error(`Bad type: ${entity.val.type}`); }
-                
                 renders.push({ priority: entity.renderPriority(), entity });
-                
               }
               
               for (let { entity } of renders.sort((v1, v2) => v2.priority - v1.priority)) {
                 entity.render(updData, draw);
-                //let calcVals = Cls.prototype.calcState.call(vals, updData);
-                //Cls.render(draw, updData, { entity, myEntity, bounds, ...vals, ...calcVals }, entities);
               }
               
               draw.rectCen(tb.x, tb.y, tb.w - 4, tb.h - 4, { strokeStyle: 'rgba(0, 255, 0, 0.1)', lineWidth: 4 });

@@ -275,12 +275,15 @@ let U = global.U = {
     
     if (!methodsByName.has('init')) throw Error('No "init" method available');
     
+    parInsps[name] = {};
     for (let methodName in methodsByName) {
       let methodsAtName = methodsByName[methodName].toArr(v => (v && v['~noInspCollision']) ? C.skip : v);
       if (methodsAtName.length > 1) {
         throw Error(`Found ${methodsAtName.length} methods "${methodName}" for ${name}; declare a custom method`);
       }
-      protoDef(Insp, methodName, methodsAtName.length ? methodsAtName[0] : C.noFn(methodName));
+      let fn = methodsAtName.length ? methodsAtName[0] : C.noFn(methodName);
+      parInsps[name][methodName] = fn;
+      protoDef(Insp, methodName, fn);
     }
     
     protoDef(Insp, 'constructor', Insp);
