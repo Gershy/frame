@@ -112,7 +112,7 @@ U.buildRoom({
     let testing = {
       lives: 10,
       levelName: 'impendingFields',
-      momentName: 'snake2',
+      momentName: 'scout1',
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
@@ -139,29 +139,29 @@ U.buildRoom({
         moments: [
           { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, 
             bounds: { total: { w: 240, h: 300 }, player: { x: 0, y: 0, w: 240, h: 300 } },
-            modelsDef: []
+            models: []
           },
           { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, 
             bounds: { total: { w: 260, h: 325 }, player: { x: 0, y: 0, w: 260, h: 325 } },
-            modelsDef: []
+            models: []
           },
           { name: 'winder1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100, 
             bounds: { total: { w: 280, h: 350 }, player: { x: 0, y: 0, w: 280, h: 350 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:   0, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0, swingAmt: 0 }
             ]
           },
           { name: 'winder2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -60, y: +150, spd: -50, swingHz: 0.05, swingAmt: -50 },
               { type: 'Winder', x:   0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
               { type: 'Winder', x: +60, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 }
             ]
           },
           { name: 'winder3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -100, y: +150, spd: -50, swingHz: 0.05, swingAmt: +50 },
               { type: 'Winder', x:  -50, y: +200, spd: -50, swingHz: 0.07, swingAmt: -50 },
               { type: 'Winder', x:    0, y: +100, spd: -50, swingHz:    0, swingAmt:   0 },
@@ -170,7 +170,7 @@ U.buildRoom({
             ]
           },
           { name: 'winder4', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, 
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -100, y: +150, spd:  -50, swingHz: 0.055, swingAmt: +60 },
               { type: 'Winder', x:  -50, y: +200, spd:  -50, swingHz: 0.075, swingAmt: -70 },
               { type: 'Winder', x:    0, y: +300, spd: -100, swingHz:     0, swingAmt:   0 },
@@ -180,7 +180,7 @@ U.buildRoom({
           },
           { name: 'winder5', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -200, y: 0, spd: -50, swingHz: 0.055, swingAmt: +100 },
               { type: 'Winder', x: -30, y: +150, spd: -100, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x: +30, y: +150, spd: -100, swingHz: 0, swingAmt: 0 },
@@ -189,7 +189,7 @@ U.buildRoom({
           },
           { name: 'winder6', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -350, y: +100, spd: -50, swingHz: 0.050, swingAmt: +270 },
               { type: 'Winder', x: -300, y:  +50, spd: -50, swingHz: 0.050, swingAmt: +240 },
               { type: 'Winder', x: -250, y:    0, spd: -50, swingHz: 0.050, swingAmt: +210 },
@@ -203,7 +203,7 @@ U.buildRoom({
           },
           { name: 'winder7', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0.08, swingAmt: +22 },
               { type: 'Winder', x: -120, y: +130, spd: -150, swingHz: 0.08, swingAmt: +22 },
               { type: 'Winder', x: -120, y: +160, spd: -150, swingHz: 0.08, swingAmt: +22 },
@@ -227,7 +227,7 @@ U.buildRoom({
           },
           { name: 'winder8', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -120, y: +100, spd: -185, swingHz: 0.12, swingAmt: +22 },
               { type: 'Winder', x: -120, y: +130, spd: -185, swingHz: 0.12, swingAmt: -22 },
               { type: 'Winder', x: -120, y: +160, spd: -185, swingHz: 0.12, swingAmt: +22 },
@@ -251,7 +251,7 @@ U.buildRoom({
           },
           { name: 'weaver1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
-            modelsDef: [
+            models: [
               
               { type: 'Weaver', x: -100, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
               { type: 'Weaver', x: +100, y: +100, spd: -50, swingHz: 0, swingAmt: 0 },
@@ -264,7 +264,7 @@ U.buildRoom({
           },
           { name: 'weaver2', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -150, y: +450, spd: -100, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -50, y: +440, spd: -100, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  +50, y: +440, spd: -100, swingHz: 0, swingAmt: 0 },
@@ -283,7 +283,7 @@ U.buildRoom({
           },
           { name: 'weaver3', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:    0, y: +430, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -307,7 +307,7 @@ U.buildRoom({
           },
           { name: 'weaver4', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -150, y: +450, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -75, y: +440, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:    0, y: +430, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -334,7 +334,7 @@ U.buildRoom({
             ]
           },
           
-          { name: 'final', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, models: [] }
         ]
       },
       impendingFields: { num: 1, name: 'Impending Fields', password: 'V1s1T1NG',
@@ -355,14 +355,14 @@ U.buildRoom({
         moments: [
           { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100,
             bounds: { total: { w: 320, h: 400 }, player: { x: 0, y: 0, w: 320, h: 400 } },
-            modelsDef: []
+            models: []
           },
           { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: []
+            models: []
           },
-          { name: 'scout1', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
-            modelsDef: [
+          { name: 'scout1', type: 'MomentAhead', terrain: 'plains', dist: 750, aheadSpd: 100,
+            models: [
               { type: 'Winder', x: -160, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -80, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:    0, y: +100, spd: -100, swingHz: 0, swingAmt: 0 },
@@ -376,7 +376,7 @@ U.buildRoom({
             ]
           },
           { name: 'scout2', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100,
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -120, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  -40, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
               { type: 'Winder', x:  +40, y: +100, spd: -150, swingHz: 0, swingAmt: 0 },
@@ -390,7 +390,7 @@ U.buildRoom({
             ]
           },
           { name: 'sideswipe1', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1200 },
               { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1100 },
               { type: 'Winder', x: -300, y: +110, spd: -100, delayMs: 2000, swingHz: 0.04, swingAmt: +1000 },
@@ -398,7 +398,7 @@ U.buildRoom({
             ]
           },
           { name: 'sideswipe2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               { type: 'Winder', x: +300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1200 },
               { type: 'Winder', x: +300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1100 },
               { type: 'Winder', x: +300, y: +110, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: -1000 },
@@ -406,7 +406,7 @@ U.buildRoom({
             ]
           },
           { name: 'sideswipe3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -300, y: +250, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1200 },
               { type: 'Winder', x: -300, y: +180, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1100 },
               { type: 'Winder', x: -300, y: +110, spd: -100, delayMs: 2500, swingHz: 0.04, swingAmt: +1000 },
@@ -425,7 +425,7 @@ U.buildRoom({
             ]
           },
           { name: 'pillar1', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Winder', x: +40, y: +360, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: +200 },
               { type: 'Winder', x: +40, y: +300, spd: -120, delayMs: 5000, swingHz: 0.2, swingAmt: -200 },
@@ -437,7 +437,7 @@ U.buildRoom({
             ]
           },
           { name: 'pillar2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Winder', x: -20, y: +360, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: +200 },
               { type: 'Winder', x: -20, y: +300, spd: -140, delayMs: 4500, swingHz: 0.2, swingAmt: -200 },
@@ -450,7 +450,7 @@ U.buildRoom({
             ]
           },
           { name: 'pillar3', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Winder', x: +40, y: +360, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: +200 },
               { type: 'Winder', x: +40, y: +300, spd: -160, delayMs: 4000, swingHz: 0.2, swingAmt: -200 },
@@ -463,9 +463,9 @@ U.buildRoom({
               
             ]
           },
-          { name: 'pillarBreak', type: 'MomentAhead', terrain: 'meadow', dist: 250, aheadSpd: 100, modelsDef: [] },
+          { name: 'pillarBreak', type: 'MomentAhead', terrain: 'meadow', dist: 250, aheadSpd: 100, models: [] },
           { name: 'pillar4', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Furler', x: -120, y: +240, spd: -110, delayMs: 3700, swingHz: 0.1, swingAmt: -100, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
               { type: 'Furler', x:  -20, y: +240, spd: -110, delayMs: 3700, swingHz: 0.1, swingAmt: +100, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -482,7 +482,7 @@ U.buildRoom({
             ]
           },
           { name: 'box1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
               { type: 'Weaver', x: -100, y: +410, spd: -60, swingHz: 0, swingAmt: 0 },
@@ -509,7 +509,7 @@ U.buildRoom({
             ]
           },
           { name: 'box2', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Furler', x: -50, y: +400, spd: -30, swingHz: 0.079, swingAmt: +130, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
               { type: 'Furler', x: +50, y: +400, spd: -30, swingHz: 0.079, swingAmt: -130, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -539,7 +539,7 @@ U.buildRoom({
             ]
           },
           { name: 'box3', type: 'MomentAhead', terrain: 'meadow', dist: 2000, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               
               { type: 'Furler', x: -150, y: +400, spd: -60, swingHz: 0, swingAmt: 0, shootDelayMs: 1200, bulletArgs: { spd: -300, lsMs: 3000 } },
@@ -582,7 +582,7 @@ U.buildRoom({
             ]
           },
           { name: 'snake1', type: 'MomentAhead', terrain: 'meadow', dist: 1250, aheadSpd: 100,
-            modelsDef: [
+            models: [
               // Left side
               { type: 'Winder', x: -15, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
               { type: 'Winder', x: -15, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
@@ -623,7 +623,7 @@ U.buildRoom({
             ]
           },
           { name: 'snake2', type: 'MomentAhead', terrain: 'meadow', dist: 1250, aheadSpd: 100,
-            modelsDef: [
+            models: [
               { type: 'Weaver', x: 0, y: +100, spd: -90, delayMs: 1200, swingHz: 0.030, swingAmt: +195 },
               { type: 'Weaver', x: 0, y: +150, spd: -90, delayMs: 1200, swingHz: 0.035, swingAmt: +195 },
               { type: 'Weaver', x: 0, y: +200, spd: -90, delayMs: 1200, swingHz: 0.040, swingAmt: +195 },
@@ -647,7 +647,7 @@ U.buildRoom({
             ]
           },
           { name: 'snake3', type: 'MomentAhead', terrain: 'plains', dist: 2000, aheadSpd: 100,
-            modelsDef: [
+            models: [
               
               { type: 'Drifter', x: -150, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
               { type: 'Drifter', x:  -50, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
@@ -690,13 +690,13 @@ U.buildRoom({
         moments: [
           { name: 'practice1', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: []
+            models: []
           },
           { name: 'practice2', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
-            modelsDef: []
+            models: []
           },
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, modelsDef: [
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, models: [
             { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: -100 },
             { type: 'Winder', x: 0, y: +100, spd: -50, swingHz: 0.02, swingAmt: +100 }
           ]}
@@ -709,15 +709,15 @@ U.buildRoom({
         moments: [
           { name: 'practice1', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 360, h: 450 }, player: { x: 0, y: 0, w: 360, h: 450 } },
-            modelsDef: []
+            models: []
           },
           { name: 'practice2', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: []
+            models: []
           },
           { name: 'winder1', type: 'MomentAhead', terrain: 'plains', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.027, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -100, swingHz: 0.031, swingAmt: +580 },
               { type: 'Winder', x: -600, y:  +50, spd: -100, swingHz: 0.035, swingAmt: +580 },
@@ -728,7 +728,7 @@ U.buildRoom({
           },
           { name: 'winder2', type: 'MomentAhead', terrain: 'plains', dist: 500, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               { type: 'Winder', x: -600, y: +250, spd: -100, swingHz: 0.032, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -100, swingHz: 0.036, swingAmt: +580 },
               { type: 'Winder', x: -600, y:  +50, spd: -100, swingHz: 0.040, swingAmt: +580 },
@@ -739,7 +739,7 @@ U.buildRoom({
           },
           { name: 'winder3', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper up
               { type: 'Winder', x: -600, y: +250, spd: -130, swingHz: 0.047, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -130, swingHz: 0.051, swingAmt: +580 },
@@ -751,7 +751,7 @@ U.buildRoom({
           },
           { name: 'winder4', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper down
               { type: 'Winder', x: -600, y:  +50, spd: -130, swingHz: 0.047, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -130, swingHz: 0.051, swingAmt: +580 },
@@ -763,7 +763,7 @@ U.buildRoom({
           },
           { name: 'winder5', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper up
               { type: 'Winder', x: -600, y: +250, spd: -150, swingHz: 0.057, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +580 },
@@ -775,7 +775,7 @@ U.buildRoom({
           },
           { name: 'winder6', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper down
               { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +580 },
               { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +580 },
@@ -787,7 +787,7 @@ U.buildRoom({
           },
           { name: 'winder7', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper down desync
               { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +780 },
               { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +780 },
@@ -803,7 +803,7 @@ U.buildRoom({
           },
           { name: 'winder8', type: 'MomentAhead', terrain: 'plains', dist: 250, aheadSpd: 100,
             bounds: { total: { w: 400, h: 500 }, player: { x: 0, y: 0, w: 400, h: 500 } },
-            modelsDef: [
+            models: [
               // Zipper down desync
               { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.075, swingAmt: -780 },
               { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.071, swingAmt: -780 },
@@ -819,7 +819,7 @@ U.buildRoom({
           },
           { name: 'winder9', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 440, h: 550 }, player: { x: 0, y: 0, w: 440, h: 550 } },
-            modelsDef: [
+            models: [
               // Zipper down desync
               { type: 'Winder', x: -600, y:  +50, spd: -150, swingHz: 0.057, swingAmt: +780 },
               { type: 'Winder', x: -600, y: +150, spd: -150, swingHz: 0.061, swingAmt: +780 },
@@ -838,7 +838,7 @@ U.buildRoom({
           },
           { name: 'weaver1', type: 'MomentAhead', terrain: 'plains', dist: 750, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
-            modelsDef: [
+            models: [
               
               { type: 'Weaver', x: -210, y: +630, spd: -130, swingHz: 0, swingAmt: 0 },
               { type: 'Weaver', x: -140, y: +620, spd: -130, swingHz: 0, swingAmt: 0 },
@@ -863,14 +863,14 @@ U.buildRoom({
           },
           { name: 'furler1', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100,
             bounds: { total: { w: 480, h: 600 }, player: { x: 0, y: 0, w: 480, h: 600 } },
-            modelsDef: [
+            models: [
               { type: 'Furler', x: -120, y: +200, spd: -50, swingHz: 0.1, swingAmt: -80, shootDelayMs: 1500, bulletArgs: { spd: -300 } },
               { type: 'Furler', x: +120, y: +200, spd: -50, swingHz: 0.1, swingAmt: +80, shootDelayMs: 1500, bulletArgs: { spd: -300 } }
             ]
           },
           { name: 'bozz', type: 'MomentAhead', terrain: 'plains', dist: 8000, aheadSpd: 100,
             bounds: { total: { w: 800, h: 1000 }, player: { x: 0, y: -150, w: 800, h: 700 } },
-            modelsDef: [
+            models: [
               
               { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.06, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 4000, bulletArgs: { spd: -300, lsMs: 10000 } },
               { type: 'Furler', x: 0, y: +120, spd: -3, swingHz: 0.07, swingAmt: -380, shootDelayMs: 1200, shootDelayInitMs: 3500, bulletArgs: { spd: -300, lsMs: 10000 } },
@@ -886,7 +886,7 @@ U.buildRoom({
             ]
           },
           
-          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, modelsDef: [] }
+          { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, models: [] }
           
         ]
       }
@@ -950,7 +950,19 @@ U.buildRoom({
       },
       r: function(ud, p) { return this.v(p) || ud.entities.def(this.v(`${p}Uid`)); },
       getAgeMs: function(updData) { return updData.ms - this.v('ms'); },
-      calcState: C.noFn('calcState'), // Returns current state, and any events (e.g. births) which occurred during the time delta
+      getParent: function(ud) { return ud.level; },
+      getRelVal: C.noFn('getRelVal'), // Returns current state, and any events (e.g. births) which occurred during the time delta
+      getAbsVal: function(ud) {
+        let par = this.getParent(ud);
+        if (!par) return this.getRelVal(ud);
+        
+        let relState = this.getRelVal(ud);
+        let { x, y } = par.getAbsVal(ud);
+        
+        relState.x += x;
+        relState.y += y;
+        return relState;
+      },
       getCollideResult: C.noFn('getCollideResult'),
       getStepResult: C.noFn('getStepResult'),
       getDieResult: function(ud) {},
@@ -961,7 +973,7 @@ U.buildRoom({
       
       renderPriority: function() { return 0.5; },
       render: function(updData, draw) {
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         draw.circ(x, y, 10, { fillStyle: '#ff0000' });
       }
       
@@ -1010,7 +1022,7 @@ U.buildRoom({
         
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'aMs', 'ax', 'ay', 'nx', 'ny', 'dist', 'vel', 'acl' ].concat(...arr)),
-      calcState: function(updData, ms=updData.ms) {
+      getRelVal: function(updData, ms=updData.ms) {
         
         let aMs = this.v('aMs');
         let ax = this.v('ax'); let ay = this.v('ay');
@@ -1033,7 +1045,7 @@ U.buildRoom({
       },
       getAgeMs: C.noFn('getAgeMs'),
       setMoveAnchor: function(updData) {
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getRelVal(updData);
         this.v('aMs', updData.ms); this.v('ax', x); this.v('ay', y);
       },
       setMoveSpd: function(updData, vel, acl) {
@@ -1064,7 +1076,7 @@ U.buildRoom({
       isAlive: function(ud) {
         
         let nx = this.v('nx'); let ny = this.v('ny');
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getRelVal(ud);
         let tb = ud.bounds.total;
         if (nx > 0 && x > (tb.r + 150)) return false;
         if (nx < 0 && x < (tb.l - 150)) return false;
@@ -1118,7 +1130,7 @@ U.buildRoom({
         return { fx, fy };
         
       },
-      calcState: function(ud) {
+      getRelVal: function(ud) {
         let fx = 0; let fy = 0;
         
         for (let force of this.v('forces')) {
@@ -1145,7 +1157,7 @@ U.buildRoom({
         })();
         
         if (!isDiff) return;
-        let { x, y } = insp.Physical.calcState.call(this, ud);
+        let { x, y } = insp.Physical.getRelVal.call(this, ud);
         this.setAnchor(ud, x, y);
         this.v('forces', forces);
       }
@@ -1176,7 +1188,7 @@ U.buildRoom({
         this.v('lsMs', 0);
       },
       getStepResult: function(ud) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         return { tangibility: {
           bound: { ...this.v('bound'), x, y },
           team: this.v('team'),
@@ -1199,7 +1211,7 @@ U.buildRoom({
       },
       render: function(ud, draw) {
         let bound = this.v('bound');
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         if (bound.form === 'circle') {
           draw.circ(x, y, bound.r, { fillStyle: this.v('colour') });
         } else if (bound.form === 'rect') {
@@ -1227,18 +1239,16 @@ U.buildRoom({
         });
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'invulnMark', 'name' ].concat(...arr)),
-      calcState: function(ud) {
-        let { x, y } = insp.Physical.calcState.call(this, ud);
-        
-        let pb = ud.bounds.player;
-        y += ud.bounds.total.y;
+      getRelVal: function(ud) {
+        let { x, y } = insp.Physical.getRelVal.call(this, ud);
         
         let bounded = false;
         if (!ud.outcome !== 'win') {
+          let pb = ud.bounds.player;
           if (x < pb.l) { x = pb.l; bounded = true; }
           if (x > pb.r) { x = pb.r; bounded = true; }
-          if (y < pb.b) { y = pb.b; bounded = true; }
-          if (y > pb.t) { y = pb.t; bounded = true; }
+          if (y < (pb.b - pb.y)) { y = (pb.b - pb.y); bounded = true; }
+          if (y > (pb.t - pb.y)) { y = (pb.t - pb.y); bounded = true; }
         }
         return { x, y, bounded };
       },
@@ -1260,7 +1270,7 @@ U.buildRoom({
           if (!this.winTime) this.winTime = ms;
           if (this.v('invulnMark') < ms) this.v('invulnMark', ms + 10000);
           this.setForces(updData, [ [ this.winTime, 'vel', 0, Insp.spd * 4 ] ]);
-          let { x, y } = this.calcState(updData);
+          let { x, y } = this.getAbsVal(updData);
           return { tangibility: {
             bound: { ...Insp.bound, x, y },
             team: 'ace',
@@ -1297,7 +1307,7 @@ U.buildRoom({
         
         this.setForces(updData, forces);
         
-        let { x, y, bounded } = this.calcState(updData);
+        let { x, y, bounded } = this.getAbsVal(updData);
         if (bounded) this.setAnchor(updData, x, y - updData.bounds.total.y);
         return { tangibility: {
           bound: { ...Insp.bound, x, y },
@@ -1315,7 +1325,7 @@ U.buildRoom({
         
         let size = Insp.bound.r << 1;
         let mine = this === updData.myEntity;
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         
         if (updData.ms < this.v('invulnMark')) {
           let outerStyle = mine
@@ -1346,29 +1356,6 @@ U.buildRoom({
       $w2Delay: 3500, $w2DashSpeed: 500, $w2OrbDps: 25, $w2DurationMs: 300,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceJoust' }),
-      $render: (draw, updData, args) => {
-        Insp.parents.Ace.render(draw, updData, args, Insp.imageKeep, () => {
-          let { x, y, w1Mark, w1State, w2Mark } = args;
-          
-          // Laser reload
-          let bar1H = w1Mark ? Math.min(1, (updData.ms - w1Mark) / Insp.w1Charge3Ms) * 20 : 0;
-          let [ bar1W, col ] = [
-            [ 16, 'rgba(0, 0, 0, 1)' ],         // Punished
-            [ 16, 'rgba(0, 150, 150, 0.7)' ],   // Spread shot
-            [ 8,  'rgba(0, 255, 255, 0.7)' ],   // Butterfly
-            [ 12, 'rgba(100, 255, 255, 0.8)' ]  // Laser
-          ][w1State];
-          draw.rect(x + bar1W * -0.5, y - 8, bar1W, bar1H, { fillStyle: col });
-          
-          // Flash reload
-          let msRemaining = w2Mark - updData.ms;
-          let bar2W = (msRemaining > 0)
-            ? Math.max(0, Math.min(1, (Insp.w2Delay - msRemaining) / Insp.w2Delay))
-            : 1;
-          draw.rectCen(x, y - 12, bar2W * 16, 4, { fillStyle: `rgba(0, 0, 255, ${msRemaining > 0 ? 0.4 : 1})` });
-          
-        });
-      },
       
       initProps: insp.allArr('initProps', (i, arr) => Object.assign(...arr, { w1Mark: null, w1State: 0, w2Mark: null })),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'w1Mark', 'w1State', 'w2Mark' ].concat(...arr)),
@@ -1399,7 +1386,7 @@ U.buildRoom({
             
             // Weapon 1 act 1: Spread shot
             
-            let { x, y } = this.calcState(updData);
+            let { x, y } = this.getRelVal(updData);
             let incAng = 0.018;
             let args = { owner: this, team: 'ace', ax: x, ay: y, vel: 350, dmg: 0.75, lsMs: 700, bound: { form: 'circle', r: 6 } };
             for (let ang of util.incCen(9, incAng)) updData.spawnEntity({ type: 'JoustManBullet', ...args, ang });
@@ -1456,7 +1443,7 @@ U.buildRoom({
         
         insp.Ace.render.call(this, ud, draw);
         
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         let w1Mark = this.v('w1Mark');
         let w1State = this.v('w1State');
         let w2Mark = this.v('w2Mark');
@@ -1554,7 +1541,7 @@ U.buildRoom({
           // Mark the time of the first shot in the series
           if (!this.v('w1StartMark')) this.v('w1StartMark', ms);
           
-          let { x, y } = this.calcState(updData);
+          let { x, y } = this.getRelVal(updData);
           if (!this.v('w2Mark')) {
             
             // Enforce typical rate of fire
@@ -1601,8 +1588,8 @@ U.buildRoom({
             this.v('w2EffectiveShootDuration', ms - (this.v('w1StartMark') || ms));
             
             let incAng = 0.029;
-            let { x, y } = this.calcState(updData);
-            let bulletArgs = { owner: this, team: 'ace', ax: x, ay: y, vel: 140, bound: { form: 'circle', r: 5 }, lsMs: 2500, dmg: 4 };
+            let { x, y } = this.getRelVal(updData);
+            let bulletArgs = { owner: this, team: 'ace', vel: 140, dmg: 3, bound: { form: 'circle', r: 5 }, lsMs: 2500, ax: x, ay: y };
             for (let ang of util.incCen(15, incAng)) {
               updData.spawnEntity({ type: 'MBullet', ...bulletArgs, ang: 0.5 + ang });
             }
@@ -1624,7 +1611,7 @@ U.buildRoom({
         
         insp.Ace.render.call(this, ud, draw);
         
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         let w2MsRemaining = this.v('w2ReadyMark') - ud.ms;
         let barW = Math.min(1, (Insp.w2Delay - w2MsRemaining) / Insp.w2Delay) * 16;
         draw.rectCen(x, y - 12, barW, 4, { fillStyle: (w2MsRemaining > 0) ? '#6060ff' : '#0000ff' });
@@ -1643,13 +1630,6 @@ U.buildRoom({
       $shotgunSlamDelayMult: 0.55,
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.aceSlam' }),
-      $render: (draw, updData, args) => {
-        
-        Insp.parents.Ace.render(draw, updData, args, Insp.imageKeep, () => {
-          let { x, y, w1Mark, w2Mark, w1StartMark, w2StartMark } = args;
-        });
-        
-      },
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
         let { ud: { ms }, w1Mark=ms, w1StartMark=null, w2Mark=ms, w2StartMark=null, slamSpd=Insp.slamSpd } = val;
@@ -1701,7 +1681,7 @@ U.buildRoom({
             } else if (duration >= Insp.slamCharge1Ms) {
               
               // Missile!!
-              let { x, y } = this.calcState(updData);
+              let { x, y } = this.getRelVal(updData);
               let missileArgs = {
                 owner: this, team: 'ace',
                 ax: x + (mult * 9), ay: y,
@@ -1719,7 +1699,7 @@ U.buildRoom({
             } else {
               
               // Shotgun!
-              let { x, y } = this.calcState(updData);
+              let { x, y } = this.getRelVal(updData);
               let shotgunArgs = {
                 aheadDist, ms, owner: this, team: 'ace', ax: x + mult * 7, ay: y - 7,
                 dmg: Insp.shotgunDmg, pDmg: Insp.shotgunPDmg,
@@ -1786,7 +1766,7 @@ U.buildRoom({
         this.v('effects').add({ mark: ud.ms + Insp.decampDurationMs, type: 'force', force: [ ud.ms, 'vel', Insp.decampSpd * dir, 0 ] });
         this.v('effects').add({ mark: ud.ms + Insp.decampDurationMs, type: 'spdMult', spdMult: Insp.decampSpdMult });
         
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getRelVal(ud);
         let missileArgs = { salvoLad: this, team: 'ace', ax: x, ay: y };
         ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel: 15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
         ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 60, lsMs:  700, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
@@ -1801,7 +1781,7 @@ U.buildRoom({
         this.v('effects').add({ mark: ms + Insp.diveMs, type: 'force', force: [ ms, 'acl', 150 * dir, 0, 0, 750 ] });
         this.v('effects').add({ mark: ms + Insp.diveMs,
           endFn: (i, ud) => {
-            let { x, y } = i.calcState(ud);
+            let { x, y } = i.getRelVal(ud);
             let missileArgs = { type: 'SalvoLadDumbBomb', salvoLad: i, team: 'ace', ax: x, ay: y };
             ud.spawnEntity({ ...missileArgs, ang: dir * 0.109, vel: 140, lsMs: Insp.diveBombLsMs * 1.010, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
             ud.spawnEntity({ ...missileArgs, ang: dir * 0.078, vel: 158, lsMs: Insp.diveBombLsMs * 1.000, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
@@ -1816,7 +1796,7 @@ U.buildRoom({
         let args = { owner: this, team: 'ace', w: 6, h: 16, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
         Array.fill(5, n => n).forEach(n => {
           this.v('effects').add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
-            type: 'SalvoLadMissile', ...args, ...i.calcState(ud).slice({ ax: 'x', ay: 'y' }),
+            type: 'SalvoLadMissile', ...args, ...i.getRelVal(ud).slice({ ax: 'x', ay: 'y' }),
             horzSpd: (115 + 30 * (n + 1)) * dir
           })});
         });
@@ -1831,7 +1811,7 @@ U.buildRoom({
         for (let i = 0; i < 11; i++) {
           let alt = i % 4;
           this.v('effects').add({ mark: ud.ms + 50 + i * alt * 18, endFn: (i, ud) => {
-            let { x, y } = i.calcState(ud);
+            let { x, y } = i.getRelVal(ud);
             x += 6 * alt * dir;
             y += 30 - 12 * alt
             ud.spawnEntity({ type: 'MBullet', owner: i, ...args, ax: x, ay: y });
@@ -1876,7 +1856,7 @@ U.buildRoom({
         
         insp.Ace.render.call(this, updData, draw);
         
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         let readyMark = this.v('readyMark');
         let combo = this.v('combo');
         
@@ -1923,7 +1903,7 @@ U.buildRoom({
     // Good guy util
     let JoustManBullet = U.inspire({ name: 'JoustManBullet', insps: { MBullet }, methods: (insp, Insp) => ({
       render: function(ud, draw) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         let r = this.v('bound').r;
         draw.circ(x, y, r,       { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
@@ -1939,12 +1919,12 @@ U.buildRoom({
       getCollideResult: function(ud, tail) {
         if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), this.dps * ud.spf);
       },
-      calcState: function(ud) {
-        let { x, y } = this.r(ud, 'joustMan').calcState(ud);
+      getRelVal: function(ud) {
+        let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
         return { x: x + this.v('xOff'), y: y + this.v('yOff') };
       },
       getStepResult: function(ud) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         return { tangibility: {
           bound: { form: 'circle', r: this.v('r'), x, y },
           team: this.v('team'),
@@ -1957,7 +1937,7 @@ U.buildRoom({
           && this.r(ud, 'joustMan').isAlive(ud);
       },
       render: function(ud, draw) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         let r = this.v('r');
         draw.circ(x, y, r, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.circ(x, y, r * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
@@ -1976,12 +1956,12 @@ U.buildRoom({
       getCollideResult: function(ud, tail) {
         if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), Insp.dps * ud.spf);
       },
-      calcState: function(ud) {
-        let { x, y } = this.r(ud, 'joustMan').calcState(ud);
+      getRelVal: function(ud) {
+        let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
         return { x, y: y + 8 + Insp.h * 0.5 };
       },
       getStepResult: function(ud) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         return { tangibility: {
           bound: { form: 'rect', w: Insp.w, h: Insp.h, x, y },
           team: this.v('team'),
@@ -1994,7 +1974,7 @@ U.buildRoom({
           && this.r(ud, 'joustMan').isAlive(ud);
       },
       render: function (ud, draw) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         draw.rectCen(x, y, Insp.w, Insp.h, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
         draw.rectCen(x, y, Insp.w * 0.6, Insp.h, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
       }
@@ -2018,12 +1998,12 @@ U.buildRoom({
           this.v('integrity', 0);
         }
       },
-      calcState: function(ud) {
-        let { x, y } = this.r(ud, 'slamKid').calcState(ud);
+      getRelVal: function(ud) {
+        let { x, y } = this.r(ud, 'slamKid').getRelVal(ud);
         return { x: x + this.v('xOff'), y: y + this.v('yOff') };
       },
       getStepResult: function(ud) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         return { tangibility: {
           bound: { ...Insp.bound, x, y },
           team: this.v('team'),
@@ -2039,7 +2019,7 @@ U.buildRoom({
       },
       
       render: function(ud, draw) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getAbsVal(ud);
         draw.circ(x, y, Insp.bound.r, { fillStyle: '#ff8000' });
       },
       
@@ -2057,7 +2037,7 @@ U.buildRoom({
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
       getStepResult: function(updData) {
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         return { tangibility: {
           bound: { form: 'circle', r: Insp.r, x, y },
           team: this.v('team'),
@@ -2065,7 +2045,7 @@ U.buildRoom({
         }};
       },
       getDieResult: function(ud) {
-        let { x, y } = this.calcState(ud);
+        let { x, y } = this.getRelVal(ud);
         let iy = ud.bounds.total.y;
         ud.spawnEntity({ type: 'SalvoLadKaboom', team: this.v('team'), salvoLad: this.r(ud, 'salvoLad'), ax: x, ay: y, iy, ...this.kaboomArgs });
       },
@@ -2074,16 +2054,16 @@ U.buildRoom({
     let SalvoLadKaboom = U.inspire({ name: 'SalvoLadKaboom', insps: { Entity }, methods: (insp, Insp) => ({
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
-        let { team=null, salvoLad=null, ax, ay, iy, r=0, dps=3.1, sizePerSec=30, lsMs=null } = val;
+        let { team=null, salvoLad=null, ax, ay, r=0, dps=3.1, sizePerSec=30, lsMs=null } = val;
         /// {ABOVE=
         if (lsMs === null) throw Error(`Kaboom without lsMs`);
         /// =ABOVE}
-        return Object.assign(...arr, { team, salvoLad, ax, ay, iy, r, dps, sizePerSec });
+        return Object.assign(...arr, { team, salvoLad, ax, ay, r, dps, sizePerSec });
       }),
-      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'iy', 'sizePerSec' ].concat(...arr)),
-      calcState: function(ud) {
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'sizePerSec' ].concat(...arr)),
+      getRelVal: function(ud) {
         return {
-          x: this.v('ax'), y: this.v('ay') + (ud.bounds.total.y - this.v('iy')) * 0.5,
+          x: this.v('ax'), y: this.v('ay'),
           r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001
         };
       },
@@ -2091,7 +2071,7 @@ U.buildRoom({
         if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.v('salvoLad'), this.v('dps') * ud.spf);
       },
       getStepResult: function(updData) {
-        let { x, y, r } = this.calcState(updData);
+        let { x, y, r } = this.getAbsVal(updData);
         return { tangibility: {
           bound: { form: 'circle', x, y, r },
           team: this.v('team'),
@@ -2099,7 +2079,7 @@ U.buildRoom({
         }};
       },
       render: function(ud, draw) {
-        let { x, y, r } = this.calcState(ud);
+        let { x, y, r } = this.getAbsVal(ud);
         draw.circ(x, y, r, { fillStyle: 'rgba(255, 50, 30, 0.2)', strokeStyle: '#ff8400' });
       }
       
@@ -2108,7 +2088,7 @@ U.buildRoom({
       
       initProps: insp.allArr('initProps', (i, arr, val) => Object.assign(...arr, ({ horzSpd: 0, horzMs: 0, delayMs: 0, bound: { form: 'rect', w: 3, h: 14 } }).pref(val))),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'horzSpd', 'horzMs', 'delayMs' ].concat(...arr)),
-      calcState: function(ud) {
+      getRelVal: function(ud) {
         
         let durMs = this.getAgeMs(ud);
         let x = this.v('ax');
@@ -2122,7 +2102,7 @@ U.buildRoom({
         else                x += horzSpd * horzMs * 0.001;
         
         if (durMs > horzMs + delayMs) {
-          y = insp.MBullet.calcState.call(this, ud, ud.ms - (horzMs + delayMs)).y;
+          y = insp.MBullet.getRelVal.call(this, ud, ud.ms - (horzMs + delayMs)).y;
         }
         
         return { x, y };
@@ -2150,7 +2130,7 @@ U.buildRoom({
       },
       getStepResult: function(updData) {
         
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         return {
           tangibility: {
             bound: { form: 'circle', x, y, r: 30 },
@@ -2164,7 +2144,7 @@ U.buildRoom({
       
       render: function(updData, draw) {
         
-        let { x, y, r=null } = this.calcState(updData);
+        let { x, y, r=null } = this.getAbsVal(updData);
         
         if (r === null && this.constructor.bound && this.constructor.bound.r) r = this.constructor.bound.r;
         if (r === null) r = 8;
@@ -2194,8 +2174,7 @@ U.buildRoom({
       },
       getStepResult: function(ud) {
         
-        let state = this.calcState(ud);
-        
+        let state = this.getRelVal(ud);
         
         for (let st of this.v('spawnTypes')) {
           
@@ -2229,7 +2208,7 @@ U.buildRoom({
         return Object.assign(...arr, { ax, ay, spd, delayMs, phase, swingHz, swingAmt, numSwings });
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'spd', 'delayMs', 'phase', 'swingHz', 'swingAmt' ].concat(...arr)),
-      calcState: function(ud) {
+      getRelVal: function(ud) {
         let durMs = this.getAgeMs(ud);
         let ax = this.v('ax'); let ay = this.v('ay');
         let spd = this.v('spd');
@@ -2242,12 +2221,12 @@ U.buildRoom({
           x: (durMs >= delayMs)
             ? ax + Math.sin(phase + (durMs - delayMs) * 0.002 * Math.PI * swingHz) * swingAmt
             : ax,
-          y: ay + ud.bounds.total.y + spd * durMs * 0.001
+          y: ay + spd * durMs * 0.001
         };
       },
       getMaxHp: function(ud) { return this.constructor.hp; },
       getStepResult: function(updData) {
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         return {
           tangibility: {
             bound: { ...this.constructor.bound, x, y },
@@ -2265,7 +2244,7 @@ U.buildRoom({
         if (this.v('numSwings') && ((durMs - this.delayMs) * 0.001 * this.v('swingHz') > this.v('numSwings')))
           return false;
         
-        let { y } = this.calcState(updData);
+        let { y } = this.getAbsVal(updData);
         if (this.v('spd') > 0 && y > bounds.total.t + 30) return false;
         if (this.v('spd') < 0 && y < bounds.total.b - 30) return false;
         
@@ -2274,7 +2253,7 @@ U.buildRoom({
       
       render: function(updData, draw) {
         
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getAbsVal(updData);
         let ext = this.constructor.bound.r * 2;
         draw.frame(() => {
           draw.trn(x, y);
@@ -2329,7 +2308,7 @@ U.buildRoom({
         if (ms >= this.shootMark) {
           this.shootMark += this.shootDelayMs;
           let bulletOff = Insp.bound.r * 0.5;
-          let { x, y } = this.calcState(updData);
+          let { x, y } = this.getRelVal(updData);
           updData.spawnEntity({
             type: 'SimpleBullet', ms, owner: this, x: x - bulletOff, y: y - updData.bounds.total.y,
             spd: -380, dmg: 1, w: 4, h: 20, lsMs: 3000,
@@ -2364,9 +2343,9 @@ U.buildRoom({
         return Object.assign(...arr, { initHp, minSize, hpPerSec, sizeMult, dist: null });
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'initHp', 'hpDmg', 'minSize', 'hpPerSec', 'sizeMult' ].concat(...arr)),
-      calcState: function(updData) {
+      getRelVal: function(updData) {
         
-        let { x, y } = insp.Mover.calcState.call(this, updData);
+        let { x, y } = insp.Mover.getRelVal.call(this, updData);
         let hpLost = this.v('hpDmg');
         let sizeMult = this.v('sizeMult');
         let minSize = this.v('minSize');
@@ -2379,7 +2358,7 @@ U.buildRoom({
       },
       getStepResult: function(updData) {
         
-        let { x, y, r } = this.calcState(updData);
+        let { x, y, r } = this.getAbsVal(updData);
         this.x = x; this.y = y;
         return { tangibility: {
           bound: { form: 'circle', x, y, r },
@@ -2409,7 +2388,7 @@ U.buildRoom({
       },
       
       // TODO: HEEERE! Replace "getSyncProps", "initEntity", "init",
-      // with "initProps" and "initSyncs"! Allow "calcState" to return
+      // with "initProps" and "initSyncs"! Allow "getRelVal" to return
       // relative coordinates, and a reference to the "node" the Entity
       // is considered relative to!
       initProps: insp.allArr('initProps', (i, arr, val) => {
@@ -2419,7 +2398,7 @@ U.buildRoom({
       initSyncs: insp.allArr('initSyncs', (i, arr) => [].concat(...arr)),
       getMaxHp: function() { return Insp.maxHp; },
       getStepResult: function(updData) {
-        let { x, y } = this.calcState(updData);
+        let { x, y } = this.getRelVal(updData);
         let { ms, spf } = updData;
         let birth = [];
         
@@ -2598,9 +2577,12 @@ U.buildRoom({
           outcome,
           lives, aheadSpd, x, y, tw, th, px, py, pw, ph, visiMult 
         });
+        
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'lives', 'aheadSpd', 'x', 'y', 'tw', 'th', 'px', 'py', 'pw', 'ph', 'visiMult', 'outcome' ].concat(...arr)),
       
+      getRelVal: function(ud) { return { x: this.v('x'), y: this.v('y') }; },
+      getParent: function(ud) { return null; },
       update: function(ms, spf) {
         
         let timingMs = foundation.getMs();
@@ -2777,7 +2759,7 @@ U.buildRoom({
             type: 'MomentAhead',
             name: 'outcomeWin', terrain: currentMoment && currentMoment.v('terrain'),
             dist: 10000, spd: (currentMoment ? currentMoment.spd : 100) * 2,
-            modelsDef: [],
+            models: [],
             prevMoment: currentMoment
           });
           
@@ -2872,13 +2854,14 @@ U.buildRoom({
       },
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
-        let { name, modelsDef=[], terrain=null, bounds=null, aheadSpd=100, visiMult=1 } = val;
-        return Object.assign(...arr, { name, modelsDef, terrain, bounds, aheadSpd, visiMult });
+        let { name, models=[], terrain=null, bounds=null, aheadSpd=100, visiMult=1 } = val;
+        return Object.assign(...arr, { name, models, terrain, bounds, aheadSpd, visiMult });
       }),
       initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'name', 'terrain' ].concat(...arr)),
       getMinY: C.noFn('getMinY'),
       getMaxY: C.noFn('getMaxY'),
-      calcState: function(updData) {
+      getParent: function(ud) { return null; },
+      getRelVal: function(updData) {
         let minY = this.getMinY(updData);
         let maxY = this.getMaxY(updData);
         return {
@@ -2910,18 +2893,14 @@ U.buildRoom({
         
         // Y-coordinate is relative to the top of the screen!
         let relY = updData.bounds.total.h * 0.5;
-        for (let modelDef of this.modelsDef) {
+        for (let modelDef of this.models) {
           // Make the "y" property relative to the Moment's bottom
           updData.spawnEntity({ ud: updData, ...modelDef, y: relY + modelDef.y });
         }
         
       },
-      getStepResult: function(updData) {
-        let { bounds: { total } } = updData;
-        let minY = this.getMinY(updData);
-        let maxY = this.getMaxY(updData);
-        
-        let { x, y, w, h } = this.calcState(updData);
+      getStepResult: function(ud) {
+        let { x, y, w, h } = this.getAbsVal(ud);
         return {
           tangibility: {
             bound: { form: 'rect', x, y, w, h },
@@ -3307,12 +3286,12 @@ U.buildRoom({
                   { name: 'test', type: 'MomentAhead', terrain: 'plains',
                     dist: firstMoment.bounds.total.h, spd: 200,
                     bounds: firstMoment.bounds,
-                    modelsDef: []
+                    models: []
                   },
                   { name: 'testTrn', type: 'MomentAhead', terrain: 'plainsToMeadow',
                     dist: 250, spd: 200,
                     bounds: firstMoment.bounds,
-                    modelsDef: []
+                    models: []
                   }
                 ];
                 levelDef.moments = [ ...testMoments, ...levelDef.moments.slice(ind) ];
@@ -3732,6 +3711,9 @@ U.buildRoom({
                 // Render before update; compensate for silky smoothness
                 let msExtra = foundation.getMs() - lastMs[1];
                 updData.ms = lastMs[0] + msExtra;
+                
+                // Spoof the level as having inched forward a tiny bit
+                level.val.y += level.val.aheadSpd * msExtra * 0.001;
                 
                 // Extrapolate aheadDist
                 let addY = level.val.aheadSpd * msExtra * 0.001;
