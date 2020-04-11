@@ -369,7 +369,7 @@ U.buildRoom({
         })();
         
         if (!isDiff) return;
-        let { x, y } = insp.Physical.getRelVal.call(this, ud);
+        let { x, y } = this.getRelVal(ud); //insp.Physical.getRelVal.call(this, ud);
         this.setAnchor(ud, x, y);
         this.v('forces', forces);
       }
@@ -560,6 +560,7 @@ U.buildRoom({
       }
       
     })});
+    
     let JoustMan = U.inspire({ name: 'JoustMan', insps: { Ace }, methods: (insp, Insp) => ({
       
       $w1ChargePunishSlow: 0.4, $w1ChargePunishMs: 2000,
@@ -642,11 +643,12 @@ U.buildRoom({
           this.v('effects').add({ mark: ms + 250, type: 'force', force: [ ms, 'vel', Insp.w2DashSpeed * dir, 0 ] });
           this.v('effects').add({ mark: ms + 270, type: 'spdMult', spdMult: 0 });
           
-          let args = { joustMan: this, team: 'ace', lsMs: Insp.w2DurationMs, yOff: 0, r: 9, dps: Insp.w2OrbDps };
-          for (let i = 0; i < 4; i++)
-            ud.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: -dir * (i + 1) * 30 });
+          ud.spawnEntity({ type: 'JoustManLaserHorz', joustMan: this, team: 'ace', lsMs: Insp.w2DurationMs, r: 9, dir });
           
-          ud.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: 0, yOff: 0, r: 20 });
+          //for (let i = 0; i < 4; i++)
+          //  ud.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: -dir * (i + 1) * 30 });
+          //
+          //ud.spawnEntity({ type: 'JoustManLaserSphere', ...args, xOff: 0, yOff: 0, r: 20 });
           
         }
         
@@ -980,9 +982,9 @@ U.buildRoom({
         
         let { x, y } = this.getRelVal(ud);
         let missileArgs = { salvoLad: this, team: 'ace', ax: x, ay: y };
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel: 15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 60, lsMs:  700, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
-        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 - dir * 0.005, vel: 70, lsMs: 1050, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.000, vel:  15, lsMs:  400, kaboomArgs: { dps: 4.75, lsMs: 1900 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 + dir * 0.005, vel: 120, lsMs:  700, kaboomArgs: { dps: 4.75, lsMs: 2300 } });
+        ud.spawnEntity({ type: 'SalvoLadDumbBomb', ...missileArgs, ang: 0.5 - dir * 0.005, vel: 150, lsMs: 1050, kaboomArgs: { dps: 4.75, lsMs: 2150 } });
         
         return { delayMs: Insp.decampDelayMs };
         
@@ -1005,7 +1007,7 @@ U.buildRoom({
       },
       comboMissiles: function(dir, ud) {
         
-        let args = { owner: this, team: 'ace', w: 6, h: 16, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
+        let args = { owner: this, team: 'ace', w: 6, h: 20, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
         Array.fill(5, n => n).forEach(n => {
           this.v('effects').add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
             type: 'SalvoLadMissile', ...args, ...i.getRelVal(ud).slice({ ax: 'x', ay: 'y' }),
@@ -1192,6 +1194,44 @@ U.buildRoom({
       }
       
     })});
+    let JoustManLaserHorz = U.inspire({ name: 'JoustManLaserHorz', insps: { Entity }, methods: (insp, Insp) => ({
+      
+      $dps: 30, $w: 125, $h: 12,
+      
+      initProps: insp.allArr('initProps', (i, arr, val) => {
+        let { joustMan=null, joustManUid=joustMan.uid, team, dir } = val;
+        return Object.assign(...arr, { joustMan, joustManUid, team, dir });
+      }),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'joustManUid', 'dir' ].concat(...arr)),
+      getCollideResult: function(ud, tail) {
+        if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.r(ud, 'joustMan'), Insp.dps * ud.spf);
+      },
+      getRelVal: function(ud) {
+        let { x, y } = this.r(ud, 'joustMan').getRelVal(ud);
+        return { x: x + Insp.w * -0.5 * this.v('dir'), y };
+      },
+      getStepResult: function(ud) {
+        let { x, y } = this.getAbsVal(ud);
+        return { tangibility: {
+          bound: { form: 'rect', w: Insp.w, h: Insp.h, x, y },
+          team: this.v('team'),
+          sides: [ 'head' ]
+        }};
+      },
+      isAlive: function(ud) {
+        return true
+          && insp.Entity.isAlive.call(this, ud)
+          && this.r(ud, 'joustMan').isAlive(ud);
+      },
+      render: function (ud, draw) {
+        let { x: jx, y: jy } = this.r(ud, 'joustMan').getAbsVal(ud);
+        let { x, y } = this.getAbsVal(ud);
+        draw.circ(jx, jy, 20, { fillStyle: 'rgba(0, 255, 255, 0.5)' });
+        draw.rectCen(x, y, Insp.w, Insp.h, { fillStyle: 'rgba(0, 255, 255, 0.65)' });
+        draw.rectCen(x, y, Insp.w, Insp.h * 0.6, { fillStyle: 'rgba(255, 255, 255, 0.4)' });
+      }
+      
+    })});
     let SlamKidSlammer = U.inspire({ name: 'SlamKidSlammer', insps: { Entity }, methods: (insp, Insp) => ({
       
       $bound: { form: 'circle', r: 7 }, $dmg: 1.4,
@@ -1263,26 +1303,22 @@ U.buildRoom({
       },
       isAlive: insp.Entity.isAlive
     })});
-    let SalvoLadKaboom = U.inspire({ name: 'SalvoLadKaboom', insps: { Entity }, methods: (insp, Insp) => ({
+    let SalvoLadKaboom = U.inspire({ name: 'SalvoLadKaboom', insps: { Entity, Physical }, methods: (insp, Insp) => ({
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
-        let { team=null, salvoLad=null, ax, ay, r=0, dps=3.1, sizePerSec=30, lsMs=null } = val;
-        /// {ABOVE=
-        if (lsMs === null) throw Error(`Kaboom without lsMs`);
-        /// =ABOVE}
-        return Object.assign(...arr, { team, salvoLad, ax, ay, r, dps, sizePerSec });
+        let { team=null, salvoLad=null, r=0, dps=3.1, sizePerSec=30 } = val;
+        return Object.assign(...arr, { team, salvoLad, r, dps, sizePerSec });
       }),
-      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'ax', 'ay', 'sizePerSec' ].concat(...arr)),
+      initSyncs: insp.allArr('initSyncs', (i, arr) => [ 'sizePerSec' ].concat(...arr)),
       getRelVal: function(ud) {
-        return {
-          x: this.v('ax'), y: this.v('ay'),
-          r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001
-        };
+        let { x, y } = insp.Physical.getRelVal.call(this, ud);
+        return { x, y, r: this.v('sizePerSec') * this.getAgeMs(ud) * 0.001 };
       },
       getCollideResult: function(ud, tail) {
         if (U.isInspiredBy(tail, Mortal)) tail.takeDamage(ud, this.v('salvoLad'), this.v('dps') * ud.spf);
       },
       getStepResult: function(ud) {
+        this.setForces(ud, [ [ this.v('ms'), 'vel', 0, ud.level.v('aheadSpd') * -0.5 ] ]);
         let { x, y, r } = this.getAbsVal(ud);
         return { tangibility: {
           bound: { form: 'circle', x, y, r },
@@ -1480,9 +1516,6 @@ U.buildRoom({
       
       $bound: { form: 'circle', r: 34 }, $hp: 8,
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyWeaver' }),
-      $render: (draw, ud, vals) => {
-        Insp.parents.Winder.render(draw, ud, { imageKeep: Insp.imageKeep, ext: Insp.bound.r << 1, ...vals });
-      },
       
     })});
     let Furler = U.inspire({ name: 'Furler', insps: { Winder, Spawner }, methods: (insp, Insp) => ({
@@ -1541,14 +1574,6 @@ U.buildRoom({
     let Drifter = U.inspire({ name: 'Drifter', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
       
       $imageKeep: foundation.getKeep('urlResource', { path: 'fly.sprite.enemyDrifter' }),
-      $render: (draw, ud, { x, y, vy, r }) => {
-        
-        Insp.parents.Enemy.render(draw, ud, { imageKeep: Insp.imageKeep, x, y,
-          w: r * 2,
-          rot: (vy <= 0) ? Math.PI : 0
-        });
-        
-      },
       
       initProps: insp.allArr('initProps', (i, arr, val) => {
         let { initHp=2, minSize=16, hpPerSec=1.33, sizeMult=1.75 } = val;
@@ -1571,7 +1596,6 @@ U.buildRoom({
       getStepResult: function(ud) {
         
         let { x, y, r } = this.getAbsVal(ud);
-        this.x = x; this.y = y;
         return { tangibility: {
           bound: { form: 'circle', x, y, r },
           team: 'enemy',
@@ -1585,7 +1609,14 @@ U.buildRoom({
           && insp.Mover.isAlive.call(this, ud);
       },
       
-      render: insp.Enemy.render
+      render: function(ud, draw) {
+        let { x, y, r } = this.getAbsVal(ud);
+        draw.frame(() => {
+          draw.trn(x, y);
+          draw.rot((this.v('ny') < 0) ? Math.PI : 0);
+          draw.imageCen(this.constructor.imageKeep, 0, 0, r * 2, r * 2);
+        });
+      }
       
     })});
     let Wanderer = U.inspire({ name: 'Wanderer', insps: { Enemy, Mover }, methods: (insp, Insp) => ({
@@ -1751,23 +1782,29 @@ U.buildRoom({
       $getLevelBounds: level => {
         
         // Total bound values
-        let val = level.val;
-        let thw = val.tw * 0.5; let tl = val.x - thw; let tr = val.x + thw;
-        let thh = val.th * 0.5; let tb = val.y - thh; let tt = val.y + thh;
+        let x = level.v('x');
+        let y = level.v('y');
+        let px = level.v('px');
+        let py = level.v('py');
+        let pw = level.v('pw');
+        let ph = level.v('ph');
+        let tw = level.v('tw');
+        let th = level.v('th');
+        let thw = tw * 0.5; let tl = x - thw; let tr = x + thw;
+        let thh = th * 0.5; let tb = y - thh; let tt = y + thh;
         
         // Player bound values
-        let px = val.x + val.px;
-        let py = val.y + val.py;
-        let phw = val.pw * 0.5; let pl = px - phw; let pr = px + phw;
-        let phh = val.ph * 0.5; let pb = py - phh; let pt = py + phh;
+        px += x; py += y;
+        let phw = pw * 0.5; let pl = px - phw; let pr = px + phw;
+        let phh = ph * 0.5; let pb = py - phh; let pt = py + phh;
         
         return {
           total: { form: 'rect',
-            x: val.x, y: val.y, w: val.tw, h: val.th,
+            x, y, w: tw, h: th,
             l: tl, r: tr, b: tb, t: tt
           },
           player: { form: 'rect',
-            x: px, y: py, w: val.pw, h: val.ph,
+            x: px, y: py, w: pw, h: ph,
             l: pl, r: pr, b: pb, t: pt
           }
         };
@@ -1985,6 +2022,7 @@ U.buildRoom({
           // Mark that victory has occurred
           this.v('outcome', 'win');
           this.v('resolveTimeout', setTimeout(() => {
+            
             // Transfer Model stats to fly.player Records
             for (let gp of levelPlayers) {
               for (let gpe of gp.relNozz('fly.levelPlayerEntity').set) {
@@ -2002,6 +2040,7 @@ U.buildRoom({
             
             // Dry the fly.level Record
             this.dry();
+            
           }, 3000));
           
         }
@@ -2197,7 +2236,7 @@ U.buildRoom({
     // Move whatever possible from MomentAhead into Moment, then fill out MomentTargetType
     
     return {
-      JoustMan, JoustManBullet, JoustManLaserSphere, JoustManLaserVert,
+      JoustMan, JoustManBullet, JoustManLaserSphere, JoustManLaserVert, JoustManLaserHorz,
       GunGirl,
       SlamKid, SlamKidSlammer,
       SalvoLad, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile,
@@ -2207,15 +2246,6 @@ U.buildRoom({
       Moment,
       MomentAhead
     };
-    
-    let mdlClasses = {};
-    mdlClasses.gain({ JoustMan, GunGirl, SlamKid, SalvoLad });
-    mdlClasses.gain({ JoustManBullet, JoustManLaserSphere, JoustManLaserVert, SlamKidSlammer, SalvoLadDumbBomb, SalvoLadKaboom, SalvoLadMissile });
-    mdlClasses.gain({ Winder, Weaver, Furler, WinderMom, WandererMom, Drifter, Wanderer });
-    mdlClasses.gain({ MBullet });
-    mdlClasses.gain({ Level, Moment, MomentAhead });
-    
-    return mdlClasses;
     
   }
 });

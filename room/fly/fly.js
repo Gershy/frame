@@ -109,9 +109,9 @@ U.buildRoom({
     let initialAheadSpd = 100;
     let testAces = [ 'JoustMan', 'GunGirl', 'SlamKid', 'SalvoLad' ];
     let testing = {
-      lives: 10,
-      levelName: 'impendingFields',
-      momentName: 'scout1',
+      lives: 10000,
+      levelName: 'imposingFields',
+      momentName: 'practice1',
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
@@ -435,7 +435,7 @@ U.buildRoom({
                 id: 'TEST', allReadyMs: null,
                 level: getLevelData(levelName)
               });
-              testLevel = flyHut.createRec('fly.level', [ fly, testLobby ], { ud: { ms }, levelDef, flyHut });
+              testLevel = flyHut.createRec('fly.level', [ fly, testLobby ], { ud: { ms }, levelDef, flyHut, lives: testing.lives });
               
             }
             
@@ -829,22 +829,21 @@ U.buildRoom({
             let pixelDims = { w: 800, h: 1000, hw: 400, hh: 500 };
             let fadeXPanVal = util.fadeVal(0, 0.19);
             let fadeYPanVal = util.fadeVal(0, 0.19);
-            let lastMs = [ level.val.ms, foundation.getMs() ];
+            console.log(level);
+            let lastMs = [ level.v('ms'), foundation.getMs(), level.v('y') ];
             let doDraw = () => draw.initFrameCen('rgba(220, 220, 255, 1)', () => {
-              
-              let bounds = models.Level.getLevelBounds(level);
-              let { total: tb, player: pb } = bounds;
               
               let ud = {
                 ms: level.val.ms,
-                spf: (level.val.ms - lastMs[0]) * 0.001,
+                spf: (level.v('ms') - lastMs[0]) * 0.001,
                 outcome: level.v('outcome'),
                 level,
                 myEntity,
                 entities: entities.toObj(r => [ r.uid, r ]),
                 createRec: level.flyHut.createRec.bind(this, flyHut),
-                bounds
+                bounds: models.Level.getLevelBounds(level)
               };
+              
               if (ud.ms === lastMs[0]) {
                 
                 // Render before update; compensate for silky smoothness
@@ -852,24 +851,20 @@ U.buildRoom({
                 ud.ms = lastMs[0] + msExtra;
                 
                 // Spoof the level as having inched forward a tiny bit
-                level.val.y += level.val.aheadSpd * msExtra * 0.001;
+                let addY = level.v('aheadSpd') * msExtra * 0.001;
                 
                 // Extrapolate aheadDist
-                let addY = level.val.aheadSpd * msExtra * 0.001;
-                ud.bounds.total.y += addY;
-                ud.bounds.total.t += addY;
-                ud.bounds.total.b += addY;
-                ud.bounds.player.y += addY;
-                ud.bounds.player.t += addY;
-                ud.bounds.player.b += addY;
+                level.v('y', lastMs[2] + addY);
+                ud.bounds = models.Level.getLevelBounds(level);
                 
               } else {
                 
                 // Remember the timing of this latest frame
-                lastMs = [ ud.ms, foundation.getMs() ];
+                lastMs = [ ud.ms, foundation.getMs(), level.v('y') ];
                 
               }
               
+              let { total: tb, player: pb } = ud.bounds;
               let [ mySprite=null ] = myEntity.relNozz('fly.sprite').set;
               
               let visiMult = Math.min(tb.w / pixelDims.w, tb.h / pixelDims.h) * level.val.visiMult;
@@ -892,7 +887,7 @@ U.buildRoom({
                 let maxFocusY = tb.h * 0.5 - seeDistY;
                 desiredTrn = { x: maxFocusX * xAmt, y: maxFocusY * yAmt };
                 
-                bounds.visible = {
+                ud.bounds.visible = {
                   form: 'rect',
                   x: desiredTrn.x, y: desiredTrn.y,
                   w: seeDistX * 2, h: seeDistY * 2,
@@ -902,7 +897,7 @@ U.buildRoom({
                 
               } else {
                 
-                bounds.visible = bounds.total;
+                ud.bounds.visible = ud.bounds.total;
                 
               }
               

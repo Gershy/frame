@@ -529,18 +529,17 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
             { type: 'Weaver', x: 0, y: +800, spd: -90, delayMs: 1200, swingHz: 0.100, swingAmt: +195 },
             { type: 'Weaver', x: 0, y: +850, spd: -90, delayMs: 1200, swingHz: 0.105, swingAmt: +195 },
             
-            { type: 'Drifter', x: 0, y: +300, tx: 0, ty: 1, vel: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-            
+            { type: 'Drifter', x: 0, y: +300, tx: 0, ty: -1, vel: 50, hp: 2, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
             { type: 'Furler', x: 0, y: +900, spd: -90, delayMs: 1200, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, shootProps: { vel: 300, lsMs: 6000 } }
           ]
         },
         { name: 'snake3', type: 'MomentAhead', terrain: 'plains', dist: 2000, aheadSpd: 100,
           models: [
             
-            { type: 'Drifter', x: -150, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-            { type: 'Drifter', x:  -50, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-            { type: 'Drifter', x:  +50, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
-            { type: 'Drifter', x: +150, y: +100, tx: 0, ty: +1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+            { type: 'Drifter', x: -150, y: +100, tx: 0, ty: -1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+            { type: 'Drifter', x:  -50, y: +100, tx: 0, ty: -1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+            { type: 'Drifter', x:  +50, y: +100, tx: 0, ty: -1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+            { type: 'Drifter', x: +150, y: +100, tx: 0, ty: -1, vel: 50, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
             
             { type: 'Weaver', x: 0, y:  +300, spd: -90, delayMs: 1500, swingHz: 0.030, swingAmt: +195 },
             { type: 'Weaver', x: 0, y:  +350, spd: -90, delayMs: 1500, swingHz: 0.035, swingAmt: +195 },
@@ -560,6 +559,7 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
             { type: 'Weaver', x: 0, y: +1050, spd: -90, delayMs: 1500, swingHz: 0.105, swingAmt: +195 },
             
             { type: 'Furler', x: 0, y: +1100, spd: -90, delayMs: 1500, swingHz: 0.110, swingAmt: +195, shootDelayMs: 1400, shootProps: { vel: 300, lsMs: 6000 } }
+            
           ]
         }
       ]
@@ -585,6 +585,156 @@ U.buildRoom({ name: 'flyLevels', innerRooms: [], build: () => {
           models: []
         },
         { name: 'drifter1', type: 'MomentAhead', terrain: 'meadow', dist: 500, aheadSpd: 100, models: [
+          { type: 'Winder',  x: -60, y: 50, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x:   0, y: 30, vel: 50, tx: 0, ty: -1, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x: +60, y: 50, spd: -50, swingAmt: 0 }
+        ]},
+        { name: 'drifter2', type: 'MomentAhead', terrain: 'meadow', dist: 750, aheadSpd: 100, models: [
+          { type: 'Winder',  x: -60, y: 50, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x:   0, y: 30, vel: 50, tx: 0, ty: -1, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x: +60, y: 50, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder', x: -500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.1, swingAmt: +450 },
+          { type: 'Winder', x: +500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.1, swingAmt: -450 }
+        ]},
+        { name: 'drifter3', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100, models: [
+          { type: 'Winder',  x: -60, y: +50, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x:   0, y: +30, vel: 50,tx: 0, ty: -1, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x: +60, y: +50, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder',  x: -200, y: +130, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x: -140, y: +110, vel: 50, tx: 0, ty: -1, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x:  -80, y: +130, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder',  x: +200, y: +130, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x: +140, y: +110, vel: 50, tx: 0, ty: -1, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x:  +80, y: +130, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder', x: -500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.07, swingAmt: +450 },
+          { type: 'Winder', x: -500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.08, swingAmt: +450 },
+          { type: 'Winder', x: +500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.08, swingAmt: -450 },
+          { type: 'Winder', x: +500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.07, swingAmt: -450 }
+        ]},
+        { name: 'drifter4', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100, models: [
+          
+          { type: 'Weaver',  x: -60, y: +50, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x:   0, y: +30, vel: 50, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Weaver',  x: +60, y: +50, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder',  x: -200, y: +130, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x: -140, y: +110, vel: 50, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x:  -80, y: +130, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder',  x: +200, y: +130, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x: +140, y: +110, vel: 50, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Winder',  x:  +80, y: +130, spd: -50, swingAmt: 0 },
+          
+          { type: 'Winder', x: -500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.07, swingAmt: +450 },
+          { type: 'Winder', x: -500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.08, swingAmt: +450 },
+          { type: 'Winder', x: +500, y: +700, spd: -166, delayMs: 5000, swingHz: 0.08, swingAmt: -450 },
+          { type: 'Winder', x: +500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.07, swingAmt: -450 }
+          
+        ]},
+        { name: 'drifter5', type: 'MomentAhead', terrain: 'meadow', dist: 1000, aheadSpd: 100, models: [
+          
+          { type: 'Furler',  x: -140, y: +70, spd: -50, swingAmt: 0, shootDelayMs: 1500, shootProps: { vel: 300, lsMs: 3000 } },
+          { type: 'Weaver',  x:  -70, y: +50, spd: -50, swingAmt: 0 },
+          { type: 'Drifter', x:    0, y: +30, vel:  50, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Weaver',  x:  +70, y: +50, spd: -50, swingAmt: 0 },
+          { type: 'Furler',  x: +140, y: +70, spd: -50, swingAmt: 0, shootDelayMs: 1500, shootProps: { vel: 300, lsMs: 3000 } },
+          
+          { type: 'Winder', x: -500, y: +850, spd: -166, delayMs: 5000, swingHz: 0.065, swingAmt: +450 },
+          { type: 'Winder', x: -500, y: +800, spd: -166, delayMs: 5000, swingHz: 0.070, swingAmt: +450 },
+          { type: 'Winder', x: -500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.080, swingAmt: +450 },
+          { type: 'Winder', x: +500, y: +750, spd: -166, delayMs: 5000, swingHz: 0.080, swingAmt: -450 },
+          { type: 'Winder', x: +500, y: +800, spd: -166, delayMs: 5000, swingHz: 0.070, swingAmt: -450 },
+          { type: 'Winder', x: +500, y: +850, spd: -166, delayMs: 5000, swingHz: 0.065, swingAmt: -450 }
+          
+        ]},
+        { name: 'wall1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.05, swingAmt: 200, shootDelayMs: 1200, shootProps: { vel: 300, lsMs: 3000 } },
+          
+          { type: 'Drifter', x: -200, y: +50, vel: 48, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -120, y: +50, vel: 44, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  -40, y: +50, vel: 40, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  +40, y: +50, vel: 40, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +120, y: +50, vel: 44, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +200, y: +50, vel: 48, ang: 0.5, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
+          
+        ]},
+        { name: 'wall2', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: 200, shootDelayMs: 1000, shootProps: { vel: 300, lsMs: 3000 } },
+          
+          { type: 'Drifter', x: -200, y: +50, vel: 48, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -120, y: +50, vel: 44, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  -40, y: +50, vel: 40, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  +40, y: +50, vel: 40, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +120, y: +50, vel: 44, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +200, y: +50, vel: 48, ang: 0.5, hp: 5, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Winder', x: -150, y: -600, spd: +15, swingAmt: 0 },
+          { type: 'Winder', x:    0, y: -600, spd: +15, swingAmt: 0 },
+          { type: 'Winder', x: +150, y: -600, spd: +15, swingAmt: 0 }
+          
+        ]},
+        { name: 'wall3', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: +200, shootDelayMs: 800, shootProps: { vel: 300, lsMs: 3000 } },
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: -200, shootDelayMs: 800, shootProps: { vel: 300, lsMs: 3000 } },
+          
+          { type: 'Drifter', x: -200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  -40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  +40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Winder', x: -100, y: -600, spd: +15, swingAmt: -100, swingHz: 0.05 },
+          { type: 'Winder', x:    0, y: -600, spd: +15, swingAmt:  100, swingHz: 0.00 },
+          { type: 'Winder', x: +100, y: -600, spd: +15, swingAmt: +100, swingHz: 0.05 }
+          
+        ]},
+        { name: 'wall4', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: +200, shootDelayMs: 800, shootProps: { vel: 300, lsMs: 3000 } },
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: -200, shootDelayMs: 800, shootProps: { vel: 300, lsMs: 3000 } },
+          
+          { type: 'Drifter', x: -200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  -40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  +40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Winder', x: -100, y: -600, spd: +15, swingAmt: -100, swingHz: 0.12 },
+          { type: 'Winder', x:    0, y: -600, spd: +15, swingAmt:  100, swingHz: 0.00 },
+          { type: 'Winder', x: +100, y: -600, spd: +15, swingAmt: +100, swingHz: 0.12 }
+          
+        ]},
+        { name: 'wall5', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Drifter', x: -200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  -40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x:  +40, y: +50, vel: 40, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +120, y: +50, vel: 44, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +200, y: +50, vel: 48, ang: 0.5, hp: 6, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: +200, shootDelayMs: 700, shootProps: { vel: 300, lsMs: 3000 } },
+          { type: 'Furler', x: 0, y: +100, spd: -40, swingHz: 0.08, swingAmt: -200, shootDelayMs: 700, shootProps: { vel: 300, lsMs: 3000 } }
+          
+        ]},
+        { name: 'crush1', type: 'MomentAhead', terrain: 'meadow', dist: 1500, aheadSpd: 100, models: [
+          
+          { type: 'Drifter', x: -300, y: -50, vel: 120, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  80, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: -300, y: -50, vel:  40, ang: 0.5 - 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          
+          { type: 'Drifter', x: +300, y: -50, vel: 120, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  80, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 },
+          { type: 'Drifter', x: +300, y: -50, vel:  40, ang: 0.5 + 0.125, hp: 4, hpPerSec: 1.33, minSize: 16, sizeMult: 2 }
           
         ]},
         { name: 'final', type: 'MomentAhead', terrain: 'plains', dist: 1000, aheadSpd: 100, models: [
