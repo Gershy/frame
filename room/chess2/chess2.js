@@ -152,7 +152,7 @@ U.buildRoom({
       /// {ABOVE=
       keep = foundation.getKeep('fileSystem', [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ]);
       /// =ABOVE} {BELOW=
-      keep = foundation.getKeep('urlResource', { path: `/${key}` });
+      keep = foundation.getKeep('urlResource', { path: key });
       /// =BELOW}
       chess2Keeps[key] = keep;
     }}
@@ -355,7 +355,7 @@ U.buildRoom({
         
         // Get all match pieces...
         let matchPieceSet = match.relRecs('c2.matchPiece');
-        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.members['c2.piece']);
+        let pieces = matchPieceSet.toArr(matchPiece => matchPiece.mems['c2.piece']);
         
         // All pieces refresh by 1 turn
         for (let piece of pieces) if (piece.val.wait) piece.modVal(v => (v.wait--, v));
@@ -479,7 +479,7 @@ U.buildRoom({
         }}
         
         // Manage Huts
-        dep.scp(c2Hut, 'lands.kidHut/par', ({ members: { kid: hut } }, dep) => { // Note we already have reference to `hut`!
+        dep.scp(c2Hut, 'lands.kidHut/par', ({ mems: { kid: hut } }, dep) => { // Note we already have reference to `hut`!
           
           let kidHutDep = dep;
           
@@ -570,7 +570,7 @@ U.buildRoom({
         dep.scp(chess2, 'c2.chess2Player', (chess2Player, dep) => {
           
           let { value: term } = dep(termBank.checkout());
-          chess2Player.members['c2.player'].modVal(v => v.gain({ term }));
+          chess2Player.mems['c2.player'].modVal(v => v.gain({ term }));
           
         });
         
@@ -730,7 +730,7 @@ U.buildRoom({
         });
         dep.scp(myHutPlayerNozz, (hutPlayer, dep) => {
           
-          let player = hutPlayer.members['c2.player'];
+          let player = hutPlayer.mems['c2.player'];
           
           let loggedInReal = dep(mainReal.addReal('c2.loggedIn'));
           
@@ -745,7 +745,7 @@ U.buildRoom({
           });
           dep.scp(myMatchPlayerNozz, (myMatchPlayer, dep) => {
             
-            let match = myMatchPlayer.members['c2.match'];
+            let match = myMatchPlayer.mems['c2.match'];
             let myColour = myMatchPlayer.val.colour;
             
             let gameReal = dep(loggedInReal.addReal('c2.game'));
@@ -805,7 +805,7 @@ U.buildRoom({
             
             dep.scp(match, 'c2.matchPiece', (matchPiece, dep) => {
               
-              let piece = matchPiece.members['c2.piece'];
+              let piece = matchPiece.mems['c2.piece'];
               let pieceReal = dep(boardReal.addReal('c2.piece'));
               pieceReal.setTransition([ 'x', 'y' ], 300, 'smooth');
               pieceReal.setTransition([ 'scale', 'opacity' ], 300, 'steady', 300);

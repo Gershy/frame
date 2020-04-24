@@ -1079,14 +1079,10 @@ U.buildRoom({
       setLoc: function(r, x, y) { let dyn = this.getDyn(r); dyn.loc = [ x, y ]; this.updateLayout(r); },
       setRot: function(r, amt) { let dyn = this.getDyn(r); dyn.transform.rotate = amt; this.updateTransform(r); },
       setScl: function(r, w, h=w) { let dyn = this.getDyn(r); dyn.transform.scale = { w, h }; this.updateTransform(r); },
-      setImage: function(r, file, { smoothing=true, scale=1 }) {
+      setImage: function(r, file, { smoothing=true, scale=1 }={}) {
         if (file) {
           updStyle(r.techNode, 'backgroundImage', `url('${file.getUrl(foundation)}')`) ;
-          if (scale === 1) {
-            updStyle(r.techNode, 'backgroundSize', 'contain');
-          } else {
-            updStyle(r.techNode, 'backgroundSize', `${scale * 100}%`);
-          }
+          updStyle(r.techNode, 'backgroundSize', scale === 1 ? 'contain' : `${scale * 100}%`);
           updStyle(r.techNode, 'backgroundPosition', 'center');
           updStyle(r.techNode, 'backgroundRepeat', 'no-repeat');
           updStyle(r.techNode, 'imageRendering', smoothing ? null : 'pixelated');
