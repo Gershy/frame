@@ -1,7 +1,7 @@
 // The "clearing" is javascript-level bootstrapping; top-level configuration
 // and extension for increased functionality and consistency
 
-Error.stackTraceLimit = Infinity;
+Error.stackTraceLimit = 200;
 
 let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
@@ -16,6 +16,7 @@ let C = global.C = {
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
+protoDef(Object, 'each', function(fn) { for (let k in this) fn(this[k], k); });
 protoDef(Object, 'map', function(fn) {
   let ret = Object.assign({}, this);
   for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
@@ -39,7 +40,7 @@ protoDef(Object, 'slice', function(...props) {
   }
 });
 protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
-protoDef(Object, 'find', function(f) { // Returns [ VAL, KEY ]
+protoDef(Object, 'find', function(f) { // Iterates [ VAL, KEY ]; Returns [ VAL, KEY ]
   for (let k in this) if (f(this[k], k)) return [ this[k], k ];
   return null;
 });
@@ -53,9 +54,16 @@ protoDef(Object, 'gain', function(obj) {
 protoDef(Object, 'to', function(f) { return f(this); });
 protoDef(Object, 'pref', function(obj) { for (let k in obj) if (this.has(k)) this[k] = obj[k]; return this; });
 protoDef(Object, 'def', function(k, def=null) { return this.has(k) ? this[k] : def; });
+protoDef(Object, 'seek', function(keys) {
+  let ret = this;
+  if (U.isType(keys, String)) keys = keys.split('.');
+  for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, value: null }; ret = ret[key]; }
+  return { found: true, value: ret };
+});
 
 Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
 Array.combine = (...as) => [].concat(...as);
+protoDef(Array, 'each', Array.prototype.forEach);
 protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {
@@ -69,13 +77,15 @@ protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
   for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
+protoDef(Array, 'find', function(f) { // Iterates [ VAL, IND ]; Returns [ VAL, IND ]
   for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return [ this[i], i ];
   return null; // TODO: Return empty array instead??
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
+protoDef(Array, 'add', Array.prototype.push);
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
+protoDef(Array, 'count', function() { return this.length; });
 protoDef(Array, 'invert', function() {
   let ret = [];
   for (let i = this.length - 1; i >= 0; i--) ret.push(this[i]);
@@ -107,6 +117,7 @@ protoDef(String, 'padTail', function(amt, char=' ') {
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
 protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
+protoDef(String, 'count', function() { return this.length; });
 protoDef(String, 'polish', function(c=null) {
   if (c === null) return this.trim();
   let [ ind0, ind1 ] = [ 0, this.length - 1 ];
@@ -133,6 +144,7 @@ protoDef(SetOrig, 'find', function(f) { // Returns [ VAL, null ]
   for (let v of this) if (f(v)) return [ v ];
   return null;
 });
+protoDef(SetOrig, 'count', function() { return this.size; });
 protoDef(SetOrig, 'isEmpty', function() { return !this.size; });
 protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
 
@@ -154,6 +166,7 @@ protoDef(MapOrig, 'find', function(f) { // Returns [ VAL, KEY ]
   for (let [ k, v ] of this) if (f(v, k)) return [ v, k ];
   return null;
 });
+protoDef(MapOrig, 'count', function() { return this.size; });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
 protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 
@@ -307,23 +320,27 @@ let U = global.U = {
   },
   nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
+  multiLineString: str => {
+    
+    let initSpace = 0;
+    let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));
+    
+    // Trim any leading empty lines
+    while (lines.length && !lines[0].trim()) lines = lines.slice(1);
+    
+    // Count leading whitespace chars on first line with content
+    while (lines[0][initSpace].match(/\s/)) initSpace++;
+    
+    return lines.map(ln => ln.slice(initSpace)).join('\n');
+    
+  },
   
-  // TODO: "buildRoom" probably doesn't belong in `U`
   buildRoom: ({ name, innerRooms=[], build }) => {
     
-    if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
-    if (U.rooms.has(name)) throw Error(`Tried to overwrite room "${name}"`);
-    return U.rooms[name] = foundation => {
-      
+    global.rooms[name] = async foundation => {
       if (!foundation) throw Error('Missing "foundation" param');
-      let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
-      if (missingRoom) throw Error(`Missing innerRoom: ${missingRoom[0]}`);
-      
-      return U.rooms[name] = {
-        name,
-        built: build(foundation, ...innerRooms.map(rn => U.rooms[rn].built))
-      };
-      
+      let innerRoomContents = await Promise.allArr(innerRooms.map(rn => foundation.getRoom(rn)));
+      return build(foundation, innerRoomContents);
     };
     
   },
@@ -331,10 +348,11 @@ let U = global.U = {
   setup: {}, // Gains items used for setup
   rooms: {}
 };
+global.rooms = {};
 
 let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
   init: function(drier=null, onceDry=null) {
-    this.drier = drier; // `drier` may have "nozz", "isWet", "onceDry"
+    this.drier = drier; // { nozz: Nozz(), isWet: true, onceDry: () => {} }
     if (onceDry) this.onceDry = onceDry;
   },
   isWet: function() {
@@ -503,7 +521,7 @@ let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, 
   },
   newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
   dryContents: function() { for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry(); },
-  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
+  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); this.set = Set(); }
 })});
 let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
   init: function(drier, nozz) {
@@ -607,6 +625,30 @@ let CondNozz = U.inspire({ name: 'CondNozz', insps: { Drop, Nozz }, methods: (in
     for (let r of this.nozzRoutes) r.dry();
   }
 })});
+let Basin = U.inspire({ name: 'Basin', insps: { Drop }, methods: (insp, Insp) => ({
+  init: function(...args) {
+    insp.Drop.init.call(this, ...args);
+    this.drops = Set();
+  },
+  add: function(drop) {
+    
+    if (this.isDry()) { drop.dry(); return; }
+    
+    this.drops.add(drop);
+    try {
+      let routeDrierNozz = drop.drierNozz().route(() => {
+        this.drops.rem(drop);
+        this.drops.rem(routeDrierNozz);
+      });
+      this.drops.add(routeDrierNozz);
+    } catch(err) {
+    }
+    
+    return drop;
+    
+  },
+  onceDry: function() { for (let drop of this.drops) drop.dry(); }
+})});
 let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
   
   $addDep: (deps, dep) => { if (dep && dep.isWet()) deps.add(dep); return dep; },
@@ -647,4 +689,4 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
   }
 })});
 
-U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Scope, defDrier };
+U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, defDrier };

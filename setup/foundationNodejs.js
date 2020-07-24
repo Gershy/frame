@@ -79,9 +79,10 @@
         getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
         
       }))(require('path'), require('fs')),
+      
       $extensionContentTypeMap: {
-        html: 'text/html',
         json: 'text/json',
+        html: 'text/html',
         css: 'text/css',
         txt: 'text/plain',
         png: 'image/png',
@@ -105,7 +106,7 @@
         if (!meta) return null;
         if (meta.isDirectory()) return 'folder';
         if (meta.isFile()) return 'letter';
-        throw Error(`${this.desc()} is non-folder, non-letter`);
+        throw Error(`${this.desc()} is unknown type (non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
         let type = await this.checkType();
@@ -113,8 +114,8 @@
         return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
       },
       setContent: async function(content, ...opts) {
-        let type = await this.checkType();
         
+        let type = await this.checkType();
         if (content !== null) { // Insert new content
           
           if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
@@ -330,6 +331,13 @@
       
       insp.Foundation.init.call(this, ...args);
       
+      // As soon as we're compiled we can install useful cmp->src exception handlers
+      process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
+      process.removeAllListeners('unhandledRejection');
+      process.on('uncaughtException', err => console.error(this.formatError(err)));
+      process.on('unhandledRejection', err => console.error(this.formatError(err)));
+      
+      this.bearing = 'above';
       this.rootKeep = Insp.KeepNodejs();
       this.fsKeep = this.rootKeep.innerKeep('fileSystem');
       
@@ -492,6 +500,28 @@
       
     },
     
+    installRoom: async function(name, bearing='above') {
+      
+      console.log(`Installing ${name}!`);
+      let file = await this.getKeep('fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
+      let { lines, offsets } = await this.compileContent(bearing, file);
+      
+      return {
+        debug: { offsets },
+        content: (async () => {
+          
+          // Write, `require`, and ensure file populates `global.rooms`
+          await this.getKeep('fileSystem', [ 'mill', 'compiled', `${name}.${bearing}.js` ]).setContent(lines.join('\n'));
+          require(`../mill/compiled/${name}.${bearing}.js`);
+          if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
+          
+          return global.rooms[name](this);
+          
+        })()
+      };
+      
+    },
+    
     // Compilation
     parseDependencies: async function(roomName) {
       
@@ -563,37 +593,37 @@
       
       // Compile a single room; generate a new file for each variant
       
-      let content = await this.getKeep('fileSystem', [ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
-      let contentLines = content.split('\n');
+      let srcRaw = await this.getKeep('fileSystem', [ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
+      let srcLines = srcRaw.split('\n');
       this.compilationData[roomName] = {};
       
       for (let variantName in this.variantDefs) {
         
         let compiledFilePcs = [ 'room', roomName, `${roomName}.${variantName}.js` ];
-        let { lines: cmpLines, offsets } = this.compileContent(variantName, contentLines);
+        let { lines: cmpLines, offsets } = this.compileContent(variantName, srcLines);
         
         await this.getKeep('fileSystem', compiledFilePcs).setContent(cmpLines.join('\n'));
         
         this.compilationData[roomName][variantName] = {
-          srcNumLines: contentLines.length,
+          srcNumLines: srcLines.length,
           cmpNumLines: cmpLines.length,
           offsets
         }; // Filename, offsets, and length are kept
       }
       
     },
-    compileContent: function(variantName, contentLines) {
+    compileContent: function(variantName, srcLines) {
       
       // Compile file content; filter based on variant tags
-      
-      if (U.isType(contentLines, String)) contentLines = contentLines.split('\n');
+      if (U.isType(srcLines, String)) srcLines = srcLines.split('\n');
+      if (!U.isType(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.nameOf(srcLines)}`);
       let variantDef = this.variantDefs[variantName];
       
       let blocks = [];
       let curBlock = null;
       
-      for (let i = 0; i < contentLines.length; i++) {
-        let line = contentLines[i].trim();
+      for (let i = 0; i < srcLines.length; i++) {
+        let line = srcLines[i].trim();
         
         if (curBlock) {
           if (line.has(`=${curBlock.type.upper()}}`)) {
@@ -616,8 +646,8 @@
       let nextBlockInd = 0;
       let filteredLines = [];
       
-      for (let i = 0; i < contentLines.length; i++) {
-        let rawLine = contentLines[i];
+      for (let i = 0; i < srcLines.length; i++) {
+        let rawLine = srcLines[i];
         let line = rawLine.trim();
         
         if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
@@ -656,6 +686,7 @@
       return { lines: filteredLines, offsets };
     },
     mapLineToSource: function(fileName, lineInd) {
+      
       // For a compiled file and line number, return the corresponding line number
       // in the source
       
@@ -685,72 +716,21 @@
       }
       
       return { roomName, srcLineInd };
+      
     },
-    formatError: function(err) {
-      // Form a pretty representation of an error. Remove noise from filepaths
-      // and map line indices from compiled->source.
+    parseErrorLine: function(line) {
       
-      let [ msg, type, stack ] = [ err.message, err.constructor.name, err.stack ];
+      // The codepoint filename must not contain round/square brackets or spaces
+      let [ path, lineInd, charInd ] = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/).slice(1);
+      let [ fileName ] = path.match(/([a-zA-Z0-9.]*)$/);
       
-      let rootFileUrl = this.fsKeep.getFileUrl()
+      // Skip non-hut files
+      let fileNamePcs = Insp.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
+      if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
       
-      let traceBeginSearch = `${type}: ${msg}\n`;
-      let traceInd = stack.indexOf(traceBeginSearch);
-      let traceBegins = traceInd + traceBeginSearch.length;
-      let trace = stack.substr(traceBegins);
-      
-      let lines = trace.split('\n').map(line => {
-        
-        // Note: Some lines look like
-        //    "    at Function.Module (internal/modules/cjs/loader.js:69:100)"
-        // while others are less verbose:
-        //    "    at internal/modules/cjs/loader.js:69:100"
-        
-        let origLine = line;
-        
-        try {
-          
-          // The codepoint filename must not contain round/square brackets or spaces
-          let codePointPcs = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/);
-          let [ fileName, lineInd, charInd ] = codePointPcs.slice(1);
-          
-          fileName = Insp.KeepFileSystem.fs.cmpsToFileUrl([ fileName ]);
-          if (!fileName.hasHead(rootFileUrl)) return C.skip; // Skip non-hut files
-          
-          let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
-          
-          if (mappedLineData) {
-            fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src`;
-            lineInd = mappedLineData.srcLineInd;
-          } else {
-            fileName = fileName.substr(rootFileUrl.length + 1).split(/[^a-zA-Z0-9.]/).join('/');
-          }
-          
-          return `${fileName.padTail(36)} @ ${lineInd.toString()}`;
-          
-        } catch(err) {
-          
-          return C.skip; // `TRACEERR - ${err.message.split('\n').join(' ')} - "${origLine}"`;
-          
-        }
-        
-      });
-      
-      let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
-      let preLen = err.constructor.name.length + 2; // The classname plus ": "
-      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, file, bearing, lineInd) => {
-        let mappedLineData = this.mapLineToSource(file, parseInt(lineInd, 10));
-        return mappedLineData
-          ? `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src:${mappedLineData.srcLineInd}`
-          : match;
-      }).split('\n');
-      
-      return [
-        '='.repeat(46),
-        ...moreLines.map(ln => `||  ${ln}`),
-        '||' + ' -'.repeat(22),
-        ...(lines.length ? lines : [ `Showing unformatted "${type}":`, ...trace.split('\n').map(ln => `? ${ln.trim()}`) ]).map(ln => `||  ${ln}`)
-      ].join('\n');
+      // Extract room name and bearing from filename
+      let [ roomName, bearing=null ] = fileName.split('.').slice(0, -1);
+      return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
       
     },
     getOrderedRoomNames: function() { return this.roomsInOrder; },
@@ -774,8 +754,6 @@
       // For Above the uid is hard-coded and basically arbitrary. For
       // Below the uid is an unguessable, private base62 string.
       // There are two different ways to add the AboveHut as a MemberRec
-      // of some arbitrary Rec:
-      // 1) Above-only: 
       
       if (options.has('uid')) throw Error(`Don't specify "uid"!`);
       
@@ -812,7 +790,9 @@
       
       if (!this.rootReal) {
         
-        let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'nodejs.root');
+        let realRoom = await this.getRoom('real');
+        
+        let rootReal = this.rootReal = realRoom.Real(null, 'nodejs.root');
         rootReal.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
         rootReal.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
         
@@ -837,12 +817,12 @@
         .to(arr => Array.combine(...arr))
         .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
     },
-    getJsSource: async function(type, name, bearing, ...opts) {
+    getJsSource: async function(type, name, bearing) {
+      
       if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
       let fp = (type === 'setup')
         ? [ 'setup', `${name}.js` ]
         : [ 'room', name, `${name}.${bearing}.js` ];
-      
       let srcContent = await this.getKeep('fileSystem', fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
@@ -865,6 +845,7 @@
         cmpNumLines: cmpLines.length,
         offsets
       };
+      
     },
     compactIp: function(verboseIp, verbosePort) {
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
@@ -920,23 +901,20 @@
         
         // json, html, text, savd, error
         let type = (() => {
+          if (U.isType(msg, Object) && msg.has('~contentData')) return 'cd';
           if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
-          if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
+          if (U.isType(msg, String)) return (msg.match(/^<!doctype/i)) ? 'html' : 'text';
           if (U.isInspiredBy(msg, Keep)) return 'keep';
           if (msg instanceof Error) throw msg; //return 'error';
           throw Error(`Unknown type for ${U.nameOf(msg)}`);
         })();
         
-        // TODO: This displays nice content-type-dependent information!
-        if (this.transportDebug) console.log(`??TELL ${'hutId'}:`, ({
-          text: () => ({ type: 'text', size: msg.length, val: msg }),
-          html: () => ({ type: 'html', size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
-          json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
-          keep: () => ({ type: 'keep', desc: msg.desc || null }),
-          error: () => ({ type: 'error', msg: msg.error })
-        })[type]());
-        
         return ({
+          cd: () => {
+            let type = FoundationNodejs.KeepFileSystem.extensionContentTypeMap[msg.type];
+            res.writeHead(200, { 'Content-Type': type, 'Content-Length': Buffer.byteLength(msg.content) });
+            res.end(msg.content);
+          },
           text: () => {
             res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
             res.end(msg);
@@ -1080,8 +1058,11 @@
         // Finally return all but one poll. (TODO: Can raise this if the
         // browser allows us multiple connections?)
         if (road.waitTells.isEmpty()) {
+          
           road.waitResps.push(res);
+          
         } else {
+          
           // Bundle as many waiting responses as possible into a "multi"
           // command
           // TODO: This waits for `road.waitTells[<index too big>]` to

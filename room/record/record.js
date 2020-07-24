@@ -55,16 +55,20 @@ U.buildRoom({
     let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
       init: function(name, types=RecTypes()) {
         
-        if (!name.match(/[a-z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*/))
-          throw Error(`Invalid RecType name: ${name}`);
+        if (!name.match(/^[a-z][a-zA-Z0-9]*[.][a-z][a-zA-Z0-9]*$/)) throw Error(`Invalid RecType name: ${name}`);
+        if (types.typeMap.has(name) && types.typeMap[name] === this) throw Error(`Multiple instances of type "${name}"`);
         
         this.name = name;
         this.types = types;
-        this.types.ensure(this.name, this);
+        
+        types.typeMap[name] = this;
         
         this.memberInfoNozz = TubSet(null, Nozz()); // TODO: A "TubMap" would serve this purpose better...
         this.terms = {};
         this.memberInfoNozz.route(mi => { this.terms[mi.term] = mi; });
+        this.validators = [
+          (hut, type, value) => ({ valid: false, value: null })
+        ];
         
       },
       updMems: function(recTypes) {
@@ -85,7 +89,11 @@ U.buildRoom({
         });
         
         for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
-        for (let nrt of newRecTypes) this.memberInfoNozz.nozz.drip(nrt);
+        for (let nrt of newRecTypes) {
+          
+          this.memberInfoNozz.nozz.drip(nrt);
+          
+        }
         
       }
     })});
@@ -103,10 +111,12 @@ U.buildRoom({
         this.val = val;
         this.mems = mems;
         this.relNozzes = {};
+        this.relTermNozz = TubSet(null, Nozz());
         
         // Set us up to dry if any MemberRec dries
         let dryMe = this.dry.bind(this);
-        this.memDryRoutes = Set(this.mems.toArr(m => m ? m.drierNozz() : C.skip)) . toArr(dn => dn.route(dryMe));
+        this.memDryRoutes = Set(this.mems.toArr(m => m ? m.drierNozz() : C.skip))
+          .toArr(dn => dn.route(dryMe));
         
         // Inform all MemberRecs of this GroupRec
         this.mems.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
@@ -118,7 +128,7 @@ U.buildRoom({
         for (let term in this.mems) if (term.has(termTail)) return this.mems[term];
         return null;
       },
-      relNozz: function(recType, term = null) {
+      relNozz: function(recType, term=null) {
         
         if (U.isType(recType, String)) recType = this.type.types.getType(recType);
         
@@ -145,6 +155,7 @@ U.buildRoom({
         if (!this.relNozzes.has(key)) {
           this.relNozzes[key] = TubSet(null, Nozz());
           this.relNozzes[key].desc = `RelNozz: ${this.type.name} -> ${recType.name} (${term})`;
+          this.relTermNozz.nozz.drip(key);
         }
         
         return this.relNozzes[key];
@@ -170,6 +181,7 @@ U.buildRoom({
       onceDry: function() {
         for (let memRoute of this.memDryRoutes) memRoute.dry();
         this.relNozzes = {};
+        this.relTermNozz.dry();
         this.mems = {};
       }
     })});

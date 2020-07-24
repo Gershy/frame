@@ -100,12 +100,12 @@ if (args.has('test')) {
   
 } else {
   
-  // Make the foundation
-  let { FoundationNodejs } = U.setup;
-  let foundation = FoundationNodejs(args);
-  foundation.raise(args).catch(err => {
-    console.log('FATAL ERROR:', foundation.formatError(err));
-    process.exit(1);
-  });
+  let foundation = U.setup.FoundationNodejs(args);
+  foundation.getRoom(args.settle, 'above')
+    .then(room => room.open(foundation))
+    .catch(err => {
+      console.log('FATAL ERROR:', foundation.formatError(err));
+      process.exit(1);
+    });
   
 }

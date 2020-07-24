@@ -1,7 +1,7 @@
-U.buildRoom({ name: 'term', innerRooms: [ 'chance' ], build: (foundation, chance) => {
+global.rooms.term = async foundation => {
   
   let { Drop } = U.water;
-  let { Chance } = chance;
+  let { Chance } = await foundation.getRoom('chance');
   
   let terms = [
     'academician', 'acceptor', 'ace', 'achiever', 'adept', 'adherent', 'administrator',
@@ -125,4 +125,4 @@ U.buildRoom({ name: 'term', innerRooms: [ 'chance' ], build: (foundation, chance
   
   return { terms, TermBank };
   
-}});
+};
