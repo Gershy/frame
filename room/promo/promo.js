@@ -81,30 +81,69 @@ global.rooms.promo = async foundation => {
             type: 'css',
             content: U.multiLineString(`
               html, body {
-                position: fixed; left: 0; right: 0; top: 0; bottom: 0;
+                position: absolute; left: 0; right: 0; top: 0; bottom: 0;
                 margin: 0; padding: 0;
                 font-family: monospace;
               }
               body { overflow-x: hidden; overflow-y: auto; }
+              .dry { display: none; }
               .rec {
                 position: relative;
                 padding: 10px;
                 margin-bottom: 10px;
-                background-color: rgba(0, 0, 0, 0.25);
+                box-sizing: border-box;
+                background-color: rgba(0, 0, 0, 0.15);
                 color: #ffffff;
                 font-size: 16px;
                 transition: font-size 1s 1s, margin 1s 1s, padding 1s 1s;
                 overflow: hidden;
               }
-              .rec:hover { background-color: rgba(0, 120, 0, 0.25); }
+              .rec:hover { background-color: rgba(0, 120, 0, 0.15); }
               .rec.dry {
+                display: relative;
                 opacity: 0.7;
                 pointer-events: none;
                 font-size: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
               }
               .rec > .title {}
-              .rec > .value {}
+              .rec > .value {
+                position: relative;
+                padding: 5px; margin: 4px 0;
+                box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15);
+              }
+              .rec > .value > .display { line-height: 16px; }
+              .rec > .options {}
+              .rec:hover > .value { padding: 5px; box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
               .rec > .children {}
+              .rec.rem > .rem {
+                position: absolute;
+                right: 0; top: 0; width: 10px; height: 10px;
+                background-color: red;
+              }
+              .rec.set > .value {
+                text-transform: italics;
+              }
+              .rec.set > .value > .editor {
+                position: absolute;
+                box-sizing: border-box;
+                left: 0; top: 0; width: 100%; height: 100%;
+                padding-right: 26px;
+              }
+              .rec.set > .value > .editor > .edit {
+                position: relative;
+                box-sizing: border-box;
+                left: 0; top: 0; width: 100%; height: 100%;
+                background-color: #fff;
+                border: none; outline: none !important; padding: 0 4px;
+                font-family: inherit;
+              }
+              .rec.set > .value > .editor > .submit {
+                position: absolute;
+                width: 26px; height: 100%; right: 0; top: 0;
+                background-color: #0f0;
+              }
+              
+              body > .rec { color: #000000; }
             `)
           });
           
@@ -114,25 +153,10 @@ global.rooms.promo = async foundation => {
       }
     })});
     
-    let HtmlNode = U.inspire({ name: 'HtmlNode', methods: (insp, Insp) => ({
-      init: function({ slot, layout, decals }) {
-        this.slot = slot;
-        this.layout = layout;
-        this.decals = decals;
-        this.techNode = null;
-      },
-    })});
-    
-    let Layout = U.inspire({ name: 'Layout', methods: (insp, Insp) => ({
-      init: function(params) {
-        
-      },
-      apply: function(par, child) { return C.noFn.call(this, 'apply'); }
-    })});
-    
     let Permissions = U.inspire({ name: 'Permissions', insps: { Drop }, methods: (insp, Insp) => ({
       
       $mod: (parHut, rec, value) => {
+        if (value === rec.val) return;
         parHut.tell({ command: `perm.${parHut.uid}.mod`, recUid: rec.uid, value });
       },
       $add: (parHut, rec, relName) => {
@@ -146,10 +170,16 @@ global.rooms.promo = async foundation => {
         
         this.routes = [
           parHut.roadNozz(`perm.${kidHut.uid}.mod`).route(this.attemptMod.bind(this)),
-          parHut.roadNozz(`perm.${kidHut.uid}.add`).route(this.attemptAdd.bind(this))
+          parHut.roadNozz(`perm.${kidHut.uid}.add`).route(this.attemptAdd.bind(this)),
+          parHut.roadNozz(`perm.${kidHut.uid}.rem`).route(this.attemptRem.bind(this))
         ];
       },
       followRec: function(rec, ...perms) {
+        
+        if (rec.type.name === 'perm.perm') throw Error(`Can't assign permissions on Rec of type "perm.perm"`);
+        
+        let [ permRec=null ] = rec.relRecs('perm.perm/rec?').find(perm => perm.mems.hut.uid === this.kidHut.uid) || [];
+        if (!permRec) permRec = this.parHut.createRec('perm.perm', { 'rec?': rec, hut: this.kidHut }, {});
         
         if (!this.recPerms.has(rec.uid)) this.recPerms[rec.uid] = {};
         for (let perm of perms) {
@@ -157,14 +187,21 @@ global.rooms.promo = async foundation => {
           this.recPerms[rec.uid][perm]++
         }
         
+        permRec.setVal(this.recPerms[rec.uid].map(v => !!v).gain({ get: C.skip }));
+        
         let followDrop = this.kidHut.followRec(rec);
+        let followPermDrop = this.kidHut.followRec(permRec);
+        
         return Drop(null, () => {
           
           for (let perm of perms) {
             this.recPerms[rec.uid][perm]--;
             if (this.recPerms[rec.uid][perm] === 0) delete this.recPerms[rec.uid][perm];
           }
-          if (this.recPerms[rec.uid].isEmpty()) delete this.recPerms[rec.uid];
+          if (this.recPerms[rec.uid].isEmpty()) {
+            delete this.recPerms[rec.uid];
+            permRec.dry();
+          }
           followDrop.dry();
           
         });
@@ -174,8 +211,9 @@ global.rooms.promo = async foundation => {
         
         if (!U.isType(msg, Object)) throw Error(`Invalid message`);
         if (!msg.has('recUid')) throw Error(`Missing "recUid" param`);
+        if (!msg.has('value')) throw Error(`Missing "value" param`);
         if (!this.parHut.allRecs.has(msg.recUid)) throw Error(`No Rec with uid "${msg.recUid}"`);
-        if (!this.recPerms.has(msg.recUid)) throw Error(`No permissions for rec with uid ${msg.recUid}`);
+        if (!this.recPerms.has(msg.recUid)) throw Error(`No permissions for Rec with uid ${msg.recUid}`);
         if (!this.recPerms[msg.recUid].has('set')) throw Error(`No "set" permission for rec with uid ${msg.recUid}`);
         
         this.parHut.allRecs.get(msg.recUid).setVal(msg.value);
@@ -183,27 +221,45 @@ global.rooms.promo = async foundation => {
       },
       attemptAdd: function({ road, srcHut, msg, reply }) {
         
-        console.log(`Attempted MOD from ${srcHut.uid}: ${msg.recUid} ++ ${msg.relName}`);
-        console.log('PERMS:', this.recPerms[msg.recUid]);
+        if (!U.isType(msg, Object)) throw Error(`Invalid message`);
+        if (!msg.has('recUid')) throw Error(`Missing "recUid" param`);
+        if (!msg.has('relName')) throw Error(`Missing "relName" param`);
+        if (!this.parHut.allRecs.has(msg.recUid)) throw Error(`No Rec with uid "${msg.recUid}"`);
+        if (!this.recPerms.has(msg.recUid)) throw Error(`No permissions for Rec with uid ${msg.recUid}`);
+        if (!this.recPerms[msg.recUid].has(`add:${msg.relName}`)) throw Error(`No "add:${msg.relName}" permission for rec with uid ${msg.recUid}`);
+        
+        let rec = this.parHut.allRecs.get(msg.recUid);
+        let newRec = this.parHut.createRec(msg.relName, { [rec.type.name]: rec, 'author': srcHut });
         
       },
-      onceDry: function() { for (let route of this.routes) this.route.dry(); }
+      attemptRem: function({ road, srcHut, msg, reply }) {
+        
+        if (!U.isType(msg, Object)) throw Error(`Invalid message`);
+        if (!msg.has('recUid')) throw Error(`Missing "recUid" param`);
+        if (!this.parHut.allRecs.has(msg.recUid)) throw Error(`No Rec with uid "${msg.recUid}"`);
+        if (!this.recPerms.has(msg.recUid)) throw Error(`No permissions for Rec with uid ${msg.recUid}`);
+        if (!this.recPerms[msg.recUid].has(`rem`)) throw Error(`No "rem" permission for rec with uid ${msg.recUid}`);
+        
+        this.parHut.allRecs.get(msg.recUid).dry();
+        
+      },
+      onceDry: function() { for (let route of this.routes) route.dry(); }
       
     })});
     
     let Node = U.inspire({ name: 'Node', insps: { Drop }, methods: (insp, Insp) => ({
       
-      init: function(parent, name) {
+      init: function(parent, name, elem=null) {
         
         insp.Drop.init.call(this);
         this.parent = parent;
         this.name = name;
         
         if (!parent) {
-          this.domElem = document.body;
+          this.domElem = elem || document.body;
           this.domElem.classList.add('ready');
         } else {
-          this.domElem = document.createElement('div');
+          this.domElem = elem || document.createElement('div');
           this.domElem.classList.add(this.name.replace(/[.]/g, '-'));
         }
         
@@ -219,16 +275,20 @@ global.rooms.promo = async foundation => {
       
     })});
     
-    let render = (rec, parentNode=Node(null, 'root', document.body), seen=Set()) => {
+    let render = (parHut, rec, parentNode=Node(null, 'root', document.body), seen=Set()) => {
       
-      if (seen.has(rec)) {
-        let node = Node(parentNode, rec.type.name);
-        node.domElem.innerHTML = `Circular: ${rec.type.name} (${rec.uid})`;
-        return node;
+      let basin = Basin();
+      
+      if (rec.type.name === 'perm.perm') {
+        basin.dry();
+        return basin;
       }
-      seen.add(rec);
       
-      let basin = Basin({ onceDry: () => seen.rem(rec) });
+      let circ = seen.has(rec);
+      
+      seen.add(rec);
+      basin.add(Drop(null, () => seen.rem(rec)));
+      
       let recNode = basin.add(Node(parentNode, rec.type.name));
       recNode.domElem.classList.add('rec');
       
@@ -236,19 +296,102 @@ global.rooms.promo = async foundation => {
       titleNode.domElem.innerHTML = `${rec.type.name} (${rec.uid})`;
       
       let valueNode = Node(recNode, 'value');
+      let displayNode = Node(valueNode, 'display');
       let childrenNode = Node(recNode, 'children');
       
-      basin.add(rec.route(value => {
-        valueNode.domElem.innerHTML = JSON.stringify(value);
+      // Update DOM when Rec value changes
+      basin.add(rec.route(value => displayNode.domElem.innerHTML = JSON.stringify(value)));
+      basin.add(rec.route(value => console.log('CHANGED:', value)));
+      
+      // Recursively render all children for all terms within
+      if (!circ) basin.add(rec.relTermNozz.route(relTerm => {
+        basin.add(RecScope(rec, relTerm, (childRec, dep) => dep(render(parHut, childRec, childrenNode, seen))));
       }));
       
-      rec.mems.forEach(memRec => basin.add(render(memRec, childrenNode, seen)));
+      // Make DOM changes when permissions change
+      let permDrops = {};
       
-      basin.add(rec.relTermNozz.route(relTerm => {
-        basin.add(RecScope(rec, relTerm, (childRec, dep) => {
-          dep(render(childRec, childrenNode, seen));
+      console.log(rec.relNozz('perm.perm'));
+      basin.add(RecScope(rec, 'perm.perm/rec?', (perm, dep) => {
+        
+        console.log(`${rec.type.name} has perms: ${JSON.stringify(perm.val)}`);
+        
+        dep(perm.route(perms => {
+          
+          let removedPerms = { ...permDrops };
+          for (let k in perms) {
+            
+            // Some perms look like "add:room.type"
+            let [ perm, ...params ] = k.split(':');
+            
+            // This perm isn't being removed
+            delete removedPerms[perm];
+            
+            // If the perm
+            if (permDrops.has(perm)) continue;
+            
+            permDrops[perm] = ({
+              
+              set: () => {
+                
+                recNode.domElem.classList.add('set');
+                let editorNode = null;
+                let clickToEditFn = () => {
+                  
+                  if (editorNode) return;
+                  editorNode = Node(valueNode, 'editor');
+                  let editNode = Node(editorNode, 'edit', document.createElement('input'));
+                  let submitNode = Node(editorNode, 'submit');
+                  editNode.domElem.value = rec.val;
+                  editNode.domElem.focus();
+                  
+                  let doneEditFn = evt => {
+                    if (!editorNode) return;
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    Permissions.mod(parHut, rec, editNode.domElem.value);
+                    editorNode.dry();
+                    editorNode = null;
+                  };
+                  editNode.domElem.addEventListener('input', () => {
+                    Permissions.mod(parHut, rec, editNode.domElem.value);
+                  });
+                  
+                  editNode.domElem.addEventListener('keydown', evt => evt.ctrlKey && evt.keyCode === 13 && doneEditFn(evt));
+                  submitNode.domElem.addEventListener('click', doneEditFn);
+                  
+                };
+                valueNode.domElem.addEventListener('click', clickToEditFn);
+                return Drop(null, () => {
+                  recNode.classList.remove('set');
+                  valueNode.domElem.removeEventListener('click', clickToEditFn);
+                  if (editorNode) editorNode.dry();
+                });
+                
+              },
+              add: relName => {
+                
+              },
+              rem: () => {
+                recNode.domElem.classList.add('rem');
+                let remNode = Node(recNode, 'rem');
+                return Drop(null, () => {
+                  recNode.domElem.classList.remove('rem');
+                  remNode.dry();
+                });
+              }
+              
+            })[perm](...params);
+            
+          }
+          
+          removedPerms.each(drop => drop.dry());
+          
         }));
+        
       }));
+      
+      if (circ) childrenNode.innerHTML = 'Omitting children for circular Rec';
       
       return basin;
       
@@ -285,9 +428,9 @@ global.rooms.promo = async foundation => {
       
       let anotherExample = promoHut.createRec('pmo.example', [], foundation.getMs());
       promoHut.createRec('pmo.promoExample', [ promoRec, anotherExample ]);
-      setTimeout(() => { anotherExample.dry(); }, 30000);
+      setTimeout(() => { anotherExample.dry(); }, 12000);
       
-    }, 20000);
+    }, 5000);
     
     /// =ABOVE}
     
@@ -299,20 +442,20 @@ global.rooms.promo = async foundation => {
         let kidHut = kidParHut.mems.kid;
         let perms = dep(Permissions(promoHut, kidHut));
         
-        dep(perms.followRec(promoRec, 'get', 'set'));
+        dep(perms.followRec(promoRec, 'get'));
+        dep(perms.followRec(promoRec, 'get'));
         dep.scp(promoRec, 'pmo.promoExample', (promoExample, dep) => dep(perms.followRec(promoExample, 'get', 'set')));
         
       });
       /// =ABOVE}
       
       /// {BELOW=
-      dep(spoof.render(promoRec));
+      dep(spoof.render(promoHut, promoRec));
       
-      setTimeout(() => {
-        console.log('TELL:', promoHut.uid);
-        Permissions.mod(promoHut, promoRec, 'hello');
-        //;
-      }, 2000);
+      // setTimeout(() => {
+      //   console.log('TELL:', promoHut.uid);
+      //   Permissions.mod(promoHut, promoRec, 'hello');
+      // }, 2000);
       
       /// =BELOW}
       

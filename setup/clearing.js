@@ -72,7 +72,7 @@ protoDef(Array, 'map', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
+protoDef(Array, 'toObj', function(it) { // Returns [ KEY, VAL ] pairs
   let ret = {};
   for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;

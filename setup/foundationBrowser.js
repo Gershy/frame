@@ -245,7 +245,7 @@
       let sokt = new WebSocket(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${this.getUrl({})}`);
       await Promise(r => sokt.onopen = r);
       
-      let server = TubSet({ onceDry: () => sokt.close() }, Nozz());
+      let server = TubSet({ onceDry: () => { /*sokt.close()*/ } }, Nozz());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.hear = Nozz();

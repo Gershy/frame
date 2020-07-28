@@ -80,7 +80,7 @@ U.buildRoom({
           let findMemInf = this.memberInfoNozz.set.find(mi => mi.term === term);
           let curRt = findMemInf ? findMemInf[0].recType : null;
           
-          if (findMemInf && curRt && curRt !== recType) {
+          if (findMemInf && curRt && curRt !== recType && term.slice(-1) !== '?') {
             throw Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
           }
           
@@ -130,7 +130,10 @@ U.buildRoom({
       },
       relNozz: function(recType, term=null) {
         
-        if (U.isType(recType, String)) recType = this.type.types.getType(recType);
+        if (U.isType(recType, String)) {
+          if (recType.has('/')) [ recType, term ] = recType.split('/');
+          recType = this.type.types.getType(recType);
+        }
         
         if (term === null) {
           
