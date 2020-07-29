@@ -86,7 +86,7 @@ global.rooms.promo = async foundation => {
                 font-family: monospace;
               }
               body { overflow-x: hidden; overflow-y: auto; }
-              .dry { display: none; }
+              .drying { opacity: 0.7; }
               .rec {
                 position: relative;
                 padding: 10px;
@@ -95,47 +95,41 @@ global.rooms.promo = async foundation => {
                 background-color: rgba(0, 0, 0, 0.15);
                 color: #ffffff;
                 font-size: 16px;
-                transition: font-size 1s 1s, margin 1s 1s, padding 1s 1s;
                 overflow: hidden;
+                transition: height 1000ms linear, margin-bottom 1000ms linear, padding-bottom 1000ms linear, padding-top 1000ms linear;
               }
+              .rec.dry { height: 0 !important; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
               .rec:hover { background-color: rgba(0, 120, 0, 0.15); }
-              .rec.dry {
-                display: relative;
-                opacity: 0.7;
-                pointer-events: none;
-                font-size: 0; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;
-              }
               .rec > .title {}
               .rec > .value {
                 position: relative;
-                padding: 5px; margin: 4px 0;
+                margin: 4px 0;
                 box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15);
               }
-              .rec > .value > .display { line-height: 16px; }
+              .rec > .value > .display { height: 16px; line-height: 16px; padding: 5px; }
               .rec > .options {}
-              .rec:hover > .value { padding: 5px; box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
+              .rec:hover > .value { box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
               .rec > .children {}
               .rec.rem > .rem {
                 position: absolute;
                 right: 0; top: 0; width: 10px; height: 10px;
                 background-color: red;
               }
-              .rec.set > .value {
-                text-transform: italics;
-              }
+              .rec.set > .value { cursor: pointer; }
               .rec.set > .value > .editor {
                 position: absolute;
                 box-sizing: border-box;
                 left: 0; top: 0; width: 100%; height: 100%;
                 padding-right: 26px;
               }
+              .rec.set > .value > .editor.drying { display: none; }
               .rec.set > .value > .editor > .edit {
                 position: relative;
                 box-sizing: border-box;
                 left: 0; top: 0; width: 100%; height: 100%;
                 background-color: #fff;
-                border: none; outline: none !important; padding: 0 4px;
-                font-family: inherit;
+                border: none; outline: none !important; padding: 5px;
+                font-family: inherit; font-size: inherit;
               }
               .rec.set > .value > .editor > .submit {
                 position: absolute;
@@ -178,7 +172,7 @@ global.rooms.promo = async foundation => {
         
         if (rec.type.name === 'perm.perm') throw Error(`Can't assign permissions on Rec of type "perm.perm"`);
         
-        let [ permRec=null ] = rec.relRecs('perm.perm/rec?').find(perm => perm.mems.hut.uid === this.kidHut.uid) || [];
+        let permRec = rec.relRecs('perm.perm/rec?').find(perm => perm.mems.hut.uid === this.kidHut.uid).val;
         if (!permRec) permRec = this.parHut.createRec('perm.perm', { 'rec?': rec, hut: this.kidHut }, {});
         
         if (!this.recPerms.has(rec.uid)) this.recPerms[rec.uid] = {};
@@ -254,6 +248,7 @@ global.rooms.promo = async foundation => {
         insp.Drop.init.call(this);
         this.parent = parent;
         this.name = name;
+        this.dryMs = 2000;
         
         if (!parent) {
           this.domElem = elem || document.body;
@@ -266,10 +261,15 @@ global.rooms.promo = async foundation => {
         if (parent) parent.domElem.appendChild(this.domElem);
         
       },
-      onceDry: function() {
+      onceDry: async function() {
+        
+        this.domElem.classList.add('drying');
+        this.domElem.style.height = `${this.domElem.getBoundingClientRect().height}px`;
+        
+        await Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         
         this.domElem.classList.add('dry');
-        setTimeout(() => this.domElem.remove(), 2000);
+        setTimeout(() => this.domElem.remove(), this.dryMs);
         
       }
       
@@ -300,8 +300,7 @@ global.rooms.promo = async foundation => {
       let childrenNode = Node(recNode, 'children');
       
       // Update DOM when Rec value changes
-      basin.add(rec.route(value => displayNode.domElem.innerHTML = JSON.stringify(value)));
-      basin.add(rec.route(value => console.log('CHANGED:', value)));
+      basin.add(rec.route(value => displayNode.domElem.innerHTML = U.isType(value, String) ? value : JSON.stringify(value)));
       
       // Recursively render all children for all terms within
       if (!circ) basin.add(rec.relTermNozz.route(relTerm => {
@@ -311,7 +310,6 @@ global.rooms.promo = async foundation => {
       // Make DOM changes when permissions change
       let permDrops = {};
       
-      console.log(rec.relNozz('perm.perm'));
       basin.add(RecScope(rec, 'perm.perm/rec?', (perm, dep) => {
         
         console.log(`${rec.type.name} has perms: ${JSON.stringify(perm.val)}`);
@@ -327,7 +325,7 @@ global.rooms.promo = async foundation => {
             // This perm isn't being removed
             delete removedPerms[perm];
             
-            // If the perm
+            // If the perm has been seen, skip it
             if (permDrops.has(perm)) continue;
             
             permDrops[perm] = ({
@@ -428,9 +426,9 @@ global.rooms.promo = async foundation => {
       
       let anotherExample = promoHut.createRec('pmo.example', [], foundation.getMs());
       promoHut.createRec('pmo.promoExample', [ promoRec, anotherExample ]);
-      setTimeout(() => { anotherExample.dry(); }, 12000);
+      setTimeout(() => { anotherExample.dry(); }, 1500);
       
-    }, 5000);
+    }, 4000);
     
     /// =ABOVE}
     

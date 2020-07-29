@@ -40,9 +40,9 @@ protoDef(Object, 'slice', function(...props) {
   }
 });
 protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
-protoDef(Object, 'find', function(f) { // Iterates [ VAL, KEY ]; Returns [ VAL, KEY ]
-  for (let k in this) if (f(this[k], k)) return [ this[k], k ];
-  return null;
+protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
+  for (let k in this) if (f(this[k], k)) return { found: true, val: this[k], key: k };
+  return { found: false, val: null, k: null };
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
@@ -72,14 +72,14 @@ protoDef(Array, 'map', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'toObj', function(it) { // Returns [ KEY, VAL ] pairs
+protoDef(Array, 'toObj', function(it) { // Iterator: (val, ind) => [ key0, val0 ]
   let ret = {};
   for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(Array, 'find', function(f) { // Iterates [ VAL, IND ]; Returns [ VAL, IND ]
-  for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return [ this[i], i ];
-  return null; // TODO: Return empty array instead??
+protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns { found, val, ind }
+  for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return { found: true, val: this[i], ind: i };
+  return { found: false, val: null, ind: null };
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
@@ -130,7 +130,7 @@ let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
 Set.Native = SetOrig;
 Set.prototype = SetOrig.prototype;
-protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; returns VAL
+protoDef(SetOrig, 'toArr', function(fn) { // Iterator: (val, ind) => val0
   let ret = [], ind = 0;
   for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
   return ret;
@@ -140,9 +140,9 @@ protoDef(SetOrig, 'toObj', function(fn) {
   for (let v of this) { v = fn(v); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(SetOrig, 'find', function(f) { // Returns [ VAL, null ]
-  for (let v of this) if (f(v)) return [ v ];
-  return null;
+protoDef(SetOrig, 'find', function(f) { // Iterator: (val) => bool; returns { found, val }
+  for (let v of this) if (f(v)) return { found: true, val: v };
+  return { found: false, val: null };
 });
 protoDef(SetOrig, 'count', function() { return this.size; });
 protoDef(SetOrig, 'isEmpty', function() { return !this.size; });
@@ -152,19 +152,19 @@ let MapOrig = Map;
 Map = global.Map = function Map(...args) { return new MapOrig(...args); };
 Map.Native = MapOrig;
 Map.prototype = MapOrig.prototype;
-protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; returns [ KEY, VAL ] pairs
+protoDef(MapOrig, 'toObj', function(fn) { // Iterator: (val, key) => [ key0, val0 ]
   let ret = {};
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(MapOrig, 'toArr', function(fn) { // Iterator args: [ VAL, KEY ]; returns VALs
+protoDef(MapOrig, 'toArr', function(fn) { // Iterator: (val, key) => val0
   let ret = [];
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
-protoDef(MapOrig, 'find', function(f) { // Returns [ VAL, KEY ]
-  for (let [ k, v ] of this) if (f(v, k)) return [ v, k ];
-  return null;
+protoDef(MapOrig, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
+  for (let [ k, v ] of this) if (f(v, k)) return { found: true, val: v, key: k };
+  return { found: false, val: null, key: null };
 });
 protoDef(MapOrig, 'count', function() { return this.size; });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });

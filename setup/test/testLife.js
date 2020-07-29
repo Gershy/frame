@@ -346,7 +346,7 @@ module.exports = async (args, foundationInsps) => {
           let load = FreeLoad();
           
           let cnts = [ 0, 0, 0, 0, 0, 0 ];
-          let cmp = cnts2 => !cnts.find((cnt, i) => cnt !== cnts2[i]);
+          let cmp = cnts2 => !cnts.find((cnt, i) => cnt !== cnts2[i]).found;
           
           let scope1 = Scope(flux1, (dep, flux2) => {
             
@@ -564,8 +564,8 @@ module.exports = async (args, foundationInsps) => {
           
           return [
             [ 'correct number dripped', () => dripped.length === 10 ],
-            [ 'tracked before shuts', () => !loads.slice(5).find(load => !dripped.has(load)) ],
-            [ 'tracked after shuts',  () => !loads2.find(load => !dripped.has(load)) ]
+            [ 'tracked before shuts', () => !loads.slice(5).find(load => !dripped.has(load)).found ],
+            [ 'tracked after shuts',  () => !loads2.find(load => !dripped.has(load)).found ]
           ];
           
         });

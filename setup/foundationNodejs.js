@@ -91,7 +91,7 @@
       },
       
       init: function(absPath=Insp.fs.hutRootCmps) {
-        if (absPath.find(v => !U.isType(v, String))) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
+        if (absPath.find(v => !U.isType(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
         this.absPath = absPath;
       },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
@@ -851,7 +851,7 @@
       // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
       if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
       let pcs = verboseIp.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw Error(`Invalid ip: "${verboseIp}"`);
+      if (pcs.length !== 4 || pcs.find(v => isNaN(v)).found) throw Error(`Invalid ip: "${verboseIp}"`);
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },

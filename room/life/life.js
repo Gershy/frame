@@ -111,11 +111,11 @@ U.buildRoom({ name: 'life', innerRooms: [], build: (foundation) => ({ open: asyn
       let causes = [
         [ e.error, `accident: ${e.error}` ],
         [ e.work.count() >= tooBig, `too much work` ],
-        [ e.children.count() > 100 && e.children.find(child => child.children.count() > 0), 'too many children' ],
+        [ e.children.count() > 100 && e.children.find(child => child.children.count() > 0).found, 'too many children' ],
         [ (e.lifespan >= tooBig && (e.lifespan / tooBig) > e.children.count()), `unproductivity; lifespan: ${e.lifespan}; kids: ${e.children.count()}` ]
       ];
       
-      let [ causeOfDeath=null ] = causes.find(cause => cause[0]) || [];
+      let causeOfDeath = causes.find(cause => cause[0]).val;
       if (causeOfDeath) {
         console.log(`Ent @ ${e.id} DIED: ${causeOfDeath[1]}`);
         e.alive = false;

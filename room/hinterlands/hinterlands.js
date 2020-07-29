@@ -33,7 +33,7 @@ global.rooms.hinterlands = async foundation => {
       if (srcHut && srcHut.parHut !== trgHut && trgHut.parHut !== srcHut) throw Error(`Supplied unrelated Huts`);
       
       // Debug output if any ParHut has debug enabled
-      let [ dbgParHut=null ] = [ srcHut, trgHut ].find(h => h && h.isHere() && h.roadDbgEnabled) || [];
+      let dbgParHut = [ srcHut, trgHut ].find(h => h && h.isHere() && h.roadDbgEnabled).val;
       if (dbgParHut) console.log(`--COMM ${srcHut ? srcHut.uid : '<none>'} -> ${trgHut.uid}: ${dbgParHut.dbgRoadsItem(msg)}`);
       
       if (!srcHut) {

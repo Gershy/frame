@@ -257,8 +257,8 @@ U.buildRoom({
             let keyVal = 0;
             for (let i = 0; i < keyNums.length; i++) keyVal += keys.has(keyNums[i]) ? (1 << i) : 0;
             
-            let [ { hut: aboveHut } ] = tagHut.roadedHuts.toArr(v => v).find(v => true);
-            Hut.tell(tagHut, aboveHut, null, null, { command: 'upd', keyVal });
+            let roadedAboveHut = tagHut.roadedHuts.toArr(v => v).find(v => true).val;
+            Hut.tell(tagHut, roadedAboveHut.hut, null, null, { command: 'upd', keyVal });
             
           }));
           

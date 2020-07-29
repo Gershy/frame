@@ -105,7 +105,7 @@ U.buildRoom({
       }
     };
     
-    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
+    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v)).found;
     let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     
     // BASE STUFF
@@ -1664,7 +1664,7 @@ U.buildRoom({
         }};
         
       },
-      isAlive: insp.allArr('isAlive', (i, arr) => !arr.find(alive => !alive))
+      isAlive: insp.allArr('isAlive', (i, arr) => !arr.find(alive => !alive).found)
       
     })});
     let WinderMom = U.inspire({ name: 'WinderMom', insps: { Enemy, Mover }, methods: (insp, Insp) => ({

@@ -114,7 +114,7 @@ U.buildRoom({
       momentName: 'practice1',
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
-    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
+    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v)).found;
     let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     let getLevelData = name => ({
       name, ...levels[name].slice('num', 'password'),
@@ -314,9 +314,8 @@ U.buildRoom({
               let lobby = null;
               if (lobbyId) {
                 let allLobbies = fly.relNozz('fly.lobby').set.toArr(v => v);
-                let findLobby = allLobbies.find(l => l.val.id === lobbyId);
-                if (!findLobby) throw Error('Invalid lobby id');
-                lobby = findLobby[0];
+                let lobby = allLobbies.find(l => l.val.id === lobbyId).val;
+                if (!lobby) throw Error('Invalid lobby id');
               } else {
                 let randInt = Math.floor(Math.random() * Math.pow(62, 4));
                 lobby = flyHut.createRec('fly.lobby', [ fly ], {
@@ -353,7 +352,7 @@ U.buildRoom({
           dep.scp(lobbyPlayerNozz, (lobbyPlayer, dep) => {
             
             dep(hut.roadNozz('lobbyPass').route(({ msg: { pass } }) => {
-              let [ level=null, levelName ] = levels.find(v => v.password === pass) || [];
+              let { key: levelName, val: level } = levels.find(v => v.password === pass);
               if (!level) return;
               
               let lobby = lobbyPlayer.mems['fly.lobby'];
@@ -404,7 +403,7 @@ U.buildRoom({
               let levelDef = levels[levelName];
               if (momentName) {
                 levelDef.moments = levelDef.moments.toArr(v => v);
-                let [ firstMoment, ind ] = levelDef.moments.find(m => m.name === momentName);
+                let { ind, val: firstMoment } = levelDef.moments.find(m => m.name === momentName);
                 
                 if (!firstMoment.bounds) {
                   for (let i = ind; i >= 0; i--) {

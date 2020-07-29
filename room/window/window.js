@@ -115,7 +115,7 @@ U.buildRoom({ name: 'window', innerRooms: [], build: (foundation) => ({
       if (U.isType(seq2, String)) seq2 = Array.fill(seq2.count(), i => seq2.charCodeAt(i));
       
       if (seq1.count() !== seq2.count()) return false;
-      if (seq1.find((v, n) => v !== seq2[n])) return false;
+      if (seq1.find((v, n) => v !== seq2[n]).found) return false;
       return true;
     };
     let modCode = (...codes) => codes.map(v => `\x1b[${v}m`).join('');

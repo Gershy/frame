@@ -374,7 +374,7 @@ global.rooms.chess2 = async foundation => {
       playerMoves.forEach(({ type, pieceUid, tile }) => {
         
         if (type === 'pass') return;
-        let piece = pieces.find(p => p.uid === pieceUid)[0];
+        let piece = pieces.find(p => p.uid === pieceUid).val;
         let gudColour = piece.val.colour;
         let badColour = (gudColour === 'white') ? 'black' : 'white';
         
@@ -385,7 +385,7 @@ global.rooms.chess2 = async foundation => {
         if (piece.val.type === 'king' && (Math.abs(trnCol) >= 2 || Math.abs(trnRow) >= 2)) {
           
           let gudKing = piece;
-          let [ gudRook=null ] = pieces.find(gp => { // "gudPiece"
+          let gudRook = pieces.find(gp => { // "gudPiece"
             
             return true
               && gp.val.colour === gudColour
@@ -398,7 +398,7 @@ global.rooms.chess2 = async foundation => {
                 || (trnCol === 0 && (trnRow > 0 ? (gp.val.row > gudKing.val.row) : (gp.val.row < gudKing.val.row)))
               );
             
-          }) || [];
+          }).val;
           
           if (!gudRook) throw Error(`No rook found for castling... yikes`);
           
@@ -435,7 +435,7 @@ global.rooms.chess2 = async foundation => {
           piece.modVal(v => v.gain({ col, row, wait: 1, moves: v.moves + 1 }));
           
           // Piece dies if it intersected a danger tile
-          if (danger.find(({ col: dc, row: dr }) => col === dc && row == dr)) piece.dry();
+          if (danger.find(({ col: dc, row: dr }) => col === dc && row === dr).found) piece.dry();
           
         }
         
@@ -460,7 +460,7 @@ global.rooms.chess2 = async foundation => {
       // Return the Players who are still alive. If both Players pass,
       // both die. If a Player submitted a move, the living Players are
       // the ones which still possess a king at the end of the Round.
-      return playerMoves.find(({ type}) => type !== 'pass')
+      return playerMoves.find(({ type}) => type !== 'pass').found
         ? Set(matchPieceSet.toArr(p => { let v = p.mem('piece').val; return v.type === 'king' ? v.colour : C.skip; }))
         : Set();
       

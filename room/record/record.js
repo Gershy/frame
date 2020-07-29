@@ -77,23 +77,19 @@ U.buildRoom({
         let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
         
         recTypes.forEach((recType, term) => {
-          let findMemInf = this.memberInfoNozz.set.find(mi => mi.term === term);
-          let curRt = findMemInf ? findMemInf[0].recType : null;
+          let memInf = this.memberInfoNozz.set.find(mi => mi.term === term).val;
+          let curRt = memInf ? memInf.recType : null;
           
-          if (findMemInf && curRt && curRt !== recType && term.slice(-1) !== '?') {
-            throw Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
+          if (memInf && curRt && curRt !== recType && term.slice(-1) !== '?') {
+            throw Error(`RecType ${this.name} already has ${term}->${memInf.recType.name}; tried to supply ${term}->${recType.name}`);
           }
           
-          if (!findMemInf) newRecTypes.push({ term, recType });
-          else if (!curRt) defRecTypes.push({ memInf: findMemInf[0], recType });
+          if (!memInf)      newRecTypes.push({ term, recType });
+          else if (!curRt)  defRecTypes.push({ memInf, recType });
         });
         
         for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
-        for (let nrt of newRecTypes) {
-          
-          this.memberInfoNozz.nozz.drip(nrt);
-          
-        }
+        for (let nrt of newRecTypes) this.memberInfoNozz.nozz.drip(nrt);
         
       }
     })});
@@ -137,9 +133,8 @@ U.buildRoom({
         
         if (term === null) {
           
-          let findMemInf = recType.memberInfoNozz.set.find(mi => mi.recType === this.type);
-          let memInf = null;
-          if (!findMemInf) {
+          let memInf = recType.memberInfoNozz.set.find(mi => mi.recType === this.type).val;
+          if (!memInf) {
             // TODO: What if somehow `this.type.name` is already a term
             // for a different type?? Then we'd need to try another
             // "made up" term, like `${this.type.name}/2` or something
@@ -147,7 +142,7 @@ U.buildRoom({
             recType.updMems({ [this.type.name]: this.type });
             term = this.type.name;
           } else {
-            term = findMemInf[0].term;
+            term = memInf.term;
           }
           
         }
