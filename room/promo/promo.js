@@ -90,7 +90,7 @@ global.rooms.promo = async foundation => {
               .rec {
                 position: relative;
                 padding: 10px;
-                margin-bottom: 10px;
+                margin-bottom: 4px;
                 box-sizing: border-box;
                 background-color: rgba(0, 0, 0, 0.15);
                 color: #ffffff;
@@ -112,8 +112,9 @@ global.rooms.promo = async foundation => {
               .rec > .children {}
               .rec.rem > .rem {
                 position: absolute;
-                right: 0; top: 0; width: 10px; height: 10px;
-                background-color: red;
+                right: 0; top: 0; width: 20px; height: 20px;
+                background-color: rgba(150, 0, 0, 0.5);
+                cursor: pointer;
               }
               .rec.set > .value { cursor: pointer; }
               .rec.set > .value > .editor {
@@ -137,6 +138,24 @@ global.rooms.promo = async foundation => {
                 background-color: #0f0;
               }
               
+              .rec > .control {
+                display: block;
+                height: 26px;
+                margin-bottom: 4px;
+              }
+              .rec > .control:empty { display: none; }
+              .rec > .control > .add {
+                display: inline-block;
+                height: 16px; line-height: 16px; padding: 5px;
+                font-size: 80%;
+                margin-right: 4px;
+                background-color: rgba(0, 0, 0, 0.1);
+                cursor: pointer;
+              }
+              .rec > .control > .add:hover {
+                background-color: rgba(0, 0, 0, 0.3);
+              }
+              
               body > .rec { color: #000000; }
             `)
           });
@@ -154,7 +173,10 @@ global.rooms.promo = async foundation => {
         parHut.tell({ command: `perm.${parHut.uid}.mod`, recUid: rec.uid, value });
       },
       $add: (parHut, rec, relName) => {
-        parHut.tell({ command: `perm.${parHut.uid}.mod`, recUid: rec.uid, relName });
+        parHut.tell({ command: `perm.${parHut.uid}.add`, recUid: rec.uid, relName });
+      },
+      $rem: (parHut, rec) => {
+        parHut.tell({ command: `perm.${parHut.uid}.rem`, recUid: rec.uid });
       },
       
       init: function(parHut, kidHut) {
@@ -297,6 +319,7 @@ global.rooms.promo = async foundation => {
       
       let valueNode = Node(recNode, 'value');
       let displayNode = Node(valueNode, 'display');
+      let controlNode = Node(recNode, 'control');
       let childrenNode = Node(recNode, 'children');
       
       // Update DOM when Rec value changes
@@ -368,11 +391,20 @@ global.rooms.promo = async foundation => {
                 
               },
               add: relName => {
+                let addNode = Node(controlNode, 'add');
+                addNode.domElem.classList.add(relName.replace(/[.]/g, '-'));
+                addNode.domElem.addEventListener('click', () => Permissions.add(parHut, rec, relName));
+                addNode.domElem.innerHTML = `+${relName}`;
                 
+                return Drop(null, () => {
+                  addNode.dry();
+                });
               },
               rem: () => {
                 recNode.domElem.classList.add('rem');
                 let remNode = Node(recNode, 'rem');
+                remNode.domElem.addEventListener('click', () => Permissions.rem(parHut, rec));
+                
                 return Drop(null, () => {
                   recNode.domElem.classList.remove('rem');
                   remNode.dry();
@@ -418,53 +450,37 @@ global.rooms.promo = async foundation => {
     await htmlApp.decorateApp(promoHut);
     
     /// {ABOVE=
-    let promoRec = promoHut.createRec('pmo.promo', [ promoHut ]);
-    let example = promoHut.createRec('pmo.example', [], 'EXAMPLE');
-    promoHut.createRec('pmo.promoExample', [ promoRec, example ]);
     
-    setInterval(() => {
-      
-      let anotherExample = promoHut.createRec('pmo.example', [], foundation.getMs());
-      promoHut.createRec('pmo.promoExample', [ promoRec, anotherExample ]);
-      setTimeout(() => { anotherExample.dry(); }, 1500);
-      
-    }, 4000);
+    let promoRec = promoHut.createRec('pmo.promo', [ promoHut ]);
     
     /// =ABOVE}
     
     let rootScope = RecScope(promoHut, 'pmo.promo', async (promoRec, dep) => {
       
       /// {ABOVE=
+      
       dep.scp(promoHut, 'lands.kidHut/par', (kidParHut, dep) => {
         
         let kidHut = kidParHut.mems.kid;
         let perms = dep(Permissions(promoHut, kidHut));
         
-        dep(perms.followRec(promoRec, 'get'));
-        dep(perms.followRec(promoRec, 'get'));
-        dep.scp(promoRec, 'pmo.promoExample', (promoExample, dep) => dep(perms.followRec(promoExample, 'get', 'set')));
+        dep(perms.followRec(promoRec, 'get', 'add:pmo.example'));
+        dep.scp(promoRec, 'pmo.example', (example, dep) => {
+          
+          dep(perms.followRec(example, 'get', 'set', 'rem', 'add:pmo.sub'))
+          dep.scp(example, 'pmo.sub', (sub, dep) => {
+            dep(perms.followRec(sub, 'get', 'set', 'rem'));
+          });
+          
+        });
         
       });
-      /// =ABOVE}
       
-      /// {BELOW=
+      /// =ABOVE} {BELOW=
+      
       dep(spoof.render(promoHut, promoRec));
       
-      // setTimeout(() => {
-      //   console.log('TELL:', promoHut.uid);
-      //   Permissions.mod(promoHut, promoRec, 'hello');
-      // }, 2000);
-      
       /// =BELOW}
-      
-      // dep(htmlApp.rootNode.addNode({
-      //   slot: 'main',
-      //   layout: spoof.layout.Flow({ axis: 'y', dir: '+' }),
-      //   decals: {
-      //     colour: html.design.Colour(1, 1, 1),
-      //     textColour: html.design.Colour(0, 0, 0)
-      //   }
-      // }));
       
     });
     
