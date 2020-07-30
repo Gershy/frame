@@ -10,7 +10,7 @@ U.buildRoom({
       cntu: function(v=1) { return Math.random() * v; },
       cntuCen: function(v=1) { return this.cntu(v * 2) - v; },
       dscr: function(min, max) { return min + Math.floor(this.cntu(max - min)); },
-      elem: function(arr) { return arr[this.dscr({ 0 : arr.length })]; }
+      elem: function(arr) { return arr[this.dscr(0, arr.length)]; }
     })});
     
     return { Chance };

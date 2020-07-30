@@ -713,7 +713,7 @@ global.rooms.chess2 = async foundation => {
       
       /// =ABOVE} {BELOW=
       
-      global.chess2 = chess2;
+      global.chess2 = chess2 ? * *;
       dep(Drop(null, () => { delete global.chess2; }));
       
       let c2RootReal = dep(rootReal.techReals[0].addReal('c2.root'));

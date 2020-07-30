@@ -108,6 +108,7 @@
       
       // Wait for the script to load; ensure it populated `global.rooms`
       await Promise(r => script.addEventListener('load', r));
+      
       if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms.${name}!`);
       
       return {
@@ -117,23 +118,6 @@
       
     },
     getPlatformName: function() { return 'browser'; },
-    establishHut: async function(args) {
-      
-      if (!args.has('hut')) throw Error('Missing "hut" param');
-      
-      // Build all Rooms
-      U.rooms.forEach(room => room(this));
-      
-      let { query } = this.parseUrl(window.location.href);
-      if (query.has('title')) {
-        let head = document.getElementsByTagName('head')[0];
-        let title = head.getElementsByTagName('title')[0];
-        title.innerHTML = `${title.innerHTML} (${query.title})`;
-      }
-      
-      return U.rooms[args.hut];
-      
-    },
     getIdenUrlParams: function() {
       return this.spoof ? { spoof: this.spoof } : { hutId: U.hutId };
     },
@@ -165,7 +149,9 @@
       
       if (!this.rootReal) {
         
-        let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'browser.root');
+        let rootReal = this.rootReal = (await this.getRoom('real')).Real(null, 'browser.root');
+        
+        //let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'browser.root');
         rootReal.defineReal('browser.doc', { slotters: null, tech: 'BROWSER' });
         rootReal.defineInsert('browser.root', 'browser.doc');
         rootReal.techReals = [ rootReal.addReal('browser.doc') ];

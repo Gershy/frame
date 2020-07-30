@@ -15,7 +15,7 @@ global.rooms.promo = async foundation => {
         /// {ABOVE=
         parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
           
-          // The AfarHut immediate has its state forgotten, requiring a
+          // The AfarHut immediately has its state reset, requiring a
           // full sync to update. Then this full sync is consumed here,
           // to be included within the html response (the initial html
           // and sync data will arrive at precisely the same time!)
@@ -27,36 +27,36 @@ global.rooms.promo = async foundation => {
             return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
           };
           
-          reply([
-            '<!doctype html>',
-            '<html>',
-            '  <head>',
-            `    <title>${this.name.upper()}</title>`,
-            '    <meta name="viewport" content="width=device-width, initial-scale=1"/>',
-            `    <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />`,
-            `    <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />`,
-            '    <script type="text/javascript">window.global = window;</script>',
-            '    <script type="text/javascript">global.roomDebug = {};</script>',
-            `    <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'clearing' })}"></script>`,
-            `    <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>`,
-            `    <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>`,
-            '    <script type="text/javascript">',
-            `      U.hutId = '${srcHut.uid}';`,
-            `      U.aboveMsAtResponseTime = ${foundation.getMs()};`,
-            `      U.initData = ${JSON.stringify(initSyncTell)};`,
-            `      let foundation = global.foundation = U.setup.FoundationBrowser(${JSON.stringify({ ...foundation.origArgs, settle: '${foundation.hut}.below' })});`,
-            `      foundation.getRoom('${this.name}', 'below')`,
-            '        .then(room => room.open(foundation))',
-            '        .catch(err => {',
-            `          console.log('FATAL ERROR:', foundation.formatError(err));`,
-            '          debugger;',
-            '        });',
-            '    </script>',
-            '  </head>',
-            '  <body>',
-            '  </body>',
-            '</html>'
-          ].join('\n'));
+          reply(U.multiLineString(`
+            <!doctype html>
+            <html>
+              <head>
+                <title>${this.name.upper()}</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
+                <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
+                <script type="text/javascript">window.global = window;</script>
+                <script type="text/javascript">global.roomDebug = {};</script>
+                <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
+                <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
+                <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
+                <script type="text/javascript">
+                  U.hutId = '${srcHut.uid}';
+                  U.aboveMsAtResponseTime = ${foundation.getMs()};
+                  U.initData = ${JSON.stringify(initSyncTell)};
+                  let foundation = global.foundation = U.setup.FoundationBrowser(${JSON.stringify({ ...foundation.origArgs, settle: '${foundation.hut}.below' })});
+                  foundation.getRoom('${this.name}', 'below')
+                    .then(room => room.open(foundation))
+                    .catch(err => {
+                      console.log('FATAL ERROR:', foundation.formatError(err));
+                      debugger;
+                    });
+                </script>
+              </head>
+              <body>
+              </body>
+            </html>
+          `));
           
         });
         parHut.roadNozz('html.room').route(async ({ road, srcHut, msg, reply }) => {

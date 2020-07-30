@@ -362,143 +362,6 @@
       })();
       
     },
-    defaultGoals: function() {
-      
-      let { Goal } = U.setup;
-      
-      let habitGoal = Goal({
-        name: 'habit',
-        desc: 'Deal with tasks that are done regularly',
-        detect: args => args.has('habit'),
-        enact: async (foundation, args) => {}
-      });
-      
-      habitGoal.children.add(Goal({
-        name: 'all',
-        desc: 'List all habits',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('all'),
-        enact: async (foundation, args) => {
-          
-          // TODO: Would be cool when DB is implemented to abstractly
-          // save habits into DB instead of fileSystem
-          
-          let habitNames = await this.fsKeep.to([ 'mill', 'habit' ]).getContent();
-          if (habitNames.length) {
-            console.log('Available habits:');
-            habitNames.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
-          } else {
-            console.log('-- No habits available --');
-          }
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'add',
-        desc: 'Add a new habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('add'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.add;
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          let habitJson = JSON.stringify(({ ...args }).gain({ habit: C.skip }), null, 2);
-          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(habitJson);
-          console.log(`Saved habit "${habitName}"; args:`, habitJson);
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'rem',
-        desc: 'Remove an existing habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('rem'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.rem.split('.');
-          
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(null);
-          console.log(`Removed habit "${habitName}"`);
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'use',
-        desc: 'Repeat an existing habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('use'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.use.split('.');
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          // TODO: This won't work, now that `raiseArgs` are given to
-          // the constructor, not the `raise` function...
-          let data = JSON.parse(await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).getContent());
-          await foundation.raise(({ ...data, ...args }).gain({ habit: C.skip }));
-          
-        }
-      }));
-      
-      let versionGoal = Goal({
-        name: 'version',
-        desc: 'Show version information',
-        detect: args => args.has('version') && args.version,
-        enact: async (foundation, args) => {
-          console.log('Version 0.0.1');
-          console.log('Author: Gershom Maes');
-          console.log('Email: gershom.maes@gmail.com');
-        }
-      });
-      
-      let helpGoal = Goal({
-        name: 'help',
-        desc: 'Show help information',
-        detect: args => args.has('help') && args.help,
-        enact: async (foundation, args) => {
-          
-          let helpWithGoal = (goal, depth=0, pref=[]) => {
-            
-            pref.push(goal.name);
-            let indent = ' '.repeat(depth * 2);
-            let name = pref.join('.');
-            console.log(`${indent}${name.upper()}:`);
-            console.log(`${indent}"${goal.desc}"`);
-            
-            for (let child of goal.children) {
-              helpWithGoal(child, depth + 1, [ ...pref ]);
-            }
-            
-          };
-          
-          for (let goal of foundation.goals) helpWithGoal(goal);
-          
-        }
-      });
-      
-      let environmentGoal = Goal({
-        name: 'env',
-        desc: 'Query environment information',
-        detect: args => args.has('env') && args.env,
-        enact: async (foundation, args) => {}
-      });
-      
-      environmentGoal.children.add(Goal({
-        name: 'network',
-        desc: 'Show network information',
-        detect: args => args.env === 'network',
-        enact: async (foundation, args) => {
-          console.log('Network info:');
-          console.log(JSON.stringify(foundation.getStaticIps(), null, 2));
-        }
-      }));
-      
-      // Make sure habits have precendence!
-      return [ habitGoal, ...insp.Foundation.defaultGoals.call(this), versionGoal, environmentGoal, helpGoal ];
-      
-    },
     
     installRoom: async function(name, bearing='above') {
       
@@ -523,95 +386,6 @@
     },
     
     // Compilation
-    parseDependencies: async function(roomName) {
-      
-      // Determine the inner rooms of `roomName` by parsing the file for the "innerRooms" property
-      // TODO: Could potentially spoof U.buildRoom, and then require and
-      // uncache the room file. It will call U.buildRoom with the
-      // anticipated room names...
-      
-      let roomFileContents = await this.fsKeep.to([ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
-      let depStr = U.safe(
-        () => roomFileContents.match(/[^\w]innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
-        () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
-      );
-      
-      return depStr
-        ? depStr.split(',').map(v => v.trim()).map(v => v.substr(1, v.length - 2))
-        : [];
-    },
-    compileRecursive: async function(roomName, compiledPrms={}, precedence=[]) {
-      
-      // Note that we deal with only the names of rooms instead of full-fledged
-      // room-data, because no room is being brought to life here. We are only
-      // compiling source code at this stage.
-      
-      // Note there are two separate containers for room names:
-      // - `compiledPrms` keeps track of every room currently compiling. It
-      //   also tells us which rooms are done compiling, as opposed to those
-      //   still in progress (via pending/resolved state of the promise).
-      // - `precedence` is extended whenever a room becomes fully compiled.
-      //   this function will ensure that a room can only fully compile not
-      //   only when all its dependencies are *in the process of compiling*,
-      //   but are *fully compiled*! This means that rooms will always be
-      //   added to `precedence` such that a added earlier never depends on
-      //   a room added later.
-      
-      if (U.isType(roomName, Object)) {
-        let virtualRoom = roomName;
-        compiledPrms[virtualRoom.name] = Promise.resolve();
-        let depNames = virtualRoom.innerRooms;
-        await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
-        return precedence.gain([ virtualRoom ]);
-      }
-      
-      if (compiledPrms.has(roomName)) return compiledPrms[roomName];
-      
-      let rsv = null, rjc = null, prm = Promise((rsv0, rjc0) => { rsv = rsv0; rjc = rjc0; });
-      compiledPrms[roomName] = prm;
-      
-      // Get dependency room names
-      let depNames = await this.parseDependencies(roomName);
-      
-      // Don't continue until all dependencies are compiled! Even if we
-      // know that our dependencies are already under compilation, we
-      // need to wait for them to finish. This will ensure that rooms
-      // compile in order of dependency-precedence.
-      await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
-      
-      // All dependencies are compiled!
-      await this.compile(roomName);
-      
-      // There may be other rooms waiting on our compilation. Notify
-      // them by resolving our promise!
-      rsv(precedence.gain([ roomName ]));
-      
-      return precedence;
-      
-    },
-    compile: async function(roomName) {
-      
-      // Compile a single room; generate a new file for each variant
-      
-      let srcRaw = await this.getKeep('fileSystem', [ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
-      let srcLines = srcRaw.split('\n');
-      this.compilationData[roomName] = {};
-      
-      for (let variantName in this.variantDefs) {
-        
-        let compiledFilePcs = [ 'room', roomName, `${roomName}.${variantName}.js` ];
-        let { lines: cmpLines, offsets } = this.compileContent(variantName, srcLines);
-        
-        await this.getKeep('fileSystem', compiledFilePcs).setContent(cmpLines.join('\n'));
-        
-        this.compilationData[roomName][variantName] = {
-          srcNumLines: srcLines.length,
-          cmpNumLines: cmpLines.length,
-          offsets
-        }; // Filename, offsets, and length are kept
-      }
-      
-    },
     compileContent: function(variantName, srcLines) {
       
       // Compile file content; filter based on variant tags
@@ -625,7 +399,7 @@
       for (let i = 0; i < srcLines.length; i++) {
         let line = srcLines[i].trim();
         
-        if (curBlock) {
+        if (curBlock) { // In a block, check for the block end
           if (line.has(`=${curBlock.type.upper()}}`)) {
             curBlock.end = i;
             blocks.push(curBlock);
@@ -633,7 +407,7 @@
           }
         }
         
-        if (!curBlock) {
+        if (!curBlock) { // Outside a block, check for start of any block
           for (let k in variantDef) {
             if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
           }
@@ -685,39 +459,8 @@
       
       return { lines: filteredLines, offsets };
     },
-    mapLineToSource: function(fileName, lineInd) {
-      
-      // For a compiled file and line number, return the corresponding line number
-      // in the source
-      
-      fileName = path.basename(fileName);
-      
-      let fileNameData = fileName.match(/^([^.]+)\.([^.]+)\.js/);
-      if (!fileNameData) return null;
-      
-      let [ roomName, variant ] = fileNameData.slice(1);
-      if (!this.compilationData.has(roomName)) throw Error(`Missing room ${roomName}`);
-      if (!this.compilationData[roomName].has(variant)) return null;
-      
-      let variantData = this.compilationData[roomName][variant];
-      
-      let offsets = variantData.offsets;
-      
-      let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
-      let nextOffset = 0; // The index of the next offset chunk which may take effect
-      for (let i = 0; i < lineInd; i++) {
-        // Find all the offsets which exist for the source line
-        // For each offset increment the line in the source file
-        while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
-          srcLineInd += offsets[nextOffset].offset;
-          nextOffset++;
-        }
-        srcLineInd++;
-      }
-      
-      return { roomName, srcLineInd };
-      
-    },
+    
+    // Errors
     parseErrorLine: function(line) {
       
       // The codepoint filename must not contain round/square brackets or spaces
@@ -733,7 +476,16 @@
       return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
       
     },
-    getOrderedRoomNames: function() { return this.roomsInOrder; },
+    srcLineRegex: function() {
+      return {
+        regex: /([^ ]*[^a-zA-Z0-9.])?[a-zA-Z0-9.]*[.]js:[0-9]+/, // TODO: No charInd
+        regResult: fullMatch => {
+          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.]/).slice(-2);
+          let [ roomName, bearing ] = roomBearingName.split('.');
+          return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
+        }
+      };
+    },
     
     // Platform
     queueTask: setImmediate,
@@ -1252,50 +1004,8 @@
       return server;
     },
     
-    getPlatformName: function() { return 'nodejs'; },
-    establishHut: async function({ hut, bearing }) {
-      
-      await this.canSettlePrm;
-      
-      if (!hut) throw Error('Missing "hut" param');
-      if (!bearing) throw Error('Missing "bearing" param');
-      if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw Error(`Invalid bearing: "${bearing}"`);
-      
-      // We're establishing with known params! So set them on `this`
-      this.hut = U.isType(hut, Object) ? hut.name : hut;
-      this.bearing = bearing;
-      
-      // Compile everything!
-      this.roomsInOrder = await this.compileRecursive(hut);
-      
-      // As soon as we're compiled we can install useful cmp->src exception handlers
-      process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
-      process.removeAllListeners('unhandledRejection');
-      process.on('uncaughtException', err => console.error(this.formatError(err)));
-      process.on('unhandledRejection', err => console.error(this.formatError(err)));
-      
-      // Require all rooms nodejs-style
-      this.roomsInOrder.forEach(room => {
-        if (U.isType(room, String)) {
-          // Install and run the room-building-function
-          require(`../room/${room}/${room}.${this.bearing}.js`);
-          if (!U.rooms.has(room)) throw Error(`Room "${room}" didn't build correctly`);
-          U.rooms[room](this);
-        } else {
-          U.rooms[room.name] = {
-            name: room.name,
-            built: room.build(this, ...U.rooms.slice(...room.innerRooms).toArr(v => v.built))
-          };
-        }
-      });
-      
-      // At this stage it's safe to filter out virtual rooms
-      this.roomsInOrder = this.roomsInOrder.map(n => U.isType(n, String) ? n : C.skip);
-      
-      // The final Room is our Hut!
-      return U.rooms[this.hut];
-      
-    }
+    getPlatformName: function() { return 'nodejs'; }
+    
   })});
   
   U.setup.gain({ FoundationNodejs });

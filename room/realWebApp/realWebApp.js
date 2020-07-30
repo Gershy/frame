@@ -92,7 +92,7 @@ global.rooms.realWebApp = async foundation => {
   
   let WebApp = U.inspire({ name: 'WebApp', methods: (insp, Insp) => ({
     
-    init: function() {},
+    init: function(name='chess2') { this.name = name; },
     decorateHut: async function(parHut, rootReal) {
       
       /// {ABOVE=
@@ -100,167 +100,79 @@ global.rooms.realWebApp = async foundation => {
       let keepFs = foundation.getKeep('fileSystem');
       let keepIcon = keepFs.to([ 'setup', 'favicon.ico' ]);
       let keepCss = keepFs.to([ 'mill', 'storage', 'realWebApp', 'mainStyles.css' ]);
-      
       await keepCss.setContent(this.genCss(rootReal));
       
       parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
         
-        // NOTE: Need to reset and gen initial Tell before *any* async
-        // behaviour - otherwise a Tell may occur between the start of
-        // this function and the point where `hut.resetSyncState` is
-        // finally called. This intermediate Tell could have version 0
-        // and this would conflict with the initial sync included in
-        // the html <script>, which *always* has version set to 0
-        
-        // NOTE: Tells may be requested during async portions here but
-        // these will have the correct version. It is upon the client
-        // to ensure that they don't process these intermediate tells
-        // (which would have non-zero version) before receiving the
-        // initial html. It's unlikely that clients would ever even do
-        // this, as it would require them to have initiated Conns
-        // (banked http polls, connected sokts, etc.) *before* running
-        // the js embedded in the html
-        
-        srcHut.resetSyncState(); // The AfarHut starts from scratch
+        // The AfarHut immediately has its state reset, requiring a
+        // full sync to update. Then this full sync is consumed here,
+        // to be included within the html response (the initial html
+        // and sync data will arrive at precisely the same time!)
+        srcHut.resetSyncState();
         let initSyncTell = srcHut.consumePendingSync();
         
         let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
-        let urlFn = p => {
-          return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
+        let urlFn = (customParams={}, params={ ...baseParams, ...customParams, reply: '1' }) => {
+          return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
         };
         
-        let doc = XmlElement(null, 'root');
-        
-        let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-        doctype.setProp('html');
-        
-        let html = doc.add(XmlElement('html', 'container'));
-        
-        let head = html.add(XmlElement('head', 'container'));
-        let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
-        
-        let favicon = head.add(XmlElement('link', 'singleton'));
-        favicon.setProp('rel', 'shortcut icon');
-        favicon.setProp('type', 'image/x-icon');
-        favicon.setProp('href', urlFn({ command: 'realWebApp.favicon' }));
-        
-        let css = head.add(XmlElement('link', 'singleton'));
-        css.setProp('rel', 'stylesheet');
-        css.setProp('type', 'text/css');
-        css.setProp('href', urlFn({ command: 'realWebApp.stylesheet' }));
-        
-        // Make a `global` value available to browsers
-        let setupScript = head.add(XmlElement('script', 'text'));
-        setupScript.setProp('type', 'text/javascript');
-        setupScript.setText('window.global = window;');
-        
-        let mainScript = head.add(XmlElement('script', 'text'));
-        
-        // TODO: Can we stream lines, AS THEY ARE OBTAINED, to the
-        // html response? That would be really, really snazzy!
-        // TODO: Namespacing issue here (e.g. a room named "foundation" clobbers the "foundation.js" file)
-        // TODO: Could memoize the static portion of the script
-        let roomNames = foundation.getOrderedRoomNames();
-        let files = {
-          clearing: [ 'setup', 'clearing' ],
-          foundation: [ 'setup', 'foundation' ],
-          foundationBrowser: [ 'setup', 'foundationBrowser' ],
-          ...roomNames.toObj(rn => [ rn, [ 'room', rn, 'below' ] ]) // Note that "below" might need to be "between" in some cases
-        };
-        
-        // "scriptOffset" manually counts lines preceeding javascript
-        let debugLineData = { scriptOffset: 8,  rooms: {} };
-        let fileSourceData = await Promise.allObj(files.map(v => foundation.getJsSource(...v)));
-        let scriptTextItems = [];
-        let totalLineCount = 0;
-        fileSourceData.forEach(({ content, offsets, cmpNumLines }, roomName) => {
-          scriptTextItems.push(`// ==== File: ${roomName} (line count: ${cmpNumLines})`); totalLineCount += 1;
-          debugLineData.rooms[roomName] = { offsetWithinScript: totalLineCount, offsets };
-          scriptTextItems.push(content); totalLineCount += cmpNumLines;
-          scriptTextItems.push(''); totalLineCount += 1;
-        });
-        
-        // TODO: Is this risky? What if a sensitive filepath exists in
-        // `foundation.origArgs`??
-        let foundationArgs = { ...foundation.origArgs, settle: `${foundation.hut}.below` };
-        
-        let scriptContent = scriptTextItems.join('\n') + '\n\n' + [
-          '// ==== File: hut.js (line count: 8)',
-          `U.hutId = '${srcHut.uid}';`,
-          `U.aboveMsAtResponseTime = ${foundation.getMs()};`,
-          `U.initData = ${JSON.stringify(initSyncTell)};`,
-          `U.debugLineData = ${JSON.stringify(debugLineData)};`,
-          'let { FoundationBrowser } = U.setup;',
-          `let foundation = FoundationBrowser(${JSON.stringify(foundationArgs)});`,
-          `foundation.raise();`
-        ].join('\n');
-        
-        mainScript.setProp('type', 'text/javascript');
-        mainScript.setText(scriptContent);
-        
-        let mainStyle = head.add(XmlElement('style', 'text'));
-        mainStyle.setProp('type', 'text/css');
-        mainStyle.setText([
-          'html, body { background-color: #ffffff; margin: 0; padding: 0; }',
-          'body { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }'
-        ].join('\n'));
-        
-        let body = html.add(XmlElement('body', 'container'));
-        
-        reply(doc.toString());
+        let foundationArgs = { ...foundation.origArgs };
+        console.log('FOUNDATION ARGS:', foundationArgs);
+        reply(U.multiLineString(`
+          <!doctype html>
+          <html>
+            <head>
+              <title>HUT</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1"/>
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.favicon' })}" />
+              <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.stylesheet' })}" />
+              <script type="text/javascript">window.global = window;</script>
+              <script type="text/javascript">global.roomDebug = {};</script>
+              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
+              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
+              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
+              <script type="text/javascript">
+                global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
+                U.hutId = '${srcHut.uid}';
+                U.aboveMsAtResponseTime = ${foundation.getMs()};
+                U.initData = ${JSON.stringify(initSyncTell)};
+                let foundation = global.foundation = U.setup.FoundationBrowser(${JSON.stringify(foundationArgs)});
+                foundation.getRoom('chess2', 'below')
+                  .then(room => room.open(foundation))
+                  .catch(err => {
+                    console.log('FATAL ERROR:', foundation.formatError(err));
+                    debugger;
+                  });
+              </script>
+            </head>
+            <body>
+            </body>
+          </html>
+        `));
         
       });
-      parHut.roadNozz('realWebApp.favicon').route(({ road, reply }) => U.safe(() => reply(keepIcon), reply));
-      parHut.roadNozz('realWebApp.stylesheet').route(({ reply }) => U.safe(async () => reply(keepCss), reply));
-      parHut.roadNozz('realWebApp.quadTest').route(({ road, srcHut, reply }) => {
+      parHut.roadNozz('html.favicon').route(({ road, reply }) => U.safe(() => reply(keepIcon), reply));
+      parHut.roadNozz('html.stylesheet').route(({ reply }) => U.safe(async () => reply(keepCss), reply));
+      parHut.roadNozz('html.room').route(async ({ road, srcHut, msg, reply }) => {
         
-        let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
-        let urlFn = p => {
-          return '?' + ({ ...baseParams, ...p, reply: '1' }).toArr((v, k) => `${k}=${v}`).join('&');
-        };
+        let pcs = (msg.type === 'room')
+          ? [ 'room', msg.room, `${msg.room}.js` ]
+          : [ 'setup', `${msg.room}.js` ];
         
-        let doc = XmlElement(null, 'root');
+        let srcContent = await foundation.getKeep('fileSystem', pcs).getContent('utf8');
+        let { lines, offsets } = foundation.compileContent('below', srcContent);
         
-        let doctype = doc.add(XmlElement('!DOCTYPE', 'singleton'));
-        doctype.setProp('html');
-        
-        let html = doc.add(XmlElement('html', 'container'));
-        
-        let head = doc.add(XmlElement('head', 'container'));
-        
-        let title = head.add(XmlElement('title', 'text', `${foundation.hut.upper()}`));
-        
-        let favicon = head.add(XmlElement('link', 'singleton'));
-        favicon.setProp('rel', 'shortcut icon');
-        favicon.setProp('type', 'image/x-icon');
-        favicon.setProp('href', urlFn({ command: 'realWebApp.favicon' }));
-        
-        let style = head.add(XmlElement('style', 'text'));
-        style.setProp('type', 'text/css');
-        style.setText([
-          'html, body { margin: 0; padding: 0; overflow: hidden; }',
-          'body { font-size: 0; position: absolute; left: 0; right: 0; top: 0; bottom: 0; }',
-          'iframe { display: inline-block; width: 50vmin; height: 50vmin; border: none; margin: 0; padding: 0; }'
+        reply([
+          ...lines,
+          `global.roomDebug.${msg.room} = ${JSON.stringify({ offsets })};`
         ].join('\n'));
-        
-        let body = html.add(XmlElement('body', 'container'));
-        for (let name of [ 'jim', 'bob', 'sal', 'fae' ]) {
-          
-          let iframe = body.add(XmlElement('iframe', 'container'));
-          iframe.setProp('id', `${name}Frame`);
-          iframe.setProp('width', '400');
-          iframe.setProp('height', '400');
-          iframe.setProp('src', `/?spoof=${name}`);
-          
-        }
-        
-        reply(doc.toString());
         
       });
       
       /// =ABOVE} {BELOW=
       
-      await Promise(r => window.addEventListener('DOMContentLoaded', r));
+      await global.domAvailable;
+      
       let bodyContent = document.body.innerHTML;
       let trimContent = bodyContent.trim();
       if (bodyContent !== trimContent) document.body.innerHTML = trimContent;
@@ -269,9 +181,6 @@ global.rooms.realWebApp = async foundation => {
       let webAppReal = rootReal.techReals[0]; // TODO: Assumes only a single Real exists for WebApps (may not be the case!)
       webAppReal.tech = this;
       webAppReal.techNode = document.body;
-      
-      // No mousedown on <html> element; everyone's life improves
-      //document.body.parentNode.addEventListener('mousedown', customEvent);
       
       /// =BELOW}
       

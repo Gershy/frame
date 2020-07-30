@@ -15,19 +15,8 @@ Hut at the very bottom runs using a single Reality.
 */
 
 (() => {
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
-  let Goal = U.inspire({ name: 'Goal', methods: (insp, Insp) => ({
-    init: function({ name, desc, detect, enact }) {
-      ({}).gain.call(this, { name, desc, detect, enact, children: Set() });
-    },
-    attempt: async function(foundation) {
-      if (!this.detect(foundation.origArgs)) return false;
-      await this.enact(foundation, foundation.origArgs);
-      for (let child of this.children) await child.attempt(foundation);
-      return true;
-    }
-  })});
+  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
   
   let Keep = U.inspire({ name: 'Keep', methods: (insp, Insp) => ({
     
@@ -63,25 +52,9 @@ Hut at the very bottom runs using a single Reality.
       this.spoofEnabled = false;
       this.setArgs(args);
       
-      this.goals = this.defaultGoals();
       this.uidCnt = 0;
       this.rootReal = null;
       this.installedRooms = {};
-      
-      // TODO: `Foundation.prototype.getRootHut` should look at what
-      // "ServerTech" exists, and then process options based on that
-      // data, including checking to see the "enabledness" of every tech
-      // included here. A major advantage of this will be improving how
-      // BELOW handles adding the root server; right now every
-      // server-making function BELOW needs to add a single ABOVE server
-      // as a connection which is SUCKY. But if after `Foundation` has
-      // setup all servers, `FoundationBrowser` (or any FoundationBelow)
-      // can look at all the instances for each server tech, and add the
-      // ABOVE as a client to each. Much nicer! 
-      this.serverTech = {
-        http: { fn: (...args) => this.makeHttpServer(...args), instances: [] },
-        sokt: { fn: (...args) => this.makeSoktServer(...args), instances: [] }
-      };
       
     },
     setArgs: function(args) {
@@ -92,26 +65,6 @@ Hut at the very bottom runs using a single Reality.
       
       this.origArgs = args;
       this.spoofEnabled = args.mode === 'test';
-      
-    },
-    defaultGoals: function() {
-      
-      let settleGoal = Goal({
-        name: 'settle',
-        desc: 'Settle our Hut down',
-        detect: args => args.has('settle'),
-        enact: async (foundation, args) => {
-          let [ hut=null, bearing=null ] = args.settle.split('.');
-          
-          let rootRoom = await foundation.establishHut({ hut, bearing, ...args });
-          if (!rootRoom.built.has('open')) throw Error(`Room "${rootRoom.name}" isn't setup for settling`);
-          
-          console.log(`Settling ${rootRoom.name} on ${this.getPlatformName()}`);
-          await rootRoom.built.open();
-        }
-      });
-      
-      return [ settleGoal ];
       
     },
     getPlatformName: C.noFn('getPlatformName'),
@@ -158,35 +111,43 @@ Hut at the very bottom runs using a single Reality.
     },
     getRootReal: C.noFn('getRootReal'),
     
-    // Platform
-    cmpLineToSrcLine: function(offsets, cmpInd) {
+    // Error
+    parseErrorLine: C.noFn('parseErrorLine'),
+    srcLineRegex: C.noFn('srcLineRegex', () => ({ regex: /abc/, extract: regResult => ({ roomName: '...', line: '...', char: '...' }) })),
+    cmpLineToSrcLine: function(offsets, cmpLine, cmpChar=null) {
       
       // For a compiled file and line number, return the corresponding line number
       // in the source
       
-      let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
+      let srcLine = 0; // The line of code in the source which maps to the line of compiled code
       let nextOffset = 0; // The index of the next offset chunk which may take effect
-      for (let i = 0; i < cmpInd; i++) {
+      for (let i = 0; i < cmpLine; i++) {
         
-        let origSrcLineInd = srcLineInd;
+        let origSrcLineInd = srcLine;
         
         // Find all the offsets which exist for the source line
         // For each offset increment the line in the source file
-        while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
-          srcLineInd += offsets[nextOffset].offset;
+        while (offsets[nextOffset] && offsets[nextOffset].at === srcLine) {
+          srcLine += offsets[nextOffset].offset;
           nextOffset++;
         }
-        srcLineInd++;
+        srcLine++;
       }
       
-      return srcLineInd;
+      return srcLine;
       
     },
-    getMs: function() { return +new Date(); },
-    queueTask: C.noFn('parseErrorLine'),
-    makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
-    makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
-    parserErrorLine: C.noFn('parseErrorLine'),
+    cmpRoomLineToSrcLine: function(roomName, cmpLine, cmpChar=null) {
+      let offsets = null
+        || this.installedRooms.seek([ roomName, 'debug', 'offsets' ]).value
+        || global.seek([ 'roomDebug', roomName, 'offsets' ]).value;
+      
+      let result = offsets
+        ? { disp: null, mapped: true, srcLine: this.cmpLineToSrcLine(offsets, cmpLine, cmpChar) }
+        : { disp: null, mapped: false, srcLine: cmpLine };
+      
+      return result.gain({ disp: `${roomName}.${result.mapped ? 'cmp' : 'src'} @ ${result.srcLine.toString()}` });
+    },
     formatError: function(err) {
       
       // Form a pretty representation of an error. Remove noise from filepaths
@@ -199,23 +160,12 @@ Hut at the very bottom runs using a single Reality.
       let traceBegins = traceInd + traceBeginSearch.length;
       let trace = stack.substr(traceBegins);
       
-      console.log(this.installedRooms);
-      
       let lines = trace.split('\n').map(line => {
         
         try {
           
           let { roomName, lineInd, charInd } = this.parseErrorLine(line);
-          
-          let offsets = null
-            || this.installedRooms.seek([ roomName, 'debug', 'offsets' ]).value
-            || global.seek([ 'roomDebug', roomName, 'offsets' ]).value;
-          
-          let [ errorPath, mappedLineInd, mappedCharInd=null ] = offsets
-            ? [ `${roomName}.cmp`, this.cmpLineToSrcLine(offsets, lineInd, charInd) ]
-            : [ `${roomName}.src`, lineInd ];
-          
-          return `${errorPath.padTail(36)} @ ${mappedLineInd.toString()}`;
+          return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp;
           
         } catch(err) {
           
@@ -226,7 +176,14 @@ Hut at the very bottom runs using a single Reality.
       });
       
       let preLen = err.constructor.name.length + 2; // The classname plus ": "
-      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).split('\n');
+      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen);
+      
+      let { regex, regResult } = this.srcLineRegex();
+      moreLines = moreLines.replace(regex, fullMatch => {
+        let { roomName, lineInd, charInd=null } = regResult(fullMatch);
+        return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp;
+      });
+      moreLines = moreLines.split('\n');
       
       // TODO: Parse codepoints within error message??
       // let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
@@ -249,31 +206,26 @@ Hut at the very bottom runs using a single Reality.
       return result;
       
     },
-    getOrderedRoomNames: C.notImplemented,
+    
+    // Platform
+    getMs: function() { return +new Date(); },
+    queueTask: C.noFn('queueTask'),
+    makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
+    makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     getUid: function() { return U.base62(this.uidCnt++).padHead(8, '0'); },
     
     // Setup
     getRoom: async function(name, ...args) {
       
       if (!this.installedRooms.has(name)) {
-        
         this.installedRooms[name] = {};
         this.installedRooms[name].gain(await this.installRoom(name, ...args));
-        
       }
       
       return this.installedRooms[name].content;
       
     },
     installRoom: C.noFn('installRoom'),
-    raise: async function() {
-      
-      let goalAchieved = false;
-      for (let goal of this.goals) if (await goal.attempt(this)) { goalAchieved = true; break; }
-      if (!goalAchieved) console.log(`Couldn't achieve any goal based on args: ${JSON.stringify(this.origArgs, null, 2)}`);
-      
-    },
-    establishHut: C.noFn('establishHut'),
     parseUrl: function(url) {
       let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
       
@@ -290,6 +242,6 @@ Hut at the very bottom runs using a single Reality.
     },
   })});
   
-  U.setup.gain({ Goal, Keep, Foundation });
+  U.setup.gain({ Keep, Foundation });
   
 })();
