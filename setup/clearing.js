@@ -54,11 +54,11 @@ protoDef(Object, 'gain', function(obj) {
 protoDef(Object, 'to', function(f) { return f(this); });
 protoDef(Object, 'pref', function(obj) { for (let k in obj) if (this.has(k)) this[k] = obj[k]; return this; });
 protoDef(Object, 'def', function(k, def=null) { return this.has(k) ? this[k] : def; });
-protoDef(Object, 'seek', function(keys) {
+protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
   if (U.isType(keys, String)) keys = keys.split('.');
-  for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, value: null }; ret = ret[key]; }
-  return { found: true, value: ret };
+  for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
+  return { found: true, val: ret };
 });
 
 Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
@@ -688,5 +688,14 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
     this.dryNozz.drip();
   }
 })});
+let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
+  init: C.noFn('init'),
+  access: C.noFn('access', arg => {}),
+  seek: function(...args) {
+    let val = this;
+    for (let arg of args) val = U.isType(val, Promise) ? val.then(v => v.access(arg)) : val.access(arg);
+    return val;
+  }
+})});
 
-U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, defDrier };
+U.water = { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, defDrier };

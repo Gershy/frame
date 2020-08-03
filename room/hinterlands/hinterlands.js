@@ -304,6 +304,7 @@ global.rooms.hinterlands = async foundation => {
         });
         roadedHut.hut = road.hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
         roadedHut.serverRoads = Map(); // Map Servers to the single Road for that Server
+        
         this.roadedHuts.set(hutId, roadedHut);
         
         // Drying the Hut causes the RoadedHut to dry
@@ -315,8 +316,11 @@ global.rooms.hinterlands = async foundation => {
         
         if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
         
+        /// {BELOW=
+        // TODO: This seems VERY out of place! Implement in Foundation??
         this.aboveHut = roadedHut.hut;
-        if (U.initData) Insp.tell(this.aboveHut, this, road, null, U.initData);
+        if (foundation.initData) Insp.tell(this.aboveHut, this, road, null, foundation.initData);
+        /// =BELOW}
         
       } else {
         
@@ -341,15 +345,12 @@ global.rooms.hinterlands = async foundation => {
         
         if (this.roadDbgEnabled) console.log(`<-DROP ${hutId} on ${server.desc} (${roadedHut.serverRoads.size} remaining)`);
         
+        // If all Roads dry, dry the RoadedHut itself!
         if (roadedHut.serverRoads.isEmpty()) {
-          
-          // If *all* Roads are dry, the RoadedHut no longer exists
-          // from our perspective - dry it!
-          
           roadedHut.dry();
           if (this.roadDbgEnabled) console.log(`<<EXIT ${hutId}`);
-          
         }
+        
       });
       
       if (roadedHut.isWet()) roadedHut.serverRoads.set(server, road);

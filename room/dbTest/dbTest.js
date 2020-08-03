@@ -70,14 +70,14 @@ U.buildRoom({ name: 'dbTest',
               
               // Compile all "add" promises
               for (let rec of add) {
-                let recKeep = this.keep.innerKeep(this.uid2Nam(rec.uid));
+                let recKeep = this.keep.access(this.uid2Nam(rec.uid));
                 promises.push(recKeep.setContent(JSON.stringify(rec)));
                 this.netRecs.add(rec.uid);
               }
               
               // Compile all "upd" promises
               for (let { uid, val } of upd) {
-                let recKeep = this.keep.innerKeep(this.uid2Nam(rec.uid));
+                let recKeep = this.keep.access(this.uid2Nam(rec.uid));
                 promises.push((async () => {
                   let origVal = JSON.parse(await recKeep.getContent());
                   await recKeep.setContent(JSON.stringify(origVal.gain({ val })));
@@ -98,7 +98,7 @@ U.buildRoom({ name: 'dbTest',
                 deletedUids.add(uid);
                 this.netRecs.rem(uid);
                 
-                let recKeep = this.keep.innerKeep(this.uid2Nam(uid));
+                let recKeep = this.keep.access(this.uid2Nam(uid));
                 
                 // Even keeping track of `deletedUids` can't guarantee
                 // that the file exists! Do this in a try/catch. Errors
@@ -142,7 +142,7 @@ U.buildRoom({ name: 'dbTest',
           await this.diskQueue;
           
           let prm = Promise.allArr(((await this.keep.getContent()) || []).map(async nam => {
-            let recKeep = this.keep.innerKeep(nam);
+            let recKeep = this.keep.access(nam);
             return JSON.parse(await recKeep.getContent());
           }));
           

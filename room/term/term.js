@@ -110,8 +110,8 @@ global.rooms.term = async foundation => {
     checkout: function() {
       let term = null;
       for (let i = 0; i < 100; i++) {
-        term = this.chance.elem(terms);
-        if (!this.usedTerms.has(term)) break;
+        let randTerm = this.chance.elem(terms);
+        if (!this.usedTerms.has(randTerm)) { term = randTerm; break; }
       }
       
       if (!term) throw Error(`No term available X_X`);

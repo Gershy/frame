@@ -36,7 +36,7 @@ global.rooms.chess2 = async foundation => {
   
   // Config values
   let moveMs = 50 * 1000;
-  let matchmakeMs = ({ test: (1/2) * 1000, prod: 8 * 1000 })[foundation.origArgs.mode];
+  let matchmakeMs = 3000;
   let pieceDefs = {
     minimal: {
       white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
@@ -157,9 +157,9 @@ global.rooms.chess2 = async foundation => {
     let key = `chess2Piece.${colour}.${pieceType}`;
     let keep = null;
     /// {ABOVE=
-    keep = foundation.getKeep('fileSystem', [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ]);
+    keep = foundation.seek('keep', 'fileSystem', [ 'room', 'chess2', 'img', 'classicPieces', `${colour}-${pieceType}.png` ]);
     /// =ABOVE} {BELOW=
-    keep = foundation.getKeep('urlResource', { path: key });
+    keep = foundation.seek('keep', 'urlResource', { path: key });
     /// =BELOW}
     chess2Keeps[key] = keep;
   }}
@@ -471,7 +471,7 @@ global.rooms.chess2 = async foundation => {
     let termBank = term.TermBank();
     
     c2Hut.roadNozz('chess2.info').route(({ reply }) => {
-      reply(foundation.getKeep('fileSystem', [ 'room', 'chess2', 'chess2Info.html' ]));
+      reply(foundation.seek('keep', 'fileSystem', [ 'room', 'chess2', 'chess2Info.html' ]));
     });
     /// =ABOVE}
     
@@ -713,7 +713,7 @@ global.rooms.chess2 = async foundation => {
       
       /// =ABOVE} {BELOW=
       
-      global.chess2 = chess2 ? * *;
+      global.chess2 = chess2;
       dep(Drop(null, () => { delete global.chess2; }));
       
       let c2RootReal = dep(rootReal.techReals[0].addReal('c2.root'));

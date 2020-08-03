@@ -97,9 +97,9 @@ global.rooms.realWebApp = async foundation => {
       
       /// {ABOVE=
       
-      let keepFs = foundation.getKeep('fileSystem');
-      let keepIcon = keepFs.to([ 'setup', 'favicon.ico' ]);
-      let keepCss = keepFs.to([ 'mill', 'storage', 'realWebApp', 'mainStyles.css' ]);
+      let keepFs = foundation.seek('keep', 'fileSystem');
+      let keepIcon = keepFs.seek([ 'setup', 'favicon.ico' ]);
+      let keepCss = keepFs.seek([ 'mill', 'storage', 'realWebApp', 'mainStyles.css' ]);
       await keepCss.setContent(this.genCss(rootReal));
       
       parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
@@ -111,8 +111,8 @@ global.rooms.realWebApp = async foundation => {
         srcHut.resetSyncState();
         let initSyncTell = srcHut.consumePendingSync();
         
-        let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
-        let urlFn = (customParams={}, params={ ...baseParams, ...customParams, reply: '1' }) => {
+        let baseParams = {  };
+        let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
           return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
         };
         
@@ -159,7 +159,7 @@ global.rooms.realWebApp = async foundation => {
           ? [ 'room', msg.room, `${msg.room}.js` ]
           : [ 'setup', `${msg.room}.js` ];
         
-        let srcContent = await foundation.getKeep('fileSystem', pcs).getContent('utf8');
+        let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
         let { lines, offsets } = foundation.compileContent('below', srcContent);
         
         reply([

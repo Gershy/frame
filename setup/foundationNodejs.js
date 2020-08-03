@@ -18,7 +18,7 @@
           urlResource: Insp.KeepUrlResources()
         };
       },
-      innerKeep: function(type) {
+      access: function(type) {
         if (this.keepsByType.has(type)) return this.keepsByType[type];
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
@@ -96,7 +96,7 @@
       },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
-      innerKeep: function(dirNames) {
+      access: function(dirNames) {
         if (U.isType(dirNames, String)) dirNames = [ dirNames ];
         let KeepCls = this.constructor;
         return KeepCls([ ...this.absPath, ...dirNames ]);
@@ -141,7 +141,7 @@
           if (items) {
             
             // Set content of all items to `null`
-            await Promise.allArr(items.map(item => this.innerKeep(item).setContent(null)));
+            await Promise.allArr(items.map(item => this.access(item).setContent(null)));
             
           } else {
             
@@ -194,7 +194,7 @@
     })}),
     $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
       init: function() {},
-      innerKeep: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
+      access: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
     })}),
     $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
       init: function(path='', params={}) {
@@ -338,8 +338,7 @@
       process.on('unhandledRejection', err => console.error(this.formatError(err)));
       
       this.bearing = 'above';
-      this.rootKeep = Insp.KeepNodejs();
-      this.fsKeep = this.rootKeep.innerKeep('fileSystem');
+      this.fsKeep = this.seek('keep', 'fileSystem'); //this.getRootKeep().access('fileSystem');
       
       this.roomsInOrder = [];
       this.compilationData = {};
@@ -356,17 +355,16 @@
       
       this.canSettlePrm = (async () => {
         await Promise.allArr([
-          this.fsKeep.to([ 'mill', 'storage' ]).setContent(null),
-          this.fsKeep.to([ 'mill', 'room' ]).setContent(null)
+          this.fsKeep.seek([ 'mill', 'storage' ]).setContent(null),
+          this.fsKeep.seek([ 'mill', 'room' ]).setContent(null)
         ]);
       })();
       
     },
-    
     installRoom: async function(name, bearing='above') {
       
       console.log(`Installing ${name}!`);
-      let file = await this.getKeep('fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
+      let file = await this.seek('keep', 'fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
       let { lines, offsets } = await this.compileContent(bearing, file);
       
       return {
@@ -374,7 +372,7 @@
         content: (async () => {
           
           // Write, `require`, and ensure file populates `global.rooms`
-          await this.getKeep('fileSystem', [ 'mill', 'compiled', `${name}.${bearing}.js` ]).setContent(lines.join('\n'));
+          await this.seek('keep', 'fileSystem', [ 'mill', 'compiled', `${name}.${bearing}.js` ]).setContent(lines.join('\n'));
           require(`../mill/compiled/${name}.${bearing}.js`);
           if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
           
@@ -385,7 +383,16 @@
       
     },
     
-    // Compilation
+    // Util
+    queueTask: setImmediate,
+    getMemUsage: function() {
+      let usage1 = process.memoryUsage();
+      return {
+        rss: usage1.rss - this.usage0.rss,
+        heapTotal: usage1.heapTotal,
+        heapUsed: usage1.heapUsed - this.usage0.heapUsed
+      };
+    },
     compileContent: function(variantName, srcLines) {
       
       // Compile file content; filter based on variant tags
@@ -460,6 +467,57 @@
       return { lines: filteredLines, offsets };
     },
     
+    // High level
+    createHut: async function(options={}) {
+      
+      // TODO: Think about what is happening with `hutInstance.uid` -
+      // For Above the uid is hard-coded and basically arbitrary. For
+      // Below the uid is an unguessable, private base62 string.
+      
+      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      
+      if (!options.has('hosting')) options.hosting = {};
+      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
+      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
+      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
+      
+      let [ host, port ] = this.origArgs.has('hosting')
+        ? this.origArgs.hosting.split(':')
+        : [ 'localhost', '80' ];
+      
+      let sslArgs = { keyPair: null, selfSign: null };
+      if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
+        let certFolder = this.seek('keep', 'fileSystem', [ 'mill', 'cert' ]);
+        let { cert, key, selfSign } = await Promise.allObj({
+          cert:     certFolder.seek('server.cert').getContent(),
+          key:      certFolder.seek('server.key').getContent(),
+          selfSign: certFolder.seek('localhost.cert').getContent()
+        });
+        sslArgs = { keyPair: { cert, key }, selfSign };
+      }
+      
+      options.uid = 'nodejs.root';
+      options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
+      
+      return insp.Foundation.createHut.call(this, options);
+      
+    },
+    createKeep: function(options={}) {
+      return Insp.KeepNodejs();
+    },
+    createReal: async function(options={}) {
+      let real = (await this.getRoom('real')).Real(null, 'nodejs.root');
+      real.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
+      real.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
+      real.defineInsert('nodejs.root', 'nodejs.ascii');
+      real.defineInsert('nodejs.root', 'nodejs.system');
+      real.techReals = [
+        real.addReal('nodejs.ascii'),
+        real.addReal('nodejs.system')
+      ];
+      return real;
+    },
+    
     // Errors
     parseErrorLine: function(line) {
       
@@ -479,87 +537,12 @@
     srcLineRegex: function() {
       return {
         regex: /([^ ]*[^a-zA-Z0-9.])?[a-zA-Z0-9.]*[.]js:[0-9]+/, // TODO: No charInd
-        regResult: fullMatch => {
+        extract: fullMatch => {
           let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.]/).slice(-2);
           let [ roomName, bearing ] = roomBearingName.split('.');
           return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
         }
       };
-    },
-    
-    // Platform
-    queueTask: setImmediate,
-    getMemUsage: function() {
-      let usage1 = process.memoryUsage();
-      return {
-        rss: usage1.rss - this.usage0.rss,
-        heapTotal: usage1.heapTotal,
-        heapUsed: usage1.heapUsed - this.usage0.heapUsed
-      };
-    },
-    
-    // High level
-    getRootKeep: function() { return this.rootKeep; },
-    getRootHut: async function(options={}) {
-      
-      // TODO: Think about what is happening with `hutInstance.uid` -
-      // For Above the uid is hard-coded and basically arbitrary. For
-      // Below the uid is an unguessable, private base62 string.
-      // There are two different ways to add the AboveHut as a MemberRec
-      
-      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
-      
-      if (!options.has('hosting')) options.hosting = {};
-      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
-      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
-      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
-      
-      let [ host, port ] = this.origArgs.has('hosting')
-        ? this.origArgs.hosting.split(':')
-        : [ 'localhost', '80' ];
-      
-      let sslArgs = { keyPair: null, selfSign: null };
-      if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
-        let certFolder = this.getKeep('fileSystem', [ 'mill', 'cert' ]);
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     certFolder.to('server.cert').getContent(),
-          key:      certFolder.to('server.key').getContent(),
-          selfSign: certFolder.to('localhost.cert').getContent()
-        });
-        sslArgs = { keyPair: { cert, key }, selfSign };
-      }
-      
-      options.uid = 'nodejs.root';
-      options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
-      
-      return insp.Foundation.getRootHut.call(this, options);
-      
-    },
-    getRootReal: async function() {
-      
-      // There is only a single RootReal for an instance of node,
-      // reflecting the deepest abstraction for visuals.
-      
-      if (!this.rootReal) {
-        
-        let realRoom = await this.getRoom('real');
-        
-        let rootReal = this.rootReal = realRoom.Real(null, 'nodejs.root');
-        rootReal.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
-        rootReal.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
-        
-        rootReal.defineInsert('nodejs.root', 'nodejs.ascii');
-        rootReal.defineInsert('nodejs.root', 'nodejs.system');
-        
-        rootReal.techReals = [
-          rootReal.addReal('nodejs.ascii'),
-          rootReal.addReal('nodejs.system')
-        ];
-        
-      }
-      
-      return this.rootReal;
-      
     },
     
     // Functionality
@@ -575,7 +558,7 @@
       let fp = (type === 'setup')
         ? [ 'setup', `${name}.js` ]
         : [ 'room', name, `${name}.${bearing}.js` ];
-      let srcContent = await this.getKeep('fileSystem', fp).getContent('utf8');
+      let srcContent = await this.seek('keep', 'fileSystem', fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
       let offsets = [];
@@ -607,41 +590,32 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getHutRoadForQuery: function(server, parHut, query, decorate=null) {
+    getHutRoadForQuery: function(server, parHut, hutId, decorate=null) {
       
       // TODO: Right now a Road can be spoofed - this should be a
       // property of the Hut, shouldn't it?
       
-      if (query.has('spoof')) {
-        
-        // Spoofing only available if allowed by Foundation
-        if (!this.spoofEnabled) return null;
-        
-        // Return the current connection for `server` for the spoofed
-        // identity, or create such a connection if none exists
-        let roadedHut = parHut.getRoadedHut(query.spoof);
-        if (roadedHut && roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
-        return parHut.processNewRoad(server, road => {
-          road.hutId = query.spoof;
-          road.isSpoofed = true;
-          if (decorate) decorate(road);
-        });
-        
-      } else if (query.has('hutId')) {
-        
-        // Supplying a "hutId" means the Hut claims to be familiar
-        let roadedHut = parHut.getRoadedHut(query.hutId);
-        if (!roadedHut) return null;
-        
-        if (roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
-        return parHut.processNewRoad(server, road => {
-          road.hutId = query.hutId;
-          if (decorate) decorate(road);
-        });
-        
+      // Free pass for Huts that declare themselves unfamiliar
+      if (hutId === null) return parHut.processNewRoad(server, decorate || (road => {}));
+      
+      // Check if this RoadedHut is familiar:
+      let roadedHut = parHut.getRoadedHut(hutId);
+      if (roadedHut) {
+        // Familiar RoadedHuts are guaranteed a Road
+        return roadedHut.serverRoads.has(server)
+          // Any previous Road is reused
+          ? roadedHut.serverRoads.get(server)
+          // Otherwise a new Road is processed for the RoadedHut
+          : parHut.processNewRoad(server, road => (road.hutId = hutId, decorate && decorate(road)));
       }
       
-      return parHut.processNewRoad(server, decorate || (road => {}));
+      // Past this point a Road can only be returned by spoofing
+      if (!this.spoofEnabled) return null;
+      
+      // Return a Road spoofed to have the requested `hutId`
+      let newSpoofyRoad = parHut.processNewRoad(server, road => (road.hutId = hutId, decorate && decorate(road)));
+      newSpoofyRoad.hut.isSpoofed = true;
+      return newSpoofyRoad;
       
     },
     makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
@@ -731,7 +705,7 @@
         // Get identity-specifying props; remove them from the params.
         // Past this point identity is based on the connection and cpu;
         // best practice to remove identity info from params
-        let iden = params.splice('spoof', 'hutId');
+        let iden = params.splice('hutId');
         
         // If params are empty at this point, look at http path
         if (params.isEmpty()) params = (p => {
@@ -748,7 +722,7 @@
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
         // spot where they can request a new identity
-        let road = this.getHutRoadForQuery(server, pool, iden);
+        let road = this.getHutRoadForQuery(server, pool, iden.seek('hutId').val);
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
         // Confirm that we've seen this Hut under this host
@@ -927,7 +901,7 @@
         
         let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
         
-        let road = this.getHutRoadForQuery(server, pool, query, road => road.sokt = sokt);
+        let road = this.getHutRoadForQuery(server, pool, query.seek('hutId').val, road => road.sokt = sokt);
         if (!road) return sokt.end();
         
         sokt.on('readable', () => {

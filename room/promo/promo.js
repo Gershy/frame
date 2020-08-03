@@ -22,8 +22,7 @@ global.rooms.promo = async foundation => {
           srcHut.resetSyncState();
           let initSyncTell = srcHut.consumePendingSync();
           
-          let baseParams = { [road.isSpoofed ? 'spoof' : 'hutId']: srcHut.uid };
-          let urlFn = (customParams={}, params={ ...baseParams, ...customParams, reply: '1' }) => {
+          let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
             return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
           };
           
@@ -35,16 +34,27 @@ global.rooms.promo = async foundation => {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
                 <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
+                <style type="text/css">
+                  body { position: relative; opacity: 0; transition: opacity 750ms linear; }
+                  body.loaded { opacity: 1; }
+                </style>
                 <script type="text/javascript">window.global = window;</script>
                 <script type="text/javascript">global.roomDebug = {};</script>
                 <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
                 <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
                 <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
                 <script type="text/javascript">
-                  U.hutId = '${srcHut.uid}';
-                  U.aboveMsAtResponseTime = ${foundation.getMs()};
-                  U.initData = ${JSON.stringify(initSyncTell)};
-                  let foundation = global.foundation = U.setup.FoundationBrowser(${JSON.stringify({ ...foundation.origArgs, settle: '${foundation.hut}.below' })});
+                  window.addEventListener('load', () => document.body.classList.add('loaded'));
+                  window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
+                  global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
+                  let foundation = global.foundation = U.setup.FoundationBrowser({
+                    ...${JSON.stringify(foundation.origArgs)},
+                    bearing: 'below',
+                    hutId: '${srcHut.uid}',
+                    isSpoofed: ${srcHut.isSpoofed},
+                    aboveMsAtResponseTime: ${foundation.getMs()},
+                    initData: ${JSON.stringify(initSyncTell)}
+                  });
                   foundation.getRoom('${this.name}', 'below')
                     .then(room => room.open(foundation))
                     .catch(err => {
@@ -65,7 +75,7 @@ global.rooms.promo = async foundation => {
             ? [ 'room', msg.room, `${msg.room}.js` ]
             : [ 'setup', `${msg.room}.js` ];
           
-          let srcContent = await foundation.getKeep('fileSystem', pcs).getContent('utf8');
+          let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
           let { lines, offsets } = foundation.compileContent('below', srcContent);
           
           reply([
@@ -86,7 +96,9 @@ global.rooms.promo = async foundation => {
                 font-family: monospace;
               }
               body { overflow-x: hidden; overflow-y: auto; }
-              .drying { opacity: 0.7; }
+              body > .rec { color: #000000; }
+              .drying { pointer-events: none !important; opacity: 0.7; }
+              .drying > * { pointer-events: none !important; }
               .rec {
                 position: relative;
                 padding: 10px;
@@ -96,19 +108,16 @@ global.rooms.promo = async foundation => {
                 color: #ffffff;
                 font-size: 16px;
                 overflow: hidden;
-                transition: height 1000ms linear, margin-bottom 1000ms linear, padding-bottom 1000ms linear, padding-top 1000ms linear;
+                transition: height 250ms linear, margin-bottom 250ms linear, padding-bottom 250ms linear, padding-top 250ms linear;
               }
               .rec.dry { height: 0 !important; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
               .rec:hover { background-color: rgba(0, 120, 0, 0.15); }
-              .rec > .title {}
-              .rec > .value {
-                position: relative;
-                margin: 4px 0;
-                box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15);
-              }
+              .rec > .title { font-size: 120%; }
+              .rec > .value { position: relative; margin: 4px 0; }
+              .rec.set > .value { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15); }
+              .rec.set:hover > .value { box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
               .rec > .value > .display { height: 16px; line-height: 16px; padding: 5px; }
               .rec > .options {}
-              .rec:hover > .value { box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
               .rec > .children {}
               .rec.rem > .rem {
                 position: absolute;
@@ -137,7 +146,6 @@ global.rooms.promo = async foundation => {
                 width: 26px; height: 100%; right: 0; top: 0;
                 background-color: #0f0;
               }
-              
               .rec > .control {
                 display: block;
                 height: 26px;
@@ -152,11 +160,7 @@ global.rooms.promo = async foundation => {
                 background-color: rgba(0, 0, 0, 0.1);
                 cursor: pointer;
               }
-              .rec > .control > .add:hover {
-                background-color: rgba(0, 0, 0, 0.3);
-              }
-              
-              body > .rec { color: #000000; }
+              .rec > .control > .add:hover { background-color: rgba(0, 0, 0, 0.3); }
             `)
           });
           
@@ -349,10 +353,9 @@ global.rooms.promo = async foundation => {
             delete removedPerms[perm];
             
             // If the perm has been seen, skip it
-            if (permDrops.has(perm)) continue;
+            if (permDrops.has(k)) continue;
             
-            permDrops[perm] = ({
-              
+            permDrops[k] = ({
               set: () => {
                 
                 recNode.domElem.classList.add('set');
@@ -396,9 +399,7 @@ global.rooms.promo = async foundation => {
                 addNode.domElem.addEventListener('click', () => Permissions.add(parHut, rec, relName));
                 addNode.domElem.innerHTML = `+${relName}`;
                 
-                return Drop(null, () => {
-                  addNode.dry();
-                });
+                return Drop(null, () => addNode.dry());
               },
               rem: () => {
                 recNode.domElem.classList.add('rem');
@@ -410,7 +411,6 @@ global.rooms.promo = async foundation => {
                   remNode.dry();
                 });
               }
-              
             })[perm](...params);
             
           }
@@ -450,9 +450,7 @@ global.rooms.promo = async foundation => {
     await htmlApp.decorateApp(promoHut);
     
     /// {ABOVE=
-    
     let promoRec = promoHut.createRec('pmo.promo', [ promoHut ]);
-    
     /// =ABOVE}
     
     let rootScope = RecScope(promoHut, 'pmo.promo', async (promoRec, dep) => {

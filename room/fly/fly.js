@@ -270,13 +270,13 @@ U.buildRoom({
       let fly = flyHut.createRec('fly.fly', [ flyHut ]);
       let termBank = term.TermBank();
       
-      let flyInfoDoc = foundation.getKeep('fileSystem', [ 'room', 'fly', 'info.html' ]);
+      let flyInfoDoc = foundation.seek('keep', 'fileSystem', [ 'room', 'fly', 'info.html' ]);
       flyHut.roadNozz('fly.info').route(({ reply }) => reply(flyInfoDoc));
       
-      let resourceKeep = foundation.getKeep('fileSystem', [ 'room', 'fly', 'resource' ]);
+      let resourceKeep = foundation.seek('keep', 'fileSystem', [ 'room', 'fly', 'resource' ]);
       let resourceNames = await resourceKeep.getContent();
       for (let rn of resourceNames) {
-        let resource = resourceKeep.to(rn);
+        let resource = resourceKeep.seek(rn);
         flyHut.roadNozz(`fly.sprite.${rn.split('.')[0]}`).route(({ reply }) => reply(resource));
       }
       
@@ -711,7 +711,7 @@ U.buildRoom({
                 let modelReal = modelListReal.addReal('fly.model');
                 modelReal.addReal('fly.modelName').addReal('fly.content3').setText(name);
                 modelReal.setImage(
-                  foundation.getKeep('urlResource', { path: `fly.sprite.ace${model[0].upper()}${model.slice(1)}` }),
+                  foundation.seek('keep', 'urlResource', { path: `fly.sprite.ace${model[0].upper()}${model.slice(1)}` }),
                   { smoothing: false, scale: 0.5 }
                 );
                 
