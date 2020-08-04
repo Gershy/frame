@@ -237,7 +237,7 @@ global.rooms.chess2 = async foundation => {
       
     });
     
-    let webApp = WebApp('c2');
+    let webApp = WebApp('chess2');
     await webApp.decorateHut(c2Hut, rootReal);
     
     let validMoves = (matchPlayer, match, piece) => {
@@ -292,7 +292,7 @@ global.rooms.chess2 = async foundation => {
       } else if ([ 'bishop', 'rook', 'queen', 'king' ].has(type)) {
         
         let diag = [ [ -1, -1 ], [ -1, +1 ], [ +1, +1 ], [ +1, -1 ] ];
-        let orth = [ [ -1, 00 ], [ 00, +1 ], [ +1, 00 ], [ 00, -1 ] ];
+        let orth = [ [ -1,  0 ], [  0, +1 ], [ +1,  0 ], [  0, -1 ] ];
         let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
         
         steps.forEach(([dx, dy]) => {

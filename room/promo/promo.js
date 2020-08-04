@@ -76,6 +76,7 @@ global.rooms.promo = async foundation => {
             : [ 'setup', `${msg.room}.js` ];
           
           let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
+          if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}')`);
           let { lines, offsets } = foundation.compileContent('below', srcContent);
           
           reply([
@@ -84,85 +85,86 @@ global.rooms.promo = async foundation => {
           ].join('\n'));
           
         });
+        parHut.roadNozz('html.icon').route(async ({ road, srcHut, msg, reply }) => {
+          
+          reply(foundation.seek('keep', 'fileSystem', 'setup', 'favicon.ico'));
+          
+        });
         parHut.roadNozz('html.css').route(async ({ road, srcHut, msg, reply }) => {
           
-          reply({
-            '~contentData': true,
-            type: 'css',
-            content: U.multiLineString(`
-              html, body {
-                position: absolute; left: 0; right: 0; top: 0; bottom: 0;
-                margin: 0; padding: 0;
-                font-family: monospace;
-              }
-              body { overflow-x: hidden; overflow-y: auto; }
-              body > .rec { color: #000000; }
-              .drying { pointer-events: none !important; opacity: 0.7; }
-              .drying > * { pointer-events: none !important; }
-              .rec {
-                position: relative;
-                padding: 10px;
-                margin-bottom: 4px;
-                box-sizing: border-box;
-                background-color: rgba(0, 0, 0, 0.15);
-                color: #ffffff;
-                font-size: 16px;
-                overflow: hidden;
-                transition: height 250ms linear, margin-bottom 250ms linear, padding-bottom 250ms linear, padding-top 250ms linear;
-              }
-              .rec.dry { height: 0 !important; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
-              .rec:hover { background-color: rgba(0, 120, 0, 0.15); }
-              .rec > .title { font-size: 120%; }
-              .rec > .value { position: relative; margin: 4px 0; }
-              .rec.set > .value { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15); }
-              .rec.set:hover > .value { box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
-              .rec > .value > .display { height: 16px; line-height: 16px; padding: 5px; }
-              .rec > .options {}
-              .rec > .children {}
-              .rec.rem > .rem {
-                position: absolute;
-                right: 0; top: 0; width: 20px; height: 20px;
-                background-color: rgba(150, 0, 0, 0.5);
-                cursor: pointer;
-              }
-              .rec.set > .value { cursor: pointer; }
-              .rec.set > .value > .editor {
-                position: absolute;
-                box-sizing: border-box;
-                left: 0; top: 0; width: 100%; height: 100%;
-                padding-right: 26px;
-              }
-              .rec.set > .value > .editor.drying { display: none; }
-              .rec.set > .value > .editor > .edit {
-                position: relative;
-                box-sizing: border-box;
-                left: 0; top: 0; width: 100%; height: 100%;
-                background-color: #fff;
-                border: none; outline: none !important; padding: 5px;
-                font-family: inherit; font-size: inherit;
-              }
-              .rec.set > .value > .editor > .submit {
-                position: absolute;
-                width: 26px; height: 100%; right: 0; top: 0;
-                background-color: #0f0;
-              }
-              .rec > .control {
-                display: block;
-                height: 26px;
-                margin-bottom: 4px;
-              }
-              .rec > .control:empty { display: none; }
-              .rec > .control > .add {
-                display: inline-block;
-                height: 16px; line-height: 16px; padding: 5px;
-                font-size: 80%;
-                margin-right: 4px;
-                background-color: rgba(0, 0, 0, 0.1);
-                cursor: pointer;
-              }
-              .rec > .control > .add:hover { background-color: rgba(0, 0, 0, 0.3); }
-            `)
-          });
+          reply(U.multiLineString(`
+            html, body {
+              position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+              margin: 0; padding: 0;
+              font-family: monospace;
+            }
+            body { overflow-x: hidden; overflow-y: auto; }
+            body > .rec { color: #000000; }
+            .drying { pointer-events: none !important; opacity: 0.7; }
+            .drying > * { pointer-events: none !important; }
+            .rec {
+              position: relative;
+              padding: 10px;
+              margin-bottom: 4px;
+              box-sizing: border-box;
+              background-color: rgba(0, 0, 0, 0.15);
+              color: #ffffff;
+              font-size: 16px;
+              overflow: hidden;
+              transition: height 250ms linear, margin-bottom 250ms linear, padding-bottom 250ms linear, padding-top 250ms linear;
+            }
+            .rec.dry { height: 0 !important; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
+            .rec:hover { background-color: rgba(0, 120, 0, 0.15); }
+            .rec > .title { font-size: 120%; }
+            .rec > .value { position: relative; margin: 4px 0; }
+            .rec.set > .value { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.15); }
+            .rec.set:hover > .value { box-shadow: inset 0 0 0 2px rgba(0, 120, 0, 0.15); }
+            .rec > .value > .display { height: 16px; line-height: 16px; padding: 5px; }
+            .rec > .options {}
+            .rec > .children {}
+            .rec.rem > .rem {
+              position: absolute;
+              right: 0; top: 0; width: 20px; height: 20px;
+              background-color: rgba(150, 0, 0, 0.5);
+              cursor: pointer;
+            }
+            .rec.set > .value { cursor: pointer; }
+            .rec.set > .value > .editor {
+              position: absolute;
+              box-sizing: border-box;
+              left: 0; top: 0; width: 100%; height: 100%;
+              padding-right: 26px;
+            }
+            .rec.set > .value > .editor.drying { display: none; }
+            .rec.set > .value > .editor > .edit {
+              position: relative;
+              box-sizing: border-box;
+              left: 0; top: 0; width: 100%; height: 100%;
+              background-color: #fff;
+              border: none; outline: none !important; padding: 5px;
+              font-family: inherit; font-size: inherit;
+            }
+            .rec.set > .value > .editor > .submit {
+              position: absolute;
+              width: 26px; height: 100%; right: 0; top: 0;
+              background-color: #0f0;
+            }
+            .rec > .control {
+              display: block;
+              height: 26px;
+              margin-bottom: 4px;
+            }
+            .rec > .control:empty { display: none; }
+            .rec > .control > .add {
+              display: inline-block;
+              height: 16px; line-height: 16px; padding: 5px;
+              font-size: 80%;
+              margin-right: 4px;
+              background-color: rgba(0, 0, 0, 0.1);
+              cursor: pointer;
+            }
+            .rec > .control > .add:hover { background-color: rgba(0, 0, 0, 0.3); }
+          `));
           
         });
         /// =ABOVE}

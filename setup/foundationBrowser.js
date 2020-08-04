@@ -69,17 +69,17 @@
       // With this value, `new Date() + this.clockDeltaMs` is best guess
       // at current value of Above's `foundation.getMs()` *right now*
       this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
-      
       this.hutId = hutId;
       this.isSpoofed = isSpoofed;
       
       // Make sure that refreshes redirect to the same session
       window.history.replaceState({}, '', this.seek('keep', 'urlResource', {}).getUrl());
+      
     },
     installRoom: async function(name, bearing='below') {
       
-      let urlParams = { command: 'html.room', type: 'room', room: name };
-      let url = this.seek('keep', 'urlResource', { params: urlParams }).getUrl(foundation);
+      let urlParams = { command: 'html.room', type: 'room', room: name, reply: '1' };
+      let url = this.seek('keep', 'urlResource', { params: urlParams }).getUrl();
       
       let script = document.createElement('script');
       script.setAttribute('defer', '');
@@ -137,6 +137,7 @@
       
       let numPendingReqs = 0;
       
+      // TODO: Check out native fetch API
       let tellAndHear = async (msg, road) => {
         
         // Do XHR

@@ -102,7 +102,7 @@ if (args.has('test')) {
   
   let foundation = U.setup.FoundationNodejs(args);
   foundation.getRoom(args.settle, 'above')
-    .then(room => room.open(foundation))
+    .then(room => room.open())
     .catch(err => {
       console.log('FATAL ERROR:', foundation.formatError(err));
       process.exit(1);

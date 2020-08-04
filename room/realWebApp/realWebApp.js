@@ -117,7 +117,6 @@ global.rooms.realWebApp = async foundation => {
         };
         
         let foundationArgs = { ...foundation.origArgs };
-        console.log('FOUNDATION ARGS:', foundationArgs);
         reply(U.multiLineString(`
           <!doctype html>
           <html>
@@ -132,17 +131,23 @@ global.rooms.realWebApp = async foundation => {
               <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
               <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
               <script type="text/javascript">
-                global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
-                U.hutId = '${srcHut.uid}';
-                U.aboveMsAtResponseTime = ${foundation.getMs()};
-                U.initData = ${JSON.stringify(initSyncTell)};
-                let foundation = global.foundation = U.setup.FoundationBrowser(${JSON.stringify(foundationArgs)});
-                foundation.getRoom('chess2', 'below')
-                  .then(room => room.open(foundation))
-                  .catch(err => {
-                    console.log('FATAL ERROR:', foundation.formatError(err));
-                    debugger;
+                window.addEventListener('load', () => document.body.classList.add('loaded'));
+                  window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
+                  global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
+                  let foundation = global.foundation = U.setup.FoundationBrowser({
+                    ...${JSON.stringify(foundation.origArgs)},
+                    bearing: 'below',
+                    hutId: '${srcHut.uid}',
+                    isSpoofed: ${srcHut.isSpoofed},
+                    aboveMsAtResponseTime: ${foundation.getMs()},
+                    initData: ${JSON.stringify(initSyncTell)}
                   });
+                  foundation.getRoom('${this.name}', 'below')
+                    .then(room => room.open(foundation))
+                    .catch(err => {
+                      console.log('FATAL ERROR:', foundation.formatError(err));
+                      debugger;
+                    });
               </script>
             </head>
             <body>
@@ -159,13 +164,19 @@ global.rooms.realWebApp = async foundation => {
           ? [ 'room', msg.room, `${msg.room}.js` ]
           : [ 'setup', `${msg.room}.js` ];
         
-        let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
-        let { lines, offsets } = foundation.compileContent('below', srcContent);
-        
-        reply([
-          ...lines,
-          `global.roomDebug.${msg.room} = ${JSON.stringify({ offsets })};`
-        ].join('\n'));
+        try {
+          let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
+          let { lines, offsets } = foundation.compileContent('below', srcContent);
+          
+          reply([
+            ...lines,
+            `global.roomDebug.${msg.room} = ${JSON.stringify({ offsets })};`
+          ].join('\n'));
+        } catch(err) {
+          reply(U.multiLineString(`
+            throw Error('Invalid room request (${JSON.stringify(msg)})');
+          `));
+        }
         
       });
       

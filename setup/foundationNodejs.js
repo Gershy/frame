@@ -85,6 +85,7 @@
         html: 'text/html',
         css: 'text/css',
         txt: 'text/plain',
+        ico: 'image/x-icon',
         png: 'image/png',
         jpg: 'image/jpeg',
         svg: 'image/svg'
@@ -106,7 +107,7 @@
         if (!meta) return null;
         if (meta.isDirectory()) return 'folder';
         if (meta.isFile()) return 'letter';
-        throw Error(`${this.desc()} is unknown type (non-folder, non-letter)`);
+        throw Error(`${this.desc()} is unknown type (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
         let type = await this.checkType();
@@ -363,7 +364,6 @@
     },
     installRoom: async function(name, bearing='above') {
       
-      console.log(`Installing ${name}!`);
       let file = await this.seek('keep', 'fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
       let { lines, offsets } = await this.compileContent(bearing, file);
       
@@ -623,54 +623,35 @@
       if (!port) port = keyPair ? 443 : 80;
       
       // Translates a javascript value `msg` into http content type and payload
-      let sendData = (res, msg) => {
+      let sendData = async (req, res, msg) => {
         
-        // json, html, text, savd, error
-        let type = (() => {
-          if (U.isType(msg, Object) && msg.has('~contentData')) return 'cd';
-          if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
-          if (U.isType(msg, String)) return (msg.match(/^<!doctype/i)) ? 'html' : 'text';
-          if (U.isInspiredBy(msg, Keep)) return 'keep';
-          if (msg instanceof Error) throw msg; //return 'error';
-          throw Error(`Unknown type for ${U.nameOf(msg)}`);
-        })();
+        if (msg instanceof Error) throw msg;
         
-        return ({
-          cd: () => {
-            let type = FoundationNodejs.KeepFileSystem.extensionContentTypeMap[msg.type];
-            res.writeHead(200, { 'Content-Type': type, 'Content-Length': Buffer.byteLength(msg.content) });
-            res.end(msg.content);
-          },
-          text: () => {
-            res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          html: () => {
-            res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          json: () => {
-            try { msg = JSON.stringify(msg); }
-            catch(err) { console.log('Couldn\'t serialize json', msg); throw err; }
-            res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          keep: async () => {
-            res.writeHead(200, {
-              'Content-Type': (await msg.getContentType()) || 'application/octet-stream',
-              'Content-Length': await msg.getContentByteLength()
-            });
-            msg.getPipe().pipe(res);
-          },
-          error: () => {
-            let text = msg.message;
-            res.writeHead(400, {
-              'Content-Type': 'text/plain',
-              'Content-Length': Buffer.byteLength(text)
-            });
-            res.end(text);
-          }
-        })[type]();
+        if (U.isInspiredBy(msg, Keep)) { // File!
+          
+          let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
+          res.writeHead(200, {
+            'Content-Type': ct || 'application/octet-stream',
+            'Content-Length': cl
+          });
+          msg.getPipe().pipe(res);
+          
+        } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
+          
+          msg = JSON.stringify(msg);
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
+          res.end(msg);
+          
+        } else {
+          
+          msg = msg.toString();
+          let accept = req.seek([ 'headers', 'accept' ]).val || '*/*';
+          let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
+          let ct = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
+          res.writeHead(200, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
+          res.end(msg);
+          
+        }
         
       };
       let serverFn = async (req, res) => {
@@ -681,7 +662,7 @@
         // TODO: Watch for exploits; slow loris, etc.
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
-        let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
+        let body = await Promise(r => req.on('end', () => r(chunks.join(''))));
         
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
@@ -768,11 +749,11 @@
         // TODO: Consider a timeout to deal with improper usage
         if (params.reply) {
           try {
-            return road.hear.drip([ params, msg => sendData(res, msg), ms ]);
+            return road.hear.drip([ params, msg => sendData(req, res, msg), ms ]);
           } catch(err) {
             // TODO: Stop leaking `err.message`!
             console.log('Http error response:', this.formatError(err));
-            sendData(res, { command: 'error', msg: err.message, orig: params });
+            sendData(req, res, { command: 'error', msg: err.message, orig: params });
           }
         }
         
@@ -810,12 +791,12 @@
             // Either a leading contiguous string of 1 json Tell, or the
             // 1st Tell is non-json.
             // Send the single, unbundled Tell
-            sendData(res, road.waitTells.shift());
+            sendData(req, res, road.waitTells.shift());
             
           } else {
             
             // Send `bundleSize` bundled json Tells!
-            sendData(res, {
+            sendData(req, res, {
               command: 'multi',
               list: road.waitTells.slice(0, bundleSize)
             });
@@ -826,7 +807,7 @@
         }
         
         // Bank only a single response (otherwise most clients hang)
-        while (road.waitResps.length > 1) sendData(road.waitResps.shift(), { command: 'fizzle' });
+        while (road.waitResps.length > 1) sendData(req, road.waitResps.shift(), { command: 'fizzle' });
         
       };
       
@@ -849,7 +830,7 @@
         road.waitTells = [];
         road.hear = Nozz();
         road.tell = msg => road.waitResps.length
-          ? sendData(road.waitResps.shift(), msg)
+          ? sendData(req, road.waitResps.shift(), msg)
           : road.waitTells.push(msg)
         road.drierNozz().route(() => { for (let res of road.waitResps) res.end(); });
         road.currentCost = () => 1.0;
