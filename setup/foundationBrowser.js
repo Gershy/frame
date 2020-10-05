@@ -8,14 +8,23 @@
     $KeepBrowser: U.inspire({ name: 'KeepBrowser', insps: { Keep }, methods: insp => ({
       init: function(foundation) {
         insp.Keep.init.call(this);
+        let urlResourceKeep = Insp.KeepUrlResources(foundation);
         this.keepsByType = {
-          urlResource: Insp.KeepUrlResources(foundation)
+          static: Insp.KeepStatic(urlResourceKeep),
+          urlResource: urlResourceKeep
         };
       },
       access: function(type) {
         if (this.keepsByType.has(type)) return this.keepsByType[type];
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
+    })}),
+    $KeepStatic: U.inspire({ name: 'KeepStatic', insps: { Keep }, methods: insp => ({
+      init: function(foundation, urlResourceKeep) {
+        this.foundation = foundation;
+        this.urlResourceKeep = urlResourceKeep;
+      },
+      
     })}),
     $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
       init: function(foundation) {
@@ -122,13 +131,194 @@
       return insp.Foundation.createHut.call(this, options);
       
     },
-    createKeep: function() { return Insp.KeepBrowser(this); },
-    createReal: async function() { 
-      let real = (await this.getRoom('real')).Real(null, 'browser.root');
-      real.defineReal('browser.doc', { slotters: null, tech: 'BROWSER' });
-      real.defineInsert('browser.root', 'browser.doc');
-      real.techReals = [ real.addReal('browser.doc') ];
-      return real;
+    createKeep: function(options={}) { return Insp.KeepBrowser(this); },
+    createReal: async function() {
+      
+      let renderClassMap = {
+        // TODO: Should use a Map() of Insp objects, not Insp names
+        TextLayout: (layout, domNode) => {
+          domNode.style.textAlign = 'center';
+          domNode.textContent = layout.text;
+        },
+        Axis1DLayout: (layout, domNode) => {
+          
+          if (layout.cuts === null) {
+            
+            // Children determine their own size in the axis direction, and have 100% perp direction
+            domNode.style.overflowX = (layout.axis === 'x') ? 'auto' : 'hidden';
+            domNode.style.overflowY = (layout.axis === 'y') ? 'auto' : 'hidden';
+            
+          } else if (layout.cuts === 'distribute') {
+            
+            // Children are all the same size
+            domNode.style.display = 'flex';
+            domNode.style.flexDirection = (layout.axis === 'x')
+              ? (layout.flow === '+' ? 'row' : 'row-reverse')
+              : (layout.flow === '+' ? 'column' : 'column-reverse');
+            
+            // No need to justify when child items together occupy 100%
+            //domNode.style.justifyContent = 'center'; // 'center', 'space-around', 'space-between'
+            
+            domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
+            
+          } else if (U.isType(layout, Array)) {
+            
+            // Children are sized using the specified "cuts"
+            let values = [];
+            
+          }
+          
+        },
+        Axis1DLayoutItem: (layout, domNode) => {
+          
+          
+          if (layout.par.cuts === null) {
+            
+            // Children determine their own size in the axis direction, and have 100% perp direction
+            
+          } else if (layout.par.cuts === 'distribute') {
+            
+            // Children are all the same size
+            domNode.style.flexGrow = '1';
+            
+          } else if (U.isType(layout.par.cuts, Array)) {
+            
+            // Children are sized using the specified "cuts"
+            let cutInd = layout.params[0];
+            let offCuts = layout.par.cuts.slice(0, cutInd);
+            
+            let off = offCuts.length
+              ? `calc(${offCuts.join(' + ')})`
+              : '0';
+            let ext = (cutInd <= (layout.par.cuts.length - 1))
+              ? layout.par.cuts[cutInd]
+              : `calc(100% - ${layout.par.cuts.join(' - ')})`;
+            
+            console.log({ cuts: layout.par.cuts, cutInd, ext });
+            
+            domNode.style.position = 'absolute';
+            
+            if (layout.par.axis === 'x' && layout.par.flow === '+') {
+              
+              domNode.style.left = off;
+              domNode.style.width = ext;
+              domNode.style.height = '100%';
+              
+            } else if (layout.par.axis === 'x' && layout.par.flow === '-') {
+              
+              domNode.style.right = off;
+              domNode.style.width = ext;
+              domNode.style.height = '100%';
+              
+            } else if (layout.par.axis === 'y' && layout.par.flow === '+') {
+              
+              domNode.style.top = off;
+              domNode.style.width = '100%';
+              domNode.style.height = ext;
+              
+            } else if (layout.par.axis === 'y' && layout.par.flow === '-') {
+              
+              domNode.style.bottom = off;
+              domNode.style.width = '100%';
+              domNode.style.height = ext;
+              
+            }
+            
+            
+          }
+          
+        },
+        FillLayout: (layout, domNode) => {
+          
+          
+        },
+        CenteredLayout: (layout, domNode) => {
+          
+        },
+        CenteredLayoutItem: (layout, domNode) => {
+        },
+        decals: (decals, domNode) => {
+          
+          for (let k in decals) {
+            
+            if (k === 'colour') {
+              domNode.style.backgroundColor = decals[k];
+            } else if (k === 'w') {
+              domNode.style.width = decals[k];
+            } else if (k === 'h') {
+              domNode.style.height = decals[k];
+            } else if (k === 'border') {
+              let { width, colour } = decals[k];
+              domNode.style.boxShadow = `inset 0 0 0 ${width} ${colour}`;
+            } else if (k === 'scroll') {
+              let { x='none', y='none' } = decals[k];
+              if (x === 'auto') domNode.style.overflowX = 'auto';
+              if (x === 'show') domNode.style.overflowX = 'scroll';
+              if (y === 'auto') domNode.style.overflowY = 'auto';
+              if (y === 'show') domNode.style.overflowY = 'scroll';
+            } else {
+              
+              console.log(`Unknown decals: "${k}"`);
+              
+            }
+            
+          }
+          
+        }
+      };
+      let getRenderClass = name => {
+        if (!renderClassMap.has(name)) throw Error(`Invalid render class: "${name}"`);
+        return renderClassMap[name];
+      };
+      
+      let tech = {
+        createTechNode: real => {
+          let domNode = document.createElement('div');
+          if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z]+)([a-zA-Z])?/g, (f, p, c) => c ? c.upper() : ''));
+          return domNode;
+        },
+        render: (real, domNode) => {
+          
+          // Reset text
+          let cn = [ ...domNode.childNodes ];
+          let textNode = (cn.length === 1 && cn[0].nodeType === Node.TEXT_NODE) ? cn[0] : null;
+          if (textNode) textNode.remove();
+          
+          // Reset styles
+          domNode.removeAttribute('style');
+          
+          // Apply outer and inner layouts, and decals
+          if (real.outerLayout) getRenderClass(U.nameOf(real.outerLayout))(real.outerLayout, domNode);
+          if (real.innerLayout) getRenderClass(U.nameOf(real.innerLayout))(real.innerLayout, domNode);
+          for (let decals of real.decalStack) renderClassMap.decals(decals, domNode);
+          
+        },
+        addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode)
+      };
+      let primaryReal = {
+        techNode: document.body,
+        getChildOuterLayout: params => {
+          let Cls = U.inspire({ name: 'FillLayout', methods: (insp, Insp) => ({
+            init: function() {}
+          })});
+          return Cls();
+        },
+        addReal: real => {
+          real.tech = tech;
+          real.parent = primaryReal;
+          tech.render(real, real.getTechNode());
+          tech.addNode(primaryReal.techNode, real.getTechNode());
+          return real;
+        }
+      };
+      
+      return {
+        access: name => {
+          if (name !== 'primary') throw Error(`Invalid access for Real -> "${name}"`);
+          return primaryReal;
+        }
+      };
+      
     },
     
     // Connectivity

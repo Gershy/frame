@@ -13,14 +13,33 @@
     $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
       init: function() {
         insp.Keep.init.call(this);
+        let fileSystemKeep = Insp.KeepFileSystem();
         this.keepsByType = {
-          fileSystem: Insp.KeepFileSystem(),
+          static: Insp.KeepStatic(fileSystemKeep),
+          fileSystem: fileSystemKeep,
           urlResource: Insp.KeepUrlResources()
         };
       },
       access: function(type) {
         if (this.keepsByType.has(type)) return this.keepsByType[type];
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
+      }
+    })}),
+    $KeepStatic: U.inspire({ name: 'KeepStatic', insps: { Keep }, methods: (insp, Insp) => ({
+      init: function(fileSystemKeep) {
+        this.fileSystemKeep = fileSystemKeep;
+        this.hut = null;
+      },
+      setHut: function(hut) { this.hut = hut; },
+      access: function(fpCmps) {
+        
+        let key = [ 'static', ...fpCmps ].join('/');
+        if (!this.hut.roadNozzes.has(key)) {
+          // Make keep available to Below
+          this.hut.roadNozz(key).route(async ({ reply }) => reply(this.fileSystemKeep.seek(fpCmps)));
+        }
+        return this.fileSystemKeep.seek(fpCmps);
+        
       }
     })}),
     $KeepFileSystem: U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
@@ -88,7 +107,7 @@
         ico: 'image/x-icon',
         png: 'image/png',
         jpg: 'image/jpeg',
-        svg: 'image/svg'
+        svg: 'image/svg+xml'
       },
       
       init: function(absPath=Insp.fs.hutRootCmps) {
@@ -502,20 +521,58 @@
       return insp.Foundation.createHut.call(this, options);
       
     },
-    createKeep: function(options={}) {
-      return Insp.KeepNodejs();
-    },
+    createKeep: function(options={}) { return Insp.KeepNodejs(); },
     createReal: async function(options={}) {
-      let real = (await this.getRoom('real')).Real(null, 'nodejs.root');
-      real.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
-      real.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
-      real.defineInsert('nodejs.root', 'nodejs.ascii');
-      real.defineInsert('nodejs.root', 'nodejs.system');
-      real.techReals = [
-        real.addReal('nodejs.ascii'),
-        real.addReal('nodejs.system')
-      ];
-      return real;
+      
+      let techNodeId = 0;
+      let tech = {
+        createTechNode: () => {
+          return {
+            desc: `fakeTechNode${techNodeId++}`,
+            renderedBy: null,
+            kids: Set()
+          };
+        },
+        render: (real, techNode) => {
+          techNode.renderedBy = real;
+        },
+        addNode: (parTechNode, kidTechNode) => {
+          parTechNode.kids.add(kidTechNode);
+        }
+      };
+      let children = Set();
+      let primaryReal = {
+        desc: 'fakeReal',
+        getChildOuterLayout: params => {
+          return {
+            desc: 'fakeOuterLayout'
+          };
+        },
+        addReal: real => {
+          real.tech = tech;
+          children.add(real);
+          return real;
+        }
+      };
+      
+      return {
+        access: name => {
+          if (name !== 'primary') throw Error(`Invalid access for Real -> "${name}"`);
+          return primaryReal;
+        }
+      };
+      
+      
+      // let real = (await this.getRoom('real')).Real(null, 'nodejs.root');
+      // real.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
+      // real.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
+      // real.defineInsert('nodejs.root', 'nodejs.ascii');
+      // real.defineInsert('nodejs.root', 'nodejs.system');
+      // real.techReals = [
+      //   real.addReal('nodejs.ascii'),
+      //   real.addReal('nodejs.system')
+      // ];
+      // return real;
     },
     
     // Errors
@@ -751,7 +808,7 @@
           try {
             return road.hear.drip([ params, msg => sendData(req, res, msg), ms ]);
           } catch(err) {
-            // TODO: Stop leaking `err.message`!
+            // TODO: Don't `err.message`!
             console.log('Http error response:', this.formatError(err));
             sendData(req, res, { command: 'error', msg: err.message, orig: params });
           }
@@ -853,14 +910,13 @@
         
         // Wait to get websocket request - it contains only headers
         let upgradeReq = null;
-        while (true) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
-          upgradeReq = await Promise(r => sokt.once('readable', () => {
+        while (upgradeReq === null) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
+          upgradeReq = await Promise(resolve => sokt.once('readable', () => {
             let newBuffer = sokt.read();
-            if (!newBuffer || !newBuffer.length) return r(null);
+            if (!newBuffer || !newBuffer.length) return resolve(null);
             soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
-            r(Insp.parseSoktUpgradeRequest(soktState));
+            resolve(Insp.parseSoktUpgradeRequest(soktState));
           }));
-          if (upgradeReq) break;
         }
         
         if (!upgradeReq.headers.has('sec-websocket-key')) return sokt.end();
@@ -870,21 +926,19 @@
         let hash = require('crypto').createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
         
-        await new Promise(r => sokt.write([
+        sokt.write([ // This is fire-and-forget
           'HTTP/1.1 101 Switching Protocols',
           'Upgrade: websocket',
           'Connection: Upgrade',
           `Sec-WebSocket-Accept: ${hash.read().toString('base64')}`,
           '\r\n'
-        ].join('\r\n'), r));
-        
-        soktState.status = 'ready';
+        ].join('\r\n'));
         
         let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
-        
         let road = this.getHutRoadForQuery(server, pool, query.seek('hutId').val, road => road.sokt = sokt);
         if (!road) return sokt.end();
         
+        soktState.status = 'ready';
         sokt.on('readable', () => {
           if (road.isDry()) return;
           let ms = this.getMs();
@@ -901,7 +955,6 @@
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); road.dry(); });
         sokt.on('error', () => { soktState = makeSoktState('ended'); road.dry(); });
-        sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
         
       };
       
