@@ -1,10 +1,107 @@
 global.rooms.promo = async foundation => {
   
+  let { Drop, Basin, Slots } = U.water;
+  
   let { RecScope } = await foundation.getRoom('record');
   
-  let spoof = (() => {
+  let { Real, Axis1DLayout, CenteredLayout, TextLayout, ImageLayout } = await (() => { // foundation.getRoom('real');
     
-    let { Drop, Basin } = U.water;
+    let Real = U.inspire({ name: 'Real', insps: { Slots, Drop }, methods: (insp, Insp) => ({
+      init: function({ name=null, outerLayout=null, innerLayout=null, decals=null }) {
+        this.name = name;
+        this.outerLayout = outerLayout;
+        this.innerLayout = innerLayout;
+        this.decalStack = decals ? [ decals ] : [];
+        
+        this.parent = null;
+        this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
+        this.techNode = null;
+      },
+      getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
+      getChildOuterLayout: function(params) {
+        return this.innerLayout ? this.innerLayout.getChildOuterLayout(params) : null;
+      },
+      addReal: function(real) {
+        
+        if (!U.isInspiredBy(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
+        
+        if (real.parent) {
+          
+          if (real.techNode) real.tech.rem(real.techNode);
+          real.techNode = null;
+          real.parent = null;
+          real.tech = null;
+          
+        }
+        
+        real.parent = this;
+        real.tech = this.tech;
+        
+        // Apply `real`'s styles to `real`'s tech node
+        this.tech.render(real, real.getTechNode());
+        
+        // Attach `real` using the tech
+        this.tech.addNode(this.getTechNode(), real.getTechNode());
+        
+        return real;
+        
+      }
+    })});
+    
+    let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
+      init: function() {
+      },
+      getChildOuterLayout: function(params) { return null; }
+    })});
+    let Axis1DLayout = U.inspire({ name: 'Axis1DLayout', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function({ axis='y', flow='+', cuts=null }) {
+        this.axis = axis;
+        this.flow = flow;
+        this.cuts = cuts;
+      },
+      getChildOuterLayout: function(...params) { return Insp.Axis1DLayoutItem(this, ...params); },
+      
+      $Axis1DLayoutItem: U.inspire({ name: 'Axis1DLayoutItem', insps: { Layout }, methods: (insp, Insp) => ({
+        init: function(par, ...params) {
+          this.par = par;
+          this.params = params;
+        }
+      })})
+      
+    })});
+    let CenteredLayout = U.inspire({ name: 'CenteredLayout', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function() {
+        
+      },
+      getChildOuterLayout: function(...params) { return Insp.CenteredLayoutItem(this, ...params); },
+      
+      $CenteredLayoutItem: U.inspire({ name: 'CenteredLayoutItem', insps: { Layout }, methods: (insp, Insp) => ({
+        init: function(par, ...params) {
+          this.par = par;
+          this.params = params;
+        }
+      })})
+      
+    })});
+    let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function({ text='' }) {
+        
+        // For html, use `htmlNode.textContent`
+        this.text = text;
+        
+      }
+    })});
+    let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function({ image }) {
+        this.image = image;
+      }
+    })});
+    
+    return { Real, Axis1DLayout, CenteredLayout, TextLayout, ImageLayout };
+    
+  })();
+  
+  let { HtmlApp } = await (() => { // foundation.getRoom('htmlApp');
     
     let HtmlApp = U.inspire({ name: 'HtmlApp', methods: (insp, Insp) => ({
       init: function({ name }) {
@@ -34,6 +131,9 @@ global.rooms.promo = async foundation => {
                 <meta name="viewport" content="width=device-width, initial-scale=1"/>
                 <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
                 <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
+                <!--
+                <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.renderCss' })}" />
+                -->
                 <style type="text/css">
                   body { position: relative; opacity: 0; transition: opacity 750ms linear; }
                   body.loaded { opacity: 1; }
@@ -94,11 +194,17 @@ global.rooms.promo = async foundation => {
           
           reply(U.multiLineString(`
             html, body {
-              position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+              position: absolute; left: 0; top: 0; width: 100%; height: 100%;
               margin: 0; padding: 0;
               font-family: monospace;
+              overflow: hidden;
             }
-            body { overflow-x: hidden; overflow-y: auto; }
+          `));
+          
+        });
+        parHut.roadNozz('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
+          
+          reply(U.multiLineString(`
             body > .rec { color: #000000; }
             .drying { pointer-events: none !important; opacity: 0.7; }
             .drying > * { pointer-events: none !important; }
@@ -171,6 +277,12 @@ global.rooms.promo = async foundation => {
         
       }
     })});
+    
+      return { HtmlApp };
+    
+  })();
+  
+  let { Permissions } = await (() => { // foundation.getRoom('hinterlands.permissions');
     
     let Permissions = U.inspire({ name: 'Permissions', insps: { Drop }, methods: (insp, Insp) => ({
       
@@ -268,6 +380,12 @@ global.rooms.promo = async foundation => {
       onceDry: function() { for (let route of this.routes) route.dry(); }
       
     })});
+    
+    return { Permissions };
+    
+  })();
+  
+  let { render } = await (() => { // foundation.getRoom('htmlApp.render');
     
     let Node = U.inspire({ name: 'Node', insps: { Drop }, methods: (insp, Insp) => ({
       
@@ -429,26 +547,17 @@ global.rooms.promo = async foundation => {
       
     };
     
-    return {
-      HtmlApp,
-      Permissions,
-      layout: {},
-      design: {},
-      render
-    };
+    return { render };
     
   })();
-  
-  let { HtmlApp, Permissions } = spoof;
-  let { Flow } = spoof.layout;
-  let { Colour, ExtAbs, ExtRel } = spoof.design;
   
   return { open: async () => {
     
     let promoHut = await foundation.getRootHut({ heartMs: 1000 * 40 });
     promoHut.roadDbgEnabled = false; // TODO: This doesn't affect the Below!
+    foundation.seek('keep', 'static').setHut(promoHut);
     
-    let htmlApp = spoof.HtmlApp({ name: 'promo' });
+    let htmlApp = HtmlApp({ name: 'promo' });
     await htmlApp.decorateApp(promoHut);
     
     /// {ABOVE=
@@ -462,9 +571,10 @@ global.rooms.promo = async foundation => {
       dep.scp(promoHut, 'lands.kidHut/par', (kidParHut, dep) => {
         
         let kidHut = kidParHut.mems.kid;
-        let perms = dep(Permissions(promoHut, kidHut));
         
-        dep(perms.followRec(promoRec, 'get', 'add:pmo.example'));
+        // let perms = dep(Permissions(promoHut, kidHut));
+        // dep(perms.followRec(promoRec, 'get', 'add:pmo.example'));
+        
         dep.scp(promoRec, 'pmo.example', (example, dep) => {
           
           dep(perms.followRec(example, 'get', 'set', 'rem', 'add:pmo.sub'))
@@ -476,11 +586,116 @@ global.rooms.promo = async foundation => {
         
       });
       
-      /// =ABOVE} {BELOW=
+      /// =ABOVE}
       
-      dep(spoof.render(promoHut, promoRec));
+      let rootReal = await foundation.seek('real', 'primary');
       
-      /// =BELOW}
+      // Axis1DLayout - "cuts" can be:
+      // Arr for ad-hoc sections (with "fill remaining" as last section)
+      // Int for n evenly divided sections (TODO: necessary? Just divide evenly for number of children added)
+      // Omitted for arbitrary flow of sections (no param required for child layouts)
+      
+      let promoReal = dep(rootReal.addReal(Real({
+        name: 'pmo.promo',
+        outerLayout: rootReal.getChildOuterLayout('main'),
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: [ '80px' ] }),
+        decals: null
+      })));
+      
+      // Header items
+      let headerReal = promoReal.addReal(Real({
+        name: 'pmo.header',
+        outerLayout: promoReal.getChildOuterLayout(0),
+        innerLayout: Axis1DLayout({ axis: 'x', flow: '+', cuts: 'distribute' }),
+        decals: {
+          border: { width: '2px', colour: 'rgba(0, 0, 0, 0.5)' }
+        }
+      }));
+      for (let text of [ 'Hut', 'Philosophy', 'Example', 'Rooms' ]) {
+        headerReal.addReal(Real({
+          name: `pmo.header.${text.lower()}`,
+          outerLayout: headerReal.getChildOuterLayout(),
+          innerLayout: TextLayout({ text }),
+          decals: null
+        }));
+      }
+      
+      // Content items
+      let contentScrollReal = promoReal.addReal(Real({
+        name: 'pmo.contentScroll',
+        outerLayout: promoReal.getChildOuterLayout(1),
+        innerLayout: null,
+        decals: { scroll: { x: 'none', y: 'auto'} }
+      }));
+      let contentReal = contentScrollReal.addReal(Real({
+        name: 'pmo.content',
+        outerLayout: contentScrollReal.getChildOuterLayout(),
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),
+        decals: null
+      }));
+      
+      // Section with main Hut image and text snippets
+      let contentHutReal = contentReal.addReal(Real({
+        name: 'pmo.content.hut',
+        outerLayout: contentReal.getChildOuterLayout(),
+        innerLayout: CenteredLayout(),
+        decals: {
+          colour: 'rgba(0, 0, 0, 0.1)',
+          h: 'calc(100vh - 80px)'
+        }
+      }));
+      let contentHutWrapper = contentHutReal.addReal(Real({
+        name: 'pmo.content.hut.wrapper',
+        outerLayout: contentHutReal.getChildOuterLayout(),
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),
+        decals: null
+      }));
+      let contentHutImage = contentHutWrapper.addReal(Real({
+        name: 'pmo.content.hut.image',
+        outerLayout: contentHutWrapper.getChildOuterLayout(),
+        innerLayout: ImageLayout({
+          image: foundation.seek('keep', 'static', [ 'room', 'promo', 'asset', 'hutIcon.svg' ]),
+          viewport: null
+        }),
+        decals: { w: '70%', h: '70%' }
+      }));
+      let contentHutItems = contentHutWrapper.addReal(Real({
+        name: 'pmo.content.hut.items',
+        outerLayout: contentHutWrapper.getChildOuterLayout(),
+        innerLayout: CenteredLayout(),
+        decals: null
+      }));
+      let items = [
+        'Reimagine Multi-Machine Software',
+        'Stay Laser-Focused on your Unique Idea'
+      ];
+      for (let text of items) {
+        contentHutItems.addReal(Real({
+          name: 'pmo.content.hut.item',
+          outerLayout: contentHutItems.getChildOuterLayout(),
+          innerLayout: TextLayout({ text }),
+          decals: null
+        }));
+      }
+      
+      let contentPhilosophyReal = contentReal.addReal(Real({
+        name: 'pmo.content.philosophy',
+        outerLayout: contentReal.getChildOuterLayout(),
+        innerLayout: TextLayout({ text: 'Free to use; focus purely on your unique idea' }),
+        decals: {
+          colour: 'rgba(0, 0, 0, 0.2)',
+          h: 'calc(100vh - 80px)'
+        }
+      }));
+      let contentExampleReal = contentReal.addReal(Real({
+        name: 'pmo.content.example',
+        outerLayout: contentReal.getChildOuterLayout(),
+        innerLayout: TextLayout({ text: `let rootReal = await foundation.seek('real', 'primary');` }),
+        decals: {
+          colour: 'rgba(0, 0, 0, 0.3)',
+          h: 'calc(100vh - 80px)'
+        }
+      }));
       
     });
     

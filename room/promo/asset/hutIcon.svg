@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" xmlns:bx="https://boxy-svg.com">
+  <path style="fill: rgb(216, 216, 216);" transform="matrix(0, 1.456464, -1.777631, 0, 1344.343384, -211.84639)" d="M 408.097 707.132 A 91.514 91.514 0 1 1 407.619 524.105 L 407.619 615.619 Z" bx:shape="pie 407.619 615.619 0 91.514 179.701 360 1@1ffa78dd"/>
+  <rect x="189.077" y="170.89" width="123.023" height="88.366" style="fill: rgb(123, 101, 101);"/>
+  <path d="M -250.588 117.468 L -165.219 172.627 L -335.956 172.627 L -250.588 117.468 Z" style="fill: rgb(123, 101, 101);" transform="matrix(-1, 0, 0, 1, 0, 0)" bx:shape="triangle -335.956 117.468 170.737 55.159 0.5 0 1@07a087e9"/>
+</svg>
