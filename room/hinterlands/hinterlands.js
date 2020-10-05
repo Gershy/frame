@@ -151,7 +151,7 @@ global.rooms.hinterlands = async foundation => {
         this.allRecs = Map();
         this.allRecs.set(this.uid, this);
         
-        // Buffer pre-mature syncs until gap is filled
+        // Buffer premature syncs until gap is filled
         this.earlySyncs = Map();
         
         this.roadNozz('error').route(({ hut, msg, reply }) => { /* nothing */ });
