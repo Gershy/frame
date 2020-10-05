@@ -1,5 +1,4 @@
-// The "clearing" is javascript-level bootstrapping; top-level configuration
-// and extension for increased functionality and consistency
+// The "clearing" is javascript-level bootstrapping
 
 Error.stackTraceLimit = 200;
 
@@ -117,6 +116,7 @@ protoDef(String, 'padTail', function(amt, char=' ') {
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
 protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
+protoDef(String, 'code', function(ind=0) { return this.charCodeAt(0); });
 protoDef(String, 'count', function() { return this.length; });
 protoDef(String, 'polish', function(c=null) {
   if (c === null) return this.trim();
@@ -322,13 +322,13 @@ let U = global.U = {
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   multiLineString: str => {
     
-    let initSpace = 0;
     let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));
     
     // Trim any leading empty lines
     while (lines.length && !lines[0].trim()) lines = lines.slice(1);
     
     // Count leading whitespace chars on first line with content
+    let initSpace = 0;
     while (lines[0][initSpace].match(/\s/)) initSpace++;
     
     return lines.map(ln => ln.slice(initSpace)).join('\n');
@@ -689,13 +689,18 @@ let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) =>
   }
 })});
 let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
+  
+  $tryAccess: (v, p) => {
+    try { return v.access(p); } catch(err) { err.message = `No access for ${U.nameOf(v)} -> "${p}" (${err.message})`; throw err; }
+  },
   init: C.noFn('init'),
   access: C.noFn('access', arg => {}),
   seek: function(...args) {
     let val = this;
-    for (let arg of args) val = U.isType(val, Promise) ? val.then(v => v.access(arg)) : val.access(arg);
+    for (let arg of args) val = U.isType(val, Promise) ? val.then(v => Insp.tryAccess(v, arg)) : Insp.tryAccess(val, arg);
     return val;
   }
+  
 })});
 
 U.water = { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, defDrier };
