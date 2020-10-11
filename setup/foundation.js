@@ -16,7 +16,7 @@ Hut at the very bottom runs using a single Reality.
 
 (() => {
   
-  let { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  let { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, RefCounter } = U.water;
   
   let Keep = U.inspire({ name: 'Keep', insps: { Slots }, methods: (insp, Insp) => ({
     init: function() {},
@@ -26,6 +26,7 @@ Hut at the very bottom runs using a single Reality.
     getContentByteLength: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentByteLength"`); },
     getPipe: function() { throw Error(`${U.nameOf(this)} does not implement "getPipe"`); }
   })});
+  U.setup.gain({ Keep });
   
   // TODO: Merge `U` and `Foundation`??
   let Foundation = U.inspire({ name: 'Foundation', insps: { Slots }, methods: (insp, Insp) => ({
@@ -55,6 +56,7 @@ Hut at the very bottom runs using a single Reality.
       this.realPrm = null;
       
     },
+    halt: function() { throw Error(`Foundation halted`); },
     getPlatformName: C.noFn('getPlatformName'),
     
     access: function(arg) {
@@ -170,7 +172,7 @@ Hut at the very bottom runs using a single Reality.
           let { roomName, lineInd, charInd } = this.parseErrorLine(line);
           return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp;
         } catch(err) {
-          return `<??> ${line.trim()}`;
+          return C.skip; //`<??> ${line.trim()}`;
         }
       });
       
@@ -220,7 +222,6 @@ Hut at the very bottom runs using a single Reality.
         this.installedRooms[name] = {};
         this.installedRooms[name].gain(await this.installRoom(name, ...args));
       }
-      
       return this.installedRooms[name].content;
       
     },
@@ -240,7 +241,119 @@ Hut at the very bottom runs using a single Reality.
       
     },
   })});
+  U.setup.gain({ Foundation });
   
-  U.setup.gain({ Keep, Foundation });
+  let Real = U.inspire({ name: 'Real', insps: { Slots, Drop }, methods: (insp, Insp) => ({
+    init: function(params={}, { name=null, layouts=[], innerLayout=null, decals=null }=params) {
+      this.name = name;
+      
+      this.layouts = layouts;
+      this.innerLayout = innerLayout;
+      this.decalStack = decals ? [ decals ] : [];
+      
+      this.parent = null;
+      this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
+      this.techNode = null;
+      
+      this.addOns = {};
+    },
+    getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
+    addReal: function(real, params=ctx=>({})) {
+      
+      if (U.isType(real, String)) {
+        
+        if (U.isType(params, Function)) {
+          params = params({
+            layouts: (...p) => {
+              let childOuterLayout = this.innerLayout ? this.innerLayout.getChildOuterLayout(...p) : null;
+              return childOuterLayout ? [ childOuterLayout ] : [];
+            }
+          });
+        }
+        real = Real({ name: real, ...params });
+        
+      }
+      if (!U.isType(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
+      
+      if (real.parent) {
+        if (real.techNode) real.tech.rem(real.techNode);
+        real.techNode = null;
+      }
+      
+      real.parent = this;
+      real.tech = this.tech;
+      
+      // Apply `real`'s styles to `real`'s tech node
+      this.tech.render(real, real.getTechNode());
+      
+      // Attach `real` using the tech
+      this.tech.addNode(this.getTechNode(), real.getTechNode());
+      
+      return real;
+      
+    },
+    pressNozz: function() {
+      if (!this.addOns.has('press')) this.addOns.press = RefCounter(this.tech.routePress(this.getTechNode()));
+      this.addOns.press.addRef();
+      return this.addOns.press;
+    },
+    feelNozz: function() {
+      if (!this.addOns.has('feel')) this.addOns.feel = RefCounter(this.tech.routeFeel(this.getTechNode()));
+      this.addOns.feel.addRef();
+      return this.addOns.feel;
+    }
+    
+  })});
+  let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
+    init: C.noFn('init'),
+    getChildOuterLayout: function(params) { return null; }
+  })});
+  let Axis1DLayout = U.inspire({ name: 'Axis1DLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ axis='y', flow='+', cuts=null }) {
+      this.axis = axis;
+      this.flow = flow;
+      this.cuts = cuts;
+    },
+    getChildOuterLayout: function(...params) { return Insp.Item(this, ...params); },
+    
+    $Item: U.inspire({ name: 'Axis1DLayout.Item', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function(par, ...params) {
+        this.par = par;
+        this.params = params;
+      }
+    })})
+    
+  })});
+  let FreeLayout = U.inspire({ name: 'FreeLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ mode='center', w=null, h=null, x=null, y=null }={}) {
+      this.mode = mode;
+      ({}).gain.call(this, { mode, w, h, x, y });
+    }
+  })});
+  let SizedLayout = U.inspire({ name: 'SizedLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ ratio=null, w=ratio ? null : '100%', h=ratio ? null : '100%' }) {
+      if (ratio !== null && (w === null) === (h === null)) throw Error(`With "ratio" must provide exactly one of "w" or "h"`);
+      this.w = w;
+      this.h = h;
+      this.ratio = ratio;
+    }
+  })});
+  let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ text='', size=null }) {
+      
+      // For html, use `htmlNode.textContent`
+      this.text = text;
+      this.size = size;
+      
+    }
+  })});
+  let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ mode='useMinAxis', image }) {
+      this.mode = mode;
+      this.image = image;
+    }
+  })});
+  
+  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout });
   
 })();

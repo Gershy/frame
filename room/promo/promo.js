@@ -4,102 +4,7 @@ global.rooms.promo = async foundation => {
   
   let { RecScope } = await foundation.getRoom('record');
   
-  let { Real, Axis1DLayout, CenteredLayout, TextLayout, ImageLayout } = await (() => { // foundation.getRoom('real');
-    
-    let Real = U.inspire({ name: 'Real', insps: { Slots, Drop }, methods: (insp, Insp) => ({
-      init: function({ name=null, outerLayout=null, innerLayout=null, decals=null }) {
-        this.name = name;
-        this.outerLayout = outerLayout;
-        this.innerLayout = innerLayout;
-        this.decalStack = decals ? [ decals ] : [];
-        
-        this.parent = null;
-        this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
-        this.techNode = null;
-      },
-      getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
-      getChildOuterLayout: function(params) {
-        return this.innerLayout ? this.innerLayout.getChildOuterLayout(params) : null;
-      },
-      addReal: function(real) {
-        
-        if (!U.isInspiredBy(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
-        
-        if (real.parent) {
-          
-          if (real.techNode) real.tech.rem(real.techNode);
-          real.techNode = null;
-          real.parent = null;
-          real.tech = null;
-          
-        }
-        
-        real.parent = this;
-        real.tech = this.tech;
-        
-        // Apply `real`'s styles to `real`'s tech node
-        this.tech.render(real, real.getTechNode());
-        
-        // Attach `real` using the tech
-        this.tech.addNode(this.getTechNode(), real.getTechNode());
-        
-        return real;
-        
-      }
-    })});
-    
-    let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
-      init: function() {
-      },
-      getChildOuterLayout: function(params) { return null; }
-    })});
-    let Axis1DLayout = U.inspire({ name: 'Axis1DLayout', insps: { Layout }, methods: (insp, Insp) => ({
-      init: function({ axis='y', flow='+', cuts=null }) {
-        this.axis = axis;
-        this.flow = flow;
-        this.cuts = cuts;
-      },
-      getChildOuterLayout: function(...params) { return Insp.Axis1DLayoutItem(this, ...params); },
-      
-      $Axis1DLayoutItem: U.inspire({ name: 'Axis1DLayoutItem', insps: { Layout }, methods: (insp, Insp) => ({
-        init: function(par, ...params) {
-          this.par = par;
-          this.params = params;
-        }
-      })})
-      
-    })});
-    let CenteredLayout = U.inspire({ name: 'CenteredLayout', insps: { Layout }, methods: (insp, Insp) => ({
-      init: function() {
-        
-      },
-      getChildOuterLayout: function(...params) { return Insp.CenteredLayoutItem(this, ...params); },
-      
-      $CenteredLayoutItem: U.inspire({ name: 'CenteredLayoutItem', insps: { Layout }, methods: (insp, Insp) => ({
-        init: function(par, ...params) {
-          this.par = par;
-          this.params = params;
-        }
-      })})
-      
-    })});
-    let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
-      init: function({ text='' }) {
-        
-        // For html, use `htmlNode.textContent`
-        this.text = text;
-        
-      }
-    })});
-    let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
-      init: function({ image }) {
-        this.image = image;
-      }
-    })});
-    
-    return { Real, Axis1DLayout, CenteredLayout, TextLayout, ImageLayout };
-    
-  })();
+  let { Real, Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout } = U.setup;
   
   let { HtmlApp } = await (() => { // foundation.getRoom('htmlApp');
     
@@ -159,7 +64,7 @@ global.rooms.promo = async foundation => {
                     .then(room => room.open(foundation))
                     .catch(err => {
                       console.log('FATAL ERROR:', foundation.formatError(err));
-                      debugger;
+                      foundation.halt();
                     });
                 </script>
               </head>
@@ -574,12 +479,15 @@ global.rooms.promo = async foundation => {
         
         // let perms = dep(Permissions(promoHut, kidHut));
         // dep(perms.followRec(promoRec, 'get', 'add:pmo.example'));
+        let fol = (rec, ...args) => kidHut.followRec(rec, ...args); // perms.followRec(rec, ...args);
         
+        
+        dep(fol(promoRec, 'get', 'add:pmo.example'));
         dep.scp(promoRec, 'pmo.example', (example, dep) => {
           
-          dep(perms.followRec(example, 'get', 'set', 'rem', 'add:pmo.sub'))
+          dep(fol(example, 'get', 'set', 'rem', 'add:pmo.sub'))
           dep.scp(example, 'pmo.sub', (sub, dep) => {
-            dep(perms.followRec(sub, 'get', 'set', 'rem'));
+            dep(fol(sub, 'get', 'set', 'rem'));
           });
           
         });
@@ -595,107 +503,86 @@ global.rooms.promo = async foundation => {
       // Int for n evenly divided sections (TODO: necessary? Just divide evenly for number of children added)
       // Omitted for arbitrary flow of sections (no param required for child layouts)
       
-      let promoReal = dep(rootReal.addReal(Real({
-        name: 'pmo.promo',
-        outerLayout: rootReal.getChildOuterLayout('main'),
-        innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: [ '80px' ] }),
-        decals: null
+      let promoReal = dep(rootReal.addReal('pmo.promo', ctx => ({
+        layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: [ '80px' ] })
       })));
-      
-      // Header items
-      let headerReal = promoReal.addReal(Real({
-        name: 'pmo.header',
-        outerLayout: promoReal.getChildOuterLayout(0),
+      let headerReal = promoReal.addReal('pmo.header', ctx => ({
+        layouts: ctx.layouts(0),
         innerLayout: Axis1DLayout({ axis: 'x', flow: '+', cuts: 'distribute' }),
         decals: {
-          border: { width: '2px', colour: 'rgba(0, 0, 0, 0.5)' }
+          border: { width: '2px', colour: 'rgba(0, 0, 0, 0.1)' }
         }
       }));
-      for (let text of [ 'Hut', 'Philosophy', 'Example', 'Rooms' ]) {
-        headerReal.addReal(Real({
-          name: `pmo.header.${text.lower()}`,
-          outerLayout: headerReal.getChildOuterLayout(),
-          innerLayout: TextLayout({ text }),
-          decals: null
-        }));
-      }
+      let tabs = {
+        hut:      headerReal.addReal('pmo.header.hut',      ctx => ({ layouts: ctx.layouts(0), innerLayout: TextLayout({ text: 'HUT', size: 'calc(12px + 2vw)' })        })),
+        phil:     headerReal.addReal('pmo.header.phil',     ctx => ({ layouts: ctx.layouts(1), innerLayout: TextLayout({ text: 'Philosophy', size: 'calc(10px + 1vw)' }) })),
+        example:  headerReal.addReal('pmo.header.example',  ctx => ({ layouts: ctx.layouts(2), innerLayout: TextLayout({ text: 'Example', size: 'calc(10px + 1vw)' })    })),
+        rooms:    headerReal.addReal('pmo.header.rooms',    ctx => ({ layouts: ctx.layouts(3), innerLayout: TextLayout({ text: 'Rooms', size: 'calc(10px + 1vw)' })      }))
+      };
       
-      // Content items
-      let contentScrollReal = promoReal.addReal(Real({
-        name: 'pmo.contentScroll',
-        outerLayout: promoReal.getChildOuterLayout(1),
-        innerLayout: null,
-        decals: { scroll: { x: 'none', y: 'auto'} }
+      let scrollReal = promoReal.addReal('pmo.scroll', ctx => ({
+        layouts: ctx.layouts(1),
+        decals: { scroll: { x: 'none', y: 'auto' } }
       }));
-      let contentReal = contentScrollReal.addReal(Real({
-        name: 'pmo.content',
-        outerLayout: contentScrollReal.getChildOuterLayout(),
-        innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),
-        decals: null
+      let contentReal = scrollReal.addReal('pmo.content', ctx => ({
+        layouts: [ SizedLayout({ w: '100%', h: '100%' }) ],
+        innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
       }));
       
-      // Section with main Hut image and text snippets
-      let contentHutReal = contentReal.addReal(Real({
-        name: 'pmo.content.hut',
-        outerLayout: contentReal.getChildOuterLayout(),
-        innerLayout: CenteredLayout(),
-        decals: {
-          colour: 'rgba(0, 0, 0, 0.1)',
-          h: 'calc(100vh - 80px)'
-        }
-      }));
-      let contentHutWrapper = contentHutReal.addReal(Real({
-        name: 'pmo.content.hut.wrapper',
-        outerLayout: contentHutReal.getChildOuterLayout(),
-        innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),
-        decals: null
-      }));
-      let contentHutImage = contentHutWrapper.addReal(Real({
-        name: 'pmo.content.hut.image',
-        outerLayout: contentHutWrapper.getChildOuterLayout(),
-        innerLayout: ImageLayout({
-          image: foundation.seek('keep', 'static', [ 'room', 'promo', 'asset', 'hutIcon.svg' ]),
-          viewport: null
-        }),
-        decals: { w: '70%', h: '70%' }
-      }));
-      let contentHutItems = contentHutWrapper.addReal(Real({
-        name: 'pmo.content.hut.items',
-        outerLayout: contentHutWrapper.getChildOuterLayout(),
-        innerLayout: CenteredLayout(),
-        decals: null
-      }));
-      let items = [
-        'Reimagine Multi-Machine Software',
-        'Stay Laser-Focused on your Unique Idea'
-      ];
-      for (let text of items) {
-        contentHutItems.addReal(Real({
-          name: 'pmo.content.hut.item',
-          outerLayout: contentHutItems.getChildOuterLayout(),
-          innerLayout: TextLayout({ text }),
-          decals: null
-        }));
-      }
-      
-      let contentPhilosophyReal = contentReal.addReal(Real({
-        name: 'pmo.content.philosophy',
-        outerLayout: contentReal.getChildOuterLayout(),
-        innerLayout: TextLayout({ text: 'Free to use; focus purely on your unique idea' }),
-        decals: {
-          colour: 'rgba(0, 0, 0, 0.2)',
-          h: 'calc(100vh - 80px)'
-        }
-      }));
-      let contentExampleReal = contentReal.addReal(Real({
-        name: 'pmo.content.example',
-        outerLayout: contentReal.getChildOuterLayout(),
-        innerLayout: TextLayout({ text: `let rootReal = await foundation.seek('real', 'primary');` }),
-        decals: {
-          colour: 'rgba(0, 0, 0, 0.3)',
-          h: 'calc(100vh - 80px)'
-        }
-      }));
+      let pages = {
+        hut: (() => {
+          
+          let real = contentReal.addReal('pmo.content.hut', ctx => ({
+            layouts: [ ...ctx.layouts(0), SizedLayout({ w: '100%', h: '100%' }) ],
+            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
+            decals: { colour: 'rgba(0, 0, 0, 0)' }
+          }));
+          let hutSectionImageReal = real.addReal('pmo.content.hut.image', ctx => ({
+            layouts: [
+              ...ctx.layouts(0),
+              SizedLayout({ h: '60vmin', ratio: 8 / 5 }),
+              ImageLayout({ image: foundation.seek('keep', 'static', [ 'room', 'promo', 'asset', 'hutIcon.svg' ]) })
+            ]
+          }));
+          let hutSectionTextReal = real.addReal('pmo.content.hut.text', ctx => ({
+            layouts: [
+              ...ctx.layouts(1),
+              SizedLayout({ h: 'calc(20px + 4vw)' }),
+              TextLayout({ text: 'Reimagine Distributed Software', size: 'calc(10px + 2vw)' })
+            ]
+          }));
+          return real;
+          
+        })(),
+        phil: (() => {
+          
+          let real = contentReal.addReal('pmo.content.philosophy', ctx => ({
+            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            decals: { colour: 'rgba(0, 0, 0, 0)' }
+          }));
+          return real;
+          
+        })(),
+        example: (() => {
+          
+          let real = contentReal.addReal('pmo.content.example', ctx => ({
+            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            decals: { colour: 'rgba(0, 0, 0, 0)' }
+          }));
+          return real;
+          
+        })(),
+        rooms: (() => {
+          
+          let real = contentReal.addReal('pmo.content.rooms', ctx => ({
+            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            decals: { colour: 'rgba(0, 0, 0, 0)' }
+          }));
+          return real;
+          
+        })()
+      };
       
     });
     

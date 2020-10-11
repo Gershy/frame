@@ -1,6 +1,6 @@
 (() => {
   
-  let { Nozz, TubSet } = U.water;
+  let { Nozz, TubSet, defDrier } = U.water;
   let { Foundation, Keep } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -10,7 +10,7 @@
         insp.Keep.init.call(this);
         let urlResourceKeep = Insp.KeepUrlResources(foundation);
         this.keepsByType = {
-          static: Insp.KeepStatic(urlResourceKeep),
+          static: Insp.KeepStatic(foundation, urlResourceKeep),
           urlResource: urlResourceKeep
         };
       },
@@ -23,8 +23,12 @@
       init: function(foundation, urlResourceKeep) {
         this.foundation = foundation;
         this.urlResourceKeep = urlResourceKeep;
+        this.hut = null;
       },
-      
+      setHut: function(hut) { this.hut = hut; },
+      access: function(fpCmps) {
+        return this.urlResourceKeep.access({ path: [ 'static', ...fpCmps ].join('/') });
+      }
     })}),
     $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
       init: function(foundation) {
@@ -67,7 +71,7 @@
       // - This estimates LESS than the real latency
       
       // Catch exceptions after building all Rooms
-      let handleError = evt => { evt.preventDefault(); console.error(this.formatError(evt.error || evt.reason)); debugger; };
+      let handleError = evt => { evt.preventDefault(); console.error(this.formatError(evt.error || evt.reason)); this.halt(); };
       window.addEventListener('unhandledrejection', handleError);
       window.addEventListener('error', handleError);
       
@@ -85,6 +89,7 @@
       window.history.replaceState({}, '', this.seek('keep', 'urlResource', {}).getUrl());
       
     },
+    halt: function() { /* debugger */; },
     installRoom: async function(name, bearing='below') {
       
       let urlParams = { command: 'html.room', type: 'room', room: name, reply: '1' };
@@ -134,13 +139,21 @@
     createKeep: function(options={}) { return Insp.KeepBrowser(this); },
     createReal: async function() {
       
-      let renderClassMap = {
-        // TODO: Should use a Map() of Insp objects, not Insp names
-        TextLayout: (layout, domNode) => {
-          domNode.style.textAlign = 'center';
-          domNode.textContent = layout.text;
-        },
-        Axis1DLayout: (layout, domNode) => {
+      let { Real } = U.setup;
+      let primaryHtmlCssJsReal = Real({ name: 'browser.htmlCssJs' });
+      primaryHtmlCssJsReal.techNode = document.body;
+      primaryHtmlCssJsReal.tech = (() => {
+        
+        let { Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout } = U.setup;
+        let renderClassMap = Map();
+        let getRenderClass = layout => {
+          let LayoutCls = layout.constructor;
+          if (!renderClassMap.has(LayoutCls)) throw Error(`Invalid render class: "${LayoutCls.name}"`);
+          return renderClassMap.get(LayoutCls);
+        };
+        renderClassMap.set(Axis1DLayout, (layout, hCss, domNode) => {
+          
+          if (![ 'relative', 'absolute' ].includes(domNode.style.position)) domNode.style.position = 'relative';
           
           if (layout.cuts === null) {
             
@@ -155,11 +168,20 @@
             domNode.style.flexDirection = (layout.axis === 'x')
               ? (layout.flow === '+' ? 'row' : 'row-reverse')
               : (layout.flow === '+' ? 'column' : 'column-reverse');
+            domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
             
             // No need to justify when child items together occupy 100%
             //domNode.style.justifyContent = 'center'; // 'center', 'space-around', 'space-between'
             
+            
+          } else if (layout.cuts === 'focus') {
+            
+            domNode.style.display = 'flex';
+            domNode.style.flexDirection = (layout.axis === 'x')
+              ? (layout.flow === '+' ? 'row' : 'row-reverse')
+              : (layout.flow === '+' ? 'column' : 'column-reverse');
             domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
+            domNode.style.justifyContent = 'center';
             
           } else if (U.isType(layout, Array)) {
             
@@ -168,9 +190,8 @@
             
           }
           
-        },
-        Axis1DLayoutItem: (layout, domNode) => {
-          
+        });
+        renderClassMap.set(Axis1DLayout.Item, (layout, hCss, domNode) => {
           
           if (layout.par.cuts === null) {
             
@@ -193,8 +214,6 @@
             let ext = (cutInd <= (layout.par.cuts.length - 1))
               ? layout.par.cuts[cutInd]
               : `calc(100% - ${layout.par.cuts.join(' - ')})`;
-            
-            console.log({ cuts: layout.par.cuts, cutInd, ext });
             
             domNode.style.position = 'absolute';
             
@@ -227,26 +246,63 @@
             
           }
           
-        },
-        FillLayout: (layout, domNode) => {
+        });
+        renderClassMap.set(FreeLayout, (layout, hCss, domNode) => {
           
+          domNode.style.position = 'absolute';
+          if (layout.w) domNode.style.width = layout.w;
+          if (layout.h) domNode.style.height = layout.h;
+          if (layout.mode === 'center') {
+            domNode.style.left = `calc(50% - ${layout.w} * 0.5)`;
+            domNode.style.top = `calc(50% - ${layout.h} * 0.5)`;
+          } else {
+            throw Error(`Unsupported mode: "${layout.mode}"`);
+          }
           
-        },
-        CenteredLayout: (layout, domNode) => {
+        });
+        renderClassMap.set(SizedLayout, (layout, hCss, domNode) => {
           
-        },
-        CenteredLayoutItem: (layout, domNode) => {
-        },
-        decals: (decals, domNode) => {
+          let { w, h, ratio } = layout;
+          if (ratio !== null) {
+            let [ amt, unit ] = ((w !== null) ? w : h).match(/([0-9]*)(.*)/).slice(1);
+            if (w !== null) h = `${parseInt(amt) / ratio}${unit}`;
+            if (h !== null) w = `${parseInt(amt) * ratio}${unit}`;
+            domNode.style.width = w;
+            domNode.style.paddingBottom = h;
+          } else {
+            if (w !== null) domNode.style.width = w;
+            if (h !== null) domNode.style.height = h;
+          }
+          
+        });
+        renderClassMap.set(TextLayout, (layout, hCss, domNode) => {
+          domNode.style.display = 'flex';
+          domNode.style.flexDirection = 'column';
+          domNode.style.alignItems = 'center';
+          domNode.style.justifyContent = 'center';
+          if (layout.size) domNode.style.fontSize = layout.size;
+          domNode.textContent = layout.text;
+        });
+        renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
+          
+          domNode.style.backgroundImage = `url('${layout.image.getUrl()}')`;
+          domNode.style.backgroundSize = ({
+            useMinAxis: 'contain',
+            useMaxAxis: 'cover',
+            stretch: '100%'
+          })[layout.mode] || layout.mode;
+          domNode.style.backgroundRepeat = 'no-repeat';
+          domNode.style.backgroundPosition = 'center';
+          domNode.style.pointerEvents = 'none';
+          
+        });
+        
+        let applyDecals = (decals, hCss, domNode) => {
           
           for (let k in decals) {
             
             if (k === 'colour') {
               domNode.style.backgroundColor = decals[k];
-            } else if (k === 'w') {
-              domNode.style.width = decals[k];
-            } else if (k === 'h') {
-              domNode.style.height = decals[k];
             } else if (k === 'border') {
               let { width, colour } = decals[k];
               domNode.style.boxShadow = `inset 0 0 0 ${width} ${colour}`;
@@ -257,65 +313,57 @@
               if (y === 'auto') domNode.style.overflowY = 'auto';
               if (y === 'show') domNode.style.overflowY = 'scroll';
             } else {
-              
-              console.log(`Unknown decals: "${k}"`);
-              
+              console.log(`Unknown decal: "${k}"`);
             }
             
           }
           
-        }
-      };
-      let getRenderClass = name => {
-        if (!renderClassMap.has(name)) throw Error(`Invalid render class: "${name}"`);
-        return renderClassMap[name];
-      };
-      
-      let tech = {
-        createTechNode: real => {
-          let domNode = document.createElement('div');
-          if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z]+)([a-zA-Z])?/g, (f, p, c) => c ? c.upper() : ''));
-          return domNode;
-        },
-        render: (real, domNode) => {
+        };
+        
+        return {
+          name: 'HtmlCssJsTech',
+          createTechNode: real => {
+            let domNode = document.createElement('div');
+            if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z]+)([a-zA-Z])?/g, (f, p, c) => c ? c.upper() : ''));
+            return domNode;
+          },
+          render: (real, domNode) => {
+            
+            if (!U.isInspiredBy(real, Real)) throw Error(`Invalid type: ${U.nameOf(real)}`);
+            
+            // Reset styles (and text)
+            let childNodes = [ ...domNode.childNodes ];
+            let textNode = (childNodes.count() === 1 && childNodes[0].nodeType === Node.TEXT_NODE) ? childNodes[0] : null;
+            if (textNode) textNode.remove();
+            domNode.removeAttribute('style');
+            
+            // Apply `real.layouts`, `real.innerLayout`, and decals
+            let hCss = {};
+            for (let layout of real.layouts) getRenderClass(layout)(layout, hCss, domNode);
+            if (real.innerLayout) getRenderClass(real.innerLayout)(real.innerLayout, hCss, domNode);
+            for (let d of real.decalStack) applyDecals(d, hCss, domNode);
+            
+          },
+          addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode),
           
-          // Reset text
-          let cn = [ ...domNode.childNodes ];
-          let textNode = (cn.length === 1 && cn[0].nodeType === Node.TEXT_NODE) ? cn[0] : null;
-          if (textNode) textNode.remove();
-          
-          // Reset styles
-          domNode.removeAttribute('style');
-          
-          // Apply outer and inner layouts, and decals
-          if (real.outerLayout) getRenderClass(U.nameOf(real.outerLayout))(real.outerLayout, domNode);
-          if (real.innerLayout) getRenderClass(U.nameOf(real.innerLayout))(real.innerLayout, domNode);
-          for (let decals of real.decalStack) renderClassMap.decals(decals, domNode);
-          
-        },
-        addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode)
-      };
-      let primaryReal = {
-        techNode: document.body,
-        getChildOuterLayout: params => {
-          let Cls = U.inspire({ name: 'FillLayout', methods: (insp, Insp) => ({
-            init: function() {}
-          })});
-          return Cls();
-        },
-        addReal: real => {
-          real.tech = tech;
-          real.parent = primaryReal;
-          tech.render(real, real.getTechNode());
-          tech.addNode(primaryReal.techNode, real.getTechNode());
-          return real;
-        }
-      };
+          routeEvent: (type, techNode) => {
+            let nozz = U.Funnel();
+            nozz.drier = U.water.defDrier();
+            let fn = evt => nozz.drip(evt);
+            techNode.addEventListener(type, fn);
+            nozz.onceDry = () => techNode.removeEventListener(type, fn);
+            return nozz;
+          },
+          routePress: techNode => this.routeEvent('click', techNode),
+          routeFeel: techNode => this.routeEvent('mouseover', techNode) // TODO: Not the same as click, since it should drip Drops (which dry when the hover ends)
+        };
+        
+      })();
       
       return {
         access: name => {
-          if (name !== 'primary') throw Error(`Invalid access for Real -> "${name}"`);
-          return primaryReal;
+          if (name === 'primary') return primaryHtmlCssJsReal;
+          throw Error(`Invalid access for Real -> "${name}"`);
         }
       };
       
