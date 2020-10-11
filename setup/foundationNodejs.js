@@ -381,9 +381,11 @@
       })();
       
     },
+    halt: function() { process.exit(0); },
     installRoom: async function(name, bearing='above') {
       
       let file = await this.seek('keep', 'fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
+      if (!file) throw Error(`Invalid room name: "${name}"`);
       let { lines, offsets } = await this.compileContent(bearing, file);
       
       return {
@@ -524,55 +526,22 @@
     createKeep: function(options={}) { return Insp.KeepNodejs(); },
     createReal: async function(options={}) {
       
-      let techNodeId = 0;
-      let tech = {
-        createTechNode: () => {
-          return {
-            desc: `fakeTechNode${techNodeId++}`,
-            renderedBy: null,
-            kids: Set()
-          };
-        },
-        render: (real, techNode) => {
-          techNode.renderedBy = real;
-        },
-        addNode: (parTechNode, kidTechNode) => {
-          parTechNode.kids.add(kidTechNode);
-        }
-      };
-      let children = Set();
-      let primaryReal = {
-        desc: 'fakeReal',
-        getChildOuterLayout: params => {
-          return {
-            desc: 'fakeOuterLayout'
-          };
-        },
-        addReal: real => {
-          real.tech = tech;
-          children.add(real);
-          return real;
-        }
+      let { Real } = U.setup;
+      let primaryFakeReal = Real({ name: 'nodejs.fakeReal' });
+      primaryFakeReal.techNode = null;
+      primaryFakeReal.tech = {
+        createTechNode: real => null,
+        render: (real, techNode) => {},
+        addNode: (parTechNode, kidTechNode) => {}
       };
       
       return {
         access: name => {
-          if (name !== 'primary') throw Error(`Invalid access for Real -> "${name}"`);
-          return primaryReal;
+          if (name === 'primary') return primaryFakeReal;
+          throw Error(`Invalid access for Real -> "${name}"`);
         }
       };
       
-      
-      // let real = (await this.getRoom('real')).Real(null, 'nodejs.root');
-      // real.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
-      // real.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
-      // real.defineInsert('nodejs.root', 'nodejs.ascii');
-      // real.defineInsert('nodejs.root', 'nodejs.system');
-      // real.techReals = [
-      //   real.addReal('nodejs.ascii'),
-      //   real.addReal('nodejs.system')
-      // ];
-      // return real;
     },
     
     // Errors
