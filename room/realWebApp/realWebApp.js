@@ -146,7 +146,7 @@ global.rooms.realWebApp = async foundation => {
                     .then(room => room.open(foundation))
                     .catch(err => {
                       console.log('FATAL ERROR:', foundation.formatError(err));
-                      debugger;
+                      foundation.halt();
                     });
               </script>
             </head>
