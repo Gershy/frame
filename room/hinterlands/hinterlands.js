@@ -420,13 +420,6 @@ global.rooms.hinterlands = async foundation => {
     },
     doSync: function({ add=[], upd=[], rem=[] }) {
       
-      // TODO: If Below is allowed to create Recs how do we ensure
-      // that Rec uids never overlap?? Best way would be for Below
-      // to send a "ProposedRecUpd" Above, Above processes it
-      // forming an "ApprovedRecUpd", and then Above performs the
-      // ApprovedRecUpd, syncing any changes with following Belows as
-      // usual.
-      
       /*
       {
         add: [

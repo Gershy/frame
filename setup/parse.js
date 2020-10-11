@@ -22,66 +22,86 @@ let varArrMixed = [
 ];`.trim();
 
 let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
-  init: function(name) {
-    if (!U.isType(name, String)) throw Error(`Name was not a String (${U.nameOf(name)})`);
-    this.name = `${name}?`;
-  },
-  trimSpace: function() { return true; },
-  getChildren: function() { return []; },
-  directPossiblePrefixParsers: function() { return []; },
-  possiblePrefixParsers: function() {
+  
+  $from: (rep, seen=Map()) => {
     
-    let result = Set();
-    let unresolved = [ this ];
-    
-    while (unresolved.count()) {
+    if (!seen.has(rep)) {
       
-      let origUnresolved = unresolved;
-      unresolved = [];
+      let parsers = { RegexParser, TokenParser, SpaceParser, AnyParser, AllParser, RepeatParser };
+      let { cls, name, ...props } = rep;
+      if (!parsers.has(`${cls}Parser`)) throw Error(`Invalid parser class: "${cls}Parser"`);
       
-      for (let prefixParser of origUnresolved) {
+      let parser = parsers[`${cls}Parser`](name);
+      seen.set(rep, parser);
+      
+      // Add all properties
+      for (let k in props) parser[k] = props[k];
+      
+      // Handle special types
+      if (U.isType(parser, AnyParser)) {
         
-        if (result.has(prefixParser)) continue;
-        result.add(prefixParser);
-        unresolved.gain(prefixParser.directPossiblePrefixParsers());
+        parser.parsers = parser.parsers.map(rep => Parser.from(rep, seen));
+        
+      } else if (U.isType(parser, AllParser)) {
+        
+        parser.parsers = parser.parsers.map(rep => Parser.from(rep, seen));
+        
+      } else if (U.isType(parser, RepeatParser)) {
+        
+        parser.parser = Parser.from(parser.parser, seen);
         
       }
       
     }
     
-    return [ ...result ];
+    return seen.get(rep);
     
   },
-  getFlattened: function(seen=Set()) {
+  $repGetChildren: rep => ({ // All child parsers of `rep`
+    Any: [ ...rep.parsers ],
+    All: [ ...rep.parsers ],
+    Repeat: [ rep.parser ]
+  })[rep.cls] || [],
+  $repGetCycleHazards: rep => ({ // Reps that, if they form cycles with `rep`, could lead to left-recursion
+    Any: [ ...rep.parsers ],
+    All: [ rep.parsers[0] ],
+    Repeat: [ rep.parser ]
+  })[rep.cls] || [],
+  $repNormalize: (rep, seen=Map()) => {
     
-    if (seen.has(this)) return [];
-    seen.add(this);
-    for (let child of this.getChildren()) child.getFlattened(seen);
-    return [ ...seen ];
+    if (!seen.has(rep)) {
+      seen.set(rep, {});
+      
+      let cycleHazards = ({
+        Any: rep => [ ...rep.parsers ],
+        All: rep => [ rep.parsers[0] ],
+        Repeat: rep => [ rep.parser ]
+      })[rep.cls] || [];
+      
+      seen.get(rep).gain({
+        
+      });
+    }
+    return seen.get(rep);
     
   },
-  getDirectJurisdiction: function() { return [ this ]; },
+  
+  init: function(name) {
+    if (!U.isType(name, String)) throw Error(`Name was not a String (${U.nameOf(name)})`);
+    this.name = name;
+  },
+  trimSpace: function() { return true; },
   consume: function*(input, chain=[ this ]) {
     
     let n = U.dbgCnt('dbg');
-    console.log(chain.map(n => n.name).join('.'));
-    
-    if (n > 500) process.exit(0);
+    if (n > 500) { console.log('YIKES!!'); process.exit(0); }
     
     let headSpace = '';
     let tailSpace = '';
     
     if (this.trimSpace()) {
-      
-      while (input[0].trim() === '') {
-        headSpace += input[0];
-        input = input.slice(1);
-      }
-      while (input[input.length - 1].trim() === '') {
-        tailSpace = input[input.length - 1] + tailSpace;
-        input = input.slice(0, -1);
-      }
-      
+      while (!input[0].trim()) { headSpace += input[0]; input = input.slice(1); }
+      while (!input.slice(-1).trim()) { tailSpace = input.slice(-1) + tailSpace; input = input.slice(0, -1); }
     }
     
     for (let node of this.consumeSanitized(input, chain)) {
@@ -90,13 +110,26 @@ let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
     }
     
   },
-  consumeSanitized: C.noFn('consume', function*(input, chain){})
+  consumeSanitized: C.noFn('consume', function*(input, chain){}),
+  normalized: function() {
+    return Parser.from(Parser.repNormalize(this.toRep()));
+  },
+  
+  toRep: function(seen=Map()) {
+    if (!seen.has(this)) {
+      seen.set(this, {});
+      this.populateRep(seen.get(this), seen);
+    }
+    return seen.get(this);
+  },
+  populateRep: function(obj, seen) {
+    obj.gain({ cls: this.constructor.name.slice(0, -6), ...this });
+  }
 })});
 let RegexParser = U.inspire({ name: 'RegexParser', insps: { Parser }, methods: (insp, Insp) => ({
-  init: function(name, regex, alwaysConsumesChar=true) {
+  init: function(name, regex) {
     insp.Parser.init.call(this, name);
     this.regex = regex;
-    this.alwaysConsumesChar = alwaysConsumesChar;
   },
   consumeSanitized: function*(input, chain=[ this ]) {
     let match = input.match(this.regex);
@@ -105,16 +138,14 @@ let RegexParser = U.inspire({ name: 'RegexParser', insps: { Parser }, methods: (
 })});
 let TokenParser = U.inspire({ name: 'TokenParser', insps: { Parser }, methods: (insp, Insp) => ({
   init: function(name, token) {
-    if (token.count() === 0) throw Error(`Invalid 0-length token`);
+    //if (token.count() === 0) throw Error(`Invalid 0-length token`);
     insp.Parser.init.call(this, name);
     this.token = token;
   },
   consumeSanitized: function*(input, chain=[ this ]) {
-    
     // The token doesn't exist as a prefix
     if (!input.hasHead(this.token)) return;
     yield { input, chain, inner: [], consumed: this.token };
-    
   }
 })});
 let SpaceParser = U.inspire({ name: 'SpaceParser', insps: { Parser }, methods: (insp, Insp) => ({
@@ -126,12 +157,10 @@ let SpaceParser = U.inspire({ name: 'SpaceParser', insps: { Parser }, methods: (
   }
 })});
 let AnyParser = U.inspire({ name: 'AnyParser', insps: { Parser }, methods: (insp, Insp) => ({
-  init: function(name, parsers) {
+  init: function(name, parsers=[]) {
     insp.Parser.init.call(this, name);
     this.parsers = parsers;
   },
-  getChildren: function() { return [ ...this.parsers ]; },
-  directPossiblePrefixParsers: function() { return [ ...this.parsers ]; },
   consumeSanitized: function*(input, chain=[ this ]) {
     
     for (let parser of this.parsers) {
@@ -144,6 +173,11 @@ let AnyParser = U.inspire({ name: 'AnyParser', insps: { Parser }, methods: (insp
       
     }
     
+  },
+  
+  populateRep: function(obj, seen) {
+    insp.Parser.populateRep.call(this, obj, seen);
+    obj.parsers = this.parsers.map(p => p.toRep(seen));
   }
 })});
 let AllParser = U.inspire({ name: 'AllParser', insps: { Parser }, methods: (insp, Insp) => ({
@@ -151,8 +185,6 @@ let AllParser = U.inspire({ name: 'AllParser', insps: { Parser }, methods: (insp
     insp.Parser.init.call(this, name);
     this.parsers = parsers;
   },
-  getChildren: function() { return [ ...this.parsers ]; },
-  directPossiblePrefixParsers: function() { return this.parsers.slice(0, 1); },
   consumeSanitized: function*(input, chain=[ this ]) {
     
     let nodeSeqs = [[]];
@@ -178,18 +210,21 @@ let AllParser = U.inspire({ name: 'AllParser', insps: { Parser }, methods: (insp
     }
     for (let nodeSeq of nodeSeqs) yield { input, chain, inner: nodeSeq, consumed: nodeSeq.map(node => node.consumed).join('') };
     
+  },
+  
+  populateRep: function(obj, seen) {
+    insp.Parser.populateRep.call(this, obj, seen);
+    obj.parsers = this.parsers.map(p => p.toRep(seen));
   }
 })});
 let RepeatParser = U.inspire({ name: 'RepeatParser', insps: { Parser }, methods: (insp, Insp) => ({
   init: function(name, min=null, max=null, parser=null) {
-    if (!parser) throw Error('Need "parser" param');
+    //if (!parser) throw Error('Need "parser" param');
     insp.Parser.init.call(this, name);
     this.parser = parser;
     this.min = min;
     this.max = max;
   },
-  getChildren: function() { return [ this.parser ]; },
-  directPossiblePrefixParsers: function() { return [ this.parser ]; },
   consumeSanitized: function*(input, chain=[ this ]) {
     
     let nodeSeqs = [[]];
@@ -220,6 +255,10 @@ let RepeatParser = U.inspire({ name: 'RepeatParser', insps: { Parser }, methods:
       
     }
     
+  },
+  populateRep: function(obj, seen) {
+    insp.Parser.populateRep.call(this, obj, seen);
+    obj.parser = this.parser.toRep(seen);
   }
 })});
 
@@ -235,7 +274,7 @@ let showResults = ({ input, parser }) => {
   console.log(`\nPARSING ${c.repeat(3)}${input.replace(/\n/g, '$$')}${c.repeat(3)}`);
   let nodes = [ ...parser.consume(input) ].map(node => node.consumed === input ? node : C.skip);
   
-  console.log(`Got ${nodes.length} result(s):`);
+  console.log(`Got ${nodes.count()} result(s):`);
   for (let i = 0; i < nodes.count(); i++) { console.log(`RESULT #${i + 1}:`); showResult(nodes[i], 2); }
   
 };
@@ -291,7 +330,7 @@ parsers.div = AllParser('div', [ parsers.anyVal, TokenParser('div', '/'), parser
 
 parsers.strQ1 = AllParser('strQ1', [
   TokenParser('open', `'`),
-  RegexParser('data', /([^']|\\')*/),
+  RegexParser('data', /([^']|\\')*/), // Fails on strings whose last character is a backquote :P
   TokenParser('shut', `'`)
 ]);
 parsers.strQ2 = AllParser('strQ2', [
@@ -313,7 +352,6 @@ parsers.arr = AllParser('arr', [
   RepeatParser('lastVal', 0, 1, parsers.anyVal),
   TokenParser('shut', ']')
 ]);
-
 parsers.objEntry = AllParser('entry', [
   AnyParser('anyEntry', [
     AllParser('dynamicEntry', [ TokenParser('open', '['), parsers.anyVal, TokenParser('shut', ']') ]),
@@ -337,28 +375,58 @@ parsers.obj = AllParser('obj', [
   TokenParser('shut', '}')
 ]);
 
-parsers.anyNum.parsers.push(parsers.int);
-parsers.anyNum.parsers.push(parsers.flt);
+parsers.anyNum.parsers.gain([ parsers.int, parsers.flt ]);
+parsers.anyStr.parsers.gain([ parsers.strQ1, parsers.strQ2, parsers.strBt ]);
+parsers.anyVal.parsers.gain([
+  parsers.anyStr,
+  parsers.int,
+  parsers.flt,
+  //parsers.arr,
+  //parsers.obj,
+  //parsers.sum,
+  //parsers.sub,
+  //parsers.mult,
+  //parsers.div
+]);
+// parsers.anyVal.parsers.push(parsers.sum);
+// parsers.anyVal.parsers.push(parsers.sub);
+// parsers.anyVal.parsers.push(parsers.mult);
+// parsers.anyVal.parsers.push(parsers.div);
 
-parsers.anyStr.parsers.push(parsers.strQ1);
-parsers.anyStr.parsers.push(parsers.strQ2);
-parsers.anyStr.parsers.push(parsers.strBt);
+//console.log(parsers.anyVal);
+//console.log(Parser.from(parsers.anyVal.toRep()));
+showResults({
+  input: `'abcd'`,
+  parser: parsers.anyVal
+});
 
-parsers.anyVal.parsers.push(parsers.int);
-parsers.anyVal.parsers.push(parsers.flt);
-parsers.anyVal.parsers.push(parsers.anyStr);
-parsers.anyVal.parsers.push(parsers.arr);
-parsers.anyVal.parsers.push(parsers.obj);
-parsers.anyVal.parsers.push(parsers.sum);
-parsers.anyVal.parsers.push(parsers.sub);
-parsers.anyVal.parsers.push(parsers.mult);
-parsers.anyVal.parsers.push(parsers.div);
-
-console.log(parsers.anyVal.getFlattened());
+try {
+  showResults({
+    input: '[ 1, 2, 3 ]',
+    parser: parsers.arr
+  });
+} catch(err) {
+  console.log(err);
+}
 
 return;
 
-showResults({
-  input: '[ 1, 2, 3, { a: 1, b: 2, c: 3 }]',
-  parser: parsers.anyVal
-});
+
+/*
+// e.g.:
+num -> sum | sub | /R/
+sum -> num , '+' , num
+sub -> num , '-' , num
+
+
+num -> /R/ , 
+
+
+
+/R/ ( ( '+' | '-' ) /R/ )*
+
+
+// cycles:
+num -> sum -> num
+num -> sub -> num
+*/

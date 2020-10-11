@@ -177,7 +177,6 @@ U.buildRoom({
       },
       getAxisSlot: function(index) { return Insp.AxisSlot(this, index); }
     })});
-      
     
     let TextSized = U.inspire({ name: 'TextSized', methods: (insp, Insp) => ({
       init: function(params) {
@@ -340,7 +339,6 @@ U.buildRoom({
       
       ...realFns.toObj(v => [ v, function(...args) { return this.tech[v](this, ...args); } ])
     })});
-    
     let Tech = U.inspire({ name: 'Tech', insps: {}, methods: (insp, Insp) => ({
       init: function() {},
       createTechNode: C.notImplemented,
