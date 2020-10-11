@@ -59,6 +59,7 @@ protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
   return { found: true, val: ret };
 });
+protoDef(Object, Symbol.iterator, function*() { for (let k in this) yield [ this[k], k ]; });
 
 Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
 Array.combine = (...as) => [].concat(...as);
@@ -140,6 +141,7 @@ protoDef(SetOrig, 'toObj', function(fn) {
   for (let v of this) { v = fn(v); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
+protoDef(SetOrig, 'each', SetOrig.prototype.forEach);
 protoDef(SetOrig, 'find', function(f) { // Iterator: (val) => bool; returns { found, val }
   for (let v of this) if (f(v)) return { found: true, val: v };
   return { found: false, val: null };
@@ -162,6 +164,7 @@ protoDef(MapOrig, 'toArr', function(fn) { // Iterator: (val, key) => val0
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
+protoDef(MapOrig, 'each', MapOrig.prototype.forEach);
 protoDef(MapOrig, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
   for (let [ k, v ] of this) if (f(v, k)) return { found: true, val: v, key: k };
   return { found: false, val: null, key: null };
@@ -220,13 +223,13 @@ let U = global.U = {
     let parInsps = insps;
     parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw Error(`Invalid Insp: "${k}"`); });
     
-    let Insp = eval(`let Insp = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
+    let fName = name.replace(/[.]/g, '$');
+    let Insp = eval(`let Insp = function ${fName}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
     Object.defineProperty(Insp, 'name', { value: name });
     
     // Calculate a Set of all inspirations for `isInspiredBy` testing
-    let inheritedInsps = [ Insp ];
-    parInsps.forEach(ParInsp => inheritedInsps.gain(ParInsp.allInsps.toArr(v => v)));
-    Insp.allInsps = Set(inheritedInsps);
+    Insp.allInsps = Set([ Insp ]);
+    parInsps.each(({ allInsps }) => allInsps.each(SubInsp => Insp.allInsps.add(SubInsp)));
     
     // Keep track of parent classes directly
     Insp.parents = insps;
@@ -426,7 +429,7 @@ let defDrier = (nozz=Nozz()) => {
   // instance of Drop to dry.
   
   let dried = false;
-  nozz.newHold = holdFn => dried && holdFn();
+  nozz.newRoute = routeFn => dried && routeFn();
   nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
   let drier = { nozz, onceDry: () => {
     dried = false;
@@ -703,4 +706,12 @@ let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
   
 })});
 
-U.water = { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, defDrier };
+let RefCounter = U.inspire({ name: 'RefCounter', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
+  init: function(target) { this.target = target; this.refCount = 0; },
+  ...[ 'isWet', 'isDry', 'onceDry', 'drierNozz', 'route', 'newRoute', 'drip', 'block' ]
+    .toObj(k => [ k, function(...args) { return this.target[k](...args); } ]),
+  addRef: function() { this.refCount++; },
+  dry: function() { if (--this.refCount <= 0) this.target.dry(); }
+})});
+
+U.water = { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, RefCounter, defDrier };
