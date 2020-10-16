@@ -282,6 +282,11 @@
           domNode.style.justifyContent = 'center';
           if (layout.size) domNode.style.fontSize = layout.size;
           domNode.textContent = layout.text;
+          
+          if (layout.align) domNode.style.textAlign = {
+            fwd: 'left', bak: 'right', mid: 'center'
+          }[layout.align];
+          
         });
         renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
           
@@ -320,7 +325,7 @@
           
         };
         
-        return {
+        let browserTech = {
           name: 'HtmlCssJsTech',
           createTechNode: real => {
             let domNode = document.createElement('div');
@@ -348,11 +353,21 @@
           
           scrollTo: (scrollReal, trgReal) => {
             let children = [ ...scrollReal.getTechNode().childNodes ];
-            if (children.count() > 0) throw Error(`Scrollable parent has multiple children`);
+            if (children.count() !== 1) throw Error(`Scrollable parent needs 1 child; has ${children.count()}`);
             
             let scrollElem = scrollReal.getTechNode();
-            let scrollOffsetElem = children[0];
-            let scrollTargetElem = trgReal.getTechNode();
+            let offsetElem = children[0];
+            let targetElem = trgReal.getTechNode();
+            
+            if (!offsetElem.contains(targetElem)) throw Error(`The target elem is outside the scrollable context`);
+            
+            let tops = [ scrollElem, offsetElem, targetElem ].map(elem => elem.getBoundingClientRect().top);
+            
+            console.log(`SCROLL PAR TOP: ${tops[0]}`);
+            console.log(`SCROLL CONTENT TOP (does it shift with scroll??): ${tops[1]}`);
+            console.log(`CHILD TOP: ${tops[2]}; RELATIVE TO CONTENT: ${tops[2] - tops[1]}\n`);
+            
+            offsetElem.scrollTop += tops[2] - tops[1];
           },
           
           domEventToSrc: (eventName, techNode) => {
@@ -362,7 +377,7 @@
             tmp.endWith(() => techNode.removeEventListener(eventName, fn));
             return tmp;
           },
-          addPress: techNode => this.domEventToSrc('click', techNode),
+          addPress: techNode => browserTech.domEventToSrc('click', techNode),
           addFeel: techNode => {
             
             let tmp = Tmp(); tmp.src = Src();
@@ -388,6 +403,7 @@
             
           }
         };
+        return browserTech;
         
       })();
       

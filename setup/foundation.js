@@ -294,14 +294,12 @@ Hut at the very bottom runs using a single Reality.
       return real;
       
     },
-    scrollTo: function(real) {
-      this.tech.scrollTo(this, real);
-    },
+    scrollTo: function(real) { this.tech.scrollTo(this, real); },
     addPress: function() {
       if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this.getTechNode());
       return this.addOns.press;
     },
-    feelSrc: function() {
+    addFeel: function() {
       if (!this.addOns.has('feel')) this.addOns.feel = this.tech.addFeel(this.getTechNode());
       return this.addOns.feel;
     },
@@ -350,11 +348,12 @@ Hut at the very bottom runs using a single Reality.
     }
   })});
   let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
-    init: function({ text='', size=null }) {
+    init: function({ text='', size=null, align=null }) {
       
       // For html, use `htmlNode.textContent`
       this.text = text;
       this.size = size;
+      this.align = align;
       
     }
   })});

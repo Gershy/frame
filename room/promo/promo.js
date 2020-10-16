@@ -558,7 +558,26 @@ global.rooms.promo = async foundation => {
           
           let real = contentReal.addReal('pmo.content.philosophy', ctx => ({
             layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
             decals: { colour: 'rgba(0, 0, 0, 0)' }
+          }));
+          real.addReal('pmo.content.philosophy.text1', ctx => ({
+            layouts: [ ...ctx.layouts(0),
+              TextLayout({ size: '120%', align: 'mid', text: [
+                'The complexity of traditionally developing web pages is too high.',
+                'Assembly language was considered too complex, and was replaced with C and higher-level languages.',
+                'There is little reason to use Assembly today. And as Assembly had C, the web now has Hut.'
+              ].join(' ')})
+            ]
+          }));
+          real.addReal('pmo.content.philosophy.text2', ctx => ({
+            layouts: [ ...ctx.layouts(0),
+              TextLayout({ size: '120%', align: 'mid', text: [
+                'New developers full of ideas flock to tutorials, eager to create what they imagine.',
+                'Suddenly they encounter the absurd DOM, circular code dependencies, the overripe CSS language,',
+                'HTTP and its pitfalls. Motivation and freshness fade away. The idea distorts, and no longer seems enticing.'
+              ].join(' ')})
+            ]
           }));
           return real;
           
@@ -584,14 +603,10 @@ global.rooms.promo = async foundation => {
       };
       
       for (let [ name, tab ] of tabs) {
-        
-        let page = pages[name];
-        
-        let feelSrc = dep(tab.feelSrc());
-        let pressSrc = dep(tab.pressSrc());
-        dep(Scope(feelSrc.src, (hover, dep) => dep(tab.addDecals({ colour: 'rgba(0, 0, 0, 0.2)' }))));
-        dep(pressSrc.src.route(press => scrollReal.scrollTo(page)));
-        
+        let feel = dep(tab.addFeel());
+        let press = dep(tab.addPress());
+        dep(Scope(feel.src, (hover, dep) => dep(tab.addDecals({ colour: 'rgba(0, 0, 0, 0.2)' }))));
+        dep(press.src.route(press => scrollReal.scrollTo(pages[name])));
       }
       
     });
