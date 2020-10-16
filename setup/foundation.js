@@ -16,7 +16,7 @@ Hut at the very bottom runs using a single Reality.
 
 (() => {
   
-  let { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, RefCounter } = U.water;
+  let { Tmp, Slots } = U.logic; // NOTE: `Slots` needs to be in logic (or straight in U?)
   
   let Keep = U.inspire({ name: 'Keep', insps: { Slots }, methods: (insp, Insp) => ({
     init: function() {},
@@ -39,6 +39,8 @@ Hut at the very bottom runs using a single Reality.
     },
     
     init: function(args={}) {
+      
+      global.foundation = this;
       
       if (!args.has('mode')) args.mode = 'prod';
       if (!args.has('hosting')) args.hosting = 'localhost:80';
@@ -243,13 +245,13 @@ Hut at the very bottom runs using a single Reality.
   })});
   U.setup.gain({ Foundation });
   
-  let Real = U.inspire({ name: 'Real', insps: { Slots, Drop }, methods: (insp, Insp) => ({
+  let Real = U.inspire({ name: 'Real', insps: { Slots, Tmp }, methods: (insp, Insp) => ({
     init: function(params={}, { name=null, layouts=[], innerLayout=null, decals=null }=params) {
       this.name = name;
       
       this.layouts = layouts;
       this.innerLayout = innerLayout;
-      this.decalStack = decals ? [ decals ] : [];
+      this.decalStack = Set(decals ? [ decals ] : []);
       
       this.parent = null;
       this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
@@ -292,15 +294,24 @@ Hut at the very bottom runs using a single Reality.
       return real;
       
     },
-    pressNozz: function() {
-      if (!this.addOns.has('press')) this.addOns.press = RefCounter(this.tech.routePress(this.getTechNode()));
-      this.addOns.press.addRef();
+    scrollTo: function(real) {
+      this.tech.scrollTo(this, real);
+    },
+    addPress: function() {
+      if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this.getTechNode());
       return this.addOns.press;
     },
-    feelNozz: function() {
-      if (!this.addOns.has('feel')) this.addOns.feel = RefCounter(this.tech.routeFeel(this.getTechNode()));
-      this.addOns.feel.addRef();
+    feelSrc: function() {
+      if (!this.addOns.has('feel')) this.addOns.feel = this.tech.addFeel(this.getTechNode());
       return this.addOns.feel;
+    },
+    addDecals: function(decals) {
+      this.decalStack.add(decals);
+      this.tech.render(this, this.getTechNode());
+      return Tmp(() => {
+        this.decalStack.rem(decals)
+        this.tech.render(this, this.getTechNode());
+      });
     }
     
   })});

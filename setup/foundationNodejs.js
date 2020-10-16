@@ -3,7 +3,7 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  let { Tmp, Src, MemSrc, FnSrc, Scope } = U.logic;
   
   let path = require('path');
   let { Foundation, Keep } = U.setup;
@@ -34,9 +34,9 @@
       access: function(fpCmps) {
         
         let key = [ 'static', ...fpCmps ].join('/');
-        if (!this.hut.roadNozzes.has(key)) {
+        if (!this.hut.roadSrcs.has(key)) {
           // Make keep available to Below
-          this.hut.roadNozz(key).route(async ({ reply }) => reply(this.fileSystemKeep.seek(fpCmps)));
+          this.hut.roadSrc(key).route(async ({ reply }) => reply(this.fileSystemKeep.seek(fpCmps)));
         }
         return this.fileSystemKeep.seek(fpCmps);
         
@@ -374,10 +374,391 @@
       this.usage0 = process.memoryUsage().map(v => v);
       
       this.canSettlePrm = (async () => {
+        
         await Promise.allArr([
           this.fsKeep.seek([ 'mill', 'storage' ]).setContent(null),
           this.fsKeep.seek([ 'mill', 'room' ]).setContent(null)
         ]);
+        
+        let tests = [
+          
+          async m => { // Ending a Temp changes the results of getter methods
+            let tmp = Tmp();
+            if (!tmp.onn()) throw Error(`getPosActive() === false before setInactive()`);
+            if (tmp.off()) throw Error(`getNegActive() === true before setInactive()`);
+            tmp.end();
+            if (tmp.onn()) throw Error(`getPosActive() === true after setInactive()`);
+            if (!tmp.off()) throw Error(`getNegActive() === false after setInactive()`);
+          },
+          async m => { // Tmps linked to end with each other stay alive
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            if (tmp1.off()) throw Error(`Tmp #1 ended for no reason`);
+            if (tmp2.off()) throw Error(`Tmp #2 ended for no reason`);
+          },
+          async m => { // Tmps linked to end with each other end correctly #1
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            tmp1.end();
+            if (tmp1.onn()) throw Error(`Tmp #1 still onn after ended`);
+            if (tmp2.onn()) throw Error(`Tmp #2 didn't end with Tmp #1`);
+          },
+          async m => { // Tmps linked to end with each other end correctly #2
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            tmp2.end();
+            if (tmp1.onn()) throw Error(`Tmp #1 didn't end with Tmp #2`);
+            if (tmp2.onn()) throw Error(`Tmp #2 still onn after ended`);
+          },
+          async m => { // Send 0 events correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
+          },
+          async m => { // Ensure single undefined value is sent correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            src.send();
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+          },
+          async m => { // Send 3 events correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            for (let v of [ 1, 'hah', 3 ]) src.send(v);
+            if (events.count() !== 3) throw Error(`Expected exactly 3 events; got ${events.count()}`);
+            if (events[0] !== 1)      throw Error(`Received wrong value @ ind 0; expected 1, got ${events[0]}`);
+            if (events[1] !== 'hah')  throw Error(`Received wrong value @ ind 1; expected "hah", got ${events[1]}`);
+            if (events[2] !== 3)      throw Error(`Received wrong value @ ind 2; expected 3, got ${events[2]}`);
+          },
+          async m => { // Disabling route prevents function being called
+            let src = Src();
+            let events = [];
+            let route = src.route(val => events.push(val));
+            route.end();
+            for (let v of [ 1, 'hah', 3 ]) src.send(v);
+            if (events.count() !== 0) throw Error(`Expected 0 results; got ${events.count()}`);
+          },
+          async m => { // Inactive event sent when function applied before setInactive()
+            let tmp = Tmp();
+            let gotInactiveEvent = false;
+            tmp.route(() => gotInactiveEvent = true);
+            tmp.end();
+            if (!gotInactiveEvent) throw Error(`No inactive event received after setInactive()`);
+          },
+          async m => { // Inactive event sent when function applied after setInactive() (immediate setInactive)
+            let tmp = Tmp();
+            tmp.end();
+            let gotInactiveEvent = false;
+            tmp.route(() => gotInactiveEvent = true);
+            if (!gotInactiveEvent) throw Error(`No inactive event received after setInactive()`);
+          },
+          async m => { // Inactive event not sent when removed; function applied before setInactive()
+            let tmp = Tmp();
+            let gotInactiveEvent = false;
+            let runFunctionOnEvent = tmp.route(() => gotInactiveEvent = true);
+            runFunctionOnEvent.end();
+            tmp.end();
+            if (gotInactiveEvent) throw Error(`Inactive event wrongly received after setInactive()`);
+          },
+          
+          async m => { // FnSrc fn doesn't run if no child has event
+            let srcs = Array.fill(5, () => Src());
+            let events = [];
+            let fnSrc = FnSrc(srcs, (...args) => events.push(args));
+            if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
+          },
+          async m => { // FnSrc fn runs for each child event
+            let srcs = Array.fill(5, () => Src());
+            let events = [];
+            let fnSrc = FnSrc(srcs, (...args) => events.push(args));
+            
+            for (let i = 0; i < 3; i++) srcs[0].send();
+            for (let i = 0; i < 6; i++) srcs[1].send();
+            for (let i = 0; i < 2; i++) srcs[2].send();
+            for (let i = 0; i < 1; i++) srcs[3].send();
+            for (let i = 0; i < 9; i++) srcs[4].send();
+            
+            let exp = 3 + 6 + 2 + 1 + 9;
+            if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
+          },
+          async m => { // FnSrc sends values as expected
+            let srcs = Array.fill(3, () => Src());
+            let cnt = 0;
+            let events = [];
+            let fnSrc = FnSrc(srcs, () => cnt++);
+            fnSrc.route(val => events.push(val));
+            for (let i = 0; i < 5; i++) srcs[0].send('hee');
+            for (let i = 0; i < 9; i++) srcs[1].send('haa');
+            for (let i = 0; i < 7; i++) srcs[2].send('hoo');
+            let exp = 5 + 9 + 7;
+            if (events.count() !== exp) throw Error(`Expected exactly ${exp} events; got ${events.count()}`);
+          },
+          async m => { // FnSrc events have correct values
+            
+            let src1 = Src();
+            let src2 = Src();
+            let events = [];
+            let last = null;
+            let fnSrc = FnSrc([ src1, src2 ], (v1, v2, lastVal) => { events.push([ v1, v2, lastVal ]); return last = (last === null) ? 0 : (last + 1); });
+            
+            src2.send('src2val1');
+            src1.send('src1val1');
+            src2.send('src2val2');
+            src1.send('src1val2');
+            src1.send('src1val3');
+            
+            if (events.count() !== 5) throw Error(`Expected exactly 5 results; got ${events.count()}`);
+            
+            [ [ null,       'src2val1', C.skip  ],
+              [ 'src1val1', 'src2val1', 0       ],
+              [ 'src1val1', 'src2val2', 1       ],
+              [ 'src1val2', 'src2val2', 2       ],
+              [ 'src1val3', 'src2val2', 3       ] ]
+            .each((vals, ind1) => vals.each((v, ind2) => {
+              if (events[ind1][ind2] !== v) throw Error(`events[${ind1}][${ind2}] should be ${v} (got ${events[ind1][ind2]})`);
+            }));
+            
+          },
+          async m => { // FnSrc only sends once, for multiple src sends, if value is always the same
+            
+            let srcs = Array.fill(3, () => Src());
+            let fnSrc = FnSrc(srcs, (...args) => 'haha');
+            let events = [];
+            fnSrc.route(v => events.push(v));
+            
+            for (let i = 0; i < 20; i++) srcs[0].send('yo');
+            for (let i = 0; i < 35; i++) srcs[1].send('ha');
+            for (let i = 0; i < 60; i++) srcs[2].send('hi');
+            
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+            
+          },
+          async m => { // FnSrc only sends once, for multiple src sends, if value is always the same Tmp
+            
+            let srcs = Array.fill(3, () => Src());
+            let tmppp = Tmp();
+            let fnSrc = FnSrc(srcs, (v1, v2, v3, tmp=tmppp) => tmp);
+            let events = [];
+            fnSrc.route(v => events.push(v));
+            
+            for (let i = 0; i < 20; i++) srcs[0].send('yo');
+            for (let i = 0; i < 35; i++) srcs[1].send('ha');
+            for (let i = 0; i < 60; i++) srcs[2].send('hi');
+            
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+            if (events[0] !== tmppp) throw Error(`Single send had unexpected value`);
+            
+          },
+          async m => { // FnSrc Tmp value ends when FnSrc ends
+            
+            let src = Src();
+            let tmppp = Tmp();
+            let fnSrc = FnSrc([ src ], (v, tmp=tmppp) => tmp);
+            src.send('whee');
+            
+            if (tmppp.off()) throw Error(`Tmp ended too early`);
+            fnSrc.end();
+            if (tmppp.onn()) throw Error(`Tmp didn't end with FnSrc`);
+            
+          },
+          async m => { // FnSrc sending Tmp ends any previous Tmp sent by same FnSrc
+            
+            let srcs = [ Src(), Src() ];
+            let tmps = [ Tmp(), Tmp(), Tmp() ];
+            let fnSrc = FnSrc(srcs, v1 => (v1 !== null) ? tmps[v1] : null);
+            
+            srcs[0].send(1);
+            if (tmps[1].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(0);
+            if (tmps[1].onn()) throw Error(`Tmp didn't end`);
+            if (tmps[0].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(2);
+            if (tmps[0].onn()) throw Error(`Tmp didn't end`);
+            if (tmps[2].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(null);
+            if (tmps[2].onn()) throw Error(`Tmp didn't end`);
+            
+          },
+          
+          async m => { // Scope basics
+            
+            let src1 = Src();
+            let tmpsGot = [];
+            let scp = Scope(src1, (tmp1, dep) => {
+              tmpsGot.push(tmp1);
+              dep.scp(tmp1.src1, (tmp11, dep) => tmpsGot.push(tmp11));
+              dep.scp(tmp1.src2, (tmp12, dep) => tmpsGot.push(tmp12));
+            });
+            
+            let tmpsSent = [];
+            for (let i = 0; i < 2; i++) {
+              let tmp1 = Tmp();
+              tmp1.src1 = Src();
+              tmp1.src2 = Src();
+              
+              tmpsSent.push(tmp1); src1.send(tmp1);
+              
+              let tmp11 = Tmp(), tmp12 = Tmp();
+              
+              tmpsSent.push(tmp11); tmp1.src1.send(tmp11);
+              tmpsSent.push(tmp12); tmp1.src2.send(tmp12);
+            }
+            
+            if (tmpsSent.count() !== tmpsGot.count()) throw Error(`Sent ${tmpsSent.count} Tmps, but got ${tmpsGot.count()}`);
+            for (let i = 0; i < tmpsSent.count(); i++)
+              if (tmpsSent[i] !== tmpsGot[i]) throw Error(`Tmps arrived out of order`);
+            
+          },
+          async m => { // Deps end when Scope ends
+            
+            let depTmps = []
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmps = Array.fill(5, () => dep(Tmp()));
+            });
+            src.send(Tmp());
+            scp.end();
+            if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+            if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Scope ended`);
+            
+          },
+          async m => { // Deps end when parent Scope ends
+            
+            let depTmps = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              dep.scp(tmp.src, (tmp, dep) => depTmps = Array.fill(5, () => dep(Tmp())));
+            });
+            let tmp = Tmp();
+            tmp.src = Src();
+            src.send(tmp);
+            tmp.src.send(Tmp());
+            scp.end();
+            
+            if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+            if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when parent Scope ended`);
+            
+          },
+          async m => { // Deps end when Tmp ends, multi, one at a time
+            
+            let depTmps = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmps = Array.fill(5, () => dep(Tmp()));
+            });
+            
+            for (let i = 0; i < 5; i++) {
+              let tmp = Tmp();
+              src.send(tmp);
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+              tmp.end();
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when Tmp ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+            });
+            
+            let tmps = Array.fill(5, () => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            for (let tmp of tmps) tmp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when Scope ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+            });
+            
+            let tmps = Array.fill(5, () => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            scp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when nested Scope ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              dep.scp(tmp.src, (tmp, dep) => {
+                depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+              });
+            });
+            
+            let tmps = Array.fill(5, () => {
+              let tmp = Tmp();
+              tmp.src = Src();
+              src.send(tmp);
+              tmp.src.send(Tmp());
+              return tmp;
+            });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            scp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          }
+          
+        ];
+          
+        for (let test of tests) {
+          let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
+          try {
+            let result = await test();
+            console.log(`Test pass (${name})`);
+          } catch (err) {
+            console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
+          }
+        }
+        
       })();
       
     },
@@ -532,7 +913,10 @@
       primaryFakeReal.tech = {
         createTechNode: real => null,
         render: (real, techNode) => {},
-        addNode: (parTechNode, kidTechNode) => {}
+        addNode: (parTechNode, kidTechNode) => {},
+        
+        addPress: techNode => { let ret = Tmp(); ret.src = Src(); return ret; },
+        addFeel: techNode => { let ret = Tmp(); ret.src = Src(); return ret; }
       };
       
       return {
@@ -627,6 +1011,7 @@
       // Check if this RoadedHut is familiar:
       let roadedHut = parHut.getRoadedHut(hutId);
       if (roadedHut) {
+        
         // Familiar RoadedHuts are guaranteed a Road
         return roadedHut.serverRoads.has(server)
           // Any previous Road is reused
@@ -738,17 +1123,14 @@
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
           // syncInit has effects at both transport- and hut-level
-          syncInit:  {
-            transport: road => {
-              // Clear any buffered responses and tells
-              road.waitResps.forEach(res => res.end());
-              road.waitResps = [];
-              road.waitTells = [];
-            },
-            hut: true
-          },
-          close: { transport: road => road.dry() },
-          bankPoll: { transport: road => { /* empty transport-level action */ } }
+          syncInit:  { hut: true, transport: road => {
+            // Clear any buffered responses and tells
+            road.waitResps.forEach(res => res.end());
+            road.waitResps = [];
+            road.waitTells = [];
+          }},
+          close: { hut: false, transport: road => road.end() },
+          bankPoll: { hut: false, transport: road => { /* empty transport-level action */ } }
         };
         
         // If no ComType found, default to Hut-level command!
@@ -775,7 +1157,7 @@
         // TODO: Consider a timeout to deal with improper usage
         if (params.reply) {
           try {
-            return road.hear.drip([ params, msg => sendData(req, res, msg), ms ]);
+            return road.hear.send([ params, msg => sendData(req, res, msg), ms ]);
           } catch(err) {
             // TODO: Don't `err.message`!
             console.log('Http error response:', this.formatError(err));
@@ -784,7 +1166,7 @@
         }
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null, ms ]);
+        if (comTypes.hut) road.hear.send([ params, null, ms ]);
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells then send the oldest, otherwise hold the response.
@@ -848,17 +1230,21 @@
       
       await new Promise(r => httpServer.listen(port, host, 511, r));
       
-      let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
+      // Return the Server as a Tmp which ends with the native server
+      let server = Tmp(() => httpServer.close());
+      server.connSrc = MemSrc.TmpM(Src());
+      
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.knownHosts = Set();
         road.waitResps = [];
         road.waitTells = [];
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => road.waitResps.length
           ? sendData(req, road.waitResps.shift(), msg)
-          : road.waitTells.push(msg)
-        road.drierNozz().route(() => { for (let res of road.waitResps) res.end(); });
+          : road.waitTells.push(msg);
+        
+        road.endWith(() => road.waitResps.each(res => res.end()));
         road.currentCost = () => 1.0;
       };
       
@@ -909,7 +1295,7 @@
         
         soktState.status = 'ready';
         sokt.on('readable', () => {
-          if (road.isDry()) return;
+          if (road.off()) return;
           let ms = this.getMs();
           let newBuffer = sokt.read();
           
@@ -917,13 +1303,13 @@
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            for (let message of Insp.parseSoktMessages(soktState)) road.hear.drip([ message, null, ms ]);
+            for (let message of Insp.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
           
-          if (soktState.status === 'ended') road.dry();
+          if (soktState.status === 'ended') road.end();
         });
-        sokt.on('close', () => { soktState = makeSoktState('ended'); road.dry(); });
-        sokt.on('error', () => { soktState = makeSoktState('ended'); road.dry(); });
+        sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
+        sokt.on('error', () => { soktState = makeSoktState('ended'); road.end(); });
         
       };
       
@@ -938,10 +1324,11 @@
       
       await Promise(r => soktServer.listen(port, host, r));
       
-      let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
+      let server = Tmp(() => soktServer.close());
+      server.connSrc = MemSrc.TmpM(Src());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => {
           let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
           let len = dataBuff.length;
@@ -974,7 +1361,8 @@
           metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
           road.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
         };
-        road.drierNozz().route(() => road.sokt.end());
+        
+        road.endWith(() => road.sokt.end());
         road.currentCost = () => 0.5;
       };
       

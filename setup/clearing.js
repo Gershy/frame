@@ -5,7 +5,7 @@ Error.stackTraceLimit = 200;
 let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
 
 let C = global.C = {
-  skip: { SKIP: 1 },
+  skip: undefined,
   notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
   noFn: name => {
     let fn = function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
@@ -59,7 +59,9 @@ protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
   return { found: true, val: ret };
 });
-protoDef(Object, Symbol.iterator, function*() { for (let k in this) yield [ this[k], k ]; });
+protoDef(Object, Symbol.iterator, function*() {
+  for (let k in this) yield [ k, this[k] ];
+});
 
 Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
 Array.combine = (...as) => [].concat(...as);
@@ -126,6 +128,8 @@ protoDef(String, 'polish', function(c=null) {
   while (this[ind1] === c[0]) ind1--;
   return this.substr(ind0, ind1 + 1);
 });
+
+protoDef(Number, 'char', function() { return String.fromCharCode(this); });
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
@@ -353,365 +357,224 @@ let U = global.U = {
 };
 global.rooms = {};
 
-let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
-  init: function(drier=null, onceDry=null) {
-    this.drier = drier; // { nozz: Nozz(), isWet: true, onceDry: () => {} }
-    if (onceDry) this.onceDry = onceDry;
-  },
-  isWet: function() {
-    // If our drier setup tells us "isWet", use that; otherwise `true`
-    return (this.drier && this.drier.has('isWet'))
-      ? this.drier.isWet()
-      : true;
-  },
-  isDry: function() { return !this.isWet(); },
-  onceDry: function() {},
-  dry: function() {
-    if (this.isDry()) return;
-    this.isWet = () => false;
-    this.onceDry();
-    if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-  },
-  drierNozz: function() {
-    if (!this.drier) throw Error('No "drier" available');
-    if (!this.drier.has('nozz')) throw Error('No "drier.nozz" available');
-    return this.drier.nozz;
-  }
-})});
-let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
-  init: function() {
-    this.routes = Set();
-  },
-  route: function(routeFn) {
-    this.routes.add(routeFn);
-    this.newRoute(routeFn);
-    return Drop(null, () => this.routes.rem(routeFn));
-  },
-  newRoute: function(routeFn) {},
-  drip: function(...items) {
+U.logic = (() => {
+  
+  let Endable = U.inspire({ name: 'Endable', methods: (insp, Insp) => ({
     
-    // The idea for preventing Routes during a Drip from receiving that
-    // drip: when intending to iterate over `this.routes` first take a
-    // snapshot of these Routes. Then iterate over that snapshot, at 
-    // each stage ensuring that each Route still exists in `this.routes`
-    // 1 - Only Routes present before Drip receive drip
-    // 2 - Routes which dry before Dripping still don't receive drip
+    $globalRegistry: Set(),
     
-    for (let routeFn of Set(this.routes)) if (this.routes.has(routeFn)) routeFn(...items);
-  },
-  block: function(doDrip, ...dripVals) {
-    // Cause any new Routes to receive "newRoute" functionality, but not
-    // to be held (and return a dry Drop in indication of this)
-    this.route = routeFn => { this.newRoute(routeFn); return Drop({ isWet: () => false }); };
+    init: function() { Insp.globalRegistry.add(this); },
+    onn: function() { return true; },
+    off: function() { return !this.onn(); },
+    cleanup: function() {},
+    end: function() {
+      if (this.off()) return false;
+      this.onn = () => false;
+      Insp.globalRegistry.rem(this);
+      this.cleanup();
+      return true;
+    }
+  })});
+  let Src = U.inspire({ name: 'Src', methods: (insp, Insp) => ({
     
-    // Keep track of our most recent set of Routes, and then clear our Routes
-    let origRoutes = this.routes;
-    this.routes = Set();
+    $nullFns: { add: ()=>{}, rem: ()=>{} },
     
-    // Do a final drip to our latest set of Routes if required
-    if (doDrip) for (let routeFn of origRoutes) routeFn(...dripVals);
-    
-    // If we're an instance of Drop release any resources
-    if (this.dry) this.dry();
-  }
-})});
+    init: function() { this.fns = Set(); },
+    addedRoute: function(fn) {},
+    route: function(fn, mode='tmp') {
+      if (!(fn instanceof Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
+      
+      this.fns.add(fn);
+      this.addedRoute(fn);
+      if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
+    },
+    send: function(...args) { for (let fn of this.fns) fn(...args); }
+  })});
+  let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    init: function(fn) {
+      insp.Src.init.call(this);
+      insp.Endable.init.call(this);
+      if (fn) this.route(fn, 'prm');
+    },
+    end: function(...args) { return this.sendAndEnd(...args); },
+    send: function(...args) { return this.sendAndEnd(...args); },
+    sendAndEnd: function(...args) {
+      // Sending and ending are synonymous for a Tmp
+      if (!insp.Endable.end.call(this)) return; // Check if we're already ended
+      this.sentArgs = args;
+      insp.Src.send.call(this, ...args);
+      this.fns = Src.nullFns;
+      return true;
+    },
+    addedRoute: function(fn) { if (this.off()) fn(...this.sentArgs); },
+    endWith: function(val, mode='prm') {
+      if (U.isType(val, Function)) return this.route(val, mode) || this;
+      if (U.isInspiredBy(val, Endable)) return this.route(() => val.end(), mode) || this;
+      throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
+    }
+  })});
+  let TmpAll = U.inspire({ name: 'TmpAll', insps: { Tmp }, methods: (insp, Insp) => ({
+    init: function(tmps) {
+      insp.Tmp.init.call(this);
+      let fn = this.end.bind(this);
+      for (let tmp of tmps) this.endWith(tmp.route(fn));
+    }
+  })});
+  let TmpAny = U.inspire({ name: 'TmpAny', insps: { Tmp }, methods: (insp, Insp) => ({
+    init: function(tmps) {
+      insp.Tmp.init.call(this);
+      let cnt = tmps.length;
+      let endFn = () => (--cnt > 0) || this.end();
+      for (let tmp of tmps) this.endWith(tmp.route(endFn));
+    }
+  })});
+  
+  let MemSrc = U.inspire({ name: 'MemSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    $init: (mode='tmp', amt='many', src) => {
+      if (![ 'tmp', 'prm' ].includes(mode)) throw Error(`Invalid mode: "${mode}"`);
+      if (![ 'one', 'many' ].includes(amt)) throw Error(`Invalid amt: "${amt}"`);
+      return Insp[`${mode === 'tmp' ? 'Tmp' : 'Prm'}${amt === 'many' ? 'M' : '1'}`](src);
+    },
+    init: function(src) {
+      insp.Endable.init.call(this);
+      insp.Src.init.call(this);
+      this.src = src;
+      this.srcRoute = this.src.route((...vals) => this.receive(...vals));
+    },
+    cleanup: function() { this.srcRoute.end(); }
+  })});
+  MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.valEndRoute = null;
+      this.val = null;
+    },
+    receive: function(tmp) {
+      if (tmp.off()) return; // Don't bother with inactive Tmps
+      if (this.valEndRoute) { this.valEndRoute.end(); this.valEndRoute = null; }
+      this.val = tmp;
+      this.valEndRoute = tmp.route(() => this.val = this.valEndRoute = null);
+      this.send(tmp);
+    },
+    route: function(fn, mode) {
+      if (this.val) fn(this.val);
+      return insp.MemSrc.route.call(this, fn, mode);
+    },
+    cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
+  })});
+  MemSrc.TmpM = U.inspire({ name: 'MemSrc.TmpM', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.valEndRoutes = Map();
+      this.vals = Set();
+    },
+    receive: function(tmp) {
+      if (tmp.off()) return; // Don't bother with inactive Tmps
+      this.vals.add(tmp);
+      this.valEndRoutes.set(tmp, tmp.route(() => (this.vals.rem(tmp), this.valEndRoutes.rem(tmp))));
+      this.send(tmp);
+    },
+    route: function(fn, mode) {
+      for (let val of this.vals) fn(val);
+      return insp.MemSrc.route.call(this, fn, mode);
+    },
+    cleanup: function() {
+      for (let [ tmp, route ] of this.valEndRoutes) route.end();
+      this.vals = Set();
+      this.valEndRoutes = Map();
+    }
+  })});
+  MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.val = C.skip;
+    },
+    receive: function(val) { this.val = val; this.send(val); },
+    route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
+    cleanup: function() { this.val = null; }
+  })});
+  MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.vals = [];
+    },
+    receive: function(val) { this.vals.push(val); this.send(val); },
+    route: function(fn, mode) { for (let val of this.vals) fn(val); return insp.MemSrc.route.call(this, fn, mode); },
+    cleanup: function() { this.vals = []; }
+  })});
 
-let defDrier = (nozz=Nozz()) => {
-  
-  // Takes a Nozz to be the DrierNozz. Telling the associated Drop to
-  // dry will cause the given Nozz to drip, and become blocked. It will
-  // also cause the Nozz to always immediately drip into any new Routes
-  // that are attempted to be attached. (These Routes won't be attached,
-  // but the immediate drip will signal dryness to the implementation.)
-  // Note that dripping from the Nozz does NOT cause the associated Drop
-  // to dry. Call `Drop.prototype.dry()` as desired; it causes `nozz` to
-  // drip. Never call `nozz.drip()` directly - it would NOT cause the
-  // instance of Drop to dry.
-  
-  let dried = false;
-  nozz.newRoute = routeFn => dried && routeFn();
-  nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
-  let drier = { nozz, onceDry: () => {
-    dried = false;
-    drier.onceDry = () => {};
-    nozz.block(true);
-  }};
-  return drier;
-  
-};
-
-let Funnel = U.inspire({ name: 'Funnel', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(...nozzes) {
-    insp.Drop.init.call(this);
-    insp.Nozz.init.call(this);
-    this.joinRoutes = Set();
-    for (let nozz of nozzes) this.joinRoute(nozz);
-  },
-  joinRoute: function(nozz) {
-    let joinRoute = nozz.route(this.drip.bind(this));
-    this.joinRoutes.add(joinRoute);
-    return joinRoute;
-  },
-  onceDry: function() { for (let jr in this.joinRoutes) jr.dry(); }
-})});
-let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;   // This Nozz is "above" the Tub - it flows into the Tub
-    this.val = C.skip;  // `null` indicates the `null` will be Dripped. `C.skip` indicates no Drip
-    this.itemDryRoute = null; // A Route to know if latest item goes Dry
-    this.nozzRoute = this.nozz.route(item => {
-      // If filter, replace `item` with filter result and ignore skips
-      if (flt && (item = flt(item)) === C.skip) return;
-      
-      // Check to see if `item` is a Drop
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return; // Skip Dry Drops
-      
-      // Remove previous Item-Dry-Route if it exists
-      if (this.itemDryRoute) throw Error('A value is already set');
-      
-      // If `item` is a Drop with a Drier-Nozz add additional Routes
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        // Note that no drip occurs when `item` dries
-        this.itemDryRoute = itemDryNozz.route(() => { this.itemDryRoute = null; this.val = C.skip; });
-      }
-      
-      // Update our value
-      this.val = item;
-      if (this.val !== C.skip) this.drip(item);
-    });
-  },
-  newRoute: function(routeFn) { if (this.val !== C.skip) routeFn(this.val); },
-  dryContents: function() {
-    if (this.val === C.skip) return;
-    if (U.isInspiredBy(this.val, Drop)) this.val.dry();
-    this.val = C.skip;
-  },
-  onceDry: function() {
-    this.nozzRoute.dry();
-    if (this.itemDryRoute) this.itemDryRoute.dry();
-  }
-})});
-let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    this.set = Set();
-    this.tubRoutes = Set();
-    this.tubRoutes.add(this.nozz.route(item => {
-      // If filter, replace `item` with filter result and ignore skips
-      if (flt && (item = flt(item)) === C.skip) return;
-      
-      // Check to see if `item` is a Drop
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return;
-      
-      // If `item` is a Drop with a Drier-Nozz add additional Routes
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.set.rem(item); });
-        this.tubRoutes.add(itemDryRoute);
-      }
-      
-      // Add `item` to our set
-      this.set.add(item);
-      this.drip(item);
-    }));
-  },
-  newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
-  dryContents: function() { for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry(); },
-  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); this.set = Set(); }
-})});
-let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    
-    this.count = 0;
-    this.drop = Drop(defDrier());
-    
-    this.dropDryRoutes = Set();
-    this.nozzRoute = this.nozz.route(drop => {
-      
-      if (!U.isInspiredBy(drop, Drop)) throw Error(`TubDry expected nozz to drip Drops - got ${U.nameOf(drop)}`);
-      if (!drop.drier) throw Error('TubDry expects Drops to have "drier"');
-      if (!drop.drier.nozz) throw Error('TubDry expects Drops to have "drier.nozz"');
-      if (drop.isDry()) return;
-      
-      if (this.count === 0) this.drop.dry();
-      this.count++;
-      
-      this.dropDryRoutes.add(drop.drier.nozz.route(() => {
-        this.count--;
-        if (this.count === 0) this.drip(this.drop = Drop(defDrier()));
+  let FilterSrc = U.inspire({ name: 'FilterSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    init: function(src, fn) {
+      insp.Endable.init.call(this);
+      insp.Src.init.call(this);
+      this.src = src;
+      this.srcRoute = src.route((...vals) => fn(...vals) && this.send(...vals));
+    },
+    cleanup: function() { this.srcRoute.end(); }
+  })});
+  let FnSrc = U.inspire({ name: 'FnSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    init: function(srcs, fn) {
+      insp.Endable.init.call(this);
+      insp.Src.init.call(this);
+      this.lastResult = undefined; // To allow default params
+      let vals = srcs.map(v => null);
+      this.routes = srcs.map((src, ind) => src.route(val => {
+        vals[ind] = val;
+        
+        let result = fn(...vals, this.lastResult);
+        if (result === this.lastResult) return;
+        
+        if (U.isInspiredBy(this.lastResult, Endable)) this.lastResult.end();
+        if ((this.lastResult = result) !== C.skip) this.send(result);
       }));
-      
-    });
-  },
-  newRoute: function(routeFn) { if (this.drop.isWet()) routeFn(this.drop); },
-  onceDry: function() {
-    this.nozzRoute.dry();
-    for (let dr of this.dropDryRoutes) dr.dry();
-  }
-})});
-let TubCnt = U.inspire({ name: 'TubCnt', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    this.count = 0;
-    this.tubRoutes = Set();
-    this.tubRoutes.add(this.nozz.route(item => {
-      
-      if (flt && (item = flt(item)) === C.skip) return;
-      
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return;
-      
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.drip(--this.count); });
-        this.tubRoutes.add(itemDryRoute);
-      }
-      
-      this.drip(++this.count);
-    }));
-  },
-  newRoute: function(routeFn) { routeFn(this.count); },
-  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
-})});
-let CondNozz = U.inspire({ name: 'CondNozz', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(nozzesObj, fn, initial=null) {
-    insp.Drop.init.call(this);
-    insp.Nozz.init.call(this);
-    this.fn = fn;
-    this.curVals = initial || nozzesObj.map(v => C.skip);
-    this.nozzRoutes = nozzesObj.toArr((nozz, k) => nozz.route(val => {
-      // Check for duplicate value. Objects can't be duplicates.
-      //if (!U.isType(val, Object) && this.curVals[k] === val) return;
-      this.curVals[k] = val;
-      this.reevaluate();
-    }));
-    
-    // Value is initially a dry Drop
-    this.drop = null;
-    
-    this.reevaluate();
-  },
-  newRoute: function(routeFn) { if (this.drop) routeFn(this.drop); },
-  reevaluate: function() {
-    let result = this.fn(this.curVals, this);
-    if (this.drop && result !== C.skip) return; // The Drop is appropriately wet
-    if (!this.drop && result === C.skip) return; // The Drop is appropriately dry
-    
-    if (result !== C.skip) {
-      this.drop = Drop(defDrier());
-      this.drop.rawVals = this.curVals.map(v => v);
-      this.drop.result = result;
-      this.drip(this.drop);
-    } else {
-      this.drop.dry();
-      this.drop = null;
+    },
+    cleanup: function() {
+      for (let r of this.routes) r.end();
+      if (U.isInspiredBy(this.lastResult, Endable)) this.lastResult.end();
     }
-  },
-  dryContents: function() {
-    if (!this.drop) return;
-    this.drop.dry();
-    this.drop = null;
-  },
-  onceDry: function() {
-    for (let r of this.nozzRoutes) r.dry();
-  }
-})});
-let Basin = U.inspire({ name: 'Basin', insps: { Drop }, methods: (insp, Insp) => ({
-  init: function(...args) {
-    insp.Drop.init.call(this, ...args);
-    this.drops = Set();
-  },
-  add: function(drop) {
+  })});
+  
+  let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
     
-    if (this.isDry()) { drop.dry(); return; }
-    
-    this.drops.add(drop);
-    try {
-      let routeDrierNozz = drop.drierNozz().route(() => {
-        this.drops.rem(drop);
-        this.drops.rem(routeDrierNozz);
+    init: function(src, fn) {
+      
+      insp.Tmp.init.call(this);
+      this.srcRoute = src.route(tmp => {
+        
+        if (!U.isInspiredBy(tmp, Tmp)) throw Error(`Scope expects Tmp - got ${U.nameOf(tmp)}`);
+        if (tmp.off()) return;
+        
+        // Define `addDep` and `addDep.scp` to enable nice shorthand
+        let deps = Set();
+        let addDep = dep => (dep.onn() && deps.add(dep), dep);
+        addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
+        
+        // If either `tmp` or this Scope ends, all existing dependencies
+        // end as well. This relationship is itself a dependency
+        addDep( TmpAll([ this, tmp ]).endWith(() => deps.each(dep => dep.end())) );
+        
+        fn(tmp, addDep);
+        
       });
-      this.drops.add(routeDrierNozz);
-    } catch(err) {
+      
+    },
+    cleanup: function() { this.srcRoute.end(); }
+  })});
+  
+  let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
+    
+    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.nameOf(v)} -> "${p}" failed: (${e.message})`; throw e; } },
+    init: C.noFn('init'),
+    access: C.noFn('access', arg => {}),
+    seek: function(...args) {
+      let val = this;
+      for (let arg of args) val = U.isType(val, Promise) ? val.then(v => Insp.tryAccess(v, arg)) : Insp.tryAccess(val, arg);
+      return val;
     }
     
-    return drop;
-    
-  },
-  onceDry: function() { for (let drop of this.drops) drop.dry(); }
-})});
-let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
+  })});
   
-  $addDep: (deps, dep) => { if (dep && dep.isWet()) deps.add(dep); return dep; },
+  return { Endable, Src, Tmp, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Scope, Slots };
   
-  init: function(nozz, fn) {
-    
-    this.dryNozz = Funnel();
-    insp.Drop.init.call(this, { nozz: TubVal(null, this.dryNozz), isWet: () => !!this.fn });
-    
-    this.fn = fn;
-    this.nozzRoute = nozz.route(drop => {
-      
-      if (!U.isInspiredBy(drop, Drop)) throw Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
-      if (drop.isDry()) return;
-      
-      // Allow shorthand adding of Deps and SubScopes
-      let deps = Set();
-      let addDep = Insp.addDep.bind(null, deps);
-      addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
-      
-      // Unscope if the Scope or Drop (assuming dryable Drop) dries
-      let dropUnscopedNozz = Funnel(this.dryNozz);
-      let drierNozz = drop.drier && drop.drier.has('nozz') && drop.drier.nozz;
-      if (drierNozz) dropUnscopedNozz.joinRoute(drierNozz);
-      deps.add(dropUnscopedNozz);
-      
-      // When Drop unscopes dry up all deps (Note: not the Drop itself!)
-      dropUnscopedNozz.route(() => { for (let dep of deps) dep.dry(); });
-      
-      this.fn(drop, addDep);
-      
-    });
-  },
-  onceDry: function() {
-    this.fn = null;
-    this.nozzRoute.dry();
-    this.dryNozz.drip();
-  }
-})});
-let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
-  
-  $tryAccess: (v, p) => {
-    try { return v.access(p); } catch(err) { err.message = `No access for ${U.nameOf(v)} -> "${p}" (${err.message})`; throw err; }
-  },
-  init: C.noFn('init'),
-  access: C.noFn('access', arg => {}),
-  seek: function(...args) {
-    let val = this;
-    for (let arg of args) val = U.isType(val, Promise) ? val.then(v => Insp.tryAccess(v, arg)) : Insp.tryAccess(val, arg);
-    return val;
-  }
-  
-})});
+})();
 
-let RefCounter = U.inspire({ name: 'RefCounter', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(target) { this.target = target; this.refCount = 0; },
-  ...[ 'isWet', 'isDry', 'onceDry', 'drierNozz', 'route', 'newRoute', 'drip', 'block' ]
-    .toObj(k => [ k, function(...args) { return this.target[k](...args); } ]),
-  addRef: function() { this.refCount++; },
-  dry: function() { if (--this.refCount <= 0) this.target.dry(); }
-})});
-
-U.water = { Slots, Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Basin, Scope, RefCounter, defDrier };

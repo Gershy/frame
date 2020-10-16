@@ -3,7 +3,7 @@ global.rooms.hinterlands = async foundation => {
   let recordRoom = await foundation.getRoom('record');
   
   let { RecTypes, RecType, Rec } = recordRoom;
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  let { Endable, Src, MemSrc, Tmp, TmpAll, TmpAny } = U.logic;
   
   let Hut = U.inspire({ name: 'Hut', insps: { RecTypes, Rec }, methods: (insp, Insp) => ({
     
@@ -117,7 +117,7 @@ global.rooms.hinterlands = async foundation => {
       this.syncVersion = 0;
       
       // Commands mapped to handling functions
-      this.roadNozzes = {};
+      this.roadSrcs = {};
       
       if (this.isAfar()) {
         
@@ -154,8 +154,8 @@ global.rooms.hinterlands = async foundation => {
         // Buffer premature syncs until gap is filled
         this.earlySyncs = Map();
         
-        this.roadNozz('error').route(({ hut, msg, reply }) => { /* nothing */ });
-        this.roadNozz('multi').route(({ hut, msg, reply, road }) => {
+        this.roadSrc('error').route(({ hut, msg, reply }) => { /* nothing */ });
+        this.roadSrc('multi').route(({ hut, msg, reply, road }) => {
           
           let { list } = msg;
           
@@ -169,7 +169,7 @@ global.rooms.hinterlands = async foundation => {
         
         /// {ABOVE=
         
-        this.roadNozz('thunThunk').route(({ hut, msg, reply }) => { /* nothing */ });
+        this.roadSrc('thunThunk').route(({ hut, msg, reply }) => { /* nothing */ });
         
         /// =ABOVE} {BELOW=
         
@@ -188,10 +188,10 @@ global.rooms.hinterlands = async foundation => {
         // Sometimes our Above is locking some Road resource, and
         // decides to discard it without using it (e.g. a long-poll).
         // In this case the Above will use the "fizzle" command
-        this.roadNozz('fizzle').route(({ hut, msg, reply }) => { /* nothing */ });
+        this.roadSrc('fizzle').route(({ hut, msg, reply }) => { /* nothing */ });
         
         // BelowHuts are always open to syncs from Above
-        this.roadNozz('sync').route(({ msg }) => {
+        this.roadSrc('sync').route(({ msg }) => {
           
           let { version, content } = msg;
           if (!U.isType(version, Number)) throw Error('Invalid "version"');
@@ -265,7 +265,7 @@ global.rooms.hinterlands = async foundation => {
     getRoadedHut: function(kidHutId) { return this.roadedHuts.get(kidHutId) || null; },
     processNewRoad: function(server, decorateRoad) {
       
-      let road = Drop(defDrier());
+      let road = Tmp();
       road.desc = `Road on ${server.desc}`;
       decorateRoad(road); // This can apply a HutId
       server.decorateRoad(road);
@@ -278,7 +278,8 @@ global.rooms.hinterlands = async foundation => {
         + U.base62(this.roadedHutIdCnt++).padHead(8, '0')
         + U.base62(Math.floor(Math.random() * Math.pow(62, 8))).padHead(8, '0')
       
-      let hutId = road.hutId, roadedHut = null;
+      let hutId = road.hutId;
+      let roadedHut = null;
       
       // The idea for drying Hut + RoadedHut is:
       // - Dry everything when all RoadedHut's Roads dry
@@ -296,19 +297,24 @@ global.rooms.hinterlands = async foundation => {
         
         // Create a new RoadedHut, Hut, and KidHut relation
         
-        // The RoadedHut drying causes Hut and all Roads to dry
-        roadedHut = Drop(defDrier(), () => {
-          this.roadedHuts.rem(hutId);
-          for (let [ s, road ] of roadedHut.serverRoads) road.dry();
-          roadedHut.hut.dry();
-        });
-        roadedHut.hut = road.hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
-        roadedHut.serverRoads = Map(); // Map Servers to the single Road for that Server
+        let hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
+        roadedHut = Tmp();
+        roadedHut.hut = road.hut = hut;
         
+        // Hut and RoadedHut end together
+        hut.endWith(roadedHut);
+        roadedHut.endWith(hut);
+        
+        // Reference the RoadedHut while it lives
         this.roadedHuts.set(hutId, roadedHut);
+        roadedHut.endWith(() => this.roadedHuts.rem(hutId));
         
-        // Drying the Hut causes the RoadedHut to dry
-        roadedHut.hut.drierNozz().route(() => roadedHut.dry());
+        // Track all Server => Road mappings for the RoadedHut, while it
+        // lives. Note this looks like:
+        //  |     roadedHut.serverRoads === Map( <server1>: <road1>, <server2>: <road2> )
+        roadedHut.serverRoads = Map();
+        roadedHut.endWith(() => roadedHut.serverRoads.each(road => road.end()));
+        
         
         // Do Record relation for this KidHut
         let kidHutType = (this.parHut || this).getType('lands.kidHut');
@@ -337,23 +343,23 @@ global.rooms.hinterlands = async foundation => {
       let routeRoad = road.hear.route(([ msg, reply, ms ]) => Insp.tell(roadedHut.hut, this, road, reply, msg, ms));
       
       // Listen for the Road to finish
-      road.drierNozz().route(() => {
+      road.endWith(() => {
         
         // Drying the Road cleans it up from RoadedHut's list of Roads
         roadedHut.serverRoads.rem(server);
-        routeRoad.dry(); // Also stop routing Road
+        routeRoad.end(); // Also stop routing Road
         
         if (this.roadDbgEnabled) console.log(`<-DROP ${hutId} on ${server.desc} (${roadedHut.serverRoads.size} remaining)`);
         
         // If all Roads dry, dry the RoadedHut itself!
         if (roadedHut.serverRoads.isEmpty()) {
-          roadedHut.dry();
+          roadedHut.end();
           if (this.roadDbgEnabled) console.log(`<<EXIT ${hutId}`);
         }
         
       });
       
-      if (roadedHut.isWet()) roadedHut.serverRoads.set(server, road);
+      if (roadedHut.onn()) roadedHut.serverRoads.set(server, road);
       
       return road;
       
@@ -362,13 +368,13 @@ global.rooms.hinterlands = async foundation => {
     isHere: function() { return !!this.foundation; },
     isAfar: function() { return !this.foundation; },
     
-    roadNozz: function(command, ...args) {
-      if (args.length) throw Error(`Supplied more than 1 parameter to "roadNozz"`);
-      if (!this.roadNozzes.has(command)) {
-        this.roadNozzes[command] = Nozz();
-        this.roadNozzes[command].desc = `Hut ComNozz for "${command}"`;
+    roadSrc: function(command, ...args) {
+      if (args.length) throw Error(`Supplied more than 1 parameter to "roadSrc"`);
+      if (!this.roadSrcs.has(command)) {
+        this.roadSrcs[command] = Src();
+        this.roadSrcs[command].desc = `Hut ComSrc for "${command}"`;
       }
-      return this.roadNozzes[command];
+      return this.roadSrcs[command];
     },
     hear: async function(srcHut, road, reply, msg, ms=foundation.getMs()) {
       
@@ -379,8 +385,8 @@ global.rooms.hinterlands = async foundation => {
       /// =ABOVE}
       
       let command = msg.command;
-      if (srcHut && srcHut.roadNozzes.has(command)) return srcHut.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply, ms });
-      if (this.roadNozzes.has(command)) return this.roadNozzes[command].drip({ srcHut, trgHut: this, road, msg, reply, ms });
+      if (srcHut && srcHut.roadSrcs.has(command)) return srcHut.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
+      if (this.roadSrcs.has(command)) return this.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
       
       let resp = { command: 'error', type: 'invalidCommand', orig: msg };
       if (reply) return reply(resp);
@@ -412,7 +418,7 @@ global.rooms.hinterlands = async foundation => {
     trackRec: function(rec) {
       if (!U.isInspiredBy(rec, Rec)) throw Error(`Can't track; ${U.nameOf(rec)} isn't a Rec!`);
       this.allRecs.set(rec.uid, rec);
-      rec.drierNozz().route(() => this.allRecs.rem(rec.uid));
+      rec.endWith(() => this.allRecs.rem(rec.uid));
       return rec;
     },
     createRec: function(name, mems, val) {
@@ -516,7 +522,7 @@ global.rooms.hinterlands = async foundation => {
         // invalid "rem" sync will be performed:
         if (!this.allRecs.has(uid)) continue;
         //if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`);
-        this.allRecs.get(uid).dry();
+        this.allRecs.get(uid).end();
       }
       
       // Using `map` to return here ensures Rec instances are received
@@ -572,7 +578,7 @@ global.rooms.hinterlands = async foundation => {
         this.throttleSyncPrm = null;
         
         // Hut may have dried between scheduling and executing sync
-        if (this.isDry()) return;
+        if (this.off()) return;
         
         let updateTell = this.consumePendingSync(ctxErr);
         if (updateTell) Insp.tell(this.parHut, this, null, null, updateTell);
@@ -620,25 +626,26 @@ global.rooms.hinterlands = async foundation => {
       let str0 = fol ? fol.strength : 0;
       let str1 = str0 + delta;
       
-      if (str1 > str0 && rec.isDry()) throw Error(`Tried to Follow dry ${rec.type.name}@${rec.uid}`);
+      if (str1 > str0 && rec.off()) throw Error(`Tried to Follow dry ${rec.type.name}@${rec.uid}`);
       
       if (str0 <= 0 && str1 > 0) {
         
         // The Rec wasn't Followed, and now it is!
         
-        this.toSync('add', rec);
-        let updRecRoute = rec.route(v => this.toSync('upd', rec, v));
-        let recDryRoute = rec.drierNozz().route(() => followDrop.dry());
-        
-        let followDrop = Drop(null, () => {
-          this.toSync('rem', rec);
-          updRecRoute.dry();
-          recDryRoute.dry();
-          this.recFollows.rem(rec);
-        });
+        let followDrop = Tmp();
         
         fol = { strength: str1, followDrop };
         this.recFollows.set(rec, fol);
+        followDrop.endWith(() => this.recFollows.rem(rec));
+        
+        this.toSync('add', rec);
+        followDrop.endWith(() => this.toSync('rem', rec));
+        
+        let updRecRoute = rec.valSrc.route(v => this.toSync('upd', rec, v));
+        followDrop.endWith(updRecRoute);
+        
+        let recDryRoute = rec.endWith(followDrop, 'tmp');
+        followDrop.endWith(recDryRoute);
         
       } else if (str0 > 0 && str1 > 0) {
         
@@ -648,7 +655,7 @@ global.rooms.hinterlands = async foundation => {
       } else if (str0 > 0 && str1 <= 0) {
         
         // The Rec was Followed; now it isn't
-        fol.followDrop.dry();
+        fol.followDrop.end();
         fol = null;
         
       }
@@ -661,17 +668,16 @@ global.rooms.hinterlands = async foundation => {
       // the direct descendants, for `rec`?
       // E.g. `rec.mems.toArr(v=>v)[0]` could have further member Recs
       
-      let recs = [ rec, ...rec.mems.toArr(r => r) ]
-        .map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
-      
+      let recs = [ rec, ...rec.mems.toArr(r => r) ].map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
       for (let rec of recs) this.modRecFollowStrength(rec, +1);
-      return Drop(null, () => { for (let rec of recs) this.modRecFollowStrength(rec, -1); });
+      return Tmp(() => { for (let rec of recs) this.modRecFollowStrength(rec, -1); });
+      
     },
     
     // Listening for signs of life from BelowHut
     refreshDryTimeout: function() {
       clearTimeout(this.dryHeartTimeout);
-      this.dryHeartTimeout = setTimeout(() => this.dry(), this.heartMs); 
+      this.dryHeartTimeout = setTimeout(() => this.end(), this.heartMs); 
     },
     
     /// =ABOVE} {BELOW=

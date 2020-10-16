@@ -1,9 +1,9 @@
 global.rooms.promo = async foundation => {
   
-  let { Drop, Basin, Slots } = U.water;
+  let { Tmp, Slots } = U.logic;
   
+  let { Scope } = U.logic;
   let { RecScope } = await foundation.getRoom('record');
-  
   let { Real, Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout } = U.setup;
   
   let { HtmlApp } = await (() => { // foundation.getRoom('htmlApp');
@@ -15,7 +15,7 @@ global.rooms.promo = async foundation => {
       decorateApp: function(parHut) {
         
         /// {ABOVE=
-        parHut.roadNozz('syncInit').route(async ({ road, srcHut, msg, reply }) => {
+        parHut.roadSrc('syncInit').route(async ({ road, srcHut, msg, reply }) => {
           
           // The AfarHut immediately has its state reset, requiring a
           // full sync to update. Then this full sync is consumed here,
@@ -74,7 +74,7 @@ global.rooms.promo = async foundation => {
           `));
           
         });
-        parHut.roadNozz('html.room').route(async ({ road, srcHut, msg, reply }) => {
+        parHut.roadSrc('html.room').route(async ({ road, srcHut, msg, reply }) => {
           
           let pcs = (msg.type === 'room')
             ? [ 'room', msg.room, `${msg.room}.js` ]
@@ -90,12 +90,12 @@ global.rooms.promo = async foundation => {
           ].join('\n'));
           
         });
-        parHut.roadNozz('html.icon').route(async ({ road, srcHut, msg, reply }) => {
+        parHut.roadSrc('html.icon').route(async ({ road, srcHut, msg, reply }) => {
           
           reply(foundation.seek('keep', 'fileSystem', 'setup', 'favicon.ico'));
           
         });
-        parHut.roadNozz('html.css').route(async ({ road, srcHut, msg, reply }) => {
+        parHut.roadSrc('html.css').route(async ({ road, srcHut, msg, reply }) => {
           
           reply(U.multiLineString(`
             html, body {
@@ -107,7 +107,7 @@ global.rooms.promo = async foundation => {
           `));
           
         });
-        parHut.roadNozz('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
+        parHut.roadSrc('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
           
           reply(U.multiLineString(`
             body > .rec { color: #000000; }
@@ -182,14 +182,13 @@ global.rooms.promo = async foundation => {
         
       }
     })});
-    
-      return { HtmlApp };
+    return { HtmlApp };
     
   })();
   
   let { Permissions } = await (() => { // foundation.getRoom('hinterlands.permissions');
     
-    let Permissions = U.inspire({ name: 'Permissions', insps: { Drop }, methods: (insp, Insp) => ({
+    let Permissions = U.inspire({ name: 'Permissions', insps: { Tmp }, methods: (insp, Insp) => ({
       
       $mod: (parHut, rec, value) => {
         if (value === rec.val) return;
@@ -208,9 +207,9 @@ global.rooms.promo = async foundation => {
         this.recPerms = {};
         
         this.routes = [
-          parHut.roadNozz(`perm.${kidHut.uid}.mod`).route(this.attemptMod.bind(this)),
-          parHut.roadNozz(`perm.${kidHut.uid}.add`).route(this.attemptAdd.bind(this)),
-          parHut.roadNozz(`perm.${kidHut.uid}.rem`).route(this.attemptRem.bind(this))
+          parHut.roadSrc(`perm.${kidHut.uid}.mod`).route(this.attemptMod.bind(this)),
+          parHut.roadSrc(`perm.${kidHut.uid}.add`).route(this.attemptAdd.bind(this)),
+          parHut.roadSrc(`perm.${kidHut.uid}.rem`).route(this.attemptRem.bind(this))
         ];
       },
       followRec: function(rec, ...perms) {
@@ -292,7 +291,7 @@ global.rooms.promo = async foundation => {
   
   let { render } = await (() => { // foundation.getRoom('htmlApp.render');
     
-    let Node = U.inspire({ name: 'Node', insps: { Drop }, methods: (insp, Insp) => ({
+    let Node = U.inspire({ name: 'Node', insps: { Tmp }, methods: (insp, Insp) => ({
       
       init: function(parent, name, elem=null) {
         
@@ -312,7 +311,7 @@ global.rooms.promo = async foundation => {
         if (parent) parent.domElem.appendChild(this.domElem);
         
       },
-      onceDry: async function() {
+      cleanup: async function() {
         
         this.domElem.classList.add('drying');
         this.domElem.style.height = `${this.domElem.getBoundingClientRect().height}px`;
@@ -352,10 +351,10 @@ global.rooms.promo = async foundation => {
       let childrenNode = Node(recNode, 'children');
       
       // Update DOM when Rec value changes
-      basin.add(rec.route(value => displayNode.domElem.innerHTML = U.isType(value, String) ? value : JSON.stringify(value)));
+      basin.add(rec.valSrc.route(value => displayNode.domElem.innerHTML = U.isType(value, String) ? value : JSON.stringify(value)));
       
       // Recursively render all children for all terms within
-      if (!circ) basin.add(rec.relTermNozz.route(relTerm => {
+      if (!circ) basin.add(rec.relTermSrc.route(relTerm => {
         basin.add(RecScope(rec, relTerm, (childRec, dep) => dep(render(parHut, childRec, childrenNode, seen))));
       }));
       
@@ -515,10 +514,10 @@ global.rooms.promo = async foundation => {
         }
       }));
       let tabs = {
-        hut:      headerReal.addReal('pmo.header.hut',      ctx => ({ layouts: ctx.layouts(0), innerLayout: TextLayout({ text: 'HUT', size: 'calc(12px + 2vw)' })        })),
-        phil:     headerReal.addReal('pmo.header.phil',     ctx => ({ layouts: ctx.layouts(1), innerLayout: TextLayout({ text: 'Philosophy', size: 'calc(10px + 1vw)' }) })),
-        example:  headerReal.addReal('pmo.header.example',  ctx => ({ layouts: ctx.layouts(2), innerLayout: TextLayout({ text: 'Example', size: 'calc(10px + 1vw)' })    })),
-        rooms:    headerReal.addReal('pmo.header.rooms',    ctx => ({ layouts: ctx.layouts(3), innerLayout: TextLayout({ text: 'Rooms', size: 'calc(10px + 1vw)' })      }))
+        hut:      headerReal.addReal('pmo.header.hut',      ctx => ({ layouts: [ ...ctx.layouts(0), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'HUT', size: 'calc(12px + 2vw)' })        })),
+        phil:     headerReal.addReal('pmo.header.phil',     ctx => ({ layouts: [ ...ctx.layouts(1), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Philosophy', size: 'calc(10px + 1vw)' }) })),
+        example:  headerReal.addReal('pmo.header.example',  ctx => ({ layouts: [ ...ctx.layouts(2), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Example', size: 'calc(10px + 1vw)' })    })),
+        rooms:    headerReal.addReal('pmo.header.rooms',    ctx => ({ layouts: [ ...ctx.layouts(3), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Rooms', size: 'calc(10px + 1vw)' })      }))
       };
       
       let scrollReal = promoReal.addReal('pmo.scroll', ctx => ({
@@ -583,6 +582,17 @@ global.rooms.promo = async foundation => {
           
         })()
       };
+      
+      for (let [ name, tab ] of tabs) {
+        
+        let page = pages[name];
+        
+        let feelSrc = dep(tab.feelSrc());
+        let pressSrc = dep(tab.pressSrc());
+        dep(Scope(feelSrc.src, (hover, dep) => dep(tab.addDecals({ colour: 'rgba(0, 0, 0, 0.2)' }))));
+        dep(pressSrc.src.route(press => scrollReal.scrollTo(page)));
+        
+      }
       
     });
     

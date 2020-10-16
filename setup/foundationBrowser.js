@@ -1,6 +1,6 @@
 (() => {
   
-  let { Nozz, TubSet, defDrier } = U.water;
+  let { Tmp, Src, MemSrc } = U.logic;
   let { Foundation, Keep } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -346,16 +346,47 @@
           },
           addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode),
           
-          routeEvent: (type, techNode) => {
-            let nozz = U.Funnel();
-            nozz.drier = U.water.defDrier();
-            let fn = evt => nozz.drip(evt);
-            techNode.addEventListener(type, fn);
-            nozz.onceDry = () => techNode.removeEventListener(type, fn);
-            return nozz;
+          scrollTo: (scrollReal, trgReal) => {
+            let children = [ ...scrollReal.getTechNode().childNodes ];
+            if (children.count() > 0) throw Error(`Scrollable parent has multiple children`);
+            
+            let scrollElem = scrollReal.getTechNode();
+            let scrollOffsetElem = children[0];
+            let scrollTargetElem = trgReal.getTechNode();
           },
-          routePress: techNode => this.routeEvent('click', techNode),
-          routeFeel: techNode => this.routeEvent('mouseover', techNode) // TODO: Not the same as click, since it should drip Drops (which dry when the hover ends)
+          
+          domEventToSrc: (eventName, techNode) => {
+            let tmp = Tmp(); tmp.src = Src();
+            let fn = evt => tmp.src.send(evt);
+            techNode.addEventListener(eventName, fn);
+            tmp.endWith(() => techNode.removeEventListener(eventName, fn));
+            return tmp;
+          },
+          addPress: techNode => this.domEventToSrc('click', techNode),
+          addFeel: techNode => {
+            
+            let tmp = Tmp(); tmp.src = Src();
+            let sentTmp = null;
+            let onnFn = evt => {
+              if (sentTmp) return;
+              
+              // Create a new Tmp indicating hover.
+              sentTmp = Tmp();
+              techNode.addEventListener('mouseleave', offFn);
+              sentTmp.endWith(() => techNode.removeEventListener('mouseleave', offFn));
+              
+              tmp.src.send(sentTmp);
+            };
+            let offFn = evt => {
+              if (!sentTmp) return; sentTmp.end(); sentTmp = null;
+            };
+            
+            techNode.addEventListener('mouseenter', onnFn);
+            tmp.endWith(() => techNode.removeEventListener('mouseleave', onnFn));
+            
+            return tmp;
+            
+          }
         };
         
       })();
@@ -393,12 +424,21 @@
           if (req.status === 0) return rjc(Error('Got HTTP status 0'));
           
           ms = this.getMs();
-          try {         return rsv(req.responseText ? JSON.parse(req.responseText) : null); }
-          catch(err) {  return rjc(Error('Malformed JSON')); }
+          try {
+            return rsv(req.responseText ? JSON.parse(req.responseText) : null);
+          } catch(err) {
+            console.log({
+              msg: 'Expected JSON',
+              request: { path: this.seek('keep', 'urlResource', {}).getUrl(), body: msg },
+              responseCode: req.status,
+              response: req.responseText
+            });
+            return rjc(Error('Malformed JSON'));
+          }
         }}));
         
         // If any data was received, process it at a higher level
-        if (res) road.hear.drip([ res, null, ms ]);
+        if (res) road.hear.send([ res, null, ms ]);
         
         // Always have 1 pending req
         numPendingReqs--;
@@ -406,22 +446,13 @@
         
       };
       
-      let server = TubSet({ onceDry: () => tellAndHear = ()=>{} }, Nozz());
+      let server = Tmp(() => tellAndHear = v=>v);
+      server.connSrc = MemSrc.TmpM(Src());
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => tellAndHear(msg, road);
         road.currentCost = () => 1.0;
-        
-        /*
-        // TODO: ddos test!!! FoundationNodejs.prototype.makeHttpServer
-        // should handle this by detecting that the connection is being
-        // abused, and ignoring incoming requests
-        setTimeout(() => {
-          while (true) road.tell({ command: 'ddos' });
-        }, 20);
-        */
-        
         this.queueTask(() => road.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };
       
@@ -438,13 +469,14 @@
       let sokt = new WebSocket(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${this.seek('keep', 'urlResource', {}).getUrl()}`);
       await Promise(r => sokt.onopen = r);
       
-      let server = TubSet({ onceDry: () => { /*sokt.close()*/ } }, Nozz());
+      let server = Tmp(() => { /* sokt.close */ });
+      server.connSerc = MemSrc.TmpM(Src());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => sokt.send(JSON.stringify(msg));
         road.currentCost = () => 0.5;
-        sokt.onmessage = ({ data }) => data && road.hear.drip([ JSON.parse(data), null, this.getMs() ]);
+        sokt.onmessage = ({ data }) => data && road.hear.send([ JSON.parse(data), null, this.getMs() ]);
       };
       
       // Allow communication with only a single Server: our AboveHut
