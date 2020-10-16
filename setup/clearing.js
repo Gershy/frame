@@ -391,27 +391,35 @@ U.logic = (() => {
     send: function(...args) { for (let fn of this.fns) fn(...args); }
   })});
   let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    init: function(fn) {
+    init: function(fn=null) {
       insp.Src.init.call(this);
       insp.Endable.init.call(this);
       if (fn) this.route(fn, 'prm');
     },
-    end: function(...args) { return this.sendAndEnd(...args); },
-    send: function(...args) { return this.sendAndEnd(...args); },
-    sendAndEnd: function(...args) {
+    ref: function() { return this; },
+    end: function() { return this.sendAndEnd(); },
+    send: function() { return this.sendAndEnd(); },
+    sendAndEnd: function() {
       // Sending and ending are synonymous for a Tmp
       if (!insp.Endable.end.call(this)) return; // Check if we're already ended
-      this.sentArgs = args;
-      insp.Src.send.call(this, ...args);
+      insp.Src.send.call(this);
       this.fns = Src.nullFns;
-      return true;
+      return;
     },
-    addedRoute: function(fn) { if (this.off()) fn(...this.sentArgs); },
+    addedRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
       if (U.isType(val, Function)) return this.route(val, mode) || this;
       if (U.isInspiredBy(val, Endable)) return this.route(() => val.end(), mode) || this;
       throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
     }
+  })});
+  let TmpRefCount = U.inspire({ name: 'TmpRefCount', insps: { Tmp }, methods: (insp, Insp) => ({
+    init: function(fn) {
+      insp.Tmp.init.call(this, fn);
+      this.refCount = 0;
+    },
+    ref: function() { this.refCount++; return this; },
+    sendAndEnd: function(...args) { if (--this.refCount <= 0) return insp.Tmp.sendAndEnd.call(this); }
   })});
   let TmpAll = U.inspire({ name: 'TmpAll', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(tmps) {
@@ -516,6 +524,7 @@ U.logic = (() => {
     init: function(srcs, fn) {
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
+      this.srcs = srcs;
       this.lastResult = undefined; // To allow default params
       let vals = srcs.map(v => null);
       this.routes = srcs.map((src, ind) => src.route(val => {
@@ -535,7 +544,6 @@ U.logic = (() => {
   })});
   
   let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
-    
     init: function(src, fn) {
       
       insp.Tmp.init.call(this);
@@ -546,12 +554,13 @@ U.logic = (() => {
         
         // Define `addDep` and `addDep.scp` to enable nice shorthand
         let deps = Set();
-        let addDep = dep => (dep.onn() && deps.add(dep), dep);
+        let endFn = () => { let deps0 = deps; deps = null; deps0.each(d => d.end()); };
+        let addDep = dep => deps ? (dep.onn() && deps.add(dep), dep) : dep.end();
         addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
         
         // If either `tmp` or this Scope ends, all existing dependencies
         // end as well. This relationship is itself a dependency
-        addDep( TmpAll([ this, tmp ]).endWith(() => deps.each(dep => dep.end())) );
+        addDep( TmpAll([ this, tmp ]).endWith(endFn) );
         
         fn(tmp, addDep);
         
@@ -574,7 +583,7 @@ U.logic = (() => {
     
   })});
   
-  return { Endable, Src, Tmp, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Scope, Slots };
+  return { Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Scope, Slots };
   
 })();
 

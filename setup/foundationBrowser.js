@@ -1,6 +1,6 @@
 (() => {
   
-  let { Tmp, Src, MemSrc } = U.logic;
+  let { Tmp, TmpRefCount, Src, FnSrc, MemSrc } = U.logic;
   let { Foundation, Keep } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -144,7 +144,7 @@
       primaryHtmlCssJsReal.techNode = document.body;
       primaryHtmlCssJsReal.tech = (() => {
         
-        let { Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout } = U.setup;
+        let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, ImageLayout } = U.setup;
         let renderClassMap = Map();
         let getRenderClass = layout => {
           let LayoutCls = layout.constructor;
@@ -275,6 +275,17 @@
           }
           
         });
+        renderClassMap.set(ScrollLayout, (layout, hCss, domNode) => {
+          let { x, y } = layout;
+          if (x === 'auto') domNode.style.overflowX = 'auto';
+          if (x === 'show') domNode.style.overflowX = 'scroll';
+          if (y === 'auto') domNode.style.overflowY = 'auto';
+          if (y === 'show') domNode.style.overflowY = 'scroll';
+        });
+        renderClassMap.set(ScrollLayout.Item, (layout, hCss, domNode) => {
+          let { x, y } = layout.par;
+          if (x !== 'none' || y !== 'none') domNode.style.scrollBehavior = 'smooth';
+        });
         renderClassMap.set(TextLayout, (layout, hCss, domNode) => {
           domNode.style.display = 'flex';
           domNode.style.flexDirection = 'column';
@@ -286,7 +297,6 @@
           if (layout.align) domNode.style.textAlign = {
             fwd: 'left', bak: 'right', mid: 'center'
           }[layout.align];
-          
         });
         renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
           
@@ -302,23 +312,57 @@
           
         });
         
-        let applyDecals = (decals, hCss, domNode) => {
+        let applyDecalsStack = (decalsStack, hCss, domNode) => {
           
-          for (let k in decals) {
+          let complexDecals = {};
+          for (let decals of decalsStack) {
             
-            if (k === 'colour') {
-              domNode.style.backgroundColor = decals[k];
-            } else if (k === 'border') {
-              let { width, colour } = decals[k];
-              domNode.style.boxShadow = `inset 0 0 0 ${width} ${colour}`;
-            } else if (k === 'scroll') {
-              let { x='none', y='none' } = decals[k];
-              if (x === 'auto') domNode.style.overflowX = 'auto';
-              if (x === 'show') domNode.style.overflowX = 'scroll';
-              if (y === 'auto') domNode.style.overflowY = 'auto';
-              if (y === 'show') domNode.style.overflowY = 'scroll';
+            for (let k in decals) {
+              
+              if (k === 'colour') {
+                domNode.style.backgroundColor = decals[k];
+              } else if (k === 'textColour') {
+                domNode.style.color = decals[k];
+              } else if (k === 'border') {
+                let { width, colour } = decals[k];
+                domNode.style.boxShadow = `inset 0 0 0 ${width} ${colour}`;
+              } else {
+                if (!U.isType(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.nameOf(decals[k])}`);
+                if (!complexDecals.has(k)) complexDecals[k] = {};
+                complexDecals[k].gain(decals[k]);
+              }
+              
+            }
+            
+          }
+          
+          for (let k in complexDecals) {
+            
+            if (k === 'transition') {
+              
+              domNode.style.transition = complexDecals[k].toArr(({ ms=1000, curve='linear', delayMs=0 }, prop) => {
+                
+                prop = {
+                  colour: 'background-color',
+                  textColour: 'color',
+                  border: 'box-shadow'
+                }[prop];
+                curve = {
+                  linear: 'linear',
+                  smooth: 'ease-in-out'
+                }[curve];
+                return `${prop} ${ms}ms ${curve} ${delayMs}ms`;
+                
+              }).join(', ');
+              
+            } else if (k === 'transform') {
+              
+              throw Error('Transform not implemented');
+              
             } else {
-              console.log(`Unknown decal: "${k}"`);
+              
+              throw Error(`Invalid decal: ${k}`);
+              
             }
             
           }
@@ -346,7 +390,7 @@
             let hCss = {};
             for (let layout of real.layouts) getRenderClass(layout)(layout, hCss, domNode);
             if (real.innerLayout) getRenderClass(real.innerLayout)(real.innerLayout, hCss, domNode);
-            for (let d of real.decalStack) applyDecals(d, hCss, domNode);
+            applyDecalsStack(real.decalsStack, hCss, domNode);
             
           },
           addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode),
@@ -358,29 +402,27 @@
             let scrollElem = scrollReal.getTechNode();
             let offsetElem = children[0];
             let targetElem = trgReal.getTechNode();
-            
             if (!offsetElem.contains(targetElem)) throw Error(`The target elem is outside the scrollable context`);
             
             let tops = [ scrollElem, offsetElem, targetElem ].map(elem => elem.getBoundingClientRect().top);
-            
-            console.log(`SCROLL PAR TOP: ${tops[0]}`);
-            console.log(`SCROLL CONTENT TOP (does it shift with scroll??): ${tops[1]}`);
-            console.log(`CHILD TOP: ${tops[2]}; RELATIVE TO CONTENT: ${tops[2] - tops[1]}\n`);
-            
             offsetElem.scrollTop += tops[2] - tops[1];
+          },
+          scrollerFocusedElemChecker: scrollReal => {
+            
           },
           
           domEventToSrc: (eventName, techNode) => {
-            let tmp = Tmp(); tmp.src = Src();
+            let tmp = TmpRefCount(); tmp.src = Src();
             let fn = evt => tmp.src.send(evt);
             techNode.addEventListener(eventName, fn);
             tmp.endWith(() => techNode.removeEventListener(eventName, fn));
             return tmp;
           },
-          addPress: techNode => browserTech.domEventToSrc('click', techNode),
-          addFeel: techNode => {
+          addPress: real => browserTech.domEventToSrc('click', real.getTechNode()),
+          addFeel: real => {
             
-            let tmp = Tmp(); tmp.src = Src();
+            let techNode = real.getTechNode();
+            let tmp = TmpRefCount(); tmp.src = Src();
             let sentTmp = null;
             let onnFn = evt => {
               if (sentTmp) return;
@@ -398,6 +440,26 @@
             
             techNode.addEventListener('mouseenter', onnFn);
             tmp.endWith(() => techNode.removeEventListener('mouseleave', onnFn));
+            return tmp;
+            
+          },
+          addViewportEntryChecker: real => {
+            
+            let tmp = TmpRefCount(); tmp.src = FnSrc([ Src() ], (evt, prev=Tmp()) => {
+              let { left: l, right: r, top: t, bottom: b } = real.getTechNode().getBoundingClientRect();
+              let { innerWidth: w, innerHeight: h } = window;
+              if ((l < w && r > 0) && (t < h && b > 0)) return prev;
+            });
+            
+            let pars = real.ancestry();
+            let fn = (...args) => tmp.src.srcs[0].send(...args);
+            for (let p of pars) p.getTechNode().addEventListener('scroll', fn);
+            window.addEventListener('resize', fn);
+            tmp.endWith(() => {
+              for (let p of pars) p.getTechNode().addEventListener('scroll', fn);
+              window.removeEventListener('resize', fn);
+            });
+            window.requestAnimationFrame(fn);
             
             return tmp;
             

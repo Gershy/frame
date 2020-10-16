@@ -518,10 +518,8 @@ global.rooms.hinterlands = async foundation => {
       }
       
       for (let uid of rem) {
-        // TODO: Take this off, the play Fly and lose all lives. An
-        // invalid "rem" sync will be performed:
         if (!this.allRecs.has(uid)) continue;
-        //if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`);
+        //if (!this.allRecs.has(uid)) throw Error(`Tried to remove non-existent Rec @ ${uid}`); // TODO: Enable this?
         this.allRecs.get(uid).end();
       }
       

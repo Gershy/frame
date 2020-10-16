@@ -4,7 +4,7 @@ global.rooms.promo = async foundation => {
   
   let { Scope } = U.logic;
   let { RecScope } = await foundation.getRoom('record');
-  let { Real, Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout } = U.setup;
+  let { Real, Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, ImageLayout } = U.setup;
   
   let { HtmlApp } = await (() => { // foundation.getRoom('htmlApp');
     
@@ -514,18 +514,18 @@ global.rooms.promo = async foundation => {
         }
       }));
       let tabs = {
-        hut:      headerReal.addReal('pmo.header.hut',      ctx => ({ layouts: [ ...ctx.layouts(0), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'HUT', size: 'calc(12px + 2vw)' })        })),
-        phil:     headerReal.addReal('pmo.header.phil',     ctx => ({ layouts: [ ...ctx.layouts(1), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Philosophy', size: 'calc(10px + 1vw)' }) })),
-        example:  headerReal.addReal('pmo.header.example',  ctx => ({ layouts: [ ...ctx.layouts(2), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Example', size: 'calc(10px + 1vw)' })    })),
-        rooms:    headerReal.addReal('pmo.header.rooms',    ctx => ({ layouts: [ ...ctx.layouts(3), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Rooms', size: 'calc(10px + 1vw)' })      }))
+        hut:      headerReal.addReal('pmo.header.hut',      ctx => ({ layouts: [ ...ctx.layouts(), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'HUT', size: 'calc(12px + 2vw)' })        })),
+        phil:     headerReal.addReal('pmo.header.phil',     ctx => ({ layouts: [ ...ctx.layouts(), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Philosophy', size: 'calc(10px + 1vw)' }) })),
+        example:  headerReal.addReal('pmo.header.example',  ctx => ({ layouts: [ ...ctx.layouts(), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Example', size: 'calc(10px + 1vw)' })    })),
+        rooms:    headerReal.addReal('pmo.header.rooms',    ctx => ({ layouts: [ ...ctx.layouts(), SizedLayout({ h: '100%' }) ], innerLayout: TextLayout({ text: 'Rooms', size: 'calc(10px + 1vw)' })      }))
       };
       
       let scrollReal = promoReal.addReal('pmo.scroll', ctx => ({
         layouts: ctx.layouts(1),
-        decals: { scroll: { x: 'none', y: 'auto' } }
+        innerLayout: ScrollLayout({ x: 'none', y: 'auto' })
       }));
       let contentReal = scrollReal.addReal('pmo.content', ctx => ({
-        layouts: [ SizedLayout({ w: '100%', h: '100%' }) ],
+        layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
         innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
       }));
       
@@ -533,20 +533,20 @@ global.rooms.promo = async foundation => {
         hut: (() => {
           
           let real = contentReal.addReal('pmo.content.hut', ctx => ({
-            layouts: [ ...ctx.layouts(0), SizedLayout({ w: '100%', h: '100%' }) ],
+            layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
             innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           let hutSectionImageReal = real.addReal('pmo.content.hut.image', ctx => ({
             layouts: [
-              ...ctx.layouts(0),
+              ...ctx.layouts(),
               SizedLayout({ h: '60vmin', ratio: 8 / 5 }),
               ImageLayout({ image: foundation.seek('keep', 'static', [ 'room', 'promo', 'asset', 'hutIcon.svg' ]) })
             ]
           }));
           let hutSectionTextReal = real.addReal('pmo.content.hut.text', ctx => ({
             layouts: [
-              ...ctx.layouts(1),
+              ...ctx.layouts(),
               SizedLayout({ h: 'calc(20px + 4vw)' }),
               TextLayout({ text: 'Reimagine Distributed Software', size: 'calc(10px + 2vw)' })
             ]
@@ -557,12 +557,12 @@ global.rooms.promo = async foundation => {
         phil: (() => {
           
           let real = contentReal.addReal('pmo.content.philosophy', ctx => ({
-            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
             innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           real.addReal('pmo.content.philosophy.text1', ctx => ({
-            layouts: [ ...ctx.layouts(0),
+            layouts: [ ...ctx.layouts(),
               TextLayout({ size: '120%', align: 'mid', text: [
                 'The complexity of traditionally developing web pages is too high.',
                 'Assembly language was considered too complex, and was replaced with C and higher-level languages.',
@@ -571,7 +571,7 @@ global.rooms.promo = async foundation => {
             ]
           }));
           real.addReal('pmo.content.philosophy.text2', ctx => ({
-            layouts: [ ...ctx.layouts(0),
+            layouts: [ ...ctx.layouts(),
               TextLayout({ size: '120%', align: 'mid', text: [
                 'New developers full of ideas flock to tutorials, eager to create what they imagine.',
                 'Suddenly they encounter the absurd DOM, circular code dependencies, the overripe CSS language,',
@@ -585,7 +585,7 @@ global.rooms.promo = async foundation => {
         example: (() => {
           
           let real = contentReal.addReal('pmo.content.example', ctx => ({
-            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           return real;
@@ -594,7 +594,7 @@ global.rooms.promo = async foundation => {
         rooms: (() => {
           
           let real = contentReal.addReal('pmo.content.rooms', ctx => ({
-            layouts: [ ...ctx.layouts(1), SizedLayout({ w: '100%', h: '100%' }) ],
+            layouts: [ ...ctx.layouts(), SizedLayout({ w: '100%', h: '100%' }) ],
             decals: { colour: 'rgba(0, 0, 0, 0)' }
           }));
           return real;
@@ -602,11 +602,31 @@ global.rooms.promo = async foundation => {
         })()
       };
       
-      for (let [ name, tab ] of tabs) {
+      pages.each(page => page.addDecals({
+        colour: 'rgba(0, 0, 0, 1)',
+        transition: { colour: { delayMs: 500, ms: 200 } }
+      }));
+      
+      // let scrolledContentChecker = dep(scrollReal.addScrolledContentChecker());
+      // dep(Scope(scrolledContentChecker, (scrolledContent, dep) => {
+      // }));
+      
+      for (let name in pages) {
+        
+        let [ page, tab ] = [ pages, tabs ].map(v => v[name]);
+        
         let feel = dep(tab.addFeel());
         let press = dep(tab.addPress());
         dep(Scope(feel.src, (hover, dep) => dep(tab.addDecals({ colour: 'rgba(0, 0, 0, 0.2)' }))));
-        dep(press.src.route(press => scrollReal.scrollTo(pages[name])));
+        dep(press.src.route(press => scrollReal.scrollTo(page)));
+        
+        let viewportEntry = dep(page.addViewportEntryChecker());
+        dep(Scope(viewportEntry.src, (entered, dep) => {
+          dep(page.addDecals({
+            colour: 'rgba(0, 0, 0, 0)'
+          }));
+        }));
+        
       }
       
     });

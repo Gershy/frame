@@ -16,7 +16,7 @@ Hut at the very bottom runs using a single Reality.
 
 (() => {
   
-  let { Tmp, Slots } = U.logic; // NOTE: `Slots` needs to be in logic (or straight in U?)
+  let { Src, FnSrc, Tmp, Slots } = U.logic;
   
   let Keep = U.inspire({ name: 'Keep', insps: { Slots }, methods: (insp, Insp) => ({
     init: function() {},
@@ -251,13 +251,16 @@ Hut at the very bottom runs using a single Reality.
       
       this.layouts = layouts;
       this.innerLayout = innerLayout;
-      this.decalStack = Set(decals ? [ decals ] : []);
+      this.decalsStack = Set(decals ? [ decals ] : []);
       
       this.parent = null;
       this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
       this.techNode = null;
       
       this.addOns = {};
+    },
+    ancestry: function() {
+      return !this.parent ? [] : [ this, ...this.parent.ancestry() ];
     },
     getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
     addReal: function(real, params=ctx=>({})) {
@@ -276,12 +279,8 @@ Hut at the very bottom runs using a single Reality.
         
       }
       if (!U.isType(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
-      
-      if (real.parent) {
-        if (real.techNode) real.tech.rem(real.techNode);
-        real.techNode = null;
-      }
-      
+      if (real.parent) throw Error(`Real already has a parent`);
+      if (real.tech) throw Error(`Real already has tech`);
       real.parent = this;
       real.tech = this.tech;
       
@@ -294,24 +293,32 @@ Hut at the very bottom runs using a single Reality.
       return real;
       
     },
+    cleanup: function() {
+      if (this.techNode) this.tech.rem(this.techNode);
+      this.techNode = null;
+      this.parent = null;
+    },
     scrollTo: function(real) { this.tech.scrollTo(this, real); },
     addPress: function() {
-      if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this.getTechNode());
-      return this.addOns.press;
+      if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this);
+      return this.addOns.press.ref();
     },
     addFeel: function() {
-      if (!this.addOns.has('feel')) this.addOns.feel = this.tech.addFeel(this.getTechNode());
-      return this.addOns.feel;
+      if (!this.addOns.has('feel')) this.addOns.feel = this.tech.addFeel(this);
+      return this.addOns.feel.ref();
+    },
+    addViewportEntryChecker: function() {
+      if (!this.addOns.has('viewportEntry')) this.addOns.viewportEntry = this.tech.addViewportEntryChecker(this);
+      return this.addOns.viewportEntry.ref();
     },
     addDecals: function(decals) {
-      this.decalStack.add(decals);
+      this.decalsStack.add(decals);
       this.tech.render(this, this.getTechNode());
       return Tmp(() => {
-        this.decalStack.rem(decals)
+        this.decalsStack.rem(decals)
         this.tech.render(this, this.getTechNode());
       });
     }
-    
   })});
   let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
     init: C.noFn('init'),
@@ -347,23 +354,22 @@ Hut at the very bottom runs using a single Reality.
       this.ratio = ratio;
     }
   })});
+  let ScrollLayout = U.inspire({ name: 'ScrollLayout', insps: { Layout }, methods: (insp, Insp) => ({
+    init: function({ x='none', y='auto' }) { ({}).gain.call(this, { x, y }); },
+    getChildOuterLayout: function(...params) { return Insp.Item(this, ...params); },
+    
+    $Item: U.inspire({ name: 'ScrollLayout.Item', insps: { Layout }, methods: (insp, Insp) => ({
+      init: function(par) { this.par = par; }
+    })})
+      
+  })});
   let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
-    init: function({ text='', size=null, align=null }) {
-      
-      // For html, use `htmlNode.textContent`
-      this.text = text;
-      this.size = size;
-      this.align = align;
-      
-    }
+    init: function({ text='', size=null, align=null }) { ({}).gain.call(this, { text, size, align }); }
   })});
   let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
-    init: function({ mode='useMinAxis', image }) {
-      this.mode = mode;
-      this.image = image;
-    }
+    init: function({ mode='useMinAxis', image }) { ({}).gain.call(this, { mode, image }); }
   })});
   
-  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, TextLayout, ImageLayout });
+  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, ImageLayout });
   
 })();
