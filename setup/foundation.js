@@ -58,6 +58,7 @@ Hut at the very bottom runs using a single Reality.
       this.realPrm = null;
       
     },
+    ready: function() { return Promise.resolve(); },
     halt: function() { throw Error(`Foundation halted`); },
     getPlatformName: C.noFn('getPlatformName'),
     
@@ -122,7 +123,7 @@ Hut at the very bottom runs using a single Reality.
     
     // Error
     parseErrorLine: C.noFn('parseErrorLine'),
-    srcLineRegex: C.noFn('srcLineRegex', () => ({ regex: /abc/, extract: fullMatch => ({ roomName: '...', line: '...', char: '...' }) })),
+    srcLineRegex: C.noFn('srcLineRegex', () => ({ regex: /^.$/, extract: fullMatch => ({ roomName: '...', line: '...', char: '...' }) })),
     cmpLineToSrcLine: function(offsets, cmpLine, cmpChar=null) {
       
       // For a compiled file and line number, return the corresponding line number
@@ -188,15 +189,6 @@ Hut at the very bottom runs using a single Reality.
       });
       moreLines = moreLines.split('\n');
       
-      // TODO: Parse codepoints within error message??
-      // let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
-      // let moreLines = moreLinesRaw.replace(fileRegex, (match, file, bearing, lineInd) => {
-      //   let mappedLineData = this.mapLineToSource(file, parseInt(lineInd, 10));
-      //   return mappedLineData
-      //     ? `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src:${mappedLineData.srcLineInd}`
-      //     : match;
-      // }).split('\n');
-      
       let result = [
         // '+'.repeat(46),
         // ...stack.split('\n').map(ln => `++ ${ln}`),
@@ -227,6 +219,16 @@ Hut at the very bottom runs using a single Reality.
       return this.installedRooms[name].content;
       
     },
+    settleRoom: async function(name, ...args) {
+      await this.ready();
+      
+      // Running these in parallel gets funky...
+      let room = await this.getRoom(name, 'above');
+      let hut = await this.getRootHut({ heartMs: 1000 * 40 });
+      
+      this.seek('keep', 'static').setHut(hut);
+      return await room.open(hut);
+    },
     installRoom: C.noFn('installRoom'),
     parseUrl: function(url) {
       let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
@@ -247,6 +249,10 @@ Hut at the very bottom runs using a single Reality.
   
   let Real = U.inspire({ name: 'Real', insps: { Slots, Tmp }, methods: (insp, Insp) => ({
     init: function(params={}, { name=null, layouts=[], innerLayout=null, decals=null }=params) {
+      
+      insp.Slots.init.call(this);
+      insp.Tmp.init.call(this);
+      
       this.name = name;
       
       this.layouts = layouts;
@@ -256,12 +262,11 @@ Hut at the very bottom runs using a single Reality.
       this.parent = null;
       this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
       this.techNode = null;
+      this.children = Set();
       
       this.addOns = {};
     },
-    ancestry: function() {
-      return !this.parent ? [] : [ this, ...this.parent.ancestry() ];
-    },
+    ancestry: function() { return !this.parent ? [] : [ this, ...this.parent.ancestry() ]; },
     getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
     addReal: function(real, params=ctx=>({})) {
       
@@ -284,6 +289,9 @@ Hut at the very bottom runs using a single Reality.
       real.parent = this;
       real.tech = this.tech;
       
+      this.children.add(real);
+      real.endWith(() => this.children.rem(real));
+      
       // Apply `real`'s styles to `real`'s tech node
       this.tech.render(real, real.getTechNode());
       
@@ -299,6 +307,10 @@ Hut at the very bottom runs using a single Reality.
       this.parent = null;
     },
     scrollTo: function(real) { this.tech.scrollTo(this, real); },
+    addInput: function() {
+      if (!this.addOns.has('input')) this.addOns.input = this.tech.addInput(this);
+      return this.addOns.input.ref();
+    },
     addPress: function() {
       if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this);
       return this.addOns.press.ref();
@@ -320,6 +332,7 @@ Hut at the very bottom runs using a single Reality.
       });
     }
   })});
+  
   let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
     init: C.noFn('init'),
     getChildOuterLayout: function(params) { return null; }
@@ -366,10 +379,16 @@ Hut at the very bottom runs using a single Reality.
   let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
     init: function({ text='', size=null, align=null }) { ({}).gain.call(this, { text, size, align }); }
   })});
+  let TextInputLayout = U.inspire({ name: 'TextInputLayout', insps: { TextLayout }, methods: (insp, Insp) => ({
+    init: function({ multiline=false, ...params }) {
+      insp.TextLayout.init.call(this, params);
+      this.multiline = multiline;
+    }
+  })});
   let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
     init: function({ mode='useMinAxis', image }) { ({}).gain.call(this, { mode, image }); }
   })});
   
-  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, ImageLayout });
+  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout });
   
 })();

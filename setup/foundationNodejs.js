@@ -382,6 +382,22 @@
         
         let tests = [
           
+          async m => { // Promise.allObj
+            let prms = {
+              thing1: 'hi',
+              thing2: 'yo',
+              thing3: Promise(r => setTimeout(() => r('ha'), 0)),
+              thing4: Promise(r => this.queueTask(() => r('69')))
+            };
+            let { thing1, thing2, thing3, thing4, ...more } = await Promise.allObj(prms);
+            
+            if (thing1 !== 'hi') throw Error(`Invalid "thing1"`);
+            if (thing2 !== 'yo') throw Error(`Invalid "thing2"`);
+            if (thing3 !== 'ha') throw Error(`Invalid "thing3"`);
+            if (thing4 !== '69') throw Error(`Invalid "thing4"`);
+            if (more.toArr(v => v).count()) throw Error(`allObj resulted in unexpected values`);
+          },
+          
           async m => { // Ending a Temp changes the results of getter methods
             let tmp = Tmp();
             if (!tmp.onn()) throw Error(`getPosActive() === false before setInactive()`);
@@ -470,68 +486,91 @@
             if (gotInactiveEvent) throw Error(`Inactive event wrongly received after setInactive()`);
           },
           
-          async m => { // FnSrc fn doesn't run if no child has event
-            let srcs = Array.fill(5, () => Src());
-            let events = [];
-            let fnSrc = FnSrc(srcs, (...args) => events.push(args));
-            if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
-          },
-          async m => { // FnSrc fn runs for each child event
-            let srcs = Array.fill(5, () => Src());
-            let events = [];
-            let fnSrc = FnSrc(srcs, (...args) => events.push(args));
+          ...[ FnSrc.Prm1, FnSrc.PrmM ].map(FnSrcCls => [
+            async m => { // FnSrc fn doesn't run if no child has event
+              let srcs = Array.fill(5, () => Src());
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
+              if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
+            },
+            async m => { // FnSrc fn runs for each child event
+              let srcs = Array.fill(5, () => Src());
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
+              
+              for (let i = 0; i < 3; i++) srcs[0].send();
+              for (let i = 0; i < 6; i++) srcs[1].send();
+              for (let i = 0; i < 2; i++) srcs[2].send();
+              for (let i = 0; i < 1; i++) srcs[3].send();
+              for (let i = 0; i < 9; i++) srcs[4].send();
+              
+              let exp = 3 + 6 + 2 + 1 + 9;
+              if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
+            },
+            async m => { // FnSrc sends values as expected
+              let srcs = Array.fill(3, () => Src());
+              let cnt = 0;
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, () => cnt++);
+              fnSrc.route(val => events.push(val));
+              for (let i = 0; i < 5; i++) srcs[0].send('hee');
+              for (let i = 0; i < 9; i++) srcs[1].send('haa');
+              for (let i = 0; i < 7; i++) srcs[2].send('hoo');
+              let exp = 5 + 9 + 7;
+              if (events.count() !== exp) throw Error(`Expected exactly ${exp} events; got ${events.count()}`);
+            },
+            async m => { // FnSrc events have correct values
+              
+              let src1 = Src();
+              let src2 = Src();
+              let events = [];
+              let last = 0;
+              let fnSrc = FnSrcCls([ src1, src2 ], (v1, v2) => { events.push([ v1, v2, last ]); return last++; });
+              
+              src2.send('src2val1');
+              src1.send('src1val1');
+              src2.send('src2val2');
+              src1.send('src1val2');
+              src1.send('src1val3');
+              
+              if (events.count() !== 5) throw Error(`Expected exactly 5 results; got ${events.count()}`);
+              
+              [ [ C.skip,     'src2val1', 0 ],
+                [ 'src1val1', 'src2val1', 1 ],
+                [ 'src1val1', 'src2val2', 2 ],
+                [ 'src1val2', 'src2val2', 3 ],
+                [ 'src1val3', 'src2val2', 4 ] ]
+              .each((vals, ind1) => vals.each((v, ind2) => {
+                if (events[ind1][ind2] !== v) throw Error(`events[${ind1}][${ind2}] should be ${v} (got ${events[ind1][ind2]})`);
+              }));
+              
+            },
+          ]).flat(Infinity),
+          
+          async m => { // MemSrc.Tmp1 sends value
             
-            for (let i = 0; i < 3; i++) srcs[0].send();
-            for (let i = 0; i < 6; i++) srcs[1].send();
-            for (let i = 0; i < 2; i++) srcs[2].send();
-            for (let i = 0; i < 1; i++) srcs[3].send();
-            for (let i = 0; i < 9; i++) srcs[4].send();
+            let src = MemSrc.Tmp1(Src());
+            let sends = [];
+            src.route(v => sends.push(v));
+            src.src.send(Tmp());
+            if (sends.count() !== 1) throw Error(`Expected exactly 1 send; got ${sends.count()}`);
             
-            let exp = 3 + 6 + 2 + 1 + 9;
-            if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
           },
-          async m => { // FnSrc sends values as expected
+          async m => {
+            
+            let src = MemSrc.Tmp1(Src());
+            let sends = [];
+            src.route(v => sends.push(v));
+            src.src.send(Tmp());
+            src.src.send(Tmp());
+            if (sends.count() !== 2) throw Error(`Expected exactly 2 sends; got ${sends.count()}`);
+            
+          },
+          
+          async m => { // FnSrc.Prm1 only sends once, for multiple src sends, if value is always the same
+            
             let srcs = Array.fill(3, () => Src());
-            let cnt = 0;
-            let events = [];
-            let fnSrc = FnSrc(srcs, () => cnt++);
-            fnSrc.route(val => events.push(val));
-            for (let i = 0; i < 5; i++) srcs[0].send('hee');
-            for (let i = 0; i < 9; i++) srcs[1].send('haa');
-            for (let i = 0; i < 7; i++) srcs[2].send('hoo');
-            let exp = 5 + 9 + 7;
-            if (events.count() !== exp) throw Error(`Expected exactly ${exp} events; got ${events.count()}`);
-          },
-          async m => { // FnSrc events have correct values
-            
-            let src1 = Src();
-            let src2 = Src();
-            let events = [];
-            let last = null;
-            let fnSrc = FnSrc([ src1, src2 ], (v1, v2, lastVal) => { events.push([ v1, v2, lastVal ]); return last = (last === null) ? 0 : (last + 1); });
-            
-            src2.send('src2val1');
-            src1.send('src1val1');
-            src2.send('src2val2');
-            src1.send('src1val2');
-            src1.send('src1val3');
-            
-            if (events.count() !== 5) throw Error(`Expected exactly 5 results; got ${events.count()}`);
-            
-            [ [ null,       'src2val1', C.skip  ],
-              [ 'src1val1', 'src2val1', 0       ],
-              [ 'src1val1', 'src2val2', 1       ],
-              [ 'src1val2', 'src2val2', 2       ],
-              [ 'src1val3', 'src2val2', 3       ] ]
-            .each((vals, ind1) => vals.each((v, ind2) => {
-              if (events[ind1][ind2] !== v) throw Error(`events[${ind1}][${ind2}] should be ${v} (got ${events[ind1][ind2]})`);
-            }));
-            
-          },
-          async m => { // FnSrc only sends once, for multiple src sends, if value is always the same
-            
-            let srcs = Array.fill(3, () => Src());
-            let fnSrc = FnSrc(srcs, (...args) => 'haha');
+            let fnSrc = FnSrc.Prm1(srcs, (...args) => 'haha');
             let events = [];
             fnSrc.route(v => events.push(v));
             
@@ -542,11 +581,11 @@
             if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
             
           },
-          async m => { // FnSrc only sends once, for multiple src sends, if value is always the same Tmp
+          async m => { // FnSrc.Tmp1 only sends once, for multiple src sends, if value is always the same Tmp
             
             let srcs = Array.fill(3, () => Src());
             let tmppp = Tmp();
-            let fnSrc = FnSrc(srcs, (v1, v2, v3, tmp=tmppp) => tmp);
+            let fnSrc = FnSrc.Tmp1(srcs, (v1, v2, v3, tmp=tmppp) => tmp);
             let events = [];
             fnSrc.route(v => events.push(v));
             
@@ -558,11 +597,11 @@
             if (events[0] !== tmppp) throw Error(`Single send had unexpected value`);
             
           },
-          async m => { // FnSrc Tmp value ends when FnSrc ends
+          async m => { // FnSrc.Tmp1 Tmp value ends when FnSrc ends
             
             let src = Src();
             let tmppp = Tmp();
-            let fnSrc = FnSrc([ src ], (v, tmp=tmppp) => tmp);
+            let fnSrc = FnSrc.Tmp1([ src ], (v, tmp=tmppp) => tmp);
             src.send('whee');
             
             if (tmppp.off()) throw Error(`Tmp ended too early`);
@@ -570,11 +609,11 @@
             if (tmppp.onn()) throw Error(`Tmp didn't end with FnSrc`);
             
           },
-          async m => { // FnSrc sending Tmp ends any previous Tmp sent by same FnSrc
+          async m => { // FnSrc.Tmp1 sending ends any previous Tmp sent by same FnSrc
             
             let srcs = [ Src(), Src() ];
             let tmps = [ Tmp(), Tmp(), Tmp() ];
-            let fnSrc = FnSrc(srcs, v1 => (v1 !== null) ? tmps[v1] : null);
+            let fnSrc = FnSrc.Tmp1(srcs, v1 => (v1 !== null) ? tmps[v1] : null);
             
             srcs[0].send(1);
             if (tmps[1].off()) throw Error(`Tmp ended too early`);
@@ -748,24 +787,33 @@
           }
           
         ];
-          
+        
+        let hadErr = false;
         for (let test of tests) {
           let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
           try {
             let result = await test();
             console.log(`Test pass (${name})`);
           } catch (err) {
+            hadErr = true;
             console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
           }
+        }
+        if (hadErr) {
+          console.log('Test errors occurred; halting');
+          this.halt();
         }
         
       })();
       
     },
+    ready: function() { return this.canSettlePrm; },
     halt: function() { process.exit(0); },
     installRoom: async function(name, bearing='above') {
       
-      let file = await this.seek('keep', 'fileSystem', [ 'room', name, `${name}.js` ]).getContent('utf8');
+      let pcs = name.split('.');
+      
+      let file = await this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]).getContent('utf8');
       if (!file) throw Error(`Invalid room name: "${name}"`);
       let { lines, offsets } = await this.compileContent(bearing, file);
       
@@ -917,6 +965,7 @@
         
         addViewportEntryChecker: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         
+        addInput: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         addPress: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }
       };

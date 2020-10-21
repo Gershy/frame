@@ -104,7 +104,7 @@
       
       // Wait for the script to load; ensure it populated `global.rooms`
       await Promise(r => script.addEventListener('load', r));
-      if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms.${name}!`);
+      if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
       
       return {
         debug: global.roomDebug[name],
@@ -144,7 +144,7 @@
       primaryHtmlCssJsReal.techNode = document.body;
       primaryHtmlCssJsReal.tech = (() => {
         
-        let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, ImageLayout } = U.setup;
+        let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout } = U.setup;
         let renderClassMap = Map();
         let getRenderClass = layout => {
           let LayoutCls = layout.constructor;
@@ -169,10 +169,7 @@
               ? (layout.flow === '+' ? 'row' : 'row-reverse')
               : (layout.flow === '+' ? 'column' : 'column-reverse');
             domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
-            
-            // No need to justify when child items together occupy 100%
-            //domNode.style.justifyContent = 'center'; // 'center', 'space-around', 'space-between'
-            
+            domNode.style.justifyContent = 'auto';
             
           } else if (layout.cuts === 'focus') {
             
@@ -249,6 +246,10 @@
         });
         renderClassMap.set(FreeLayout, (layout, hCss, domNode) => {
           
+          // TODO: Decouple w/h from FreeLayout!! Should use SizedLayout
+          // for this instead - BUT how to center a child, without
+          // altering the parent, when child size is unknown??
+          
           domNode.style.position = 'absolute';
           if (layout.w) domNode.style.width = layout.w;
           if (layout.h) domNode.style.height = layout.h;
@@ -298,6 +299,17 @@
             fwd: 'left', bak: 'right', mid: 'center'
           }[layout.align];
         });
+        renderClassMap.set(TextInputLayout, (layout, hCss, domNode) => {
+          if (layout.multiline) {
+            
+          } else {
+            
+          }
+          
+          if (layout.align) domNode.style.textAlign = {
+            fwd: 'left', bak: 'right', mid: 'center'
+          }[layout.align];
+        });
         renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
           
           domNode.style.backgroundImage = `url('${layout.image.getUrl()}')`;
@@ -324,8 +336,8 @@
               } else if (k === 'textColour') {
                 domNode.style.color = decals[k];
               } else if (k === 'border') {
-                let { width, colour } = decals[k];
-                domNode.style.boxShadow = `inset 0 0 0 ${width} ${colour}`;
+                let { ext, colour } = decals[k];
+                domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
               } else {
                 if (!U.isType(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.nameOf(decals[k])}`);
                 if (!complexDecals.has(k)) complexDecals[k] = {};
@@ -418,12 +430,37 @@
             tmp.endWith(() => techNode.removeEventListener(eventName, fn));
             return tmp;
           },
+          addInput: real => {
+            
+            let techNode = real.getTechNode();
+            let tmp = TmpRefCount(); tmp.src = MemSrc.Prm1(Src());
+            
+            let input = document.createElement('input');
+            input.style.position = 'absolute';
+            input.style.width = '100%';
+            input.style.height = '100%';
+            
+            if (!techNode.style.position) {
+              techNode.style.position = 'relative';
+              tmp.endWith(() => techNode.style.position = '');
+            }
+            
+            techNode.appendChild(input);
+            tmp.endWith(() => input.remove());
+            
+            let inpFn = evt => tmp.src.src.send(input.value);
+            input.addEventListener('input', inpFn);
+            tmp.endWith(() => input.removeEventListener('input', inpFn));
+            return tmp;
+            
+          },
           addPress: real => browserTech.domEventToSrc('click', real.getTechNode()),
           addFeel: real => {
             
             let techNode = real.getTechNode();
             let tmp = TmpRefCount(); tmp.src = Src();
             let sentTmp = null;
+            
             let onnFn = evt => {
               if (sentTmp) return;
               
@@ -437,7 +474,6 @@
             let offFn = evt => {
               if (!sentTmp) return; sentTmp.end(); sentTmp = null;
             };
-            
             techNode.addEventListener('mouseenter', onnFn);
             tmp.endWith(() => techNode.removeEventListener('mouseleave', onnFn));
             return tmp;
@@ -445,14 +481,15 @@
           },
           addViewportEntryChecker: real => {
             
-            let tmp = TmpRefCount(); tmp.src = FnSrc([ Src() ], (evt, prev=Tmp()) => {
+            let src = Src();
+            let tmp = TmpRefCount(); tmp.src = FnSrc.Tmp1([ src ], (evt, prev=Tmp()) => {
               let { left: l, right: r, top: t, bottom: b } = real.getTechNode().getBoundingClientRect();
               let { innerWidth: w, innerHeight: h } = window;
               if ((l < w && r > 0) && (t < h && b > 0)) return prev;
             });
             
             let pars = real.ancestry();
-            let fn = (...args) => tmp.src.srcs[0].send(...args);
+            let fn = (...args) => src.send(...args);
             for (let p of pars) p.getTechNode().addEventListener('scroll', fn);
             window.addEventListener('resize', fn);
             tmp.endWith(() => {
@@ -567,14 +604,7 @@
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
     },
-    srcLineRegex: function() {
-      
-      return {
-        regex: /abc/,
-        extract: fullMatch => ({ roomName: '???', line: 0, char: 0 })
-      };
-      
-    }
+    srcLineRegex: function() { return { regex: /^.$/, extract: fullMatch => ({ roomName: '???', line: 0, char: 0 }) }; }
     
   })});
   
