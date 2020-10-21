@@ -37,6 +37,7 @@
 require('./setup/clearing.js');
 require('./setup/foundation.js');
 require('./setup/foundationNodejs.js');
+let { FoundationNodejs } = U.setup;
 
 // ARG PROCESSING:
 // We process the raw text typed into the terminal. Every attempt is
@@ -54,26 +55,7 @@ require('./setup/foundationNodejs.js');
 // values. Heirarchical components are separated with the "." character.
 // Values are separated from keys with the "=" character.
 
-// Terminal normalization
-
 let args = process.argv.slice(2).join(' ').trim();
-if (args.has('-encodedCommand')) { // Process "encodedCommand"
-  
-  let ind = args.indexOf('-encodedCommand');
-  args = args.crop(ind + '-encodedCommand'.length, 0).trim();
-  
-  let base64Data = args.split(' ', 1)[0]; // Get everything until the next space (or end)
-  args = Buffer
-    .from(base64Data, 'base64')             // Decode from base64
-    .toString('utf8').split('')             // Get an array of characters
-    .map(v => v.charCodeAt(0) ? v : C.skip) // Strip all chars of code 0
-    .join('');                              // Stick remaining chars together
-  args = `{${args}}`; // Re-wrap in "{}"
-  
-}
-
-// Process normalized data
-
 if (args[0] === '{') {     // Process object literal
   
   args = eval(`(${args})`);
@@ -94,18 +76,8 @@ if (args[0] === '{') {     // Process object literal
   
 }
 
-if (args.has('test')) {
-  
-  require(`./setup/test/${args.test}`)(args);
-  
-} else {
-  
-  let foundation = U.setup.FoundationNodejs(args);
-  foundation.getRoom(args.settle, 'above')
-    .then(room => room.open())
-    .catch(err => {
-      console.log('FATAL ERROR:', foundation.formatError(err));
-      process.exit(1);
-    });
-  
-}
+let foundation = FoundationNodejs(args);
+foundation.settleRoom(args.settle, 'above').catch(err => {
+  console.log('FATAL ERROR:', foundation.formatError(err));
+  foundation.halt();
+});
