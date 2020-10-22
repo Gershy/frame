@@ -222,7 +222,7 @@ Hut at the very bottom runs using a single Reality.
     settleRoom: async function(name, ...args) {
       await this.ready();
       
-      // Running these in parallel gets funky...
+      // These do not parallelize (TODO: investigate why??)
       let room = await this.getRoom(name, 'above');
       let hut = await this.getRootHut({ heartMs: 1000 * 40 });
       
@@ -306,23 +306,11 @@ Hut at the very bottom runs using a single Reality.
       this.techNode = null;
       this.parent = null;
     },
-    scrollTo: function(real) { this.tech.scrollTo(this, real); },
-    addInput: function() {
-      if (!this.addOns.has('input')) this.addOns.input = this.tech.addInput(this);
-      return this.addOns.input.ref();
-    },
-    addPress: function() {
-      if (!this.addOns.has('press')) this.addOns.press = this.tech.addPress(this);
-      return this.addOns.press.ref();
-    },
-    addFeel: function() {
-      if (!this.addOns.has('feel')) this.addOns.feel = this.tech.addFeel(this);
-      return this.addOns.feel.ref();
-    },
-    addViewportEntryChecker: function() {
-      if (!this.addOns.has('viewportEntry')) this.addOns.viewportEntry = this.tech.addViewportEntryChecker(this);
-      return this.addOns.viewportEntry.ref();
-    },
+    scrollTo: function(real, ...args) { return this.tech.scrollTo(this, real, ...args); },
+    addInput: function(...args) { return this.tech.addInput(this, ...args); },
+    addPress: function(...args) { return this.tech.addPress(this, ...args); },
+    addFeel: function(...args) { return this.tech.addFeel(this, ...args); },
+    addViewportEntryChecker: function(...args) { return this.tech.addViewportEntryChecker(this, ...args); },
     addDecals: function(decals) {
       this.decalsStack.add(decals);
       this.tech.render(this, this.getTechNode());
@@ -380,9 +368,10 @@ Hut at the very bottom runs using a single Reality.
     init: function({ text='', size=null, align=null }) { ({}).gain.call(this, { text, size, align }); }
   })});
   let TextInputLayout = U.inspire({ name: 'TextInputLayout', insps: { TextLayout }, methods: (insp, Insp) => ({
-    init: function({ multiline=false, ...params }) {
+    init: function({ multiline=false, prompt=null, ...params }) {
       insp.TextLayout.init.call(this, params);
       this.multiline = multiline;
+      this.prompt = prompt;
     }
   })});
   let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({

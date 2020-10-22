@@ -791,8 +791,8 @@
         ];
         
         for (let test of tests) {
-          let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
           try { await test(); } catch (err) {
+            let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
             console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
             this.halt();
           }

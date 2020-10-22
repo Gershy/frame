@@ -453,9 +453,9 @@ U.logic = (() => {
     cleanup: function() { this.srcRoute.end(); }
   })});
   MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
+    init: function(src, val=C.skip) {
       insp.MemSrc.init.call(this, src);
-      this.val = C.skip;
+      this.val = val;
     },
     receive: function(val) { this.val = val; this.send(val); },
     route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
@@ -471,7 +471,7 @@ U.logic = (() => {
     cleanup: function() { this.vals = []; }
   })});
   MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
+    init: function(src, val) {
       insp.MemSrc.init.call(this, src);
       this.valEndRoute = null;
       this.val = null;

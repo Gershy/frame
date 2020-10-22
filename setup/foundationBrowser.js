@@ -422,26 +422,24 @@
             
           },
           
-          domEventToSrc: (eventName, techNode) => {
-            let tmp = TmpRefCount(); tmp.src = Src();
-            let fn = evt => tmp.src.send(evt);
-            techNode.addEventListener(eventName, fn);
-            tmp.endWith(() => techNode.removeEventListener(eventName, fn));
-            return tmp;
-          },
           addInput: real => {
             
+            let textInputLayout = real.layouts.find(layout => U.isInspiredBy(layout, TextInputLayout)).val;
+            if (!textInputLayout) throw Error(`Can't add input; no TextInputLayout found!`);
+            
             let techNode = real.getTechNode();
-            let tmp = TmpRefCount(); tmp.src = MemSrc.Prm1(Src());
+            let tmp = Tmp(); tmp.src = MemSrc.Prm1(Src(), '');
             
             let input = document.createElement('input');
             input.style.gain({
               position: 'absolute', display: 'block',
               width: '100%', height: '100%',
-              padding: '0', border: 'none', outline: 'none',
+              padding: '0', border: 'none',
               backgroundColor: 'transparent',
               textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit'
             });
+            
+            if (textInputLayout.prompt) input.setAttribute('placeholder', textInputLayout.prompt);
             
             if (!techNode.style.position) {
               techNode.style.position = 'relative';
@@ -457,32 +455,65 @@
             return tmp;
             
           },
-          addPress: real => {
-            let evtToSrc = browserTech.domEventToSrc('click', real.getTechNode());
-            let tmp = Tmp(); tmp.src = evtToSrc.src;
+          addPress: (real, modes=[ 'continuous', 'discrete' ]) => {
+            
+            if (!U.isType(modes, Array)) modes = [ modes ];
+            if (!modes.count()) throw Error(`Supply at least one mode`);
+            if (modes.count() > 2) throw Error(`Supply maximum two modes`);
+            if (modes.find(v => !U.isType(v, String)).found) throw Error(`All modes should be String`);
+            if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
+            
+            let tmp = Tmp(); tmp.src = Src();
             let techNode = real.getTechNode();
             
-            techNode.style.cursor = 'pointer';
-            tmp.endWith(() => techNode.style.cursor = '');
+            if (modes.includes('continuous')) {
+              let clickFn = evt => tmp.src.send();
+              techNode.addEventListener('click', clickFn);
+              tmp.endWith(() => techNode.removeEventListener('click', clickFn));
+              
+              techNode.style.cursor = 'pointer';
+              tmp.endWith(() => techNode.style.cursor = '');
+            }
             
-            techNode.setAttribute('tabIndex', '0');
-            tmp.endWith(() => techNode.removeAttribute('tabIndex'));
+            if (modes.includes('discrete')) {
+              
+              let keyPressFn = evt => {
+                if (evt.ctrlKey || evt.altKey || evt.shiftKey || evt.code !== 'Enter') return;
+                [ 'preventDefault', 'stopPropagation' ].each(v => evt[v]());
+                tmp.src.send(evt);
+              };
+              techNode.addEventListener('keypress', keyPressFn);
+              tmp.endWith(() => techNode.removeEventListener('keypress', keyPressFn));
+              
+            }
             
-            let keyPressFn = evt => {
-              if (evt.ctrlKey || evt.altKey || evt.shiftKey || ![ 'Enter', 'Space' ].includes(evt.code)) return;
-              [ 'preventDefault', 'stopPropagation' ].each(v => evt[v]());
-              tmp.src.send(evt);
-            };
-            techNode.addEventListener('keypress', keyPressFn);
-            tmp.endWith(() => techNode.removeEventListener('keypress', keyPressFn));
+            // TODO: This is a sloppy heuristic to get around the issue
+            // that adding a tabIndex for any "discrete" mode may wind
+            // up making the <div> containing an <input> focusable; this
+            // means that tabbing to the <input> would require first
+            // tabbing to the <div>. The real issue is that `techNode`
+            // is always assumed to be the primary, interactive surface
+            // of a Real - but in the case of a techNode overlaid with
+            // an <input>, this isn't the case! This is therefore an
+            // odd heuristic to add tabIndex for discreet press events,
+            // only if the press is also continuous - because chances
+            // are, if `real` is overlaid with an <input> the press will
+            // *only* be discrete (since a continuous press would mean
+            // clicks to focus the input element would result in sends)
+            if (modes.includes('continuous') && modes.includes('discrete')) {
+              
+              techNode.setAttribute('tabIndex', '0');
+              tmp.endWith(() => techNode.removeAttribute('tabIndex'));
+              // tmp.endWith(real.addDecals({ texture: 'rough' }));
+              
+            }
             
-            // tmp.endWith(real.addDecals({ texture: 'rough' }));
             return tmp;
           },
           addFeel: real => {
             
             let techNode = real.getTechNode();
-            let tmp = TmpRefCount(); tmp.src = Src();
+            let tmp = Tmp(); tmp.src = Src();
             let sentTmp = null;
             
             let onnFn = evt => {
@@ -495,9 +526,7 @@
               
               tmp.src.send(sentTmp);
             };
-            let offFn = evt => {
-              if (!sentTmp) return; sentTmp.end(); sentTmp = null;
-            };
+            let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
             techNode.addEventListener('mouseenter', onnFn);
             tmp.endWith(() => techNode.removeEventListener('mouseleave', onnFn));
             return tmp;
@@ -506,7 +535,7 @@
           addViewportEntryChecker: real => {
             
             let src = Src();
-            let tmp = TmpRefCount(); tmp.src = FnSrc.Tmp1([ src ], (evt, prev=Tmp()) => {
+            let tmp = Tmp(); tmp.src = FnSrc.Tmp1([ src ], (evt, prev=Tmp()) => {
               let { left: l, right: r, top: t, bottom: b } = real.getTechNode().getBoundingClientRect();
               let { innerWidth: w, innerHeight: h } = window;
               if ((l < w && r > 0) && (t < h && b > 0)) return prev;

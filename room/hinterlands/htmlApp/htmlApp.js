@@ -26,9 +26,6 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
-              <!--
-              <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.renderCss' })}" />
-              -->
               <style type="text/css">
                 body { position: relative; opacity: 0; transition: opacity 750ms linear; }
                 body.loaded { opacity: 1; }
@@ -93,11 +90,13 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
             font-family: monospace;
             overflow: hidden;
           }
+          :focus { outline: rgba(0, 0, 0, 0.2) solid 2px; }
         `));
         
       });
       parHut.roadSrc('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
         
+        // Only for use with auto-rendering!
         reply(U.multilineString(`
           body > .rec { color: #000000; }
           .drying { pointer-events: none !important; opacity: 0.7; }

@@ -125,7 +125,8 @@ global.rooms.record = async foundation => {
       
     },
     relRecs: function(recType, term) { return this.relSrc(recType, term).vals; },
-    relRec: function(recType, term) { for (let r of this.relSrc(recType, term).vals) return r; return null; },
+    relRec: function(recType, term) { for (let r of this.relRecs(recType, term)) return r; return null; },
+    getVal: function() { return this.valSrc.val; },
     setVal: function(newVal) {
       if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.src.send(newVal);
       return this;
