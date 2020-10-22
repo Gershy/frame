@@ -305,10 +305,8 @@
           } else {
             
           }
-          
-          if (layout.align) domNode.style.textAlign = {
-            fwd: 'left', bak: 'right', mid: 'center'
-          }[layout.align];
+          if (layout.size) domNode.style.fontSize = layout.size;
+          if (layout.align) domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center' }[layout.align];
         });
         renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
           
@@ -405,7 +403,8 @@
             applyDecalsStack(real.decalsStack, hCss, domNode);
             
           },
-          addNode: (parTechNode, kidTechNode) => parTechNode.appendChild(kidTechNode),
+          addNode: (parReal, kidReal) => parReal.getTechNode().appendChild(kidReal.getTechNode()),
+          remNode: real => real.getTechNode().remove(),
           
           scrollTo: (scrollReal, trgReal) => {
             let children = [ ...scrollReal.getTechNode().childNodes ];
@@ -436,9 +435,13 @@
             let tmp = TmpRefCount(); tmp.src = MemSrc.Prm1(Src());
             
             let input = document.createElement('input');
-            input.style.position = 'absolute';
-            input.style.width = '100%';
-            input.style.height = '100%';
+            input.style.gain({
+              position: 'absolute', display: 'block',
+              width: '100%', height: '100%',
+              padding: '0', border: 'none', outline: 'none',
+              backgroundColor: 'transparent',
+              textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit'
+            });
             
             if (!techNode.style.position) {
               techNode.style.position = 'relative';
@@ -454,7 +457,28 @@
             return tmp;
             
           },
-          addPress: real => browserTech.domEventToSrc('click', real.getTechNode()),
+          addPress: real => {
+            let evtToSrc = browserTech.domEventToSrc('click', real.getTechNode());
+            let tmp = Tmp(); tmp.src = evtToSrc.src;
+            let techNode = real.getTechNode();
+            
+            techNode.style.cursor = 'pointer';
+            tmp.endWith(() => techNode.style.cursor = '');
+            
+            techNode.setAttribute('tabIndex', '0');
+            tmp.endWith(() => techNode.removeAttribute('tabIndex'));
+            
+            let keyPressFn = evt => {
+              if (evt.ctrlKey || evt.altKey || evt.shiftKey || ![ 'Enter', 'Space' ].includes(evt.code)) return;
+              [ 'preventDefault', 'stopPropagation' ].each(v => evt[v]());
+              tmp.src.send(evt);
+            };
+            techNode.addEventListener('keypress', keyPressFn);
+            tmp.endWith(() => techNode.removeEventListener('keypress', keyPressFn));
+            
+            // tmp.endWith(real.addDecals({ texture: 'rough' }));
+            return tmp;
+          },
           addFeel: real => {
             
             let techNode = real.getTechNode();

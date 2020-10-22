@@ -296,13 +296,13 @@ Hut at the very bottom runs using a single Reality.
       this.tech.render(real, real.getTechNode());
       
       // Attach `real` using the tech
-      this.tech.addNode(this.getTechNode(), real.getTechNode());
+      this.tech.addNode(this, real);
       
       return real;
       
     },
     cleanup: function() {
-      if (this.techNode) this.tech.rem(this.techNode);
+      if (this.techNode) this.tech.remNode(this);
       this.techNode = null;
       this.parent = null;
     },
