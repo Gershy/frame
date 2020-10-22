@@ -669,7 +669,9 @@
             });
             src.send(Tmp());
             scp.end();
+            
             if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+            if (depTmps.find(tmp => !U.isType(tmp, Tmp)).found) throw Error(`Not all sends resulted in Tmps`);
             if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Scope ended`);
             
           },
@@ -788,20 +790,14 @@
           
         ];
         
-        let hadErr = false;
         for (let test of tests) {
           let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
           try {
             let result = await test();
-            console.log(`Test pass (${name})`);
           } catch (err) {
-            hadErr = true;
             console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
+            this.halt();
           }
-        }
-        if (hadErr) {
-          console.log('Test errors occurred; halting');
-          this.halt();
         }
         
       })();
