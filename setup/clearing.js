@@ -327,7 +327,7 @@ let U = global.U = {
   },
   nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
-  multiLineString: str => {
+  multilineString: str => {
     
     let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));
     
@@ -383,7 +383,6 @@ U.logic = (() => {
     addedRoute: function(fn) {},
     route: function(fn, mode='tmp') {
       if (!(fn instanceof Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
-      
       this.fns.add(fn);
       this.addedRoute(fn);
       if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
@@ -444,12 +443,32 @@ U.logic = (() => {
       return Insp[`${mode === 'tmp' ? 'Tmp' : 'Prm'}${amt === 'many' ? 'M' : '1'}`](src);
     },
     init: function(src) {
+      if (U.isType(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
+      
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
       this.src = src;
       this.srcRoute = this.src.route((...vals) => this.receive(...vals));
     },
     cleanup: function() { this.srcRoute.end(); }
+  })});
+  MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.val = C.skip;
+    },
+    receive: function(val) { this.val = val; this.send(val); },
+    route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
+    cleanup: function() { this.val = null; }
+  })});
+  MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
+    init: function(src) {
+      insp.MemSrc.init.call(this, src);
+      this.vals = [];
+    },
+    receive: function(val) { this.vals.push(val); this.send(val); },
+    route: function(fn, mode) { for (let val of this.vals) fn(val); return insp.MemSrc.route.call(this, fn, mode); },
+    cleanup: function() { this.vals = []; }
   })});
   MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
     init: function(src) {
@@ -492,24 +511,6 @@ U.logic = (() => {
       this.valEndRoutes = Map();
     }
   })});
-  MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
-      insp.MemSrc.init.call(this, src);
-      this.val = C.skip;
-    },
-    receive: function(val) { this.val = val; this.send(val); },
-    route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
-    cleanup: function() { this.val = null; }
-  })});
-  MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
-      insp.MemSrc.init.call(this, src);
-      this.vals = [];
-    },
-    receive: function(val) { this.vals.push(val); this.send(val); },
-    route: function(fn, mode) { for (let val of this.vals) fn(val); return insp.MemSrc.route.call(this, fn, mode); },
-    cleanup: function() { this.vals = []; }
-  })});
 
   let FilterSrc = U.inspire({ name: 'FilterSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
     init: function(src, fn) {
@@ -522,25 +523,77 @@ U.logic = (() => {
   })});
   let FnSrc = U.inspire({ name: 'FnSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
     init: function(srcs, fn) {
+      if (U.isType(this, FnSrc)) throw Error(`Don't init the parent FnSrc class!`);
+      
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
-      this.srcs = srcs;
-      this.lastResult = undefined; // To allow default params
-      let vals = srcs.map(v => null);
+      
+      let vals = srcs.map(v => C.skip);
       this.routes = srcs.map((src, ind) => src.route(val => {
         vals[ind] = val;
-        
-        let result = fn(...vals, this.lastResult);
-        if (result === this.lastResult) return;
-        
-        if (U.isInspiredBy(this.lastResult, Endable)) this.lastResult.end();
-        if ((this.lastResult = result) !== C.skip) this.send(result);
+        let result = this.applyFn(fn, vals);
+        if (result !== C.skip) this.send(result);
       }));
     },
-    cleanup: function() {
-      for (let r of this.routes) r.end();
-      if (U.isInspiredBy(this.lastResult, Endable)) this.lastResult.end();
+    applyFn: C.noFn('applyFn', (fn, vals) => 'valToSend'),
+    cleanup: function() { for (let r of this.routes) r.end(); }
+  })});
+  FnSrc.Prm1 = U.inspire({ name: 'FnSrc.Prm1', insps: { FnSrc }, methods: (insp, Insp) => ({
+    init: function(...args) {
+      this.lastResult = C.skip;
+      insp.FnSrc.init.call(this, ...args);
+    },
+    applyFn: function(fn, vals) {
+      let result = fn(...vals);
+      return (result === this.lastResult) ? C.skip : (this.lastResult = result);
     }
+  })});
+  FnSrc.PrmM = U.inspire({ name: 'FnSrc.PrmM', insps: { FnSrc }, methods: (insp, Insp) => ({
+    applyFn: function(fn, vals) { return fn(...vals); }
+  })});
+  FnSrc.Tmp1 = U.inspire({ name: 'FnSrc.Tmp1', insps: { FnSrc }, methods: (insp, Insp) => ({
+    init: function(...params) {
+      this.lastResult = C.skip;
+      insp.FnSrc.init.call(this, ...params);
+    },
+    applyFn: function(fn, vals) {
+      // Call function; ignore `C.skip`
+      let result = fn(...vals, this.lastResult);
+      if (result === this.lastResult) return C.skip;
+      
+      // End any previous result; remember result and return it!
+      if (this.lastResult) this.lastResult.end();
+      return this.lastResult = result;
+    },
+    cleanup: function() {
+      insp.FnSrc.cleanup.call(this);
+      if (this.lastResult) this.lastResult.end();
+    }
+  })});
+  FnSrc.TmpM = U.inspire({ name: 'FnSrc.TmpM', insps: { FnSrc }, methods: (insp, Insp) => ({
+    // Interestingly, FnSrc.TmpM behaves exactly like FnSrc.PrmM! `fn`
+    // is expected to return Tmp instances (or C.skip), but this class
+    // takes no responsibility for ending these Tmps - this is because
+    // there are no restrictions on how many Tmps may exist in parallel!
+    applyFn: function(fn, vals) { return fn(...vals); }
+  })});
+  
+  let Chooser = U.inspire({ name: 'Chooser', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    init: function(names) {
+      insp.Endable.init.call(this);
+      insp.Src.init.call(this);
+      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1(Src()) ]);
+      this.activeSrcName = names[0];
+      this.srcs[this.activeSrcName].src.send(Tmp());
+    },
+    choose: function(name) {
+      if (!this.srcs.has(name)) throw Error(`Invalid choice name: "${name}"`);
+      if (name === this.activeSrcName) return;
+      this.srcs[this.activeSrcName].val.end();
+      this.activeSrcName = name;
+      this.srcs[this.activeSrcName].src.send(Tmp());
+    },
+    cleanup: function() { this.srcs[this.activeSrcName].val.end(); }
   })});
   
   let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
@@ -555,7 +608,27 @@ U.logic = (() => {
         // Define `addDep` and `addDep.scp` to enable nice shorthand
         let deps = Set();
         let endFn = () => { let deps0 = deps; deps = null; deps0.each(d => d.end()); };
-        let addDep = dep => deps ? (dep.onn() && deps.add(dep), dep) : dep.end();
+        let addDep = dep => {
+          
+          // If off, ignore
+          if (dep.off()) return;
+          
+          // `deps` no longer existing requires all Deps to end
+          if (!deps) return dep.end();
+          
+          // Stop holding the Dep in the Set, if it ends
+          let remFromDepsDep = dep.route(() => {
+            if (!deps) return;
+            deps.rem(dep);
+            deps.rem(remFromDepsDep);
+          });
+          
+          deps.add(dep);
+          deps.add(remFromDepsDep);
+          
+          return dep;
+          
+        };
         addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
         
         // If either `tmp` or this Scope ends, all existing dependencies
@@ -573,7 +646,7 @@ U.logic = (() => {
   let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
     
     $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.nameOf(v)} -> "${p}" failed: (${e.message})`; throw e; } },
-    init: C.noFn('init'),
+    init: function() {},
     access: C.noFn('access', arg => {}),
     seek: function(...args) {
       let val = this;
@@ -583,7 +656,7 @@ U.logic = (() => {
     
   })});
   
-  return { Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Scope, Slots };
+  return { Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Chooser, Scope, Slots };
   
 })();
 
