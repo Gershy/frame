@@ -792,9 +792,7 @@
         
         for (let test of tests) {
           let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
-          try {
-            let result = await test();
-          } catch (err) {
+          try { await test(); } catch (err) {
             console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
             this.halt();
           }
