@@ -586,12 +586,12 @@ U.logic = (() => {
       this.activeSrcName = names[0];
       this.srcs[this.activeSrcName].src.send(Tmp());
     },
-    choose: function(name) {
+    choose: function(name, tmp=null) {
       if (!this.srcs.has(name)) throw Error(`Invalid choice name: "${name}"`);
       if (name === this.activeSrcName) return;
       this.srcs[this.activeSrcName].val.end();
       this.activeSrcName = name;
-      this.srcs[this.activeSrcName].src.send(Tmp());
+      this.srcs[this.activeSrcName].src.send(tmp || Tmp());
     },
     cleanup: function() { this.srcs[this.activeSrcName].val.end(); }
   })});

@@ -9,8 +9,7 @@ global.rooms.write = async foundation => {
   
   return { open: async hut => {
     
-    let htmlApp = HtmlApp({ name: 'write' });
-    await htmlApp.decorateApp(hut);
+    await HtmlApp({ name: 'write' }).decorateApp(hut);
     
     /// {ABOVE=
     hut.relSrc('wrt.write').route(writeRec => {
@@ -34,8 +33,8 @@ global.rooms.write = async foundation => {
       })));
       
       let loginChooser = dep(Chooser([ 'out', 'inn' ]));
-      dep.scp(writeHut, 'wrt.identity', (iden, dep) => {
-        loginChooser.choose('inn');
+      dep.scp(writeHut, 'wrt.identity', (identity, dep) => {
+        loginChooser.choose('inn', identity);
         dep(Tmp(() => loginChooser.choose('out')));
       });
       
@@ -43,11 +42,7 @@ global.rooms.write = async foundation => {
         
         console.log(`${writeHut.uid} logged out`);
         
-        /// {ABOVE=
-        
-        dep(writeHut.roadSrc('wrt.login').route(({ msg: { username, password }, reply }) => {
-          
-          if (writeHut.relRecs('wrt.identity').count()) throw Error(`Already logged in`);
+        let loginSender = dep(writeHut.getTellSender('wrt.login', ({ username, password }) => {
           
           let user = writeRec.relRecs('wrt.user').find(rec => rec.getVal().username === username).val;
           if (user) {
@@ -64,9 +59,7 @@ global.rooms.write = async foundation => {
           
         }));
         
-        /// =ABOVE}
-        
-        let logoutReal = dep(rootReal.addReal('wrt.login', ctx => ({
+        let loginReal = dep(rootReal.addReal('wrt.login', ctx => ({
           layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
           innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' }),
           decals: {
@@ -74,25 +67,25 @@ global.rooms.write = async foundation => {
           }
         })));
         
-        let usernameReal = logoutReal.addReal('wrt.login.user', ctx => ({
+        let usernameReal = loginReal.addReal('wrt.login.user', ctx => ({
           layouts: [ TextInputLayout({ align: 'mid', size: '30px', prompt: 'Username' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             border: { ext: '3px', colour: 'rgba(0, 0, 0, 0.5)' }
           }
         }));
-        let passwordReal = logoutReal.addReal('wrt.login.pass', ctx => ({
+        let passwordReal = loginReal.addReal('wrt.login.pass', ctx => ({
           layouts: [ TextInputLayout({ align: 'mid', size: '10px', prompt: 'Password' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             border: { ext: '3px', colour: 'rgba(0, 0, 255, 0.5)' }
           }
         }));
-        let submitReal = logoutReal.addReal('wrt.login.submit', ctx => ({
+        let submitReal = loginReal.addReal('wrt.login.submit', ctx => ({
           layouts: [ TextLayout({ text: 'enter', size: '30px' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: { colour: 'rgba(0, 0, 255, 0.2)' }
         }));
-        logoutReal.addReal('wrt.login.help', ctx => ({
+        loginReal.addReal('wrt.login.help', ctx => ({
           layouts: [
             TextLayout({ text: 'Account will be created if none is found', size: '90%', align: 'mid' }),
             SizedLayout({ w: '200px', h: '45px' })
@@ -107,23 +100,18 @@ global.rooms.write = async foundation => {
           dep(passwordReal.addPress('discrete')).src,
           dep(usernameReal.addPress('discrete')).src,
           dep(submitReal.addPress()).src
-        ].each(submitSrc => dep(submitSrc.route(() => writeHut.tell({
-          command: 'wrt.login',
+        ].each(submitSrc => dep(submitSrc.route(() => loginSender.src.send({
           username: usernameInpSrc.val,
           password: passwordInpSrc.val
         }))));
         
       });
       
-      dep.scp(loginChooser.srcs.inn, (loggedInn, dep) => {
+      dep.scp(loginChooser.srcs.inn, (identity, dep) => {
         
         console.log(`${writeHut.uid} logged IN!`);
         
-        /// {ABOVE=
-        
-        dep(writeHut.roadSrc('wrt.logout').route(() => writeHut.relRec('wrt.identity').end()));
-        
-        /// =ABOVE}
+        let logoutSender = dep(writeHut.getTellSender('wrt.logout', () => identity.end()));
         
         let loginReal = dep(rootReal.addReal('wrt.login', ctx => ({
           layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],

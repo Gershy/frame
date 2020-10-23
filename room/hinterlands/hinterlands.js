@@ -693,6 +693,60 @@ global.rooms.hinterlands = async foundation => {
     
     /// =BELOW}
     
+    getTellSender: function(command, fn) {
+      
+      // TODO: Tricky to name a function that is called from both ABOVE
+      // and BELOW. The dual purpose is to give BELOW a Src for sending
+      // Tells, and at the same time to make ABOVE gain a RoadSrc for
+      // hearing these same Tells. What to name this function? And what
+      // about any BETWEEN huts, which are both ABOVE and BELOW? Surely
+      // they will not work... In their case the behaviour *should* be
+      // for the BELOW to gain a Src for sending Tells, every BETWEEN
+      // gains a RoadSrc which hears that Tell and immediately forwards
+      // it upwards, and finally the ABOVE acknowledges this multi-
+      // forwarded Tell, and calls `fn` appropriately.
+      
+      /// {ABOVE=
+      if (this.roadSrcs.has(command)) throw Error(`Hut ${this.uid} already has Tell Sender for "${command}"`);
+      /// =ABOVE}
+      
+      let tmp = Tmp(); tmp.src = Src();
+      tmp.src.send = () => { throw Error(`TellSender is not to be used at this bearing`); };
+      
+      /// {BELOW=
+      
+      console.log(`Client-side ready to send "${command}" Tells`);
+      tmp.endWith(() => console.log(`Client-side no longer ready to send "${command}" Tells`));
+      
+      tmp.endWith(tmp.src.route(msg => this.tell({ command, ...msg })));
+      tmp.endWith(() => tmp.src.send = () => { throw Error(`Sent Tell from expired "${command}" Sender`); });
+      
+      
+      // The comment at the top of this function explains the situation
+      // with BETWEEN huts. In that case any Hut that is ABOVE and BELOW
+      // will use the ABOVE functionality to set `fn` to be called in
+      // the case that some lower Hut Tells us the command, *but* `fn`
+      // will have been set to simply forward the command to the next
+      // higher Hut, whether it is BETWEEN or ABOVE.
+      delete tmp.src.send;                        // Enable sends for BELOW
+      fn = msg => this.tell({ command, ...msg }); // If `fn` gets called (if we're ABOVE), simply forward!
+      
+      /// =BELOW} {ABOVE=
+      
+      console.log(`Server-side ready to hear "${command}" Tells`);
+      tmp.endWith(() => console.log(`Server-side no longer ready to hear "${command}" Tells`));
+      
+      let hearSrc = this.roadSrcs[command] = Src();
+      hearSrc.desc = `Hut TellSender for "${command}"`;
+      tmp.endWith(() => delete this.roadSrcs[command]);
+      tmp.endWith(hearSrc.route(({ msg, reply }) => fn(msg, reply)));
+      
+      /// =ABOVE} 
+      
+      return tmp;
+      
+    },
+    
     onceDry: function() {
       insp.Rec.onceDry.call(this);
     }

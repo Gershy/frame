@@ -1079,7 +1079,7 @@
       if (!port) port = keyPair ? 443 : 80;
       
       // Translates a javascript value `msg` into http content type and payload
-      let sendData = async (req, res, msg) => {
+      let sendData = async (req=null, res, msg) => {
         
         if (msg instanceof Error) throw msg;
         
@@ -1101,7 +1101,7 @@
         } else {
           
           msg = msg.toString();
-          let accept = req.seek([ 'headers', 'accept' ]).val || '*/*';
+          let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
           let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
           let ct = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
           res.writeHead(200, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
@@ -1286,7 +1286,7 @@
         road.waitTells = [];
         road.hear = Src();
         road.tell = msg => road.waitResps.length
-          ? sendData(req, road.waitResps.shift(), msg)
+          ? sendData(null, road.waitResps.shift(), msg)
           : road.waitTells.push(msg);
         
         road.endWith(() => road.waitResps.each(res => res.end()));
