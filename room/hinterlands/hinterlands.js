@@ -28,6 +28,8 @@ global.rooms.hinterlands = async foundation => {
       // Note that "disjoint" Huts are non-neighbours (they require a
       // Road to communicate)
       
+      if (msg instanceof Error) msg = { command: 'error', type: 'application', msg: msg.message };
+      
       if (!trgHut) throw Error('Must supply TrgHut');
       if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
       if (srcHut && srcHut.parHut !== trgHut && trgHut.parHut !== srcHut) throw Error(`Supplied unrelated Huts`);
@@ -388,9 +390,12 @@ global.rooms.hinterlands = async foundation => {
       if (srcHut && srcHut.roadSrcs.has(command)) return srcHut.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
       if (this.roadSrcs.has(command)) return this.roadSrcs[command].send({ srcHut, trgHut: this, road, msg, reply, ms });
       
+      /// {BELOW=
+      throw Error(`Failed to handle command: ${JSON.stringify(msg)}`);
+      /// =BELOW}
+      
       let resp = { command: 'error', type: 'invalidCommand', orig: msg };
-      if (reply) return reply(resp);
-      return Hut.tell(this, srcHut, road, null, resp);
+      return reply ? reply(resp) : Hut.tell(this, srcHut, road, null, resp);
       
     },
     
@@ -463,7 +468,7 @@ global.rooms.hinterlands = async foundation => {
             // });
             // HutError's 1st param indicates a "causing Error", which
             // optionally describes an error that later occurred from
-            // this scope!
+            // this scope
             console.log(add, addRec);
             throw Error(`Duplicate id: ${addRec.uid}`);
           }
@@ -510,7 +515,7 @@ global.rooms.hinterlands = async foundation => {
       for (let { uid, val } of upd) {
         if (!this.allRecs.has(uid)) throw Error(`Tried to update non-existent Rec @ ${uid}`);
         let rec = this.allRecs.get(uid);
-        if (!U.isType(val, Object) || !U.isType(rec.val, Object)) {
+        if (!U.isType(val, Object) || !U.isType(rec.getVal(), Object)) {
           rec.setVal(val);
         } else {
           rec.dltVal(val);
@@ -597,7 +602,7 @@ global.rooms.hinterlands = async foundation => {
       // Creates tell to sync the BelowHut and modifies its
       // representation to be considered fully up-to-date
       let add = this.pendingSync.add.toArr(r => ({
-        type: r.type.name, uid: r.uid, val: r.val,
+        type: r.type.name, uid: r.uid, val: r.getVal(),
         
         // Redirect all references from ParAboveHut to KidBelowHut
         mems: r.mems.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)

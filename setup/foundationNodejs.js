@@ -1081,7 +1081,7 @@
       // Translates a javascript value `msg` into http content type and payload
       let sendData = async (req=null, res, msg) => {
         
-        if (msg instanceof Error) throw msg;
+        if (msg instanceof Error) throw msg; // { let err = new Error(`Tried to send raw Error`); err.reason = msg; throw err; }
         
         if (U.isInspiredBy(msg, Keep)) { // File!
           

@@ -21,9 +21,6 @@ global.rooms.write = async foundation => {
     
     makeHutAppScope(hut, 'wrt', 'write', (writeRec, writeHut, rootReal, dep) => {
       
-      // TODO: Can ABOVE look at the code for BELOW, and use that to
-      // automatically determine which Recs to follow??
-      
       let mainReal = dep(rootReal.addReal('wrt.main', ctx => ({
         layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
         innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),
@@ -42,14 +39,14 @@ global.rooms.write = async foundation => {
         
         console.log(`${writeHut.uid} logged out`);
         
-        let loginSender = dep(writeHut.getTellSender('wrt.login', ({ username, password }) => {
+        let loginSender = dep(writeHut.getTellSender('wrt.login', ({ username, password }, reply) => {
           
           let user = writeRec.relRecs('wrt.user').find(rec => rec.getVal().username === username).val;
           if (user) {
-            if (user.getVal().password !== password) throw Error(`invalid password`);
+            if (user.getVal().password !== password) return reply(Error(`invalid password`));
             console.log('Signed in as existing user');
           } else {
-            if (password.count() < 5) throw Error('Password too short');
+            if (password.count() < 5) return reply(Error('Password too short'));
             user = hut.createRec('wrt.user', [ writeRec ], { username, password });
             console.log('Created new user');
           }
