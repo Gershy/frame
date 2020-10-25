@@ -59,7 +59,7 @@ protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
   return { found: true, val: ret };
 });
-protoDef(Object, Symbol.iterator, function*() {
+protoDef(Object, Symbol.iterator, function*() { // Iterate [ key, val ]
   for (let k in this) yield [ k, this[k] ];
 });
 
@@ -424,8 +424,13 @@ U.logic = (() => {
     init: function(tmps) {
       insp.Tmp.init.call(this);
       let fn = this.end.bind(this);
-      for (let tmp of tmps) this.endWith(tmp.route(fn));
-    }
+      this.routes = tmps.map(tmp => {
+        let route = tmp.route(fn);
+        this.endWith(route);
+        return route;
+      });
+    },
+    cleanup: function() { for (let r of this.routes) r.end() }
   })});
   let TmpAny = U.inspire({ name: 'TmpAny', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(tmps) {
