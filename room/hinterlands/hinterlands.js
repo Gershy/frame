@@ -667,11 +667,15 @@ global.rooms.hinterlands = async foundation => {
       
     },
     followRec: function(rec) {
-      // TODO: Should we follow permissions recursively, instead of just
-      // the direct descendants, for `rec`?
-      // E.g. `rec.mems.toArr(v=>v)[0]` could have further member Recs
       
-      let recs = [ rec, ...rec.mems.toArr(r => r) ].map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
+      //
+      let allRecsFlat = rec => [ rec, ...rec.mems.toArr(allRecsFlat).flat(Infinity) ];
+      
+      
+      //let recs = [ rec, ...rec.mems.toArr(r => r) ].map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
+      
+      let recs = allRecsFlat(rec).map(rec => (rec.uid.hasHead('!') || rec.uid === this.uid) ? C.skip : rec);
+      console.log(`Hut ${this.uid} followed ${recs.count()} Recs`);
       for (let rec of recs) this.modRecFollowStrength(rec, +1);
       return Tmp(() => { for (let rec of recs) this.modRecFollowStrength(rec, -1); });
       
@@ -720,12 +724,8 @@ global.rooms.hinterlands = async foundation => {
       
       /// {BELOW=
       
-      console.log(`Client-side ready to send "${command}" Tells`);
-      tmp.endWith(() => console.log(`Client-side no longer ready to send "${command}" Tells`));
-      
       tmp.endWith(tmp.src.route(msg => this.tell({ command, ...msg })));
       tmp.endWith(() => tmp.src.send = () => { throw Error(`Sent Tell from expired "${command}" Sender`); });
-      
       
       // The comment at the top of this function explains the situation
       // with BETWEEN huts. In that case any Hut that is ABOVE and BELOW
@@ -733,13 +733,10 @@ global.rooms.hinterlands = async foundation => {
       // the case that some lower Hut Tells us the command, *but* `fn`
       // will have been set to simply forward the command to the next
       // higher Hut, whether it is BETWEEN or ABOVE.
-      delete tmp.src.send;                        // Enable sends for BELOW
+      delete tmp.src.send;                        // Uncover `Src.prototype.send`; enables sends for BELOW
       fn = msg => this.tell({ command, ...msg }); // If `fn` gets called (if we're ABOVE), simply forward!
       
       /// =BELOW} {ABOVE=
-      
-      console.log(`Server-side ready to hear "${command}" Tells`);
-      tmp.endWith(() => console.log(`Server-side no longer ready to hear "${command}" Tells`));
       
       let hearSrc = this.roadSrcs[command] = Src();
       hearSrc.desc = `Hut TellSender for "${command}"`;
