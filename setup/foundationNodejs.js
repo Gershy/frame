@@ -1215,8 +1215,9 @@
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells then send the oldest, otherwise hold the response.
-        // Finally return all but one poll. (TODO: Can raise this if the
-        // browser allows us multiple connections?)
+        // Finally return all but one poll. TODO: A more powerful
+        // technique would be to learn from the client side how many
+        // polls we are allowed to hold at once!
         if (road.waitTells.isEmpty()) {
           
           road.waitResps.push(res);

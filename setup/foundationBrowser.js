@@ -144,6 +144,9 @@
       primaryHtmlCssJsReal.techNode = document.body;
       primaryHtmlCssJsReal.tech = (() => {
         
+        // css techniques:
+        // https://css-tricks.com/almanac/properties/c/contain/
+        
         let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout } = U.setup;
         let renderClassMap = Map();
         let getRenderClass = layout => {
@@ -155,30 +158,19 @@
           
           if (![ 'relative', 'absolute' ].includes(domNode.style.position)) domNode.style.position = 'relative';
           
-          if (layout.cuts === null) {
-            
-            // Children determine their own size in the axis direction, and have 100% perp direction
-            domNode.style.overflowX = (layout.axis === 'x') ? 'auto' : 'hidden';
-            domNode.style.overflowY = (layout.axis === 'y') ? 'auto' : 'hidden';
-            
-          } else if (layout.cuts === 'distribute') {
-            
-            // Children are all the same size
-            domNode.style.display = 'flex';
-            domNode.style.flexDirection = (layout.axis === 'x')
-              ? (layout.flow === '+' ? 'row' : 'row-reverse')
-              : (layout.flow === '+' ? 'column' : 'column-reverse');
-            domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
-            domNode.style.justifyContent = 'auto';
-            
-          } else if (layout.cuts === 'focus') {
+          if ([ null, 'focus', 'distribute' ].includes(layout.cuts)) {
             
             domNode.style.display = 'flex';
             domNode.style.flexDirection = (layout.axis === 'x')
               ? (layout.flow === '+' ? 'row' : 'row-reverse')
               : (layout.flow === '+' ? 'column' : 'column-reverse');
             domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
-            domNode.style.justifyContent = 'center';
+            
+            domNode.style.justifyContent = {
+              stack: 'auto',
+              focus: 'center',
+              distribute: 'auto'
+            }[layout.cuts || 'stack']; // null -> 'stack'
             
           } else if (U.isType(layout, Array)) {
             
@@ -198,6 +190,9 @@
             
             // Children are all the same size
             domNode.style.flexGrow = '1';
+            domNode.style.flexShrink = '1';
+            domNode.style.flexBasis = '0';
+            domNode.style[layout.par.axis === 'x' ? 'height' : 'width'] = '100%';
             
           } else if (U.isType(layout.par.cuts, Array)) {
             
@@ -205,41 +200,18 @@
             let cutInd = layout.params[0];
             let offCuts = layout.par.cuts.slice(0, cutInd);
             
-            let off = offCuts.length
-              ? `calc(${offCuts.join(' + ')})`
-              : '0';
+            let off = offCuts.length ? `calc(${offCuts.join(' + ')})` : '0';
             let ext = (cutInd <= (layout.par.cuts.length - 1))
               ? layout.par.cuts[cutInd]
               : `calc(100% - ${layout.par.cuts.join(' - ')})`;
             
             domNode.style.position = 'absolute';
             
-            if (layout.par.axis === 'x' && layout.par.flow === '+') {
-              
-              domNode.style.left = off;
-              domNode.style.width = ext;
-              domNode.style.height = '100%';
-              
-            } else if (layout.par.axis === 'x' && layout.par.flow === '-') {
-              
-              domNode.style.right = off;
-              domNode.style.width = ext;
-              domNode.style.height = '100%';
-              
-            } else if (layout.par.axis === 'y' && layout.par.flow === '+') {
-              
-              domNode.style.top = off;
-              domNode.style.width = '100%';
-              domNode.style.height = ext;
-              
-            } else if (layout.par.axis === 'y' && layout.par.flow === '-') {
-              
-              domNode.style.bottom = off;
-              domNode.style.width = '100%';
-              domNode.style.height = ext;
-              
-            }
-            
+            let dir = `${layout.par.flow}${layout.par.axis}`
+            if (dir === '+x') domNode.style.gain({ left: off, width: ext, height: '100%' });
+            if (dir === '-x') domNode.style.gain({ right: off, width: ext, height: '100%' });
+            if (dir === '+y') domNode.style.gain({ top: off, width: '100%', height: ext });
+            if (dir === '-y') domNode.style.gain({ bottom: off, width: '100%', height: ext });
             
           }
           
@@ -288,16 +260,25 @@
           if (x !== 'none' || y !== 'none') domNode.style.scrollBehavior = 'smooth';
         });
         renderClassMap.set(TextLayout, (layout, hCss, domNode) => {
-          domNode.style.display = 'flex';
-          domNode.style.flexDirection = 'column';
-          domNode.style.alignItems = 'center';
-          domNode.style.justifyContent = 'center';
+          domNode.style.gain({
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            overflow: 'hidden', textOverflow: 'ellipsis'
+          });
+          
+          // Apply font size
           if (layout.size) domNode.style.fontSize = layout.size;
+          
+          // Apply text
           domNode.textContent = layout.text;
           
-          if (layout.align) domNode.style.textAlign = {
-            fwd: 'left', bak: 'right', mid: 'center'
-          }[layout.align];
+          // Apply text alignment; best results occur when flex and classic "text-align' props are used
+          domNode.style.alignItems = { fwd: 'flex-start', bak: 'flex-end', mid: 'center', all: 'stretch' }[layout.align || 'mid'];
+          domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center', all: 'justify' }[layout.align || 'mid'];
+          
+          if (layout.gap) {
+            domNode.style.boxSizing = 'border-box';
+            domNode.style.padding = layout.gap;
+          }
         });
         renderClassMap.set(TextInputLayout, (layout, hCss, domNode) => {
           if (layout.multiline) {
@@ -406,6 +387,32 @@
           addNode: (parReal, kidReal) => parReal.getTechNode().appendChild(kidReal.getTechNode()),
           remNode: real => real.getTechNode().remove(),
           
+          makeFocusable: (real, techNode=real.getTechNode()) => {
+            let tmp = Tmp();
+            
+            let focusedElems = [];
+            let focusFn = evt => {
+              if (focusedElems.count()) throw Error(`Double focus :(`);
+              focusedElems = [];
+              let ptr = techNode;
+              while (ptr !== document.body) { focusedElems.push(ptr); ptr = ptr.parentNode; }
+              for (let elem of focusedElems) elem.style.zIndex = '10000';
+            };
+            let blurFn = evt => {
+              for (let elem of focusedElems) elem.style.zIndex = '';
+              focusedElems = [];
+            };
+            techNode.addEventListener('focus', focusFn);
+            techNode.addEventListener('blur', blurFn);
+            
+            tmp.endWith(() => {
+              techNode.removeEventListener('focus', focusFn);
+              techNode.removeEventListener('blur', blurFn);
+              for (let elem of focusedElems) elem.style.zIndex = '';
+            });
+            
+            return tmp;
+          },
           scrollTo: (scrollReal, trgReal) => {
             let children = [ ...scrollReal.getTechNode().childNodes ];
             if (children.count() !== 1) throw Error(`Scrollable parent needs 1 child; has ${children.count()}`);
@@ -427,17 +434,18 @@
             let textInputLayout = real.layouts.find(layout => U.isInspiredBy(layout, TextInputLayout)).val;
             if (!textInputLayout) throw Error(`Can't add input; no TextInputLayout found!`);
             
+            let initVal = textInputLayout.text || '';
             let techNode = real.getTechNode();
-            let tmp = Tmp(); tmp.src = MemSrc.Prm1(Src(), '');
+            let tmp = Tmp(); tmp.src = MemSrc.Prm1(Src(), initVal);
             
             let input = document.createElement('input');
             input.style.gain({
-              position: 'absolute', display: 'block',
-              width: '100%', height: '100%',
-              padding: '0', border: 'none',
+              position: 'absolute', display: 'block', boxSizing: 'border-box',
+              width: '100%', height: '100%', padding: '2px', border: 'none',
               backgroundColor: 'transparent',
               textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit'
             });
+            input.value = initVal;
             
             if (textInputLayout.prompt) input.setAttribute('placeholder', textInputLayout.prompt);
             
@@ -448,6 +456,8 @@
             
             techNode.appendChild(input);
             tmp.endWith(() => input.remove());
+            
+            tmp.endWith(browserTech.makeFocusable(real, input));
             
             let inpFn = evt => tmp.src.src.send(input.value);
             input.addEventListener('input', inpFn);
@@ -504,6 +514,8 @@
               
               techNode.setAttribute('tabIndex', '0');
               tmp.endWith(() => techNode.removeAttribute('tabIndex'));
+              tmp.endWith(browserTech.makeFocusable(real, techNode));
+              
               // tmp.endWith(real.addDecals({ texture: 'rough' }));
               
             }
@@ -657,7 +669,7 @@
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
     },
-    srcLineRegex: function() { return { regex: /^.$/, extract: fullMatch => ({ roomName: '???', line: 0, char: 0 }) }; }
+    srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: '???', line: 0, char: 0 }) }; }
     
   })});
   

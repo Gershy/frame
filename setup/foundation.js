@@ -123,7 +123,7 @@ Hut at the very bottom runs using a single Reality.
     
     // Error
     parseErrorLine: C.noFn('parseErrorLine'),
-    srcLineRegex: C.noFn('srcLineRegex', () => ({ regex: /^.$/, extract: fullMatch => ({ roomName: '...', line: '...', char: '...' }) })),
+    srcLineRegex: C.noFn('srcLineRegex', () => ({ regex: /.^/, extract: fullMatch => ({ roomName: '...', line: '...', char: '...' }) })),
     cmpLineToSrcLine: function(offsets, cmpLine, cmpChar=null) {
       
       // For a compiled file and line number, return the corresponding line number
@@ -365,7 +365,7 @@ Hut at the very bottom runs using a single Reality.
       
   })});
   let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
-    init: function({ text='', size=null, align=null }) { ({}).gain.call(this, { text, size, align }); }
+    init: function({ text='', size=null, align=null, gap=null }) { ({}).gain.call(this, { text, size, align, gap }); }
   })});
   let TextInputLayout = U.inspire({ name: 'TextInputLayout', insps: { TextLayout }, methods: (insp, Insp) => ({
     init: function({ multiline=false, prompt=null, ...params }) {
