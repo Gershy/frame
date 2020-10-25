@@ -84,13 +84,25 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
       parHut.roadSrc('html.css').route(async ({ road, srcHut, msg, reply }) => {
         
         reply(U.multilineString(`
+          @keyframes smoothFocus {
+            0% { outline: rgba(0, 0, 0, 0) solid 0px; }
+            20% { outline: rgba(0, 0, 0, 0.4) solid 10px; }
+            100% { outline: rgba(0, 0, 0, 0.2) solid 2px; }
+          }
+          
           html, body {
             position: absolute; left: 0; top: 0; width: 100%; height: 100%;
             margin: 0; padding: 0;
             font-family: monospace;
             overflow: hidden;
           }
-          :focus { outline: rgba(0, 0, 0, 0.2) solid 2px; }
+          :focus {
+            animation-name: smoothFocus;
+            animation-duration: 400ms;
+            animation-timing-function: ease-in-out;
+            animation-iteration-count: 1;
+            animation-fill-mode: forwards;
+          }
         `));
         
       });
