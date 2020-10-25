@@ -138,8 +138,7 @@ global.rooms.record = async foundation => {
       // the full value one needs to consult `rec.val` at the time of
       // the send!
       if (!delta || delta.isEmpty()) return;
-      this.val.gain(delta);
-      this.send(delta);
+      this.valSrc.src.send({ ...this.getVal(), ...delta });
       return this;
     },
     
