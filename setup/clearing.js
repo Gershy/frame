@@ -361,35 +361,39 @@ U.logic = (() => {
   
   let Endable = U.inspire({ name: 'Endable', methods: (insp, Insp) => ({
     
-    $globalRegistry: Set(),
+    // $globalRegistry: Set(),
     
-    init: function() { Insp.globalRegistry.add(this); },
+    init: function(fn) {
+      // Allow Endable.prototype.cleanup to be masked
+      if (fn) this.cleanup = fn;
+      //Insp.globalRegistry.add(this);
+    },
     onn: function() { return true; },
     off: function() { return !this.onn(); },
     cleanup: function() {},
     end: function() {
       if (this.off()) return false;
       this.onn = () => false;
-      Insp.globalRegistry.rem(this);
+      // Insp.globalRegistry.rem(this);
       this.cleanup();
       return true;
     }
   })});
   let Src = U.inspire({ name: 'Src', methods: (insp, Insp) => ({
-    
-    $nullFns: { add: ()=>{}, rem: ()=>{} },
-    
     init: function() { this.fns = Set(); },
-    addedRoute: function(fn) {},
+    newRoute: function(fn) {},
     route: function(fn, mode='tmp') {
       if (!(fn instanceof Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
       this.fns.add(fn);
-      this.addedRoute(fn);
+      this.newRoute(fn);
       if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
     },
     send: function(...args) { for (let fn of this.fns) fn(...args); }
   })});
   let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
+    
+    $nullFns: { add: ()=>{}, rem: ()=>{} },
+    
     init: function(fn=null) {
       insp.Src.init.call(this);
       insp.Endable.init.call(this);
@@ -402,10 +406,10 @@ U.logic = (() => {
       // Sending and ending are synonymous for a Tmp
       if (!insp.Endable.end.call(this)) return; // Check if we're already ended
       insp.Src.send.call(this);
-      this.fns = Src.nullFns;
+      this.fns = Insp.nullFns;
       return;
     },
-    addedRoute: function(fn) { if (this.off()) fn(); },
+    newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
       if (U.isType(val, Function)) return this.route(val, mode) || this;
       if (U.isInspiredBy(val, Endable)) return this.route(() => val.end(), mode) || this;
@@ -462,8 +466,8 @@ U.logic = (() => {
       insp.MemSrc.init.call(this, src);
       this.val = val;
     },
+    newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
     receive: function(val) { if (val === this.val) return; this.val = val; this.send(val); },
-    route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
     cleanup: function() { this.val = null; }
   })});
   MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
@@ -472,7 +476,7 @@ U.logic = (() => {
       this.vals = [];
     },
     receive: function(val) { this.vals.push(val); this.send(val); },
-    route: function(fn, mode) { for (let val of this.vals) fn(val); return insp.MemSrc.route.call(this, fn, mode); },
+    newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() { this.vals = []; }
   })});
   MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
@@ -488,10 +492,7 @@ U.logic = (() => {
       this.valEndRoute = tmp.route(() => this.val = this.valEndRoute = null);
       this.send(tmp);
     },
-    route: function(fn, mode) {
-      if (this.val) fn(this.val);
-      return insp.MemSrc.route.call(this, fn, mode);
-    },
+    newRoute: function(fn) { if (this.val) fn(this.val); },
     cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
   })});
   MemSrc.TmpM = U.inspire({ name: 'MemSrc.TmpM', insps: { MemSrc }, methods: (insp, Insp) => ({
@@ -506,10 +507,7 @@ U.logic = (() => {
       this.valEndRoutes.set(tmp, tmp.route(() => (this.vals.rem(tmp), this.valEndRoutes.rem(tmp))));
       this.send(tmp);
     },
-    route: function(fn, mode) {
-      for (let val of this.vals) fn(val);
-      return insp.MemSrc.route.call(this, fn, mode);
-    },
+    newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() {
       for (let [ tmp, route ] of this.valEndRoutes) route.end();
       this.vals = Set();
@@ -548,6 +546,7 @@ U.logic = (() => {
       this.lastResult = C.skip;
       insp.FnSrc.init.call(this, ...args);
     },
+    newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
       let result = fn(...vals);
       return (result === this.lastResult) ? C.skip : (this.lastResult = result);
@@ -557,10 +556,8 @@ U.logic = (() => {
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   FnSrc.Tmp1 = U.inspire({ name: 'FnSrc.Tmp1', insps: { FnSrc }, methods: (insp, Insp) => ({
-    init: function(...params) {
-      this.lastResult = C.skip;
-      insp.FnSrc.init.call(this, ...params);
-    },
+    init: function(...params) { this.lastResult = C.skip; insp.FnSrc.init.call(this, ...params); },
+    newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
       // Call function; ignore `C.skip`
       let result = fn(...vals, this.lastResult);
@@ -570,10 +567,7 @@ U.logic = (() => {
       if (this.lastResult) this.lastResult.end();
       return this.lastResult = result;
     },
-    cleanup: function() {
-      insp.FnSrc.cleanup.call(this);
-      if (this.lastResult) this.lastResult.end();
-    }
+    cleanup: function() { insp.FnSrc.cleanup.call(this); this.lastResult && this.lastResult.end(); }
   })});
   FnSrc.TmpM = U.inspire({ name: 'FnSrc.TmpM', insps: { FnSrc }, methods: (insp, Insp) => ({
     // Interestingly, FnSrc.TmpM behaves exactly like FnSrc.PrmM! `fn`
@@ -583,9 +577,10 @@ U.logic = (() => {
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   
-  let Chooser = U.inspire({ name: 'Chooser', insps: { Tmp }, methods: (insp, Insp) => ({
+  let Chooser = U.inspire({ name: 'Chooser', insps: { Endable, Src }, methods: (insp, Insp) => ({
     init: function(names, src=null) {
-      insp.Tmp.init.call(this);
+      insp.Endable.init.call(this);
+      insp.Src.init.call(this);
       
       if (U.isInspiredBy(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
       
@@ -594,17 +589,49 @@ U.logic = (() => {
       this.srcs[this.activeSrcName].src.send(Tmp());
       
       if (src) {
-        let [ n1, n2 ] = names;
-        this.srcRoute = Scope(src, (tmp, dep) => { this.choose(n2, tmp); dep(() => this.choose(n1)); });
+        if (names.count() !== 2) throw Error(`Chooser requires exactly 2 names when used with a Src; got ${names.count()}: ${names.join(', ')}`);
+        let [ nOff, nOnn ] = names;
+        this.srcRoute = Scope(src, (tmp, dep) => {
+          
+          // Consider `Chooser(src); src.send(Tmp()); src.send(Tmp());`.
+          // In this situation a 2nd Tmp is sent before the 1st one
+          // expires. This means that `this.activeSrcName` will not
+          // toggle to "off", but rather remain the same, for the
+          // upcoming call `this.choose(nOnn, tmp)`. But because
+          // `Chooser.prototype.choose` ignores any duplicate choices,
+          // the newly received Tmp will be completely ignored, and
+          // never be produced external to the Chooser. For this reason
+          // if, when we receive a Tmp in an already-"onn" state, we
+          // need to first quickly toggle to "off" before choosing "onn"
+          // once again.
+          if (this.activeSrcName === nOnn) this.choose(nOff);
+          
+          this.choose(nOnn, tmp);
+          dep(() => this.choose(nOff));
+          
+        });
       }
       
     },
+    newRoute: function(fn) { if (this.onn()) fn(this.activeSrcName); },
     choose: function(name, tmp=null) {
       if (!this.srcs.has(name)) throw Error(`Invalid choice name: "${name}"`);
+      
+      // Prevent duplicate choices from producing multiple sends. If
+      // this isn't a duplicate send, immediately set the newly active
+      // name, to "lock the door behind us".
       if (name === this.activeSrcName) return;
-      this.srcs[this.activeSrcName].val.end();
+      let prevSrcName = this.activeSrcName;
       this.activeSrcName = name;
+      
+      // End previous Src val
+      this.srcs[prevSrcName].val.end();
+      
+      // Send new val to newly chosen Src
       this.srcs[this.activeSrcName].src.send(tmp || Tmp());
+      
+      // The Chooser itself also sends the currently active name
+      this.send(this.activeSrcName);
     },
     cleanup: function() {
       if (this.srcRoute) this.srcRoute.end();
@@ -625,8 +652,8 @@ U.logic = (() => {
         let deps = Set();
         let addDep = dep => {
           
-          // Allow raw functions; wrap any in Tmp
-          if (U.isType(dep, Function)) dep = Tmp(dep);
+          // Allow raw functions; wrap them in `Endable`
+          if (U.isType(dep, Function)) dep = Endable(dep);
           
           // If off, ignore
           if (dep.off()) return;
@@ -634,18 +661,13 @@ U.logic = (() => {
           // `deps` no longer existing requires all Deps to end
           if (!deps) return dep.end();
           
-          // TODO: Consider allowing Endables (not Tmps!) to be passed?
-          // This would mean that there is no additional Dep to check
-          // if the Dep gets prematurely ended!
-          // Stop holding the Dep in the Set, if it ends
-          let remFromDepsDep = dep.route(() => {
-            if (!deps) return;
-            deps.rem(dep);
-            deps.rem(remFromDepsDep);
-          });
+          if (U.isInspiredBy(dep, Tmp)) {
+            // Note `deps` falsiness check; `deps` may be set to `null`
+            let remDep = dep.route(() => deps && (deps.rem(dep), deps.rem(remDep)));
+            deps.add(remDep);
+          }
           
           deps.add(dep);
-          deps.add(remFromDepsDep);
           
           return dep;
           

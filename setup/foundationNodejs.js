@@ -3,7 +3,7 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
-  let { Tmp, Src, MemSrc, FnSrc, Scope } = U.logic;
+  let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope } = U.logic;
   
   let path = require('path');
   let { Foundation, Keep } = U.setup;
@@ -628,6 +628,76 @@
             
             srcs[0].send(null);
             if (tmps[2].onn()) throw Error(`Tmp didn't end`);
+            
+          },
+          async m => { // FnSrc.Prm1 receives Chooser vals as expected
+            
+            let choosers = Array.fill(3, () => Chooser([ 'a', 'b' ]));
+            let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            choosers[1].choose('b');
+            choosers[1].choose('a');
+            choosers[1].choose('b');
+            choosers[2].choose('b');
+            choosers[2].choose('b'); // Should be ignored!
+            choosers[1].choose('b'); // Should be ignored!
+            choosers[0].choose('a'); // Should be ignored!
+            choosers[0].choose('b');
+            choosers[1].choose('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
+            
+          },
+          async m => { // FnSrc.Prm1 receives MemSrc.Prm1 vals as expected
+            
+            let srcs = Array.fill(3, () => MemSrc.Prm1(Src(), 'a'));
+            let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            srcs[1].src.send('b');
+            srcs[1].src.send('a');
+            srcs[1].src.send('b');
+            srcs[2].src.send('b');
+            srcs[2].src.send('b'); // Should be ignored!
+            srcs[1].src.send('b'); // Should be ignored!
+            srcs[0].src.send('a'); // Should be ignored!
+            srcs[0].src.send('b');
+            srcs[1].src.send('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
             
           },
           
