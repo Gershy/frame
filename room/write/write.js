@@ -59,7 +59,11 @@ global.rooms.write = async foundation => {
             console.log('Created new user');
           }
           
-          let presence = hut.createRec('wrt.presence', [ writeHut, user ], { login: foundation.getMs() });
+          let presence = false
+            || user.relRec('wrt.presence')
+            || hut.createRec('wrt.presence', [ writeHut, user ], { login: foundation.getMs() });
+          if (presence.mems['lands.hut'] !== writeHut) return reply(Error(`Another user is signed in`));
+          
           writeHut.followRec(presence);
           
         }));

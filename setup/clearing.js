@@ -623,7 +623,6 @@ U.logic = (() => {
         
         // Define `addDep` and `addDep.scp` to enable nice shorthand
         let deps = Set();
-        let endFn = () => { let deps0 = deps; deps = null; deps0.each(d => d.end()); };
         let addDep = dep => {
           
           // Allow raw functions; wrap any in Tmp
@@ -655,7 +654,9 @@ U.logic = (() => {
         
         // If either `tmp` or this Scope ends, all existing dependencies
         // end as well. This relationship is itself a dependency
-        addDep( TmpAll([ this, tmp ]).endWith(endFn) );
+        let depsEndTmp = TmpAll([ this, tmp ]);
+        depsEndTmp.endWith(() => { let deps0 = deps; deps = null; deps0.each(d => d.end()); });
+        addDep(depsEndTmp);
         
         fn(tmp, addDep);
         
