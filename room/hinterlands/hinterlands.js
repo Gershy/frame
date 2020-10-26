@@ -2,8 +2,8 @@ global.rooms.hinterlands = async foundation => {
   
   let recordRoom = await foundation.getRoom('record');
   
-  let { RecTypes, RecType, Rec } = recordRoom;
-  let { Endable, Src, MemSrc, Tmp, TmpAll, TmpAny } = U.logic;
+  let { RecTypes, Rec } = recordRoom;
+  let { Src, Tmp } = U.logic;
   
   let Hut = U.inspire({ name: 'Hut', insps: { RecTypes, Rec }, methods: (insp, Insp) => ({
     

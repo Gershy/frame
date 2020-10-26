@@ -288,6 +288,10 @@
           }
           if (layout.size) domNode.style.fontSize = layout.size;
           if (layout.align) domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center' }[layout.align];
+          if (layout.gap) {
+            domNode.style.boxSizing = 'border-box';
+            domNode.style.padding = layout.gap;
+          }
         });
         renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
           

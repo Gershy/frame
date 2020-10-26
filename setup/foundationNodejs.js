@@ -581,6 +581,76 @@
             if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
             
           },
+          async m => { // FnSrc.Prm1 receives MemSrc.Prm1 vals as expected
+            
+            let srcs = Array.fill(3, () => MemSrc.Prm1(Src(), 'a'));
+            let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            srcs[1].src.send('b');
+            srcs[1].src.send('a');
+            srcs[1].src.send('b');
+            srcs[2].src.send('b');
+            srcs[2].src.send('b'); // Should be ignored!
+            srcs[1].src.send('b'); // Should be ignored!
+            srcs[0].src.send('a'); // Should be ignored!
+            srcs[0].src.send('b');
+            srcs[1].src.send('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
+            
+          },
+          async m => { // FnSrc.Prm1 receives Chooser vals as expected
+            
+            let choosers = Array.fill(3, () => Chooser([ 'a', 'b' ]));
+            let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            choosers[1].choose('b');
+            choosers[1].choose('a');
+            choosers[1].choose('b');
+            choosers[2].choose('b');
+            choosers[2].choose('b'); // Should be ignored!
+            choosers[1].choose('b'); // Should be ignored!
+            choosers[0].choose('a'); // Should be ignored!
+            choosers[0].choose('b');
+            choosers[1].choose('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
+            
+          },
           async m => { // FnSrc.Tmp1 only sends once, for multiple src sends, if value is always the same Tmp
             
             let srcs = Array.fill(3, () => Src());
@@ -628,76 +698,6 @@
             
             srcs[0].send(null);
             if (tmps[2].onn()) throw Error(`Tmp didn't end`);
-            
-          },
-          async m => { // FnSrc.Prm1 receives Chooser vals as expected
-            
-            let choosers = Array.fill(3, () => Chooser([ 'a', 'b' ]));
-            let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
-            let results = [];
-            fnSrc.route(v => results.push(v));
-            
-            choosers[1].choose('b');
-            choosers[1].choose('a');
-            choosers[1].choose('b');
-            choosers[2].choose('b');
-            choosers[2].choose('b'); // Should be ignored!
-            choosers[1].choose('b'); // Should be ignored!
-            choosers[0].choose('a'); // Should be ignored!
-            choosers[0].choose('b');
-            choosers[1].choose('a');
-            
-            let expected = [
-              [ 'a', 'a', 'a' ],
-              [ 'a', 'b', 'a' ],
-              [ 'a', 'a', 'a' ],
-              [ 'a', 'b', 'a' ],
-              [ 'a', 'b', 'b' ],
-              [ 'b', 'b', 'b' ],
-              [ 'b', 'a', 'b' ]
-            ];
-            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
-            expected.each(([ e1, e2, e3 ], i) => {
-              
-              let [ r1, r2, r3 ] = results[i];
-              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
-              
-            });
-            
-          },
-          async m => { // FnSrc.Prm1 receives MemSrc.Prm1 vals as expected
-            
-            let srcs = Array.fill(3, () => MemSrc.Prm1(Src(), 'a'));
-            let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
-            let results = [];
-            fnSrc.route(v => results.push(v));
-            
-            srcs[1].src.send('b');
-            srcs[1].src.send('a');
-            srcs[1].src.send('b');
-            srcs[2].src.send('b');
-            srcs[2].src.send('b'); // Should be ignored!
-            srcs[1].src.send('b'); // Should be ignored!
-            srcs[0].src.send('a'); // Should be ignored!
-            srcs[0].src.send('b');
-            srcs[1].src.send('a');
-            
-            let expected = [
-              [ 'a', 'a', 'a' ],
-              [ 'a', 'b', 'a' ],
-              [ 'a', 'a', 'a' ],
-              [ 'a', 'b', 'a' ],
-              [ 'a', 'b', 'b' ],
-              [ 'b', 'b', 'b' ],
-              [ 'b', 'a', 'b' ]
-            ];
-            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
-            expected.each(([ e1, e2, e3 ], i) => {
-              
-              let [ r1, r2, r3 ] = results[i];
-              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
-              
-            });
             
           },
           
@@ -859,7 +859,6 @@
           }
           
         ];
-        
         for (let test of tests) {
           try { await test(); } catch (err) {
             let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
@@ -1185,7 +1184,7 @@
         let ms = this.getMs();
         
         // Stream the body
-        // TODO: Watch for exploits; slow loris, etc.
+        // TODO: Watch for exploits - slow loris, etc.
         let chunks = [];
         req.on('data', chunk => chunks.push(chunk));
         let body = await Promise(r => req.on('end', () => r(chunks.join(''))));
@@ -1264,9 +1263,6 @@
         // 3. The `hut.tell` for #1 occurs - how to avoid the server
         //    thinking that *this* is the response for { reply: true }??
         
-        // TODO: Maybe there should be no such thing as `hut.tell`?? Or
-        // at least it should be inaccessible in situations where
-        
         // Synced requests end here - `road.tell` MUST occur or the
         // request will hang indefinitely
         // TODO: Consider a timeout to deal with improper usage
@@ -1285,9 +1281,8 @@
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells then send the oldest, otherwise hold the response.
-        // Finally return all but one poll. TODO: A more powerful
-        // technique would be to learn from the client side how many
-        // polls we are allowed to hold at once!
+        // Finally return all but one poll. TODO: Could we learn from
+        // the client how many polls we are allowed to hold at once??
         if (road.waitTells.isEmpty()) {
           
           road.waitResps.push(res);
