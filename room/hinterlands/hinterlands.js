@@ -105,15 +105,12 @@ global.rooms.hinterlands = async foundation => {
       this.foundation = foundation;
       this.typeToClsFns = {};
       
-      // Only ParHuts truly have the capabilities of `RecTypes`
+      // Always perfer ParHut's `RecTypes` functionality!
       if (!parHut) insp.RecTypes.init.call(this);
-      
-      let hutType = (parHut || this).getType('lands.hut');
-      insp.Rec.init.call(this, hutType, uid);
+      insp.Rec.init.call(this, (parHut || this).getType('lands.hut'), uid);
       
       // How regularly communication needed to confirm existence
       this.heartMs = heartMs;
-      if (this.heartMs === 30000) throw Error('WHY THO');
       
       // The most current version this Hut has synced
       this.syncVersion = 0;
@@ -123,7 +120,7 @@ global.rooms.hinterlands = async foundation => {
       
       if (this.isAfar()) {
         
-        /// {ABOVE= remote -> a representation of a Client
+        /// {ABOVE= afar -> a representation of a Client
         
         // Below must communicate before timeout to stay connected
         this.dryHeartTimeout = null;
@@ -143,7 +140,7 @@ global.rooms.hinterlands = async foundation => {
         // Begin ensuring that the Client shows signs of life
         this.refreshDryTimeout();
         
-        /// =ABOVE} {BELOW= remote -> a representation of our Server
+        /// =ABOVE} {BELOW= afar -> a representation of our Server
         
         /// =BELOW}
         
@@ -153,7 +150,7 @@ global.rooms.hinterlands = async foundation => {
         this.allRecs = Map();
         this.allRecs.set(this.uid, this);
         
-        // Buffer premature syncs until gap is filled
+        // Buffer initial syncs as long as we're missing versions
         this.earlySyncs = Map();
         
         this.roadSrc('error').route(({ hut, msg, reply }) => { /* nothing */ });
@@ -176,7 +173,7 @@ global.rooms.hinterlands = async foundation => {
         /// =ABOVE} {BELOW=
         
         // To anticipate latency wait LESS than `this.heartMs`
-        this.safeHeartMs = Math.max(heartMs * 0.85 - 1000, heartMs - 2000);
+        this.safeHeartMs = Math.max(heartMs * 0.95 - 1000, heartMs - 2500);
         
         // Timeout for informing Above we're present
         this.tellHeartTimeout =  null;
