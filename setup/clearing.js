@@ -583,13 +583,21 @@ U.logic = (() => {
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   
-  let Chooser = U.inspire({ name: 'Chooser', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    init: function(names) {
-      insp.Endable.init.call(this);
-      insp.Src.init.call(this);
-      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1(Src()) ]);
+  let Chooser = U.inspire({ name: 'Chooser', insps: { Tmp }, methods: (insp, Insp) => ({
+    init: function(names, src=null) {
+      insp.Tmp.init.call(this);
+      
+      if (U.isInspiredBy(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
+      
       this.activeSrcName = names[0];
+      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1(Src()) ]);
       this.srcs[this.activeSrcName].src.send(Tmp());
+      
+      if (src) {
+        let [ n1, n2 ] = names;
+        this.srcRoute = Scope(src, (tmp, dep) => { this.choose(n2, tmp); dep(() => this.choose(n1)); });
+      }
+      
     },
     choose: function(name, tmp=null) {
       if (!this.srcs.has(name)) throw Error(`Invalid choice name: "${name}"`);
@@ -598,7 +606,10 @@ U.logic = (() => {
       this.activeSrcName = name;
       this.srcs[this.activeSrcName].src.send(tmp || Tmp());
     },
-    cleanup: function() { this.srcs[this.activeSrcName].val.end(); }
+    cleanup: function() {
+      if (this.srcRoute) this.srcRoute.end();
+      this.srcs[this.activeSrcName].val.end();
+    }
   })});
   
   let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
@@ -615,12 +626,18 @@ U.logic = (() => {
         let endFn = () => { let deps0 = deps; deps = null; deps0.each(d => d.end()); };
         let addDep = dep => {
           
+          // Allow raw functions; wrap any in Tmp
+          if (U.isType(dep, Function)) dep = Tmp(dep);
+          
           // If off, ignore
           if (dep.off()) return;
           
           // `deps` no longer existing requires all Deps to end
           if (!deps) return dep.end();
           
+          // TODO: Consider allowing Endables (not Tmps!) to be passed?
+          // This would mean that there is no additional Dep to check
+          // if the Dep gets prematurely ended!
           // Stop holding the Dep in the Set, if it ends
           let remFromDepsDep = dep.route(() => {
             if (!deps) return;

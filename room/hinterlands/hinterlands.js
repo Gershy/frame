@@ -668,10 +668,17 @@ global.rooms.hinterlands = async foundation => {
     },
     followRec: function(rec) {
       
+      let tmp = Tmp();
+      
       for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, +1);
-      return Tmp(() => {
+      tmp.endWith(() => {
         for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, -1);
       });
+      
+      let route = rec.route(() => tmp.end());
+      tmp.endWith(route);
+      
+      return tmp;
       
     },
     

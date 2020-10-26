@@ -268,10 +268,10 @@ Hut at the very bottom runs using a single Reality.
     },
     ancestry: function() { return !this.parent ? [] : [ this, ...this.parent.ancestry() ]; },
     getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
-    addReal: function(real, params=ctx=>({})) {
+    addReal: function(real, params={}) {
       
+      // If String was given instead of Real, create Real
       if (U.isType(real, String)) {
-        
         if (U.isType(params, Function)) {
           params = params({
             layouts: (...p) => {
@@ -279,13 +279,17 @@ Hut at the very bottom runs using a single Reality.
               return childOuterLayout ? [ childOuterLayout ] : [];
             }
           });
+        } else {
+          if (!params.has('layouts')) params.layouts = [];
+          if (this.innerLayout) params.layouts.unshift(this.innerLayout.getChildOuterLayout());
         }
         real = Real({ name: real, ...params });
-        
       }
+      
       if (!U.isType(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
       if (real.parent) throw Error(`Real already has a parent`);
       if (real.tech) throw Error(`Real already has tech`);
+      
       real.parent = this;
       real.tech = this.tech;
       
