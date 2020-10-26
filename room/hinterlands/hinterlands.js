@@ -668,16 +668,10 @@ global.rooms.hinterlands = async foundation => {
     },
     followRec: function(rec) {
       
-      //
-      let allRecsFlat = rec => [ rec, ...rec.mems.toArr(allRecsFlat).flat(Infinity) ];
-      
-      
-      //let recs = [ rec, ...rec.mems.toArr(r => r) ].map(rec => (rec.uid[0] !== '!' && rec.uid !== this.uid) ? rec : C.skip);
-      
-      let recs = allRecsFlat(rec).map(rec => (rec.uid.hasHead('!') || rec.uid === this.uid) ? C.skip : rec);
-      console.log(`Hut ${this.uid} followed ${recs.count()} Recs`);
-      for (let rec of recs) this.modRecFollowStrength(rec, +1);
-      return Tmp(() => { for (let rec of recs) this.modRecFollowStrength(rec, -1); });
+      for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, +1);
+      return Tmp(() => {
+        for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, -1);
+      });
       
     },
     

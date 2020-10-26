@@ -462,7 +462,7 @@ U.logic = (() => {
       insp.MemSrc.init.call(this, src);
       this.val = val;
     },
-    receive: function(val) { this.val = val; this.send(val); },
+    receive: function(val) { if (val === this.val) return; this.val = val; this.send(val); },
     route: function(fn, mode) { if (this.val !== C.skip) fn(this.val); return insp.MemSrc.route.call(this, fn, mode); },
     cleanup: function() { this.val = null; }
   })});

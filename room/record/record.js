@@ -86,9 +86,14 @@ global.rooms.record = async foundation => {
     },
     desc: function() { return `${this.type.name} @ ${this.uid}`; },
     mem: function(termTail) {
+      // TODO: This is ugly!
       if (termTail[0] !== '.') termTail = `.${termTail}`;
       for (let term in this.mems) if (term.has(termTail)) return this.mems[term];
       return null;
+    },
+    getRecJurisdiction: function*() {
+      yield this;
+      for (let [ , mem ] of this.mems) yield* mem.getRecJurisdiction();
     },
     relSrc: function(recType, term=null) {
       
@@ -131,15 +136,26 @@ global.rooms.record = async foundation => {
       if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.src.send(newVal);
       return this;
     },
-    modVal: function(fn) { return this.setVal(fn(this.val)); },
+    modVal: function(fn) { return this.setVal(fn(this.getVal())); },
     dltVal: function(delta=null) {
-      // Note that if we have `rec.valSrc.route(v => { ... })` and a
-      // send occurs, `v` may not be the Rec's full value - to work with
-      // the full value one needs to consult `rec.val` at the time of
-      // the send!
+      
+      // Note that when `someRec.valSrc.route(val => { ... })` sends
+      // there are two values available: first, `val` represents a
+      // *delta*; aka only any fields that have changed. Second, the
+      // complete value is always available via `someRec.getVal()`
+      
+      // Ignore any empty deltas
       if (!delta || delta.isEmpty()) return;
-      this.valSrc.src.send({ ...this.getVal(), ...delta });
+      
+      // Note that we manually set and send the val - this is so that
+      // the full val gets set first, and then only the delta is sent.
+      // This allows consuming code to detect that certain properties
+      // have not changed, which may allow unnecessary reactions to be
+      // avoided.
+      this.valSrc.val = { ...this.getVal(), ...delta };
+      this.valSrc.send(delta);
       return this;
+      
     },
     
     end: function() {
