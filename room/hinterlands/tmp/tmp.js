@@ -132,14 +132,9 @@ global.rooms['hinterlands.tmp'] = async foundation => {
   let render = (parHut, rec, parentNode=Node(null, 'root', document.body), seen=Set()) => {
     
     let basin = Basin();
-    
-    if (rec.type.name === 'perm.perm') {
-      basin.dry();
-      return basin;
-    }
+    if (rec.type.name === 'perm.perm') { basin.dry(); return basin; }
     
     let circ = seen.has(rec);
-    
     seen.add(rec);
     basin.add(Drop(null, () => seen.rem(rec)));
     
