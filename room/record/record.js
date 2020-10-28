@@ -131,7 +131,15 @@ global.rooms.record = async foundation => {
     },
     relRecs: function(recType, term) { return this.relSrc(recType, term).vals; },
     relRec: function(recType, term) { for (let r of this.relRecs(recType, term)) return r; return null; },
-    getVal: function(param=null) { return param ? this.valSrc.val[param] : this.valSrc.val; },
+    
+    getVal: function(param=null) {
+      if (!param) return this.valSrc.val;
+      
+      if (U.isType(this.valSrc.val, Object) && this.valSrc.val.has(param)) return this.valSrc.val[param];
+      for (let [ term, mem ] of this.mems) { let val = mem.getVal(param); if (val) return val; }
+      return null;
+    },
+    
     setVal: function(newVal) {
       if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.src.send(newVal);
       return this;
