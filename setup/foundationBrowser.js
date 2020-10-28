@@ -445,7 +445,8 @@
             let input = document.createElement('input');
             input.style.gain({
               position: 'absolute', display: 'block', boxSizing: 'border-box',
-              width: '100%', height: '100%', padding: '2px', border: 'none',
+              width: '100%', height: '100%', left: '0', top: '0',
+              padding: 'inherit', border: 'none',
               backgroundColor: 'transparent',
               textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit'
             });

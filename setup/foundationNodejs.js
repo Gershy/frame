@@ -1213,12 +1213,12 @@
         // best practice to remove identity info from params
         let iden = params.splice('hutId');
         
-        // If params are empty at this point, look at http path
-        if (params.isEmpty()) params = (p => {
+        // Detect "command" from `urlPath` if none given explicitly
+        if (!params.has('command')) params = (p => {
           // Map typical http requests to their meaning within Hut
-          if (p === '/') return { command: 'syncInit', reply: true };
-          if (p === '/favicon.ico') return { command: 'getIcon', reply: true };
-          if (urlPath.length > 1) return { command: urlPath.slice(1), reply: true };
+          if (p === '/') return { command: 'syncInit', ...params, reply: true };
+          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: true };
+          if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: true };
           return {};
         })(urlPath);
         
