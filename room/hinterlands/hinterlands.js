@@ -663,21 +663,6 @@ global.rooms.hinterlands = async foundation => {
       return fol;
       
     },
-    followRec: function(rec) {
-      
-      let tmp = Tmp();
-      
-      for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, +1);
-      tmp.endWith(() => {
-        for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, -1);
-      });
-      
-      let route = rec.route(() => tmp.end());
-      tmp.endWith(route);
-      
-      return tmp;
-      
-    },
     
     // Listening for signs of life from BelowHut
     refreshDryTimeout: function() {
@@ -744,6 +729,34 @@ global.rooms.hinterlands = async foundation => {
       /// =ABOVE} 
       
       return tmp;
+      
+    },
+    followRec: function(rec) {
+      
+      /// {ABOVE=
+      
+      let tmp = Tmp();
+      
+      for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, +1);
+      tmp.endWith(() => {
+        for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, -1);
+      });
+      
+      let route = rec.route(() => tmp.end());
+      tmp.endWith(route);
+      
+      return tmp;
+      
+      /// =ABOVE} {BELOW=
+      
+      // Note that if Below manages to call `followRec` on some `rec`
+      // instance, it is obviously already following that Rec. The
+      // purpose of even being able to call `followRec` from Below is to
+      // reduce the need to use {BEARING= =BEARING} wrappers in
+      // implementing code!
+      return Tmp.endedTmp();
+      
+      /// =BELOW}
       
     },
     
