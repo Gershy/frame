@@ -67,7 +67,7 @@ if (args[0] === '{') {     // Process object literal
   
   orig.split(' ').forEach(entry => {
     let [ k, ...v ] = entry.trim().split('=');
-    k = k.polish('-').split('.');
+    k = k.replace(/^-*|-*$/g, '').split('.');
     let lastProp = k.pop();
     let ptr = args;
     for (let prop of k) { if (!ptr.has(prop)) ptr[prop] = {}; ptr = ptr[prop]; }
