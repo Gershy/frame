@@ -3,7 +3,7 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
-  let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope } = U.logic;
+  let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
   let path = require('path');
   let { Foundation, Keep } = U.setup;
@@ -381,6 +381,16 @@
         ]);
         
         let tests = [
+          
+          async m => { // Number.prototype.toArr
+            let arr = (10).toArr(v => v);
+            if (!U.isType(arr, Array)) throw Error(`Expected Array; got ${U.nameOf(arr)}`);
+            if (arr.count() !== 10) throw Error(`Expected exactly 10 items; got ${arr.count()}`);
+            
+            for (let i = 0; i < arr.count(); i++) {
+              if (arr[i] !== i) throw Error(`Expected ${i} at position ${i}; got ${arr[i]}`);
+            }
+          },
           
           async m => { // Promise.allObj
             let prms = {
@@ -856,6 +866,57 @@
               if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
             }
             
+          },
+          
+          async m => { // Range pos 1 param
+            let arr = [ ...Range(10) ];
+            if (arr[0] !== 0) throw Error(`Result should start with 0; got ${arr[0]}`);
+            if (arr.invert()[0] !== 9) throw Error(`Result should end with 9; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range neg 1 param
+            let arr = [ ...Range(-10) ];
+            if (arr[0] !== 0) throw Error(`Result should start with 0; got ${arr[0]}`);
+            if (arr.invert()[0] !== -9) throw Error(`Result should end with -9; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range pos 2 params
+            let arr = [ ...Range(5, 15) ];
+            if (arr[0] !== 5) throw Error(`Result should start with 5; got ${arr[0]}`);
+            if (arr.invert()[0] !== 14) throw Error(`Result should end with 14; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range neg 2 params
+            let arr = [ ...Range(-5, -15) ];
+            if (arr[0] !== -5) throw Error(`Result should start with -5; got ${arr[0]}`);
+            if (arr.invert()[0] !== -14) throw Error(`Result should end with -14; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range neg 2 params; upwards
+            let arr = [ ...Range(-15, -5) ];
+            if (arr[0] !== -15) throw Error(`Result should start with -5; got ${arr[0]}`);
+            if (arr.invert()[0] !== -6) throw Error(`Result should end with -14; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range inverted pos 1 param
+            let arr = [ ...Range(10).invert() ];
+            if (arr[0] !== 9) throw Error(`Result should end with 9; got ${arr[0]}`);
+            if (arr.invert()[0] !== 0) throw Error(`Result should start with 0; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range inverted neg 1 param
+            let arr = [ ...Range(-10).invert() ];
+            if (arr[0] !== -9) throw Error(`Result should end with -9; got ${arr[0]}`);
+            if (arr.invert()[0] !== 0) throw Error(`Result should start with 0; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range inverted pos 2 params
+            let arr = [ ...Range(5, 15).invert() ];
+            if (arr[0] !== 14) throw Error(`Result should end with 14; got ${arr[0]}`);
+            if (arr.invert()[0] !== 5) throw Error(`Result should start with 5; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range inverted neg 2 params
+            let arr = [ ...Range(-5, -15).invert() ];
+            if (arr[0] !== -14) throw Error(`Result should end with -14; got ${arr[0]}`);
+            if (arr.invert()[0] !== -5) throw Error(`Result should start with -5; got ${arr.invert()[0]}`);
+          },
+          async m => { // Range inverted neg 2 params; upwards
+            let arr = [ ...Range(-15, -5).invert() ];
+            if (arr[0] !== -6) throw Error(`Result should end with -14; got ${arr[0]}`);
+            if (arr.invert()[0] !== -15) throw Error(`Result should start with -5; got ${arr.invert()[0]}`);
           }
           
         ];
@@ -1186,8 +1247,25 @@
         // Stream the body
         // TODO: Watch for exploits - slow loris, etc.
         let chunks = [];
+        req.setEncoding('utf8');
         req.on('data', chunk => chunks.push(chunk));
-        let body = await Promise(r => req.on('end', () => r(chunks.join(''))));
+        let body = await Promise((resolve, reject) => {
+          req.on('end', () => resolve(chunks.join('')));
+          req.on('error', err => reject(Error(`Client abandoned http request (err.message)`)));
+        });
+        
+        // TODO: Depending on how the handshake works it may be possible
+        // for `res` to end at absolutely any moment. While receiving
+        // chunks these errors will be handled nicely, since for errors
+        // occuring early on event cleanup is extremely straightforward.
+        // But `res` can end at any time (or can it??), including when
+        // it's queued up in a list of longpolls. That could be really
+        // awkward, since a critical sync could be transferred using an
+        // invalid `res` request, leaving the client with a sync gap for
+        // an indefinite amount of time. Any `res` object which becomes
+        // invalid needs to be taken out of the queue of polls! And if I
+        // think about this more it may turn out that any client whose
+        // `res` goes invalid may need to sync-from-scratch...
         
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
