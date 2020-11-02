@@ -2,8 +2,6 @@
 
 Error.stackTraceLimit = 200;
 
-let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
-
 let C = global.C = {
   skip: undefined,
   notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
@@ -12,6 +10,14 @@ let C = global.C = {
     fn['~noInspCollision'] = true;
     return fn;
   }
+};
+let protoDef = (Cls, name, value) => {
+  Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
+  
+  // Note that these properties should not be available on `global`! If
+  // they were available, typos resulting in `protoDef` names resolve to
+  // unexpected values, instead of `C.skip`.
+  if (Cls === global.constructor) global[name] = C.skip;
 };
 
 protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
@@ -51,8 +57,6 @@ protoDef(Object, 'gain', function(obj) {
   return this;
 });
 protoDef(Object, 'to', function(f) { return f(this); });
-protoDef(Object, 'pref', function(obj) { for (let k in obj) if (this.has(k)) this[k] = obj[k]; return this; });
-protoDef(Object, 'def', function(k, def=null) { return this.has(k) ? this[k] : def; });
 protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
   if (U.isType(keys, String)) keys = keys.split('.');
@@ -88,11 +92,7 @@ protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'add', Array.prototype.push);
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 protoDef(Array, 'count', function() { return this.length; });
-protoDef(Array, 'invert', function() {
-  let ret = [];
-  for (let i = this.length - 1; i >= 0; i--) ret.push(this[i]);
-  return ret;
-});
+protoDef(Array, 'invert', function() { let r = []; for (let i = this.length - 1; i >= 0; i--) r.push(this[i]); return r; });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -121,15 +121,14 @@ protoDef(String, 'lower', String.prototype.toLowerCase);
 protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
 protoDef(String, 'code', function(ind=0) { return this.charCodeAt(0); });
 protoDef(String, 'count', function() { return this.length; });
-protoDef(String, 'polish', function(c=null) {
-  if (c === null) return this.trim();
-  let [ ind0, ind1 ] = [ 0, this.length - 1 ];
-  while (this[ind0] === c[0]) ind0++;
-  while (this[ind1] === c[0]) ind1--;
-  return this.substr(ind0, ind1 + 1);
+protoDef(String, 'indent', function(amt=2, char=' ', indentStr=char[0].repeat(amt)) {
+  return this.split('\n').map(ln => `${indentStr}${ln}`).join('\n');
 });
 
 protoDef(Number, 'char', function() { return String.fromCharCode(this); });
+protoDef(Number, 'each', function(fn) { for (let i = 0; i < this; i++) fn(i); });
+protoDef(Number, 'toArr', function(fn) { let arr = Array(this); for (let i = 0; i < this; i++) arr[i] = fn(i); return arr; });
+protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return p; });
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
@@ -190,6 +189,13 @@ Promise.allObj = async obj => {
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
+Promise.defer = () => {
+  let resolve = null, reject = null;
+  let prm = Promise((rsv, rjc) => [ resolve, reject ] = [ rsv, rjc ]);
+  prm.resolve = resolve;
+  prm.reject = reject;
+  return prm;
+};
 Promise.ext = () => {
   let rsv=null, rjc=null;
   let prm = Promise((rsv0, rjc0) => (rsv=rsv0, rjc=rjc0));
@@ -303,7 +309,7 @@ let U = global.U = {
       }
       let fn = methodsAtName.length ? methodsAtName[0] : C.noFn(methodName);
       parInsps[name][methodName] = fn;
-      protoDef(Insp, methodName, fn);
+      protoDef(Insp, methodName.hasHead('Symbol.') ? Symbol[methodName.slice(7)] : methodName, fn);
     }
     
     protoDef(Insp, 'constructor', Insp);
@@ -338,7 +344,7 @@ let U = global.U = {
     let initSpace = 0;
     while (lines[0][initSpace].match(/\s/)) initSpace++;
     
-    return lines.map(ln => ln.slice(initSpace)).join('\n');
+    return lines.map(ln => ln.slice(initSpace)).join('\n').trimEnd(); // TODO: "trimTail" would be more consistent
     
   },
   
@@ -371,11 +377,11 @@ U.logic = (() => {
     onn: function() { return true; },
     off: function() { return !this.onn(); },
     cleanup: function() {},
-    end: function() {
+    end: function(...args) {
       if (this.off()) return false;
       this.onn = () => false;
       // Insp.globalRegistry.rem(this);
-      this.cleanup();
+      this.cleanup(...args);
       return true;
     }
   })});
@@ -393,6 +399,11 @@ U.logic = (() => {
   let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
     
     $nullFns: { add: ()=>{}, rem: ()=>{} },
+    $endedTmp: () => {
+      let tmp = Insp(); tmp.end();
+      Insp.endedTmp = () => tmp;
+      return Insp.endedTmp();
+    },
     
     init: function(fn=null) {
       insp.Src.init.call(this);
@@ -400,19 +411,19 @@ U.logic = (() => {
       if (fn) this.route(fn, 'prm');
     },
     ref: function() { return this; },
-    end: function() { return this.sendAndEnd(); },
-    send: function() { return this.sendAndEnd(); },
-    sendAndEnd: function() {
+    end: function(...args) { return this.sendAndEnd(...args); },
+    send: function(...args) { return this.sendAndEnd(...args); },
+    sendAndEnd: function(...args) {
       // Sending and ending are synonymous for a Tmp
       if (!insp.Endable.end.call(this)) return; // Check if we're already ended
-      insp.Src.send.call(this);
+      insp.Src.send.call(this, ...args);
       this.fns = Insp.nullFns;
       return;
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
       if (U.isType(val, Function)) return this.route(val, mode) || this;
-      if (U.isInspiredBy(val, Endable)) return this.route(() => val.end(), mode) || this;
+      if (U.isInspiredBy(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
       throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
     }
   })});
@@ -434,7 +445,7 @@ U.logic = (() => {
         return route;
       });
     },
-    cleanup: function() { for (let r of this.routes) r.end() }
+    cleanup: function() { for (let r of this.routes) r.end(); }
   })});
   let TmpAny = U.inspire({ name: 'TmpAny', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(tmps) {
@@ -446,14 +457,8 @@ U.logic = (() => {
   })});
   
   let MemSrc = U.inspire({ name: 'MemSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    $init: (mode='tmp', amt='many', src) => {
-      if (![ 'tmp', 'prm' ].includes(mode)) throw Error(`Invalid mode: "${mode}"`);
-      if (![ 'one', 'many' ].includes(amt)) throw Error(`Invalid amt: "${amt}"`);
-      return Insp[`${mode === 'tmp' ? 'Tmp' : 'Prm'}${amt === 'many' ? 'M' : '1'}`](src);
-    },
     init: function(src) {
       if (U.isType(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
-      
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
       this.src = src;
@@ -489,7 +494,7 @@ U.logic = (() => {
       if (tmp.off()) return; // Don't bother with inactive Tmps
       if (this.valEndRoute) { this.valEndRoute.end(); this.valEndRoute = null; }
       this.val = tmp;
-      this.valEndRoute = tmp.route(() => this.val = this.valEndRoute = null);
+      this.valEndRoute = tmp.route(() => (tmp.end(), this.val = this.valEndRoute = null));
       this.send(tmp);
     },
     newRoute: function(fn) { if (this.val) fn(this.val); },
@@ -625,7 +630,11 @@ U.logic = (() => {
       this.activeSrcName = name;
       
       // End previous Src val
-      this.srcs[prevSrcName].val.end();
+      // Note that if `val` is ended externally, the `MemSrc.Tmp1` that
+      // stored it may have already set its own `val` to `null`. If this
+      // is the case, the `MemSrc.Tmp1` is already taken care of ending
+      // `val`, so all is good - we just need to check for nullness
+      this.srcs[prevSrcName].val && this.srcs[prevSrcName].val.end();
       
       // Send new val to newly chosen Src
       this.srcs[this.activeSrcName].src.send(tmp || Tmp());
@@ -638,7 +647,6 @@ U.logic = (() => {
       this.srcs[this.activeSrcName].val.end();
     }
   })});
-  
   let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(src, fn) {
       
@@ -672,12 +680,12 @@ U.logic = (() => {
           return dep;
           
         };
-        addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
+        addDep.scp = (...args) => addDep(this.subScope(...args));
         
         // If either `tmp` or this Scope ends, all existing dependencies
         // end as well. This relationship is itself a dependency
         let depsEndTmp = TmpAll([ this, tmp ]);
-        depsEndTmp.endWith(() => { let deps0 = deps; deps = null; deps0.each(d => d.end()); });
+        depsEndTmp.endWith((...args) => { let deps0 = deps; deps = null; deps0.each(d => d.end(...args)); });
         addDep(depsEndTmp);
         
         fn(tmp, addDep);
@@ -685,9 +693,9 @@ U.logic = (() => {
       });
       
     },
+    subScope: function(...args) { return this.constructor.call(null, ...args); },
     cleanup: function() { this.srcRoute.end(); }
   })});
-  
   let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
     
     $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.nameOf(v)} -> "${p}" failed: (${e.message})`; throw e; } },
@@ -700,8 +708,31 @@ U.logic = (() => {
     }
     
   })});
+  let Range = U.inspire({ name: 'Range', methods: (insp, Insp) => ({
+    init: function(...args) {
+      [ this.inc, this.exc ] = args.count() === 1 ? [ 0, args[0] ] : args;
+    },
+    invert: function() {
+      let Cls = this.constructor;
+      return (this.inc < this.exc) ? Cls(this.exc - 1, this.inc - 1) : Cls(this.exc + 1, this.inc + 1);
+    },
+    'Symbol.iterator': function*(dir='fwd') {
+      let [ inc, exc ] = [ this.inc, this.exc ];
+      if (inc < exc)  for (let v = inc; v < exc; v++) yield v;
+      else            for (let v = inc; v > exc; v--) yield v;
+    }
+  })});
   
-  return { Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny, MemSrc, FilterSrc, FnSrc, Chooser, Scope, Slots };
+  return {
+    // Basic logic
+    Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny,
+    
+    // Advanced logic
+    MemSrc, FilterSrc, FnSrc, Chooser, Scope,
+    
+    // Utility
+    Slots, Range
+  };
   
 })();
 
