@@ -316,10 +316,12 @@ let U = global.U = {
     return Insp;
   },
   isType: (val, Cls) => {
-    // Note: This is hopefully the *only* use of `!=` throughout Hut!
+    // Note: This is hopefully the *only* use of `==` throughout Hut!
     // Falsy only for unboxed values (`null` and `undefined`)
     if (Cls && Cls.Native) Cls = Cls.Native;
-    return val != null && val.constructor === Cls;
+    if (val == null || val.constructor !== Cls) return false;
+    if (Cls === Number && val === NaN) return false;
+    return true;
   },
   isTypes: (val, ...Classes) => {
     for (let Cls of Classes) if (U.isType(val, Cls)) return true;
