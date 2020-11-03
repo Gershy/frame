@@ -1,8 +1,6 @@
 global.rooms['hinterlands.htmlApp'] = async foundation => {
   let HtmlApp = U.inspire({ name: 'HtmlApp', methods: (insp, Insp) => ({
-    init: function({ name }) {
-      this.name = name;
-    },
+    init: function({ name }) { this.name = name; },
     decorateApp: function(parHut) {
       /// {ABOVE=
       parHut.roadSrc('syncInit').route(async ({ road, srcHut, msg, reply }) => {
@@ -17,6 +15,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
         let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
           return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
         };
+        let { textSize='100%' } = msg;
         
         reply(U.multilineString(`
           <!doctype html>
@@ -28,7 +27,16 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
               <style type="text/css">
                 body { position: relative; opacity: 0; transition: opacity 750ms linear; }
-                body.loaded { opacity: 1; }
+                body::before {
+                  content: ''; display: block; position: absolute;
+                  left: 0; right: 0; top: 0; bottom: 0;
+                  box-shadow: inset 0 0 20px 10px rgba(255, 255, 255, 1);
+                  z-index: 1000;
+                  pointer-events: none;
+                  transition: box-shadow 100ms linear;
+                }
+                body.loaded { opacity: 1; font-size: ${textSize}; }
+                body.focus::before { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 1); }
               </style>
               <script type="text/javascript">window.global = window;</script>
               <script type="text/javascript">global.roomDebug = {};</script>
@@ -36,9 +44,16 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
               <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
               <script type="text/javascript">
-                window.addEventListener('load', () => document.body.classList.add('loaded'));
-                window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
                 global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
+                
+                global.domAvailable.then(() => {
+                  window.addEventListener('load', () => document.body.classList.add('loaded'));
+                  window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
+                  window.addEventListener('focus', () => document.body.classList.add('focus'));
+                  window.addEventListener('blur', () => document.body.classList.remove('focus'));
+                  window.focus();
+                });
+                
                 let foundation = global.foundation = U.setup.FoundationBrowser({
                   ...${JSON.stringify(foundation.origArgs)},
                   bearing: 'below',
@@ -178,8 +193,43 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
         `));
         
       });
-      /// =ABOVE}
       
+      parHut.roadSrc('html.multi').route(async ({ road, srcHut, msg, reply }) => {
+        
+        let { num='4', w='400', h='400', textSize='100%' } = msg;
+        
+        let genIframe = n => {
+          let paramStr = ({
+            id: `multi${n}`,
+            title: `Multi #${n + 1}`,
+            width: w, height: h,
+            src: `?textSize=${textSize}`
+          }).toArr((v, k) => `${k}="${v}"`).join(' ');
+          return `<iframe ${paramStr}></iframe>`
+        }
+        let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
+          return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
+        };
+        
+        reply(U.multilineString(`
+          <!doctype html>
+          <html>
+            <head>
+              <title>${this.name.upper()}</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1"/>
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
+              <style type="text/css">
+                body, html { padding: 0; margin: 0; }
+                body { margin: 2px; }
+                iframe { display: inline-block; margin: 2px; vertical-align: top; border: none; }
+              </style>
+            </head>
+            <body>${parseInt(num, 10).toArr(genIframe).join('')}</body>
+          </html>
+        `));
+        
+      });
+      /// =ABOVE}
     }
   })});
   return { HtmlApp };
