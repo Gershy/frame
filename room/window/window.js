@@ -14,6 +14,73 @@ global.rooms['window'] = foundation => ({ open: async () => {
     underline: modCode(4, 22),
     reset: modCode(0)
   };
+  let cmpSeqs = (s1, s2) => {
+    let len = s1.count();
+    if (len !== s2.count()) return false;
+    for (let i = 0; i < len; i++) if (s1[i] !== s2[i]) return false;
+    return true;
+  };
+  
+  let Vals2D = U.inspire({ name: 'Vals2D', methods: (insp, Insp) => ({
+    
+    init: function({ w, h, xOff=0, yOff=0, rect=null, format, mode='lenient' }) {
+      if (!rect) rect = w.toArr(x => h.toArr(y => format(x, y)));
+      ({}).gain.call(this, { w, h, xOff, yOff, rect, format, mode });
+    },
+    getVal: function(x, y) {
+      if (x < 0)        { if (this.mode === 'strict') throw Error(`x too small`); return this.format(); }
+      if (x >= this.w)  { if (this.mode === 'strict') throw Error(`x too large`); return this.format(); }
+      if (y < 0)        { if (this.mode === 'strict') throw Error(`y too small`); return this.format(); }
+      if (y >= this.h)   { if (this.mode === 'strict') throw Error(`y too large`); return this.format(); }
+      return this.rect[this.xOff + x][this.yOff + y];
+    },
+    setVal: function(x, y, args) {
+      if (x < 0)        { if (this.mode === 'strict') throw Error(`x too small`); return; }
+      if (x >= this.w)  { if (this.mode === 'strict') throw Error(`x too large`); return; }
+      if (y < 0)        { if (this.mode === 'strict') throw Error(`y too small`); return; }
+      if (y >= this.h)  { if (this.mode === 'strict') throw Error(`y too large`); return; }
+      
+      let [ xx, yy ] = [ this.xOff + x, this.yOff + y ];
+      this.rect[xx][yy] = { ...this.rect[xx][yy], ...args };
+    },
+    fill: function(fn) {
+      for (let x = 0; x < this.w; x++) { for (let y = 0; y < this.h; y++) {
+        this.setVal(x, y, fn(x, y));
+      }}
+    },
+    getRows: function() {
+      let rows = [];
+      for (let y = 0; y < this.h; y++) { let row = []; rows.push(row); for (let x = 0; x < this.w; x++) {
+        row.push(this.getVal(x, y));
+      }}
+      return rows;
+    },
+    getCols: function() {
+      let cols = [];
+      for (let x = 0; x < this.w; x++) { let col = []; cols.push(col); for (let y = 0; y < this.h; y++) {
+        col.push(this.getVal(x, y));
+      }}
+      return cols;
+    },
+    sub: function(xOff, yOff, w, h) {
+      if (this.mode === 'strict') {
+        if (xOff < 0)           throw Error('xOff too small');
+        if (xOff + w > this.w)  throw Error('xOff + w too wide');
+        if (yOff < 0)           throw Error('yOff too small');
+        if (yOff + h > this.h)  throw Error('yOff + h too wide');
+      } else {
+        w = Math.max(0, Math.min(w, this.w - xOff));
+        h = Math.max(0, Math.min(h, this.h - yOff));
+      }
+      let Cls = this.constructor;
+      return Cls({
+        w, h,
+        xOff: this.xOff + xOff, yOff: this.yOff + yOff,
+        rect: this.rect, mode: this.mode, format: this.format
+      });
+    }
+    
+  })});
   
   let TerminalReal = U.inspire({ name: 'TerminalReal', insps: { Tmp }, methods: (insp, Insp) => ({
     
@@ -28,21 +95,27 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       this.status = 'ready';
       this.render();
+      this.endWith(() => this.out.write('\u001b[2J\u001b[0;0H'));
     },
-    addRenderer: async function(renderer) {
+    addRenderer: function(renderer) {
       let tmp = Tmp();
       tmp.renderer = renderer;
       
+      // Include `renderer` in Set
       this.renderers.add(renderer);
       tmp.endWith(() => this.renderers.rem(renderer));
       
-      await this.render();
-      
+      // Render whenever `renderer` changes
       tmp.endWith(renderer.route(() => this.render()));
+      
+      // Render as Renderer is added and removed (fire-and-forget)
+      this.render();
+      tmp.endWith(() => this.render());
       
       return tmp;
     },
     preparePixel: function({ chr, ...args }) {
+      
       //let mods = [];
       if (args.has('emphasis')) {
         if (args.emphasis === +1) chr = `\x1b[7m${chr}\x1b[27m`;
@@ -68,15 +141,13 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       let [ w, h ] = [ this.w, this.h ] = [ this.out.columns, this.out.rows - 1 ];
       
-      let px = w.toArr(() => h.toArr(() => this.bg));
-      
+      let canvas = Vals2D({ w, h, format: () => this.bg });
       let zRenderers = this.renderers.toArr(r => r).sort((r1, r2) => r1.z - r2.z);
-      for (let renderer of zRenderers) renderer.render(this, px);
+      for (let renderer of zRenderers) renderer.render(this, canvas);
+      
       
       await Promise(r => this.out.cursorTo(0, 0, r) && r());
-      px = h.toArr(y => w.toArr(x => px[x][y]));
-      let outputStr = px.map(row => row.map(p => this.preparePixel(p)).join('')).join('\n');
-      
+      let outputStr = canvas.getRows().map(row => row.map(v => this.preparePixel(v)).join('')).join('\n');
       this.out.write(outputStr);
       
       let s = this.status; this.status = 'ready';
@@ -89,7 +160,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
   })});
   let TerminalMainReal = U.inspire({ name: 'TerminalMainReal', insps: { TerminalReal }, methods: (insp, Insp) => ({
     
-    init: function({ inn, ctrlPaneH=5, ...args }) {
+    init: function({ inn, ctrlPaneH=10, ...args }) {
+      
+      this.render = () => {};
       insp.TerminalReal.init.call(this, args);
       
       this.ctrlPaneH = 5;
@@ -99,7 +172,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
         w: r => r.w, h: ctrlPaneH,
         x: 0, y: r => r.h - ctrlPaneH - 1,
         z: 9, bg: (721).char(),
-        text: 'CTRL PANE! :D'
+        text: ''
       });
       this.addRenderer(this.ctrlPane);
       
@@ -120,25 +193,42 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       this.cmd = '';
       this.cmdInd = 0;
-      let keyPressFn = async (str, params) => {
+      let keyPressFn = async str => {
         
         let codes = str.split('').map(c => c.code());
         
-        if (str === '\u0003') { this.end(); return; }
+        // ctrl+c
+        if (cmpSeqs(codes, [ 3 ])) { this.end(); return; }
         
         this.statusPane.update({ text: `${JSON.stringify(str)} (${codes.join(', ')})` });
         
-        if (str.match(/^[a-zA-Z0-9!@#$%^&*()-={}[\]\\|;':",./<>?`~ ]$/)) {
+        if (str.match(/^[a-zA-Z0-9!@#$%^&*()-={}[\]\\|;':",./<>?`~ ]$/)) {  // Regular chars
+          
           this.cmd = this.cmd.slice(0, this.cmdInd) + str + this.cmd.slice(this.cmdInd);
           this.cmdInd++;
-        } else if (codes.count() === 1 && codes[0] === 8) {
+          
+        } else if (cmpSeqs(codes, [ 8 ])) {                                 // Delete bak
+          
           this.cmd = this.cmd.slice(0, this.cmdInd - 1) + this.cmd.slice(this.cmdInd);
           this.cmdInd--;
-        } else if (str === '\u001b[3~') {
+          
+        } else if (cmpSeqs(codes, [ 27, 91, 51, 136 ])) {                   // Delete fwd
+          
           this.cmd = this.cmd.slice(0, this.cmdInd) + this.cmd.slice(this.cmdInd + 1);
-        } else if (codes.count() === 3 && codes[0] === 27 && codes[1] === 91) {
-          if (codes[2] === 68) this.cmdInd--; // L
-          if (codes[2] === 67) this.cmdInd++; // R
+          
+        } else if (cmpSeqs(codes.slice(0, 2), [ 27, 91 ])) {
+          
+          // regular (r|l)-arrow produces:
+          // [ 27, 91, 67 ]
+          // [ 27, 91, 68 ]
+          
+          // ctrl + (r|l)-arrow produces:
+          // [ 27, 91, 49, 59, 53, 67 ]
+          // [ 27, 91, 49, 59, 53, 68 ]
+          
+          if (codes.slice(-1)[0] === 68) this.cmdInd--; // L
+          if (codes.slice(-1)[0] === 67) this.cmdInd++; // R
+          
         }
         
         if (this.cmdInd < 0) this.cmdInd = 0;
@@ -155,6 +245,11 @@ global.rooms['window'] = foundation => ({ open: async () => {
       };
       this.inn.on('data', keyPressFn);
       this.endWith(() => this.inn.off('data', keyPressFn));
+      keyPressFn('');
+      
+      delete this.render;
+      this.render();
+      
     },
     execute: function(cmd) {
       
@@ -170,24 +265,12 @@ global.rooms['window'] = foundation => ({ open: async () => {
       insp.Src.init.call(this);
       ({}).gain.call(this, { x, y, w, h, z, bg });
     },
-    
     update: function(props={}) { ({}).gain.call(this, props); this.send(); },
     fillRenderRect: C.noFn('fillRenderRect', (w, h) => {}),
     render: function(real, canvas) {
       
       let [ x, y, w, h ] = [ this.x, this.y, this.w, this.h ].map(v => Math.round(U.isType(v, Function) ? v(real) : v));
-      let rr = w.toArr(x => h.toArr(y => ({ chr: this.bg })));
-      
-      this.fillRenderRect(w, h, rr);
-      
-      let headX = Math.max(0, x);
-      let tailX = Math.min(x + w, real.w);
-      let headY = Math.max(0, y);
-      let tailY = Math.min(y + h, real.h);
-      
-      for (let xx = headX; xx < tailX; xx++) { for (let yy = headY; yy < tailY; yy++) {
-        canvas[xx][yy] = rr[xx - x][yy - y];
-      }}
+      this.fillRenderRect(w, h, canvas.sub(x, y, w, h));
       
     }
     
@@ -214,7 +297,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
         let { onn, off } = this.mode;
         for (let x = 0; x < maxX; x++) { for (let y = 0; y < maxY; y++) {
           let px = this.pixels[Math.floor(x * multW)][Math.floor(y * multH)];
-          rr[x][y].chr = px.lum > 0.5 ? onn : off;
+          rr.setVal(x, y, { chr: px.lum > 0.5 ? onn : off });
         }}
         
       } else {
@@ -242,14 +325,10 @@ global.rooms['window'] = foundation => ({ open: async () => {
       }
       return insp.TerminalRenderer.update.call(this, args);
     },
-    fillRenderRect: function(w, h, rr) {
+    fillRenderRect: function(w, h, rect) {
       
       let lns = this.text.slice(this.vertOff);
-      for (let y = 0; y < Math.min(h, lns.count()); y++) { for (let x = 0; x < w; x++) {
-        let ln = lns[y];
-        if (x >= ln.count()) break;
-        rr[x][y] = ln[x];
-      }}
+      rect.fill((x, y) => ((y < lns.count()) && (x < lns[y].count())) ? lns[y][x] : { chr: this.bg });
       
     }
   })});
@@ -306,7 +385,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       if (this.transform) fwd.value = this.transform.fwd(fwd.value);
       return fwd;
     },
-    convertBak: async function(fwd, buff=null, ctx={}) {
+    convertBak: async function(fwd, buff=null, ctx=fwd.value) {
       if (this.transform) fwd.value = this.transform.bak(fwd.value);
       
       let bLen = this.getBLen(ctx);
@@ -393,11 +472,11 @@ global.rooms['window'] = foundation => ({ open: async () => {
     },
     convertBak0: async function({ value: memVals }, buff, ctx) {
       
-      // Add defaults to memVals
-      memVals = { ...this.defaults.map(value => ({ value })), ...memVals };
-      
       // Provide memVals to context
       ctx.gain(memVals);
+      
+      // Add defaults to memVals
+      memVals = { ...this.defaults.map(value => ({ value })), ...memVals };
       
       let offBLen = 0;
       for (let [ k, mem ] of this.mems) {
@@ -449,26 +528,20 @@ global.rooms['window'] = foundation => ({ open: async () => {
     },
     convertBak0: async function({ value }, buff, ctx) {
       
+      if (!U.isType(buff, Buffer)) throw Error(`Expected Buffer; got ${U.nameOf(buff)}`);
+      
       let offBLen = 0;
-      let memReduces = [];
       for (let v of value) {
         
-        // Make context for member
-        let memCtx = { ...ctx, buff: buff.subarray(offBLen >> 3) };
-        
         // Allow the
-        let bak = await format.convertBak({ bLen: format.getBLen(ctx), value: v }, memCtx);
+        let bak = await this.format.convertBak({ bLen: this.format.getBLen(ctx), value: v }, buff.subarray(offBLen >> 3));
         if (bak.bLen % 8) throw Error(`Members don't fall on byte boundaries`);
         
-        if (!doAlloc) memReduces.push(bak);
         offBLen += bak.bLen;
         
       }
       
-      return {
-        bLen: offBLen,
-        buff: doAlloc ? buff : Buffer.concat(memReduces.map(v => v.buff))
-      };
+      return { bLen: offBLen, buff };
       
     },
     getBLen: function(ctx) {
@@ -544,42 +617,43 @@ global.rooms['window'] = foundation => ({ open: async () => {
   
   await (async () => {
     
-    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'albumRawTest.bmp').getContent();
-    
-    let bmpData = await bmpFormat.convertFwd(bmpBuff);
-    
     let renderer = TerminalMainReal({
       inn: process.stdin, out: process.stdout,
       bg: { chr: ' ' }
     });
     renderer.endWith(() => foundation.halt());
     
-    let pxRenderer = (await renderer.addRenderer(TerminalPixelsRenderer({
-      chrW: 2, chrH: 1,
+    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'albumRawTest.bmp').getContent();
+    let bmpData = await bmpFormat.convertFwd(bmpBuff);
+    
+    renderer.addRenderer(TerminalTextRenderer({
       x: 0, y: 0,
+      w: 30, h: 1,
+      text: 'Pixels orig:'
+    }));
+    renderer.addRenderer(TerminalPixelsRenderer({
+      chrW: 2, chrH: 1,
+      x: 0, y: 1,
       pixels: bmpData.value.pixelArr.value.pixels
-    }))).renderer;
+    }));
     
-    //process.stdin.on('readable', () => {
-    //  textRenderer.update({ text: 'abcdef' });
-    //});
+    renderer.statusPane.update({ text: 'Rendered initial pixels' });
     
-    //let bmpData = { value: {
-    //  header: { value: {} },
-    //  bmpHeader: { value: {} },
-    //  pixelArr: { value: [
-    //    [ { r: 1, g: 0, b: 0 }, { r: 0, g: 1, b: 0 } ],
-    //    [ { r: 0, g: 0, b: 1 }, { r: 1, g: 1, b: 0 } ]
-    //  ]}
-    //}};
+    let { buff: bmpBuff2 } = await bmpFormat.convertBak(bmpData);
+    let bmpData2 = await bmpFormat.convertFwd(bmpBuff2);
     
-    //renderer.addRenderer(TerminalPixelsRenderer({
-    //  pixels: 
-    //}));
+    renderer.addRenderer(TerminalTextRenderer({
+      x: r => r.w >> 1, y: 0,
+      w: 30, h: 1,
+      text: 'Pixels converted:'
+    }));
+    renderer.addRenderer(TerminalPixelsRenderer({
+      chrW: 2, chrH: 1,
+      x: r => r.w >> 1, y: 1,
+      pixels: bmpData2.value.pixelArr.value.pixels
+    }));
     
-    // let converted = await bmpFormat.convertBak(bmpData);
-    // await foundation.seek('keep', 'fileSystem', 'room', 'window', 'albumOutput.bmp').setContent(converted.buff);
-    // console.log('Wrote result');
+    renderer.statusPane.update({ text: 'Rendered comparison' });
     
   })();
   return;
