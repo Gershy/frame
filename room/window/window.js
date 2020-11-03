@@ -83,10 +83,20 @@ global.rooms['window'] = foundation => ({ open: async () => {
   
   let TerminalReal = U.inspire({ name: 'TerminalReal', insps: { Tmp }, methods: (insp, Insp) => ({
     
+    $ansi: (...codes) => `\x1b[${codes.flat(Infinity).join(';')}m`,
+    $ansiFgRgb: (r, g, b) => {
+      [ r, g, b ] = [ r, g, b ].map(v => Math.round(v * 5));
+      return Insp.ansi([ 38, 5, 16 + 36 * b + 6 * g + r ]);
+    },
+    $ansiBgRgb: (r, g, b) => {
+      [ r, g, b ] = [ r, g, b ].map(v => Math.round(v * 5));
+      return Insp.ansi([ 48, 5, 16 + 36 * b + 6 * g + r ]);
+    },
+    
     init: function({ out, bg={ chr: ' ' }, prefChrW=1, prefChrH=2 }) {
       insp.Tmp.init.call(this);
       
-      ({}).gain.call(this, { out, w: null, h: null, prefChrW, prefChrH, bg, renderers: Set() });
+      ({}).gain.call(this, { out, w: out.columns, h: out.rows, prefChrW, prefChrH, bg, renderers: Set() });
       
       let resizeFn = () => this.render();
       this.out.on('resize', resizeFn);
@@ -94,7 +104,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       this.status = 'ready';
       this.render();
-      this.endWith(() => this.out.write('\u001b[2J\u001b[0;0H'));
+      
+      // this.endWith(() => this.out.write('\u001b[2J\u001b[0;0H'));
+      this.endWith(() => this.out.cursorTo(0, this.h, () => this.out.write('\n\n\n')));
     },
     addRenderer: function(renderer) {
       let tmp = Tmp();
@@ -114,15 +126,17 @@ global.rooms['window'] = foundation => ({ open: async () => {
       return tmp;
     },
     preparePixel: function({ chr, ...args }) {
+      let ansiSeqs = [];
       
-      //let mods = [];
-      if (args.has('emphasis')) {
-        if (args.emphasis === +1) chr = `\x1b[7m${chr}\x1b[27m`;
-        else if (args.emphasis === -1) chr = chr;
-      }
+      if (args.has('emphasis') && args.emphasis === +1) ansiSeqs.push(Insp.ansi(4)); // bold (invert: 7)
+      if (args.has('emphasis') && args.emphasis === -1) ansiSeqs.push(Insp.ansi(2)); // dim
       
-      //if (mods.count()) return `${mods.map(m => modMapping(m)).join('')}${chr}${modMapping.reset}`;
-      return chr;
+      if (args.has('raw')) { if (args.raw.count()) ansiSeqs.push(Insp.ansi(args.raw)); }
+      
+      if (args.has('fgRgb')) { let { r, g, b } = args.fgRgb; if (r || g || b) ansiSeqs.push(Insp.ansiFgRgb(r, g, b)); }
+      if (args.has('bgRgb')) { let { r, g, b } = args.bgRgb; if (r || g || b) ansiSeqs.push(Insp.ansiBgRgb(r, g, b)); }
+      
+      return ansiSeqs.count() ? `${ansiSeqs.join('')}${chr}${Insp.ansi(0)}` : chr;
     },
     render: async function() {
       
@@ -138,7 +152,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.renderRequests++;
       if (this.renderRequests > 1) return;
       
-      let [ w, h ] = [ this.w, this.h ] = [ this.out.columns, this.out.rows - 1 ];
+      let [ w, h ] = [ this.w, this.h ] = [ this.out.columns, this.out.rows ];
       
       let canvas = Vals2D({ w, h, format: this.bg });
       let zRenderers = this.renderers.toArr(r => r).sort((r1, r2) => r1.z - r2.z);
@@ -233,7 +247,10 @@ global.rooms['window'] = foundation => ({ open: async () => {
         if (this.cmdInd < 0) this.cmdInd = 0;
         if (this.cmdInd > this.cmd.count()) this.cmdInd = this.cmd.count();
         
-        if ([ '\r', '\n' ].has(str)) { this.execute(this.cmd); this.cmd = ''; this.cmdInd = 0; }
+        if ([ '\r', '\n' ].has(str)) {
+          let cmd = this.cmd; this.cmd = ''; this.cmdInd = 0;
+          this.execute(cmd);
+        }
         
         let formatCmd = [ this.cmd.split('').map(chr => ({ chr })) ];
         if (this.cmdInd < this.cmd.count()) formatCmd[0][this.cmdInd].emphasis = +1;
@@ -250,9 +267,39 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.render();
       
     },
+    setCtrlText: function(text) {
+      this.cmd = text;
+      this.cmdInd = text.count();
+      this.ctrlPane.update({ text });
+    },
     execute: function(cmd) {
       
-      this.statusPane.update({ text: `EXECUTE: "${cmd}"` });
+      try {
+        
+        let args = eval(`(${cmd})`);
+        if (U.isType(args, String)) args = { cmd: args };
+        if (!U.isType(args, Object)) throw Error(`Expected Object; got ${U.nameOf(args)}`);
+        if (!args.has('cmd')) throw Error(`Missing "cmd" property`);
+        if (!U.isType(args.cmd, String)) throw Error(`Expected "cmd" to be String; got ${U.nameOf(args.command)}`);
+        
+        if (args.cmd === 'ansiTest') {
+          
+          let { chr='$', amt=50, codeFn=(n)=>[ 38, 5, n ] } = args;
+          
+          let text = [ amt.toArr(n => ({ chr, raw: codeFn(n) })) ];
+          this.statusPane.update({ text });
+          
+        } else {
+          
+          this.statusPane.update({ text: `Couldn't process ${JSON.stringify(args)}` });
+          
+        }
+        
+      } catch(err) {
+        
+        this.statusPane.update({ text: `Couldn't execute "${cmd}": ${err.message}` });
+        
+      }
       
     }
     
@@ -273,7 +320,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     }
   })});
   let TerminalPixelsRenderer = U.inspire({ name: 'TerminalPixelsRenderer', insps: { TerminalRenderer }, methods: (insp, Insp) => ({
-    init: function({ pixels, mode={ type: 'brightness', chrs: [ ' ', '-', '+', '2', '#', '$' ] }, chrW=1, chrH=1, ...args }) {
+    init: function({ pixels, mode={ type: 'brightness', chrs: [ ' ', '-', '~', '+', '2', '#', '$' ], colour: true }, chrW=1, chrH=1, ...args }) {
       insp.TerminalRenderer.init.call(this, { w: pixels.w * chrW, h: pixels.h * chrH, ...args });
       this.pixels = pixels;
       this.mode = mode;
@@ -288,11 +335,13 @@ global.rooms['window'] = foundation => ({ open: async () => {
         
         let multW = 1 / this.chrW;
         let multH = 1 / this.chrH;
-        let { chrs } = this.mode;
+        let { chrs, colour=false } = this.mode;
         
         rect.fill((x, y) => {
           let px = this.pixels.getVal(Math.floor(x * multW), Math.floor(y * multH));
-          return { chr: chrs[Math.round(px.lum * (chrs.count() - 1))] };
+          let result = { chr: chrs[Math.round(px.lum * (chrs.count() - 1))] };
+          if (colour) result.fgRgb = px;
+          return result;
         });
         
       } else if (this.mode.type === 'binary') {
@@ -344,18 +393,16 @@ global.rooms['window'] = foundation => ({ open: async () => {
   })});
   
   let Adapter = U.inspire({ name: 'Adapter', methods: (insp, Insp) => ({
-    init: function({ transform=null }) {
+    init: function({ name=null, transform=null }) {
+      this.name = name || `Anon${U.nameOf(this)}`
       this.transform = transform;
     },
     convertFwd: async function(bak, ctx={}) {
       let fwd = await this.convertFwd0(bak, { ...ctx });
-      if (!U.isType(fwd.bLen, Number)) fwd.bLen = this.getBLen();
-      if (!U.isType(fwd.bLen, Number)) throw Error(`Couldn't get bLen for ${U.nameOf(this)}`);
-      if (this.transform) fwd.value = this.transform.fwd(fwd.value);
-      return fwd;
+      return this.transform ? this.transform.fwd(fwd) : fwd;
     },
-    convertBak: async function(fwd, buff=null, ctx=fwd.value) {
-      if (this.transform) fwd.value = this.transform.bak(fwd.value);
+    convertBak: async function(fwd, buff=null, ctx=fwd) {
+      if (this.transform) fwd = this.transform.bak(fwd);
       
       let bLen = this.getBLen(ctx);
       if (!buff && !bLen) throw Error(`No Buffer given and no bLen known`);
@@ -363,7 +410,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       await this.convertBak0(fwd, buff, { ...ctx });
       
-      return { bLen, buff: buff.subarray(0, bLen >> 3) };
+      buff = buff.subarray(0, bLen >> 3);
+      buff.bLen = bLen;
+      return buff;
     },
     getBLen: function() { return null; },
     
@@ -407,9 +456,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
     convertFwd0: async function(b, ctx) {
       let value = b[`read${this.fnSuffix}`](0);
       if (this.type === 'ascii') value = value.char();
-      return { value };
+      return value;
     },
-    convertBak0: async function({ value }, buff) {
+    convertBak0: async function(value, buff) {
       if (this.type === 'ascii') value = value.code();
       buff[`write${this.fnSuffix}`](value);
     }
@@ -429,36 +478,64 @@ global.rooms['window'] = foundation => ({ open: async () => {
         
         if (U.isType(mem, Function)) mem = mem(ctx, this);
         
-        let result = await mem.convertFwd(b.subarray(offBLen >> 3), ctx);
+        let bLen = mem.getBLen(ctx);
+        let result = await mem.convertFwd(b.subarray(offBLen >> 3, (offBLen + bLen) >> 3), ctx);
         value[name] = result;
         ctx[name] = result;
-        if (result.bLen % 8) throw Error(`Members don't fall on byte boundaries`);
-        offBLen += result.bLen;
+        offBLen += bLen;
         
       }
-      return { bLen: offBLen, value };
+      return value;
       
     },
-    convertBak0: async function({ value: memVals }, buff, ctx) {
+    convertBak0: async function(memVals, buff, ctx) {
       
       // Provide memVals to context
       ctx.gain(memVals);
       
-      // Add defaults to memVals
-      memVals = { ...this.defaults.map(value => ({ value })), ...memVals };
+      // TODO: Complicated!
+      // Here we have a pretty typical churn; we collect all mems along
+      // with their buffs (we know the size of each mem), and finally
+      // churn until every mem writes its value, or churn is stuck. BUT
+      // what if some members are unable to know their size (i.e.,
+      // `mem.getBLen(ctx) === null`)?? We may actually be able to
+      // accomodate these cases, but the churn gets weird. First of all,
+      // only include the prefix of members whose sizes are known (as
+      // soon as a member has unknown size, all later members cannot
+      // know where they fall in the buffer due to the cumulative adding
+      // nature of sizes). Then, in addition to churning normally, check
+      // to see if any previously-unknown-size members have become able
+      // to determine their size (again, off the prefix of remaining
+      // members). A churn that resulted in new members determining
+      // their sizes is not considered stuck, even if no member could
+      // successfully write.
       
+      let mems = {};
       let offBLen = 0;
-      for (let [ k, mem ] of this.mems) {
+      let memsWithBuffs = []
+      for (let [ name, mem ] of this.mems) {
+        if (U.isType(mem, Function)) mem = mem({ ...this.defaults, ...ctx, ...memVals }, this);
+        mems[name] = mem;
+        let bLen = mem.getBLen(ctx);
+        memsWithBuffs.push({ name, mem, buff: buff.subarray(offBLen >> 3, (offBLen + bLen) >> 3) });
+        offBLen += bLen;
+      }
+      
+      let allVals = { ...this.defaults, ...memVals };
+      while (memsWithBuffs.count()) {
         
-        // Mems may be functions returning mems
-        if (U.isType(mem, Function)) mem = mem(ctx, this);
+        let attempt = memsWithBuffs;
+        memsWithBuffs = [];
         
-        // Ensure value exists for member
-        if (!memVals.has(k)) throw Error(`No value for member "${k}"`);
+        await Promise.allArr(attempt.map(async ({ name, mem, buff }) => {
+          try         { await mem.convertBak(allVals[name], buff, ctx); }
+          catch(err)  { memsWithBuffs.push({ name, mem, offBLen, err }); }
+        }));
         
-        // Make context for member
-        let result = await mem.convertBak(memVals[k], buff.subarray(offBLen >> 3), ctx);
-        offBLen += result.bLen;
+        if (memsWithBuffs.count() === attempt.count()) {
+          for (let { name, err } of memsWithBuffs) console.log(`Error for "${name}":\n`, foundation.formatError(err).indent(2));
+          throw Error(`No progress among remaining mems: [ ${memsWithBuffs.map(({ name }) => name).join(', ')} ]`);
+        }
         
       }
       
@@ -487,26 +564,25 @@ global.rooms['window'] = foundation => ({ open: async () => {
       let offBLen = 0;
       for (let i = 0; i < this.reps; i++) {
         let result = await this.format.convertFwd(b.subarray(offBLen >> 3));
-        value.push(result.value);
-        if (result.bLen % 8) throw Error(`Members don't fall on byte boundaries`);
-        offBLen += result.bLen;
+        value.push(result);
+        //if (result.bLen % 8) throw Error(`Members don't fall on byte boundaries`);
+        offBLen += this.format.getBLen(ctx); //result.bLen;
       }
       
-      return { bLen: offBLen, value };
+      return value;
       
     },
-    convertBak0: async function({ value }, buff, ctx) {
+    convertBak0: async function(values, buff, ctx) {
       
       if (!U.isType(buff, Buffer)) throw Error(`Expected Buffer; got ${U.nameOf(buff)}`);
       
       let offBLen = 0;
-      for (let v of value) {
+      for (let value of values) {
         
-        // Allow the
-        let bak = await this.format.convertBak({ bLen: this.format.getBLen(ctx), value: v }, buff.subarray(offBLen >> 3));
-        if (bak.bLen % 8) throw Error(`Members don't fall on byte boundaries`);
-        
-        offBLen += bak.bLen;
+        let bLen = this.format.getBLen(ctx);
+        if (bLen % 8) throw Error(`Members don't fall on byte boundaries`);
+        await this.format.convertBak(value, buff.subarray(offBLen >> 3));
+        offBLen += bLen;
         
       }
       
@@ -520,7 +596,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
   })});
   
   let bmpFormat = AdapterObj({ mems: {
-    header: AdapterObj({
+    header: () => AdapterObj({
       mems: {
         idenChar0:    AdapterVal({ type: 'ascii',  bLen: 8,  endn: '<' }),
         idenChar1:    AdapterVal({ type: 'ascii',  bLen: 8,  endn: '<' }),
@@ -530,27 +606,38 @@ global.rooms['window'] = foundation => ({ open: async () => {
         pixelOffset:  AdapterVal({ type: 'uInt',   bLen: 32, endn: '<' }),
       },
       defaults: {
-        idenChar0: 'B', idenChar1: 'M'
+        idenChar0: 'B', idenChar1: 'M', reserved1: 0, reserved2: 0,
+        pixelOffset: (112 + 320) >> 3 // header (112) + bmpHeader (320)
       }
     }),
-    bmpHeader: AdapterObj({ mems: {
-      headerLen:    AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
-      w:            AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
-      h:            AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
-      planes:       AdapterVal({ type: 'uInt', bLen: 16, endn: '<' }),
-      pxBLen:       AdapterVal({ type: 'uInt', bLen: 16, endn: '<' }),
-      compression:  AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
-      pxSize:       AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
-      hRes:         AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
-      vRes:         AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
-      genNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }), // General # of colours
-      impNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' })  // Important # of colours
-    }}),
+    bmpHeader: ctx => AdapterObj({
+      mems: {
+        headerLen:    AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
+        w:            AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
+        h:            AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
+        planes:       AdapterVal({ type: 'uInt', bLen: 16, endn: '<' }),
+        pxBLen:       AdapterVal({ type: 'uInt', bLen: 16, endn: '<' }),
+        compression:  AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
+        pxSize:       AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }),
+        hRes:         AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
+        vRes:         AdapterVal({ type: 'int',  bLen: 32, endn: '<' }),
+        genNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }), // General # of colours
+        impNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' })  // Important # of colours
+      },
+      defaults: {
+        headerLen: (320) >> 3,
+        w: ctx.has('pixels') ? ctx.pixels.w : 0,
+        h: ctx.has('pixels') ? ctx.pixels.h : 0,
+        planes: 1,
+        pxBLen: (ctx.has('pixels') ? 3 : 0) << 3 // Bit depth, so multiply by 8
+      }
+    }),
     pixels: ctx => AdapterArr({
       
-      reps: ctx.bmpHeader.value.w.value * ctx.bmpHeader.value.h.value,
+      reps: ctx.has('pixels') ? ctx.pixels.w * ctx.pixels.h : ctx.bmpHeader.w * ctx.bmpHeader.h,
+      
       format:  AdapterArr({
-        reps: ctx.bmpHeader.value.pxBLen.value >> 3,
+        reps: ctx.has('pixels') ? 3 : ctx.bmpHeader.pxBLen >> 3,
         format: AdapterVal({ type: 'uInt', bLen: 8, endn: '<' }),
         transform: {
           fwd: cmps => {
@@ -564,26 +651,55 @@ global.rooms['window'] = foundation => ({ open: async () => {
       }),
       transform: {
         fwd: cmps => {
-          let w = ctx.bmpHeader.value.w.value;
-          let h = ctx.bmpHeader.value.h.value;
+          let w = ctx.bmpHeader.w;
+          let h = ctx.bmpHeader.h;
           
-          let result = Vals2D({ w, h, format: { r: 0, g: 0, b: 0, lum: 0 } });
+          let result = Vals2D({ w, h, format: {} });
           return result.fill((x, y) => cmps[(h - y - 1) * h + x]);
         },
         bak: pixels => {
+          
           let { w, h } = pixels;
           return (w * h).toArr(n => {
             let y = Math.floor(n / w);
             let x = n - y * w;
             return pixels.getVal(x, h - y - 1);
           });
+          
         }
       }
       
     })
   }});
   
-  await (async () => {
+  if (0) await (async () => {
+    
+    let pixels = Vals2D({ w: 4, h: 4, format: { r: 0, g: 0, b: 0, lum: 0 } });
+    pixels.setVal(0, 0, { r: 1, g: 1, b: 1, lum: 1 });
+    pixels.setVal(1, 1, { r: 1, g: 1, b: 1, lum: 1 });
+    pixels.setVal(2, 2, { r: 1, g: 1, b: 1, lum: 1 });
+    pixels.setVal(3, 3, { r: 1, g: 1, b: 1, lum: 1 });
+    
+    let buff = await bmpFormat.convertBak({ pixels });
+    console.log(buff.toString('hex'));
+    await foundation.seek('keep', 'fileSystem', 'room', 'window', 'amazingTest.bmp').setContent(buff);
+    
+    foundation.halt();
+    
+  })();
+  
+  if (0) await (async () => {
+    
+    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'test.bmp').getContent();
+    let bmpData = await bmpFormat.convertFwd(bmpBuff);
+    
+    console.log({ bmpData });
+    
+    foundation.halt();
+    
+  })();
+  
+  if (1) await (async () => {
     
     let renderer = TerminalMainReal({
       inn: process.stdin, out: process.stdout,
@@ -591,7 +707,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     });
     renderer.endWith(() => foundation.halt());
     
-    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'albumRawTest.bmp').getContent();
+    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'imgTest.bmp').getContent();
     let bmpData = await bmpFormat.convertFwd(bmpBuff);
     
     renderer.addRenderer(TerminalTextRenderer({
@@ -601,12 +717,12 @@ global.rooms['window'] = foundation => ({ open: async () => {
     renderer.addRenderer(TerminalPixelsRenderer({
       chrW: 2, chrH: 1,
       x: 0, y: 1,
-      pixels: bmpData.value.pixels.value
+      pixels: bmpData.pixels
     }));
     
     renderer.statusPane.update({ text: 'Rendered initial pixels' });
     
-    let { buff: bmpBuff2 } = await bmpFormat.convertBak(bmpData);
+    let bmpBuff2 = await bmpFormat.convertBak(bmpData);
     let bmpData2 = await bmpFormat.convertFwd(bmpBuff2);
     
     renderer.addRenderer(TerminalTextRenderer({
@@ -616,7 +732,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     renderer.addRenderer(TerminalPixelsRenderer({
       chrW: 2, chrH: 1,
       x: r => r.w >> 1, y: 1,
-      pixels: bmpData2.value.pixels.value
+      pixels: bmpData2.pixels
     }));
     
     renderer.statusPane.update({ text: 'Rendered comparison' });
