@@ -259,7 +259,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
   })});
   
   let TerminalRenderer = U.inspire({ name: 'TerminalRenderer', insps: { Src }, methods: (insp, Insp) => ({
-    
     init: function({ x, y, w, h, z=0, bg=' ' }) {
       insp.Src.init.call(this);
       ({}).gain.call(this, { x, y, w, h, z, bg });
@@ -272,10 +271,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.fillRenderRect(canvas.sub(x, y, w, h));
       
     }
-    
   })});
   let TerminalPixelsRenderer = U.inspire({ name: 'TerminalPixelsRenderer', insps: { TerminalRenderer }, methods: (insp, Insp) => ({
-    init: function({ pixels, mode={ type: 'binary', onn: 'X', off: ' ' }, chrW=1, chrH=1, ...args }) {
+    init: function({ pixels, mode={ type: 'brightness', chrs: [ ' ', '-', '+', '2', '#', '$' ] }, chrW=1, chrH=1, ...args }) {
       insp.TerminalRenderer.init.call(this, { w: pixels.w * chrW, h: pixels.h * chrH, ...args });
       this.pixels = pixels;
       this.mode = mode;
@@ -286,7 +284,18 @@ global.rooms['window'] = foundation => ({ open: async () => {
       let maxX = Math.min(rect.w, this.w);
       let maxY = Math.min(rect.h, this.h);
       
-      if (this.mode.type === 'binary') {
+      if (this.mode.type === 'brightness') {
+        
+        let multW = 1 / this.chrW;
+        let multH = 1 / this.chrH;
+        let { chrs } = this.mode;
+        
+        rect.fill((x, y) => {
+          let px = this.pixels.getVal(Math.floor(x * multW), Math.floor(y * multH));
+          return { chr: chrs[Math.round(px.lum * (chrs.count() - 1))] };
+        });
+        
+      } else if (this.mode.type === 'binary') {
         
         let multW = 1 / this.chrW;
         let multH = 1 / this.chrH;
@@ -309,9 +318,15 @@ global.rooms['window'] = foundation => ({ open: async () => {
         .split('\n')                                    // Split by line
         .map(ln => ln.split('').map(chr => ({ chr }))); // Line characters to pixels
     },
+    $defWFn: r => Math.max(...r.text.map(ln => ln.count())),
+    $defHFn: r => r.text.count(),
     
     init: function({ text=[], vertOff=0, ...args }) {
-      insp.TerminalRenderer.init.call(this, args);
+      insp.TerminalRenderer.init.call(this, {
+        w: Insp.defWFn.bind(null, this),
+        h: Insp.defHFn.bind(null, this),
+        ...args
+      });
       
       if (U.isType(text, String)) text = Insp.strToLns(text);
       ({}).gain.call(this, { text, vertOff });
@@ -323,53 +338,10 @@ global.rooms['window'] = foundation => ({ open: async () => {
       return insp.TerminalRenderer.update.call(this, args);
     },
     fillRenderRect: function(rect) {
-      
       let lns = this.text.slice(this.vertOff);
       rect.fill((x, y) => ((y < lns.count()) && (x < lns[y].count())) ? lns[y][x] : { chr: this.bg });
-      
     }
   })});
-  
-  let getBuffVal = (offset, { bLen, type, endn }, buff) => {
-    
-    // Provide default `bLen` for default-able types
-    if (type === 'flt' && !bLen) bLen = 32;
-    if (type === 'dbl' && !bLen) bLen = 32;
-    if (type === 'ascii' && !bLen) bLen = 8;
-    
-    // Ensure `bLen` is correct for restrictive types
-    if (type === 'flt' && bLen !== 32) throw Error(`type === 'flt' implies bLen === 32`);
-    if (type === 'dbl' && bLen !== 32) throw Error(`type === 'dbl' implies bLen === 32`);
-    
-    // For "type", simply map our values to node's buffer api terms
-    let fnType = { int: 'Int', uInt: 'UInt', flt: 'Float', dbl: 'Double', ascii: 'UInt' }[type];
-    
-    // Node's naming scheme omits bit length for some types
-    let fnBLen = ([ 'flt', 'dbl' ].includes(type)) ? '' : Math.max(bLen, 8);
-    
-    // Endianness is omitted for some types, when bit length is 8
-    let fnEndn = ([ 'int', 'uInt', 'ascii' ].includes(type) && bLen === 8) ? '' : { '<': 'LE', '>': 'BE' }[endn];
-    
-    let result = buff[`read${fnType}${fnBLen}${fnEndn}`](offset >> 3);
-    if (type === 'ascii')     return result.char();
-    else if (type === '?')    return '?';
-    else                      return result;
-    
-  };
-  let getBuffVals = (buff, ...args) => {
-    
-    let [ defs, obj ] = args.count() === 1 ? [ {}, args[0] ] : args;
-    let offset = 0;
-    let result = {};
-    
-    for (let [ k, buffParams ] of obj) {
-      buffParams = { ...defs, ...buffParams };
-      result[k] = getBuffVal(offset, buffParams, buff);
-      offset += buffParams.bLen;
-    }
-    return result;
-    
-  };
   
   let Adapter = U.inspire({ name: 'Adapter', methods: (insp, Insp) => ({
     init: function({ transform=null }) {
@@ -578,7 +550,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       reps: ctx.bmpHeader.value.w.value * ctx.bmpHeader.value.h.value,
       format:  AdapterArr({
-        name: 'pixel',
         reps: ctx.bmpHeader.value.pxBLen.value >> 3,
         format: AdapterVal({ type: 'uInt', bLen: 8, endn: '<' }),
         transform: {
@@ -591,7 +562,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
           bak: ({ r, g, b }) => [ r, g, b ].map(v => Math.round(v * 255))
         }
       }),
-      
       transform: {
         fwd: cmps => {
           let w = ctx.bmpHeader.value.w.value;
@@ -626,7 +596,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     renderer.addRenderer(TerminalTextRenderer({
       x: 0, y: 0,
-      w: 30, h: 1,
       text: 'Pixels orig:'
     }));
     renderer.addRenderer(TerminalPixelsRenderer({
@@ -642,7 +611,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     renderer.addRenderer(TerminalTextRenderer({
       x: r => r.w >> 1, y: 0,
-      w: 30, h: 1,
       text: 'Pixels converted:'
     }));
     renderer.addRenderer(TerminalPixelsRenderer({
