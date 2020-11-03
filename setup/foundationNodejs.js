@@ -6,7 +6,7 @@
   let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
   let path = require('path');
-  let { Foundation, Keep } = U.setup;
+  let { Foundation, Real, Keep } = U.setup;
   
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
     
@@ -1079,7 +1079,6 @@
     createKeep: function(options={}) { return Insp.KeepNodejs(); },
     createReal: async function(options={}) {
       
-      let { Real } = U.setup;
       let primaryFakeReal = Real({ name: 'nodejs.fakeReal' });
       primaryFakeReal.techNode = null;
       primaryFakeReal.tech = {
@@ -1348,9 +1347,11 @@
           try {
             return road.hear.send([ params, msg => sendData(req, res, msg), ms ]);
           } catch(err) {
-            // TODO: Don't `err.message`!
-            console.log('Http error response:', this.formatError(err));
-            sendData(req, res, { command: 'error', msg: err.message, orig: params });
+            sendData(req, res, {
+              command: 'error', type: 'unexpectedError',
+              msg: 'Error is on our end! We extend four quintillion apologies, dear sweet user!',
+              orig: params
+            });
           }
         }
         
@@ -1438,6 +1439,7 @@
       };
       
       return server;
+      
     },
     makeSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       if (!port) port = keyPair ? 444 : 81;

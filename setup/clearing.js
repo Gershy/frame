@@ -35,13 +35,9 @@ protoDef(Object, 'toArr', function(it) {
 protoDef(Object, 'slice', function(...props) {
   if (props.length === 1 && U.isType(props[0], Object)) {
     let map = props[0]; // Maps existingKey -> newKeyName
-    let ret = {};
-    for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]];
-    return ret;
+    let ret = {}; for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]]; return ret;
   } else { // `props` is an Array of property names (Strings)
-    let ret = {};
-    for (let p of props) if (this.has(p)) ret[p] = this[p];
-    return ret;
+    let ret = {}; for (let p of props) if (this.has(p)) ret[p] = this[p]; return ret;
   }
 });
 protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
@@ -424,7 +420,7 @@ U.logic = (() => {
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
-      if (U.isType(val, Function)) return this.route(val, mode) || this;
+      if (val != null && val instanceof Function) return this.route(val, mode) || this;
       if (U.isInspiredBy(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
       throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
     }
@@ -653,6 +649,7 @@ U.logic = (() => {
     init: function(src, fn) {
       
       insp.Tmp.init.call(this);
+      this.fn = fn;
       this.srcRoute = src.route(tmp => {
         
         if (!U.isInspiredBy(tmp, Tmp)) throw Error(`Scope expects Tmp - got ${U.nameOf(tmp)}`);
@@ -690,11 +687,12 @@ U.logic = (() => {
         depsEndTmp.endWith((...args) => { let deps0 = deps; deps = null; deps0.each(d => d.end(...args)); });
         addDep(depsEndTmp);
         
-        fn(tmp, addDep);
+        this.processTmp(tmp, addDep);
         
       });
       
     },
+    processTmp: function(tmp, dep) { this.fn(tmp, dep); },
     subScope: function(...args) { return this.constructor.call(null, ...args); },
     cleanup: function() { this.srcRoute.end(); }
   })});
