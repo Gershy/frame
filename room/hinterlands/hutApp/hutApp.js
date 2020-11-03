@@ -1,6 +1,16 @@
 global.rooms['hinterlands.hutApp'] = async foundation => {
   
+  let { Hut } = await foundation.getRoom('hinterlands');
   let { RecScope } = await foundation.getRoom('record');
+  
+  let FollowedRecScope = U.inspire({ name: 'FollowedRecScope', insps: { RecScope }, methods: (insp, Insp) => ({
+    init: function(hut, ...args) {
+      if (!U.isInspiredBy(hut, Hut)) throw Error(`${U.nameOf(this)} requires Hut as first param; got ${U.nameOf(hut)}`);
+      this.hut = hut;
+      insp.RecScope.init.call(this, ...args);
+    },
+    subScope: function(...args) { return insp.RecScope.subScope.call(this, this.hut, ...args); }
+  })});
   
   let makeHutAppScope = async (rootHut, prefix, name, fn) => {
     
@@ -9,7 +19,7 @@ global.rooms['hinterlands.hutApp'] = async foundation => {
     /// =ABOVE}
     let rootReal = await foundation.seek('real', 'primary');
     
-    return RecScope(rootHut, `${prefix}.${name}`, async (rootRec, dep) => {
+    return FollowedRecScope(rootHut, rootHut.relSrc(`${prefix}.${name}`), async (rootRec, dep) => {
       
       /// {ABOVE=
       
