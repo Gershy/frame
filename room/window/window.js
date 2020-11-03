@@ -24,14 +24,14 @@ global.rooms['window'] = foundation => ({ open: async () => {
   let Vals2D = U.inspire({ name: 'Vals2D', methods: (insp, Insp) => ({
     
     init: function({ w, h, xOff=0, yOff=0, rect=null, format, mode='lenient' }) {
-      if (!rect) rect = w.toArr(x => h.toArr(y => format(x, y)));
+      if (!rect) rect = w.toArr(x => h.toArr(y => format));
       ({}).gain.call(this, { w, h, xOff, yOff, rect, format, mode });
     },
     getVal: function(x, y) {
-      if (x < 0)        { if (this.mode === 'strict') throw Error(`x too small`); return this.format(); }
-      if (x >= this.w)  { if (this.mode === 'strict') throw Error(`x too large`); return this.format(); }
-      if (y < 0)        { if (this.mode === 'strict') throw Error(`y too small`); return this.format(); }
-      if (y >= this.h)   { if (this.mode === 'strict') throw Error(`y too large`); return this.format(); }
+      if (x < 0)        { if (this.mode === 'strict') throw Error(`x too small`); return this.format; }
+      if (x >= this.w)  { if (this.mode === 'strict') throw Error(`x too large`); return this.format; }
+      if (y < 0)        { if (this.mode === 'strict') throw Error(`y too small`); return this.format; }
+      if (y >= this.h)  { if (this.mode === 'strict') throw Error(`y too large`); return this.format; }
       return this.rect[this.xOff + x][this.yOff + y];
     },
     setVal: function(x, y, args) {
@@ -44,9 +44,8 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.rect[xx][yy] = { ...this.rect[xx][yy], ...args };
     },
     fill: function(fn) {
-      for (let x = 0; x < this.w; x++) { for (let y = 0; y < this.h; y++) {
-        this.setVal(x, y, fn(x, y));
-      }}
+      for (let x = 0; x < this.w; x++) for (let y = 0; y < this.h; y++) this.setVal(x, y, fn(x, y));
+      return this;
     },
     getRows: function() {
       let rows = [];
@@ -141,7 +140,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       let [ w, h ] = [ this.w, this.h ] = [ this.out.columns, this.out.rows - 1 ];
       
-      let canvas = Vals2D({ w, h, format: () => this.bg });
+      let canvas = Vals2D({ w, h, format: this.bg });
       let zRenderers = this.renderers.toArr(r => r).sort((r1, r2) => r1.z - r2.z);
       for (let renderer of zRenderers) renderer.render(this, canvas);
       
@@ -270,35 +269,33 @@ global.rooms['window'] = foundation => ({ open: async () => {
     render: function(real, canvas) {
       
       let [ x, y, w, h ] = [ this.x, this.y, this.w, this.h ].map(v => Math.round(U.isType(v, Function) ? v(real) : v));
-      this.fillRenderRect(w, h, canvas.sub(x, y, w, h));
+      this.fillRenderRect(canvas.sub(x, y, w, h));
       
     }
     
   })});
   let TerminalPixelsRenderer = U.inspire({ name: 'TerminalPixelsRenderer', insps: { TerminalRenderer }, methods: (insp, Insp) => ({
     init: function({ pixels, mode={ type: 'binary', onn: 'X', off: ' ' }, chrW=1, chrH=1, ...args }) {
-      let defW = pixels.count() * chrW;
-      let defH = pixels[0].count() * chrH;
-      insp.TerminalRenderer.init.call(this, { w: defW, h: defH, ...args });
-      
+      insp.TerminalRenderer.init.call(this, { w: pixels.w * chrW, h: pixels.h * chrH, ...args });
       this.pixels = pixels;
       this.mode = mode;
       this.chrW = chrW;
       this.chrH = chrH;
     },
-    fillRenderRect: function(w, h, rr) {
-      let maxX = Math.min(w, this.w);
-      let maxY = Math.min(h, this.h);
+    fillRenderRect: function(rect) {
+      let maxX = Math.min(rect.w, this.w);
+      let maxY = Math.min(rect.h, this.h);
       
       if (this.mode.type === 'binary') {
         
         let multW = 1 / this.chrW;
         let multH = 1 / this.chrH;
         let { onn, off } = this.mode;
-        for (let x = 0; x < maxX; x++) { for (let y = 0; y < maxY; y++) {
-          let px = this.pixels[Math.floor(x * multW)][Math.floor(y * multH)];
-          rr.setVal(x, y, { chr: px.lum > 0.5 ? onn : off });
-        }}
+        
+        rect.fill((x, y) => {
+          let px = this.pixels.getVal(Math.floor(x * multW), Math.floor(y * multH));
+          return { chr: px.lum > 0.5 ? onn : off };
+        });
         
       } else {
         throw Error(`Unknown mode: "${this.mode.type}"`);
@@ -325,7 +322,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       }
       return insp.TerminalRenderer.update.call(this, args);
     },
-    fillRenderRect: function(w, h, rect) {
+    fillRenderRect: function(rect) {
       
       let lns = this.text.slice(this.vertOff);
       rect.fill((x, y) => ((y < lns.count()) && (x < lns[y].count())) ? lns[y][x] : { chr: this.bg });
@@ -577,7 +574,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       genNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' }), // General # of colours
       impNumCols:   AdapterVal({ type: 'uInt', bLen: 32, endn: '<' })  // Important # of colours
     }}),
-    pixelArr: ctx => AdapterArr({
+    pixels: ctx => AdapterArr({
       
       reps: ctx.bmpHeader.value.w.value * ctx.bmpHeader.value.h.value,
       format:  AdapterArr({
@@ -599,15 +596,16 @@ global.rooms['window'] = foundation => ({ open: async () => {
         fwd: cmps => {
           let w = ctx.bmpHeader.value.w.value;
           let h = ctx.bmpHeader.value.h.value;
-          let pixels = Array.fill(w, () => Array.fill(h, () => null));
-          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) pixels[x][y] = cmps[(h - y - 1) * h + x];
-          return { w, h, pixels };
+          
+          let result = Vals2D({ w, h, format: { r: 0, g: 0, b: 0, lum: 0 } });
+          return result.fill((x, y) => cmps[(h - y - 1) * h + x]);
         },
-        bak: ({ pixels, w=pixels.count(), h=pixels[0].count() }) => {
+        bak: pixels => {
+          let { w, h } = pixels;
           return (w * h).toArr(n => {
             let y = Math.floor(n / w);
             let x = n - y * w;
-            return pixels[x][h - y - 1];
+            return pixels.getVal(x, h - y - 1);
           });
         }
       }
@@ -634,7 +632,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     renderer.addRenderer(TerminalPixelsRenderer({
       chrW: 2, chrH: 1,
       x: 0, y: 1,
-      pixels: bmpData.value.pixelArr.value.pixels
+      pixels: bmpData.value.pixels.value
     }));
     
     renderer.statusPane.update({ text: 'Rendered initial pixels' });
@@ -650,7 +648,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     renderer.addRenderer(TerminalPixelsRenderer({
       chrW: 2, chrH: 1,
       x: r => r.w >> 1, y: 1,
-      pixels: bmpData2.value.pixelArr.value.pixels
+      pixels: bmpData2.value.pixels.value
     }));
     
     renderer.statusPane.update({ text: 'Rendered comparison' });
