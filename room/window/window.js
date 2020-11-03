@@ -682,7 +682,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     let buff = await bmpFormat.convertBak({ pixels });
     console.log(buff.toString('hex'));
-    await foundation.seek('keep', 'fileSystem', 'room', 'window', 'amazingTest.bmp').setContent(buff);
+    await foundation.seek('keep', 'fileSystem', 'room', 'window', 'outputTest.bmp').setContent(buff);
     
     foundation.halt();
     
@@ -690,7 +690,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
   
   if (0) await (async () => {
     
-    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'test.bmp').getContent();
+    let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'imgTest.bmp').getContent();
     let bmpData = await bmpFormat.convertFwd(bmpBuff);
     
     console.log({ bmpData });
