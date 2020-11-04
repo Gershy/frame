@@ -1,6 +1,6 @@
 (() => {
   
-  let { Tmp, TmpRefCount, Src, FnSrc, MemSrc } = U.logic;
+  let { Tmp, Src, FnSrc, MemSrc } = U.logic;
   let { Foundation, Keep } = U.setup;
   
   let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({

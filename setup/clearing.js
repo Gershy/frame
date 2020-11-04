@@ -443,14 +443,6 @@ U.logic = (() => {
       throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
     }
   })});
-  let TmpRefCount = U.inspire({ name: 'TmpRefCount', insps: { Tmp }, methods: (insp, Insp) => ({
-    init: function(fn) {
-      insp.Tmp.init.call(this, fn);
-      this.refCount = 0;
-    },
-    ref: function() { this.refCount++; return this; },
-    sendAndEnd: function(...args) { if (--this.refCount <= 0) return insp.Tmp.sendAndEnd.call(this); }
-  })});
   let TmpAll = U.inspire({ name: 'TmpAll', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(tmps) {
       insp.Tmp.init.call(this);
@@ -609,6 +601,39 @@ U.logic = (() => {
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   
+  // TODO: What about something with a ref count; e.g. it can be
+  // initiated multiple times, and can withstand a call to `end` for
+  // each time it has been initiated past the first? An implementation
+  // could look like:
+  //      |     U.inspire({ name: '...', methods: (insp, Insp) => ({
+  //      |       
+  //      |       init: function() { this.watcher = Tmp.endedTmp(); },
+  //      |       actuallyCreateWatcher: function() {
+  //      |       
+  //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
+  //      |         // doesn't matter!
+  //      |         return someKindOfWatcher();
+  //      |         
+  //      |       },
+  //      |       getWatcher: function() {
+  //      |         
+  //      |         if (this.watcher.off()) {
+  //      |           // I can't immediately see how to do this without
+  //      |           // supplying a list of exposed fields.
+  //      |           // RefCountWatcher.prototype.ref needs to return
+  //      |           // an object that behaves exactly like the value
+  //      |           // `this.actuallyCreateWatcher()`, but with an
+  //      |           // `end` method that only ends the underlying
+  //      |           // object if the RefCount drops to 0. Note it's
+  //      |           // important to indicate which exposed fields are
+  //      |           // functions since they'll need to be bound.
+  //      |           this.watcher = RefCountWatcher(this.actuallyCreateWatcher(), [ 'src', 'cleanup()' ]);
+  //      |         }
+  //      |         return this.watcher.ref();
+  //      |         
+  //      |       }
+  //      |     })});
+  
   let Chooser = U.inspire({ name: 'Chooser', insps: { Endable, Src }, methods: (insp, Insp) => ({
     init: function(names, src=null) {
       insp.Endable.init.call(this);
@@ -748,7 +773,7 @@ U.logic = (() => {
   
   return {
     // Basic logic
-    Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny,
+    Endable, Src, Tmp, TmpAll, TmpAny,
     
     // Higher level logic
     MemSrc, FilterSrc, FnSrc, Chooser, Scope,
