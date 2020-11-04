@@ -201,6 +201,10 @@ protoDef(Promise, 'route', Promise.prototype.then);
 
 protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
+Function.stub = () => {};
+Set.stub = { count: () => 0, add: Function.stub, rem: Function.stub, has: Function.stub };
+Map.stub = { count: () => 0, set: Function.stub, rem: Function.stub, has: Function.stub };
+
 let U = global.U = {
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
@@ -365,12 +369,12 @@ U.logic = (() => {
   
   let Endable = U.inspire({ name: 'Endable', methods: (insp, Insp) => ({
     
-    // $globalRegistry: Set(),
+    $globalRegistry: 0 ? Set.stub : Set(),
     
     init: function(fn) {
       // Allow Endable.prototype.cleanup to be masked
       if (fn) this.cleanup = fn;
-      //Insp.globalRegistry.add(this);
+      Insp.globalRegistry.add(this);
     },
     onn: function() { return true; },
     off: function() { return !this.onn(); },
@@ -378,7 +382,7 @@ U.logic = (() => {
     end: function(...args) {
       if (this.off()) return false;
       this.onn = () => false;
-      // Insp.globalRegistry.rem(this);
+      Insp.globalRegistry.rem(this);
       this.cleanup(...args);
       return true;
     }
@@ -515,6 +519,7 @@ U.logic = (() => {
       this.vals = Set();
       this.counter = null;
     },
+    count: function() { return this.vals.count(); },
     getCounterSrc: function() {
       if (!this.counter) this.counter = MemSrc.Prm1(this.vals.count());
       return this.counter;
@@ -659,7 +664,7 @@ U.logic = (() => {
       let prevSrcName = this.activeSrcName;
       this.activeSrcName = name;
       
-      // End previous Src val
+      // End any previous Src val
       // Note that if `val` is ended externally, the `MemSrc.Tmp1` that
       // stored it may have already set its own `val` to `null`. If this
       // is the case, the `MemSrc.Tmp1` is already taken care of ending
@@ -694,8 +699,8 @@ U.logic = (() => {
           // Allow raw functions; wrap them in `Endable`
           if (U.isType(dep, Function)) dep = Endable(dep);
           
-          // If off, ignore
-          if (dep.off()) return;
+          if (deps.has(dep)) return; // Ignore duplicates
+          if (dep.off()) return; // Ignore any inactive Deps
           
           // `deps` no longer existing requires all Deps to end
           if (!deps) return dep.end();

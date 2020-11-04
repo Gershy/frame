@@ -1,8 +1,8 @@
 global.rooms.write = async foundation => {
   
-  let { Tmp, Slots, Src, MemSrc, Chooser } = U.logic;
+  let { Tmp, Slots, Src, MemSrc, Chooser, FnSrc } = U.logic;
   let { FreeLayout, SizedLayout, Axis1DLayout, TextLayout, TextInputLayout, ScrollLayout } = U.setup;
-  let { RecScope } = await foundation.getRoom('record');
+  let { Rec, RecScope } = await foundation.getRoom('record');
   let { HtmlApp } = await foundation.getRoom('hinterlands.htmlApp');
   
   let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp')
@@ -10,6 +10,37 @@ global.rooms.write = async foundation => {
   return { open: async hut => {
     
     hut.roadDbgEnabled = false;
+    
+    let typeClsMap = {
+      'wrt.room': U.inspire({ name: 'WriteRecRoom', insps: { Rec }, methods: (insp, Insp) => ({
+        getStatusWatcher: function() {
+          
+          let tmp = Tmp();
+          
+          let valSrc = FnSrc.Prm1([ this.valSrc ], () => this.getVal());
+          tmp.endWith(valSrc);
+          
+          let userCountSrc = this.relSrc('wrt.roomUser').getCounterSrc();
+          let entryCountSrc = this.relSrc('wrt.roomEntry').getCounterSrc();
+          
+          tmp.src = FnSrc.Prm1([ valSrc, userCountSrc, entryCountSrc ], (val, numUsers, numEntries) => {
+            let { writeParams: { minUsers, maxRounds } } = val;
+            if (numUsers < minUsers) return 'needMoreUsers';
+            if (numEntries >= maxRounds) return 'finalized';
+            return 'active';
+          });
+          tmp.endWith(tmp.src);
+          
+          return tmp;
+          
+        },
+        getRoundEndMs: function() {
+          let { timerMs, writeParams: { timeout } } = this.getVal();
+          return timerMs + timeout * 1000;
+        }
+      })})
+    };
+    for (let [ typeName, Cls ] of typeClsMap) hut.addTypeClsFn(typeName, () => Cls);
     
     await HtmlApp({ name: 'write' }).decorateApp(hut);
     
@@ -31,32 +62,25 @@ global.rooms.write = async foundation => {
         writeParams: { charLimit: 150, timeout: 30, maxRounds: 100, minUsers: 3, maxUsers: 10 }
       });
       
-      // hut.createRec('wrt.roomUser', [ admin1Room, admin1 ]);
+      hut.createRec('wrt.roomUser', [ admin1Room, admin1 ]);
       
       let rootScope = RecScope(writeRec, 'wrt.room', (room, dep) => {
         
         // Liven up "active" and "users" prop; count roomUsers
-        room.dltVal({ users: 0, status: 'needMoreUsers', timerMs: null });
-        dep.scp(room, 'wrt.roomUser', (roomUser, dep) => {
-          
-          let { users, writeParams: { minUsers } } = room.getVal(); users++;
-          room.dltVal({ users, status: users >= minUsers ? 'active' : 'needMoreUsers' });
-          dep(() => {
-            let { users, writeParams: { minUsers } } = room.getVal(); users--;
-            room.dltVal({ users, status: users >= minUsers ? 'active' : 'needMoreUsers' });
-          });
-          
-        });
+        room.dltVal({ timerMs: null });
         
         // A Chooser to act based on room's status
-        let activeChooser = dep(Chooser([ 'needMoreUsers', 'active' ]));
-        dep(room.valSrc.route(() => activeChooser.choose(room.getVal('status'))));
+        let roomStatusSrc = dep(room.getStatusWatcher()).src;
+        let activeChooser = dep(Chooser([ 'needMoreUsers', 'active', 'finalized' ]));
+        dep(roomStatusSrc.route(status => activeChooser.choose(status)));
         
         console.log(`Waiting for room ${room.uid} to go active...`);
         dep.scp(activeChooser.srcs.active, (active, dep) => {
           
           console.log(`Room ${room.uid} went active!!`);
           
+          // Not every active room is also timing! Timing only occurs
+          // while an active room has at least one submission.
           let timingChooser = dep(Chooser([ 'waiting', 'timing' ]));
           let numEntries = 0;
           dep.scp(room, 'wrt.roomUser', (ru, dep) => dep.scp(ru, 'wrt.roomUserEntry', (rue, dep) => {
@@ -227,7 +251,7 @@ global.rooms.write = async foundation => {
         });
         loggedOutReal.addReal('wrt.loggedOut.help', {
           layouts: [
-            TextLayout({ text: 'Account will be created if none is found', size: '90%', align: 'mid' }),
+            TextLayout({ text: 'Account will be created if none exists', size: '90%', align: 'mid' }),
             SizedLayout({ w: '200px', h: '45px' })
           ],
           decals: { textColour: 'rgba(0, 0, 0, 0.7)' }
@@ -535,23 +559,48 @@ global.rooms.write = async foundation => {
             layouts: [ SizedLayout({ w: '100%', h: '40px' }) ],
             decals: { colour: 'rgba(0, 0, 0, 0.2)' }
           });
+          let hasTimerChooser = dep(Chooser([ 'noTimer', 'timer' ]));
+          dep(room.valSrc.route(() => hasTimerChooser.choose(room.getVal('timerMs') ? 'timer' : 'noTimer')));
+          dep.scp(hasTimerChooser.srcs.noTimer, (noTimer, dep) => {
+            dep(statusReal.addReal('wrt.activeRoom.status.noTimer', {
+              layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: '-- : -- : --', size: '120%' }) ],
+              decals: { textColour: 'rgba(0, 0, 0, 0.4)' }
+            }));
+          });
+          dep.scp(hasTimerChooser.srcs.timer, (timer, dep) => {
+            
+            let timerElem = dep(statusReal.addReal('wrt.activeRoom.status.timer', {
+              layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: '', size: '120%' }) ],
+              decals: { textColour: 'rgba(0, 0, 0, 1)' }
+            }));
+            
+            let updateTimer = () => {
+              let secs = Math.floor(Math.max(0, (room.getRoundEndMs() - foundation.getMs()) / 1000));
+              let hrs = Math.floor(secs / (60 * 60)); secs -= (hrs * 60 * 60);
+              let mins = Math.floor(secs / 60); secs -= (mins * 60);
+              
+              [ hrs, mins, secs ] = [ Math.min(99, hrs), mins, secs ].map(v => `${v}`.padHead(2, '0'));
+              timerElem.setText(`${hrs} : ${mins} : ${secs}`);
+            };
+            updateTimer();
+            
+            let interval = setInterval(updateTimer, 500);
+            dep(() => clearInterval(interval));
+            
+          });
           
           let controlsReal = roomReal.addReal('wrt.activeRoom.controls', {
             layouts: [ SizedLayout({ w: '100%', h: 'calc(50% - 70px)' }) ]
           });
           
-          let controlsChooser = dep(Chooser([ 'complete', 'needMoreUsers', 'active' ]));
-          dep(room.valSrc.route(() => controlsChooser.choose(room.getVal('status'))));
+          let roomStatusSrc = dep(room.getStatusWatcher()).src;
+          let controlsChooser = dep(Chooser([ 'needMoreUsers', 'active', 'finalized' ]));
+          dep(roomStatusSrc.route(status => controlsChooser.choose(status)));
+          
           dep.scp(controlsChooser.srcs.needMoreUsers, (needMoreUsers, dep) => {
             // Indicate story can't be controlled without more players
             dep(controlsReal.addReal('wrt.needMoreUsers', {
               layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: 'Waiting for more users...', size: '250%', gap: '30px' }) ]
-            }));
-          });
-          dep.scp(controlsChooser.srcs.complete, (complete, dep) => {
-            // Indicate story can't be controlled ever again!
-            dep(controlsReal.addReal('wrt.complete', {
-              layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: 'Story complete!!', size: '250%', gap: '30px' }) ]
             }));
           });
           dep.scp(controlsChooser.srcs.active, (active, dep) => {
@@ -679,6 +728,12 @@ global.rooms.write = async foundation => {
               
             });
             
+          });
+          dep.scp(controlsChooser.srcs.finalized, (finalized, dep) => {
+            // Indicate story can't be controlled ever again!
+            dep(controlsReal.addReal('wrt.finalized', {
+              layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: 'Story finalized!!', size: '250%', gap: '30px' }) ]
+            }));
           });
           
         });

@@ -1082,6 +1082,7 @@
         
         addViewportEntryChecker: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         
+        setText: (real, text) => {},
         addInput: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         addPress: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }

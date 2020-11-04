@@ -26,7 +26,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
               <style type="text/css">
-                body { position: relative; opacity: 0; transition: opacity 750ms linear; }
+                body { position: relative; opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
                 body::before {
                   content: ''; display: block; position: absolute;
                   left: 0; right: 0; top: 0; bottom: 0;
@@ -35,7 +35,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
                   pointer-events: none;
                   transition: box-shadow 100ms linear;
                 }
-                body.loaded { opacity: 1; font-size: ${textSize}; }
+                body.loaded { opacity: 1; }
                 body.focus::before { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 1); }
               </style>
               <script type="text/javascript">window.global = window;</script>
@@ -220,8 +220,8 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <style type="text/css">
                 body, html { padding: 0; margin: 0; }
-                body { margin: 2px; }
-                iframe { display: inline-block; margin: 2px; vertical-align: top; border: none; }
+                body { margin: 2px; text-align: center; }
+                iframe { display: inline-block; margin: 1px; vertical-align: top; border: none; }
               </style>
             </head>
             <body>${parseInt(num, 10).toArr(genIframe).join('')}</body>

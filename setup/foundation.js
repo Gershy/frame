@@ -150,7 +150,7 @@ Hut at the very bottom runs using a single Reality.
     cmpRoomLineToSrcLine: function(roomName, cmpLine, cmpChar=null) {
       let offsets = null
         || this.installedRooms.seek([ roomName, 'debug', 'offsets' ]).val
-        || global.seek([ 'roomDebug', roomName, 'offsets' ]).val;
+        || (global.roomDebug || {}).seek([ roomName, 'offsets' ]).val;
       
       let result = offsets
         ? { disp: null, mapped: true, srcLine: this.cmpLineToSrcLine(offsets, cmpLine, cmpChar) }
@@ -313,6 +313,8 @@ Hut at the very bottom runs using a single Reality.
     },
     
     scrollTo: function(real, ...args) { return this.tech.scrollTo(this, real, ...args); },
+    
+    setText: function(...args) { return this.tech.setText(this, ...args) },
     addInput: function(...args) { return this.tech.addInput(this, ...args); },
     addPress: function(...args) { return this.tech.addPress(this, ...args); },
     addFeel: function(...args) { return this.tech.addFeel(this, ...args); },

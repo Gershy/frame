@@ -79,6 +79,7 @@
       let firstContactMs = performance.timing.responseStart;
       let knownLatencyMs = nativeNow - firstContactMs;
       
+      
       // With this value, `new Date() + this.clockDeltaMs` is best guess
       // at current value of Above's `foundation.getMs()` *right now*
       this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
@@ -86,7 +87,8 @@
       this.isSpoofed = isSpoofed;
       
       // Make sure that refreshes redirect to the same session
-      window.history.replaceState({}, '', this.seek('keep', 'urlResource', {}).getUrl());
+      let { query } = this.parseUrl(window.location.href);
+      window.history.replaceState({}, '', this.seek('keep', 'urlResource', { params: query }).getUrl());
       
     },
     halt: function() { /* debugger */; },
@@ -433,6 +435,19 @@
             
           },
           
+          setText: (real, text) => {
+            
+            let techNode = real.getTechNode();
+            let childNodes = [ ...techNode.childNodes ];
+            if (childNodes.count() > 1) throw Error(`Can't set text; there's other stuff here!`);
+            if (childNodes.count()) {
+              if (childNodes[0].nodeType !== Node.TEXT_NODE) throw Error(`Can't set text; there's other stuff here!`); // TODO: That CONSTANT_STYLE is grossss
+              childNodes[0].remove();
+            }
+            
+            techNode.appendChild(document.createTextNode(text));
+            
+          },
           addInput: real => {
             
             let textInputLayout = real.layouts.find(layout => U.isInspiredBy(layout, TextInputLayout)).val;

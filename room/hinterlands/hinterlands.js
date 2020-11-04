@@ -102,7 +102,6 @@ global.rooms.hinterlands = async foundation => {
       this.uid = uid;
       this.parHut = parHut;
       this.foundation = foundation;
-      this.typeToClsFns = {};
       
       // Always perfer ParHut's `RecTypes` functionality!
       if (!parHut) insp.RecTypes.init.call(this);
@@ -146,8 +145,10 @@ global.rooms.hinterlands = async foundation => {
       } else if (this.isHere()) {
         
         // Map uids to Recs to allow flat access
-        this.allRecs = Map();
-        this.allRecs.set(this.uid, this);
+        this.allRecs = Map([ [ this.uid, this ] ]);
+        
+        // Map RecType names to the class used to represent them
+        this.typeToClsFns = {};
         
         // Buffer initial syncs as long as we're missing versions
         this.earlySyncs = Map();
