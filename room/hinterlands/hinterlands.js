@@ -88,8 +88,7 @@ global.rooms.hinterlands = async foundation => {
         
         // Note that `road` is already implicitly linked to `trgHut`!
         // `road.tell(...)` propagates a message to `trgHut` (note
-        // `road.hear.route(...)` would be used to receive messages
-        // from `trgHut`)
+        // `road.hear.route(...)` lets us hear messages from `trgHut`)
         return road.tell(msg);
         
       }
@@ -525,8 +524,8 @@ global.rooms.hinterlands = async foundation => {
         this.allRecs.get(uid).end();
       }
       
-      // Using `map` to return here ensures Rec instances are received
-      // in the same order they were initially specified even if they
+      // Basing the result value's order on `add` guarantees Recs are
+      // returned in the same order initially specified, even if they
       // became unordered from churning
       return add.map(({ uid }) => this.allRecs.get(uid));
       

@@ -57,7 +57,7 @@ global.rooms.record = async foundation => {
       });
       
       for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
-      for (let nrt of newRecTypes) this.memberInfoSrc.receive(nrt);
+      for (let nrt of newRecTypes) this.memberInfoSrc.retain(nrt);
       
     }
   })});
@@ -75,14 +75,14 @@ global.rooms.record = async foundation => {
       this.relSrcs = {};
       this.relTermSrc = MemSrc.PrmM();
       
-      this.valSrc = MemSrc.Prm1(null, val);
+      this.valSrc = MemSrc.Prm1(val);
       
       // Set us up to dry if any MemberRec dries
       this.allMemsTmp = TmpAll(this.mems.toArr(m => m || C.skip));
       this.allMemsTmp.endWith(this); // If any Mem ends, we end
       
       // Inform all MemberRecs of this GroupRec
-      for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).receive(this);
+      for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).retain(this);
     },
     desc: function() { return `${this.type.name} @ ${this.uid}`; },
     mem: function(termTail) {
@@ -131,7 +131,7 @@ global.rooms.record = async foundation => {
       if (!this.relSrcs.has(key)) {
         this.relSrcs[key] = MemSrc.TmpM();
         this.relSrcs[key].desc = `RelSrc: ${this.type.name} -> ${recType.name} (${term})`;
-        this.relTermSrc.receive(key);
+        this.relTermSrc.retain(key);
       }
       return this.relSrcs[key];
       
@@ -160,7 +160,7 @@ global.rooms.record = async foundation => {
     },
     
     setVal: function(newVal) {
-      if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.receive(newVal);
+      if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.retain(newVal);
       return this;
     },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
@@ -204,7 +204,7 @@ global.rooms.record = async foundation => {
         let [ src, fn ] = args;
         insp.Scope.init.call(this, src, fn);
       } else {
-        throw Error(`Expected 3 or 2 args; received ${args.length}`);
+        throw Error(`Expected 3 or 2 args; got ${args.length}`);
       }
     }
   })});

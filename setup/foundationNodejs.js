@@ -559,64 +559,64 @@
           
           async m => { // MemSrc.Tmp1 sends value
             
-            let src = MemSrc.Tmp1(Src());
+            let src = MemSrc.Tmp1();
             let sends = [];
             src.route(v => sends.push(v));
-            src.src.send(Tmp());
+            src.retain(Tmp());
             if (sends.count() !== 1) throw Error(`Expected exactly 1 send; got ${sends.count()}`);
             
           },
           async m => { // MemSrc.Tmp1 sends multiple Tmps, one at a time
             
-            let src = MemSrc.Tmp1(Src());
+            let src = MemSrc.Tmp1();
             let sends = [];
             src.route(v => sends.push(v));
-            src.src.send(Tmp());
-            src.src.send(Tmp());
+            src.retain(Tmp());
+            src.retain(Tmp());
             if (sends.count() !== 2) throw Error(`Expected exactly 2 sends; got ${sends.count()}`);
             
           },
           
           async m => { // MemSrc.TmpM handles add-route-while-sending edge-case
             
-            let src = MemSrc.TmpM(Src());
+            let src = MemSrc.TmpM();
             let n = 0;
             let fn = () => n++;
             src.route(() => src.route(fn));
-            src.receive(Tmp());
+            src.retain(Tmp());
             
             if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
           },
           async m => { // MemSrc.Tmp1 handles add-route-while-sending edge-case
             
-            let src = MemSrc.Tmp1(Src());
+            let src = MemSrc.Tmp1();
             let n = 0;
             let fn = () => n++;
             src.route(() => src.route(fn));
-            src.receive(Tmp());
+            src.retain(Tmp());
             
             if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
           },
           async m => { // MemSrc.TmpM handles more difficult add-route-while-sending edge-case
             
-            let src = MemSrc.TmpM(Src());
+            let src = MemSrc.TmpM();
             let n = 0;
             let fn = () => n++;
             src.route(() => src.route(() => src.route(fn)));
-            src.receive(Tmp());
+            src.retain(Tmp());
             
             if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
           },
           async m => { // MemSrc.Tmp1 handles more difficult add-route-while-sending edge-case
             
-            let src = MemSrc.Tmp1(Src());
+            let src = MemSrc.Tmp1();
             let n = 0;
             let fn = () => n++;
             src.route(() => src.route(() => src.route(fn)));
-            src.receive(Tmp());
+            src.retain(Tmp());
             
             if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
@@ -638,20 +638,20 @@
           },
           async m => { // FnSrc.Prm1 gets MemSrc.Prm1 vals as expected
             
-            let srcs = Array.fill(3, () => MemSrc.Prm1(Src(), 'a'));
+            let srcs = Array.fill(3, () => MemSrc.Prm1('a'));
             let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
             let results = [];
             fnSrc.route(v => results.push(v));
             
-            srcs[1].src.send('b');
-            srcs[1].src.send('a');
-            srcs[1].src.send('b');
-            srcs[2].src.send('b');
-            srcs[2].src.send('b'); // Should be ignored!
-            srcs[1].src.send('b'); // Should be ignored!
-            srcs[0].src.send('a'); // Should be ignored!
-            srcs[0].src.send('b');
-            srcs[1].src.send('a');
+            srcs[1].retain('b');
+            srcs[1].retain('a');
+            srcs[1].retain('b');
+            srcs[2].retain('b');
+            srcs[2].retain('b'); // Should be ignored!
+            srcs[1].retain('b'); // Should be ignored!
+            srcs[0].retain('a'); // Should be ignored!
+            srcs[0].retain('b');
+            srcs[1].retain('a');
             
             let expected = [
               [ 'a', 'a', 'a' ],
@@ -1330,10 +1330,10 @@
         // figures out which http response should get used... could be
         // tricky to figure out which response an instance of `hut.tell`
         // should correspond to tho. Imagine the following:
-        // 1. { command: 'login', reply: false } is received
-        // 2. { command: 'getRealDomFavicon', reply: true } is received
+        // 1. { command: 'login', reply: false } is heard
+        // 2. { command: 'getRealDomFavicon', reply: true } is heard
         // 3. The `hut.tell` for #1 occurs - how to avoid the server
-        //    thinking that *this* is the response for { reply: true }??
+        //    thinking that tell is the response for { reply: true }??
         
         // Synced requests end here - `road.tell` MUST occur or the
         // request will hang indefinitely

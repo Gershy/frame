@@ -440,7 +440,7 @@
             
             let initVal = textInputLayout.text || '';
             let techNode = real.getTechNode();
-            let tmp = Tmp(); tmp.src = MemSrc.Prm1(null, initVal);
+            let tmp = Tmp(); tmp.src = MemSrc.Prm1(initVal);
             
             let input = document.createElement('input');
             input.style.gain({
@@ -464,7 +464,7 @@
             
             tmp.endWith(browserTech.makeFocusable(real, input));
             
-            let inpFn = evt => tmp.src.receive(input.value);
+            let inpFn = evt => tmp.src.retain(input.value);
             input.addEventListener('input', inpFn);
             tmp.endWith(() => input.removeEventListener('input', inpFn));
             return tmp;

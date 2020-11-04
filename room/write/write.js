@@ -64,7 +64,7 @@ global.rooms.write = async foundation => {
             dep(() => --numEntries || timingChooser.choose('waiting'));
           }));
           
-          console.log(`Waiting for ${room.uid} to receive entries and begin timing...`);
+          console.log(`Waiting for ${room.uid} to get some entries and begin timing...`);
           dep.scp(timingChooser.srcs.timing, (timing, dep) => {
             
             console.log(`Room ${room.uid} got entries and began timing!!`);
@@ -177,6 +177,7 @@ global.rooms.write = async foundation => {
         let loginSender = dep(writeHut.getTellSender('wrt.login', ({ username, password }, reply) => {
           
           // TODO: Calls like `relRecs` here need to become async...
+          
           let user = writeRec.relRecs('wrt.user').find(rec => rec.getVal().username === username).val;
           if (user) {
             let neededPw = user.relRec('wrt.userPrivate').getVal().password;

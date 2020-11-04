@@ -33,7 +33,7 @@ global.rooms['hinterlands.hutApp'] = async foundation => {
       
       /// =ABOVE} {BELOW=
       
-      // As soon as Below receives the root Rec it's good to go
+      // As soon as Below syncs the root Rec it's good to go
       fn(rootRec, rootHut, rootReal, dep);
       
       /// =BELOW}

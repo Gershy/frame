@@ -469,44 +469,33 @@ U.logic = (() => {
   })});
   
   let MemSrc = U.inspire({ name: 'MemSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    init: function(src=null) {
+    init: function() {
       if (U.isType(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
-      if (src) {
-        this.src = src;
-        this.srcRoute = this.src.route((...vals) => this.receive(...vals));
-      }
     },
-    receive: C.noFn('receive'),
-    cleanup: function() { this.srcRoute && this.srcRoute.end(); }
+    retain: C.noFn('retain')
   })});
   MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src=null, val=C.skip) {
-      insp.MemSrc.init.call(this, src);
-      this.val = val;
-    },
+    init: function(val=C.skip) { insp.MemSrc.init.call(this); this.val = val; },
     newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
-    receive: function(val) { if (val === this.val) return; this.val = val; this.send(val); },
-    cleanup: function() { this.val = null; }
+    retain: function(val) { if (val === this.val) return; this.val = val; if (this.val !== C.skip) this.send(val); },
+    cleanup: function() { this.val = C.skip; }
   })});
   MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src=null) {
-      insp.MemSrc.init.call(this, src);
-      this.vals = [];
-    },
+    init: function() { insp.MemSrc.init.call(this); this.vals = []; },
     count: function() { return this.vals.count(); },
-    receive: function(val) { this.vals.push(val); this.send(val); },
+    retain: function(val) { this.vals.push(val); this.send(val); },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() { this.vals = []; }
   })});
   MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src, val) {
-      insp.MemSrc.init.call(this, src);
+    init: function(val) {
+      insp.MemSrc.init.call(this);
       this.valEndRoute = null;
       this.val = null;
     },
-    receive: function(tmp) {
+    retain: function(tmp) {
       
       if (tmp.off()) return; // Don't bother with inactive Tmps
       
@@ -520,35 +509,34 @@ U.logic = (() => {
     cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
   })});
   MemSrc.TmpM = U.inspire({ name: 'MemSrc.TmpM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src=null) {
-      insp.MemSrc.init.call(this, src);
+    init: function() {
+      insp.MemSrc.init.call(this);
       this.valEndRoutes = Map();
       this.vals = Set();
       this.counter = null;
     },
     getCounterSrc: function() {
-      if (!this.counter) this.counter = MemSrc.Prm1(null, this.vals.count());
+      if (!this.counter) this.counter = MemSrc.Prm1(this.vals.count());
       return this.counter;
     },
-    receive: function(tmp) {
-      if (tmp.off()) return; // Don't bother with inactive Tmps
-      
+    retain: function(tmp) {
+      if (tmp.off()) return; // Ignore inactive Tmps
       if (this.vals.has(tmp)) return; // Ignore duplicates
       
       this.vals.add(tmp);
-      this.counter && this.counter.receive(this.vals.count());
+      this.counter && this.counter.retain(this.vals.count());
       
       this.valEndRoutes.set(tmp, tmp.route(() => {
         this.vals.rem(tmp);
         this.valEndRoutes.rem(tmp);
-        this.counter && this.counter.receive(this.vals.count());
+        this.counter && this.counter.retain(this.vals.count());
       }));
       
       this.send(tmp);
     },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() {
-      for (let [ tmp, route ] of this.valEndRoutes) route.end();
+      for (let [ , route ] of this.valEndRoutes) route.end();
       this.vals = Set();
       this.valEndRoutes = Map();
     }
@@ -625,7 +613,7 @@ U.logic = (() => {
       
       this.activeSrcName = names[0];
       this.srcs = names.toObj(n => [ n, MemSrc.Tmp1() ]);
-      this.srcs[this.activeSrcName].receive(Tmp());
+      this.srcs[this.activeSrcName].retain(Tmp());
       
       if (src) {
         if (names.count() !== 2) throw Error(`Chooser requires exactly 2 names when used with a Src; got ${names.count()}: ${names.join(', ')}`);
@@ -638,10 +626,10 @@ U.logic = (() => {
           // toggle to "off", but rather remain the same, for the
           // upcoming call `this.choose(nOnn, tmp)`. But because
           // `Chooser.prototype.choose` ignores any duplicate choices,
-          // the newly received Tmp will be completely ignored, and
+          // the newly retained Tmp will be completely ignored, and
           // never be produced external to the Chooser. For this reason
-          // if, when we receive a Tmp in an already-"onn" state, we
-          // need to first quickly toggle to "off" before choosing "onn"
+          // if we're already in an "onn" state and we are routed
+          // another Tmp we first toggle to "off" before choosing "onn"
           // once again.
           if (this.activeSrcName === nOnn) {
             
@@ -679,7 +667,7 @@ U.logic = (() => {
       this.srcs[prevSrcName].val && this.srcs[prevSrcName].val.end();
       
       // Send new val to newly chosen Src
-      this.srcs[this.activeSrcName].receive(tmp || Tmp());
+      this.srcs[this.activeSrcName].retain(tmp || Tmp());
       
       // The Chooser itself also sends the currently active name
       this.send(this.activeSrcName);
