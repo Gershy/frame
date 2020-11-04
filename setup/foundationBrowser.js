@@ -66,7 +66,7 @@
       // GOAL: delta since Above generated "aboveMsAtResponseTime"?
       // - `firstContactMs` is our earliest timing of server response
       // - `firstContactMs` is `performance.timing.responseStart`
-      //   This is the time we received the server's 1st byte
+      //   This is the time we heard the server's 1st byte
       // - Without making any assumptions: `now - firstContactMs`
       // - This estimates LESS than the real latency
       
@@ -440,7 +440,7 @@
             
             let initVal = textInputLayout.text || '';
             let techNode = real.getTechNode();
-            let tmp = Tmp(); tmp.src = MemSrc.Prm1(Src(), initVal);
+            let tmp = Tmp(); tmp.src = MemSrc.Prm1(null, initVal);
             
             let input = document.createElement('input');
             input.style.gain({
@@ -464,7 +464,7 @@
             
             tmp.endWith(browserTech.makeFocusable(real, input));
             
-            let inpFn = evt => tmp.src.src.send(input.value);
+            let inpFn = evt => tmp.src.receive(input.value);
             input.addEventListener('input', inpFn);
             tmp.endWith(() => input.removeEventListener('input', inpFn));
             return tmp;
@@ -622,7 +622,7 @@
           }
         }}));
         
-        // If any data was received, process it at a higher level
+        // If any data was transmitted, process it at a higher level
         if (res) road.hear.send([ res, null, ms ]);
         
         // Always have 1 pending req
@@ -632,7 +632,6 @@
       };
       
       let server = Tmp(() => tellAndHear = v=>v);
-      server.connSrc = MemSrc.TmpM(Src());
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.hear = Src();
@@ -655,7 +654,6 @@
       await Promise(r => sokt.onopen = r);
       
       let server = Tmp(() => { /* sokt.close */ });
-      server.connSerc = MemSrc.TmpM(Src());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.hear = Src();

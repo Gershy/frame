@@ -478,14 +478,14 @@
             let gotInactiveEvent = false;
             tmp.route(() => gotInactiveEvent = true);
             tmp.end();
-            if (!gotInactiveEvent) throw Error(`No inactive event received after setInactive()`);
+            if (!gotInactiveEvent) throw Error(`No inactive event after setInactive()`);
           },
           async m => { // Inactive event sent when function applied after setInactive() (immediate setInactive)
             let tmp = Tmp();
             tmp.end();
             let gotInactiveEvent = false;
             tmp.route(() => gotInactiveEvent = true);
-            if (!gotInactiveEvent) throw Error(`No inactive event received after setInactive()`);
+            if (!gotInactiveEvent) throw Error(`No inactive event after setInactive()`);
           },
           async m => { // Inactive event not sent when removed; function applied before setInactive()
             let tmp = Tmp();
@@ -493,7 +493,7 @@
             let runFunctionOnEvent = tmp.route(() => gotInactiveEvent = true);
             runFunctionOnEvent.end();
             tmp.end();
-            if (gotInactiveEvent) throw Error(`Inactive event wrongly received after setInactive()`);
+            if (gotInactiveEvent) throw Error(`Invaled inactive event after setInactive()`);
           },
           
           ...[ FnSrc.Prm1, FnSrc.PrmM ].map(FnSrcCls => [
@@ -599,6 +599,28 @@
             if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
           },
+          async m => { // MemSrc.TmpM handles more difficult add-route-while-sending edge-case
+            
+            let src = MemSrc.TmpM(Src());
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(() => src.route(fn)));
+            src.receive(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          async m => { // MemSrc.Tmp1 handles more difficult add-route-while-sending edge-case
+            
+            let src = MemSrc.Tmp1(Src());
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(() => src.route(fn)));
+            src.receive(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
           
           async m => { // FnSrc.Prm1 only sends once, for multiple src sends, if value is always the same
             
@@ -614,7 +636,7 @@
             if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
             
           },
-          async m => { // FnSrc.Prm1 receives MemSrc.Prm1 vals as expected
+          async m => { // FnSrc.Prm1 gets MemSrc.Prm1 vals as expected
             
             let srcs = Array.fill(3, () => MemSrc.Prm1(Src(), 'a'));
             let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
@@ -649,7 +671,7 @@
             });
             
           },
-          async m => { // FnSrc.Prm1 receives Chooser vals as expected
+          async m => { // FnSrc.Prm1 gets Chooser vals as expected
             
             let choosers = Array.fill(3, () => Chooser([ 'a', 'b' ]));
             let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
@@ -889,57 +911,6 @@
               if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
             }
             
-          },
-          
-          async m => { // Range pos 1 param
-            let arr = [ ...Range(10) ];
-            if (arr[0] !== 0) throw Error(`Result should start with 0; got ${arr[0]}`);
-            if (arr.invert()[0] !== 9) throw Error(`Result should end with 9; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range neg 1 param
-            let arr = [ ...Range(-10) ];
-            if (arr[0] !== 0) throw Error(`Result should start with 0; got ${arr[0]}`);
-            if (arr.invert()[0] !== -9) throw Error(`Result should end with -9; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range pos 2 params
-            let arr = [ ...Range(5, 15) ];
-            if (arr[0] !== 5) throw Error(`Result should start with 5; got ${arr[0]}`);
-            if (arr.invert()[0] !== 14) throw Error(`Result should end with 14; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range neg 2 params
-            let arr = [ ...Range(-5, -15) ];
-            if (arr[0] !== -5) throw Error(`Result should start with -5; got ${arr[0]}`);
-            if (arr.invert()[0] !== -14) throw Error(`Result should end with -14; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range neg 2 params; upwards
-            let arr = [ ...Range(-15, -5) ];
-            if (arr[0] !== -15) throw Error(`Result should start with -5; got ${arr[0]}`);
-            if (arr.invert()[0] !== -6) throw Error(`Result should end with -14; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range inverted pos 1 param
-            let arr = [ ...Range(10).invert() ];
-            if (arr[0] !== 9) throw Error(`Result should end with 9; got ${arr[0]}`);
-            if (arr.invert()[0] !== 0) throw Error(`Result should start with 0; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range inverted neg 1 param
-            let arr = [ ...Range(-10).invert() ];
-            if (arr[0] !== -9) throw Error(`Result should end with -9; got ${arr[0]}`);
-            if (arr.invert()[0] !== 0) throw Error(`Result should start with 0; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range inverted pos 2 params
-            let arr = [ ...Range(5, 15).invert() ];
-            if (arr[0] !== 14) throw Error(`Result should end with 14; got ${arr[0]}`);
-            if (arr.invert()[0] !== 5) throw Error(`Result should start with 5; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range inverted neg 2 params
-            let arr = [ ...Range(-5, -15).invert() ];
-            if (arr[0] !== -14) throw Error(`Result should end with -14; got ${arr[0]}`);
-            if (arr.invert()[0] !== -5) throw Error(`Result should start with -5; got ${arr.invert()[0]}`);
-          },
-          async m => { // Range inverted neg 2 params; upwards
-            let arr = [ ...Range(-15, -5).invert() ];
-            if (arr[0] !== -6) throw Error(`Result should end with -14; got ${arr[0]}`);
-            if (arr.invert()[0] !== -15) throw Error(`Result should start with -5; got ${arr.invert()[0]}`);
           }
           
         ];
@@ -1446,7 +1417,6 @@
       
       // Return the Server as a Tmp which ends with the native server
       let server = Tmp(() => httpServer.close());
-      server.connSrc = MemSrc.TmpM(Src());
       
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
@@ -1540,7 +1510,6 @@
       await Promise(r => soktServer.listen(port, host, r));
       
       let server = Tmp(() => soktServer.close());
-      server.connSrc = MemSrc.TmpM(Src());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.hear = Src();

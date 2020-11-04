@@ -469,18 +469,20 @@ U.logic = (() => {
   })});
   
   let MemSrc = U.inspire({ name: 'MemSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    init: function(src) {
+    init: function(src=null) {
       if (U.isType(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
       insp.Endable.init.call(this);
       insp.Src.init.call(this);
-      this.src = src;
-      this.srcRoute = this.src.route((...vals) => this.receive(...vals));
+      if (src) {
+        this.src = src;
+        this.srcRoute = this.src.route((...vals) => this.receive(...vals));
+      }
     },
     receive: C.noFn('receive'),
-    cleanup: function() { this.srcRoute.end(); }
+    cleanup: function() { this.srcRoute && this.srcRoute.end(); }
   })});
   MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src, val=C.skip) {
+    init: function(src=null, val=C.skip) {
       insp.MemSrc.init.call(this, src);
       this.val = val;
     },
@@ -489,10 +491,11 @@ U.logic = (() => {
     cleanup: function() { this.val = null; }
   })});
   MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
+    init: function(src=null) {
       insp.MemSrc.init.call(this, src);
       this.vals = [];
     },
+    count: function() { return this.vals.count(); },
     receive: function(val) { this.vals.push(val); this.send(val); },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() { this.vals = []; }
@@ -517,19 +520,31 @@ U.logic = (() => {
     cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
   })});
   MemSrc.TmpM = U.inspire({ name: 'MemSrc.TmpM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(src) {
+    init: function(src=null) {
       insp.MemSrc.init.call(this, src);
       this.valEndRoutes = Map();
       this.vals = Set();
+      this.counter = null;
+    },
+    getCounterSrc: function() {
+      if (!this.counter) this.counter = MemSrc.Prm1(null, this.vals.count());
+      return this.counter;
     },
     receive: function(tmp) {
       if (tmp.off()) return; // Don't bother with inactive Tmps
       
       if (this.vals.has(tmp)) return; // Ignore duplicates
-      this.vals.add(tmp);
-      this.valEndRoutes.set(tmp, tmp.route(() => (this.vals.rem(tmp), this.valEndRoutes.rem(tmp))));
-      this.send(tmp);
       
+      this.vals.add(tmp);
+      this.counter && this.counter.receive(this.vals.count());
+      
+      this.valEndRoutes.set(tmp, tmp.route(() => {
+        this.vals.rem(tmp);
+        this.valEndRoutes.rem(tmp);
+        this.counter && this.counter.receive(this.vals.count());
+      }));
+      
+      this.send(tmp);
     },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() {
@@ -609,8 +624,8 @@ U.logic = (() => {
       if (U.isInspiredBy(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
       
       this.activeSrcName = names[0];
-      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1(Src()) ]);
-      this.srcs[this.activeSrcName].src.send(Tmp());
+      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1() ]);
+      this.srcs[this.activeSrcName].receive(Tmp());
       
       if (src) {
         if (names.count() !== 2) throw Error(`Chooser requires exactly 2 names when used with a Src; got ${names.count()}: ${names.join(', ')}`);
@@ -664,7 +679,7 @@ U.logic = (() => {
       this.srcs[prevSrcName].val && this.srcs[prevSrcName].val.end();
       
       // Send new val to newly chosen Src
-      this.srcs[this.activeSrcName].src.send(tmp || Tmp());
+      this.srcs[this.activeSrcName].receive(tmp || Tmp());
       
       // The Chooser itself also sends the currently active name
       this.send(this.activeSrcName);
@@ -737,30 +752,16 @@ U.logic = (() => {
     }
     
   })});
-  let Range = U.inspire({ name: 'Range', methods: (insp, Insp) => ({
-    init: function(...args) {
-      [ this.inc, this.exc ] = args.count() === 1 ? [ 0, args[0] ] : args;
-    },
-    invert: function() {
-      let Cls = this.constructor;
-      return (this.inc < this.exc) ? Cls(this.exc - 1, this.inc - 1) : Cls(this.exc + 1, this.inc + 1);
-    },
-    'Symbol.iterator': function*(dir='fwd') {
-      let [ inc, exc ] = [ this.inc, this.exc ];
-      if (inc < exc)  for (let v = inc; v < exc; v++) yield v;
-      else            for (let v = inc; v > exc; v--) yield v;
-    }
-  })});
   
   return {
     // Basic logic
     Endable, Src, Tmp, TmpRefCount, TmpAll, TmpAny,
     
-    // Advanced logic
+    // Higher level logic
     MemSrc, FilterSrc, FnSrc, Chooser, Scope,
     
     // Utility
-    Slots, Range
+    Slots
   };
   
 })();

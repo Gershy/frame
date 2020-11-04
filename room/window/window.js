@@ -106,7 +106,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.render();
       
       // this.endWith(() => this.out.write('\u001b[2J\u001b[0;0H'));
-      this.endWith(() => this.out.cursorTo(0, this.h, () => this.out.write('\n\n\n')));
+      this.endWith(() => this.out.cursorTo(0, this.h, () => this.out.write('\n'.repeat(1))));
     },
     addRenderer: function(renderer) {
       let tmp = Tmp();
@@ -705,7 +705,6 @@ global.rooms['window'] = foundation => ({ open: async () => {
       inn: process.stdin, out: process.stdout,
       bg: { chr: ' ' }
     });
-    renderer.endWith(() => foundation.halt());
     
     let bmpBuff = await foundation.seek('keep', 'fileSystem', 'room', 'window', 'imgTest.bmp').getContent();
     let bmpData = await bmpFormat.convertFwd(bmpBuff);

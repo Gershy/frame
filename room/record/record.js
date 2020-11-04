@@ -31,7 +31,7 @@ global.rooms.record = async foundation => {
       
       types.typeMap[name] = this;
       
-      this.memberInfoSrc = MemSrc.PrmM(Src());
+      this.memberInfoSrc = MemSrc.PrmM();
       this.terms = {};
       this.memberInfoSrc.route(mi => { this.terms[mi.term] = mi; });
       this.validators = [
@@ -57,7 +57,7 @@ global.rooms.record = async foundation => {
       });
       
       for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
-      for (let nrt of newRecTypes) this.memberInfoSrc.src.send(nrt);
+      for (let nrt of newRecTypes) this.memberInfoSrc.receive(nrt);
       
     }
   })});
@@ -73,10 +73,9 @@ global.rooms.record = async foundation => {
       this.uid = uid;
       this.mems = mems;
       this.relSrcs = {};
-      this.relTermSrc = MemSrc.PrmM(Src());
+      this.relTermSrc = MemSrc.PrmM();
       
-      this.valSrc = MemSrc.Prm1(Src());
-      this.valSrc.src.send(val);
+      this.valSrc = MemSrc.Prm1(null, val);
       
       // Set us up to dry if any MemberRec dries
       this.allMemsTmp = TmpAll(this.mems.toArr(m => m || C.skip));
@@ -112,10 +111,12 @@ global.rooms.record = async foundation => {
         // never seen before, use the type name as the term.
         let memInf = recType.memberInfoSrc.vals.find(mi => mi.recType === this.type).val;
         if (!memInf) {
-          // TODO: What if somehow `this.type.name` is already a term
-          // for a different type?? Then we'd need to try another
-          // "made up" term, like `${this.type.name}/2` or something
-          // silly like that
+          // TODO: Theoretically `this.type.name` could already be a
+          // term. This isn't likely, as it would need to be the term
+          // for some RecType other than this (which is very odd), but
+          // it could happen. This conflict could be detected, and we
+          // could uniquify the term used (e.g. `${this.type.name/2}`).
+          // This could be very surprising for the implementing code!
           recType.updMems({ [this.type.name]: this.type });
           term = this.type.name;
         } else {
@@ -128,9 +129,9 @@ global.rooms.record = async foundation => {
       
       let key = `${recType.name}/${term}`;
       if (!this.relSrcs.has(key)) {
-        this.relSrcs[key] = MemSrc.TmpM(Src());
+        this.relSrcs[key] = MemSrc.TmpM();
         this.relSrcs[key].desc = `RelSrc: ${this.type.name} -> ${recType.name} (${term})`;
-        this.relTermSrc.src.send(key);
+        this.relTermSrc.receive(key);
       }
       return this.relSrcs[key];
       
@@ -159,7 +160,7 @@ global.rooms.record = async foundation => {
     },
     
     setVal: function(newVal) {
-      if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.src.send(newVal);
+      if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.receive(newVal);
       return this;
     },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },

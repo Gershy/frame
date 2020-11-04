@@ -475,7 +475,6 @@ global.rooms.write = async foundation => {
           let controlsReal = roomReal.addReal('wrt.activeRoom.controls', ctx => ({
             layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
           }));
-          
           */
           
           // Real to display entire room
