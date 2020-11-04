@@ -158,7 +158,7 @@ Hut at the very bottom runs using a single Reality.
       
       return result.gain({ disp: `${roomName}.${result.mapped ? 'cmp' : 'src'} @ ${result.srcLine.toString()}` });
     },
-    formatError: function(err) {
+    formatError: function(err, verbose=false) {
       
       // Form a pretty representation of an error. Remove noise from filepaths
       // and map line indices from compiled->source.
@@ -171,12 +171,13 @@ Hut at the very bottom runs using a single Reality.
       let trace = stack.substr(traceBegins);
       
       let lines = trace.split('\n').map(line => {
-        try {
-          let { roomName, lineInd, charInd } = this.parseErrorLine(line);
-          return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp;
-        } catch(err) {
-          return C.skip; //`<??> ${line.trim()}`;
-        }
+        let parseCmpLine = null;
+        try { parseCmpLine = this.parseErrorLine(line); } catch(err) { return verbose ? `?(1) - ${line.trim()}` : C.skip; }
+        
+        let { roomName, lineInd, charInd, bearing } = parseCmpLine;
+        if (bearing === null) return `${roomName}.src @ ${lineInd}`;
+        
+        try { return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp; } catch(err) { return verbose ? `?(2) - mill//${roomName}.js @ ${lineInd} (${line.trim()})` : C.skip; }
       });
       
       let preLen = err.constructor.name.length + 2; // The classname plus ": "

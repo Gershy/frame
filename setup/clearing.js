@@ -388,11 +388,25 @@ U.logic = (() => {
     newRoute: function(fn) {},
     route: function(fn, mode='tmp') {
       if (!(fn instanceof Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
+      if (this.fns.has(fn)) return; // Ignore duplicates
       this.fns.add(fn);
       this.newRoute(fn);
       if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
     },
-    send: function(...args) { for (let fn of this.fns) fn(...args); }
+    send: function(...args) {
+      
+      // Behaviour is much better when "addRoute-while-send" does not
+      // result in the route being called **from Src.prototype.send**
+      // (note it may be called from, e.g., "newRoute"). So when "send"
+      // is called our goal is to iterate a snapshot of `this.fns`. Note
+      // that while "addRoute-while-send" cases should effectively be
+      // ignored, "remRoute-while-send" should *not* be ignored. So for
+      // each route in the snapshot, when the time comes to call that
+      // route we need to ensure it still exists within `this.fns`.
+      
+      for (let fn of [ ...this.fns ]) if (this.fns.has(fn)) fn(...args);
+      
+    }
   })});
   let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
     
@@ -462,6 +476,7 @@ U.logic = (() => {
       this.src = src;
       this.srcRoute = this.src.route((...vals) => this.receive(...vals));
     },
+    receive: C.noFn('receive'),
     cleanup: function() { this.srcRoute.end(); }
   })});
   MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
@@ -489,11 +504,14 @@ U.logic = (() => {
       this.val = null;
     },
     receive: function(tmp) {
+      
       if (tmp.off()) return; // Don't bother with inactive Tmps
-      if (this.valEndRoute) { this.valEndRoute.end(); this.valEndRoute = null; }
+      
+      if (this.val === tmp) return; // Ignore duplicates;
       this.val = tmp;
-      this.valEndRoute = tmp.route(() => (tmp.end(), this.val = this.valEndRoute = null));
+      this.valEndRoute = tmp.route(() => this.val = this.valEndRoute = null);
       this.send(tmp);
+      
     },
     newRoute: function(fn) { if (this.val) fn(this.val); },
     cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
@@ -506,9 +524,12 @@ U.logic = (() => {
     },
     receive: function(tmp) {
       if (tmp.off()) return; // Don't bother with inactive Tmps
+      
+      if (this.vals.has(tmp)) return; // Ignore duplicates
       this.vals.add(tmp);
       this.valEndRoutes.set(tmp, tmp.route(() => (this.vals.rem(tmp), this.valEndRoutes.rem(tmp))));
       this.send(tmp);
+      
     },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() {
@@ -607,7 +628,15 @@ U.logic = (() => {
           // if, when we receive a Tmp in an already-"onn" state, we
           // need to first quickly toggle to "off" before choosing "onn"
           // once again.
-          if (this.activeSrcName === nOnn) this.choose(nOff);
+          if (this.activeSrcName === nOnn) {
+            
+            // Ignore duplicate values
+            if (this.srcs[this.activeSrcName].val === tmp) return;
+            
+            // Toggle off so that this new value can retrigger onn
+            this.choose(nOff);
+            
+          }
           
           this.choose(nOnn, tmp);
           dep(() => this.choose(nOff));

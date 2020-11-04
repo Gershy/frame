@@ -39,7 +39,7 @@ global.rooms.record = async foundation => {
       ];
       
     },
-    updMems: function(recTypes) {
+    updMems: function(recTypes) { /* { term1: recType1, term2: recType2, ... } */
       
       let newRecTypes = []; // Terms that have never been seen before
       let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
@@ -63,6 +63,7 @@ global.rooms.record = async foundation => {
   })});
   let Rec = U.inspire({ name: 'Rec', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(type, uid, mems={}, val=null) {
+      
       if (U.isType(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
       type.updMems(mems.map(m => m.type));
       
@@ -82,7 +83,7 @@ global.rooms.record = async foundation => {
       this.allMemsTmp.endWith(this); // If any Mem ends, we end
       
       // Inform all MemberRecs of this GroupRec
-      for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).src.send(this);
+      for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).receive(this);
     },
     desc: function() { return `${this.type.name} @ ${this.uid}`; },
     mem: function(termTail) {
@@ -97,6 +98,7 @@ global.rooms.record = async foundation => {
     },
     relSrc: function(recType, term=null) {
       
+      // Allow RecType to be provided as a String
       if (U.isType(recType, String)) {
         if (recType.has('/')) [ recType, term ] = recType.split('/');
         recType = this.type.types.getType(recType);
@@ -104,6 +106,10 @@ global.rooms.record = async foundation => {
       
       if (term === null) {
         
+        // Guess the term if one wasn't given. We need to assume we only
+        // have a single RelSrc of type `recType`. Search memberInfo for
+        // RecType; if its been seen before use the existing term. If
+        // never seen before, use the type name as the term.
         let memInf = recType.memberInfoSrc.vals.find(mi => mi.recType === this.type).val;
         if (!memInf) {
           // TODO: What if somehow `this.type.name` is already a term
@@ -135,8 +141,20 @@ global.rooms.record = async foundation => {
     getVal: function(param=null) {
       if (!param) return this.valSrc.val;
       
-      if (U.isType(this.valSrc.val, Object) && this.valSrc.val.has(param)) return this.valSrc.val[param];
-      for (let [ term, mem ] of this.mems) { let val = mem.getVal(param); if (val) return val; }
+      // Return the value of some member in breadth-first fashion. This
+      // is more memory intensive than depth-first, but the results are
+      // much more intuitive (for a complex GroupRec, it is much easier
+      // to understand how "far away" some indirect value is, than the
+      // depth-wise iteration order that would occur otherwise).
+      let mems = [ this ];
+      while (mems.count()) {
+        let layerMems = mems; mems = [];
+        for (let mem of layerMems) {
+          let val = mem.valSrc.val;
+          if (U.isType(val, Object) && val.has(param)) return val[param];
+          mems.gain(mem.mems.toArr(m => m));
+        }
+      }
       return null;
     },
     

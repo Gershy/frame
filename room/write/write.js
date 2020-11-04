@@ -9,6 +9,8 @@ global.rooms.write = async foundation => {
   
   return { open: async hut => {
     
+    hut.roadDbgEnabled = false;
+    
     await HtmlApp({ name: 'write' }).decorateApp(hut);
     
     /// {ABOVE=
@@ -23,18 +25,18 @@ global.rooms.write = async foundation => {
       let admin3 = hut.createRec('wrt.user', [ writeRec ], { username: 'admin3' });
       hut.createRec('wrt.userPrivate', [ admin3 ], { password: 'sm4rtadmin?' });
       
-      hut.createRec('wrt.room', [ writeRec, admin1 ], {
+      let admin1Room = hut.createRec('wrt.room', [ writeRec, admin1 ], {
         name: 'test room',
-        desc: 'testing room!',
-        writeParams: { charLimit: 100, timeout: 60 * 60 * 5, maxRounds: 100, minUsers: 3, maxUsers: 10 }
+        desc: 'For testing',
+        writeParams: { charLimit: 150, timeout: 30, maxRounds: 100, minUsers: 3, maxUsers: 10 }
       });
+      
+      // hut.createRec('wrt.roomUser', [ admin1Room, admin1 ]);
       
       let rootScope = RecScope(writeRec, 'wrt.room', (room, dep) => {
         
-        // Add live values to room
-        room.dltVal({ users: 0, status: 'needMoreUsers', timerMs: null });
-        
         // Liven up "active" and "users" prop; count roomUsers
+        room.dltVal({ users: 0, status: 'needMoreUsers', timerMs: null });
         dep.scp(room, 'wrt.roomUser', (roomUser, dep) => {
           
           let { users, writeParams: { minUsers } } = room.getVal(); users++;
@@ -48,22 +50,24 @@ global.rooms.write = async foundation => {
         
         // A Chooser to act based on room's status
         let activeChooser = dep(Chooser([ 'needMoreUsers', 'active' ]));
-        dep(room.valSrc.route(() => activeChooser.choose(room.getVal().status)));
+        dep(room.valSrc.route(() => activeChooser.choose(room.getVal('status'))));
         
+        console.log(`Waiting for room ${room.uid} to go active...`);
         dep.scp(activeChooser.srcs.active, (active, dep) => {
+          
+          console.log(`Room ${room.uid} went active!!`);
           
           let timingChooser = dep(Chooser([ 'waiting', 'timing' ]));
           let numEntries = 0;
-          dep.scp(room, 'wrt.roomUser', (ru, dep) => dep.scp(ru, 'wrt.roomUserEntry', (roomUserEntry, dep) => {
+          dep.scp(room, 'wrt.roomUser', (ru, dep) => dep.scp(ru, 'wrt.roomUserEntry', (rue, dep) => {
             ++numEntries; timingChooser.choose('timing');
-            dep(() => --numEntries || timingChooser.chooser('waiting'));
+            dep(() => --numEntries || timingChooser.choose('waiting'));
           }));
           
-          dep.scp(timingChooser.srcs.waiting, (waiting, dep) => {
-            console.log(`Room ${room.getVal().name} waiting for an Entry...`);
-            room.dltVal({ timerMs: null });
-          });
+          console.log(`Waiting for ${room.uid} to receive entries and begin timing...`);
           dep.scp(timingChooser.srcs.timing, (timing, dep) => {
+            
+            console.log(`Room ${room.uid} got entries and began timing!!`);
             
             let getRankedEntries = () => {
               
@@ -73,20 +77,21 @@ global.rooms.write = async foundation => {
               let votedEntries = roomUserEntries
                 .map(roomUserEntry => ({
                   roomUser: roomUserEntry.mems['wrt.roomUser'],
-                  entry: roomUserEntry['wrt.entry'],
+                  entry: roomUserEntry.mems['wrt.entry'],
                   votes: roomUserEntry.relRecs('wrt.vote').count()
                 }))
-                .sort((entry1, entry2) => entry2.votes - entry1.votes);
+                .sort((ve1, ve2) => ve2.votes - ve1.votes);
               
               return { roomUserEntries, votedEntries };
               
             };
             
-            console.log(`Room ${room.getVal().name} GOT AN ENTRY; TIMER STARTED!`);
+            // Begin timer
             room.dltVal({ timerMs: foundation.getMs() });
+            dep(() => room.dltVal({ timerMs: null }));
             
             // Timing ends when timer expires
-            let timeout = setTimeout(() => timing.end(), 1000 * room.getVal().writeParams.timeout);
+            let timeout = setTimeout(() => timing.end('timeLimit'), 1000 * room.getVal().writeParams.timeout);
             dep(() => clearTimeout(timeout));
             
             // Timing ends by voting (including foregone scenario)
@@ -105,29 +110,32 @@ global.rooms.write = async foundation => {
                   
                   // If the gap between 1st and 2nd place entries is
                   // bigger than remaining votes round is foregone; end!
-                  if ((v0 - v1) > remainingVotes) timing.end();
+                  if ((v0 - v1) > remainingVotes) timing.end('foregone');
                   
                   // If no votes remain, end!
-                  if (remainingVotes === 0) timing.end();
+                  if (remainingVotes === 0) timing.end('fullyVoted');
                   
                 });
               })
             });
             
-            dep(() => {
+            dep(reason => {
+              
+              console.log(`Rounded ended; reason: ${reason}`);
               
               // Collect all entries from all roomUsers
               let { roomUserEntries, votedEntries } = getRankedEntries();
               
-              // Keep track of data in case we want it later
+              // Keep data from round (in case we want it later)
               let pastRound = hut.createRec('wrt.pastRound', [ room ], { endedAt: foundation.getMs() });
-              for (let { roomUser, entry, votes } of votedEntries)
-                hut.createRec('wrt.pastRoundEntry', [ entry ], { votes });
+              for (let { entry, votes } of votedEntries) hut.createRec('wrt.pastRoundEntry', [ pastRound, entry ], { votes });
               
               // Pick a winner from the tied-for-1st, contending entries
               let contenders = votedEntries.map(ve => (ve.votes === votedEntries[0].votes) ? ve : C.skip);
-              let winner = contender[Math.floor(Math.random() * contenders.count())];
-              hut.createRec('wrt.roomEntry', [ room, winner.entry ]);
+              let { entry: winningEntry } = contenders[Math.floor(Math.random() * contenders.count())];
+              hut.createRec('wrt.roomEntry', [ room, winningEntry ]);
+              
+              console.log(`Winner: ${winningEntry.getVal('username')}: "${winningEntry.getVal('text')}"`);
               
               // Clear all entries; round is over!
               roomUserEntries.each(rue => rue.end());
@@ -145,6 +153,11 @@ global.rooms.write = async foundation => {
     /// =ABOVE}
     
     makeHutAppScope(hut, 'wrt', 'write', (writeRec, writeHut, rootReal, dep) => {
+      
+      // TODO: Really any Record ever supplied to `dep` at any level of
+      // `dep.scp` ought to be followed, automatically, by the BelowHut.
+      // This could entirely remove the need to use `followRec` (and it
+      // could be returned to being defined ABOVE only)
       
       // "Real" => "Representation"? "Depiction" ("Dep" is already a thing D:)?
       
@@ -173,7 +186,7 @@ global.rooms.write = async foundation => {
             if (password.count() < 5) return reply(Error('Password too short'));
             user = hut.createRec('wrt.user', [ writeRec ], { username });
             hut.createRec('wrt.userPrivate', [ user ], { password });
-            console.log('Created new user');
+            console.log(`Created new user ${username}`);
           }
           
           let presence = false
@@ -194,21 +207,21 @@ global.rooms.write = async foundation => {
         }));
         
         let usernameReal = loggedOutReal.addReal('wrt.loggedOut.user', {
-          layouts: [ TextInputLayout({ align: 'mid', size: '30px', prompt: 'Username' }), SizedLayout({ w: '200px', h: '50px' }) ],
+          layouts: [ TextInputLayout({ align: 'mid', size: '200%', prompt: 'Username' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             border: { ext: '3px', colour: 'rgba(0, 0, 0, 0.5)' }
           }
         });
         let passwordReal = loggedOutReal.addReal('wrt.loggedOut.pass', {
-          layouts: [ TextInputLayout({ align: 'mid', size: '10px', prompt: 'Password' }), SizedLayout({ w: '200px', h: '50px' }) ],
+          layouts: [ TextInputLayout({ align: 'mid', size: '80%', prompt: 'Password' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: {
             colour: 'rgba(255, 255, 255, 1)',
             border: { ext: '3px', colour: 'rgba(0, 0, 255, 0.5)' }
           }
         });
         let submitReal = loggedOutReal.addReal('wrt.loggedOut.submit', {
-          layouts: [ TextLayout({ text: 'enter', size: '30px' }), SizedLayout({ w: '200px', h: '50px' }) ],
+          layouts: [ TextLayout({ text: 'enter', size: '200%' }), SizedLayout({ w: '200px', h: '50px' }) ],
           decals: { colour: 'rgba(0, 0, 255, 0.2)' }
         });
         loggedOutReal.addReal('wrt.loggedOut.help', {
@@ -236,9 +249,9 @@ global.rooms.write = async foundation => {
       dep.scp(loginChooser.srcs.onn, (presence, dep) => {
         
         let user = presence.mems['wrt.user'];
-        let username = user.getVal().username;
+        let username = user.getVal('username');
         
-        console.log(`${writeHut.uid} logged INN as ${username}`);
+        console.log(`Hut @ ${writeHut.uid} logged INN as ${username}`);
         
         let loggedInReal = dep(rootReal.addReal('wrt.loggedIn', {
           layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
@@ -280,26 +293,26 @@ global.rooms.write = async foundation => {
               TextLayout({
                 text: [
                   'You\'re using RYTE, the thingy that lets friends, enemies and total strangers collaborate',
-                  'on writing projects. Why? Maybe you\'ll write some cool stuff. Why not? Many reasons, but',
+                  'on Writing Projects. Why? Maybe you\'ll write some cool stuff. Why not? Many reasons, but',
                   'we like to say: "tell people to ignore those reasons". Anyways, have a fun ass time!',
                 ].join(' '),
-                size: '110%', gap: '20px', align: 'mid'
+                size: 'calc(70% + 1vw)', gap: '20px', align: 'mid'
               }),
-              SizedLayout({ h: '200px' })
+              SizedLayout({ h: '150px' })
             ],
             decals: {
               border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.1)' }
             }
           }));
           let roomsScrollReal = dep(loggedInReal.addReal('wrt.roomsScroll', {
-            layouts: [ SizedLayout({ w: '100%', h: 'calc(100% - 380px)' }) ],
+            layouts: [ SizedLayout({ w: '100%', h: 'calc(100% - 330px)' }) ],
             innerLayout: ScrollLayout({ x: 'none', y: 'auto' }),
             decals: {
               border: { ext: '2px', colour: 'rgba(0, 0, 150, 0.3)' }
             }
           }));
           let roomsReal = dep(roomsScrollReal.addReal('wrt.rooms', {
-            innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
+            innerLayout: Axis1DLayout({ axis: 'y', flow: '+', cuts: 'focus' })
           }));
           
           // Being outside a room means we're able to create a room
@@ -312,7 +325,7 @@ global.rooms.write = async foundation => {
           }));
           let createRoomSender = dep(writeHut.getTellSender('wrt.createRoom', params => {
             
-            console.log('create room', params);
+            console.log(`Create room; name: ${params.name}, minUsers: ${params.minUsers}`);
             
             let { name, desc, charLimit, timeout, maxRounds, minUsers, maxUsers } = params;
             let room = hut.createRec('wrt.room', [ writeRec, user ], {
@@ -364,11 +377,11 @@ global.rooms.write = async foundation => {
             let inputs = {
               name:       { src: null, text: '',    prompt: 'Room Name' },
               desc:       { src: null, text: '',    prompt: 'Room Description' },
-              charLimit:  { src: null, text: '',    prompt: 'Round Character Limit' },
-              timeout:    { src: null, text: '',    prompt: 'Timeout (seconds)' },
-              maxRounds:  { src: null, text: '',    prompt: 'Maximum # of rounds' },
+              charLimit:  { src: null, text: '150', prompt: 'Round Character Limit' },
+              timeout:    { src: null, text: '60',  prompt: 'Timeout (seconds)' },
+              maxRounds:  { src: null, text: '100', prompt: 'Maximum # of rounds' },
               minUsers:   { src: null, text: '3',   prompt: 'Minimum users before writing begins' },
-              maxUsers:   { src: null, text: '10',  prompt: 'Maximum users allowed' },
+              maxUsers:   { src: null, text: '10',  prompt: 'Maximum users allowed' }
             };
             for (let [ term, { text, prompt } ] of inputs) {
               fieldsReal.addReal(`wrt.createRoom.fields.title`, {
@@ -414,11 +427,10 @@ global.rooms.write = async foundation => {
           }));
           dep.scp(writeRec, 'wrt.room', (room, dep) => {
             
-            /// {ABOVE=
             dep(writeHut.followRec(room));
-            /// =ABOVE}
             
             let roomReal = dep(roomsReal.addReal('wrt.room', {
+              layouts: [ SizedLayout({ w: 'calc(100% - 20px)', h: '50px' }) ],
               innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
             }));
             roomReal.addReal('wrt.room.title', {
@@ -486,9 +498,7 @@ global.rooms.write = async foundation => {
           });
           dep.scp(room, 'wrt.roomUser', (fellowRoomUser, dep) => {
             
-            /// {ABOVE=
             dep(writeHut.followRec(fellowRoomUser));
-            /// =ABOVE}
             
             let userInRoom = fellowRoomUser.mems['wrt.user'];
             let userReal = dep(usersReal.addReal('wrt.activeRoom.users.user', {
@@ -498,10 +508,7 @@ global.rooms.write = async foundation => {
             
             dep.scp(fellowRoomUser, 'wrt.roomUserPresence', (fellowRoomUserPresence, dep) => {
               
-              /// {ABOVE=
               dep(writeHut.followRec(fellowRoomUserPresence));
-              /// =ABOVE}
-              
               dep(userReal.addDecals({ textColour: 'rgba(0, 0, 0, 1)' }));
               
             });
@@ -514,11 +521,14 @@ global.rooms.write = async foundation => {
             decals: { border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.2)' } }
           });
           dep.scp(room, 'wrt.roomEntry', (roomEntry, dep) => {
-            let username = roomEntry.mems['wrt.entry'].mems['wrt.user'].getVal('username');
-            let entryText = roomEntry.mems['wrt.entry'].getVal('text');
+            
+            writeHut.followRec(roomEntry);
+            
+            let entry = roomEntry.mems['wrt.entry'];
             dep(storyReal.addReal('wrt.storyItem', {
-              layouts: [ TextLayout({ text: `${username}: ${entryText}` }) ]
+              layouts: [ TextLayout({ text: `${entry.getVal('username')}: ${entry.getVal('text')}` }) ]
             }));
+            
           });
           
           let statusReal = roomReal.addReal('wrt.activeRoom.status', {
@@ -529,9 +539,9 @@ global.rooms.write = async foundation => {
           let controlsReal = roomReal.addReal('wrt.activeRoom.controls', {
             layouts: [ SizedLayout({ w: '100%', h: 'calc(50% - 70px)' }) ]
           });
-          let controlsChooser = dep(Chooser([ 'needMoreUsers', 'active', 'complete' ]));
-          dep(room.valSrc.route(() => controlsChooser.choose(room.getVal('status'))));
           
+          let controlsChooser = dep(Chooser([ 'complete', 'needMoreUsers', 'active' ]));
+          dep(room.valSrc.route(() => controlsChooser.choose(room.getVal('status'))));
           dep.scp(controlsChooser.srcs.needMoreUsers, (needMoreUsers, dep) => {
             // Indicate story can't be controlled without more players
             dep(controlsReal.addReal('wrt.needMoreUsers', {
@@ -550,9 +560,9 @@ global.rooms.write = async foundation => {
             dep.scp(submittedEntryChooser.srcs.off, (noSubmittedEntry, dep) => {
               
               let submitEntrySender = dep(writeHut.getTellSender('wrt.submitEntry', ({ text }) => {
-                console.log(`User ${username} submitted entry: ${text}`);
+                console.log(`User ${username} (${roomUser.getVal('username')}??) submitted entry: ${text}`);
                 let entry = hut.createRec('wrt.entry', [ roomUser ], { ms: foundation.getMs(), text });
-                writeHut.followRec(hut.createRec('wrt.roomUserEntry', [ roomUser, entry ]));
+                hut.createRec('wrt.roomUserEntry', [ roomUser, entry ]);
               }));
               
               let submitEntryReal = dep(controlsReal.addReal('wrt.submitEntry', {
@@ -579,28 +589,95 @@ global.rooms.write = async foundation => {
             });
             dep.scp(submittedEntryChooser.srcs.onn, (submittedEntry, dep) => {
               
+              console.log(`${roomUser.getVal('username')} submitted an entry; now they "watch" entries!!`);
+              
+              let submittedVoteChooser = dep(Chooser(roomUser.relSrc('wrt.vote')));
+              let voteEntryScrollReal = dep(controlsReal.addReal('wrt.voteEntryScroll', {
+                layouts: [ SizedLayout({ w: '100%', h: '100%' }) ],
+                innerLayout: ScrollLayout({ x: 'none', y: 'auto' })
+              }));
+              let voteEntryReal = dep(voteEntryScrollReal.addReal('wrt.voteEntry', {
+                layouts: [ SizedLayout({ w: '100%' }) ],
+                innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
+              }));
+              
+              // Can send a vote so long as `writeHut` *hasn't* voted
+              let submitVoteSender = null;
+              dep.scp(submittedVoteChooser.srcs.onn, (vote, dep) => {
+                
+                console.log(`User ${roomUser.getVal('username')} has voted for ${vote.getVal('text')} and CANNOT vote again`);
+                
+              });
+              dep.scp(submittedVoteChooser.srcs.off, (noVote, dep) => {
+                
+                console.log(`User ${roomUser.getVal('username')} has NOT voted and may do so!`);
+                
+                submitVoteSender = dep(writeHut.getTellSender('wrt.voteEntry', ({ entryId }, reply) => {
+                  
+                  let roomUserEntryToVote = room.relRecs('wrt.roomUser')
+                    .toArr(roomUser => roomUser.relRec('wrt.roomUserEntry') || C.skip)
+                    .find(roomUserEntry => roomUserEntry.mems['wrt.entry'].uid === entryId)
+                    .val;
+                  
+                  if (!roomUserEntryToVote) return reply(Error(`Invalid entryId: ${entryId}`));
+                  
+                  console.log(`User ${roomUser.getVal('username')} voted on entry by ${roomUserEntryToVote.getVal('username')} ("${roomUserEntryToVote.getVal('text')}")`);
+                  
+                  writeHut.followRec(hut.createRec('wrt.vote', [ roomUser, roomUserEntryToVote ]));
+                  
+                }));
+                dep(() => submitVoteSender = null);
+                
+              });
+              
+              dep.scp(room, 'wrt.roomUser', (fellowRoomUser, dep) => {
+                
+                dep(writeHut.followRec(fellowRoomUser));
+                
+                dep.scp(fellowRoomUser, 'wrt.roomUserEntry', (fellowRoomUserEntry, dep) => {
+                  
+                  dep(writeHut.followRec(fellowRoomUserEntry));
+                  
+                  let entry = fellowRoomUserEntry.mems['wrt.entry'];
+                  let entryReal = dep(voteEntryReal.addReal('wrt.entry', {
+                    layouts: [ SizedLayout({ w: '100%', h: '50px' }) ],
+                    innerLayout: Axis1DLayout({ axis: 'x', flow: '+' })
+                  }));
+                  let entryTextReal = entryReal.addReal('wrt.entry.text', {
+                    layouts: [ SizedLayout({ w: 'calc(100% - 50px)' }), TextLayout({ text: entry.getVal('text'), gap: '5px' }) ],
+                    decals: { border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.2)' } }
+                  });
+                  let doVoteReal = entryReal.addReal('wrt.entry.vote', {
+                    layouts: [ SizedLayout({ w: '50px', h: '50px' }) ],
+                    decals: { colour: 'rgba(0, 0, 0, 0.8)' }
+                  });
+                  
+                  dep.scp(submittedVoteChooser.srcs.off, (noVote, dep) => {
+                    
+                    dep(doVoteReal.addDecals({ colour: 'rgba(0, 120, 0, 1)' }));
+                    
+                    let feelSrc = dep(doVoteReal.addFeel()).src;
+                    dep.scp(feelSrc, (feel, dep) => dep(doVoteReal.addDecals({ colour: 'rgba(0, 160, 0, 1)' })));
+                    
+                    let pressSrc = dep(doVoteReal.addPress()).src;
+                    dep(pressSrc.route(() => submitVoteSender.src.send({ entryId: entry.uid })));
+                    
+                  });
+                  dep.scp(submittedVoteChooser.srcs.onn, (vote, dep) => {
+                    
+                    let votedRoomUserEntry = vote.mems['wrt.roomUserEntry'];
+                    
+                    console.log(`${username} voted on ${votedRoomUserEntry.uid} vs ${fellowRoomUserEntry.uid}`);
+                    if (fellowRoomUserEntry !== votedRoomUserEntry) return;
+                    dep(doVoteReal.addDecals({ colour: 'rgba(0, 200, 0, 1)' }));
+                    
+                  });
+                  
+                });
+                
+              });
+              
             });
-            
-            
-          });
-          
-          return;
-          
-          
-          // Allow writing/voting on submissions
-          let entryReal = roomReal.addReal('wrt.activeRoom.entry', {
-            layouts: [ SizedLayout({ w: '100%', h: 'calc(50% - 60px)' }) ],
-            decals: { border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.2)' } }
-          });
-          let hasEntryChooser = dep(Chooser(roomUser.relSrc('wrt.roomUserEntry')));
-          dep.scp(hasEntryChooser.srcs.off, (noRoomUserEntry, dep) => {
-            
-            
-            
-          });
-          dep.scp(hasEntryChooser.srcs.onn, (roomUserEntry, dep) => {
-            
-            // Follow all Entries once we've submitted our own
             
           });
           

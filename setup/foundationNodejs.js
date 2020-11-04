@@ -566,7 +566,7 @@
             if (sends.count() !== 1) throw Error(`Expected exactly 1 send; got ${sends.count()}`);
             
           },
-          async m => {
+          async m => { // MemSrc.Tmp1 sends multiple Tmps, one at a time
             
             let src = MemSrc.Tmp1(Src());
             let sends = [];
@@ -574,6 +574,29 @@
             src.src.send(Tmp());
             src.src.send(Tmp());
             if (sends.count() !== 2) throw Error(`Expected exactly 2 sends; got ${sends.count()}`);
+            
+          },
+          
+          async m => { // MemSrc.TmpM handles add-route-while-sending edge-case
+            
+            let src = MemSrc.TmpM(Src());
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(fn));
+            src.receive(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          async m => { // MemSrc.Tmp1 handles add-route-while-sending edge-case
+            
+            let src = MemSrc.Tmp1(Src());
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(fn));
+            src.receive(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
             
           },
           
@@ -946,8 +969,8 @@
         content: (async () => {
           
           // Write, `require`, and ensure file populates `global.rooms`
-          await this.seek('keep', 'fileSystem', [ 'mill', 'compiled', `${name}.${bearing}.js` ]).setContent(lines.join('\n'));
-          require(`../mill/compiled/${name}.${bearing}.js`);
+          await this.seek('keep', 'fileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
+          require(`../mill/compiled/${name}@${bearing}.js`);
           if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
           
           return global.rooms[name](this);
@@ -1107,14 +1130,15 @@
       
       // The codepoint filename must not contain round/square brackets or spaces
       let [ path, lineInd, charInd ] = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/).slice(1);
-      let [ fileName ] = path.match(/([a-zA-Z0-9.]*)$/);
+      let [ fileName ] = path.match(/([a-zA-Z0-9.@]*)$/);
       
       // Skip non-hut files
       let fileNamePcs = Insp.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
       if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
       
       // Extract room name and bearing from filename
-      let [ roomName, bearing=null ] = fileName.split('.').slice(0, -1);
+      let [ roomName,, bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
+      //let [ roomName, bearing=null ] = fileName.split('@').slice(0, -1);
       return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
       
     },
@@ -1141,7 +1165,7 @@
       if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
       let fp = (type === 'setup')
         ? [ 'setup', `${name}.js` ]
-        : [ 'room', name, `${name}.${bearing}.js` ];
+        : [ 'room', name, `${name}@${bearing}.js` ];
       let srcContent = await this.seek('keep', 'fileSystem', fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       

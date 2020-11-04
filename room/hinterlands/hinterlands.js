@@ -622,11 +622,11 @@ global.rooms.hinterlands = async foundation => {
     // Rec Following
     modRecFollowStrength: function(rec, delta) {
       
+      if (rec.off()) return;
+      
       let fol = this.recFollows.get(rec);
       let str0 = fol ? fol.strength : 0;
       let str1 = str0 + delta;
-      
-      if (str1 > str0 && rec.off()) throw Error(`Tried to Follow dry ${rec.type.name}@${rec.uid}`);
       
       if (str0 <= 0 && str1 > 0) {
         
@@ -659,8 +659,6 @@ global.rooms.hinterlands = async foundation => {
         fol = null;
         
       }
-      
-      return fol;
       
     },
     
@@ -732,6 +730,8 @@ global.rooms.hinterlands = async foundation => {
       
     },
     followRec: function(rec) {
+      
+      if (rec.off()) return; // Always ignore any Recs which may be off
       
       /// {ABOVE=
       

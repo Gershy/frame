@@ -672,7 +672,7 @@
     parseErrorLine: function(line) {
       let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9]*)/).slice(1);
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
-      return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
+      return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10), bearing: 'below' };
     },
     srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: '???', line: 0, char: 0 }) }; }
     
