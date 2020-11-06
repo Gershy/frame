@@ -91,6 +91,8 @@
       window.history.replaceState({}, '', this.seek('keep', 'urlResource', { params: query }).getUrl());
       
     },
+    getPlatform: function() { return { name: 'browser' }; },
+    ready: insp.Foundation.ready,
     halt: function() { /* debugger */; },
     installRoom: async function(name, bearing='below') {
       
@@ -118,7 +120,6 @@
     // Util
     queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
-    getPlatformName: function() { return 'browser'; },
     
     // High level
     createHut: async function(options={}) {

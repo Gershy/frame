@@ -99,7 +99,7 @@
         
       }))(require('path'), require('fs')),
       
-      $extensionContentTypeMap: {
+      $extToContentType: {
         json: 'text/json',
         html: 'text/html',
         css: 'text/css',
@@ -199,16 +199,11 @@
         
       },
       getContentType: function() {
-        let lastCmp = this.absPath[this.absPath.length - 1];
-        let [ pcs, ext=null ] = lastCmp.split('.');
-        return Insp.extensionContentTypeMap.has(ext)
-          ? Insp.extensionContentTypeMap[ext]
-          : 'application/octet-stream'
+        let [ lastCmp ] = this.absPath.slice(-1);
+        let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
+        return Insp.extToContentType.has(ext) ? Insp.extToContentType[ext] : 'application/octet-stream'
       },
-      getContentByteLength: async function() {
-        let meta = await Insp.fs.getMeta(this.absPath);
-        return meta ? meta.size : 0;
-      },
+      getContentByteLength: async function() { return (await Insp.fs.getMeta(this.absPath) || { size: 0 }).size; },
       getPipe: function() { return Insp.fs.getPipe(this.absPath); }
       
     })}),
@@ -925,6 +920,7 @@
       })();
       
     },
+    getPlatform: function() { return { name:  'nodejs' }; },
     ready: function() { return this.canSettlePrm; },
     halt: function() { process.exit(0); },
     installRoom: async function(name, bearing='above') {
@@ -1269,7 +1265,7 @@
         } catch(err) { return res.writeHead(400).end(); }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
-        let params = { ...body, ...query }; // Params are initially based on body and query
+        let { hutId=null, ...params } = { ...body, ...query }; // Params are initially based on body and query
         
         if (this.httpFullDebug) console.log('\n\n' + [
           '==== INCOMING REQUEST ====',
@@ -1280,11 +1276,6 @@
           `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
           `BODY: ${JSON.stringify(body, null, 2)}`
         ].join('\n'));
-        
-        // Get identity-specifying props; remove them from the params.
-        // Past this point identity is based on the connection and cpu;
-        // best practice to remove identity info from params
-        let iden = params.splice('hutId');
         
         // Detect "command" from `urlPath` if none given explicitly
         if (!params.has('command')) params = (p => {
@@ -1301,7 +1292,7 @@
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
         // spot where they can request a new identity
-        let road = this.getHutRoadForQuery(server, pool, iden.seek('hutId').val);
+        let road = this.getHutRoadForQuery(server, pool, hutId);
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
         // Confirm that we've seen this Hut under this host
@@ -1552,9 +1543,7 @@
       };
       
       return server;
-    },
-    
-    getPlatformName: function() { return 'nodejs'; }
+    }
     
   })});
   

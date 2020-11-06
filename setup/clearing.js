@@ -40,7 +40,6 @@ protoDef(Object, 'slice', function(...props) {
     let ret = {}; for (let p of props) if (this.has(p)) ret[p] = this[p]; return ret;
   }
 });
-protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
 protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
   for (let k in this) if (f(this[k], k)) return { found: true, val: this[k], key: k };
   return { found: false, val: null, k: null };

@@ -60,7 +60,7 @@ Hut at the very bottom runs using a single Reality.
     },
     ready: function() { return Promise.resolve(); },
     halt: function() { throw Error(`Foundation halted`); },
-    getPlatformName: C.noFn('getPlatformName'),
+    getPlatform: C.noFn('getPlatform'),
     
     access: function(arg) {
       if (!U.isType(arg, String)) throw Error(`Invalid type for access: ${U.nameOf(arg)}`);
