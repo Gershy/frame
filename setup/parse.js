@@ -1,25 +1,26 @@
 require('./clearing.js');
 
-let data1 = `
-let varInt = 98349;
-let varFlt = 893.0394809;
-`.trim();
+let data1 = U.multilineStr(`
+  let varInt = 98349;
+  let varFlt = 893.0394809;
+`);
 
-let data2 = `
-let varInt = 98349;
-let varFlt = 893.0394809;
-let varBoolTrue = true;
-let varBoolFalse = false;
-let varArrEmpty = [];
-let varArrInts = [ 3423, 9879, 9837483 ];
-let varArrStrs = [
-  'abc', 'def', 'ghi', 'jklmnopqr',
-  'stu', 'vwx', 'yz'
-];
-let varArrVars = [ varBoolTrue, varBoolFalse, varArrEmpty ];
-let varArrMixed = [
-  varFlt, [ 'a', 'b' ], 493, 983789.3487
-];`.trim();
+let data2 = U.multilineStr(`
+  let varInt = 98349;
+  let varFlt = 893.0394809;
+  let varBoolTrue = true;
+  let varBoolFalse = false;
+  let varArrEmpty = [];
+  let varArrInts = [ 3423, 9879, 9837483 ];
+  let varArrStrs = [
+    'abc', 'def', 'ghi', 'jklmnopqr',
+    'stu', 'vwx', 'yz'
+  ];
+  let varArrVars = [ varBoolTrue, varBoolFalse, varArrEmpty ];
+  let varArrMixed = [
+    varFlt, [ 'a', 'b' ], 493, 983789.3487
+  ];
+`);
 
 let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
   
