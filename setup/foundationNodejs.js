@@ -155,6 +155,9 @@
       },
       getContent: async function(...opts) {
         let type = await this.getFsType();
+        
+        console.log('GETCONTENT TYPE:', type);
+        
         if (!type) return null;
         return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
       },
