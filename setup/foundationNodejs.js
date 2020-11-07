@@ -79,6 +79,7 @@
         },
         getLetter: async (cmps, ...opts) => {
           let err = Error('');
+          console.log('READING:', path.join(...cmps));
           return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
             if (err0) rjc(err.update(err0.message));
             else      rsv(content)
