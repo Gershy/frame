@@ -958,10 +958,11 @@
     installRoom: async function(name, bearing='above') {
       
       let pcs = name.split('.');
-      
-      let file = await this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]).getContent('utf8');
-      if (!file) throw Error(`Invalid room name: "${name}"`);
-      let { lines, offsets } = await this.compileContent(bearing, file);
+      let keep = this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
+      console.log('KEEP:', require('util').inspect(keep, { depth: 5 }));
+      let contents = await keep.getContent('utf8');
+      if (!contents) throw Error(`Invalid room name: "${name}"`);
+      let { lines, offsets } = await this.compileContent(bearing, contents);
       
       return {
         debug: { offsets },
