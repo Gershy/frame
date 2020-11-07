@@ -154,6 +154,8 @@
         throw Error(`${this.desc()} is unknown type (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
+        console.log('GETTING CONTENT', ...opts);
+        
         let type = await this.getFsType();
         
         console.log('GETCONTENT TYPE:', type);
