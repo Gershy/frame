@@ -5,6 +5,7 @@
   
   let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
+  let stream = require('stream');
   let path = require('path');
   let { Foundation, Real, Keep } = U.setup;
   
@@ -13,10 +14,12 @@
     $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
       init: function() {
         insp.Keep.init.call(this);
-        let fileSystemKeep = Insp.KeepFileSystem();
+        let fileSystemKeep = Insp.KeepFileSystem({ secure: true });
+        let rootFileSystemKeep = Insp.KeepFileSystem({ absPath: [], secure: false });
         this.keepsByType = {
           static: Insp.KeepStatic(fileSystemKeep),
           fileSystem: fileSystemKeep,
+          rootFileSystem: rootFileSystemKeep,
           urlResource: Insp.KeepUrlResources()
         };
       },
@@ -99,6 +102,11 @@
         
       }))(require('path'), require('fs')),
       
+      // Ensures that a filepath component is "secure"; that it does not
+      // define parent access. The ".." sequence is prevented, since "."
+      // characters cannot occur side-by-side.
+      $secureFpReg: /^[.]?([a-zA-Z0-9@][.]?)*$/,
+      
       $extToContentType: {
         json: 'text/json',
         html: 'text/html',
@@ -110,32 +118,48 @@
         svg: 'image/svg+xml'
       },
       
-      init: function(absPath=Insp.fs.hutRootCmps) {
+      init: function({ absPath=Insp.fs.hutRootCmps, secure=true }) {
         if (absPath.find(v => !U.isType(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
         this.absPath = absPath;
+        this.secure = secure;
       },
+      setType: function(type) { this.type = type; return this; },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
         if (U.isType(dirNames, String)) dirNames = [ dirNames ];
+        if (!U.isType(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
+        if (dirNames.find(d => !U.isType(d, String)).found) throw Error(`All dir names must be Strings`);
+        
+        // Ensure all cmps are valid
+        if (this.secure) dirNames = dirNames.map(v => v.match(Insp.secureFpReg) ? v : C.skip);
+        
+        // Remove all useless "." cmps
+        dirNames = dirNames.map(d => d === '.' ? C.skip : d);
+        
+        // No need to create a child for 0 cmps
+        if (!dirNames.count()) return this;
+        
         let KeepCls = this.constructor;
-        return KeepCls([ ...this.absPath, ...dirNames ]);
+        return KeepCls({ absPath: [ ...this.absPath, ...dirNames ], secure: this.secure });
       },
-      checkType: async function() {
-        let meta = await Insp.fs.getMeta(this.absPath);
+      getFsType: async function() {
+        if (!this.metaPrm) this.metaPrm = Insp.fs.getMeta(this.absPath);
+        
+        let meta = await this.metaPrm;
         if (!meta) return null;
-        if (meta.isDirectory()) return 'folder';
-        if (meta.isFile()) return 'letter';
+        if (meta.isDirectory()) { return 'folder'; }
+        if (meta.isFile())      { this.type = Insp.extToContentType.json; return 'letter'; }
         throw Error(`${this.desc()} is unknown type (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
-        let type = await this.checkType();
+        let type = await this.getFsType();
         if (!type) return null;
         return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
       },
       setContent: async function(content, ...opts) {
         
-        let type = await this.checkType();
+        let type = await this.getFsType();
         if (content !== null) { // Insert new content
           
           if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
@@ -199,12 +223,20 @@
         
       },
       getContentType: function() {
+        if (this.type) return this.type;
         let [ lastCmp ] = this.absPath.slice(-1);
         let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
         return Insp.extToContentType.has(ext) ? Insp.extToContentType[ext] : 'application/octet-stream'
       },
       getContentByteLength: async function() { return (await Insp.fs.getMeta(this.absPath) || { size: 0 }).size; },
-      getPipe: function() { return Insp.fs.getPipe(this.absPath); }
+      getPipe: async function() {
+        
+        let fsType = await this.getFsType();
+        if (fsType === 'letter') return Insp.fs.getPipe(this.absPath);
+        if (fsType === 'folder') return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
+        return null;
+        
+      }
       
     })}),
     $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
@@ -1209,9 +1241,9 @@
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
           res.writeHead(200, {
             'Content-Type': ct || 'application/octet-stream',
-            'Content-Length': cl
+            ...(cl ? { 'Content-Length': cl } : {})
           });
-          msg.getPipe().pipe(res);
+          (await msg.getPipe()).pipe(res);
           
         } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
           
