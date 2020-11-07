@@ -198,6 +198,12 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
+let GenFnOrig = (function*(){}).constructor;
+let GenOrig = (function*(){})().constructor;
+protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
+protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });
+protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
+
 protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 Function.stub = () => {};
