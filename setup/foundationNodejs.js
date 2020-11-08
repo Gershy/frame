@@ -438,7 +438,6 @@
       };
       
       this.transportDebug = false;
-      this.httpFullDebug = false;
       
       this.usage0 = process.memoryUsage().map(v => v);
       
@@ -1343,21 +1342,11 @@
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
         let { hutId=null, ...params } = { ...body, ...query }; // Params are initially based on body and query
         
-        if (this.httpFullDebug) console.log('\n\n' + [
-          '==== INCOMING REQUEST ====',
-          `IP: ${req.connection.remoteAddress}`,
-          `METHOD: ${req.method}`,
-          `REQURL: ${req.url}`,
-          `REQQRY: ${JSON.stringify(query, null, 2)}`,
-          `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
-          `BODY: ${JSON.stringify(body, null, 2)}`
-        ].join('\n'));
-        
         // Detect "command" from `urlPath` if none given explicitly
         if (!params.has('command')) params = (p => {
           // Map typical http requests to their meaning within Hut
           if (p === '/') return { command: 'syncInit', ...params, reply: true };
-          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: true };
+          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: 'stateless' };
           if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: true };
           return {};
         })(urlPath);
@@ -1368,7 +1357,14 @@
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
         // spot where they can request a new identity
-        let road = this.getHutRoadForQuery(server, pool, hutId);
+        let road = (params.reply !== 'stateless')
+          ? this.getHutRoadForQuery(server, pool, hutId)
+          : { knownHosts: Set.stub, hear: { send: async ([ msg, reply, ms ]) => {
+              let hut = await this.getRootHut();
+              let tempSrcHut = { isAfar: Function.stub, refreshDryTimeout: Function.stub, roadSrcs: Set.stub };
+              hut.hear(tempSrcHut, null, reply, msg, ms);
+            }}};
+              
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
         // Note that we've seen this Hut under this host
