@@ -51,7 +51,7 @@
         
         // "folder" = "directory"; "letter" = "file"
         
-        hutRootCmps: __dirname.split(path.sep).slice(0, -1),
+        hutRootCmps: __dirname.split(path.sep).map(v => v || C.skip).slice(0, -1),
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
@@ -79,7 +79,6 @@
         },
         getLetter: async (cmps, ...opts) => {
           let err = Error('');
-          console.log('READING:', path.join(...cmps));
           return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
             if (err0) rjc(err.update(err0.message));
             else      rsv(content)
