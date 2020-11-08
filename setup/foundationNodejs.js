@@ -61,19 +61,10 @@
           return [ root || path.sep, ...cmps ].slice(0, -1);
         })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
-        getMeta: async cmps => {
-          let result = await Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m)))
-          console.log('META', cmps, result);
-          return result;
-        },
+        getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
-          console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
           return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
-            
-            console.log('GOT FOLDER', cmps, ...opts);
-            console.log('RESULTS:', err0, children);
-            
             if (err0) rjc(err.update(err0.message));
             else      rsv(children);
           }));
@@ -1298,8 +1289,6 @@
           (await msg.getPipe()).pipe(res);
           
         } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
-          
-          console.log('REPLY WITH JSON:', msg);
           
           msg = JSON.stringify(msg);
           res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
