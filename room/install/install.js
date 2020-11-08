@@ -18,6 +18,8 @@ global.rooms.install = async foundation => ({ open: async hut => {
       
       try {
         let fsType = await keep.getFsType();
+        console.log('ITEM:', keep.absPath, 'TYPE:', fsType);
+        
         if (!fsType) throw Error(`Invalid path specified`);
         reply(keep.setContentType('text/plain'));
       } catch(err) {
