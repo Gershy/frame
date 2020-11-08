@@ -231,8 +231,8 @@
           if (layout.w) domNode.style.width = layout.w;
           if (layout.h) domNode.style.height = layout.h;
           if (layout.mode === 'center') {
-            domNode.style.left = `calc(50% - ${layout.w} * 0.5)`;
-            domNode.style.top = `calc(50% - ${layout.h} * 0.5)`;
+            domNode.style.left = `calc(50% - ${layout.w} * 0.5 + ${layout.x || 0})`;
+            domNode.style.top = `calc(50% - ${layout.h} * 0.5 + ${layout.y || 0})`;
           } else {
             throw Error(`Unsupported mode: "${layout.mode}"`);
           }
@@ -455,7 +455,6 @@
             
             let techNode = real.getTechNode();
             let childNodes = [ ...techNode.childNodes ];
-            console.log(childNodes);
             if (childNodes.count() > 1) throw Error(`Can't select text; there's multiple child nodes!`);
             let [ childNode=null ] = childNodes;
             if (!childNode) return;

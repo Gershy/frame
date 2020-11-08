@@ -5,7 +5,9 @@ global.rooms.install = async foundation => ({ open: async hut => {
   let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp')
   
   /// {ABOVE=
-  let installActionKeep = foundation.seek('keep', 'fileSystem', 'room', 'install', 'installAction.js').setType('text');
+  
+  let fsKeep = foundation.seek('keep', 'fileSystem');
+  let installActionKeep = fsKeep.seek('room', 'install', 'installAction.js').setContentType('text');
   hut.roadSrc('stl.run').route(({ reply, srcHut }) => reply(installActionKeep));
   hut.roadSrc('stl.item').route(async ({ msg, reply, srcHut }) => {
     
@@ -16,9 +18,9 @@ global.rooms.install = async foundation => ({ open: async hut => {
     try {
       let fsType = await keep.getFsType();
       if (!fsType) throw Error(`Invalid path specified`);
-      reply(keep.setType('text/plain'));
+      reply(keep.setContentType('text/plain'));
     } catch(err) {
-      reply(Error(`Couldn't get ${keep.absPath}`));
+      reply(err);
     }
     
   });
@@ -28,11 +30,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
     let { hosting, ssl } = foundation.origArgs;
     let [ host, port ] = hosting.split(':');
     hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-    let httpDest = `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run`;
-    let text = `node -e "require('http').get('${httpDest}',(r,d=[])=>(r.on('data',c=>d.push(c)),r.on('end',()=>eval(d.join('')))))"`;
-    installRec.setVal(text);
-    
-    installRec.valSrc.route(() => console.log(`Install value: ${installRec.getVal()}`));
+    installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=1` });
     
   });
   /// =ABOVE}
@@ -40,27 +38,26 @@ global.rooms.install = async foundation => ({ open: async hut => {
   await HtmlApp({ name: 'install' }).decorateApp(hut);
   makeHutAppScope(hut, 'stl', 'install', (stlRec, stlHut, rootReal, dep) => {
     
-    console.log('GOT REC:', stlRec.type.name);
-    
     let stlReal = dep(rootReal.addReal('stl.install', {
-      layouts: [ FreeLayout({ w: '100%', h: '100%', x: '0', y: '0' }) ],
+      layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],
       innerLayout: Axis1DLayout({ axis: 'y', dir: '+', cuts: 'focus' })
     }));
     stlReal.addReal('stl.title', { layouts: [ TextLayout({ gap: '4px', size: '150%', text: 'Hut installation:' }) ] });
-    stlReal.addReal('stl.step1', { layouts: [ TextLayout({ gap: '2px', size: '130%', text: '1. Install Nodejs (version 13.0.0 minimum)' }) ] });
+    stlReal.addReal('stl.step1', { layouts: [ TextLayout({ gap: '2px', size: '130%', text: '1. Install Nodejs (13.0.0 and up)' }) ] });
     stlReal.addReal('stl.step2', { layouts: [ TextLayout({ gap: '6px', size: '130%', text: '2. Run this in your terminal:' }) ] });
-    let installationTextReal = stlReal.addReal('stl.text', {
+    let textReal = stlReal.addReal('stl.text', {
       layouts: [ TextLayout({ text: '...', gap: '15px', size: '100%' }) ],
       decals: { border: { ext: '5px', colour: 'rgba(0, 0, 0, 0.3)' } }
     });
+    stlReal.addReal('stl.reminder', { layouts: [ TextLayout({ gap: '6px', size: '90%', text: 'Always verify wild code before running!' }) ] });
     
-    dep(stlRec.valSrc.route(() => installationTextReal.setText(stlRec.getVal())));
+    dep(stlRec.valSrc.route(() => textReal.setText(`node -e "h='${stlRec.getVal('httpTrg')}';require('http').get(h,(r,d=[])=>(r.on('data',c=>d.push(c)),r.on('end',()=>eval(d.join(''))(h))))"`)));
     
-    let feelSrc = dep(installationTextReal.addFeel('discrete')).src;
-    dep(feelSrc.route(() => installationTextReal.selectTextContent()));
+    let feelSrc = dep(textReal.addFeel('discrete')).src;
+    dep(feelSrc.route(() => textReal.selectTextContent()));
     
-    let pressSrc = dep(installationTextReal.addPress()).src;
-    dep(pressSrc.route(() => installationTextReal.selectTextContent()));
+    let pressSrc = dep(textReal.addPress()).src;
+    dep(pressSrc.route(() => textReal.selectTextContent()));
     
   });
   

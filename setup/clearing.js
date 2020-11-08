@@ -480,7 +480,7 @@ U.logic = (() => {
   MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
     init: function(val=C.skip) { insp.MemSrc.init.call(this); this.val = val; },
     newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
-    retain: function(val) { if (val === this.val) return; this.val = val; if (this.val !== C.skip) this.send(val); },
+    retain: function(val) { if (val === this.val && U.isTypes(val, String, Number, Boolean)) return; this.val = val; if (this.val !== C.skip) this.send(val); },
     cleanup: function() { this.val = C.skip; }
   })});
   MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({

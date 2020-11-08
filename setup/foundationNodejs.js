@@ -109,15 +109,17 @@
         getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
         
       }))(require('path'), require('fs')),
-      $honeyPotKeep: ((data=[ 'kwargs', 'honey', 'passwords' ]) => ({
-        constructor: { name: 'HoneyPotKeep' },
-        access: () => Insp.honeyPotKeep,
-        getFsType: () => 'folder',
-        getContent: () => data,
-        setContent: () => {},
-        getContentByteLength: () => Buffer.byteLength(JSON.stringify(data)),
-        getPipe: () => ({ pipe: async res => res.end(JSON.stringify(data)) })
-      }))(),
+      $HoneyPotKeep: U.inspire({ name: 'HoneyPotKeep', insps: { Keep }, methods: (insp, Insp) => ({
+        init: function(data=[ 'honey', 'passwords', 'tokens', 'credentials', 'bitcoin', 'wallet' ]) { this.data = data; },
+        access: function() { return this; },
+        setContentType: function() { return this; },
+        getContentType: function() { return 'application/json'; },
+        getFsType: function() { return 'folder'; },
+        getContent: function() { return this.data; },
+        setContent: function() {},
+        getContentByteLength: function() { return Buffer.byteLength(JSON.stringify(this.data)); },
+        getPipe: function() { return ({ pipe: async res => res.end(JSON.stringify(this.data)) }); }
+      })}),
       
       // Ensures that a filepath component is "secure"; that it does not
       // define parent access. The ".." sequence is prevented, since "."
@@ -141,7 +143,7 @@
         this.secure = secure;
         if (blacklist) this.blacklist = blacklist;
       },
-      setType: function(type) { this.type = type; return this; },
+      setContentType: function(contentType) { this.contentType = contentType; return this; },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
@@ -153,8 +155,8 @@
         dirNames = dirNames.map(d => (d === '' || d === '.') ? C.skip : d);
         
         // Ensure all cmps are valid
-        if (this.secure && dirNames.find(d => !v.match(Insp.secureFpReg))) return Insp.honeyPotKeep;
-        if (this.blacklist && this.blacklist.has(dirnames[0])) return Insp.honeyPotKeep;
+        if (this.secure && dirNames.find(d => !d.match(Insp.secureFpReg)).found) return Insp.HoneyPotKeep();
+        if (this.blacklist && this.blacklist.has(dirNames[0])) return Insp.HoneyPotKeep();
         
         // No need to create a child for 0 cmps
         if (!dirNames.count()) return this;
@@ -168,12 +170,12 @@
         let meta = await this.metaPrm;
         if (!meta) return null;
         if (meta.isDirectory()) { return 'folder'; }
-        if (meta.isFile())      { this.type = Insp.extToContentType.json; return 'letter'; }
-        throw Error(`${this.desc()} is unknown type (exists; non-folder, non-letter)`);
+        if (meta.isFile())      { this.contentType = Insp.extToContentType.json; return 'letter'; }
+        throw Error(`${this.desc()} has unknown fsType (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
-        let type = await this.getFsType();
-        if (type === 'folder') {
+        let fsType = await this.getFsType();
+        if (fsType === 'folder') {
           
           let content = await Insp.fs.getFolder(this.absPath, ...opts);
           
@@ -182,7 +184,7 @@
             ? content.map(v => this.blacklist.has(v) ? C.skip : v)
             : content;
           
-        } else if (type === 'letter') {
+        } else if (fsType === 'letter') {
           
           return Insp.fs.getLetter(this.absPath, ...opts);
           
@@ -194,10 +196,10 @@
       },
       setContent: async function(content, ...opts) {
         
-        let type = await this.getFsType();
+        let fsType = await this.getFsType();
         if (content !== null) { // Insert new content
           
-          if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
+          if (fsType === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
           
           // Create all ancestor dirs
           for (let depth = 1; depth < this.absPath.length; depth++) {
@@ -213,7 +215,7 @@
           // Write content into file
           await Insp.fs.setLetter(this.absPath, content, ...opts);
           
-        } else if (content === null && type === 'folder') {
+        } else if (content === null && fsType === 'folder') {
           
           let items = await this.getContent();
           
@@ -230,7 +232,7 @@
             
           }
           
-        } else if (content === null && type === 'letter') {
+        } else if (content === null && fsType === 'letter') {
           
           await Insp.fs.remLetter(this.absPath);
           await this.remNullAncestry();
@@ -258,7 +260,7 @@
         
       },
       getContentType: function() {
-        if (this.type) return this.type;
+        if (this.contentType) return this.contentType;
         let [ lastCmp ] = this.absPath.slice(-1);
         let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
         return Insp.extToContentType.has(ext) ? Insp.extToContentType[ext] : 'application/octet-stream'
@@ -993,7 +995,7 @@
     installRoom: async function(name, bearing='above') {
       
       let pcs = name.split('.');
-      let keep = this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
+      let keep = this.seek('keep', 'adminFileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
       
       let contents = await keep.getContent('utf8');
       if (!contents) throw Error(`Invalid room name: "${name}"`);
@@ -1004,7 +1006,7 @@
         content: (async () => {
           
           // Write, `require`, and ensure file populates `global.rooms`
-          await this.seek('keep', 'fileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
+          await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
           require(`../mill/compiled/${name}@${bearing}.js`);
           if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
           
@@ -1119,7 +1121,7 @@
       
       let sslArgs = { keyPair: null, selfSign: null };
       if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
-        let certFolder = this.seek('keep', 'fileSystem', [ 'mill', 'cert' ]);
+        let certFolder = this.seek('keep', 'adminFileSystem', [ 'mill', 'cert' ]);
         let { cert, key, selfSign } = await Promise.allObj({
           cert:     certFolder.seek('server.cert').getContent(),
           key:      certFolder.seek('server.key').getContent(),
@@ -1202,7 +1204,7 @@
       let fp = (type === 'setup')
         ? [ 'setup', `${name}.js` ]
         : [ 'room', name, `${name}@${bearing}.js` ];
-      let srcContent = await this.seek('keep', 'fileSystem', fp).getContent('utf8');
+      let srcContent = await this.seek('keep', 'adminFileSystem', fp).getContent('utf8');
       if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
       
       let offsets = [];
@@ -1363,7 +1365,7 @@
         let road = this.getHutRoadForQuery(server, pool, hutId);
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
-        // Confirm that we've seen this Hut under this host
+        // Note that we've seen this Hut under this host
         road.knownHosts.add(req.connection.remoteAddress);
         
         // Determine the actions that need to happen at various levels for this command

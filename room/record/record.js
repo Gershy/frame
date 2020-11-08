@@ -159,10 +159,7 @@ global.rooms.record = async foundation => {
       return null;
     },
     
-    setVal: function(newVal) {
-      if (newVal !== this.valSrc.val || U.isType(newVal, Object)) this.valSrc.retain(newVal);
-      return this;
-    },
+    setVal: function(v) { if (v !== this.valSrc.val || U.isType(v, Object)) this.valSrc.retain(v); return this; },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
     dltVal: function(delta=null) {
       
