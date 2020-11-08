@@ -1281,8 +1281,8 @@
         
         if (U.isInspiredBy(msg, Keep)) { // File!
           
-          console.log('Replying with keep:', msg);
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
+          console.log('Replying with keep:', msg, { ct, cl });
           res.writeHead(200, {
             'Content-Type': ct || 'application/octet-stream',
             ...(cl ? { 'Content-Length': cl } : {})
