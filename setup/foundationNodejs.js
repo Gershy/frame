@@ -52,10 +52,13 @@
         // "folder" = "directory"; "letter" = "file"
         
         hutRootCmps: (() => {
-          let cmps = __dirname.split(path.sep);
-          if (!cmps[0]) cmps[0] = '/';
-          return cmps.slice(0, -1);
-        })(),
+          // If the absolute path is prefixed with the path separator
+          // (common for *nix) the leading item will be an empty string.
+          // We also need to ensure this path is absolute, so any
+          // leading empty string can be replaced with the separator
+          let [ root, ...cmps ] = __dirname.split(path.sep);
+          return [ root || path.sep, ...cmps ].slice(0, -1);
+3        })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
@@ -963,9 +966,6 @@
       
       let pcs = name.split('.');
       let keep = this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
-      
-      let type = await keep.getFsType();
-      console.log('KEEP:', type, require('util').inspect(keep, { depth: 5 }));
       
       let contents = await keep.getContent('utf8');
       if (!contents) throw Error(`Invalid room name: "${name}"`);
