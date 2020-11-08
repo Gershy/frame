@@ -8,7 +8,7 @@ async hosting => {
     if (seen.has(remoteStr)) return;
     seen.add(remoteStr);
     
-    let url = `${hosting}?command=stl.item&pcs=${remote.join(',')}&reply=1`;
+    let url = `${hosting}?command=stl.item&pcs=${remote.join(',')}&reply=stateless`;
     
     let res = await new Promise(r => http.get(url, r));
     let chunks = []; res.on('data', d => chunks.push(d));

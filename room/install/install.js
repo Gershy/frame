@@ -28,7 +28,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
     let { hosting, ssl } = foundation.origArgs;
     let [ host, port ] = hosting.split(':');
     hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-    installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=1` });
+    installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=stateless` });
   });
   
   /// =ABOVE}
