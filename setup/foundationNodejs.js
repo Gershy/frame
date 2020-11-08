@@ -61,7 +61,7 @@
           return [ root || path.sep, ...cmps ].slice(0, -1);
         })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
-        getMeta: await cmps => {
+        getMeta: async cmps => {
           let result = await Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m)))
           console.log('META', cmps, result);
           return result;
