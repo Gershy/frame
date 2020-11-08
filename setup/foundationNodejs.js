@@ -1287,7 +1287,10 @@
             'Content-Type': ct || 'application/octet-stream',
             ...(cl ? { 'Content-Length': cl } : {})
           });
-          (await msg.getPipe()).pipe(res);
+          
+          res.end(await msg.getContent());
+          
+          //(await msg.getPipe()).pipe(res);
           
         } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
           
