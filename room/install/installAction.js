@@ -9,6 +9,8 @@ async hosting => {
     seen.add(remoteStr);
     
     let url = `${hosting}?command=stl.item&pcs=${remote.join(',')}&reply=1`;
+    
+    console.log(`Requesting: ${url}`);
     let res = await new Promise(r => http.get(url, r));
     let chunks = []; res.on('data', d => chunks.push(d));
     await new Promise(r => res.on('end', r));

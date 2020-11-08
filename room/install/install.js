@@ -11,16 +11,20 @@ global.rooms.install = async foundation => ({ open: async hut => {
   hut.roadSrc('stl.run').route(({ reply, srcHut }) => reply(installActionKeep));
   hut.roadSrc('stl.item').route(async ({ msg, reply, srcHut }) => {
     
-    if (!msg.has('pcs')) reply(Error(`Missing "pcs"`));
-    if (!U.isType(msg.pcs, String)) reply(Error(`"pcs" should be String; got ${U.nameOf(msg.pcs)}`));
-    let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
-    
     try {
-      let fsType = await keep.getFsType();
-      if (!fsType) throw Error(`Invalid path specified`);
-      reply(keep.setContentType('text/plain'));
+      if (!msg.has('pcs')) reply(Error(`Missing "pcs"`));
+      if (!U.isType(msg.pcs, String)) reply(Error(`"pcs" should be String; got ${U.nameOf(msg.pcs)}`));
+      let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
+      
+      try {
+        let fsType = await keep.getFsType();
+        if (!fsType) throw Error(`Invalid path specified`);
+        reply(keep.setContentType('text/plain'));
+      } catch(err) {
+        reply(err);
+      }
     } catch(err) {
-      reply(err);
+      console.log('Ok...dunno!', foundation.formatError(err));
     }
     
   });

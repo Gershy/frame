@@ -63,6 +63,7 @@
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
+          console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
           return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
             if (err0) rjc(err.update(err0.message));
@@ -78,6 +79,7 @@
           }));
         },
         remFolder: async (cmps, ...opts) => {
+          console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
             // Ignore ENOENT - it means the folder is already deleted!
