@@ -5,8 +5,6 @@
   
   let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
-  let stream = require('stream');
-  let path = require('path');
   let { Foundation, Real, Keep } = U.setup;
   
   let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
@@ -58,7 +56,7 @@
           // leading empty string can be replaced with the separator
           let [ root, ...cmps ] = __dirname.split(path.sep);
           return [ root || path.sep, ...cmps ].slice(0, -1);
-3        })(),
+        })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {

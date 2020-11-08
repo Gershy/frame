@@ -60,6 +60,8 @@
       }
     })}),
     
+    $TextNode: document.createTextNode('').constructor,
+    
     init: function({ hutId, isSpoofed, aboveMsAtResponseTime, ...supArgs }) {
       insp.Foundation.init.call(this, supArgs);
       
@@ -440,13 +442,31 @@
             
             let techNode = real.getTechNode();
             let childNodes = [ ...techNode.childNodes ];
-            if (childNodes.count() > 1) throw Error(`Can't set text; there's other stuff here!`);
+            if (childNodes.count() > 1) throw Error(`Can't set text; there's multiple child nodes!`);
             if (childNodes.count()) {
-              if (childNodes[0].nodeType !== Node.TEXT_NODE) throw Error(`Can't set text; there's other stuff here!`); // TODO: That CONSTANT_STYLE is grossss
+              if (!U.isType(childNodes[0], Insp.TextNode)) throw Error(`Can't set text; non-text child node!`);
               childNodes[0].remove();
             }
             
             techNode.appendChild(document.createTextNode(text));
+            
+          },
+          selectTextContent: real => {
+            
+            let techNode = real.getTechNode();
+            let childNodes = [ ...techNode.childNodes ];
+            console.log(childNodes);
+            if (childNodes.count() > 1) throw Error(`Can't select text; there's multiple child nodes!`);
+            let [ childNode=null ] = childNodes;
+            if (!childNode) return;
+            if (!U.isType(childNode, Insp.TextNode)) throw Error(`Can't select text; non-text child`);
+            
+            // Clear previous selection
+            window.getSelection().removeAllRanges();
+            
+            // Create new selection
+            let selRange = document.createRange(); selRange.selectNodeContents(techNode);
+            window.getSelection().addRange(selRange);
             
           },
           addInput: real => {
@@ -543,25 +563,55 @@
             
             return tmp;
           },
-          addFeel: real => {
+          addFeel: (real, modes=[ 'continuous', 'discrete' ]) => {
+            
+            if (!U.isType(modes, Array)) modes = [ modes ];
+            if (!modes.count()) throw Error(`Supply at least one mode`);
+            if (modes.count() > 2) throw Error(`Supply maximum two modes`);
+            if (modes.find(v => !U.isType(v, String)).found) throw Error(`All modes should be String`);
+            if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
             
             let techNode = real.getTechNode();
             let tmp = Tmp(); tmp.src = Src();
-            let sentTmp = null;
             
-            let onnFn = evt => {
-              if (sentTmp) return;
+            if (modes.has('continuous')) {
               
-              // Create a new Tmp indicating hover.
-              sentTmp = Tmp();
-              techNode.addEventListener('mouseleave', offFn);
-              sentTmp.endWith(() => techNode.removeEventListener('mouseleave', offFn));
+              let sentTmp = null;
+              let onnFn = evt => {
+                if (sentTmp) return;
+                
+                // Create a new Tmp indicating hover.
+                sentTmp = Tmp();
+                techNode.addEventListener('mouseleave', offFn);
+                sentTmp.endWith(() => techNode.removeEventListener('mouseleave', offFn));
+                
+                tmp.src.send(sentTmp);
+              };
+              let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
+              techNode.addEventListener('mouseenter', onnFn);
+              tmp.endWith(() => techNode.removeEventListener('mouseenter', onnFn));
               
-              tmp.src.send(sentTmp);
-            };
-            let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
-            techNode.addEventListener('mouseenter', onnFn);
-            tmp.endWith(() => techNode.removeEventListener('mouseleave', onnFn));
+            }
+            
+            if (modes.has('discrete')) {
+              
+              let sentTmp = null;
+              let onnFn = evt => {
+                if (sentTmp) return;
+                
+                // Create a new Tmp indicating hover.
+                sentTmp = Tmp();
+                techNode.addEventListener('blur', offFn);
+                sentTmp.endWith(() => techNode.removeEventListener('blur', offFn));
+                
+                tmp.src.send(sentTmp);
+              };
+              let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
+              techNode.addEventListener('focus', onnFn);
+              tmp.endWith(() => techNode.removeEventListener('focus', onnFn));
+              
+            }
+            
             return tmp;
             
           },

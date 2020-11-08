@@ -315,6 +315,8 @@ Hut at the very bottom runs using a single Reality.
     scrollTo: function(real, ...args) { return this.tech.scrollTo(this, real, ...args); },
     
     setText: function(...args) { return this.tech.setText(this, ...args) },
+    selectTextContent: function(...args) { return this.tech.selectTextContent(this, ...args) },
+    
     addInput: function(...args) { return this.tech.addInput(this, ...args); },
     addPress: function(...args) { return this.tech.addPress(this, ...args); },
     addFeel: function(...args) { return this.tech.addFeel(this, ...args); },
