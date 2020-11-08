@@ -1288,7 +1288,7 @@
             ...(cl ? { 'Content-Length': cl } : {})
           });
           
-          res.end(await msg.getContent());
+          res.end(JSON.stringify(await msg.getContent()));
           
           //(await msg.getPipe()).pipe(res);
           
