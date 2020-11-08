@@ -274,7 +274,12 @@
         let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
         return Insp.extToContentType.has(ext) ? Insp.extToContentType[ext] : 'application/octet-stream'
       },
-      getContentByteLength: async function() { return (await Insp.fs.getMeta(this.absPath) || { size: 0 }).size; },
+      getContentByteLength: async function() {
+        let fsType = await this.getFsType();
+        if (fsType === 'letter') return (await this.metaPrm).size;
+        if (fsType === 'folder') return 0;
+        return 0;
+      },
       getPipe: async function() {
         
         let fsType = await this.getFsType();
