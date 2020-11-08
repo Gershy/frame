@@ -66,6 +66,10 @@
           console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
           return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
+            
+            console.log('GOT FOLDER', cmps, ...opts);
+            console.log('RESULTS:', err0, children);
+            
             if (err0) rjc(err.update(err0.message));
             else      rsv(children);
           }));
@@ -79,7 +83,6 @@
           }));
         },
         remFolder: async (cmps, ...opts) => {
-          console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
             // Ignore ENOENT - it means the folder is already deleted!
