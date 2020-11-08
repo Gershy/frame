@@ -1277,12 +1277,13 @@
       // Translates a javascript value `msg` into http content type and payload
       let sendData = async (req=null, res, msg) => {
         
-        if (msg instanceof Error) throw msg; // { let err = new Error(`Tried to send raw Error`); err.reason = msg; throw err; }
+        let httpCode = 200;
+        if (msg instanceof Error) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
         if (U.isInspiredBy(msg, Keep)) { // File!
           
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
-          res.writeHead(200, {
+          res.writeHead(httpCode, {
             'Content-Type': ct || 'application/octet-stream',
             ...(cl ? { 'Content-Length': cl } : {})
           });
@@ -1291,7 +1292,7 @@
         } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
           
           msg = JSON.stringify(msg);
-          res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
+          res.writeHead(httpCode, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
           res.end(msg);
           
         } else {
@@ -1300,7 +1301,7 @@
           let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
           let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
           let ct = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
-          res.writeHead(200, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
+          res.writeHead(httpCode, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
           res.end(msg);
           
         }

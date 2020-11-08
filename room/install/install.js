@@ -13,8 +13,8 @@ global.rooms.install = async foundation => ({ open: async hut => {
     
     if (!msg.has('pcs')) reply(Error(`Missing "pcs"`));
     if (!U.isType(msg.pcs, String)) reply(Error(`"pcs" should be String; got ${U.nameOf(msg.pcs)}`));
-    let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
     
+    let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
     try {
       let fsType = await keep.getFsType();
       if (!fsType) throw Error(`Invalid path specified`);
@@ -24,15 +24,13 @@ global.rooms.install = async foundation => ({ open: async hut => {
     }
     
   });
-  
   hut.relSrc('stl.install').route(installRec => {
-    
     let { hosting, ssl } = foundation.origArgs;
     let [ host, port ] = hosting.split(':');
     hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
     installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=1` });
-    
   });
+  
   /// =ABOVE}
   
   await HtmlApp({ name: 'install' }).decorateApp(hut);
@@ -42,7 +40,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
       layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],
       innerLayout: Axis1DLayout({ axis: 'y', dir: '+', cuts: 'focus' })
     }));
-    stlReal.addReal('stl.title', { layouts: [ TextLayout({ gap: '4px', size: '150%', text: 'Hut installation:' }) ] });
+    stlReal.addReal('stl.title', { layouts: [ TextLayout({ gap: '4px', size: '165%', text: 'Hut Installation' }) ] });
     stlReal.addReal('stl.step1', { layouts: [ TextLayout({ gap: '2px', size: '130%', text: '1. Install Nodejs (13.0.0 and up)' }) ] });
     stlReal.addReal('stl.step2', { layouts: [ TextLayout({ gap: '6px', size: '130%', text: '2. Run this in your terminal:' }) ] });
     let textReal = stlReal.addReal('stl.text', {
