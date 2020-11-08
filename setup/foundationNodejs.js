@@ -61,7 +61,11 @@
           return [ root || path.sep, ...cmps ].slice(0, -1);
         })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
-        getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
+        getMeta: cmps => {
+          let result = Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m)))
+          console.log('META', cmps, result);
+          return result;
+        },
         getFolder: async (cmps, ...opts) => {
           console.log('GET FOLDER', cmps, ...opts);
           let err = Error('');
@@ -1282,19 +1286,15 @@
         if (U.isInspiredBy(msg, Keep)) { // File!
           
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
-          
-          let cont = await msg.getContent();
-          console.log('Replying with keep:', msg, { ct, cl, cont });
-          
           res.writeHead(200, {
             'Content-Type': ct || 'application/octet-stream',
             ...(cl ? { 'Content-Length': cl } : {})
           });
-          res.end(JSON.stringify(cont));
-          
-          //(await msg.getPipe()).pipe(res);
+          (await msg.getPipe()).pipe(res);
           
         } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
+          
+          console.log('REPLY WITH JSON:', msg);
           
           msg = JSON.stringify(msg);
           res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
