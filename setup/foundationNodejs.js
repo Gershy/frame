@@ -51,7 +51,11 @@
         
         // "folder" = "directory"; "letter" = "file"
         
-        hutRootCmps: __dirname.split(path.sep).map(v => v || C.skip).slice(0, -1),
+        hutRootCmps: (() => {
+          let cmps = __dirname.split(path.sep);
+          if (!cmps[0]) cmps[0] = '/';
+          return cmps.slice(0, -1);
+        })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
