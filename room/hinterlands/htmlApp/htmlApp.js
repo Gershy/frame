@@ -27,8 +27,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
               <style type="text/css">
-                body { position: relative; opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; pointer-events: none; }
-                body.focus { pointer-events: all; }
+                body { position: relative; opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
                 body::before {
                   content: ''; display: block; position: absolute;
                   left: 0; right: 0; top: 0; bottom: 0;
@@ -49,8 +48,6 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
                 global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
                 
                 global.domAvailable.then(() => {
-                  console.log('DOM AVAILABLE');
-                  
                   window.addEventListener('load', () => document.body.classList.add('loaded'));
                   window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
                   window.addEventListener('focus', () => document.body.classList.add('focus'));
