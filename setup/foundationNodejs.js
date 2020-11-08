@@ -12,12 +12,15 @@
     $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
       init: function() {
         insp.Keep.init.call(this);
-        let fileSystemKeep = Insp.KeepFileSystem({ secure: true });
-        let rootFileSystemKeep = Insp.KeepFileSystem({ absPath: [], secure: false });
+        
+        let fileSystemKeep = Insp.KeepFileSystem({
+          secure: true,
+          blacklist: Set([ '.git', '.gitignore', 'mill' ])
+        });
         this.keepsByType = {
           static: Insp.KeepStatic(fileSystemKeep),
           fileSystem: fileSystemKeep,
-          rootFileSystem: rootFileSystemKeep,
+          adminFileSystem: Insp.KeepFileSystem({ secure: false }),
           urlResource: Insp.KeepUrlResources()
         };
       },
@@ -106,6 +109,15 @@
         getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
         
       }))(require('path'), require('fs')),
+      $honeyPotKeep: ((data=[ 'kwargs', 'honey', 'passwords' ]) => ({
+        constructor: { name: 'HoneyPotKeep' },
+        access: () => Insp.honeyPotKeep,
+        getFsType: () => 'folder',
+        getContent: () => data,
+        setContent: () => {},
+        getContentByteLength: () => Buffer.byteLength(JSON.stringify(data)),
+        getPipe: () => ({ pipe: async res => res.end(JSON.stringify(data)) })
+      }))(),
       
       // Ensures that a filepath component is "secure"; that it does not
       // define parent access. The ".." sequence is prevented, since "."
@@ -123,10 +135,11 @@
         svg: 'image/svg+xml'
       },
       
-      init: function({ absPath=Insp.fs.hutRootCmps, secure=true }) {
+      init: function({ absPath=Insp.fs.hutRootCmps, secure=true, blacklist=null }) {
         if (absPath.find(v => !U.isType(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
         this.absPath = absPath;
         this.secure = secure;
+        if (blacklist) this.blacklist = blacklist;
       },
       setType: function(type) { this.type = type; return this; },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
@@ -136,11 +149,12 @@
         if (!U.isType(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
         if (dirNames.find(d => !U.isType(d, String)).found) throw Error(`All dir names must be Strings`);
         
-        // Ensure all cmps are valid
-        if (this.secure) dirNames = dirNames.map(v => v.match(Insp.secureFpReg) ? v : C.skip);
-        
-        // Remove all useless "." cmps
+        // Remove any useless cmps
         dirNames = dirNames.map(d => (d === '' || d === '.') ? C.skip : d);
+        
+        // Ensure all cmps are valid
+        if (this.secure && dirNames.find(d => !v.match(Insp.secureFpReg))) return Insp.honeyPotKeep;
+        if (this.blacklist && this.blacklist.has(dirnames[0])) return Insp.honeyPotKeep;
         
         // No need to create a child for 0 cmps
         if (!dirNames.count()) return this;
@@ -159,8 +173,24 @@
       },
       getContent: async function(...opts) {
         let type = await this.getFsType();
-        if (!type) return null;
-        return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
+        if (type === 'folder') {
+          
+          let content = await Insp.fs.getFolder(this.absPath, ...opts);
+          
+          // Filter blacklisted items if necessary
+          return this.blacklist
+            ? content.map(v => this.blacklist.has(v) ? C.skip : v)
+            : content;
+          
+        } else if (type === 'letter') {
+          
+          return Insp.fs.getLetter(this.absPath, ...opts);
+          
+        } else {
+          
+          return null;
+          
+        }
       },
       setContent: async function(content, ...opts) {
         
@@ -390,7 +420,7 @@
       process.on('unhandledRejection', err => console.error(this.formatError(err)));
       
       this.bearing = 'above';
-      this.fsKeep = this.seek('keep', 'fileSystem'); //this.getRootKeep().access('fileSystem');
+      this.fsKeep = this.seek('keep', 'adminFileSystem');
       
       this.roomsInOrder = [];
       this.compilationData = {};
