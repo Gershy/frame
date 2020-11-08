@@ -136,7 +136,7 @@
         if (this.secure) dirNames = dirNames.map(v => v.match(Insp.secureFpReg) ? v : C.skip);
         
         // Remove all useless "." cmps
-        dirNames = dirNames.map(d => d === '.' ? C.skip : d);
+        dirNames = dirNames.map(d => (d === '' || d === '.') ? C.skip : d);
         
         // No need to create a child for 0 cmps
         if (!dirNames.count()) return this;
@@ -154,12 +154,7 @@
         throw Error(`${this.desc()} is unknown type (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
-        console.log('GETTING CONTENT', ...opts);
-        
         let type = await this.getFsType();
-        
-        console.log('GETCONTENT TYPE:', type);
-        
         if (!type) return null;
         return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
       },
@@ -965,7 +960,10 @@
       
       let pcs = name.split('.');
       let keep = this.seek('keep', 'fileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
-      console.log('KEEP:', require('util').inspect(keep, { depth: 5 }));
+      
+      let type = await keep.getFsType();
+      console.log('KEEP:', type, require('util').inspect(keep, { depth: 5 }));
+      
       let contents = await keep.getContent('utf8');
       if (!contents) throw Error(`Invalid room name: "${name}"`);
       let { lines, offsets } = await this.compileContent(bearing, contents);
