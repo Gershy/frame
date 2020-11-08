@@ -1282,13 +1282,15 @@
         if (U.isInspiredBy(msg, Keep)) { // File!
           
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
-          console.log('Replying with keep:', msg, { ct, cl });
+          
+          let cont = await msg.getContent();
+          console.log('Replying with keep:', msg, { ct, cl, cont });
+          
           res.writeHead(200, {
             'Content-Type': ct || 'application/octet-stream',
             ...(cl ? { 'Content-Length': cl } : {})
           });
-          
-          res.end(JSON.stringify(await msg.getContent()));
+          res.end(JSON.stringify(cont));
           
           //(await msg.getPipe()).pipe(res);
           
