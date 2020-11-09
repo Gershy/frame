@@ -1,5 +1,36 @@
 global.rooms.write = async foundation => {
   
+  // TODO: HEEERE:
+  // 1: Aggregate HtmlApp, decorateApp, and makeHutAppScope
+  
+  // 2: Clean up Insp, Cls, constructor, Type. This needs thought.
+  //    CONSIDER:
+  //    - U.inspire({ insps: {}, methods: (insp, Insp) => ({ init: function(){} }) })
+  //    - ~noInspCollision
+  //    - inst.constructor
+  //    - "inst", "instance"
+  //    - "allInsps", Insp.parents
+  //    - U.isInspiredBy
+  //    - U.isType, U.isTypes
+  //    - U.nameOf
+  //  
+  //  U.form({ name: 'MyForm', has: { OtherForm1, OtherForm2 }, props: (forms, Form) => ({
+  //    $prop: 'This is a static property',
+  //    init: function({ myProp1, myProp2, ...props }){
+  //      forms.OtherForm1.init.call(this, props);
+  //      forms.OtherForm2.init.call(this, props);
+  //    }
+  //  })});
+  //  
+  //  '~noInspCollison` -> '~noFormCollision'
+  //  `inst.constructor` -> `inst.Form`
+  //  - "inst(ance)?" -> "fact"
+  //  - "allInsps" -> "hasForms"
+  //  - U.isInspiredBy -> U.hasForm
+  //  - U.isType, U.isTypes -> U.isForm(fact, Form, [ Form2, Form3, ... ])
+  
+  // 3: Get ?hutId=... out of url!!
+  
   let { Tmp, Slots, Src, Chooser, FnSrc } = U.logic;
   let { FreeLayout, SizedLayout, Axis1DLayout, TextLayout, TextInputLayout, ScrollLayout } = U.setup;
   let { Rec, RecScope } = await foundation.getRoom('record');
@@ -7,22 +38,31 @@ global.rooms.write = async foundation => {
   
   let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp')
   
-  return { open: async hut => {
+  /*
+  let controls = HutControls(hut, 'wrt.write', {
     
-    // TODO: HEEERE:
-    // 1: Aggregate HtmlApp, decorateApp, and makeHutAppScope
-    // 2: install isn't working (',' works but '/' gets honeypotted!)
-    // 3: Clean up Insp, Cls, constructor, Type. This needs thought.
-    //    CONSIDER:
-    //    - U.inspire({ insps: {}, methods: (insp, Insp) => ({ init: function(){} }) })
-    //    - ~noInspCollision
-    //    - inst.constructor
-    //    - "inst", "instance"
-    //    - "allInsps", Insp.parents
-    //    - "method"
-    //    - U.isInspiredBy
-    //    - U.isType, U.isTypes
-    //    - U.nameOf
+    debug: [ 'transportRaw', 'httpRaw', 'hinterlands', 'real' ],
+    habitats: [ HtmlApp ],
+    recForms: {
+      'wrt.writeRec': U.form({ name: 'WriteRecRoom', has: { Rec }, props: (insp, Insp) => ({
+        getStatusWatcher: function() { ... },
+        getRoundEndMs: function() { ... }
+      })})
+    },
+    
+    parFn: (writeRec, writeHut, rootReal, dep) => {
+      /// {ABOVE=
+      /// =ABOVE}
+    },
+    
+    kidFn: (writeRec, writeHut, rootReal, dep) => {
+      
+    }
+    
+  });
+  */
+  
+  return { open: async hut => {
     
     hut.roadDbgEnabled = false;
     
