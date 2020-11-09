@@ -7,6 +7,19 @@ global.rooms.hinterlands = async foundation => {
   
   let Hut = U.inspire({ name: 'Hut', insps: { RecTypes, Rec }, methods: (insp, Insp) => ({
     
+    // Huts are describable by the following terms:
+    // AFAR/HERE: Indicates whether the Hut instance represents a local
+    //   or far-away (remote) identity. For example, two HereHuts do not
+    //   require any transport tech to communicate with each other,
+    //   because they exist side-by-side in RAM!
+    // PAR/KID: Indicates whether the Hut was created as the child of
+    //   another Hut. KidHuts are instantiated when a ParHut receives a
+    //   "sync" that includes a Hut as one of the items to "add".
+    //   ParHuts are always instantiated directly (for example, from the
+    //   root hut.js file). Note that ancestry heirarchies should only
+    //   have parents and children; no grandchildren (a directly
+    //   instantiated Hut manages all other Huts, in a flat heirarchy).
+    
     $tell: (srcHut, trgHut, road=null, reply=null, msg, ms=foundation.getMs()) => {
       
       // Note that `ms` should typically be provided, and should
@@ -239,22 +252,9 @@ global.rooms.hinterlands = async foundation => {
     },
     desc: function() {
       
-      let access = this.isHere() ? 'Here' : 'Afar';
-      
-      let maturity = this.parHut ? 'Kid' : 'Par';
-      
-      let bearing = [];
-      /// {ABOVE=
-      bearing.push('Above');
-      /// =ABOVE} {BELOW=
-      bearing.push('Below');
-      /// =BELOW}
-      
-      bearing = bearing.length === 0
-        ? 'UnknownBearing'
-        : ((bearing.length > 1) ? 'Between' : bearing[0]);
-      
-      return `${access}${maturity}${bearing}Hut @ ${this.uid}`;
+      let availability = this.isHere() ? 'Here' : 'Afar';
+      let depth = this.parHut ? 'Kid' : 'Par';
+      return `${availability}${depth}Hut@${this.uid}`;
       
     },
     
@@ -553,6 +553,11 @@ global.rooms.hinterlands = async foundation => {
     /// {ABOVE=
     
     // Handle syncing for AfarAboveHuts
+    isFollowable: function(rec) {
+      // Returns false for any Recs which may exist in the ABOVE
+      // heirarchy, but are sensitive and not to be synced BELOW
+      return !U.isInspiredBy(rec, Hut) || rec === this.parHut || rec === this;
+    },
     toSync: function(type, rec, val=null) {
       
       if (!this.pendingSync.has(type)) throw Error(`Invalid type: ${type}`);
@@ -620,8 +625,13 @@ global.rooms.hinterlands = async foundation => {
         type: r.type.name, uid: r.uid, val: r.getVal(),
         
         // Redirect all references from ParAboveHut to KidBelowHut
-        mems: r.mems.map(({ uid }) => uid === this.parHut.uid ? this.uid : uid)
+        mems: r.mems.map(mem => this.isFollowable(mem)
+          ? (mem === this.parHut ? this.uid : mem.uid)
+          : C.skip
+        )
+        
       }));
+      
       let upd = this.pendingSync.upd.toArr((val, uid) => ({ uid, val }));
       let rem = this.pendingSync.rem.toArr(r => r.uid);
       
@@ -640,8 +650,14 @@ global.rooms.hinterlands = async foundation => {
     // Rec Following
     modRecFollowStrength: function(rec, delta) {
       
+      // Ignore inactive Recs
       if (rec.off()) return;
-      if (rec.uid[0] === '!' || rec.uid === this.uid) return;
+      
+      // Prevent follows on sensitive Recs
+      if (!this.isFollowable(rec)) return;
+      
+      // Prevent Huts from following themselvess
+      if (rec === this) return;
       
       let fol = this.recFollows.get(rec);
       let str0 = fol ? fol.strength : 0;
