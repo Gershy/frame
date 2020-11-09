@@ -1274,8 +1274,9 @@
       // Translates a javascript value `msg` into http content type and payload
       let sendData = async (req=null, res, msg) => {
         
+        if (msg === C.skip) return;
         let httpCode = 200;
-        if (msg instanceof Error) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
+        if (U.isInspiredBy(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
         if (U.isInspiredBy(msg, Keep)) { // File!
           
@@ -1576,6 +1577,7 @@
       server.decorateRoad = road => {
         road.hear = Src();
         road.tell = msg => {
+          if (msg === C.skip) return;
           let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
           let len = dataBuff.length;
           let metaBuff = null;

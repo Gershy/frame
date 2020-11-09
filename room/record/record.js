@@ -61,6 +61,8 @@ global.rooms.record = async foundation => {
       
     }
   })});
+  
+  let RecSrc = U.inspire({ name: 'RecSrc', insps: { 'MemSrc.TmpM': MemSrc.TmpM }, methods: {} });
   let Rec = U.inspire({ name: 'Rec', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(type, uid, mems={}, val=null) {
       
@@ -81,8 +83,30 @@ global.rooms.record = async foundation => {
       this.allMemsTmp = TmpAll(this.mems.toArr(m => m || C.skip));
       this.allMemsTmp.endWith(this); // If any Mem ends, we end
       
-      // Inform all MemberRecs of this GroupRec
-      for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).retain(this);
+      try {
+        
+        // Inform all MemberRecs of this GroupRec
+        for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).retain(this);
+        
+      } catch(err) {
+        
+        // Constraints on relationships (e.g. TypeA can only have max 3
+        // recs related via TypeB) can be enforced by throwing errors
+        // upon receiving Recs from RecSrcs! E.g.:
+        // 
+        //      |     hut.relSrc('pfx.recType').route(rec => {
+        //      |       if (hut.relRecs('pfx.recType').count() > 3)
+        //      |         throw Error(`No more "pfx.recType" rels allowed!`);
+        //      |     });
+        // 
+        // The Error from such restrictions will wind up here. The Rec
+        // which violated the restriction needs to end immediately, and
+        // then the error can be thrown to implementing code.
+        
+        this.end();
+        throw err;
+        
+      }
     },
     desc: function() { return `${this.type.name} @ ${this.uid}`; },
     mem: function(termTail) {
@@ -129,7 +153,7 @@ global.rooms.record = async foundation => {
       
       let key = `${recType.name}/${term}`;
       if (!this.relSrcs.has(key)) {
-        this.relSrcs[key] = MemSrc.TmpM();
+        this.relSrcs[key] = RecSrc();
         this.relSrcs[key].desc = `RelSrc: ${this.type.name} -> ${recType.name} (${term})`;
         this.relTermSrc.retain(key);
       }
@@ -194,10 +218,10 @@ global.rooms.record = async foundation => {
   
   let RecScope = U.inspire({ name: 'RecScope', insps: { Scope }, methods: (insp, Insp) => ({
     init: function(...args) {
-      if (args.length === 3) {
+      if (args.count() === 3) {
         let [ rec, term, fn ] = args;
         insp.Scope.init.call(this, rec.relSrc(...term.split('/')), fn);
-      } else if (args.length === 2) {
+      } else if (args.count() === 2) {
         let [ src, fn ] = args;
         insp.Scope.init.call(this, src, fn);
       } else {
@@ -206,6 +230,6 @@ global.rooms.record = async foundation => {
     }
   })});
   
-  return { RecTypes, RecType, Rec, RecScope };
+  return { RecTypes, RecType, RecSrc, Rec, RecScope };
   
 };

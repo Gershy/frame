@@ -207,9 +207,9 @@ protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
 protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
 Function.stub = v => v;
-protoDef(Function, 'wrap', function(...args) { return this.bind(null, ...args); });
-Set.stub = { count: () => 0, add: Function.stub, rem: Function.stub, has: Function.stub };
-Map.stub = { count: () => 0, set: Function.stub, rem: Function.stub, has: Function.stub };
+Function.makeStub = v => Function.stub.bind(null, v);
+Set.stub = { count: Function.makeStub(0), add: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
+Map.stub = { count: Function.makeStub(0), set: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
 
 let U = global.U = {
   dbgCnt: name => {
@@ -337,10 +337,26 @@ let U = global.U = {
     for (let Cls of Classes) if (U.isType(val, Cls)) return true;
     return false;
   },
-  isInspiredBy: (Insp1, Insp2) => {
+  isInspiredBy: (insp, Insp) => {
     try {
-      if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;
-      return Insp1.has('allInsps') && Insp1.allInsps.has(Insp2);
+      
+      // `insp` is either an instance, or the constructor itself. Ensure
+      // we can talk about specifically the constructor
+      let Cls = U.isType(insp, Function) ? insp : insp.constructor;
+      
+      // `U.isInspiredBy` handles both Insp inheritance and classic js
+      // prototypal inheritance. If the constructor has an `allInsps`
+      // property, use Insp inheritance, and assume that any superclass
+      // would be contained within the "allInsps" Set. Otherwise Cls
+      // is using prototypal inheritance; use `instanceof`, preferring
+      // `Insp.Native` and falling back to `Insp`. Note that non-Native
+      // Constructors (which have a "Native" property) never are the
+      // true constructor of any initialized value (they only exist to
+      // provide hut-like shorthand, like "new"-less initialization).
+      // The user may (and is likely to) pass non-Native constructors
+      // as the `Insp` argument!
+      return Cls.has('allInsps') ? Cls.allInsps.has(Insp) : (insp instanceof (Insp.Native || Insp));
+      
     } catch(err) { return false; }
   },
   nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return U.safe(() => String(obj), 'Unrepresentable'); },
@@ -401,8 +417,9 @@ U.logic = (() => {
     init: function() { this.fns = Set(); },
     newRoute: function(fn) {},
     route: function(fn, mode='tmp') {
-      if (!(fn instanceof Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
+      if (!U.isInspiredBy(fn, Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
       if (this.fns.has(fn)) return; // Ignore duplicates
+      
       this.fns.add(fn);
       this.newRoute(fn);
       if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
@@ -423,36 +440,29 @@ U.logic = (() => {
     }
   })});
   let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
-    
-    $nullFns: { add: ()=>{}, rem: ()=>{} },
-    $endedTmp: () => {
-      let tmp = Insp(); tmp.end();
-      Insp.endedTmp = () => tmp;
-      return Insp.endedTmp();
-    },
-    
     init: function(fn=null) {
       insp.Src.init.call(this);
       insp.Endable.init.call(this);
       if (fn) this.route(fn, 'prm');
     },
-    ref: function() { return this; },
     end: function(...args) { return this.sendAndEnd(...args); },
     send: function(...args) { return this.sendAndEnd(...args); },
     sendAndEnd: function(...args) {
       // Sending and ending are synonymous for a Tmp
       if (!insp.Endable.end.call(this)) return; // Check if we're already ended
       insp.Src.send.call(this, ...args);
-      this.fns = Insp.nullFns;
+      this.fns = Set.stub;
       return;
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
-      if (val != null && val instanceof Function) return this.route(val, mode) || this;
+      if (U.isInspiredBy(val, Function)) return this.route(val, mode) || this;
       if (U.isInspiredBy(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
       throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
     }
   })});
+  Tmp.stub = (t => (t.end(), t))(Tmp());
+  
   let TmpAll = U.inspire({ name: 'TmpAll', insps: { Tmp }, methods: (insp, Insp) => ({
     init: function(tmps) {
       insp.Tmp.init.call(this);
@@ -617,7 +627,7 @@ U.logic = (() => {
   // could look like:
   //      |     U.inspire({ name: '...', methods: (insp, Insp) => ({
   //      |       
-  //      |       init: function() { this.watcher = Tmp.endedTmp(); },
+  //      |       init: function() { this.watcher = Tmp.stub; },
   //      |       actuallyCreateWatcher: function() {
   //      |       
   //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
@@ -765,7 +775,7 @@ U.logic = (() => {
       
     },
     processTmp: function(tmp, dep) { this.fn(tmp, dep); },
-    subScope: function(...args) { return this.constructor.call(null, ...args); },
+    subScope: function(...args) { return (0, this.constructor)(...args); },
     cleanup: function() { this.srcRoute.end(); }
   })});
   let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({

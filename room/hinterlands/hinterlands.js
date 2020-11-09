@@ -28,7 +28,8 @@ global.rooms.hinterlands = async foundation => {
       // Note that "disjoint" Huts are non-neighbours (they require a
       // Road to communicate)
       
-      if (msg instanceof Error) msg = { command: 'error', type: 'application', msg: msg.message };
+      if (msg === C.skip) return;
+      if (U.isInspiredBy(msg, Error)) msg = { command: 'error', type: 'application', msg: msg.message };
       
       if (!trgHut) throw Error('Must supply TrgHut');
       if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
@@ -107,7 +108,7 @@ global.rooms.hinterlands = async foundation => {
       if (!parHut) insp.RecTypes.init.call(this);
       insp.Rec.init.call(this, (parHut || this).getType('lands.hut'), uid);
       
-      // How regularly communication needed to confirm existence
+      // How regularly existence confirmation is required
       this.heartMs = heartMs;
       
       // The most current version this Hut has synced
@@ -314,7 +315,6 @@ global.rooms.hinterlands = async foundation => {
         roadedHut.serverRoads = Map();
         roadedHut.endWith(() => roadedHut.serverRoads.each(road => road.end()));
         
-        
         // Do Record relation for this KidHut
         let kidHutType = (this.parHut || this).getType('lands.kidHut');
         Rec(kidHutType, `!kidHut@${hutId}`, { par: this, kid: roadedHut.hut });
@@ -396,10 +396,18 @@ global.rooms.hinterlands = async foundation => {
       
     },
     
+    // TODO: I think it's bad design to allow mapping to a function that
+    // returns a class. I think it makes more sense to force a 1-1
+    // mapping between types and classes; map to the class itself, not
+    // a function that can return one of many classes!
+    // Fly is using functions that decide on a variety of classes for a
+    // given rec type, but I think this logic should occur without any
+    // help from hinterlands.
     addTypeClsFn: function(name, fn) {
       if (this.typeToClsFns.has(name)) throw Error(`Tried to overwrite class function for "${name}"`);
       this.typeToClsFns[name] = fn;
     },
+    addTypeClsFns: function(obj) { for (let [ name, fn ] of obj) this.addTypeClsFn(name, fn); },
     getCategorizedRecs: function() {
       let ret = {};
       for (let rec of this.allRecs.values()) {
@@ -423,8 +431,18 @@ global.rooms.hinterlands = async foundation => {
       rec.endWith(() => this.allRecs.rem(rec.uid));
       return rec;
     },
-    createRec: function(name, mems, val) {
-      return this.trackRec(insp.RecTypes.createRec.call(this, name, mems, val));
+    createRec: function(...args) {
+      if (this.isAfar()) {
+        
+        // Clients follow any Recs they create
+        return this.followRec(this.parHut.createRec(...args));
+        
+      } else {
+        
+        // Server simply creates the Rec
+        return this.trackRec(insp.RecTypes.createRec.call(this, ...args));
+        
+      }
     },
     doSync: function({ add=[], upd=[], rem=[] }) {
       
@@ -623,6 +641,7 @@ global.rooms.hinterlands = async foundation => {
     modRecFollowStrength: function(rec, delta) {
       
       if (rec.off()) return;
+      if (rec.uid[0] === '!' || rec.uid === this.uid) return;
       
       let fol = this.recFollows.get(rec);
       let str0 = fol ? fol.strength : 0;
@@ -719,10 +738,17 @@ global.rooms.hinterlands = async foundation => {
       
       /// =BELOW} {ABOVE=
       
-      let hearSrc = this.roadSrcs[command] = Src();
-      hearSrc.desc = `Hut TellSender for "${command}"`;
+      // Attach a RoadSrc so long as `tmp` lasts
+      let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
       tmp.endWith(() => delete this.roadSrcs[command]);
-      tmp.endWith(hearSrc.route(({ msg, reply }) => fn(msg, reply)));
+      
+      // Route any sends from `hearSrc` so that they call `fn`. Note
+      // that `U.safe` allows either a value or an Error to be returned
+      // (and makes it so that `return Error(...)` behaves the same as
+      // `throw Error` within `fn`). Either the result or Error will be
+      // used as a reply. Note that if the result is `C.skip`, `reply`
+      // will ensure that no value ever gets sent.
+      tmp.endWith(hearSrc.route(({ msg, reply }) => reply(U.safe(() => fn(msg)))));
       
       /// =ABOVE} 
       
@@ -737,9 +763,9 @@ global.rooms.hinterlands = async foundation => {
       
       let tmp = Tmp();
       
-      for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, +1);
+      for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, +1);
       tmp.endWith(() => {
-        for (let r of rec.getRecJurisdiction()) if (r.uid[0] !== '!' && r.uid !== this.uid) this.modRecFollowStrength(r, -1);
+        for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, -1);
       });
       
       let route = rec.route(() => tmp.end());
@@ -754,7 +780,7 @@ global.rooms.hinterlands = async foundation => {
       // purpose of even being able to call `followRec` from Below is to
       // reduce the need to use {BEARING= =BEARING} wrappers in
       // implementing code!
-      return Tmp.endedTmp();
+      return Tmp.stub;
       
       /// =BELOW}
       
