@@ -982,13 +982,11 @@
           }
           
         ];
-        for (let test of tests) {
-          try { await test(); } catch (err) {
-            let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
-            console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
-            this.halt();
-          }
-        }
+        for (let test of tests) await U.safe(test, err => {
+          let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
+          console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
+          this.halt();
+        });
         
       })();
       
@@ -1345,9 +1343,9 @@
         // Detect "command" from `urlPath` if none given explicitly
         if (!params.has('command')) params = (p => {
           // Map typical http requests to their meaning within Hut
-          if (p === '/') return { command: 'syncInit', ...params, reply: true };
-          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: 'stateless' };
-          if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: true };
+          if (p === '/') return { command: 'syncInit', ...params, reply: '1' };
+          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: '2' };
+          if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: '1' };
           return {};
         })(urlPath);
         
@@ -1357,7 +1355,7 @@
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
         // spot where they can request a new identity
-        let road = (params.reply !== 'stateless')
+        let road = (params.reply !== '2')
           ? this.getHutRoadForQuery(server, pool, hutId)
           : { knownHosts: Set.stub, hear: { send: async ([ msg, reply, ms ]) => {
               let hut = await this.getRootHut();

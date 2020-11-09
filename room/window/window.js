@@ -372,8 +372,8 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     init: function({ text=[], vertOff=0, ...args }) {
       insp.TerminalRenderer.init.call(this, {
-        w: Insp.defWFn.bind(null, this),
-        h: Insp.defHFn.bind(null, this),
+        w: Insp.defWFn.wrap(this),
+        h: Insp.defHFn.wrap(this),
         ...args
       });
       

@@ -1,6 +1,7 @@
+// Copies all necessary files from the Hut installation server:
 async hosting => {
   
-  let [ fs, http, os, path ] = [ 'fs', 'http', 'os', 'path' ].map(require);
+  let [ fs, http, path ] = [ 'fs', 'http', 'path' ].map(require);
   hosting = hosting.split('?')[0];
   let copy = async function*(local, remote, seen=new Set()) {
     
@@ -8,8 +9,7 @@ async hosting => {
     if (seen.has(remoteStr)) return;
     seen.add(remoteStr);
     
-    let url = `${hosting}?command=stl.item&pcs=${remote.join(',')}&reply=stateless`;
-    
+    let url = `${hosting}?command=stl.item&pcs=${remoteStr}&reply=2`;
     let res = await new Promise(r => http.get(url, r));
     let chunks = []; res.on('data', d => chunks.push(d));
     await new Promise(r => res.on('end', r));
@@ -40,7 +40,9 @@ async hosting => {
     for await (let p of copy(local, remote)) console.log(`Copied path: [${p.join('/')}]`);
     
   } catch(err) {
+    
     console.log(`Couldn't install: ${err.message}`);
+    
   }
   
 };

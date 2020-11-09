@@ -11,8 +11,10 @@ global.rooms.install = async foundation => ({ open: async hut => {
   hut.roadSrc('stl.run').route(({ reply, srcHut }) => reply(installActionKeep));
   hut.roadSrc('stl.item').route(async ({ msg, reply, srcHut }) => {
     
-    if (!msg.has('pcs')) reply(Error(`Missing "pcs"`));
-    if (!U.isType(msg.pcs, String)) reply(Error(`"pcs" should be String; got ${U.nameOf(msg.pcs)}`));
+    let { pcs=null } = msg;
+    if (U.isType(pcs, String)) pcs = pcs.split(/[,/]/);
+    if (!U.isType(pcs, Array)) reply(Error(`"pcs" should be Array (or String); got ${U.nameOf(pcs)}`));
+    if (pcs.find(v => !U.isType(v, String)).found) reply(Error(`"pcs" should contain only strings`));
     
     let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
     try {
@@ -28,7 +30,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
     let { hosting, ssl } = foundation.origArgs;
     let [ host, port ] = hosting.split(':');
     hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-    installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=stateless` });
+    installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=2` });
   });
   
   /// =ABOVE}

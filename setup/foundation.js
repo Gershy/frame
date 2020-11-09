@@ -20,11 +20,11 @@ Hut at the very bottom runs using a single Reality.
   
   let Keep = U.inspire({ name: 'Keep', insps: { Slots }, methods: (insp, Insp) => ({
     init: function() {},
-    getContent: async function() { throw Error(`${U.nameOf(this)} does not implement "getContent"`); },
-    setContent: async function() { throw Error(`${U.nameOf(this)} does not implement "setContent"`); },
-    getContentType: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentType"`); },
-    getContentByteLength: async function() { throw Error(`${U.nameOf(this)} does not implement "getContentByteLength"`); },
-    getPipe: function() { throw Error(`${U.nameOf(this)} does not implement "getPipe"`); }
+    getContent: C.noFn('getContent'),
+    setContent: C.noFn('setContent'),
+    getContentType: C.noFn('getContentType'),
+    getContentByteLength: C.noFn('getContentByteLength'),
+    getPipe: C.noFn('getPipe')
   })});
   U.setup.gain({ Keep });
   
@@ -171,13 +171,14 @@ Hut at the very bottom runs using a single Reality.
       let trace = stack.substr(traceBegins);
       
       let lines = trace.split('\n').map(line => {
-        let parseCmpLine = null;
-        try { parseCmpLine = this.parseErrorLine(line); } catch(err) { return verbose ? `?(1) - ${line.trim()}` : C.skip; }
+        let parseCmpLine = U.safe(() => this.parseErrorLine(line), null);
+        if (!parseCmpLine) return verbose ? `?(1) - ${line.trim()}` : C.skip;
         
         let { roomName, lineInd, charInd, bearing } = parseCmpLine;
         if (bearing === null) return `${roomName}.src @ ${lineInd}`;
         
-        try { return this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp; } catch(err) { return verbose ? `?(2) - mill//${roomName}.js @ ${lineInd} (${line.trim()})` : C.skip; }
+        let result = U.safe(() => this.cmpRoomLineToSrcLine(roomName, lineInd, charInd).disp, null);
+        return result || (verbose ? `?(2) - mill//${roomName}.js @ ${lineInd} (${line.trim()})` : C.skip);
       });
       
       let preLen = err.constructor.name.length + 2; // The classname plus ": "
@@ -191,8 +192,6 @@ Hut at the very bottom runs using a single Reality.
       moreLines = moreLines.split('\n');
       
       let result = [
-        // '+'.repeat(46),
-        // ...stack.split('\n').map(ln => `++ ${ln}`),
         '='.repeat(46),
         ...moreLines.map(ln => `||  ${ln}`),
         '||' + ' -'.repeat(22),

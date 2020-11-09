@@ -206,7 +206,8 @@ protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
 
 protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
 
-Function.stub = () => {};
+Function.stub = v => v;
+protoDef(Function, 'wrap', function(...args) { return this.bind(null, ...args); });
 Set.stub = { count: () => 0, add: Function.stub, rem: Function.stub, has: Function.stub };
 Map.stub = { count: () => 0, set: Function.stub, rem: Function.stub, has: Function.stub };
 
@@ -231,7 +232,11 @@ let U = global.U = {
     }
     return amts.join('');
   },
-  safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
+  safe: (f1, f2=e=>e) => {
+    if (!U.isType(f2, Function)) f2 = Function.stub.bind(null, f2);
+    try { let r = f1(); return U.isType(r, Promise) ? r.catch(f2) : r; }
+    catch(err) { return f2(err); }
+  },
   toss: v => { throw v; },
   inspire: ({ name, insps={}, methods=()=>({}) }) => {
     
@@ -338,7 +343,7 @@ let U = global.U = {
       return Insp1.has('allInsps') && Insp1.allInsps.has(Insp2);
     } catch(err) { return false; }
   },
-  nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
+  nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return U.safe(() => String(obj), 'Unrepresentable'); },
   inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   multilineString: str => {
     
