@@ -2,7 +2,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
   
   let { FreeLayout, Axis1DLayout, TextLayout } = U.setup;
   let { HtmlApp } = await foundation.getRoom('hinterlands.htmlApp');
-  let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp')
+  let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp');
   
   /// {ABOVE=
   

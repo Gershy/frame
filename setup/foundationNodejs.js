@@ -1066,8 +1066,7 @@
       
       for (let i = 0; i < srcLines.length; i++) {
         let rawLine = srcLines[i];
-        let [ line=rawLine ] = (rawLine.match(Insp.removeCommentRegex) || []).slice(1);
-        line = line.trim();
+        let line = rawLine.trim();
         
         if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i)
           curBlock = blocks[nextBlockInd++];
@@ -1082,7 +1081,8 @@
         if (keepLine) {
           
           curOffset = null;
-          filteredLines.push(line);
+          let [ lineNoComment=line ] = (line.match(Insp.removeCommentRegex) || []).slice(1);
+          filteredLines.push(lineNoComment.trim());
           
         } else {
           
