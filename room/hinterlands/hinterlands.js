@@ -56,7 +56,7 @@ global.rooms.hinterlands = async foundation => {
         if (trgHut.isAfar()) throw Error(`Can't tell TrgAfarHut when SrcHut is null`);
         if (road) throw Error(`Can't omit "srcHut" but provide "road"`);
         if (reply) throw Error(`Can't omit "srcHut" but provide "reply"`);
-        return trgHut.hear(null, null, () => { throw Error('Can\'t reply'); }, msg, ms);
+        return trgHut.hear(null, null, () => { throw Error(`Can't reply`); }, msg, ms);
       }
       
       if (srcHut.isAfar() && trgHut.isAfar()) throw Error('Supplied two AfarHuts');
@@ -446,25 +446,23 @@ global.rooms.hinterlands = async foundation => {
     },
     doSync: function({ add=[], upd=[], rem=[] }) {
       
-      /*
-      {
-        add: [
-          { type: 'app.myThing1', uid: '001Au2s8', mems: [], val: null },
-          { type: 'app.myThing2', uid: '0011Au2s9', mems: [ '001Au2s8' ], val: null },
-          { type: 'app.myThing1', uid: null, mems: [], val: 'proposed!' }
-        ],
-        upd: [
-          { uid: '001Au2f1', val: 'newVal for 001Au2f1' },
-          { uid: '001Au2f2', val: 'newVal for 001Au2f2' }
-        ],
-        rem: [
-          '001Au2h3',
-          '001Au2h4',
-          '001Au2h5',
-          '001Au2h6'
-        ]
-      }
-      */
+      // {
+      //   add: [
+      //     { type: 'app.myThing1', uid: '001Au2s8', mems: [], val: null },
+      //     { type: 'app.myThing2', uid: '0011Au2s9', mems: [ '001Au2s8' ], val: null },
+      //     { type: 'app.myThing1', uid: null, mems: [], val: 'proposed!' }
+      //   ],
+      //   upd: [
+      //     { uid: '001Au2f1', val: 'newVal for 001Au2f1' },
+      //     { uid: '001Au2f2', val: 'newVal for 001Au2f2' }
+      //   ],
+      //   rem: [
+      //     '001Au2h3',
+      //     '001Au2h4',
+      //     '001Au2h5',
+      //     '001Au2h6'
+      //   ]
+      // }
       
       let waiting = add;
       while (waiting.length) {
@@ -519,7 +517,7 @@ global.rooms.hinterlands = async foundation => {
         if (waiting.length === attempt.length) {
           console.log('RECS SUCCESSFULLY CREATED:', this.allRecs);
           console.log('ALL RECS ATTEMPTED TO ADD:', add.map(({ uid }) => uid));
-          console.log('RECS THAT WEREN\'T ADDED:', waiting);
+          console.log(`RECS THAT WEREN'T ADDED:`, waiting);
           
           console.log(JSON.stringify(add, null, 2));
           throw Error(`Unresolvable Rec dependencies`);

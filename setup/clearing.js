@@ -214,10 +214,8 @@ Map.stub = { count: Function.makeStub(0), set: Function.stub, rem: Function.stub
 let U = global.U = {
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
-    U.dbgCntMap[name] = U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0;
-    return U.dbgCntMap[name];
+    return U.dbgCntMap[name] = (U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0);
   },
-  dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
   int32: Math.pow(2, 32),
   base62: n => {
     let pow = 0, amt = 1, next;
@@ -237,7 +235,6 @@ let U = global.U = {
     try { let r = f1(); return U.isType(r, Promise) ? r.catch(f2) : r; }
     catch(err) { return f2(err); }
   },
-  toss: v => { throw v; },
   inspire: ({ name, insps={}, methods=()=>({}) }) => {
     
     let parInsps = insps;
@@ -281,7 +278,7 @@ let U = global.U = {
     if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
     
     // Ensure we have valid "methods"
-    if (!U.isType(methods, Object)) throw Error('Couldn\'t resolve "methods" to Object');
+    if (!U.isType(methods, Object)) throw Error(`Couldn't resolve "methods" to Object`);
     
     // Ensure reserved property names haven't been used
     if (methods.has('constructor')) throw Error('Used reserved "constructor" key');
@@ -319,23 +316,11 @@ let U = global.U = {
       }
       let fn = methodsAtName.length ? methodsAtName[0] : C.noFn(methodName);
       parInsps[name][methodName] = fn;
-      protoDef(Insp, methodName.hasHead('Symbol.') ? Symbol[methodName.slice(7)] : methodName, fn);
+      protoDef(Insp, methodName, fn);
     }
     
     protoDef(Insp, 'constructor', Insp);
     return Insp;
-  },
-  isType: (val, Cls) => {
-    // Note: This is hopefully the *only* use of `==` throughout Hut!
-    // Falsy only for unboxed values (`null` and `undefined`)
-    if (Cls && Cls.Native) Cls = Cls.Native;
-    if (val == null || val.constructor !== Cls) return false;
-    if (Cls === Number && val === NaN) return false;
-    return true;
-  },
-  isTypes: (val, ...Classes) => {
-    for (let Cls of Classes) if (U.isType(val, Cls)) return true;
-    return false;
   },
   isInspiredBy: (insp, Insp) => {
     try {
@@ -359,8 +344,19 @@ let U = global.U = {
       
     } catch(err) { return false; }
   },
+  isType: (val, Cls) => {
+    // Note: This is hopefully the *only* use of `==` throughout Hut!
+    // Falsy only for unboxed values (`null` and `undefined`)
+    if (Cls && Cls.Native) Cls = Cls.Native;
+    if (val == null || val.constructor !== Cls) return false;
+    if (Cls === Number && val === NaN) return false;
+    return true;
+  },
+  isTypes: (val, ...Classes) => {
+    for (let Cls of Classes) if (U.isType(val, Cls)) return true;
+    return false;
+  },
   nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return U.safe(() => String(obj), 'Unrepresentable'); },
-  inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
   multilineString: str => {
     
     let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));

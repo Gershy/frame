@@ -1,6 +1,6 @@
 global.rooms.write = async foundation => {
   
-  let { Tmp, Slots, Src, MemSrc, Chooser, FnSrc } = U.logic;
+  let { Tmp, Slots, Src, Chooser, FnSrc } = U.logic;
   let { FreeLayout, SizedLayout, Axis1DLayout, TextLayout, TextInputLayout, ScrollLayout } = U.setup;
   let { Rec, RecScope } = await foundation.getRoom('record');
   let { HtmlApp } = await foundation.getRoom('hinterlands.htmlApp');
@@ -8,6 +8,21 @@ global.rooms.write = async foundation => {
   let { makeHutAppScope } = await foundation.getRoom('hinterlands.hutApp')
   
   return { open: async hut => {
+    
+    // TODO: HEEERE:
+    // 1: Aggregate HtmlApp, decorateApp, and makeHutAppScope
+    // 2: install isn't working (',' works but '/' gets honeypotted!)
+    // 3: Clean up Insp, Cls, constructor, Type. This needs thought.
+    //    CONSIDER:
+    //    - U.inspire({ insps: {}, methods: (insp, Insp) => ({ init: function(){} }) })
+    //    - ~noInspCollision
+    //    - inst.constructor
+    //    - "inst", "instance"
+    //    - "allInsps", Insp.parents
+    //    - "method"
+    //    - U.isInspiredBy
+    //    - U.isType, U.isTypes
+    //    - U.nameOf
     
     hut.roadDbgEnabled = false;
     
@@ -24,7 +39,7 @@ global.rooms.write = async foundation => {
         
         tmp.src = FnSrc.Prm1([ valSrc, userCountSrc, entryCountSrc ], (val, numUsers, numEntries) => {
           let { writeParams: { minUsers, maxRounds } } = val;
-          if (numUsers < minUsers) return 'needMoreUsers';
+          if (numUsers < minUsers) return 'tooFewUsers';
           if (numEntries >= maxRounds) return 'finalized';
           return 'active';
         });
@@ -71,7 +86,7 @@ global.rooms.write = async foundation => {
         
         // A Chooser to act based on room's status
         let roomStatusSrc = dep(room.getStatusWatcher()).src;
-        let activeChooser = dep(Chooser([ 'needMoreUsers', 'active', 'finalized' ]));
+        let activeChooser = dep(Chooser([ 'tooFewUsers', 'active', 'finalized' ]));
         dep(roomStatusSrc.route(status => activeChooser.choose(status)));
         
         console.log(`Waiting for room ${room.uid} to go active...`);
@@ -314,9 +329,9 @@ global.rooms.write = async foundation => {
             layouts: [
               TextLayout({
                 text: [
-                  'You\'re using RYTE, the thingy that lets friends, enemies and total strangers collaborate',
-                  'on Writing Projects. Why? Maybe you\'ll write some cool stuff. Why not? Many reasons, but',
-                  'we like to say: "tell people to ignore those reasons". Anyways, have a fun ass time!',
+                  `You're using RYTE, the thingy that lets friends, enemies and total strangers collaborate`,
+                  `on Writing Projects. Why? Maybe you'll write some cool stuff. Why not? Many reasons, but`,
+                  `we like to say: "tell people to ignore those reasons". Anyways, have a fun ass time!`,
                 ].join(' '),
                 size: 'calc(70% + 1vw)', gap: '20px', align: 'mid'
               }),
@@ -470,32 +485,30 @@ global.rooms.write = async foundation => {
           let room = roomUser.mems['wrt.room'];
           let roomCreator = room.mems['wrt.user'];
           
-          /*
-          IMAGINE:
-          
-          // "occupy" can only refer to a dimension that is being
-          // exhausted. In the case of children of an Axis1DLayout, that
-          // depends on the axis being used!
-          let roomReal = loggedInReal.addReal('wrt.activeRoom', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy() }) ],
-            innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
-          }));
-          let titleReal = roomReal.addReal('wrt.activeRoom.title', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(60) }) ]
-          }));
-          let usersReal = roomReal.addReal('wrt.activeRoom.users', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
-          }));
-          let storyReal = roomReal.addReal('wrt.activeRoom.story', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
-          }));
-          let statusReal = roomReal.addReal('wrt.activeRoom.status', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
-          }));
-          let controlsReal = roomReal.addReal('wrt.activeRoom.controls', ctx => ({
-            layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
-          }));
-          */
+          // IMAGINE:
+          //  
+          //    |     // "occupy" can only refer to a dimension that is being
+          //    |     // exhausted. In the case of children of an Axis1DLayout, that
+          //    |     // depends on the axis being used!
+          //    |     let roomReal = loggedInReal.addReal('wrt.activeRoom', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy() }) ],
+          //    |       innerLayout: Axis1DLayout({ axis: 'y', flow: '+' })
+          //    |     }));
+          //    |     let titleReal = roomReal.addReal('wrt.activeRoom.title', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(60) }) ]
+          //    |     }));
+          //    |     let usersReal = roomReal.addReal('wrt.activeRoom.users', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
+          //    |     }));
+          //    |     let storyReal = roomReal.addReal('wrt.activeRoom.story', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
+          //    |     }));
+          //    |     let statusReal = roomReal.addReal('wrt.activeRoom.status', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
+          //    |     }));
+          //    |     let controlsReal = roomReal.addReal('wrt.activeRoom.controls', ctx => ({
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
+          //    |     }));
           
           // Real to display entire room
           let roomReal = dep(loggedInReal.addReal('wrt.activeRoom', {
@@ -582,12 +595,12 @@ global.rooms.write = async foundation => {
           });
           
           let roomStatusSrc = dep(room.getStatusWatcher()).src;
-          let controlsChooser = dep(Chooser([ 'needMoreUsers', 'active', 'finalized' ]));
+          let controlsChooser = dep(Chooser([ 'tooFewUsers', 'active', 'finalized' ]));
           dep(roomStatusSrc.route(status => controlsChooser.choose(status)));
           
-          dep.scp(controlsChooser.srcs.needMoreUsers, (needMoreUsers, dep) => {
+          dep.scp(controlsChooser.srcs.tooFewUsers, (tooFewUsers, dep) => {
             // Indicate story can't be controlled without more players
-            dep(controlsReal.addReal('wrt.needMoreUsers', {
+            dep(controlsReal.addReal('wrt.tooFewUsers', {
               layouts: [ SizedLayout({ w: '100%', h: '100%' }), TextLayout({ text: 'Waiting for more users...', size: '250%', gap: '30px' }) ]
             }));
           });

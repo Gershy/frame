@@ -16,7 +16,7 @@ global.rooms.install = async foundation => ({ open: async hut => {
     if (!U.isType(pcs, Array)) reply(Error(`"pcs" should be Array (or String); got ${U.nameOf(pcs)}`));
     if (pcs.find(v => !U.isType(v, String)).found) reply(Error(`"pcs" should contain only strings`));
     
-    let keep = foundation.seek('keep', 'fileSystem', ...msg.pcs.split(','));
+    let keep = foundation.seek('keep', 'fileSystem', ...pcs);
     try {
       let fsType = await keep.getFsType();
       if (!fsType) throw Error(`Invalid path specified`);

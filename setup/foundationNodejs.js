@@ -415,6 +415,7 @@
       return { method, path, httpVersion, headers };
       
     },
+    $removeCommentRegex: /^(([^'"`]|'[^']*'|"[^"]*"|`[^`]*`)*)[/][/]/,
     
     init: function(...args) {
       
@@ -1065,12 +1066,11 @@
       
       for (let i = 0; i < srcLines.length; i++) {
         let rawLine = srcLines[i];
-        let line = rawLine.trim();
+        let [ line=rawLine ] = (rawLine.match(Insp.removeCommentRegex) || []).slice(1);
+        line = line.trim();
         
-        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
-          curBlock = blocks[nextBlockInd];
-          nextBlockInd++;
-        }
+        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i)
+          curBlock = blocks[nextBlockInd++];
         
         let keepLine = true;
         if (!line) keepLine = false; // Remove blank lines
@@ -1080,14 +1080,15 @@
         if (curBlock && !variantDef[curBlock.type]) keepLine = false;
         
         if (keepLine) {
+          
           curOffset = null;
-          filteredLines.push(rawLine);
+          filteredLines.push(line);
+          
         } else {
-          if (!curOffset) {
-            curOffset = { at: i, offset: 0 };
-            offsets.push(curOffset);
-          }
+          
+          if (!curOffset) offsets.push(curOffset = { at: i, offset: 0 });
           curOffset.offset++;
+          
         }
         
         if (curBlock && i === curBlock.end) {
@@ -1101,6 +1102,7 @@
       }
       
       return { lines: filteredLines, offsets };
+      
     },
     
     // High level
