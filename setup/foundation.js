@@ -18,7 +18,7 @@ Hut at the very bottom runs using a single Reality.
   
   let { Src, FnSrc, Tmp, Slots } = U.logic;
   
-  let Keep = U.inspire({ name: 'Keep', insps: { Slots }, methods: (insp, Insp) => ({
+  let Keep = U.form({ name: 'Keep', has: { Slots }, props: (insp, Insp) => ({
     init: function() {},
     getContent: C.noFn('getContent'),
     setContent: C.noFn('setContent'),
@@ -29,7 +29,7 @@ Hut at the very bottom runs using a single Reality.
   U.setup.gain({ Keep });
   
   // TODO: Merge `U` and `Foundation`??
-  let Foundation = U.inspire({ name: 'Foundation', insps: { Slots }, methods: (insp, Insp) => ({
+  let Foundation = U.form({ name: 'Foundation', has: { Slots }, props: (forms, Form) => ({
     
     $protocols: {
       http: { secure: false, defaultPort: 80 },
@@ -63,7 +63,7 @@ Hut at the very bottom runs using a single Reality.
     getPlatform: C.noFn('getPlatform'),
     
     access: function(arg) {
-      if (!U.isType(arg, String)) throw Error(`Invalid type for access: ${U.nameOf(arg)}`);
+      if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.nameOf(arg)}`);
       if (arg === 'hut') return this.getRootHut();
       if (arg === 'keep') return this.getRootKeep();
       if (arg === 'real') return this.getRootReal();
@@ -233,10 +233,10 @@ Hut at the very bottom runs using a single Reality.
     parseUrl: function(url) {
       let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
       
-      if (!Insp.protocols.has(protocol)) throw Error(`Invalid protocol: "${protocol}"`);
+      if (!Form.protocols.has(protocol)) throw Error(`Invalid protocol: "${protocol}"`);
       
       if (!path.hasHead('/')) path = `/${path}`;
-      if (!port) port = Insp.protocols[protocol].defaultPort;
+      if (!port) port = Form.protocols[protocol].defaultPort;
       
       return {
         protocol, host, port: parseInt(port, 10), path,
@@ -247,11 +247,11 @@ Hut at the very bottom runs using a single Reality.
   })});
   U.setup.gain({ Foundation });
   
-  let Real = U.inspire({ name: 'Real', insps: { Slots, Tmp }, methods: (insp, Insp) => ({
+  let Real = U.form({ name: 'Real', has: { Slots, Tmp }, props: (forms, Form) => ({
     init: function(params={}, { name=null, layouts=[], innerLayout=null, decals=null }=params) {
       
-      insp.Slots.init.call(this);
-      insp.Tmp.init.call(this);
+      forms.Slots.init.call(this);
+      forms.Tmp.init.call(this);
       
       this.name = name;
       
@@ -271,8 +271,8 @@ Hut at the very bottom runs using a single Reality.
     addReal: function(real, params={}) {
       
       // If String was given instead of Real, create Real
-      if (U.isType(real, String)) {
-        if (U.isType(params, Function)) {
+      if (U.isForm(real, String)) {
+        if (U.isForm(params, Function)) {
           params = params({
             layouts: (...p) => {
               let childOuterLayout = this.innerLayout ? this.innerLayout.getChildOuterLayout(...p) : null;
@@ -286,7 +286,7 @@ Hut at the very bottom runs using a single Reality.
         real = Real({ name: real, ...params });
       }
       
-      if (!U.isType(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
+      if (!U.isForm(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
       if (real.parent) throw Error(`Real already has a parent`);
       if (real.tech) throw Error(`Real already has tech`);
       
@@ -330,19 +330,19 @@ Hut at the very bottom runs using a single Reality.
     }
   })});
   
-  let Layout = U.inspire({ name: 'Layout', insps: {}, methods: (insp, Insp) => ({
+  let Layout = U.form({ name: 'Layout', has: {}, props: (forms, Form) => ({
     init: C.noFn('init'),
     getChildOuterLayout: function(params) { return null; }
   })});
-  let Axis1DLayout = U.inspire({ name: 'Axis1DLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let Axis1DLayout = U.form({ name: 'Axis1DLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ axis='y', flow='+', cuts=null }) {
       this.axis = axis;
       this.flow = flow;
       this.cuts = cuts;
     },
-    getChildOuterLayout: function(...params) { return Insp.Item(this, ...params); },
+    getChildOuterLayout: function(...params) { return Form.Item(this, ...params); },
     
-    $Item: U.inspire({ name: 'Axis1DLayout.Item', insps: { Layout }, methods: (insp, Insp) => ({
+    $Item: U.form({ name: 'Axis1DLayout.Item', has: { Layout }, props: (forms, Form) => ({
       init: function(par, ...params) {
         this.par = par;
         this.params = params;
@@ -350,13 +350,13 @@ Hut at the very bottom runs using a single Reality.
     })})
     
   })});
-  let FreeLayout = U.inspire({ name: 'FreeLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let FreeLayout = U.form({ name: 'FreeLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ mode='center', w=null, h=null, x=null, y=null }={}) {
       this.mode = mode;
       ({}).gain.call(this, { mode, w, h, x, y });
     }
   })});
-  let SizedLayout = U.inspire({ name: 'SizedLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let SizedLayout = U.form({ name: 'SizedLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ ratio=null, w=ratio ? null : '100%', h=ratio ? null : '100%' }) {
       if (ratio !== null && (w === null) === (h === null)) throw Error(`With "ratio" must provide exactly one of "w" or "h"`);
       this.w = w;
@@ -364,26 +364,26 @@ Hut at the very bottom runs using a single Reality.
       this.ratio = ratio;
     }
   })});
-  let ScrollLayout = U.inspire({ name: 'ScrollLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let ScrollLayout = U.form({ name: 'ScrollLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ x='none', y='auto' }) { ({}).gain.call(this, { x, y }); },
-    getChildOuterLayout: function(...params) { return Insp.Item(this, ...params); },
+    getChildOuterLayout: function(...params) { return Form.Item(this, ...params); },
     
-    $Item: U.inspire({ name: 'ScrollLayout.Item', insps: { Layout }, methods: (insp, Insp) => ({
+    $Item: U.form({ name: 'ScrollLayout.Item', has: { Layout }, props: (forms, Form) => ({
       init: function(par) { this.par = par; }
     })})
       
   })});
-  let TextLayout = U.inspire({ name: 'TextLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let TextLayout = U.form({ name: 'TextLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ text='', size=null, align=null, gap=null }) { ({}).gain.call(this, { text, size, align, gap }); }
   })});
-  let TextInputLayout = U.inspire({ name: 'TextInputLayout', insps: { TextLayout }, methods: (insp, Insp) => ({
+  let TextInputLayout = U.form({ name: 'TextInputLayout', has: { TextLayout }, props: (forms, Form) => ({
     init: function({ multiline=false, prompt=null, ...params }) {
-      insp.TextLayout.init.call(this, params);
+      forms.TextLayout.init.call(this, params);
       this.multiline = multiline;
       this.prompt = prompt;
     }
   })});
-  let ImageLayout = U.inspire({ name: 'ImageLayout', insps: { Layout }, methods: (insp, Insp) => ({
+  let ImageLayout = U.form({ name: 'ImageLayout', has: { Layout }, props: (forms, Form) => ({
     init: function({ mode='useMinAxis', image }) { ({}).gain.call(this, { mode, image }); }
   })});
   

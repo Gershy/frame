@@ -1,6 +1,6 @@
 global.rooms['hinterlands.htmlApp'] = async foundation => {
   
-  let HtmlApp = U.inspire({ name: 'HtmlApp', methods: (insp, Insp) => ({
+  let HtmlApp = U.form({ name: 'HtmlApp', props: (forms, Form) => ({
     init: function({ name }) { this.name = name; },
     decorateApp: function(parHut) {
       /// {ABOVE=

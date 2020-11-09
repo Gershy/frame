@@ -4,23 +4,23 @@ global.rooms['hinterlands.hutApp'] = async foundation => {
   let { Hut } = await foundation.getRoom('hinterlands');
   let { RecSrc, RecScope } = await foundation.getRoom('record');
   
-  let FollowRecScope = U.inspire({ name: 'FollowRecScope', insps: { RecScope }, methods: (insp, Insp) => ({
+  let FollowRecScope = U.form({ name: 'FollowRecScope', has: { RecScope }, props: (forms, Form) => ({
     init: function(hut, ...args) {
       
-      if (!U.isInspiredBy(hut, Hut)) throw Error(`${U.nameOf(this)} requires Hut as first param; got ${U.nameOf(hut)}`);
+      if (!U.hasForm(hut, Hut)) throw Error(`${U.nameOf(this)} requires Hut as first param; got ${U.nameOf(hut)}`);
       this.hut = hut;
       
       // Our src will send Recs if using either of these styles:
       // 1 - `RecScope(srcTmp, 'relTerm', (rec, dep) => ...)`
       // 2 - `RecScope(srcTmp.relSrc('relTerm'), (rec, dep) => ...)`
-      this.doFollowRecs = args.count() === 3 || U.isType(args[0], RecSrc);
-      insp.RecScope.init.call(this, ...args);
+      this.doFollowRecs = args.count() === 3 || U.isForm(args[0], RecSrc);
+      forms.RecScope.init.call(this, ...args);
     },
     processTmp: function(tmp, dep) {
       if (this.doFollowRecs) dep(this.hut.followRec(tmp));
-      return insp.RecScope.processTmp.call(this, tmp, dep);
+      return forms.RecScope.processTmp.call(this, tmp, dep);
     },
-    subScope: function(...args) { return insp.RecScope.subScope.call(this, this.hut, ...args); }
+    subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
   })});
   
   let makeHutAppScope = async (hut, prefix, name, fn) => {

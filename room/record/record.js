@@ -2,7 +2,7 @@ global.rooms.record = async foundation => {
   
   let { Endable, Src, MemSrc, Tmp, TmpAll, TmpAny, Scope } = U.logic;
   
-  let RecTypes = U.inspire({ name: 'RecTypes', insps: {}, methods: (insp, Insp) => ({
+  let RecTypes = U.form({ name: 'RecTypes', has: {}, props: (forms, Form) => ({
     init: function() { this.typeMap = {}; },
     desc: function() { return 'RecTypes'; },
     ensure: function(name, type) {
@@ -20,7 +20,7 @@ global.rooms.record = async foundation => {
       return RecCls(this.getType(name), this.getNextRecUid(), mems, val);
     }
   })});
-  let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
+  let RecType = U.form({ name: 'RecType', has: {}, props: (forms, Form) => ({
     init: function(name, types=RecTypes()) {
       
       if (!name.match(/^[a-z][a-zA-Z0-9]*[.][a-z][a-zA-Z0-9]*$/)) throw Error(`Invalid RecType name: ${name}`);
@@ -62,14 +62,14 @@ global.rooms.record = async foundation => {
     }
   })});
   
-  let RecSrc = U.inspire({ name: 'RecSrc', insps: { 'MemSrc.TmpM': MemSrc.TmpM }, methods: {} });
-  let Rec = U.inspire({ name: 'Rec', insps: { Tmp }, methods: (insp, Insp) => ({
+  let RecSrc = U.form({ name: 'RecSrc', has: { 'MemSrc.TmpM': MemSrc.TmpM }, methods: {} });
+  let Rec = U.form({ name: 'Rec', has: { Tmp }, props: (forms, Form) => ({
     init: function(type, uid, mems={}, val=null) {
       
-      if (U.isType(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
+      if (U.isForm(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
       type.updMems(mems.map(m => m.type));
       
-      insp.Tmp.init.call(this);
+      forms.Tmp.init.call(this);
       
       this.type = type;
       this.uid = uid;
@@ -122,7 +122,7 @@ global.rooms.record = async foundation => {
     relSrc: function(recType, term=null) {
       
       // Allow RecType to be provided as a String
-      if (U.isType(recType, String)) {
+      if (U.isForm(recType, String)) {
         if (recType.has('/')) [ recType, term ] = recType.split('/');
         recType = this.type.types.getType(recType);
       }
@@ -149,7 +149,7 @@ global.rooms.record = async foundation => {
         
       }
       
-      if (!U.isType(term, String)) throw Error(`Invalid "term" of type ${U.nameOf(term)}`);
+      if (!U.isForm(term, String)) throw Error(`Invalid "term" of type ${U.nameOf(term)}`);
       
       let key = `${recType.name}/${term}`;
       if (!this.relSrcs.has(key)) {
@@ -176,14 +176,14 @@ global.rooms.record = async foundation => {
         let layerMems = mems; mems = [];
         for (let mem of layerMems) {
           let val = mem.valSrc.val;
-          if (U.isType(val, Object) && val.has(param)) return val[param];
+          if (U.isForm(val, Object) && val.has(param)) return val[param];
           mems.gain(mem.mems.toArr(m => m));
         }
       }
       return null;
     },
     
-    setVal: function(v) { if (v !== this.valSrc.val || U.isType(v, Object)) this.valSrc.retain(v); return this; },
+    setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
     dltVal: function(delta=null) {
       
@@ -207,7 +207,7 @@ global.rooms.record = async foundation => {
     },
     
     end: function() {
-      if (!insp.Tmp.end.call(this)) return false;
+      if (!forms.Tmp.end.call(this)) return false;
       this.allMemsTmp.end();
       this.relSrcs = {};
       this.relTermSrc.end();
@@ -216,14 +216,14 @@ global.rooms.record = async foundation => {
     
   })});
   
-  let RecScope = U.inspire({ name: 'RecScope', insps: { Scope }, methods: (insp, Insp) => ({
+  let RecScope = U.form({ name: 'RecScope', has: { Scope }, props: (forms, Form) => ({
     init: function(...args) {
       if (args.count() === 3) {
         let [ rec, term, fn ] = args;
-        insp.Scope.init.call(this, rec.relSrc(...term.split('/')), fn);
+        forms.Scope.init.call(this, rec.relSrc(...term.split('/')), fn);
       } else if (args.count() === 2) {
         let [ src, fn ] = args;
-        insp.Scope.init.call(this, src, fn);
+        forms.Scope.init.call(this, src, fn);
       } else {
         throw Error(`Expected 3 or 2 args; got ${args.length}`);
       }

@@ -5,7 +5,7 @@ global.rooms.hinterlands = async foundation => {
   let { RecTypes, Rec } = recordRoom;
   let { Src, Tmp } = U.logic;
   
-  let Hut = U.inspire({ name: 'Hut', insps: { RecTypes, Rec }, methods: (insp, Insp) => ({
+  let Hut = U.form({ name: 'Hut', has: { RecTypes, Rec }, props: (forms, Form) => ({
     
     // Huts are describable by the following terms:
     // AFAR/HERE: Indicates whether the Hut instance represents a local
@@ -42,7 +42,7 @@ global.rooms.hinterlands = async foundation => {
       // Road to communicate)
       
       if (msg === C.skip) return;
-      if (U.isInspiredBy(msg, Error)) msg = { command: 'error', type: 'application', msg: msg.message };
+      if (U.hasForm(msg, Error)) msg = { command: 'error', type: 'application', msg: msg.message };
       
       if (!trgHut) throw Error('Must supply TrgHut');
       if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
@@ -71,13 +71,13 @@ global.rooms.hinterlands = async foundation => {
         // TODO: Conceptualize two HereHuts as NEIGHBOURS - they're
         // so close you don't need to take a Road to pass between them
         if (road) throw Error(`Provided two HereHuts but also a Road`);
-        if (!reply) reply = msg => Insp.tell(trgHut, srcHut, null, null, msg);
+        if (!reply) reply = msg => Form.tell(trgHut, srcHut, null, null, msg);
         return trgHut.hear(srcHut, null, reply, msg);
       }
       
       if (srcHut.isAfar() && trgHut.isHere()) {
         if (!road) throw Error(`Supplied AfarSrcHut but omitted Road`);
-        if (!reply) reply = msg => Insp.tell(trgHut, srcHut, road, null, msg);
+        if (!reply) reply = msg => Form.tell(trgHut, srcHut, road, null, msg);
         return trgHut.hear(srcHut, road, reply, msg, ms);
       }
       
@@ -118,8 +118,8 @@ global.rooms.hinterlands = async foundation => {
       this.foundation = foundation;
       
       // Always perfer ParHut's `RecTypes` functionality!
-      if (!parHut) insp.RecTypes.init.call(this);
-      insp.Rec.init.call(this, (parHut || this).getType('lands.hut'), uid);
+      if (!parHut) forms.RecTypes.init.call(this);
+      forms.Rec.init.call(this, (parHut || this).getType('lands.hut'), uid);
       
       // How regularly existence confirmation is required
       this.heartMs = heartMs;
@@ -172,7 +172,7 @@ global.rooms.hinterlands = async foundation => {
           
           let { list } = msg;
           
-          if (!U.isType(list, Array)) return hut.tell({ command: 'error', type: 'invalidMultiList', orig: msg });
+          if (!U.isForm(list, Array)) return hut.tell({ command: 'error', type: 'invalidMultiList', orig: msg });
           
           // TODO: Would be cool if enough info were present to form a
           // multipart response when several files are requested...
@@ -207,9 +207,9 @@ global.rooms.hinterlands = async foundation => {
         this.roadSrc('sync').route(({ msg }) => {
           
           let { version, content } = msg;
-          if (!U.isType(version, Number)) throw Error('Invalid "version"');
+          if (!U.isForm(version, Number)) throw Error('Invalid "version"');
           if (Math.round(version) !== version) throw Error('Invalid "version"');
-          if (!U.isType(content, Object)) throw Error('Invalid "content"');
+          if (!U.isForm(content, Object)) throw Error('Invalid "content"');
           if (version <= this.syncVersion) throw Error('Duplicated sync');
           
           this.earlySyncs.set(version, content);
@@ -324,7 +324,7 @@ global.rooms.hinterlands = async foundation => {
         /// {BELOW=
         // TODO: This seems VERY out of place! Implement in Foundation??
         this.aboveHut = roadedHut.hut;
-        if (foundation.initData) Insp.tell(this.aboveHut, this, road, null, foundation.initData);
+        if (foundation.initData) Form.tell(this.aboveHut, this, road, null, foundation.initData);
         /// =BELOW}
         
       } else {
@@ -339,7 +339,7 @@ global.rooms.hinterlands = async foundation => {
       if (this.roadDbgEnabled) console.log(`>-HOLD ${hutId} on ${server.desc}`);
       
       // Listen to communication on this Road
-      let routeRoad = road.hear.route(([ msg, reply, ms ]) => Insp.tell(roadedHut.hut, this, road, reply, msg, ms));
+      let routeRoad = road.hear.route(([ msg, reply, ms ]) => Form.tell(roadedHut.hut, this, road, reply, msg, ms));
       
       // Listen for the Road to finish
       road.endWith(() => {
@@ -418,15 +418,15 @@ global.rooms.hinterlands = async foundation => {
     },
     getType: function(...args) {
       if (this.isAfar()) throw Error(`${this.desc()} is an AfarHut; it cannot do getType`);
-      return insp.RecTypes.getType.call(this, ...args);
+      return forms.RecTypes.getType.call(this, ...args);
     },
     getNextRecUid: function() { return this.foundation.getUid(); },
     getRecCls: function(name, mems, val) {
       if (this.typeToClsFns.has(name)) return this.typeToClsFns[name](val, mems);
-      return insp.RecTypes.getRecCls.call(this, name, mems, val);
+      return forms.RecTypes.getRecCls.call(this, name, mems, val);
     },
     trackRec: function(rec) {
-      if (!U.isInspiredBy(rec, Rec)) throw Error(`Can't track; ${U.nameOf(rec)} isn't a Rec!`);
+      if (!U.hasForm(rec, Rec)) throw Error(`Can't track; ${U.nameOf(rec)} isn't a Rec!`);
       this.allRecs.set(rec.uid, rec);
       rec.endWith(() => this.allRecs.rem(rec.uid));
       return rec;
@@ -440,7 +440,7 @@ global.rooms.hinterlands = async foundation => {
       } else {
         
         // Server simply creates the Rec
-        return this.trackRec(insp.RecTypes.createRec.call(this, ...args));
+        return this.trackRec(forms.RecTypes.createRec.call(this, ...args));
         
       }
     },
@@ -487,14 +487,14 @@ global.rooms.hinterlands = async foundation => {
           }
           
           let mems = null;
-          if (U.isType(addRec.mems, Object)) {
+          if (U.isForm(addRec.mems, Object)) {
             mems = {};
             for (let term in addRec.mems) {
               let uid = addRec.mems[term];
               if (!this.allRecs.has(uid)) { mems = null; break; }
               mems[term] = this.allRecs.get(uid);
             }
-          } else if (U.isType(addRec.mems, Array)) {
+          } else if (U.isForm(addRec.mems, Array)) {
             mems = [];
             for (let uid in addRec.mems) {
               if (!this.allRecs.has(uid)) { mems = null; break; }
@@ -528,7 +528,7 @@ global.rooms.hinterlands = async foundation => {
       for (let { uid, val } of upd) {
         if (!this.allRecs.has(uid)) throw Error(`Tried to update non-existent Rec @ ${uid}`);
         let rec = this.allRecs.get(uid);
-        if (!U.isType(val, Object) || !U.isType(rec.getVal(), Object)) {
+        if (!U.isForm(val, Object) || !U.isForm(rec.getVal(), Object)) {
           rec.setVal(val);
         } else {
           rec.dltVal(val);
@@ -554,7 +554,7 @@ global.rooms.hinterlands = async foundation => {
     isFollowable: function(rec) {
       // Returns false for any Recs which may exist in the ABOVE
       // heirarchy, but are sensitive and not to be synced BELOW
-      return !U.isInspiredBy(rec, Hut) || rec === this.parHut || rec === this;
+      return !U.hasForm(rec, Hut) || rec === this.parHut || rec === this;
     },
     toSync: function(type, rec, val=null) {
       
@@ -577,7 +577,7 @@ global.rooms.hinterlands = async foundation => {
       } else if (type === 'upd') {
         if (add.has(rec.uid)) return; // No "upd" necessary: already adding!
         
-        if (!upd.has(rec.uid) || !U.isType(upd[rec.uid], Object) || !U.isType(val, Object)) {
+        if (!upd.has(rec.uid) || !U.isForm(upd[rec.uid], Object) || !U.isForm(val, Object)) {
           upd[rec.uid] = val;
         } else {
           upd[rec.uid].gain(val);
@@ -602,7 +602,7 @@ global.rooms.hinterlands = async foundation => {
         if (this.off()) return;
         
         let updateTell = this.consumePendingSync(ctxErr);
-        if (updateTell) Insp.tell(this.parHut, this, null, null, updateTell);
+        if (updateTell) Form.tell(this.parHut, this, null, null, updateTell);
         
       })(ctxErr);
       
@@ -705,7 +705,7 @@ global.rooms.hinterlands = async foundation => {
     
     tell: function(msg) {
       if (!this.aboveHut) throw Error(`No aboveHut; can't tell`);
-      return Insp.tell(this, this.aboveHut, null, null, msg);
+      return Form.tell(this, this.aboveHut, null, null, msg);
     },
     
     // Sending signs of life to AboveHut
@@ -801,7 +801,7 @@ global.rooms.hinterlands = async foundation => {
     },
     
     onceDry: function() {
-      insp.Rec.onceDry.call(this);
+      forms.Rec.onceDry.call(this);
     }
     
   })});

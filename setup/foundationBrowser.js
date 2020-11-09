@@ -3,14 +3,14 @@
   let { Tmp, Src, FnSrc, MemSrc } = U.logic;
   let { Foundation, Keep } = U.setup;
   
-  let FoundationBrowser = U.inspire({ name: 'FoundationBrowser', insps: { Foundation }, methods: (insp, Insp) => ({
+  let FoundationBrowser = U.form({ name: 'FoundationBrowser', has: { Foundation }, props: (forms, Form) => ({
     
-    $KeepBrowser: U.inspire({ name: 'KeepBrowser', insps: { Keep }, methods: insp => ({
+    $KeepBrowser: U.form({ name: 'KeepBrowser', has: { Keep }, props: forms => ({
       init: function(foundation) {
-        insp.Keep.init.call(this);
-        let urlResourceKeep = Insp.KeepUrlResources(foundation);
+        forms.Keep.init.call(this);
+        let urlResourceKeep = Form.KeepUrlResources(foundation);
         this.keepsByType = {
-          static: Insp.KeepStatic(foundation, urlResourceKeep),
+          static: Form.KeepStatic(foundation, urlResourceKeep),
           urlResource: urlResourceKeep
         };
       },
@@ -19,7 +19,7 @@
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
     })}),
-    $KeepStatic: U.inspire({ name: 'KeepStatic', insps: { Keep }, methods: insp => ({
+    $KeepStatic: U.form({ name: 'KeepStatic', has: { Keep }, props: forms => ({
       init: function(foundation, urlResourceKeep) {
         this.foundation = foundation;
         this.urlResourceKeep = urlResourceKeep;
@@ -30,16 +30,16 @@
         return this.urlResourceKeep.access({ path: [ 'static', ...fpCmps ].join('/') });
       }
     })}),
-    $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
+    $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
       init: function(foundation) {
         this.foundation = foundation;
         this.urlImages = {};
       },
-      access: function({ path='', params={} }) { return Insp.KeepUrlResource(this, path, params); }
+      access: function({ path='', params={} }) { return Form.KeepUrlResource(this, path, params); }
     })}),
-    $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
+    $KeepUrlResource: U.form({ name: 'KeepUrlResource', has: { Keep }, props: forms => ({
       init: function(par, path='', params={}) {
-        insp.Keep.init.call(this);
+        forms.Keep.init.call(this);
         this.par = par;
         this.path = path;
         this.params = params;
@@ -63,7 +63,7 @@
     $TextNode: document.createTextNode('').constructor,
     
     init: function({ hutId, isSpoofed, aboveMsAtResponseTime, ...supArgs }) {
-      insp.Foundation.init.call(this, supArgs);
+      forms.Foundation.init.call(this, supArgs);
       
       // GOAL: delta since Above generated "aboveMsAtResponseTime"?
       // - `firstContactMs` is our earliest timing of server response
@@ -94,7 +94,7 @@
       
     },
     getPlatform: function() { return { name: 'browser' }; },
-    ready: insp.Foundation.ready,
+    ready: forms.Foundation.ready,
     halt: function() { /* debugger */; },
     installRoom: async function(name, bearing='below') {
       
@@ -138,10 +138,10 @@
       let { secure } = Foundation.protocols[protocol];
       options.hosting.gain({ host, port, sslArgs: { keyPair: secure, selfSign: secure } });
       
-      return insp.Foundation.createHut.call(this, options);
+      return forms.Foundation.createHut.call(this, options);
       
     },
-    createKeep: function(options={}) { return Insp.KeepBrowser(this); },
+    createKeep: function(options={}) { return Form.KeepBrowser(this); },
     createReal: async function() {
       
       let { Real } = U.setup;
@@ -177,7 +177,7 @@
               distribute: 'auto'
             }[layout.cuts || 'stack']; // null -> 'stack'
             
-          } else if (U.isType(layout, Array)) {
+          } else if (U.isForm(layout, Array)) {
             
             // Children are sized using the specified "cuts"
             let values = [];
@@ -199,7 +199,7 @@
             domNode.style.flexBasis = '0';
             domNode.style[layout.par.axis === 'x' ? 'height' : 'width'] = '100%';
             
-          } else if (U.isType(layout.par.cuts, Array)) {
+          } else if (U.isForm(layout.par.cuts, Array)) {
             
             // Children are sized using the specified "cuts"
             let cutInd = layout.params[0];
@@ -327,7 +327,7 @@
                 let { ext, colour } = decals[k];
                 domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
               } else {
-                if (!U.isType(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.nameOf(decals[k])}`);
+                if (!U.isForm(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.nameOf(decals[k])}`);
                 if (!complexDecals.has(k)) complexDecals[k] = {};
                 complexDecals[k].gain(decals[k]);
               }
@@ -378,7 +378,7 @@
           },
           render: (real, domNode) => {
             
-            if (!U.isInspiredBy(real, Real)) throw Error(`Invalid type: ${U.nameOf(real)}`);
+            if (!U.hasForm(real, Real)) throw Error(`Invalid type: ${U.nameOf(real)}`);
             
             // Reset styles (and text)
             let childNodes = [ ...domNode.childNodes ];
@@ -444,7 +444,7 @@
             let childNodes = [ ...techNode.childNodes ];
             if (childNodes.count() > 1) throw Error(`Can't set text; there's multiple child nodes!`);
             if (childNodes.count()) {
-              if (!U.isType(childNodes[0], Insp.TextNode)) throw Error(`Can't set text; non-text child node!`);
+              if (!U.isForm(childNodes[0], Form.TextNode)) throw Error(`Can't set text; non-text child node!`);
               childNodes[0].remove();
             }
             
@@ -458,7 +458,7 @@
             if (childNodes.count() > 1) throw Error(`Can't select text; there's multiple child nodes!`);
             let [ childNode=null ] = childNodes;
             if (!childNode) return;
-            if (!U.isType(childNode, Insp.TextNode)) throw Error(`Can't select text; non-text child`);
+            if (!U.isForm(childNode, Form.TextNode)) throw Error(`Can't select text; non-text child`);
             
             // Clear previous selection
             window.getSelection().removeAllRanges();
@@ -470,7 +470,7 @@
           },
           addInput: real => {
             
-            let textInputLayout = real.layouts.find(layout => U.isInspiredBy(layout, TextInputLayout)).val;
+            let textInputLayout = real.layouts.find(layout => U.hasForm(layout, TextInputLayout)).val;
             if (!textInputLayout) throw Error(`Can't add input; no TextInputLayout found!`);
             
             let initVal = textInputLayout.text || '';
@@ -507,10 +507,10 @@
           },
           addPress: (real, modes=[ 'continuous', 'discrete' ]) => {
             
-            if (!U.isType(modes, Array)) modes = [ modes ];
+            if (!U.isForm(modes, Array)) modes = [ modes ];
             if (!modes.count()) throw Error(`Supply at least one mode`);
             if (modes.count() > 2) throw Error(`Supply maximum two modes`);
-            if (modes.find(v => !U.isType(v, String)).found) throw Error(`All modes should be String`);
+            if (modes.find(v => !U.isForm(v, String)).found) throw Error(`All modes should be String`);
             if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
             
             let tmp = Tmp(); tmp.src = Src();
@@ -564,10 +564,10 @@
           },
           addFeel: (real, modes=[ 'continuous', 'discrete' ]) => {
             
-            if (!U.isType(modes, Array)) modes = [ modes ];
+            if (!U.isForm(modes, Array)) modes = [ modes ];
             if (!modes.count()) throw Error(`Supply at least one mode`);
             if (modes.count() > 2) throw Error(`Supply maximum two modes`);
-            if (modes.find(v => !U.isType(v, String)).found) throw Error(`All modes should be String`);
+            if (modes.find(v => !U.isForm(v, String)).found) throw Error(`All modes should be String`);
             if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
             
             let techNode = real.getTechNode();

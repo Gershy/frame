@@ -4,10 +4,10 @@ Error.stackTraceLimit = 200;
 
 let C = global.C = {
   skip: undefined,
-  notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
+  notImplemented: function() { throw Error(`Not implemented by ${U.getFormName(this)}`); },
   noFn: name => {
-    let fn = function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
-    fn['~noInspCollision'] = true;
+    let fn = function() { throw Error(`${U.getFormName(this)} does not implement "${name}"`); }
+    fn['~noFormCollision'] = true; // TODO: Use Symbol here??
     return fn;
   }
 };
@@ -33,7 +33,7 @@ protoDef(Object, 'toArr', function(it) {
   return ret;
 });
 protoDef(Object, 'slice', function(...props) {
-  if (props.length === 1 && U.isType(props[0], Object)) {
+  if (props.length === 1 && U.isForm(props[0], Object)) {
     let map = props[0]; // Maps existingKey -> newKeyName
     let ret = {}; for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]]; return ret;
   } else { // `props` is an Array of property names (Strings)
@@ -54,7 +54,7 @@ protoDef(Object, 'gain', function(obj) {
 protoDef(Object, 'to', function(f) { return f(this); });
 protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
-  if (U.isType(keys, String)) keys = keys.split('.');
+  if (U.isForm(keys, String)) keys = keys.split('.');
   for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
   return { found: true, val: ret };
 });
@@ -204,7 +204,7 @@ protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
 protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });
 protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
 
-protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
+protoDef(Error, 'update', function(msg, props=null) { this.message = U.isForm(msg, String) ? msg : msg(this.message); return this; });
 
 Function.stub = v => v;
 Function.makeStub = v => Function.stub.bind(null, v);
@@ -231,132 +231,180 @@ let U = global.U = {
     return amts.join('');
   },
   safe: (f1, f2=e=>e) => {
-    if (!U.isType(f2, Function)) f2 = Function.stub.bind(null, f2);
-    try { let r = f1(); return U.isType(r, Promise) ? r.catch(f2) : r; }
+    if (!U.isForm(f2, Function)) f2 = Function.stub.bind(null, f2);
+    try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
     catch(err) { return f2(err); }
   },
-  inspire: ({ name, insps={}, methods=()=>({}) }) => {
+  reservedFormProps: Set([ 'constructor', 'Form' ]),
+  form: ({ name, has={}, parForms=has, props=()=>({}) }) => {
     
-    let parInsps = insps;
-    parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw Error(`Invalid Insp: "${k}"`); });
+    // Ensure every ParForm is truly a Form (Function)
+    for (let [ k, Form ] of parForms) if (!U.isForm(Form, Function)) throw Error(`Invalid Form: "${k}"`);
     
-    let fName = name.replace(/[.]/g, '$');
-    let Insp = eval(`let Insp = function ${fName}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
-    Object.defineProperty(Insp, 'name', { value: name });
+    let fName = name.replace(/[^a-zA-Z0-9]/g, '$');
+    let Form = eval(`let Form = function ${fName}(...p) { /* ${name} */ return (this && this.constructor === Form) ? this.init(...p) : new Form(...p); }; Form;`);
+    Object.defineProperty(Form, 'name', { value: name });
     
-    // Calculate a Set of all inspirations for `isInspiredBy` testing
-    Insp.allInsps = Set([ Insp ]);
-    parInsps.each(({ allInsps }) => allInsps.each(SubInsp => Insp.allInsps.add(SubInsp)));
+    // Calculate a Set of all parent Forms for `hasForm` testing
+    Form.forms = Set([ Form ]);
+    parForms.each(({ forms }) => forms.each(ParForm => Form.forms.add(ParForm)));
     
     // Keep track of parent classes directly
-    Insp.parents = insps;
+    Form.parents = parForms;
     
     // Initialize prototype
-    Insp.prototype = Object.create(null);
+    Form.prototype = Object.create(null);
     
-    // Resolve all SupInsps to their prototypes
-    parInsps = parInsps.map(ParInsp => {
+    // Resolve all ParForms to their prototypes
+    parForms = parForms.map(ParForm => {
       // `protoDef` sets non-enumerable prototype properties
       // Iterate non-enumerable props with `Object.getOwnPropertyNames`
-      let proto = ParInsp.prototype;
-      let pNames = Object.getOwnPropertyNames(proto);
-      return pNames.toObj(v => [ v, proto[v] ]);
+      let proto = ParForm.prototype;
+      return Object.getOwnPropertyNames(proto).toObj(v => [ v, proto[v] ]);
     });
-    parInsps.all = (methodName, workFn) => {
-      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+    
+    // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
+    // make `forms.all(name, fn)` available. `forms.all` generates a
+    // method which calls all underlying parent functionality for the
+    // name `name`. It's also possible for this generated function to
+    // return a value; this is enabled by supplying `workFn`, which is
+    // called with the original arguments to the generated function.
+    // Note that `workFn` has no access to any of the values generated
+    // by parent methods! Note that `function(){}` rather than `()=>{}`
+    // syntax should be preferred for `workFn`, as no `this` reference
+    // will be available using `()=>{}` syntax.
+    parForms.all = (methodName, workFn) => {
+      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
       return function(...args) {
-        for (let m of methods) m.call(this, ...args);
-        if (workFn) return workFn(...args);
+        for (let m of props) m.call(this, ...args);
+        if (workFn) return workFn.call(this, ...args);
       };
     };
-    parInsps.allArr = (methodName, workFn) => {
-      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
-      return function(...args) { return workFn(this, methods.map(m => m.call(this, ...args)), ...args); };
+    
+    // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
+    // make `forms.allArr(name, fn)` available. `forms.allArr` is very
+    // similar to `forms.all`, except `workFn`'s signature isn't:
+    //    |     workFn(...origArgs)
+    // but rather:
+    //    |     workFn(parResultArr, ...origArgs)
+    // The difference is the `parResultArr`, which contains the values
+    // the results of all parents calling their own `name` functions.
+    // Note that the use of an Array rather than an Object intentionally
+    // encourages design to treat all returned parent values equally.
+    // There is no explicit way to determine which parent provided any
+    // particular value.
+    parForms.allArr = (methodName, workFn) => {
+      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      return function(...args) { return workFn.call(this, props.map(m => m.call(this, ...args)), ...args); };
     };
     
-    // If `methods` is a function it becomes the result of its call
-    if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
+    // If `props` is a function it becomes the result of its call
+    if (U.isForm(props, Function)) props = props(parForms, Form);
     
-    // Ensure we have valid "methods"
-    if (!U.isType(methods, Object)) throw Error(`Couldn't resolve "methods" to Object`);
+    // Ensure we have valid "props"
+    if (!U.isForm(props, Object)) throw Error(`Couldn't resolve "props" to Object`);
     
     // Ensure reserved property names haven't been used
-    if (methods.has('constructor')) throw Error('Used reserved "constructor" key');
+    for (let k of U.reservedFormProps) if (props.has(k)) throw Error(`Used reserved "${k}" key`);
     
-    // Collect all inherited methods
-    let methodsByName = {};
-    parInsps.forEach((inspProto, inspName) => {
-      // Can`t do `inspProto.forEach` - `inspProto` is prototype-less!
-      for (let [ methodName, method ] of Object.entries(inspProto)) {
-        // `inspProto` contains a "constructor" property that needs to be skipped
-        if (methodName === 'constructor') continue;
-        if (!methodsByName.has(methodName)) methodsByName[methodName] = Set();
-        methodsByName[methodName].add(method);
-      }
-    });
+    // Collect all inherited props
+    let propsByName = {};
+    // Avoid `for (v of formProto)` - `formProto` is prototype-less! // TODO: THIS COMMENT LIES???
     
-    // Collect all methods for this particular Insp
-    for (let methodName in methods) {
-      let method = methods[methodName];
+    // Iterate all props of all ParForm prototypes
+    for (let [ formName, proto ] of parForms) { for (let [ propName, prop ] of proto) {
       
-      // All methods here are the single method of their name!
-      // They may call inherited methods of the same name (or not)
-      if (methodName[0] === '$')  Insp[methodName.slice(1)] = method;        // "$" = class-level property
-      else                        methodsByName[methodName] = Set([ method ]); // Guaranteed to be singular
+      // Skip reserved names (they certainly exist in `formProto`!)
+      if (U.reservedFormProps.has(propName)) continue;
+      
+      // Store all props under the same name in the same Set
+      if (!propsByName.has(propName)) propsByName[propName] = Set();
+      propsByName[propName].add(prop);
+      
+    }};
+    
+    // `propsByName` already has all ParForm props; now add in the props
+    // unique to the Form being created!
+    for (let [ propName, prop ] of props) {
+      
+      // All props here are the single method of their name!
+      // They may call inherited props of the same name (or not)
+      if (propName[0] === '$')  Form[propName.slice(1)] = prop;        // "$" indicates class-level property
+      else                      propsByName[propName] = Set([ prop ]); // Guaranteed to be singular
       
     }
     
-    if (!methodsByName.has('init')) throw Error('No "init" method available');
+    // At this point an "init" prop is required! TODO: Allow for uninitializable ("abstract") Forms?
+    if (!propsByName.has('init')) throw Error('No "init" method available');
     
-    parInsps[name] = {};
-    for (let methodName in methodsByName) {
-      let methodsAtName = methodsByName[methodName].toArr(v => (v && v['~noInspCollision']) ? C.skip : v);
-      if (methodsAtName.length > 1) {
-        throw Error(`Found ${methodsAtName.length} methods "${methodName}" for ${name}; declare a custom method`);
-      }
-      let fn = methodsAtName.length ? methodsAtName[0] : C.noFn(methodName);
-      parInsps[name][methodName] = fn;
-      protoDef(Insp, methodName, fn);
+    for (let [ propName, props ] of propsByName) {
+      
+      // Filter out any '~noFormCollision
+      let propsAtName = props.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
+      
+      // Ensure there are no collisions for this prop. In case of
+      // collisions, the solution is for the Form defining the collision
+      // to define its own property under the collision name (and this
+      // property may take into account aspects of the ParForm props
+      // which collided; for example it may call all ParForm methods of
+      // the same name!)
+      if (propsAtName.length > 1)
+        throw Error(`Found ${propsAtName.length} props named "${propName}" for ${name} (to resolve define ${name}.protoype.${propName})`);
+      
+      protoDef(Form, propName, propsAtName.length ? propsAtName[0] : C.noFn(propName));
+      
     }
     
-    protoDef(Insp, 'constructor', Insp);
-    return Insp;
+    protoDef(Form, 'Form', Form);
+    protoDef(Form, 'constructor', Form);
+    return Form;
   },
-  isInspiredBy: (insp, Insp) => {
-    try {
+  isForm: (fact, ...forms) => {
+    
+    // Detect and reject NaN! Hut philosophy!
+    if (fact !== fact) return false;
+    
+    // Allow any provided Form to match...
+    for (let Form of forms) {
       
-      // `insp` is either an instance, or the constructor itself. Ensure
-      // we can talk about specifically the constructor
-      let Cls = U.isType(insp, Function) ? insp : insp.constructor;
+      // Prefer to compare against `FormNative`. Some native Cls
+      // references represent the hut-altered form (e.g. they have an
+      // extended prototype and can be called without "new"). Such Cls
+      // references are not true "Classes" in that they are never set as
+      // the "constructor" property of any instance - "contructor"
+      // properties will always reflect the native, unmodified Cls. Any
+      // Cls which has been hut-modified will have a "Native" property
+      // pointing to the original class, which serves as a good value to
+      // compare against "constructor" properties
+      if (fact != null && fact.constructor === (Form.Native || Form)) return true;
       
-      // `U.isInspiredBy` handles both Insp inheritance and classic js
-      // prototypal inheritance. If the constructor has an `allInsps`
-      // property, use Insp inheritance, and assume that any superclass
-      // would be contained within the "allInsps" Set. Otherwise Cls
-      // is using prototypal inheritance; use `instanceof`, preferring
-      // `Insp.Native` and falling back to `Insp`. Note that non-Native
-      // Constructors (which have a "Native" property) never are the
-      // true constructor of any initialized value (they only exist to
-      // provide hut-like shorthand, like "new"-less initialization).
-      // The user may (and is likely to) pass non-Native constructors
-      // as the `Insp` argument!
-      return Cls.has('allInsps') ? Cls.allInsps.has(Insp) : (insp instanceof (Insp.Native || Insp));
-      
-    } catch(err) { return false; }
-  },
-  isType: (val, Cls) => {
-    // Note: This is hopefully the *only* use of `==` throughout Hut!
-    // Falsy only for unboxed values (`null` and `undefined`)
-    if (Cls && Cls.Native) Cls = Cls.Native;
-    if (val == null || val.constructor !== Cls) return false;
-    if (Cls === Number && val === NaN) return false;
-    return true;
-  },
-  isTypes: (val, ...Classes) => {
-    for (let Cls of Classes) if (U.isType(val, Cls)) return true;
+    }
+    
     return false;
+    
   },
-  nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return U.safe(() => String(obj), 'Unrepresentable'); },
+  hasForm: (fact, FormOrCls) => {
+    
+    if (fact == null) return false;
+    
+    // `fact` may either be a fact/instance, or a Form/Cls. In case a
+    // fact/instance was given the "constructor" property points us to
+    // the appropriate Form/Cls. We name this value `Form`, although it
+    // is also still ambiguously a Form/Cls.
+    let Form = U.isForm(fact, Function) ? fact : fact.constructor;
+    
+    // If a "forms" property exists, `FormOrCls` is specifically a Form,
+    // and inheritance can be checked by existence in the set
+    if (Form.forms) return Form.forms.has(FormOrCls);
+    
+    // No "forms" property; FormOrCls is specifically a Cls. Inheritance
+    // can be checked using `instanceof`; prefer to compare against a
+    // "Native" property
+    return (fact instanceof (FormOrCls.Native || FormOrCls));
+    
+  },
+  getFormName: f => U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
+  
   multilineString: str => {
     
     let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));
@@ -389,14 +437,47 @@ global.rooms = {};
 
 U.logic = (() => {
   
-  let Endable = U.inspire({ name: 'Endable', methods: (insp, Insp) => ({
+  // TODO: What about something with a ref count; e.g. it can be
+  // initiated multiple times, and can withstand a call to `end` for
+  // each time it has been initiated past the first? An implementation
+  // could look like:
+  //      |     U.form({ name: '...', props: (forms, Form) => ({
+  //      |       
+  //      |       init: function() { this.watcher = Tmp.stub; },
+  //      |       actuallyCreateWatcher: function() {
+  //      |       
+  //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
+  //      |         // doesn't matter!
+  //      |         return someKindOfWatcher();
+  //      |         
+  //      |       },
+  //      |       getWatcher: function() {
+  //      |         
+  //      |         if (this.watcher.off()) {
+  //      |           // I can't immediately see how to do this without
+  //      |           // supplying a list of exposed fields.
+  //      |           // RefCountWatcher.prototype.ref needs to return
+  //      |           // an object that behaves exactly like the value
+  //      |           // `this.actuallyCreateWatcher()`, but with an
+  //      |           // `end` method that only ends the underlying
+  //      |           // object if the RefCount drops to 0. Note it's
+  //      |           // important to indicate which exposed fields are
+  //      |           // functions since they'll need to be bound.
+  //      |           this.watcher = RefCountWatcher(this.actuallyCreateWatcher(), [ 'src', 'cleanup()' ]);
+  //      |         }
+  //      |         return this.watcher.ref();
+  //      |         
+  //      |       }
+  //      |     })});
+  
+  let Endable = U.form({ name: 'Endable', props: (forms, Form) => ({
     
     $globalRegistry: 0 ? Set.stub : Set(),
     
     init: function(fn) {
       // Allow Endable.prototype.cleanup to be masked
       if (fn) this.cleanup = fn;
-      Insp.globalRegistry.add(this);
+      Form.globalRegistry.add(this);
     },
     onn: function() { return true; },
     off: function() { return !this.onn(); },
@@ -404,16 +485,16 @@ U.logic = (() => {
     end: function(...args) {
       if (this.off()) return false;
       this.onn = () => false;
-      Insp.globalRegistry.rem(this);
+      Form.globalRegistry.rem(this);
       this.cleanup(...args);
       return true;
     }
   })});
-  let Src = U.inspire({ name: 'Src', methods: (insp, Insp) => ({
+  let Src = U.form({ name: 'Src', props: (forms, Form) => ({
     init: function() { this.fns = Set(); },
     newRoute: function(fn) {},
     route: function(fn, mode='tmp') {
-      if (!U.isInspiredBy(fn, Function)) throw Error(`Can't route to a ${U.nameOf(fn)}`);
+      if (!U.hasForm(fn, Function)) throw Error(`Can't route to a ${U.getFormName(fn)}`);
       if (this.fns.has(fn)) return; // Ignore duplicates
       
       this.fns.add(fn);
@@ -435,33 +516,33 @@ U.logic = (() => {
       
     }
   })});
-  let Tmp = U.inspire({ name: 'Tmp', insps: { Endable, Src }, methods: (insp, Insp) => ({
+  let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(fn=null) {
-      insp.Src.init.call(this);
-      insp.Endable.init.call(this);
+      forms.Src.init.call(this);
+      forms.Endable.init.call(this);
       if (fn) this.route(fn, 'prm');
     },
     end: function(...args) { return this.sendAndEnd(...args); },
     send: function(...args) { return this.sendAndEnd(...args); },
     sendAndEnd: function(...args) {
       // Sending and ending are synonymous for a Tmp
-      if (!insp.Endable.end.call(this)) return; // Check if we're already ended
-      insp.Src.send.call(this, ...args);
+      if (!forms.Endable.end.call(this)) return; // Check if we're already ended
+      forms.Src.send.call(this, ...args);
       this.fns = Set.stub;
       return;
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
-      if (U.isInspiredBy(val, Function)) return this.route(val, mode) || this;
-      if (U.isInspiredBy(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
-      throw Error(`Can't end with a value of type ${U.nameOf(val)}`);
+      if (U.hasForm(val, Function)) return this.route(val, mode) || this;
+      if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
+      throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
     }
   })});
   Tmp.stub = (t => (t.end(), t))(Tmp());
   
-  let TmpAll = U.inspire({ name: 'TmpAll', insps: { Tmp }, methods: (insp, Insp) => ({
+  let TmpAll = U.form({ name: 'TmpAll', has: { Tmp }, props: (forms, Form) => ({
     init: function(tmps) {
-      insp.Tmp.init.call(this);
+      forms.Tmp.init.call(this);
       let fn = this.end.bind(this);
       this.routes = tmps.map(tmp => {
         let route = tmp.route(fn);
@@ -471,39 +552,39 @@ U.logic = (() => {
     },
     cleanup: function() { for (let r of this.routes) r.end(); }
   })});
-  let TmpAny = U.inspire({ name: 'TmpAny', insps: { Tmp }, methods: (insp, Insp) => ({
+  let TmpAny = U.form({ name: 'TmpAny', has: { Tmp }, props: (forms, Form) => ({
     init: function(tmps) {
-      insp.Tmp.init.call(this);
+      forms.Tmp.init.call(this);
       let cnt = tmps.length;
       let endFn = () => (--cnt > 0) || this.end();
       for (let tmp of tmps) this.endWith(tmp.route(endFn));
     }
   })});
   
-  let MemSrc = U.inspire({ name: 'MemSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+  let MemSrc = U.form({ name: 'MemSrc', has: { Endable, Src }, props: (forms, Form) => ({
     init: function() {
-      if (U.isType(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
-      insp.Endable.init.call(this);
-      insp.Src.init.call(this);
+      if (U.isForm(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
     },
     retain: C.noFn('retain')
   })});
-  MemSrc.Prm1 = U.inspire({ name: 'MemSrc.Prm1', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function(val=C.skip) { insp.MemSrc.init.call(this); this.val = val; },
+  MemSrc.Prm1 = U.form({ name: 'MemSrc.Prm1', has: { MemSrc }, props: (forms, Form) => ({
+    init: function(val=C.skip) { forms.MemSrc.init.call(this); this.val = val; },
     newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
-    retain: function(val) { if (val === this.val && U.isTypes(val, String, Number, Boolean)) return; this.val = val; if (this.val !== C.skip) this.send(val); },
+    retain: function(val) { if (val === this.val && U.isForm(val, String, Number, Boolean)) return; this.val = val; if (this.val !== C.skip) this.send(val); },
     cleanup: function() { this.val = C.skip; }
   })});
-  MemSrc.PrmM = U.inspire({ name: 'MemSrc.PrmM', insps: { MemSrc }, methods: (insp, Insp) => ({
-    init: function() { insp.MemSrc.init.call(this); this.vals = []; },
+  MemSrc.PrmM = U.form({ name: 'MemSrc.PrmM', has: { MemSrc }, props: (forms, Form) => ({
+    init: function() { forms.MemSrc.init.call(this); this.vals = []; },
     count: function() { return this.vals.count(); },
     retain: function(val) { this.vals.push(val); this.send(val); },
     newRoute: function(fn) { for (let val of this.vals) fn(val); },
     cleanup: function() { this.vals = []; }
   })});
-  MemSrc.Tmp1 = U.inspire({ name: 'MemSrc.Tmp1', insps: { MemSrc }, methods: (insp, Insp) => ({
+  MemSrc.Tmp1 = U.form({ name: 'MemSrc.Tmp1', has: { MemSrc }, props: (forms, Form) => ({
     init: function(val) {
-      insp.MemSrc.init.call(this);
+      forms.MemSrc.init.call(this);
       this.valEndRoute = null;
       this.val = null;
     },
@@ -520,9 +601,9 @@ U.logic = (() => {
     newRoute: function(fn) { if (this.val) fn(this.val); },
     cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
   })});
-  MemSrc.TmpM = U.inspire({ name: 'MemSrc.TmpM', insps: { MemSrc }, methods: (insp, Insp) => ({
+  MemSrc.TmpM = U.form({ name: 'MemSrc.TmpM', has: { MemSrc }, props: (forms, Form) => ({
     init: function() {
-      insp.MemSrc.init.call(this);
+      forms.MemSrc.init.call(this);
       this.valEndRoutes = Map();
       this.vals = Set();
       this.counter = null;
@@ -555,21 +636,21 @@ U.logic = (() => {
     }
   })});
 
-  let FilterSrc = U.inspire({ name: 'FilterSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+  let FilterSrc = U.form({ name: 'FilterSrc', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(src, fn) {
-      insp.Endable.init.call(this);
-      insp.Src.init.call(this);
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
       this.src = src;
       this.srcRoute = src.route((...vals) => fn(...vals) && this.send(...vals));
     },
     cleanup: function() { this.srcRoute.end(); }
   })});
-  let FnSrc = U.inspire({ name: 'FnSrc', insps: { Endable, Src }, methods: (insp, Insp) => ({
+  let FnSrc = U.form({ name: 'FnSrc', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(srcs, fn) {
-      if (U.isType(this, FnSrc)) throw Error(`Don't init the parent FnSrc class!`);
+      if (U.isForm(this, FnSrc)) throw Error(`Don't init the parent FnSrc class!`);
       
-      insp.Endable.init.call(this);
-      insp.Src.init.call(this);
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
       
       let vals = srcs.map(v => C.skip);
       this.routes = srcs.map((src, ind) => src.route(val => {
@@ -581,10 +662,10 @@ U.logic = (() => {
     applyFn: C.noFn('applyFn', (fn, vals) => 'valToSend'),
     cleanup: function() { for (let r of this.routes) r.end(); }
   })});
-  FnSrc.Prm1 = U.inspire({ name: 'FnSrc.Prm1', insps: { FnSrc }, methods: (insp, Insp) => ({
+  FnSrc.Prm1 = U.form({ name: 'FnSrc.Prm1', has: { FnSrc }, props: (forms, Form) => ({
     init: function(...args) {
       this.lastResult = C.skip;
-      insp.FnSrc.init.call(this, ...args);
+      forms.FnSrc.init.call(this, ...args);
     },
     newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
@@ -592,11 +673,11 @@ U.logic = (() => {
       return (result === this.lastResult) ? C.skip : (this.lastResult = result);
     }
   })});
-  FnSrc.PrmM = U.inspire({ name: 'FnSrc.PrmM', insps: { FnSrc }, methods: (insp, Insp) => ({
+  FnSrc.PrmM = U.form({ name: 'FnSrc.PrmM', has: { FnSrc }, props: (forms, Form) => ({
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
-  FnSrc.Tmp1 = U.inspire({ name: 'FnSrc.Tmp1', insps: { FnSrc }, methods: (insp, Insp) => ({
-    init: function(...params) { this.lastResult = C.skip; insp.FnSrc.init.call(this, ...params); },
+  FnSrc.Tmp1 = U.form({ name: 'FnSrc.Tmp1', has: { FnSrc }, props: (forms, Form) => ({
+    init: function(...params) { this.lastResult = C.skip; forms.FnSrc.init.call(this, ...params); },
     newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
       // Call function; ignore `C.skip`
@@ -607,9 +688,9 @@ U.logic = (() => {
       if (this.lastResult) this.lastResult.end();
       return this.lastResult = result;
     },
-    cleanup: function() { insp.FnSrc.cleanup.call(this); this.lastResult && this.lastResult.end(); }
+    cleanup: function() { forms.FnSrc.cleanup.call(this); this.lastResult && this.lastResult.end(); }
   })});
-  FnSrc.TmpM = U.inspire({ name: 'FnSrc.TmpM', insps: { FnSrc }, methods: (insp, Insp) => ({
+  FnSrc.TmpM = U.form({ name: 'FnSrc.TmpM', has: { FnSrc }, props: (forms, Form) => ({
     // Interestingly, FnSrc.TmpM behaves exactly like FnSrc.PrmM! `fn`
     // is expected to return Tmp instances (or C.skip), but this class
     // takes no responsibility for ending these Tmps - this is because
@@ -617,45 +698,12 @@ U.logic = (() => {
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   
-  // TODO: What about something with a ref count; e.g. it can be
-  // initiated multiple times, and can withstand a call to `end` for
-  // each time it has been initiated past the first? An implementation
-  // could look like:
-  //      |     U.inspire({ name: '...', methods: (insp, Insp) => ({
-  //      |       
-  //      |       init: function() { this.watcher = Tmp.stub; },
-  //      |       actuallyCreateWatcher: function() {
-  //      |       
-  //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
-  //      |         // doesn't matter!
-  //      |         return someKindOfWatcher();
-  //      |         
-  //      |       },
-  //      |       getWatcher: function() {
-  //      |         
-  //      |         if (this.watcher.off()) {
-  //      |           // I can't immediately see how to do this without
-  //      |           // supplying a list of exposed fields.
-  //      |           // RefCountWatcher.prototype.ref needs to return
-  //      |           // an object that behaves exactly like the value
-  //      |           // `this.actuallyCreateWatcher()`, but with an
-  //      |           // `end` method that only ends the underlying
-  //      |           // object if the RefCount drops to 0. Note it's
-  //      |           // important to indicate which exposed fields are
-  //      |           // functions since they'll need to be bound.
-  //      |           this.watcher = RefCountWatcher(this.actuallyCreateWatcher(), [ 'src', 'cleanup()' ]);
-  //      |         }
-  //      |         return this.watcher.ref();
-  //      |         
-  //      |       }
-  //      |     })});
-  
-  let Chooser = U.inspire({ name: 'Chooser', insps: { Endable, Src }, methods: (insp, Insp) => ({
+  let Chooser = U.form({ name: 'Chooser', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(names, src=null) {
-      insp.Endable.init.call(this);
-      insp.Src.init.call(this);
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
       
-      if (U.isInspiredBy(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
+      if (U.hasForm(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
       
       this.activeSrcName = names[0];
       this.srcs = names.toObj(n => [ n, MemSrc.Tmp1() ]);
@@ -723,14 +771,14 @@ U.logic = (() => {
       this.srcs[this.activeSrcName].val.end();
     }
   })});
-  let Scope = U.inspire({ name: 'Scope', insps: { Tmp }, methods: (insp, Insp) => ({
+  let Scope = U.form({ name: 'Scope', has: { Tmp }, props: (forms, Form) => ({
     init: function(src, fn) {
       
-      insp.Tmp.init.call(this);
+      forms.Tmp.init.call(this);
       this.fn = fn;
       this.srcRoute = src.route(tmp => {
         
-        if (!U.isInspiredBy(tmp, Tmp)) throw Error(`Scope expects Tmp - got ${U.nameOf(tmp)}`);
+        if (!U.hasForm(tmp, Tmp)) throw Error(`Scope expects Tmp - got ${U.getFormName(tmp)}`);
         if (tmp.off()) return;
         
         // Define `addDep` and `addDep.scp` to enable nice shorthand
@@ -738,7 +786,7 @@ U.logic = (() => {
         let addDep = dep => {
           
           // Allow raw functions; wrap them in `Endable`
-          if (U.isType(dep, Function)) dep = Endable(dep);
+          if (U.isForm(dep, Function)) dep = Endable(dep);
           
           if (deps.has(dep)) return; // Ignore duplicates
           if (dep.off()) return; // Ignore any inactive Deps
@@ -746,7 +794,7 @@ U.logic = (() => {
           // `deps` no longer existing requires all Deps to end
           if (!deps) return dep.end();
           
-          if (U.isInspiredBy(dep, Tmp)) {
+          if (U.hasForm(dep, Tmp)) {
             // Note `deps` falsiness check; `deps` may be set to `null`
             let remDep = dep.route(() => deps && (deps.rem(dep), deps.rem(remDep)));
             deps.add(remDep);
@@ -774,14 +822,14 @@ U.logic = (() => {
     subScope: function(...args) { return (0, this.constructor)(...args); },
     cleanup: function() { this.srcRoute.end(); }
   })});
-  let Slots = U.inspire({ name: 'Slots', methods: (insp, Insp) => ({
+  let Slots = U.form({ name: 'Slots', props: (forms, Form) => ({
     
-    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.nameOf(v)} -> "${p}" failed: (${e.message})`; throw e; } },
+    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.getFormName(v)} -> "${p}" failed: (${e.message})`; throw e; } },
     init: function() {},
     access: C.noFn('access', arg => {}),
     seek: function(...args) {
       let val = this;
-      for (let arg of args) val = U.isType(val, Promise) ? val.then(v => Insp.tryAccess(v, arg)) : Insp.tryAccess(val, arg);
+      for (let arg of args) val = U.isForm(val, Promise) ? val.then(v => Form.tryAccess(v, arg)) : Form.tryAccess(val, arg);
       return val;
     }
     

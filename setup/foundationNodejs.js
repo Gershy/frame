@@ -7,21 +7,21 @@
   
   let { Foundation, Real, Keep } = U.setup;
   
-  let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
+  let FoundationNodejs = U.form({ name: 'FoundationNodejs', has: { Foundation }, props: (forms, Form) => ({
     
-    $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
+    $KeepNodejs: U.form({ name: 'KeepNodejs', has: { Keep }, props: forms => ({
       init: function() {
-        insp.Keep.init.call(this);
+        forms.Keep.init.call(this);
         
-        let fileSystemKeep = Insp.KeepFileSystem({
+        let fileSystemKeep = Form.KeepFileSystem({
           secure: true,
           blacklist: Set([ '.git', '.gitignore', 'mill' ])
         });
         this.keepsByType = {
-          static: Insp.KeepStatic(fileSystemKeep),
+          static: Form.KeepStatic(fileSystemKeep),
           fileSystem: fileSystemKeep,
-          adminFileSystem: Insp.KeepFileSystem({ secure: false }),
-          urlResource: Insp.KeepUrlResources()
+          adminFileSystem: Form.KeepFileSystem({ secure: false }),
+          urlResource: Form.KeepUrlResources()
         };
       },
       access: function(type) {
@@ -29,7 +29,7 @@
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
     })}),
-    $KeepStatic: U.inspire({ name: 'KeepStatic', insps: { Keep }, methods: (insp, Insp) => ({
+    $KeepStatic: U.form({ name: 'KeepStatic', has: { Keep }, props: (forms, Form) => ({
       init: function(fileSystemKeep) {
         this.fileSystemKeep = fileSystemKeep;
         this.hut = null;
@@ -46,7 +46,7 @@
         
       }
     })}),
-    $KeepFileSystem: U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
+    $KeepFileSystem: U.form({ name: 'KeepFileSystem', has: { Keep }, props: (forms, Form) => ({
       
       $fs: ((path, fs) => ({
         
@@ -109,7 +109,7 @@
         getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
         
       }))(require('path'), require('fs')),
-      $HoneyPotKeep: U.inspire({ name: 'HoneyPotKeep', insps: { Keep }, methods: (insp, Insp) => ({
+      $HoneyPotKeep: U.form({ name: 'HoneyPotKeep', has: { Keep }, props: (forms, Form) => ({
         init: function(data=[ 'honey', 'passwords', 'tokens', 'credentials', 'bitcoin', 'wallet' ]) { this.data = data; },
         access: function() { return this; },
         setContentType: function() { return this; },
@@ -137,26 +137,26 @@
         svg: 'image/svg+xml'
       },
       
-      init: function({ absPath=Insp.fs.hutRootCmps, secure=true, blacklist=null }) {
-        if (absPath.find(v => !U.isType(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
+      init: function({ absPath=Form.fs.hutRootCmps, secure=true, blacklist=null }) {
+        if (absPath.find(v => !U.isForm(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
         this.absPath = absPath;
         this.secure = secure;
         if (blacklist) this.blacklist = blacklist;
       },
       setContentType: function(contentType) { this.contentType = contentType; return this; },
       desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
-      getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
+      getFileUrl: function() { return Form.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
-        if (U.isType(dirNames, String)) dirNames = [ dirNames ];
-        if (!U.isType(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
-        if (dirNames.find(d => !U.isType(d, String)).found) throw Error(`All dir names must be Strings`);
+        if (U.isForm(dirNames, String)) dirNames = [ dirNames ];
+        if (!U.isForm(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
+        if (dirNames.find(d => !U.isForm(d, String)).found) throw Error(`All dir names must be Strings`);
         
         // Remove any useless cmps
         dirNames = dirNames.map(d => (d === '' || d === '.') ? C.skip : d);
         
         // Ensure all cmps are valid
-        if (this.secure && dirNames.find(d => !d.match(Insp.secureFpReg)).found) return Insp.HoneyPotKeep();
-        if (this.blacklist && this.blacklist.has(dirNames[0])) return Insp.HoneyPotKeep();
+        if (this.secure && dirNames.find(d => !d.match(Form.secureFpReg)).found) return Form.HoneyPotKeep();
+        if (this.blacklist && this.blacklist.has(dirNames[0])) return Form.HoneyPotKeep();
         
         // No need to create a child for 0 cmps
         if (!dirNames.count()) return this;
@@ -165,19 +165,19 @@
         return KeepCls({ absPath: [ ...this.absPath, ...dirNames ], secure: this.secure });
       },
       getFsType: async function() {
-        if (!this.metaPrm) this.metaPrm = Insp.fs.getMeta(this.absPath);
+        if (!this.metaPrm) this.metaPrm = Form.fs.getMeta(this.absPath);
         
         let meta = await this.metaPrm;
         if (!meta) return null;
         if (meta.isDirectory()) { return 'folder'; }
-        if (meta.isFile())      { this.contentType = Insp.extToContentType.json; return 'letter'; }
+        if (meta.isFile())      { this.contentType = Form.extToContentType.json; return 'letter'; }
         throw Error(`${this.desc()} has unknown fsType (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
         let fsType = await this.getFsType();
         if (fsType === 'folder') {
           
-          let content = await Insp.fs.getFolder(this.absPath, ...opts);
+          let content = await Form.fs.getFolder(this.absPath, ...opts);
           
           // Filter blacklisted items if necessary
           return this.blacklist
@@ -186,7 +186,7 @@
           
         } else if (fsType === 'letter') {
           
-          return Insp.fs.getLetter(this.absPath, ...opts);
+          return Form.fs.getLetter(this.absPath, ...opts);
           
         } else {
           
@@ -204,16 +204,16 @@
           // Create all ancestor dirs
           for (let depth = 1; depth < this.absPath.length; depth++) {
             let cmps = this.absPath.slice(0, depth);
-            let meta = await Insp.fs.getMeta(cmps);
+            let meta = await Form.fs.getMeta(cmps);
             
             // If this ancestor is non-existent, create it
             // If this ancestor exists but isn't a directory, throw error
-            if (!meta) await Insp.fs.addFolder(cmps);
+            if (!meta) await Form.fs.addFolder(cmps);
             else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
           }
           
           // Write content into file
-          await Insp.fs.setLetter(this.absPath, content, ...opts);
+          await Form.fs.setLetter(this.absPath, content, ...opts);
           
         } else if (content === null && fsType === 'folder') {
           
@@ -227,14 +227,14 @@
           } else {
             
             // Without a single child
-            await Insp.fs.remFolder(this.absPath);
+            await Form.fs.remFolder(this.absPath);
             await this.remNullAncestry();
             
           }
           
         } else if (content === null && fsType === 'letter') {
           
-          await Insp.fs.remLetter(this.absPath);
+          await Form.fs.remLetter(this.absPath);
           await this.remNullAncestry();
           
         }
@@ -249,12 +249,12 @@
         for (let depth = this.absPath.length - 1; depth > 1; depth--) {
           
           let cmps = this.absPath.slice(0, depth);
-          let children = await Insp.fs.getFolder(cmps);
+          let children = await Form.fs.getFolder(cmps);
           
           if (children === null) continue; // If `children` is `null` the ancestor is already deleted
           if (children.length) break; // An ancestor is populated - stop deleting!
           
-          await Insp.fs.remFolder(cmps); // This ancestor is empty - delete it!
+          await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
           
         }
         
@@ -263,7 +263,7 @@
         if (this.contentType) return this.contentType;
         let [ lastCmp ] = this.absPath.slice(-1);
         let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
-        return Insp.extToContentType.has(ext) ? Insp.extToContentType[ext] : 'application/octet-stream'
+        return Form.extToContentType.has(ext) ? Form.extToContentType[ext] : 'application/octet-stream'
       },
       getContentByteLength: async function() {
         let fsType = await this.getFsType();
@@ -274,20 +274,20 @@
       getPipe: async function() {
         
         let fsType = await this.getFsType();
-        if (fsType === 'letter') return Insp.fs.getPipe(this.absPath);
+        if (fsType === 'letter') return Form.fs.getPipe(this.absPath);
         if (fsType === 'folder') return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
         return null;
         
       }
       
     })}),
-    $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
+    $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
       init: function() {},
-      access: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
+      access: function({ path, urlParams }) { return Form.KeepUrlResource(this, path, urlParams); }
     })}),
-    $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
+    $KeepUrlResource: U.form({ name: 'KeepUrlResource', has: { Keep }, props: forms => ({
       init: function(path='', params={}) {
-        insp.Keep.init.call(this);
+        forms.Keep.init.call(this);
         this.path = path;
         this.params = params;
       },
@@ -419,7 +419,7 @@
     
     init: function(...args) {
       
-      insp.Foundation.init.call(this, ...args);
+      forms.Foundation.init.call(this, ...args);
       
       // As soon as we're compiled we can install useful cmp->src exception handlers
       process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
@@ -453,7 +453,7 @@
           
           async m => { // Number.prototype.toArr
             let arr = (10).toArr(v => v);
-            if (!U.isType(arr, Array)) throw Error(`Expected Array; got ${U.nameOf(arr)}`);
+            if (!U.isForm(arr, Array)) throw Error(`Expected Array; got ${U.nameOf(arr)}`);
             if (arr.count() !== 10) throw Error(`Expected exactly 10 items; got ${arr.count()}`);
             
             for (let i = 0; i < arr.count(); i++) {
@@ -865,7 +865,7 @@
             scp.end();
             
             if (depTmps.count() !== 5) throw Error(`Scope never ran`);
-            if (depTmps.find(tmp => !U.isType(tmp, Tmp)).found) throw Error(`Not all sends resulted in Tmps`);
+            if (depTmps.find(tmp => !U.isForm(tmp, Tmp)).found) throw Error(`Not all sends resulted in Tmps`);
             if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Scope ended`);
             
           },
@@ -1033,8 +1033,8 @@
     compileContent: function(variantName, srcLines) {
       
       // Compile file content; filter based on variant tags
-      if (U.isType(srcLines, String)) srcLines = srcLines.split('\n');
-      if (!U.isType(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.nameOf(srcLines)}`);
+      if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
+      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.nameOf(srcLines)}`);
       let variantDef = this.variantDefs[variantName];
       
       let blocks = [];
@@ -1081,7 +1081,7 @@
         if (keepLine) {
           
           curOffset = null;
-          let [ lineNoComment=line ] = (line.match(Insp.removeCommentRegex) || []).slice(1);
+          let [ lineNoComment=line ] = (line.match(Form.removeCommentRegex) || []).slice(1);
           filteredLines.push(lineNoComment.trim());
           
         } else {
@@ -1137,10 +1137,10 @@
       options.uid = 'nodejs.root';
       options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
       
-      return insp.Foundation.createHut.call(this, options);
+      return forms.Foundation.createHut.call(this, options);
       
     },
-    createKeep: function(options={}) { return Insp.KeepNodejs(); },
+    createKeep: function(options={}) { return Form.KeepNodejs(); },
     createReal: async function(options={}) {
       
       let primaryFakeReal = Real({ name: 'nodejs.fakeReal' });
@@ -1175,7 +1175,7 @@
       let [ fileName ] = path.match(/([a-zA-Z0-9.@]*)$/);
       
       // Skip non-hut files
-      let fileNamePcs = Insp.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
+      let fileNamePcs = Form.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
       if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
       
       // Extract room name and bearing from filename
@@ -1278,9 +1278,9 @@
         
         if (msg === C.skip) return;
         let httpCode = 200;
-        if (U.isInspiredBy(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
+        if (U.hasForm(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
-        if (U.isInspiredBy(msg, Keep)) { // File!
+        if (U.hasForm(msg, Keep)) { // File!
           
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
           res.writeHead(httpCode, {
@@ -1289,7 +1289,7 @@
           });
           (await msg.getPipe()).pipe(res);
           
-        } else if (msg === null || U.isTypes(msg, Object, Array)) { // Json!
+        } else if (msg === null || U.isForm(msg, Object, Array)) { // Json!
           
           msg = JSON.stringify(msg);
           res.writeHead(httpCode, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
@@ -1337,7 +1337,7 @@
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
           body = body.length ? JSON.parse(body) : {};
-          if (!U.isType(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
+          if (!U.isForm(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
         } catch(err) { return res.writeHead(400).end(); }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
@@ -1442,7 +1442,7 @@
           // TODO: What makes json special, in that it is bundle-able?
           // What if the primary protocol switches to binary?
           let bundleSize = 0;
-          while (U.isTypes(road.waitTells[bundleSize], Object, Array)) bundleSize++; // TODO: This isn't working - waitTells[ind] is always a STRING!! :(
+          while (U.isForm(road.waitTells[bundleSize], Object, Array)) bundleSize++; // TODO: This isn't working - waitTells[ind] is always a STRING!! :(
           
           if (bundleSize <= 1) {
             
@@ -1520,7 +1520,7 @@
             let newBuffer = sokt.read();
             if (!newBuffer || !newBuffer.length) return resolve(null);
             soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
-            resolve(Insp.parseSoktUpgradeRequest(soktState));
+            resolve(Form.parseSoktUpgradeRequest(soktState));
           }));
         }
         
@@ -1553,7 +1553,7 @@
           soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
           
           try {
-            for (let message of Insp.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
+            for (let message of Form.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
           
           if (soktState.status === 'ended') road.end();

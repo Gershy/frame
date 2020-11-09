@@ -5,11 +5,11 @@ global.rooms.write = async foundation => {
   
   // 2: Clean up Insp, Cls, constructor, Type. This needs thought.
   //    CONSIDER:
-  //    - U.inspire({ insps: {}, methods: (insp, Insp) => ({ init: function(){} }) })
+  //    - U.form({ insps: {}, props: (forms, Form) => ({ init: function(){} }) })
   //    - ~noInspCollision
   //    - inst.constructor
   //    - "inst", "instance"
-  //    - "allInsps", Insp.parents
+  //    - "allInsps", Form.parents
   //    - U.isInspiredBy
   //    - U.isType, U.isTypes
   //    - U.nameOf
@@ -66,7 +66,7 @@ global.rooms.write = async foundation => {
     
     hut.roadDbgEnabled = false;
     
-    let WriteRecRoom = U.inspire({ name: 'WriteRecRoom', insps: { Rec }, methods: (insp, Insp) => ({
+    let WriteRecRoom = U.form({ name: 'WriteRecRoom', has: { Rec }, props: (forms, Form) => ({
       getStatusWatcher: function() {
         
         let tmp = Tmp();
@@ -650,7 +650,7 @@ global.rooms.write = async foundation => {
             dep.scp(submittedEntryChooser.srcs.off, (noSubmittedEntry, dep) => {
               
               let submitEntrySender = dep(writeHut.getTellSender('wrt.submitEntry', ({ text }) => {
-                console.log(`User ${username} (${roomUser.getVal('username')}??) submitted entry: ${text}`);
+                console.log(`User ${username} submitted entry: ${text}`);
                 let entry = hut.createRec('wrt.entry', [ roomUser ], { ms: foundation.getMs(), text });
                 hut.createRec('wrt.roomUserEntry', [ roomUser, entry ]);
               }));
