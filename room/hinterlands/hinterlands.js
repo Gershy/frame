@@ -49,6 +49,7 @@ global.rooms.hinterlands = async foundation => {
       
       if (!trgHut) throw Error('Must supply TrgHut');
       if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
+      if (!srcHut && reply) throw Error(`Can't omit "srcHut" but provide "reply"`);
       if (srcHut && srcHut.parHut !== trgHut && trgHut.parHut !== srcHut) throw Error(`Supplied unrelated Huts`);
       
       // Debug output if any ParHut has debug enabled
@@ -57,9 +58,7 @@ global.rooms.hinterlands = async foundation => {
       
       if (!srcHut) {
         if (trgHut.isAfar()) throw Error(`Can't tell TrgAfarHut when SrcHut is null`);
-        if (road) throw Error(`Can't omit "srcHut" but provide "road"`);
-        if (reply) throw Error(`Can't omit "srcHut" but provide "reply"`);
-        return trgHut.hear(null, null, () => { throw Error(`Can't reply`); }, msg, ms);
+        return trgHut.hear(null, null, () => { /* Reply to null `srcHut` has no effect */ }, msg, ms);
       }
       
       if (srcHut.isAfar() && trgHut.isAfar()) throw Error('Supplied two AfarHuts');
@@ -277,9 +276,9 @@ global.rooms.hinterlands = async foundation => {
       if (!road.hear) throw Error('Invalid road: missing "hear"');
       if (!road.tell) throw Error('Invalid road: missing "tell"');
       
-      if (!road.hutId) road.hutId = ''
-        + U.base62(this.roadedHutIdCnt++).padHead(8, '0')
-        + U.base62(Math.floor(Math.random() * Math.pow(62, 8))).padHead(8, '0')
+      let cnt = this.roadedHutIdCnt++;
+      let rnd = Math.floor(Math.random() * Math.pow(62, 8));
+      if (!road.hutId) road.hutId = cnt.encodeStr(C.base62, 8) + rnd.encodeStr().padHead(C.base62, 8);
       
       let hutId = road.hutId;
       let roadedHut = null;
@@ -385,7 +384,7 @@ global.rooms.hinterlands = async foundation => {
       if (!reply) throw Error(`Missing "reply"`);
       
       /// {ABOVE=
-      if (srcHut.isAfar()) srcHut.refreshDryTimeout();
+      if (srcHut && srcHut.isAfar()) srcHut.refreshDryTimeout();
       /// =ABOVE}
       
       let command = msg.command;
@@ -729,18 +728,11 @@ global.rooms.hinterlands = async foundation => {
     
     /// =BELOW}
     
-    getTellSender: function(command, fn) {
+    enableAction: function(command, fn) {
       
-      // TODO: Tricky to name a function that is called from both ABOVE
-      // and BELOW. The dual purpose is to give BELOW a Src for sending
-      // Tells, and at the same time to make ABOVE gain a RoadSrc for
-      // hearing these same Tells. What to name this function? And what
-      // about any BETWEEN huts, which are both ABOVE and BELOW? Surely
-      // they will not work... In their case the behaviour *should* be
-      // for the BELOW to gain a Src for sending Tells, every BETWEEN
-      // gains a RoadSrc which hears that Tell and immediately forwards
-      // it upwards, and finally the ABOVE acknowledges this multi-
-      // forwarded Tell, and calls `fn` appropriately.
+      // To be run both ABOVE and BELOW.
+      // The dual purpose is to give BELOW a Src for sending Tells, and
+      // attach a RoadSrc to ABOVE for hearing such Tells.
       
       /// {ABOVE=
       if (this.roadSrcs.has(command)) throw Error(`Hut ${this.uid} already has Tell Sender for "${command}"`);
@@ -751,16 +743,28 @@ global.rooms.hinterlands = async foundation => {
       
       /// {BELOW=
       
-      tmp.endWith(tmp.src.route(msg => this.tell({ command, ...msg })));
+      // Uncover `Src.prototype.send`, enabling sends for BELOW.
+      // Cover up again once this action is disabled
+      delete tmp.src.send;
       tmp.endWith(() => tmp.src.send = () => { throw Error(`Sent Tell from expired "${command}" Sender`); });
       
-      // The comment at the top of this function explains the situation
-      // with BETWEEN huts. In that case any Hut that is ABOVE and BELOW
-      // will use the ABOVE functionality to set `fn` to be called in
-      // the case that some lower Hut Tells us the command, *but* `fn`
-      // will have been set to simply forward the command to the next
-      // higher Hut, whether it is BETWEEN or ABOVE.
-      delete tmp.src.send;                        // Uncover `Src.prototype.send`; enables sends for BELOW
+      // Route any values received from `tmp.src` to become Tells
+      tmp.endWith(tmp.src.route(msg => this.tell({ command, ...msg })));
+      
+      // This is a bit hacky. The idea is that ABOVE BELOW and BETWEEN
+      // have unique functionality (BETWEEN isn't just the actions of
+      // both ABOVE and BELOW).
+      // - ABOVE: Create a RoadSrc for the command and route it to run
+      //      arbitrary behaviour (e.g. modifying Recs). Overall a BELOW
+      //      hut is able to perform arbitrary behaviour in a relatively
+      //      secure way.
+      // BELOW: Gain a Src which, when given values to "send", sends
+      //      those values are arguments for the command. Overall this
+      //      Src allows the BELOW to invoke arbitrary behaviour ABOVE
+      // BETWEEN: Do both, but the "arbitrary behaviour" is simply to
+      //      forward the requested arbitrary behaviour upwards! For
+      //      this reason BELOW code includes the following logic, which
+      //      is irrelevant unless the ABOVE code will also run!
       fn = msg => this.tell({ command, ...msg }); // If `fn` gets called (if we're ABOVE), simply forward!
       
       /// =BELOW} {ABOVE=
@@ -768,6 +772,22 @@ global.rooms.hinterlands = async foundation => {
       // Attach a RoadSrc so long as `tmp` lasts
       let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
       tmp.endWith(() => delete this.roadSrcs[command]);
+      
+      // Provide a convenience function to perform the action as if a
+      // `null` SrcHut enacted it. This style allows all changes to Rec
+      // data to be externalized nicely. When we simply say
+      // `rec.dltVal({ action: 'occurred' })` the reason for the action
+      // occurring becomes unrecordable, and state-tracing, for example
+      // reply-style persistence, goes out of sync. Prefer this instead:
+      //    |     
+      //    |     let ts = dep(hut.enableAction('pfx.action', () => {
+      //    |       rec.dltVal({ action: 'occurred' });
+      //    |     }));
+      //    |     dep(someReason.route(() => ts.act()));
+      //    |     
+      // This style successfully captures the reason behind the action,
+      // and makes the action generically accessible via "pfx.action".
+      tmp.act = msg => Hut.tell(null, this, null, null, { ...msg, command });
       
       // Route any sends from `hearSrc` so that they call `fn`. Note
       // that `U.safe` allows either a value or an Error to be returned

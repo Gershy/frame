@@ -22,6 +22,12 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
       /// {ABOVE=
       tmp.endWith(hut.roadSrc(this.rootRoadSrcName).route(async ({ road, srcHut, msg, reply }) => {
         
+        // TODO: If supporting outdated browsers, useragent agent
+        // detection at this point has an opportunity to send html which
+        // initiates not FoundationBrowser, but rather
+        // FoundationBrowserIE9 (which would need to come complete with
+        // a completely overhauleded clearing.js using only IE9 syntax)
+        
         // The AfarHut immediately has its state reset, requiring a
         // full sync to update. Then this full sync is consumed here,
         // to be included within the html response (the initial html

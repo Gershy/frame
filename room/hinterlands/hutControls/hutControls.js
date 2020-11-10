@@ -10,7 +10,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     // - Enumerate what habitats this app supports
     // - Provide a recForm mapping (mapping recType names to Forms)
     // - Initialize a root Rec for this app
-    // - TODO: persistent storage and loading previous states
+    // - Persistent storage and loading previous states
     // - Separate ABOVE and BELOW logic, while allowing ABOVE to follow
     //    BELOW state for each BELOW, and parameterizing ABOVE/BELOW
     //    logic appropriately
@@ -33,21 +33,28 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
     })}),
     
-    init: function(fullName, { debug=[], habitats=[], recForms={}, storageName=null, parFn=()=>{}, kidFn=()=>{} }) {
-      ({}).gain.call(this, { fullName, debug, habitats, recForms, storageName, parFn, kidFn });
+    init: function(fullName, { debug=[], habitats=[], recForms={}, storage=null, parFn=()=>{}, kidFn=()=>{} }) {
+      ({}).gain.call(this, { fullName, debug, habitats, recForms, storage, parFn, kidFn });
     },
     
     /// {ABOVE=
-    setupStorage: async function(hut) {
+    setupReplayStorage: async function(hut, { keep, bufferMs=10*1000 }) {
+      
+      console.log('Init replay storage', { keep, bufferMs });
       
       let { Hut } = await foundation.getRoom('hinterlands');
       let { Rec } = await foundation.getRoom('record');
       
       let tmp = U.logic.Tmp();
       
-      let storageKeep = foundation.seek('keep', 'adminFileSystem', 'mill', 'storage', 'hutControls', storageName);
-      let replayCount = (await storageKeep.getContent() || []).count();
+      let storageKeep = U.isForm(keep, String)
+        ? foundation.seek('keep', 'adminFileSystem', 'mill', 'storage', 'hutControls', keep)
+        : keep;
       
+      let replayCount = (await storageKeep.getContent() || []).count();
+      let getItemName = i => (i).encodeStr('0123456789abcdefghijklmnopqrstuvwxyz', 8);
+      
+      // Perform any existing replays to catch up to the latest state
       if (replayCount) {
         
         let huts = {};
@@ -63,6 +70,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
           // everything the KidHut will tell!
           kidHut.hear = () => {};
           
+          // Create Rec relating KidHut and ParHut (TODO: Necessary??)
           let kidHutType = hut.getType('lands.kidHut');
           Rec(kidHutType, `!kidHut@${uid}`, { par: hut, kid: kidHut });
           
@@ -70,39 +78,51 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
           
         };
         
+        console.log(`Catching up; replaying ${replayCount} files...`);
+        let t = foundation.getMs();
+        let replayCnt = 0;
         for (let i = 0; i < replayCount; i++) {
-          
-          let { uid, msg } = JSON.parse(await storageKeep.seek(`${i}`).getContent());
-          if (!huts.has(uid)) {
-            huts[uid] = makeHut(uid);
-            huts[uid].endWith(() => delete huts[uid]);
+          let replayLines = (await storageKeep.seek(getItemName(i)).getContent('utf8')).split('\n');
+          for (let replayJson of replayLines) {
+            let { uid, msg } = JSON.parse(replayJson);
+            if (uid && !huts.has(uid)) {
+              huts[uid] = makeHut(uid);
+              huts[uid].endWith(() => delete huts[uid]);
+            }
+            let kidHut = uid ? huts[uid] : null;
+            replayCnt++;
+            Hut.tell(kidHut, hut, null, null, msg);
           }
-          let kidHut = huts[uid];
-          Hut.tell(kidHut, hut, null, null, msg);
-          
         }
+        console.log(`Caught up via replays after ${((foundation.getMs() - t) / 1000).toFixed(2)}s`);
         
         for (let [ k, hut ] of huts) hut.end();
         
+      } else {
+        
+        console.log(`Fresh start; no replay required`);
+        
       }
       
-      let writePendingCount = 0;
       let writeIndex = replayCount;
-      let writeQueue = Promise.resolve();
+      let writeBuffer = null;
       let addItem = item => {
-        let ind = writeIndex++;
-        writePendingCount++;
-        writeQueue = writeQueue.then(async () => {
-          await storageKeep.seek(`${ind}`).setContent(JSON.stringify(item));
-          writePendingCount--;
-        });
+        if (!writeBuffer) {
+          writeBuffer = [];
+          setTimeout(async () => {
+            let content = writeBuffer.map(item => JSON.stringify(item)).join('\n');
+            writeBuffer = null;
+            await storageKeep.seek(getItemName(writeIndex++)).setContent(content);
+          }, bufferMs);
+        }
+        writeBuffer.push(item);
       };
       
-      let ignoreCommands = Set([ 'thunThunk' ]);
+      let ignoreCommands = Set([ 'thunThunk', 'syncInit' ]);
       hut.roadDbgEnabled = false;
       let hutHearOrig = hut.hear;
       hut.hear = (srcHut, road, reply, msg, ms) => {
-        if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut.uid, msg });
+        if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut ? srcHut.uid : null, msg });
         return hutHearOrig.call(hut, srcHut, road, reply, msg, ms);
       };
       tmp.endWith(() => delete hut.hear);
@@ -137,7 +157,12 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       });
       tmp.endWith(parScope);
       
-      if (this.storageName) tmp.endWith(await this.setupStorage(hut, 'block1'));
+      if (this.storage) {
+        tmp.endWith(await {
+          replay: () => this.setupReplayStorage(hut, this.storage),
+          postgres: () => { /* imagine the possibilities! */ }
+        }[this.storage.type]());
+      }
       
       /// =ABOVE} {BELOW=
       

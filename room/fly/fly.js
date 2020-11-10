@@ -320,7 +320,7 @@ U.buildRoom({
                 let randInt = Math.floor(Math.random() * Math.pow(62, 4));
                 lobby = flyHut.createRec('fly.lobby', [ fly ], {
                   // The id used to get into the lobby
-                  id: `${U.base62(randInt).padHead(4, '0')}`,
+                  id: randInt.encodeStr(C.base62, 4),
                   
                   // Level values
                   level: getLevelData('rustlingMeadow'),

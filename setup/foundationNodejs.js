@@ -63,9 +63,9 @@
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
-          let err = Error('');
+          // let err = Error('');
           return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
-            if (err0) rjc(err.update(err0.message));
+            if (err0) rsv(null); // rjc(err.update(err0.message));
             else      rsv(children);
           }));
         },
@@ -79,10 +79,11 @@
         },
         remFolder: async (cmps, ...opts) => {
           let err = Error('');
+          
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
             // Ignore ENOENT - it means the folder is already deleted!
-            if (err0 && err0.code !== 'ENOENT') rjc(err.update(err0.message));
-            else      rsv(null);
+            if (err0 && err0.code !== 'ENOENT') { err.reason = err0; err.message = err0.message; rjc(err); }
+            else                                { rsv(null); }
           }));
         },
         getLetter: async (cmps, ...opts) => {
@@ -196,6 +197,7 @@
       setContent: async function(content, ...opts) {
         
         let fsType = await this.getFsType();
+        
         if (content !== null) { // Insert new content
           
           if (fsType === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
@@ -219,18 +221,12 @@
           
           let items = await this.getContent();
           
-          if (items) {
+          // Set content of all items to `null`
+          if (items) await Promise.allArr(items.map(item => this.access(item).setContent(null)));
             
-            // Set content of all items to `null`
-            await Promise.allArr(items.map(item => this.access(item).setContent(null)));
-            
-          } else {
-            
-            // Without a single child
-            await Form.fs.remFolder(this.absPath);
-            await this.remNullAncestry();
-            
-          }
+          // Now there are no children; delete folder and ancestry
+          await Form.fs.remFolder(this.absPath);
+          await this.remNullAncestry();
           
         } else if (content === null && fsType === 'letter') {
           
@@ -257,8 +253,13 @@
           try {
             await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
           } catch (err) {
-            console.log('COULDNT CLEAR DIR', cmps);
-            console.log('BECAUSE:', await Form.fs.getFolder(cmps));
+            
+            // TODO: Delete try/catch if more confident than 10/11/2020
+            let folderContents = await U.safe(() => Form.fs.getFolder(cmps), `<nonexistent>`);
+            console.log('COULDNT CLEAR DIR', cmps, err.reason);
+            console.log('FOLDER LOOKS LIKE:', folderContents);
+            throw err;
+            
           }
           
         }
@@ -1012,7 +1013,12 @@
           
           // Write, `require`, and ensure file populates `global.rooms`
           await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
-          require(`../mill/compiled/${name}@${bearing}.js`);
+          try {
+            require(`../mill/compiled/${name}@${bearing}.js`);
+          } catch(err) {
+            err.message = `Error requiring ${name}.cmp (${err.message})`;
+            throw err;
+          }
           if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
           
           return global.rooms[name](this);

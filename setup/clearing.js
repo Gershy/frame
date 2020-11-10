@@ -4,6 +4,7 @@ Error.stackTraceLimit = 200;
 
 let C = global.C = {
   skip: undefined,
+  base62: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
   notImplemented: function() { throw Error(`Not implemented by ${U.getFormName(this)}`); },
   noFn: name => {
     let fn = function() { throw Error(`${U.getFormName(this)} does not implement "${name}"`); }
@@ -119,11 +120,40 @@ protoDef(String, 'count', function() { return this.length; });
 protoDef(String, 'indent', function(amt=2, char=' ', indentStr=char[0].repeat(amt)) {
   return this.split('\n').map(ln => `${indentStr}${ln}`).join('\n');
 });
+protoDef(String, 'encodeInt', function(chrs=C.base62) {
+  if (!chrs) throw Error(`No characters provided`);
+  let base = chrs.count(), map = chrs.split('').toObj((c, i) => [ c, i ]), sum = 0, len = this.count();
+  for (let i = 0; i < len; i++) sum += Math.pow(base, len - i - 1) * map[this[i]];
+  return sum;
+});
 
 protoDef(Number, 'char', function() { return String.fromCharCode(this); });
 protoDef(Number, 'each', function(fn) { for (let i = 0; i < this; i++) fn(i); });
 protoDef(Number, 'toArr', function(fn) { let arr = Array(this); for (let i = 0; i < this; i++) arr[i] = fn(i); return arr; });
 protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return p; });
+protoDef(Number, 'encodeStr', function(chrs=C.base62, len=null) {
+  
+  // Note that base-1 requires 0 to map to the empty string. This also
+  // means that, for `n >= 1`:
+  //      |       (n).encodeStr(singleChr)
+  // is always equivalent to
+  //      |       singleChr.repeat(n - 1)
+  
+  if (!chrs) throw Error(`No characters provided`);
+  
+  let n = this, base = chrs.count(), digits = 1, amt = 1, seq = [];
+  if (base === 1) { digits = n; n = 0; }
+  else            while (true) { let t = amt * base; if (t > n) break; digits++; amt = t; }
+  
+  for (let p = digits - 1; p >= 0; p--) {
+    let pow = Math.pow(base, p), div = Math.floor(n / pow);
+    seq.push(chrs[div]);
+    n -= pow * div;
+  }
+  
+  return len ? seq.join('').padHead(len, chrs[0]) : seq.join('');
+  
+});
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
@@ -217,19 +247,6 @@ let U = global.U = {
     return U.dbgCntMap[name] = (U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0);
   },
   int32: Math.pow(2, 32),
-  base62: n => {
-    let pow = 0, amt = 1, next;
-    while (true) { next = amt * 62; if (next > n) break; pow++; amt = next; }
-    let amts = [];
-    for (let p = pow; p >= 0; p--) {
-      let amt = Math.pow(62, p), div = Math.floor(n / amt);
-      n -= amt * div;
-      if (div < 10)       amts.push(`${div}`);
-      else if (div < 36)  amts.push(String.fromCharCode(97 + div - 10));
-      else                amts.push(String.fromCharCode(65 + div - 36));
-    }
-    return amts.join('');
-  },
   safe: (f1, f2=e=>e) => {
     if (!U.isForm(f2, Function)) f2 = Function.stub.bind(null, f2);
     try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }

@@ -207,7 +207,7 @@ Hut at the very bottom runs using a single Reality.
     queueTask: C.noFn('queueTask'),
     makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
-    getUid: function() { return U.base62(this.uidCnt++).padHead(8, '0'); },
+    getUid: function() { return (this.uidCnt++).encodeStr(C.base62, 8); },
     
     // Setup
     getRoom: async function(name, ...args) {
