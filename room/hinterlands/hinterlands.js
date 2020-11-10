@@ -114,7 +114,7 @@ global.rooms.hinterlands = async foundation => {
       
     },
     
-    init: function(foundation, uid, { parHut=null, heartMs=15 * 1000, term=null }={}) {
+    init: function(foundation, uid, { parHut=null, heartMs=15 * 1000 }={}) {
       
       this.uid = uid;
       this.parHut = parHut;
@@ -318,15 +318,17 @@ global.rooms.hinterlands = async foundation => {
         roadedHut.serverRoads = Map();
         roadedHut.endWith(() => roadedHut.serverRoads.each(road => road.end()));
         
+        // TODO: Is exclamation mark needed anymore? FollowRec has a
+        // better way of checking for sensitive Recs...
         // Do Record relation for this KidHut
         let kidHutType = (this.parHut || this).getType('lands.kidHut');
-        Rec(kidHutType, `!kidHut@${hutId}`, { par: this, kid: roadedHut.hut });
+        Rec(kidHutType, `!kidHut@${hutId}`, { par: this, kid: hut });
         
         if (this.roadDbgEnabled) console.log(`>>JOIN ${hutId}`);
         
         /// {BELOW=
         // TODO: This seems VERY out of place! Implement in Foundation??
-        this.aboveHut = roadedHut.hut;
+        this.aboveHut = hut;
         if (foundation.initData) Form.tell(this.aboveHut, this, road, null, foundation.initData);
         /// =BELOW}
         
@@ -421,6 +423,13 @@ global.rooms.hinterlands = async foundation => {
     },
     getType: function(...args) {
       if (this.isAfar()) throw Error(`${this.desc()} is an AfarHut; it cannot do getType`);
+      
+      // Always prefer a ParHut's types. This also helps manage any
+      // child Huts who happen to be running in the same process as
+      // their parent.
+      if (this.parHut) return this.parHut.getType(...args);
+      
+      // Return `RecTypes` functionality
       return forms.RecTypes.getType.call(this, ...args);
     },
     getNextRecUid: function() { return this.foundation.getUid(); },

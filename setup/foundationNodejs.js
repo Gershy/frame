@@ -203,39 +203,16 @@
           // Simply try to write
           try { return await Form.fs.setLetter(this.absPath, content, ...opts); } catch(err) {}
           
-          // Count how many folders are missing
+          // Count how many parent folders are missing
           let folderCmps = this.absPath.slice(0, -1);
-          let numMissingDirs = 0;
+          let numMissingDirs = 1;
           while (!await Form.fs.getMeta(folderCmps.slice(0, -numMissingDirs))) numMissingDirs++;
           
+          // Create `numMissingDirs` folders
+          for (let n = 0; n < numMissingDirs; n++)
+            await Form.fs.addFolder(this.absPath.slice(0, n - numMissingDirs));
           
-          // /path/to
-          // /path/to/my/file/file.txt
-          // /path/to/my/file
-          //          my/file (numMissingDirs = 2)
-          // folderCmps.slice(0, -1)
-          // folderCmps.slice(0, 0)
-          
-          let onnFolderCmps = folderCmps.slice(0, -numMissingDirs);
-          let offFolderCmps = folderCmps.slice(-numMissingDirs);
-          for (let n = 1; n <= numMissingDirs; n++)
-            await Form.fs.addFolder([ ...onnFolderCmps, ...offFolderCmps.slice(0, n) ]);
-          
-          // // The simple write attempt failed; try creating all ancestor
-          // // dirs
-          // for (let depth = 1; depth < this.absPath.length; depth++) {
-          //   let cmps = this.absPath.slice(0, depth);
-          //   let meta = await Form.fs.getMeta(cmps);
-          //   
-          //   // If this ancestor is non-existent, create it
-          //   if (!meta) await Form.fs.addFolder(cmps);
-          //   
-          //   // If this ancestor exists but isn't a directory, throw error
-          //   else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
-          // }
-          // 
-          
-          // Write content into file
+          // Write content into file - more likely to work!
           await Form.fs.setLetter(this.absPath, content, ...opts);
           
         } else if (content === null && fsType === 'folder') {
@@ -277,7 +254,12 @@
           if (children === null) continue; // If `children` is `null` the ancestor is already deleted
           if (children.length) break; // An ancestor is populated - stop deleting!
           
-          await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
+          try {
+            await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
+          } catch (err) {
+            console.log('COULDNT CLEAR DIR', cmps);
+            console.log('BECAUSE:', await Form.fs.getFolder(cmps));
+          }
           
         }
         
@@ -467,10 +449,7 @@
       
       this.canSettlePrm = (async () => {
         
-        await Promise.allArr([
-          this.fsKeep.seek([ 'mill', 'storage' ]).setContent(null),
-          this.fsKeep.seek([ 'mill', 'room' ]).setContent(null)
-        ]);
+        await this.fsKeep.seek([ 'mill', 'compiled' ]).setContent(null);
         
         let tests = [
           
