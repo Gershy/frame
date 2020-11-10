@@ -13,7 +13,6 @@ global.rooms.write = async foundation => {
   
   return HutControls('wrt.write', {
     
-    debug: [ 'transportRaw', 'httpRaw', 'hinterlands', 'real' ],
     habitats: [ HtmlBrowserHabitat() ],
     recForms: {
       'wrt.room': U.form({ name: 'RoomRec', has: { Rec }, props: (forms, Form) => ({

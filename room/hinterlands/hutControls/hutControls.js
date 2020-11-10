@@ -4,6 +4,17 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
   
   return U.form({ name: 'HutControls', props: (forms, Form) => ({
     
+    // HutControls consolidates a bunch of boilerplate configuration in
+    // one place. The main functions are to:
+    // - Define debug options
+    // - Enumerate what habitats this app supports
+    // - Provide a recForm mapping (mapping recType names to Forms)
+    // - Initialize a root Rec for this app
+    // - TODO: persistent storage and loading previous states
+    // - Separate ABOVE and BELOW logic, while allowing ABOVE to follow
+    //    BELOW state for each BELOW, and parameterizing ABOVE/BELOW
+    //    logic appropriately
+    
     $FollowRecScope: U.form({ name: 'FollowRecScope', has: { RecScope }, props: (forms, Form) => ({
       init: function(hut, ...args) {
         
@@ -22,19 +33,34 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
     })}),
     
-    init: function(fullName, { debug, habitats=[], recForms={}, parFn=()=>{}, kidFn=()=>{} }) {
+    init: function(fullName, { debug=[], habitats=[], recForms={}, parFn=()=>{}, kidFn=()=>{} }) {
       ({}).gain.call(this, { fullName, debug, habitats, recForms, parFn, kidFn });
     },
     open: async function(hut) {
       
       let tmp = U.logic.Tmp();
       
-      hut.roadDbgEnabled = this.debug.has('hinterlands');
+      hut.roadDbgEnabled = this.debug.has('road');
+      
+      /// {ABOVE=
+      
+      // Setup storage
+      let storageKeep = foundation.seek('keep', 'adminFileSystem', 'mill', 'storage', 'hutControls', 'block1');
+      
+      hut.roadDbgEnabled = false;
+      let hutHearOrig = hut.hear;
+      hut.hear = (srcHut, road, reply, msg, ms) => {
+        
+        console.log('HEAR: from', srcHut.desc(), msg);
+        return hutHearOrig.call(hut, srcHut, road, reply, msg, ms);
+        
+      };
+      
+      /// =ABOVE}
+      
       
       let name = this.fullName.split('.')[1];
       for (let h of this.habitats) tmp.endWith(h.prepare(name, hut));
-      //let habitats = this.habitats.map(HabitatForm => HabitatForm(name, hut));
-      //tmp.endWith(() => habitats.each(h => h.end()));
       
       hut.addTypeClsFns(this.recForms.map(RecForm => () => RecForm));
       tmp.endWith(()=> hut.remTypeClsFns(this.recForms.toArr((v, k) => k)));

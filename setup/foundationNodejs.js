@@ -125,7 +125,6 @@
       // define parent access. The ".." sequence is prevented, since "."
       // characters cannot occur side-by-side.
       $secureFpReg: /^[.]?([a-zA-Z0-9@][.]?)*$/,
-      
       $extToContentType: {
         json: 'text/json',
         html: 'text/html',
@@ -201,16 +200,40 @@
           
           if (fsType === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
           
-          // Create all ancestor dirs
-          for (let depth = 1; depth < this.absPath.length; depth++) {
-            let cmps = this.absPath.slice(0, depth);
-            let meta = await Form.fs.getMeta(cmps);
-            
-            // If this ancestor is non-existent, create it
-            // If this ancestor exists but isn't a directory, throw error
-            if (!meta) await Form.fs.addFolder(cmps);
-            else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
-          }
+          // Simply try to write
+          try { return await Form.fs.setLetter(this.absPath, content, ...opts); } catch(err) {}
+          
+          // Count how many folders are missing
+          let folderCmps = this.absPath.slice(0, -1);
+          let numMissingDirs = 0;
+          while (!await Form.fs.getMeta(folderCmps.slice(0, -numMissingDirs))) numMissingDirs++;
+          
+          
+          // /path/to
+          // /path/to/my/file/file.txt
+          // /path/to/my/file
+          //          my/file (numMissingDirs = 2)
+          // folderCmps.slice(0, -1)
+          // folderCmps.slice(0, 0)
+          
+          let onnFolderCmps = folderCmps.slice(0, -numMissingDirs);
+          let offFolderCmps = folderCmps.slice(-numMissingDirs);
+          for (let n = 1; n <= numMissingDirs; n++)
+            await Form.fs.addFolder([ ...onnFolderCmps, ...offFolderCmps.slice(0, n) ]);
+          
+          // // The simple write attempt failed; try creating all ancestor
+          // // dirs
+          // for (let depth = 1; depth < this.absPath.length; depth++) {
+          //   let cmps = this.absPath.slice(0, depth);
+          //   let meta = await Form.fs.getMeta(cmps);
+          //   
+          //   // If this ancestor is non-existent, create it
+          //   if (!meta) await Form.fs.addFolder(cmps);
+          //   
+          //   // If this ancestor exists but isn't a directory, throw error
+          //   else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
+          // }
+          // 
           
           // Write content into file
           await Form.fs.setLetter(this.absPath, content, ...opts);
