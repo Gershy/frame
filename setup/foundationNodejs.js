@@ -138,13 +138,13 @@
       },
       
       init: function({ absPath=Form.fs.hutRootCmps, secure=true, blacklist=null }) {
-        if (absPath.find(v => !U.isForm(v, String)).found) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
+        if (absPath.find(v => !U.isForm(v, String)).found) throw Error(`Invalid absPath for ${U.getFormName(this)}`);
         this.absPath = absPath;
         this.secure = secure;
         if (blacklist) this.blacklist = blacklist;
       },
       setContentType: function(contentType) { this.contentType = contentType; return this; },
-      desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
+      desc: function() { return `${U.getFormName(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Form.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
         if (U.isForm(dirNames, String)) dirNames = [ dirNames ];
@@ -453,7 +453,7 @@
           
           async m => { // Number.prototype.toArr
             let arr = (10).toArr(v => v);
-            if (!U.isForm(arr, Array)) throw Error(`Expected Array; got ${U.nameOf(arr)}`);
+            if (!U.isForm(arr, Array)) throw Error(`Expected Array; got ${U.getFormName(arr)}`);
             if (arr.count() !== 10) throw Error(`Expected exactly 10 items; got ${arr.count()}`);
             
             for (let i = 0; i < arr.count(); i++) {
@@ -1034,7 +1034,7 @@
       
       // Compile file content; filter based on variant tags
       if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
-      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.nameOf(srcLines)}`);
+      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.getFormName(srcLines)}`);
       let variantDef = this.variantDefs[variantName];
       
       let blocks = [];
@@ -1337,7 +1337,7 @@
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
           body = body.length ? JSON.parse(body) : {};
-          if (!U.isForm(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
+          if (!U.isForm(body, Object)) throw Error(`Http body should be Object; got ${U.getFormName(body)}`);
         } catch(err) { return res.writeHead(400).end(); }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);

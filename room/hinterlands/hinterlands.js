@@ -42,7 +42,10 @@ global.rooms.hinterlands = async foundation => {
       // Road to communicate)
       
       if (msg === C.skip) return;
-      if (U.hasForm(msg, Error)) msg = { command: 'error', type: 'application', msg: msg.message };
+      if (U.hasForm(msg, Error)) {
+        console.log('Error reply:', foundation.formatError(msg));
+        msg = { command: 'error', type: 'application', msg: msg.message };
+      }
       
       if (!trgHut) throw Error('Must supply TrgHut');
       if (!srcHut && road) throw Error(`Can't omit SrcHut and provide Road`);
@@ -426,7 +429,7 @@ global.rooms.hinterlands = async foundation => {
       return forms.RecTypes.getRecCls.call(this, name, mems, val);
     },
     trackRec: function(rec) {
-      if (!U.hasForm(rec, Rec)) throw Error(`Can't track; ${U.nameOf(rec)} isn't a Rec!`);
+      if (!U.hasForm(rec, Rec)) throw Error(`Can't track; ${U.getFormName(rec)} isn't a Rec!`);
       this.allRecs.set(rec.uid, rec);
       rec.endWith(() => this.allRecs.rem(rec.uid));
       return rec;
@@ -435,7 +438,8 @@ global.rooms.hinterlands = async foundation => {
       if (this.isAfar()) {
         
         // Clients follow any Recs they create
-        return this.followRec(this.parHut.createRec(...args));
+        let rec = this.parHut.createRec(...args);
+        return (this.followRec(rec), rec);
         
       } else {
         
@@ -501,7 +505,7 @@ global.rooms.hinterlands = async foundation => {
               mems.push(this.allRecs.get(uid));
             }
           } else {
-            throw Error(`Invalid type for "mems": ${U.nameOf(addRec.mems)}`);
+            throw Error(`Invalid type for "mems": ${U.getFormName(addRec.mems)}`);
           }
           
           if (!mems) { waiting.push(addRec); continue; } // Reattempt soon

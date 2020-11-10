@@ -327,7 +327,7 @@
                 let { ext, colour } = decals[k];
                 domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
               } else {
-                if (!U.isForm(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.nameOf(decals[k])}`);
+                if (!U.isForm(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.getFormName(decals[k])}`);
                 if (!complexDecals.has(k)) complexDecals[k] = {};
                 complexDecals[k].gain(decals[k]);
               }
@@ -378,7 +378,7 @@
           },
           render: (real, domNode) => {
             
-            if (!U.hasForm(real, Real)) throw Error(`Invalid type: ${U.nameOf(real)}`);
+            if (!U.hasForm(real, Real)) throw Error(`Invalid type: ${U.getFormName(real)}`);
             
             // Reset styles (and text)
             let childNodes = [ ...domNode.childNodes ];

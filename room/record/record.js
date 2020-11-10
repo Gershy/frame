@@ -149,7 +149,7 @@ global.rooms.record = async foundation => {
         
       }
       
-      if (!U.isForm(term, String)) throw Error(`Invalid "term" of type ${U.nameOf(term)}`);
+      if (!U.isForm(term, String)) throw Error(`Invalid "term" of type ${U.getFormName(term)}`);
       
       let key = `${recType.name}/${term}`;
       if (!this.relSrcs.has(key)) {

@@ -63,7 +63,7 @@ Hut at the very bottom runs using a single Reality.
     getPlatform: C.noFn('getPlatform'),
     
     access: function(arg) {
-      if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.nameOf(arg)}`);
+      if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.getFormName(arg)}`);
       if (arg === 'hut') return this.getRootHut();
       if (arg === 'keep') return this.getRootKeep();
       if (arg === 'real') return this.getRootReal();
@@ -222,12 +222,12 @@ Hut at the very bottom runs using a single Reality.
     settleRoom: async function(name, ...args) {
       await this.ready();
       
-      // These do not parallelize (TODO: investigate why??)
+      // These do not parallelize (TODO: why??)
       let room = await this.getRoom(name, 'above');
       let hut = await this.getRootHut({ heartMs: 1000 * 40 });
       
       this.seek('keep', 'static').setHut(hut);
-      return await room.open(hut);
+      return room.open(hut);
     },
     installRoom: C.noFn('installRoom'),
     parseUrl: function(url) {
@@ -286,7 +286,7 @@ Hut at the very bottom runs using a single Reality.
         real = Real({ name: real, ...params });
       }
       
-      if (!U.isForm(real, Real)) throw Error(`Invalid real param; got ${U.nameOf(real)}`);
+      if (!U.isForm(real, Real)) throw Error(`Invalid real param; got ${U.getFormName(real)}`);
       if (real.parent) throw Error(`Real already has a parent`);
       if (real.tech) throw Error(`Real already has tech`);
       

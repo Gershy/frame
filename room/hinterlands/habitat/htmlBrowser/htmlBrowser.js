@@ -1,10 +1,26 @@
-global.rooms['hinterlands.htmlApp'] = async foundation => {
+global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
   
-  let HtmlApp = U.form({ name: 'HtmlApp', props: (forms, Form) => ({
-    init: function({ name }) { this.name = name; },
-    decorateApp: function(parHut) {
+  let { Tmp } = U.logic;
+  
+  return U.form({ name: 'HtmlBrowserHabitat', has: { Tmp }, props: (forms, Form) => ({
+    
+    // TODO: All road names should be overridable - in fact if there are
+    // multiple HtmlBrowserHabitat instances, no two should share a road
+    // name. This would be easier by simply providing a unique prefix
+    // for all road names, but "syncInit" won't work if prefixed. Could
+    // be the best solution requires changing how "syncInit" functions
+    // in hinterlands
+    
+    init: function({ rootRoadSrcName='syncInit' /*, prefix='html' */ }={}) {
+      forms.Tmp.init.call(this);
+      this.rootRoadSrcName = rootRoadSrcName;
+    },
+    prepare: function(name, hut) {
+      
+      let tmp = Tmp();
+      
       /// {ABOVE=
-      parHut.roadSrc('syncInit').route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(this.rootRoadSrcName).route(async ({ road, srcHut, msg, reply }) => {
         
         // The AfarHut immediately has its state reset, requiring a
         // full sync to update. Then this full sync is consumed here,
@@ -22,7 +38,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           <!doctype html>
           <html>
             <head>
-              <title>${this.name.upper()}</title>
+              <title>${name.upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
@@ -63,7 +79,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
                   aboveMsAtResponseTime: ${foundation.getMs()},
                   initData: ${JSON.stringify(initSyncTell)}
                 });
-                foundation.settleRoom('${this.name}', 'below').catch(err => {
+                foundation.settleRoom('${name}', 'below').catch(err => {
                   console.log('FATAL ERROR:', foundation.formatError(err));
                   foundation.halt();
                 });
@@ -74,16 +90,18 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           </html>
         `));
         
-      });
-      parHut.roadSrc('html.room').route(async ({ road, srcHut, msg, reply }) => {
+      }));
+      tmp.endWith(hut.roadSrc('html.room').route(async ({ road, srcHut, msg, reply }) => {
         
         let roomPcs = msg.room.split('.');
         let pcs = (msg.type === 'room')
           ? [ 'room', ...roomPcs, `${roomPcs.slice(-1)[0]}.js` ]
           : [ 'setup', `${msg.room}.js` ];
         
-        let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
-        if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}')`);
+        let srcKeep = foundation.seek('keep', 'fileSystem', pcs);
+        let srcContent = await srcKeep.getContent('utf8');
+        
+        if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}');`);
         let { lines, offsets } = foundation.compileContent('below', srcContent);
         
         reply([
@@ -91,13 +109,13 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           `global.roomDebug['${msg.room}'] = ${JSON.stringify({ offsets })};`
         ].join('\n'));
         
-      });
-      parHut.roadSrc('html.icon').route(async ({ road, srcHut, msg, reply }) => {
+      }));
+      tmp.endWith(hut.roadSrc('html.icon').route(async ({ road, srcHut, msg, reply }) => {
         
         reply(foundation.seek('keep', 'fileSystem', 'setup', 'favicon.ico'));
         
-      });
-      parHut.roadSrc('html.css').route(async ({ road, srcHut, msg, reply }) => {
+      }));
+      tmp.endWith(hut.roadSrc('html.css').route(async ({ road, srcHut, msg, reply }) => {
         
         reply(U.multilineString(`
           @keyframes smoothFocus {
@@ -121,8 +139,8 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           }
         `));
         
-      });
-      parHut.roadSrc('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
+      }));
+      tmp.endWith(hut.roadSrc('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
         
         // Only for use with auto-rendering!
         reply(U.multilineString(`
@@ -193,9 +211,8 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           .rec > .control > .add:hover { background-color: rgba(0, 0, 0, 0.3); }
         `));
         
-      });
-      
-      parHut.roadSrc('html.multi').route(async ({ road, srcHut, msg, reply }) => {
+      }));
+      tmp.endWith(hut.roadSrc('html.multi').route(async ({ road, srcHut, msg, reply }) => {
         
         let { num='4', w='400', h='400', textSize='100%' } = msg;
         
@@ -216,7 +233,7 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           <!doctype html>
           <html>
             <head>
-              <title>${this.name.upper()}</title>
+              <title>${name.upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
               <style type="text/css">
@@ -229,10 +246,13 @@ global.rooms['hinterlands.htmlApp'] = async foundation => {
           </html>
         `));
         
-      });
+      }));
       /// =ABOVE}
+      
+      return tmp;
+      
     }
+    
   })});
-  return { HtmlApp };
   
 };
