@@ -6,8 +6,9 @@ global.rooms.install = async foundation => {
   // let TerminalHabitat = await foundation.getRoom('hinterlands.habitat.terminal'); // Interact with app purely via command line (and maybe even a separate graphical ui experience like 'window' room
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
+  let { debug=[] } = foundation.origArgs;
   return HutControls('stl.install', {
-    debug: [ 'road' ],
+    debug,
     habitats: [ HtmlBrowserHabitat() ],
     parFn: (hut, install, real, dep) => {
       
