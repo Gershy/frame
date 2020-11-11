@@ -40,7 +40,7 @@ global.rooms.install = async foundation => {
         let { hosting, ssl } = foundation.origArgs;
         let [ host, port ] = hosting.split(':');
         hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-        installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}?command=stl.run&reply=2` });
+        installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}/stl.run?reply=2` });
       });
       
       /// =ABOVE}
@@ -52,14 +52,14 @@ global.rooms.install = async foundation => {
         layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],
         innerLayout: Axis1DLayout({ axis: 'y', dir: '+', cuts: 'focus' })
       }));
-      stlReal.addReal('stl.title', { layouts: [ TextLayout({ gap: '4px', size: '165%', text: 'Hut Installation' }) ] });
-      stlReal.addReal('stl.step1', { layouts: [ TextLayout({ gap: '2px', size: '130%', text: '1. Install Nodejs (13.0.0 and up)' }) ] });
-      stlReal.addReal('stl.step2', { layouts: [ TextLayout({ gap: '6px', size: '130%', text: '2. Run this in your terminal:' }) ] });
+      stlReal.addReal('stl.title', { layouts: [ TextLayout({ gap: '4px', size: 'calc(120% + 1.8vw)',    text: 'Hut Installation' }) ] });
+      stlReal.addReal('stl.step1', { layouts: [ TextLayout({ gap: '2px', size: 'calc(90% + 1.1vw)',  text: '1. Install Nodejs (13.0.0 and up)' }) ] });
+      stlReal.addReal('stl.step2', { layouts: [ TextLayout({ gap: '6px', size: 'calc(90% + 1.1vw)',  text: '2. Run this in your terminal:' }) ] });
       let textReal = stlReal.addReal('stl.text', {
-        layouts: [ TextLayout({ text: '...', gap: '15px', size: '100%' }) ],
+        layouts: [ TextLayout({ text: '...', gap: 'calc(7px + 1vw)', size: 'calc(70% + 0.4vw)' }) ],
         decals: { border: { ext: '5px', colour: 'rgba(0, 0, 0, 0.3)' } }
       });
-      stlReal.addReal('stl.reminder', { layouts: [ TextLayout({ gap: '6px', size: '90%', text: 'Always verify wild code before running!' }) ] });
+      stlReal.addReal('stl.reminder', { layouts: [ TextLayout({ gap: '6px', size: 'calc(70% + 0.3vw)', text: 'Always verify wild code before running!' }) ] });
       
       dep(install.valSrc.route(() => textReal.setText(`node -e "h='${install.getVal('httpTrg')}';require('http').get(h,(r,d=[])=>(r.on('data',c=>d.push(c)),r.on('end',()=>eval(d.join(''))(h))))"`)));
       
