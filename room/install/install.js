@@ -7,6 +7,7 @@ global.rooms.install = async foundation => {
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
   return HutControls('stl.install', {
+    debug: [ 'road' ],
     habitats: [ HtmlBrowserHabitat() ],
     parFn: (hut, install, real, dep) => {
       
