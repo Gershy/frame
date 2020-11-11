@@ -38,7 +38,6 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         srcHut.resetSyncState();
         let initSyncTell = srcHut.consumePendingSync();
         
-        
         let { textSize='100%' } = msg;
         
         reply(U.multilineString(`
