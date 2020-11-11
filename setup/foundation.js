@@ -329,7 +329,6 @@ Hut at the very bottom runs using a single Reality.
       });
     }
   })});
-  
   let Layout = U.form({ name: 'Layout', has: {}, props: (forms, Form) => ({
     init: C.noFn('init'),
     getChildOuterLayout: function(params) { return null; }

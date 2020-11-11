@@ -543,7 +543,7 @@ global.rooms.hinterlands = async foundation => {
         if (!U.isForm(val, Object) || !U.isForm(rec.getVal(), Object)) {
           rec.setVal(val);
         } else {
-          rec.dltVal(val);
+          rec.objVal(val);
         }
       }
       
@@ -713,6 +713,22 @@ global.rooms.hinterlands = async foundation => {
       this.dryHeartTimeout = setTimeout(() => this.end(), this.heartMs); 
     },
     
+    followRec: function(rec) {
+      
+      if (rec.off()) return; // Always ignore any Recs which may be off
+      
+      let tmp = Tmp();
+      
+      for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, +1);
+      tmp.endWith(() => { for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, -1); });
+      
+      let route = rec.route(() => tmp.end());
+      tmp.endWith(route);
+      
+      return tmp;
+      
+    },
+    
     /// =ABOVE} {BELOW=
     
     tell: function(msg) {
@@ -732,104 +748,80 @@ global.rooms.hinterlands = async foundation => {
       
       // To be run both ABOVE and BELOW.
       // The dual purpose is to give BELOW a Src for sending Tells, and
-      // attach a RoadSrc to ABOVE for hearing such Tells.
+      // attach a RoadSrc to ABOVE for hearing such Tells. Note that for
+      // a BETWEEN hut a RoadSrc is established and routed, but that
+      // route always leads to a command proxying the action upwards.
+      // This means that performing an action on a BETWEEN hut overall
+      // performs the action ABOVE.
       
       /// {ABOVE=
       if (this.roadSrcs.has(command)) throw Error(`Hut ${this.uid} already has Tell Sender for "${command}"`);
       /// =ABOVE}
       
-      let tmp = Tmp(); tmp.src = Src();
-      tmp.src.send = () => { throw Error(`TellSender is not to be used at this bearing`); };
+      let tmp = Tmp();
+      let [ srcHut, trgHut ] = [ null, this ];
       
       /// {BELOW=
       
-      // Uncover `Src.prototype.send`, enabling sends for BELOW.
-      // Cover up again once this action is disabled
-      delete tmp.src.send;
-      tmp.endWith(() => tmp.src.send = () => { throw Error(`Sent Tell from expired "${command}" Sender`); });
+      tmp.act = msg => Hut.tell(this, this.aboveHut, null, null, { command, ...msg });
+      tmp.endWith(() => tmp.act = () => { throw Error(`Action unavailable`); });
       
-      // Route any values received from `tmp.src` to become Tells
-      tmp.endWith(tmp.src.route(msg => this.tell({ command, ...msg })));
-      
-      // This is a bit hacky. The idea is that ABOVE BELOW and BETWEEN
-      // have unique functionality (BETWEEN isn't just the actions of
-      // both ABOVE and BELOW).
-      // - ABOVE: Create a RoadSrc for the command and route it to run
-      //      arbitrary behaviour (e.g. modifying Recs). Overall a BELOW
-      //      hut is able to perform arbitrary behaviour in a relatively
-      //      secure way.
-      // BELOW: Gain a Src which, when given values to "send", sends
-      //      those values are arguments for the command. Overall this
-      //      Src allows the BELOW to invoke arbitrary behaviour ABOVE
-      // BETWEEN: Do both, but the "arbitrary behaviour" is simply to
-      //      forward the requested arbitrary behaviour upwards! For
-      //      this reason BELOW code includes the following logic, which
-      //      is irrelevant unless the ABOVE code will also run!
-      fn = msg => this.tell({ command, ...msg }); // If `fn` gets called (if we're ABOVE), simply forward!
+      // This is a bit of a hack to cover the BETWEEN case. ABOVE will
+      // set `tmp.act` to Tell `command` from `srcHut` -> `trgHut`, and
+      // route any such `command` to `fn`. If we are *not* BELOW, the
+      // following lines don't execute, with the result being:
+      // 1. The Tell is from a null SrcHut to `this` Hut, indicating
+      //    that the action was self-initiated (e.g. `setTimeout`).
+      // 2. `fn` is the direct logic itself (to be called as a direct
+      //    result of the self-initiated action)
+      // If we *are* BETWEEN, both BELOW and ABOVE will execute. Before
+      // ABOVE code, the following lines execute. The purpose is to
+      // differentiate the result from the ABOVE-only case:
+      // 1. The Tell is from `this` Hut to our AboveHut. There will
+      //    certainly be an AboveHut, because we are only BETWEEN.
+      // 2. `fn` is not direct logic, but rather a proxy to perform the
+      //    action on the AboveHut! If the action was self-initiated
+      //    (which is odd for a BETWEEN Hut, but I don't want to rule
+      //    out the possibility) then `tmp.act(...)` performs `Hut.tell`
+      //    in an effort to run the action ABOVE. If the action is
+      //    initiated from BELOW then the RoadSrc will receive the
+      //    request from BELOW, and call `fn`, which calls `tmp.act`.
+      //    Due to the nature of `tmp.act`, in the case also the action
+      //    will be forwarded to be performed ABOVE!
+      fn = msg => tmp.act(msg);
+      [ srcHut, trgHut ] = [ this, this.aboveHut ];
       
       /// =BELOW} {ABOVE=
-      
-      // Attach a RoadSrc so long as `tmp` lasts
-      let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
-      tmp.endWith(() => delete this.roadSrcs[command]);
       
       // Provide a convenience function to perform the action as if a
       // `null` SrcHut enacted it. This style allows all changes to Rec
       // data to be externalized nicely. When we simply say
-      // `rec.dltVal({ action: 'occurred' })` the reason for the action
+      // `rec.objVal({ action: 'occurred' })` the reason for the action
       // occurring becomes unrecordable, and state-tracing, for example
       // reply-style persistence, goes out of sync. Prefer this instead:
       //    |     
       //    |     let ts = dep(hut.enableAction('pfx.action', () => {
-      //    |       rec.dltVal({ action: 'occurred' });
+      //    |       rec.objVal({ action: 'occurred' });
       //    |     }));
       //    |     dep(someReason.route(() => ts.act()));
       //    |     
       // This style successfully captures the reason behind the action,
       // and makes the action generically accessible via "pfx.action".
-      tmp.act = msg => Hut.tell(null, this, null, null, { ...msg, command });
+      tmp.act = msg => Hut.tell(srcHut, trgHut, null, null, { ...msg, command });
       
-      // Route any sends from `hearSrc` so that they call `fn`. Note
+      // Route any sends from a RoadSrc so that they call `fn`. Note
       // that `U.safe` allows either a value or an Error to be returned
       // (and makes it so that `return Error(...)` behaves the same as
       // `throw Error` within `fn`). Either the result or Error will be
       // used as a reply. Note that if the result is `C.skip`, `reply`
       // will ensure that no value ever gets sent.
-      tmp.endWith(hearSrc.route(({ msg, reply }) => reply(U.safe(() => fn(msg)))));
+      let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
+      tmp.endWith(() => delete this.roadSrcs[command]);
+      tmp.endWith(hearSrc.route( ({ msg, reply }) => reply(U.safe(() => fn(msg))) ));
       
       /// =ABOVE} 
       
       return tmp;
-      
-    },
-    followRec: function(rec) {
-      
-      if (rec.off()) return; // Always ignore any Recs which may be off
-      
-      /// {ABOVE=
-      
-      let tmp = Tmp();
-      
-      for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, +1);
-      tmp.endWith(() => {
-        for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, -1);
-      });
-      
-      let route = rec.route(() => tmp.end());
-      tmp.endWith(route);
-      
-      return tmp;
-      
-      /// =ABOVE} {BELOW=
-      
-      // Note that if Below manages to call `followRec` on some `rec`
-      // instance, it is obviously already following that Rec. The
-      // purpose of even being able to call `followRec` from Below is to
-      // reduce the need to use {BEARING= =BEARING} wrappers in
-      // implementing code!
-      return Tmp.stub;
-      
-      /// =BELOW}
       
     },
     

@@ -185,7 +185,7 @@ global.rooms.record = async foundation => {
     
     setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
-    dltVal: function(delta=null) {
+    objVal: function(delta=null) {
       
       // Note that when `someRec.valSrc.route(val => { ... })` sends
       // there are two values available: first, `val` represents a

@@ -20,6 +20,9 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
       let tmp = Tmp();
       
       /// {ABOVE=
+      let urlFn = (srcHut, p={}, { reply='1' }=p) => {
+        return '?' + ({ hutId: srcHut.uid, ...p, reply }).toArr((v, k) => `${k}=${v}`).join('&');
+      };
       tmp.endWith(hut.roadSrc(this.rootRoadSrcName).route(async ({ road, srcHut, msg, reply }) => {
         
         // TODO: If supporting outdated browsers, useragent agent
@@ -35,9 +38,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         srcHut.resetSyncState();
         let initSyncTell = srcHut.consumePendingSync();
         
-        let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
-          return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
-        };
+        
         let { textSize='100%' } = msg;
         
         reply(U.multilineString(`
@@ -46,8 +47,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
             <head>
               <title>${name.upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
-              <link rel="stylesheet" type="text/css" href="${urlFn({ command: 'html.css' })}" />
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
               <style type="text/css">
                 body { position: relative; opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
                 body::before {
@@ -61,20 +61,22 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
                 body.loaded { opacity: 1; }
                 body.focus::before { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 1); }
               </style>
-              <script type="text/javascript">window.global = window;</script>
-              <script type="text/javascript">global.roomDebug = {};</script>
-              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
-              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
-              <script type="text/javascript" src="${urlFn({ command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
+              <link rel="stylesheet" type="text/css" href="${urlFn(srcHut, { command: 'html.css' })}" />
+              <script type="text/javascript">window.global = window; global.roomDebug = {};</script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
               <script type="text/javascript">
                 global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
                 
                 global.domAvailable.then(() => {
-                  window.addEventListener('load', () => document.body.classList.add('loaded'));
-                  window.addEventListener('beforeunload', () => document.body.classList.remove('loaded'));
-                  window.addEventListener('focus', () => document.body.classList.add('focus'));
-                  window.addEventListener('blur', () => document.body.classList.remove('focus'));
-                  document.body.focus();
+                  let body = document.body;
+                  body.classList.add('focus');
+                  window.addEventListener('load', () => body.classList.add('loaded'));
+                  window.addEventListener('beforeunload', () => body.classList.remove('loaded'));
+                  window.addEventListener('focus', evt => body.classList.add('focus'));
+                  window.addEventListener('blur', evt => body.classList.remove('focus'));
+                  window.focus();
                 });
                 
                 let foundation = global.foundation = U.setup.FoundationBrowser({
@@ -231,22 +233,19 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
           }).toArr((v, k) => `${k}="${v}"`).join(' ');
           return `<iframe ${paramStr}></iframe>`
         }
-        let urlFn = (p={}, params={ hutId: srcHut.uid, ...p, reply: '1' }) => {
-          return '?' + params.toArr((v, k) => `${k}=${v}`).join('&');
-        };
-        
         reply(U.multilineString(`
           <!doctype html>
           <html>
             <head>
               <title>${name.upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <link rel="shortcut icon" type="image/x-icon" href="${urlFn({ command: 'html.icon' })}" />
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
               <style type="text/css">
                 body, html { padding: 0; margin: 0; }
                 body { margin: 2px; text-align: center; }
                 iframe { display: inline-block; margin: 1px; vertical-align: top; border: none; }
               </style>
+              <script type="text/javascript">window.addEventListener('load', () => document.querySelector('iframe').focus())</script>
             </head>
             <body>${parseInt(num, 10).toArr(genIframe).join('')}</body>
           </html>

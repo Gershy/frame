@@ -155,7 +155,7 @@ U.buildRoom({
           else                              throw Error(`${U.nameOf(this)} has no v prop "${p}"`);
         } else {                  // Set
           if (U.isType(v, Function)) v = v(this.val.has(p) ? this.val[p] : this[p]);
-          if (this.val.has(p))              this.dltVal({ [p]: v });
+          if (this.val.has(p))              this.objVal({ [p]: v });
           else if (({}).has.call(this, p))  this[p] = v;
           else                              throw Error(`${U.nameOf(this)} has no v prop "${p}"`);
         }

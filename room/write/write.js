@@ -1,9 +1,5 @@
 global.rooms.write = async foundation => {
   
-  // TODO: HEEERE:
-  // 1: Aggregate HtmlApp, decorateApp, and makeHutAppScope
-  // 2: Get ?hutId=... out of url!!
-  
   let { Tmp, Slots, Src, Chooser, FnSrc } = U.logic;
   let { FreeLayout, SizedLayout, Axis1DLayout, TextLayout, TextInputLayout, ScrollLayout } = U.setup;
   let { Rec } = await foundation.getRoom('record');
@@ -14,7 +10,7 @@ global.rooms.write = async foundation => {
   let { storage=null } = foundation.origArgs;
   return HutControls('wrt.write', {
     
-    storage: storage && { type: 'replay', keep: storage, bufferMs: 10 * 1000 },
+    storage: storage && { type: 'replay', keep: storage, bufferMinSize: 50, bufferMs: 10 * 1000 },
     habitats: [ HtmlBrowserHabitat() ],
     recForms: {
       'wrt.room': U.form({ name: 'RoomRec', has: { Rec }, props: (forms, Form) => ({
@@ -41,7 +37,7 @@ global.rooms.write = async foundation => {
         }
       })})
     },
-    parFn: (writeRec, hut, real, dep) => {
+    parFn: (hut, writeRec, real, dep) => {
       
       /// {ABOVE=
       let admin1 = hut.createRec('wrt.user', [ writeRec ], { username: 'admin1' });
@@ -64,7 +60,7 @@ global.rooms.write = async foundation => {
       dep.scp(writeRec, 'wrt.room', (room, dep) => {
         
         // Liven up "active" and "users" prop; count roomUsers
-        room.dltVal({ timerMs: null });
+        room.objVal({ timerMs: null });
         
         // A Chooser to act based on room's status
         let roomStatusSrc = dep(room.getStatusWatcher()).src;
@@ -79,6 +75,10 @@ global.rooms.write = async foundation => {
           // Not every active room is also timing! Timing only occurs
           // while an active room has at least one submission.
           let timingChooser = dep(Chooser([ 'waiting', 'timing' ]));
+          
+          // TODO: IMAGINE:
+          //  let entries = dep(room.recSrc([ 'wrt.roomUser', 'wrt.roomUserEntry' ])); // hard part
+          //  dep(entries.getCounterSrc().route(n => timingChooser.choose(n > 0 ? 'timing' : 'waiting')));
           let numEntries = 0;
           dep.scp(room, 'wrt.roomUser', (ru, dep) => dep.scp(ru, 'wrt.roomUserEntry', (rue, dep) => {
             ++numEntries; timingChooser.choose('timing');
@@ -108,12 +108,12 @@ global.rooms.write = async foundation => {
             };
             
             // Begin timer
-            room.dltVal({ timerMs: foundation.getMs() });
-            dep(() => room.dltVal({ timerMs: null }));
+            room.objVal({ timerMs: foundation.getMs() });
+            dep(() => room.objVal({ timerMs: null }));
             
             // Allow the Round to be ended for a `reason`, and with a
             // random value to perform tie-breaking!
-            let endRoundSender = dep(hut.enableAction(`wrt.room.${room.uid}.timeout`, ({ reason, rand }) => {
+            let endRoundAct = dep(hut.enableAction(`wrt.room.${room.uid}.timeout`, ({ reason, rand }) => {
               
               // Collect all entries from all roomUsers
               let { roomUserEntries, votedEntries } = getRankedEntries();
@@ -134,7 +134,7 @@ global.rooms.write = async foundation => {
               
             }));
             let timeout = setTimeout(
-              () => endRoundSender.act({ reason: 'timeLimit', rand: Math.random() }),
+              () => endRoundAct.act({ reason: 'timeLimit', rand: Math.random() }),
               1000 * room.getVal().writeParams.timeout
             );
             dep(() => clearTimeout(timeout));
@@ -155,15 +155,14 @@ global.rooms.write = async foundation => {
                   
                   // If the gap between 1st and 2nd place entries is
                   // bigger than remaining votes round is foregone; end!
-                  if ((v0 - v1) > remainingVotes) endRoundSender.act({ reason: 'foregone', rand: Math.random() });
+                  if ((v0 - v1) > remainingVotes) endRoundAct.act({ reason: 'foregone', rand: Math.random() });
                   
                   // If no votes remain, end!
-                  if (remainingVotes === 0) endRoundSender.act({ reason: 'fullyVoted', rand: Math.random() });
+                  if (remainingVotes === 0) endRoundAct.act({ reason: 'fullyVoted', rand: Math.random() });
                   
                 });
               })
             });
-            
             
           });
           
@@ -173,7 +172,7 @@ global.rooms.write = async foundation => {
       /// =ABOVE}
       
     },
-    kidFn: (writeRec, hut, real, dep) => {
+    kidFn: (hut, writeRec, real, dep) => {
       // "Real" => "Representation"? "Depiction"? ("Dep" is already a thing D:)
       
       let mainReal = dep(real.addReal('wrt.main', {
@@ -189,7 +188,7 @@ global.rooms.write = async foundation => {
         
         console.log(`${hut.uid} logged out`);
         
-        let loginSender = dep(hut.enableAction('wrt.login', ({ username, password }) => {
+        let loginAct = dep(hut.enableAction('wrt.login', ({ username, password }) => {
           
           // TODO: Calls like `relRecs` here need to become async...
           
@@ -251,7 +250,7 @@ global.rooms.write = async foundation => {
           dep(usernameReal.addPress('discrete')).src,
           dep(submitReal.addPress()).src
         ];
-        for (let submitSrc of submitSrcs) dep(submitSrc.route(() => loginSender.src.send({
+        for (let submitSrc of submitSrcs) dep(submitSrc.route(() => loginAct.act({
           username: usernameInpSrc.val,
           password: passwordInpSrc.val
         })));
@@ -292,9 +291,9 @@ global.rooms.write = async foundation => {
           }
         });
         
-        let logoutSender = dep(hut.enableAction('wrt.logout', () => void presence.end()));
+        let logoutAct = dep(hut.enableAction('wrt.logout', () => void presence.end()));
         let logoutPressSrc = dep(logoutReal.addPress()).src;
-        dep(logoutPressSrc.route(() => logoutSender.src.send()));
+        dep(logoutPressSrc.route(() => logoutAct.act()));
         
         let inRoomChooser = dep(Chooser(presence.relSrc('wrt.roomUserPresence')));
         dep.scp(inRoomChooser.srcs.off, (noRoomPresence, dep) => {
@@ -336,7 +335,7 @@ global.rooms.write = async foundation => {
               border: { ext: '3px', colour: 'rgba(0, 0, 0, 0.5)' }
             }
           }));
-          let createRoomSender = dep(hut.enableAction('wrt.createRoom', params => {
+          let createRoomAct = dep(hut.enableAction('wrt.createRoom', params => {
             
             console.log(`Create room; name: ${params.name}, minUsers: ${params.minUsers}`);
             
@@ -416,7 +415,7 @@ global.rooms.write = async foundation => {
             dep(submitSrc.route(() => {
               let vals = inputs.map(inp => inp.src.val);
               for (let k of 'charLimit,timeout,maxRounds,minUsers,maxUsers'.split(',')) vals[k] = parseInt(vals[k], 10);
-              createRoomSender.src.send(vals);
+              createRoomAct.act(vals);
             }));
             
             let cancelSrc = dep(cancelReal.addPress()).src;
@@ -424,7 +423,7 @@ global.rooms.write = async foundation => {
             
           });
           
-          let joinRoomSender = dep(hut.enableAction('wrt.joinRoom', ({ roomId }) => {
+          let joinRoomAct = dep(hut.enableAction('wrt.joinRoom', ({ roomId }) => {
             
             console.log(`Hut ${hut.uid} wants to join room ${roomId}`);
             
@@ -449,14 +448,16 @@ global.rooms.write = async foundation => {
             });
             
             let joinRoomSrc = dep(roomReal.addPress()).src;
-            dep(joinRoomSrc.route(() => joinRoomSender.src.send({ roomId: room.uid })));
+            dep(joinRoomSrc.route(() => joinRoomAct.act({ roomId: room.uid })));
             
           });
           
         });
         dep.scp(inRoomChooser.srcs.onn, (roomUserPresence, dep) => {
           
-          let leaveRoomSender = dep(hut.enableAction('wrt.leaveRoom', () => void roomUserPresence.end()));
+          // TODO: Leave room!!
+          let leaveRoomAct = dep(hut.enableAction('wrt.leaveRoom', () => void roomUserPresence.end()));
+          
           let roomUser = roomUserPresence.mems['wrt.roomUser'];
           let room = roomUser.mems['wrt.room'];
           let roomCreator = room.mems['wrt.user'];
@@ -585,7 +586,7 @@ global.rooms.write = async foundation => {
             let submittedEntryChooser = dep(Chooser(roomUser.relSrc('wrt.roomUserEntry')));
             dep.scp(submittedEntryChooser.srcs.off, (noSubmittedEntry, dep) => {
               
-              let submitEntrySender = dep(hut.enableAction('wrt.submitEntry', ({ text }) => {
+              let submitEntryAct = dep(hut.enableAction('wrt.submitEntry', ({ text }) => {
                 console.log(`User ${username} submitted entry: ${text}`);
                 let entry = hut.parHut.createRec('wrt.entry', [ roomUser ], { ms: foundation.getMs(), text });
                 hut.createRec('wrt.roomUserEntry', [ roomUser, entry ]);
@@ -610,7 +611,7 @@ global.rooms.write = async foundation => {
               let inputSrc = dep(inputReal.addInput()).src;
               let submitSrc = dep(submitReal.addPress()).src;
               
-              dep(submitSrc.route(() => submitEntrySender.src.send({ text: inputSrc.val })));
+              dep(submitSrc.route(() => submitEntryAct.act({ text: inputSrc.val })));
               
             });
             dep.scp(submittedEntryChooser.srcs.onn, (submittedEntry, dep) => {
@@ -628,12 +629,12 @@ global.rooms.write = async foundation => {
               }));
               
               // Can send a vote so long as `hut` *hasn't* voted
-              let submitVoteSender = null;
+              let submitVoteAct = null;
               dep.scp(submittedVoteChooser.srcs.onn, (vote, dep) => {
               });
               dep.scp(submittedVoteChooser.srcs.off, (noVote, dep) => {
                 
-                submitVoteSender = dep(hut.enableAction('wrt.voteEntry', ({ entryId }) => {
+                submitVoteAct = dep(hut.enableAction('wrt.voteEntry', ({ entryId }) => {
                   
                   let roomUserEntryToVote = room.relRecs('wrt.roomUser')
                     .toArr(roomUser => roomUser.relRec('wrt.roomUserEntry') || C.skip)
@@ -647,7 +648,7 @@ global.rooms.write = async foundation => {
                   hut.createRec('wrt.vote', [ roomUser, roomUserEntryToVote ]);
                   
                 }));
-                dep(() => submitVoteSender = null);
+                dep(() => submitVoteAct = null);
                 
               });
               
@@ -676,7 +677,7 @@ global.rooms.write = async foundation => {
                     dep.scp(feelSrc, (feel, dep) => dep(doVoteReal.addDecals({ colour: 'rgba(0, 160, 0, 1)' })));
                     
                     let pressSrc = dep(doVoteReal.addPress()).src;
-                    dep(pressSrc.route(() => submitVoteSender.src.send({ entryId: entry.uid })));
+                    dep(pressSrc.route(() => submitVoteAct.act({ entryId: entry.uid })));
                     
                   });
                   dep.scp(submittedVoteChooser.srcs.onn, (vote, dep) => {

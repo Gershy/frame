@@ -9,27 +9,33 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     // - Define debug options
     // - Enumerate what habitats this app supports
     // - Provide a recForm mapping (mapping recType names to Forms)
-    // - Initialize a root Rec for this app
+    // - Initializing a root Rec for the app
     // - Persistent storage and loading previous states
     // - Separate ABOVE and BELOW logic, while allowing ABOVE to follow
-    //    BELOW state for each BELOW, and parameterizing ABOVE/BELOW
-    //    logic appropriately
+    //    the state of each BELOW, and parameterizing ABOVE/BELOW logic
+    //    appropriately
     
     $FollowRecScope: U.form({ name: 'FollowRecScope', has: { RecScope }, props: (forms, Form) => ({
       init: function(hut, ...args) {
         
         this.hut = hut;
         
+        /// {ABOVE=
         // Our src will send Recs if using either of these styles:
         // 1 - `RecScope(srcTmp, 'relTerm', (rec, dep) => ...)`
         // 2 - `RecScope(srcTmp.relSrc('relTerm'), (rec, dep) => ...)`
         this.doFollowRecs = args.count() === 3 || U.isForm(args[0], RecSrc);
+        /// =ABOVE}
+        
         forms.RecScope.init.call(this, ...args);
+        
       },
+      /// {ABOVE=
       processTmp: function(tmp, dep) {
         if (this.doFollowRecs) dep(this.hut.followRec(tmp));
         return forms.RecScope.processTmp.call(this, tmp, dep);
       },
+      /// =ABOVE}
       subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
     })}),
     
@@ -38,9 +44,9 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     },
     
     /// {ABOVE=
-    setupReplayStorage: async function(hut, { keep, bufferMs=10*1000 }) {
+    setupReplayStorage: async function(hut, { keep, bufferMinSize=50, bufferMs=10*1000 }) {
       
-      console.log('Init replay storage', { keep, bufferMs });
+      console.log('Init replay storage', { keep, bufferMinSize, bufferMs });
       
       let { Hut } = await foundation.getRoom('hinterlands');
       let { Rec } = await foundation.getRoom('record');
@@ -84,14 +90,14 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
         for (let i = 0; i < replayCount; i++) {
           let replayLines = (await storageKeep.seek(getItemName(i)).getContent('utf8')).split('\n');
           for (let replayJson of replayLines) {
-            let { uid, msg } = JSON.parse(replayJson);
+            let { uid, ms, msg } = JSON.parse(replayJson);
             if (uid && !huts.has(uid)) {
               huts[uid] = makeHut(uid);
               huts[uid].endWith(() => delete huts[uid]);
             }
             let kidHut = uid ? huts[uid] : null;
             replayCnt++;
-            Hut.tell(kidHut, hut, null, null, msg);
+            Hut.tell(kidHut, hut, null, null, msg, ms);
           }
         }
         console.log(`Caught up via replays after ${((foundation.getMs() - t) / 1000).toFixed(2)}s`);
@@ -105,29 +111,34 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       }
       
       let writeIndex = replayCount;
-      let writeBuffer = null;
+      let writeBuffer = [];
+      let writeTimeout = null;
       let addItem = item => {
-        if (!writeBuffer) {
-          writeBuffer = [];
-          setTimeout(async () => {
-            let content = writeBuffer.map(item => JSON.stringify(item)).join('\n');
-            writeBuffer = null;
-            await storageKeep.seek(getItemName(writeIndex++)).setContent(content);
-          }, bufferMs);
-        }
+        
+        // If no timeout is already pending, create one
+        if (!writeTimeout) writeTimeout = setTimeout(async () => {
+          writeTimeout = null;
+          let content = writeBuffer.map(item => JSON.stringify(item)).join('\n');
+          await storageKeep.seek(getItemName(writeIndex)).setContent(content);
+          if (writeBuffer.count() >= bufferMinSize) { writeBuffer = []; writeIndex++; }
+        }, bufferMs);
+          
+        // Add `item` into buffer to be consumed upon timeout
         writeBuffer.push(item);
+        
       };
       
-      let ignoreCommands = Set([ 'thunThunk', 'syncInit' ]);
+      let ignoreCommands = Set([ 'thunThunk', 'syncInit', 'html.multi', 'html.css', 'html.room', 'html.icon' ]);
       hut.roadDbgEnabled = false;
       let hutHearOrig = hut.hear;
-      hut.hear = (srcHut, road, reply, msg, ms) => {
-        if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut ? srcHut.uid : null, msg });
+      hut.hear = (srcHut, road, reply, msg, ms=foundation.getMs()) => {
+        if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut ? srcHut.uid : null, ms, msg });
         return hutHearOrig.call(hut, srcHut, road, reply, msg, ms);
       };
       tmp.endWith(() => delete hut.hear);
       
       return tmp;
+      
     },
     /// =ABOVE}
     
@@ -149,10 +160,10 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       
       hut.createRec(this.fullName, [ hut ]);
       let parScope = RecScope(hut, this.fullName, (rec, dep) => {
-        this.parFn(rec, hut, real, dep);
+        this.parFn(hut, rec, real, dep);
         dep.scp(hut, 'lands.kidHut/par', (kidParHut, dep) => {
           let kidHut = kidParHut.mems.kid;
-          dep(Form.FollowRecScope(kidHut, hut, this.fullName, (rec, dep) => this.kidFn(rec, kidHut, real, dep)));
+          dep(Form.FollowRecScope(kidHut, hut, this.fullName, (rec, dep) => this.kidFn(kidHut, rec, real, dep)));
         });
       });
       tmp.endWith(parScope);
@@ -167,7 +178,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       /// =ABOVE} {BELOW=
       
       // As soon as Below syncs the root Rec it's good to go
-      let kidScope = Form.FollowRecScope(hut, hut, this.fullName, (rec, dep) => this.kidFn(rec, hut, real, dep));
+      let kidScope = Form.FollowRecScope(hut, hut, this.fullName, (rec, dep) => this.kidFn(hut, rec, real, dep));
       tmp.endWith(kidScope);
       
       /// =BELOW}

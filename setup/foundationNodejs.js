@@ -79,11 +79,10 @@
         },
         remFolder: async (cmps, ...opts) => {
           let err = Error('');
-          
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
-            // Ignore ENOENT - it means the folder is already deleted!
-            if (err0 && err0.code !== 'ENOENT') { err.reason = err0; err.message = err0.message; rjc(err); }
-            else                                { rsv(null); }
+            if (err0 && err0.code === 'ENOENT') err0 = null; // ENOENT means already deleted! Mission accomplished!
+            if (err0) { err.reason = err0; err.message = err0.message; rjc(err); }
+            else      { rsv(null); }
           }));
         },
         getLetter: async (cmps, ...opts) => {
@@ -222,16 +221,20 @@
           let items = await this.getContent();
           
           // Set content of all items to `null`
-          if (items) await Promise.allArr(items.map(item => this.access(item).setContent(null)));
+          if (items) await Promise.allArr(items.map(item => this.access(item).setContent(null, { remAncestry: false })));
             
           // Now there are no children; delete folder and ancestry
           await Form.fs.remFolder(this.absPath);
+          
+          let [ { remAncestry=true }={} ] = opts;
           await this.remNullAncestry();
           
         } else if (content === null && fsType === 'letter') {
           
           await Form.fs.remLetter(this.absPath);
-          await this.remNullAncestry();
+          
+          let [ { remAncestry=true }={} ] = opts;
+          if (remAncestry) await this.remNullAncestry();
           
         }
         
@@ -250,17 +253,7 @@
           if (children === null) continue; // If `children` is `null` the ancestor is already deleted
           if (children.length) break; // An ancestor is populated - stop deleting!
           
-          try {
-            await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
-          } catch (err) {
-            
-            // TODO: Delete try/catch if more confident than 10/11/2020
-            let folderContents = await U.safe(() => Form.fs.getFolder(cmps), `<nonexistent>`);
-            console.log('COULDNT CLEAR DIR', cmps, err.reason);
-            console.log('FOLDER LOOKS LIKE:', folderContents);
-            throw err;
-            
-          }
+          await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
           
         }
         
@@ -1064,6 +1057,7 @@
             if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
           }
         }
+        
       }
       
       if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
@@ -1109,6 +1103,7 @@
         
       }
       
+      if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
       return { lines: filteredLines, offsets };
       
     },
@@ -1187,7 +1182,7 @@
       if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
       
       // Extract room name and bearing from filename
-      let [ roomName,, bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
+      let [ roomName, , bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
       //let [ roomName, bearing=null ] = fileName.split('@').slice(0, -1);
       return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
       
@@ -1355,7 +1350,6 @@
         if (!params.has('command')) params = (p => {
           // Map typical http requests to their meaning within Hut
           if (p === '/') return { command: 'syncInit', ...params, reply: '1' };
-          if (p === '/favicon.ico') return { command: 'getIcon', ...params, reply: '2' };
           if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: '1' };
           return {};
         })(urlPath);

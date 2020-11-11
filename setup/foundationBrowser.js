@@ -326,6 +326,8 @@
               } else if (k === 'border') {
                 let { ext, colour } = decals[k];
                 domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
+              } else if (k === 'texture') {
+                domNode.style.cursor = ({ smooth: '', bumpy: 'pointer' })[decals[k]];
               } else {
                 if (!U.isForm(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.getFormName(decals[k])}`);
                 if (!complexDecals.has(k)) complexDecals[k] = {};
@@ -587,11 +589,13 @@
                 tmp.src.send(sentTmp);
               };
               let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
+              
+              tmp.endWith(real.addDecals({ texture: 'bumpy' }));
+              
               techNode.addEventListener('mouseenter', onnFn);
               tmp.endWith(() => techNode.removeEventListener('mouseenter', onnFn));
               
             }
-            
             if (modes.has('discrete')) {
               
               let sentTmp = null;
