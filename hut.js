@@ -33,11 +33,13 @@ require('./setup/foundation.js');
 require('./setup/foundationNodejs.js');
 let { FoundationNodejs } = U.setup;
 
-let args = eval(`(${process.argv.slice(2).join(' ').trim()})`);
+let evalContent = process.argv.slice(2).join(' ').trim();
+let args = evalContent ? eval(`(${evalContent})`) : null;
+if (!args || args.isEmpty()) args = { settle: 'internal', app: 'credits', ...args };
 if (!U.isForm(args, Object)) throw Error(`Arguments should be Object (got ${U.getFormName(args)})`);
 
 let foundation = FoundationNodejs(args);
 foundation.settleRoom(args.settle, 'above').catch(err => {
-  console.log('FATAL ERROR:', foundation.formatError(err));
+  console.log(`FATAL ERROR:\n${foundation.formatError(err)}`);
   foundation.halt();
 });

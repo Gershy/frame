@@ -114,7 +114,10 @@ protoDef(String, 'padTail', function(amt, char=' ') {
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
-protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
+protoDef(String, 'cut', function(seq, num=null) {
+  // `num` defines how many cuts occur (# of resulting items - 1)
+  let r = this.split(seq); return (num === null) ? r : [ ...r.slice(0, num), r.slice(num).join(seq) ];
+});
 protoDef(String, 'code', function(ind=0) { return this.charCodeAt(0); });
 protoDef(String, 'count', function() { return this.length; });
 protoDef(String, 'indent', function(amt=2, char=' ', indentStr=char[0].repeat(amt)) {

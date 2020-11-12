@@ -1,10 +1,10 @@
-global.rooms['test.test1'] = async foundation => {
+global.rooms['internal.test.test1'] = async foundation => {
   
   let { SizedLayout, Axis1DLayout, TextLayout } = U.setup;
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
+  let HutControls = await foundation.getRoom('hinterlands.hutControls');
   
-  return {
-    
+  return HutControls('t1.test', {
     debug: [ 'road' ],
     habitats: [ HtmlBrowserHabitat() ],
     parFn: (hut, test, real, dep) => {
@@ -45,7 +45,6 @@ global.rooms['test.test1'] = async foundation => {
       dep(incPressSrc.route(() => incAct.act()));
       
     }
-    
-  }
+  });
   
 };

@@ -93,7 +93,6 @@
       
     },
     getPlatform: function() { return { name: 'browser' }; },
-    ready: forms.Foundation.ready,
     halt: function() { /* debugger */; },
     installRoom: async function(name, bearing='below') {
       
@@ -108,7 +107,10 @@
       document.head.appendChild(script);
       
       // Wait for the script to load; ensure it populated `global.rooms`
-      await Promise(r => script.addEventListener('load', r));
+      await Promise((rsv, rjc) => {
+        script.addEventListener('load', rsv);
+        script.addEventListener('error', err => { err.message = `Couldn't load room "${name}" (${err.message})`; rjc(err); });
+      });
       if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
       
       return {
@@ -736,11 +738,14 @@
     },
     
     parseErrorLine: function(line) {
-      let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9]*)/).slice(1);
+      let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9.]*)/).slice(1);
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
+      
+      console.log({ line, roomName, lineInd, charInd });
+      
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10), bearing: 'below' };
     },
-    srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: '???', line: 0, char: 0 }) }; }
+    srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: null, line: 0, char: 0 }) }; }
     
   })});
   

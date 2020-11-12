@@ -79,14 +79,15 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
                 });
                 
                 let foundation = global.foundation = U.setup.FoundationBrowser(JSON.parse('${JSON.stringify({
-                  ...foundation.args,
+                  ...foundation.origArgs,
+                  ...foundation.readyArgs,
                   bearing: 'below',
                   hutId: srcHut.uid,
                   aboveMsAtResponseTime: foundation.getMs(),
                   initData: initSyncTell
                 })}'));
                 foundation.settleRoom('${name}', 'below').catch(err => {
-                  console.log('FATAL ERROR:', foundation.formatError(err));
+                  console.log('FATAL ERROR:\\n' + foundation.formatError(err));
                   foundation.halt();
                 });
               </script>
@@ -109,6 +110,32 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         
         if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}');`);
         let { lines, offsets } = foundation.compileContent('below', srcContent);
+        
+        let dbg = 0;
+        if (dbg) {
+          
+          // SyntaxError is uncatchable in the FoundationBrowser and
+          // gives no trace information. We can circumvent this by
+          // sending code which cannot cause a SyntaxError directly;
+          // instead the code is represented as a foolproof String, and
+          // then it is eval'd. If the string represents syntactically
+          // incorrect js `eval` will crash, but the script will have
+          // loaded without any issue; a much more descriptive trace
+          // can result! There's also an effort here to not change the
+          // line count in order to keep debuggability. All wrapping
+          // code is (ap|pre)pended to the first and last lines.
+          let escQt = '\\' + `'`;
+          let escEsc = '\\' + '\\';
+          let headEvalStr = `try { eval([`;
+          let tailEvalStr = `].join('\\n')); } catch(err) { console.log({ err }); throw err; }`;
+          
+          lines = lines.map(ln => `  '` + ln.replace(/\\/g, '\\\\').replace(/'/g, escQt) + `',`);
+          let headInd = 0;
+          let tailInd = lines.count() - 1;
+          lines[headInd] = headEvalStr + lines[headInd];
+          lines[tailInd] = lines[tailInd] + tailEvalStr;
+            
+        }
         
         reply([
           ...lines,

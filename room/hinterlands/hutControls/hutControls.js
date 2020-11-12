@@ -1,3 +1,12 @@
+// TODO:
+//  - Do the full ABOVE args need to be sent to FoundationBrowser?
+//    Do *any* need to be sent??
+//  - Need to test SSL and check other triple-slash'd code
+//  - Take a look at Hut.prototype.processNewRoad. Servers should be
+//    created separately, and then connected to any number of Huts
+//  - Think about an abstract "default command" to replace "syncInit"
+//    This will allow multiplexing apps on the same server!!
+
 global.rooms['hinterlands.hutControls'] = async foundation => {
   
   let { RecSrc, RecScope } = await foundation.getRoom('record');
@@ -44,7 +53,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     /// =ABOVE}
     
     init: function(fullName, params={}) {
-      let { hostTerms=foundation.args.hosting.toArr((v, k) => k) } = params;
+      let { hostTerms=null } = params;
       let { debug=[], habitats=[], recForms={}, storage=null } = params;
       let { parFn=Function.stub, kidFn=Function.stub } = params;
       ({}).gain.call(this, { fullName, debug, hostTerms, habitats, recForms, storage, parFn, kidFn });
@@ -159,7 +168,9 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       // what's going on with the arcane "processNewRoad"):
       //  let server = await foundation.getServer(hostingTerm);
       //  tmp.endWith(hut.addServer(server));
-      await Promise.allArr(this.hostTerms.map(term => foundation.getServer(hut, term)));
+      let hostTerms = await (this.hostTerms || foundation.getArg('hosting'));
+      if (U.isForm(hostTerms, Object)) hostTerms = hostTerms.toArr((v, k) => k);
+      await Promise.allArr(hostTerms.map(term => foundation.getServer(hut, term)));
       
       /// let { hosting, protocols, heartMs } = options;
       /// if (protocols.http) {
@@ -204,7 +215,6 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       // As soon as Below syncs the root Rec it's good to go
       let kidScope = RecScope(hut, this.fullName, (rec, dep) => this.kidFn(hut, rec, real, dep));
       tmp.endWith(kidScope);
-      console.log('Added kid scope...');
       
       /// =BELOW}
       

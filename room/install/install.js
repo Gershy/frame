@@ -6,14 +6,13 @@ global.rooms.install = async foundation => {
   // let TerminalHabitat = await foundation.getRoom('hinterlands.habitat.terminal'); // Interact with app purely via command line (and maybe even a separate graphical ui experience like 'window' room
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
-  let { debug=[] } = foundation.args;
+  let debug = foundation.getArg('debug');
   return HutControls('stl.install', {
     debug,
     habitats: [ HtmlBrowserHabitat() ],
     parFn: (hut, install, real, dep) => {
       
       /// {ABOVE=
-      
       // Make sure to use the non-admin fileSystem to control access
       let fsKeep = foundation.seek('keep', 'fileSystem');
       let installActionKeep = fsKeep.seek('room', 'install', 'installAction.js').setContentType('text');
@@ -37,15 +36,9 @@ global.rooms.install = async foundation => {
         
       });
       hut.relSrc('stl.install').route(installRec => {
-        
-        installRec.setVal({ httpTrg: `${foundation.getServerName('http')}/stl.run?reply=2` });
-        
-        /// let { hosting: { host, port }, ssl } = foundation.args;
-        /// let [ host, port ] = hosting.split(':');
-        /// hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-        /// installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}/stl.run?reply=2` });
+        let serverUrl = foundation.getServerUrl(foundation.getServerNames()[0]);
+        installRec.setVal({ httpTrg: `${serverUrl}/stl.run?reply=2` });
       });
-      
       /// =ABOVE}
       
     },
@@ -64,7 +57,13 @@ global.rooms.install = async foundation => {
       });
       stlReal.addReal('stl.reminder', { layouts: [ TextLayout({ gap: '6px', size: 'calc(70% + 0.3vw)', text: 'Always verify wild code before running!' }) ] });
       
-      dep(install.valSrc.route(() => textReal.setText(`node -e "h='${install.getVal('httpTrg')}';require('http').get(h,(r,d=[])=>(r.on('data',c=>d.push(c)),r.on('end',()=>eval(d.join(''))(h))))"`)));
+      dep(install.valSrc.route(() => {
+        let httpTrg = install.getVal('httpTrg');
+        textReal.setText(httpTrg
+          ? `node -e "h='${httpTrg}';require('http').get(h,(r,d=[])=>(r.on('data',c=>d.push(c)),r.on('end',()=>eval(d.join(''))(h))))"`
+          : '-- loading --'
+        );
+      }));
       
       let feelSrc = dep(textReal.addFeel('discrete')).src;
       dep(feelSrc.route(() => textReal.selectTextContent()));

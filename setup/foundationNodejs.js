@@ -414,7 +414,7 @@
       return { method, path, httpVersion, headers };
       
     },
-    $removeCommentRegex: /^(([^'"`]|'[^']*'|"[^"]*"|`[^`]*`)*)[/][/]/,
+    $removeLineCommentRegex: /^(([^'"`]|'[^']*'|"[^"]*"|`[^`]*`)*)[/][/]/,
     
     init: function(...args) {
       
@@ -441,6 +441,8 @@
       
       this.usage0 = process.memoryUsage().map(v => v);
       
+      // Create a Promise describing whether the Nodejs environment is
+      // ready and sufficiently valid to settle some Room
       this.canSettlePrm = (async () => {
         
         await this.fsKeep.seek([ 'mill', 'compiled' ]).setContent(null);
@@ -989,75 +991,143 @@
       
     },
     getPlatform: function() { return { name:  'nodejs' }; },
-    processArgs: async function({ hosting=null, dnsServers=[ '1.1.1.1', '1.0.0.1' ], ...args }) {
+    processArg: function(term, val=null) {
       
-      // TODO: CloudFlare best choice of dns server??
+      // TODO: CloudFlare best choice of default dns server??
+      if (term === 'dnsServers') return !val ? [ '1.1.1.1', '1.0.0.1' ] : U.isForm(val, String) ? [ val ] : val;
       
-      if (hosting === null) {
+      if (term === 'hosting') return (async () => {
         
-        // If no hosting options are provided we'll try to generate nice
-        // http+sokt options, preferring to use a publicly addressable
-        // domain name.
+        let hosting = val;
+        let host = await this.getArg('host');
         
-        let externalIps = require('os').networkInterfaces()
-          .toArr(v => v).flat()                       // Flat list of all interfaces
-          .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces; hold only the address
-        
-        let dnsResolver = new (require('dns').promises.Resolver)();
-        dnsResolver.setServers(dnsServers);
-        
-        let publicHostNames = (await Promise.allArr(externalIps.map(async ip => {
+        // Note that the "hosting" arg can hold an arbitrary number of
+        // hosting definitions. The "host" arg can be used to quickly
+        // specify the "host" value for all "hosting" entries. If using
+        // "host" arg should omit any "host" props throughout `hosting`
+        if (!hosting) {
           
-          try {
-            
-            // Reverse `ip` into any related hostnames
-            let addrs = await dnsResolver.reverse(ip);
-            
-            // Only consider hostnames with available A records
-            return Promise.allArr(addrs.map(async addr => {
-              
-              // If no error occurs for A record lookup, return `addr`
-              try { await dnsResolver.resolve(addr, 'A'); return addr; }
-              
-              // Ignore `addr`
-              catch(err) { return C.skip; }
-              
-            }));
-            
-          } catch(err) { return C.skip; }
+          // If no hosting options are provided we'll try to generate
+          // suitable http+sokt options
           
-        }))).flat();
-        
-        console.log({ publicHostNames });
-        
-        let [ host='localhost' ] = publicHostNames;
-        if (publicHostNames > 0) {
-          console.log(`Viable public hostnames:`, publicHostNames);
-          console.log(`Arbitrarily using:`, host);
+          host = host || await (async () => {
+            
+            // If no `host` was specified we'll use dns searches to find
+            // any publicly addressable hostnames available for this
+            // machine. Note this will only find addresses which can be
+            // reversed from ips through dns methods.
+            
+            let externalIps = require('os').networkInterfaces()
+              .toArr(v => v).flat()                       // Flat list of all interfaces
+              .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces
+            
+            let dnsResolver = new (require('dns').promises.Resolver)();
+            dnsResolver.setServers(this.getArg('dnsServers'));
+            
+            let potentialHosts = (await Promise.allArr(externalIps.map(async ip => {
+              
+              let type = ((pcs=ip.split('.').map(v => parseInt(v, 10))) => {
+                
+                // Check for non-ipv4-style ips
+                if (pcs.count() !== 4 || pcs.find(v => !U.isForm(v, Number)).found) return null;
+                
+                // Reserved:
+                // 0.0.0.0 -> 0.255.255.255
+                if (pcs[0] === 0) return 'reserved';
+                
+                // Loopback:
+                // 127.0.0.0 -> 127.255.255.255
+                if (pcs[0] === 127) return 'loopback';
+                
+                // Private; any of:
+                // 10.0.0.0 -> 10.255.255.255,
+                // 172.16.0.0 -> 172.32.255.255,
+                // 192.168.0.0 -> 192.168.255.255
+                if (pcs[0] === 10) return 'private'
+                if (pcs[0] === 172 && pcs[1] >= 16 && pcs[1] < 32) return 'private';
+                if (pcs[0] === 192 && pcs[1] === 168) return 'private';
+                
+                // Any other address is public
+                return 'external';
+                
+              })();
+              
+              // Non-ipv4 and reserved hosts are ignored entirely
+              if (type === null) return C.skip;
+              if (type === 'reserved') return C.skip;
+              
+              // Loopback hosts are the least powerful
+              if (type === 'loopback') return { type, rank: 0, ip, addr: null };
+              
+              // Next-best is private; available on local network
+              if (type === 'private') return { type, rank: 1, ip, addr: null };
+              
+              // Remaining types will be "external"; process these:
+              try {
+                
+                // Reverse `ip` into any related hostnames
+                let addrs = await dnsResolver.reverse(ip);
+                
+                // Only consider hostnames with available A records
+                return Promise.allArr(addrs.map(async addr => {
+                  
+                  // If an A record is found this is the most powerful
+                  // host possible; globally addressable
+                  try { await dnsResolver.resolve(addr, 'A'); return { type: 'public', rank: 4, ip, addr }; }
+                  
+                  // Reversable ips without A records are one level down
+                  // from globally addressable results
+                  catch(err) { return { type: 'external', rank: 3, ip, addr }; }
+                  
+                }));
+                
+                // The address is external but not reversible
+              } catch(err) { return { type: 'external', rank: 2, ip, addr: null }; }
+              
+            }))).flat();
+            
+            let bestRank = Math.max(...potentialHosts.map(v => v.rank));
+            let bestHosts = potentialHosts.map(v => v.rank === bestRank ? (v.addr || v.ip) : C.skip);
+            console.log({ bestRank, potentialHosts, bestHosts });
+            
+            return bestHosts.count() !== 1
+              ? (bestHosts.count() && console.log(`Using host "localhost" but there are multiple options: ${bestHosts.join(', ')}`), 'localhost')
+              : bestHosts[0];
+            
+          })();
+          
+          hosting = {
+            http: { protocol: 'http', host, port: 80 },
+            sokt: { protocol: 'sokt', host, port: 81 }
+          };
+          
         }
         
-        hosting = {
-          http: { protocol: 'http', host, port: 80 },
-          sokt: { protocol: 'sokt', host, port: 81 }
-        };
+        if (U.isForm(hosting, String)) hosting = { main: hosting };
+        if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...params }) => [ name, params ]);
+        return hosting.map(v => {
+          
+          if (U.isForm(v, String)) {
+            let [ protocol=null, host=null, port=null ] = (v.trim().match(/^(.*):[/][/](.*):([0-9]+)$/) || []).slice(1);
+            if (!protocol) throw Error(`Hosting term "${v}" missing protocol`);
+            if (!host) throw Error(`Hosting term "${v}" missing host`);
+            if (!port) throw Error(`Hosting term "${v}" missing port`);
+            v = { protocol, host, port: parseInt(port, 10) };
+          }
+          
+          if (!v.has('host') || !v.host) v.host = host;
+          if (!v.has('host') || !v.host) throw Error(`Missing "host" for ${JSON.stringify(v)}`);
+          if (!U.isForm(v.port, Number)) throw Error(`Port for ${JSON.stringify(v)} is not a number`);
+          return v;
+          
+        });
         
-      }
+      })();
       
-      if (U.isForm(hosting, String)) hosting = { main: hosting };
-      if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...params }) => [ name, params ]);
-      
-      hosting = hosting.map(v => {
-        if (!U.isForm(v, String)) return v;
-        let [ protocol=null, host=null, port=null ] = (v.trim().match(/^(.*):[/][/](.*):([0-9]+)$/) || []).slice(1);
-        if (!protocol) throw Error(`Hosting term "${v}" missing protocol`);
-        if (!host) throw Error(`Hosting term "${v}" missing host`);
-        if (!port) throw Error(`Hosting term "${v}" missing port`);
-        return { protocol, host, port: parseInt(port, 10) };
-      });
-      return forms.Foundation.processArgs.call(this, { hosting, dnsServers, ...args });
+      return forms.Foundation.processArg.call(this, term, val);
       
     },
-    ready: function() { return Promise.allArr([ forms.Foundation.ready.call(this), this.canSettlePrm ]); },
+    ready: function() { return this.canSettlePrm; },
     halt: function() { process.exit(0); },
     installRoom: async function(name, bearing='above') {
       
@@ -1074,14 +1144,13 @@
           
           // Write, `require`, and ensure file populates `global.rooms`
           await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
-          try {
-            require(`../mill/compiled/${name}@${bearing}.js`);
-          } catch(err) {
-            err.message = `Error requiring ${name}.cmp (${err.message})`;
-            throw err;
-          }
+          try         { require(`../mill/compiled/${name}@${bearing}.js`); }
+          catch(err)  { err.message = `Error requiring ${name}.cmp (${err.message})`; throw err; }
           if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
+          if (!U.hasForm(global.rooms[name], Function)) throw Error(`Room "${name}" set non-function at global.rooms.${name}`);
           
+          // The file and set a function at `global.room[name]`. Return
+          // a call to that function, providing a `foundation` argument!
           return global.rooms[name](this);
           
         })()
@@ -1151,7 +1220,7 @@
         if (keepLine) {
           
           curOffset = null;
-          let [ lineNoComment=line ] = (line.match(Form.removeCommentRegex) || []).slice(1);
+          let [ lineNoComment=line ] = (line.match(Form.removeLineCommentRegex) || []).slice(1);
           filteredLines.push(lineNoComment.trim());
           
         } else {
@@ -1201,7 +1270,7 @@
       /// 
       /// options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
       
-      return forms.Foundation.createHut.call(this, 'fnd.nodejs');
+      return forms.Foundation.createHut.call(this, 'nodejs.root');
       
     },
     createKeep: function(options={}) { return Form.KeepNodejs(); },
@@ -1250,10 +1319,10 @@
     },
     srcLineRegex: function() {
       return {
-        regex: /([^ ]*[^a-zA-Z0-9.])?[a-zA-Z0-9.]*[.]js:[0-9]+/, // TODO: No charInd
+        regex: /([^ ]*[^a-zA-Z0-9@.])?[a-zA-Z0-9@.]*[.]js:[0-9]+/, // TODO: No charInd
         extract: fullMatch => {
-          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.]/).slice(-2);
-          let [ roomName, bearing ] = roomBearingName.split('.');
+          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.@]/).slice(-2);
+          let [ roomName, bearing ] = roomBearingName.split('@');
           return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
         }
       };

@@ -7,7 +7,7 @@ global.rooms.write = async foundation => {
   let HutControls = await foundation.getRoom('hinterlands.hutControls');
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
   
-  let { storage=null } = foundation.args;
+  let storage = await foundation.getArg('storage');
   return HutControls('wrt.write', {
     
     storage: storage && { type: 'replay', keep: storage, bufferMinSize: 50, bufferMs: 10 * 1000 },
