@@ -48,7 +48,7 @@ Hut at the very bottom runs using a single Reality.
       
       this.args = this.processArgs(args).then(args => {
         this.args = args;
-        if (this.args.debug.has('foundation')) console.log(`${this.getPlatform()} running with`, this.args);
+        if (this.args.debug.has('foundation')) console.log(`${this.getPlatform().name} running with`, this.args);
       });
       this.initData = args.seek('initData').val || null;
       

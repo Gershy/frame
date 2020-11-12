@@ -38,7 +38,7 @@ global.rooms.install = async foundation => {
       });
       hut.relSrc('stl.install').route(installRec => {
         
-        installRec.setVal({ httpTrg: foundation.getServerName('http') });
+        installRec.setVal({ httpTrg: `${foundation.getServerName('http')}/stl.run?reply=2` });
         
         /// let { hosting: { host, port }, ssl } = foundation.args;
         /// let [ host, port ] = hosting.split(':');
@@ -50,8 +50,6 @@ global.rooms.install = async foundation => {
       
     },
     kidFn: (hut, install, real, dep) => {
-      
-      console.log('HERE??');
       
       let stlReal = dep(real.addReal('stl.install', {
         layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],
