@@ -36,8 +36,8 @@ global.rooms.install = async foundation => {
         
       });
       hut.relSrc('stl.install').route(installRec => {
-        let serverUrl = foundation.getServerUrl(foundation.getServerNames()[0]);
-        installRec.setVal({ httpTrg: `${serverUrl}/stl.run?reply=2` });
+        let mainHost = foundation.getArg('hosting').find(v => 1).val;
+        installRec.setVal({ httpTrg: `${foundation.formatHostUrl(mainHost)}/stl.run?reply=2` });
       });
       /// =ABOVE}
       
