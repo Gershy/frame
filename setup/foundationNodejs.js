@@ -989,7 +989,75 @@
       
     },
     getPlatform: function() { return { name:  'nodejs' }; },
-    ready: function() { return this.canSettlePrm; },
+    processArgs: async function({ hosting=null, dnsServers=[ '1.1.1.1', '1.0.0.1' ], ...args }) {
+      
+      // TODO: CloudFlare best choice of dns server??
+      
+      if (hosting === null) {
+        
+        // If no hosting options are provided we'll try to generate nice
+        // http+sokt options, preferring to use a publicly addressable
+        // domain name.
+        
+        let externalIps = require('os').networkInterfaces()
+          .toArr(v => v).flat()                       // Flat list of all interfaces
+          .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces; hold only the address
+        
+        let dnsResolver = new (require('dns').promises.Resolver)();
+        dnsResolver.setServers(dnsServers);
+        
+        let publicHostNames = (await Promise.allArr(externalIps.map(async ip => {
+          
+          try {
+            
+            // Reverse `ip` into any related hostnames
+            let addrs = await dnsResolver.reverse(ip);
+            
+            // Only consider hostnames with available A records
+            return Promise.allArr(addrs.map(async addr => {
+              
+              // If no error occurs for A record lookup, return `addr`
+              try { await dnsResolver.resolve(addr, 'A'); return addr; }
+              
+              // Ignore `addr`
+              catch(err) { return C.skip; }
+              
+            }));
+            
+          } catch(err) { return C.skip; }
+          
+        }))).flat();
+        
+        console.log({ publicHostNames });
+        
+        let [ host='localhost' ] = publicHostNames;
+        if (publicHostNames > 0) {
+          console.log(`Viable public hostnames:`, publicHostNames);
+          console.log(`Arbitrarily using:`, host);
+        }
+        
+        hosting = {
+          http: { protocol: 'http', host, port: 80 },
+          sokt: { protocol: 'sokt', host, port: 81 }
+        };
+        
+      }
+      
+      if (U.isForm(hosting, String)) hosting = { main: hosting };
+      if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...params }) => [ name, params ]);
+      
+      hosting = hosting.map(v => {
+        if (!U.isForm(v, String)) return v;
+        let [ protocol=null, host=null, port=null ] = (v.trim().match(/^(.*):[/][/](.*):([0-9]+)$/) || []).slice(1);
+        if (!protocol) throw Error(`Hosting term "${v}" missing protocol`);
+        if (!host) throw Error(`Hosting term "${v}" missing host`);
+        if (!port) throw Error(`Hosting term "${v}" missing port`);
+        return { protocol, host, port: parseInt(port, 10) };
+      });
+      return forms.Foundation.processArgs.call(this, { hosting, dnsServers, ...args });
+      
+    },
+    ready: function() { return Promise.allArr([ forms.Foundation.ready.call(this), this.canSettlePrm ]); },
     halt: function() { process.exit(0); },
     installRoom: async function(name, bearing='above') {
       
@@ -1111,36 +1179,29 @@
     // High level
     createHut: async function(options={}) {
       
-      // TODO: Think about what is happening with `hutInstance.uid` -
-      // For Above the uid is hard-coded and basically arbitrary. For
-      // Below the uid is an unguessable, private base62 string.
+      /// if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      /// 
+      /// if (!options.has('hosting')) options.hosting = {};
+      /// if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
+      /// if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
+      /// if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
+      /// 
+      /// let { host, port } = this.args.hosting;
+      /// 
+      /// let sslArgs = { keyPair: null, selfSign: null };
+      /// if (this.args.hosting.has('ssl') && !!this.args.hosting.ssl) {
+      ///   let certFolder = this.seek('keep', 'adminFileSystem', [ 'mill', 'cert' ]);
+      ///   let { cert, key, selfSign } = await Promise.allObj({
+      ///     cert:     certFolder.seek('server.cert').getContent(),
+      ///     key:      certFolder.seek('server.key').getContent(),
+      ///     selfSign: certFolder.seek('localhost.cert').getContent()
+      ///   });
+      ///   sslArgs = { keyPair: { cert, key }, selfSign };
+      /// }
+      /// 
+      /// options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
       
-      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
-      
-      if (!options.has('hosting')) options.hosting = {};
-      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
-      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
-      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
-      
-      let [ host, port ] = this.origArgs.has('hosting')
-        ? this.origArgs.hosting.split(':')
-        : [ 'localhost', '80' ];
-      
-      let sslArgs = { keyPair: null, selfSign: null };
-      if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
-        let certFolder = this.seek('keep', 'adminFileSystem', [ 'mill', 'cert' ]);
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     certFolder.seek('server.cert').getContent(),
-          key:      certFolder.seek('server.key').getContent(),
-          selfSign: certFolder.seek('localhost.cert').getContent()
-        });
-        sslArgs = { keyPair: { cert, key }, selfSign };
-      }
-      
-      options.uid = 'nodejs.root';
-      options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
-      
-      return forms.Foundation.createHut.call(this, options);
+      return forms.Foundation.createHut.call(this, 'fnd.nodejs');
       
     },
     createKeep: function(options={}) { return Form.KeepNodejs(); },
@@ -1272,7 +1333,7 @@
       return newSpoofyRoad;
       
     },
-    makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       
       if (!port) port = keyPair ? 443 : 80;
       
@@ -1502,7 +1563,7 @@
       return server;
       
     },
-    makeSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
       if (!port) port = keyPair ? 444 : 81;
       
       let makeSoktState = (status='initial') => ({

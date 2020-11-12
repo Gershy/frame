@@ -81,7 +81,6 @@
       let firstContactMs = performance.timing.responseStart;
       let knownLatencyMs = nativeNow - firstContactMs;
       
-      
       // With this value, `new Date() + this.clockDeltaMs` is best guess
       // at current value of Above's `foundation.getMs()` *right now*
       this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
@@ -126,19 +125,19 @@
     // High level
     createHut: async function(options={}) {
       
-      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
-      options.uid = this.hutId;
+      /// if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      /// options.uid = this.hutId;
+      /// 
+      /// if (!options.has('hosting')) options.hosting = {};
+      /// if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
+      /// if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
+      /// if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
+      /// 
+      /// let { protocol, host, port } = this.parseUrl(window.location.href);
+      /// let { secure } = Foundation.protocols[protocol];
+      /// options.hosting.gain({ host, port, sslArgs: { keyPair: secure, selfSign: secure } });
       
-      if (!options.has('hosting')) options.hosting = {};
-      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
-      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
-      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
-      
-      let { protocol, host, port } = this.parseUrl(window.location.href);
-      let { secure } = Foundation.protocols[protocol];
-      options.hosting.gain({ host, port, sslArgs: { keyPair: secure, selfSign: secure } });
-      
-      return forms.Foundation.createHut.call(this, options);
+      return forms.Foundation.createHut.call(this, this.hutId);
       
     },
     createKeep: function(options={}) { return Form.KeepBrowser(this); },
@@ -655,7 +654,7 @@
     },
     
     // Connectivity
-    makeHttpServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
+    createHttpServer: async function(pool, { host, port, keyPair=false, selfSign=false }) {
       if (!port) port = keyPair ? 443 : 80;
       
       let numPendingReqs = 0;
@@ -714,7 +713,7 @@
       
       return server;
     },
-    makeSoktServer: async function(pool, { host, port, keyPair = false, selfSign = false }) {
+    createSoktServer: async function(pool, { host, port, keyPair=false, selfSign=false }) {
       if (!WebSocket) return null;
       
       if (!port) port = keyPair ? 444 : 81;

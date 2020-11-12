@@ -15,7 +15,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
       forms.Tmp.init.call(this);
       this.rootRoadSrcName = rootRoadSrcName;
     },
-    prepare: function(name, hut) {
+    prepare: async function(name, hut) {
       
       let tmp = Tmp();
       
@@ -78,14 +78,13 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
                   window.focus();
                 });
                 
-                let foundation = global.foundation = U.setup.FoundationBrowser({
-                  ...${JSON.stringify(foundation.origArgs)},
+                let foundation = global.foundation = U.setup.FoundationBrowser(JSON.parse('${JSON.stringify({
+                  ...foundation.args,
                   bearing: 'below',
-                  hutId: '${srcHut.uid}',
-                  isSpoofed: ${srcHut.isSpoofed},
-                  aboveMsAtResponseTime: ${foundation.getMs()},
-                  initData: ${JSON.stringify(initSyncTell)}
-                });
+                  hutId: srcHut.uid,
+                  aboveMsAtResponseTime: foundation.getMs(),
+                  initData: initSyncTell
+                })}'));
                 foundation.settleRoom('${name}', 'below').catch(err => {
                   console.log('FATAL ERROR:', foundation.formatError(err));
                   foundation.halt();

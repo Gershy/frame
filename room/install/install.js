@@ -6,7 +6,7 @@ global.rooms.install = async foundation => {
   // let TerminalHabitat = await foundation.getRoom('hinterlands.habitat.terminal'); // Interact with app purely via command line (and maybe even a separate graphical ui experience like 'window' room
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
-  let { debug=[] } = foundation.origArgs;
+  let { debug=[] } = foundation.args;
   return HutControls('stl.install', {
     debug,
     habitats: [ HtmlBrowserHabitat() ],
@@ -14,7 +14,7 @@ global.rooms.install = async foundation => {
       
       /// {ABOVE=
       
-      // Make sure to use the non-admin fileSystem, to control access
+      // Make sure to use the non-admin fileSystem to control access
       let fsKeep = foundation.seek('keep', 'fileSystem');
       let installActionKeep = fsKeep.seek('room', 'install', 'installAction.js').setContentType('text');
       
@@ -37,16 +37,21 @@ global.rooms.install = async foundation => {
         
       });
       hut.relSrc('stl.install').route(installRec => {
-        let { hosting, ssl } = foundation.origArgs;
-        let [ host, port ] = hosting.split(':');
-        hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
-        installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}/stl.run?reply=2` });
+        
+        installRec.setVal({ httpTrg: foundation.getServerName('http') });
+        
+        /// let { hosting: { host, port }, ssl } = foundation.args;
+        /// let [ host, port ] = hosting.split(':');
+        /// hosting = (port !== (ssl ? '443' : '80')) ? `${host}:${port}` : host;
+        /// installRec.setVal({ httpTrg: `${ssl ? 'https' : 'http'}://${hosting}/stl.run?reply=2` });
       });
       
       /// =ABOVE}
       
     },
     kidFn: (hut, install, real, dep) => {
+      
+      console.log('HERE??');
       
       let stlReal = dep(real.addReal('stl.install', {
         layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],

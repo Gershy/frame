@@ -21,12 +21,6 @@
 // sub-POs?). If we had a way to measure the overall "cost" of an app,
 // AI could optimize values for all POs.
 
-// To save on precision-insensitive geometry updates from Below, could
-// slow the rate of updates from the server and have the client side
-// extrapolate finer-grained time-steps based on sampling the low-res
-// location data, and guessing velocity, acceleration, etc. More CPU
-// work for the client, much less network pressure on the server!
-
 // Keep-Alive headers
 // NODE_ENV should be production?
 
@@ -39,42 +33,8 @@ require('./setup/foundation.js');
 require('./setup/foundationNodejs.js');
 let { FoundationNodejs } = U.setup;
 
-// ARG PROCESSING:
-// We process the raw text typed into the terminal. Every attempt is
-// made to normalize terminal-level argument-passing. We always want the
-// exact string which the user typed in.
-//
-// Two argument modes: 1) object literal; 2) hut params
-//
-// 1) OBJECT LITERAL:
-// The user may type a literal javascript (not necessarily JSON) object
-// into the terminal. We'll use `eval` to determine the contents
-//
-// 2) HUT PARAMS:
-// The user may declare multiple heirarchical keys, with corresponding
-// values. Heirarchical components are separated with the "." character.
-// Values are separated from keys with the "=" character.
-
-let args = process.argv.slice(2).join(' ').trim();
-if (args[0] === '{') {     // Process object literal
-  
-  args = eval(`(${args})`);
-  
-} else {                   // Process hut args
-  
-  let orig = args;
-  args = {};
-  
-  orig.split(' ').forEach(entry => {
-    let [ k, ...v ] = entry.trim().split('=');
-    k = k.replace(/^-*|-*$/g, '').split('.');
-    let lastProp = k.pop();
-    let ptr = args;
-    for (let prop of k) { if (!ptr.has(prop)) ptr[prop] = {}; ptr = ptr[prop]; }
-    ptr[lastProp] = v.length ? v.join('=') : true; // No value indicates a flag - so set to `true`
-  });
-  
-}
+let args = eval(`(${process.argv.slice(2).join(' ').trim()})`);
+if (!U.isForm(args, Object)) throw Error(`Arguments should be Object (got ${U.getFormName(args)})`);
 
 let foundation = FoundationNodejs(args);
 foundation.settleRoom(args.settle, 'above').catch(err => {

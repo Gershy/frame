@@ -7,7 +7,13 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     // HutControls consolidates a bunch of boilerplate configuration in
     // one place. The main functions are to:
     // - Define debug options
+    // - Enumerate hosting options
     // - Enumerate what habitats this app supports
+    //    (TODO: At the moment every habitat runs on every host...?)
+    //    (TODO: Once hut.addServer(...) is available, servers should
+    //    allow a "default road term" to be defined to replace
+    //    "syncInit" - this would mean many habitats could all run on
+    //    the same server, and multiplex as is required of them)
     // - Provide a recForm mapping (mapping recType names to Forms)
     // - Initializing a root Rec for the app
     // - Persistent storage and loading previous states
@@ -15,32 +21,33 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     //    the state of each BELOW, and parameterizing ABOVE/BELOW logic
     //    appropriately
     
+    /// {ABOVE=
     $FollowRecScope: U.form({ name: 'FollowRecScope', has: { RecScope }, props: (forms, Form) => ({
       init: function(hut, ...args) {
         
         this.hut = hut;
         
-        /// {ABOVE=
         // Our src will send Recs if using either of these styles:
         // 1 - `RecScope(srcTmp, 'relTerm', (rec, dep) => ...)`
         // 2 - `RecScope(srcTmp.relSrc('relTerm'), (rec, dep) => ...)`
         this.doFollowRecs = args.count() === 3 || U.isForm(args[0], RecSrc);
-        /// =ABOVE}
         
         forms.RecScope.init.call(this, ...args);
         
       },
-      /// {ABOVE=
       processTmp: function(tmp, dep) {
         if (this.doFollowRecs) dep(this.hut.followRec(tmp));
         return forms.RecScope.processTmp.call(this, tmp, dep);
       },
-      /// =ABOVE}
       subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
     })}),
+    /// =ABOVE}
     
-    init: function(fullName, { debug=[], habitats=[], recForms={}, storage=null, parFn=()=>{}, kidFn=()=>{} }) {
-      ({}).gain.call(this, { fullName, debug, habitats, recForms, storage, parFn, kidFn });
+    init: function(fullName, params={}) {
+      let { hostTerms=foundation.args.hosting.toArr((v, k) => k) } = params;
+      let { debug=[], habitats=[], recForms={}, storage=null } = params;
+      let { parFn=Function.stub, kidFn=Function.stub } = params;
+      ({}).gain.call(this, { fullName, debug, hostTerms, habitats, recForms, storage, parFn, kidFn });
     },
     
     /// {ABOVE=
@@ -148,8 +155,25 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       
       hut.roadDbgEnabled = this.debug.has('road');
       
+      // In the future (but it's gonna require figuring out exactly
+      // what's going on with the arcane "processNewRoad"):
+      //  let server = await foundation.getServer(hostingTerm);
+      //  tmp.endWith(hut.addServer(server));
+      await Promise.allArr(this.hostTerms.map(term => foundation.getServer(hut, term)));
+      
+      /// let { hosting, protocols, heartMs } = options;
+      /// if (protocols.http) {
+      ///   console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
+      ///   this.createHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
+      /// }
+      /// if (protocols.sokt) {
+      ///   console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
+      ///   this.createSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
+      /// }
+      
       let name = this.fullName.split('.')[1];
-      for (let h of this.habitats) tmp.endWith(h.prepare(name, hut));
+      let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(name, hut)));
+      tmp.endWith(() => preparations.each(p => p.end()));
       
       hut.addTypeClsFns(this.recForms.map(RecForm => () => RecForm));
       tmp.endWith(()=> hut.remTypeClsFns(this.recForms.toArr((v, k) => k)));
@@ -178,8 +202,9 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       /// =ABOVE} {BELOW=
       
       // As soon as Below syncs the root Rec it's good to go
-      let kidScope = Form.FollowRecScope(hut, hut, this.fullName, (rec, dep) => this.kidFn(hut, rec, real, dep));
+      let kidScope = RecScope(hut, this.fullName, (rec, dep) => this.kidFn(hut, rec, real, dep));
       tmp.endWith(kidScope);
+      console.log('Added kid scope...');
       
       /// =BELOW}
       

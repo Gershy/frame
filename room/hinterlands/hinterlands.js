@@ -113,7 +113,8 @@ global.rooms.hinterlands = async foundation => {
       
     },
     
-    init: function(foundation, uid, { parHut=null, heartMs=15 * 1000 }={}) {
+    // TODO: `heartMs` should possibly be handled by the server.
+    init: function(foundation, uid, { parHut=null, heartMs=30 * 1000 }={}) {
       
       this.uid = uid;
       this.parHut = parHut;

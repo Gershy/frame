@@ -35,33 +35,45 @@ Hut at the very bottom runs using a single Reality.
       http: { secure: false, defaultPort: 80 },
       https: { secure: true, defaultPort: 443 },
       ws: { secure: false, defaultPort: 80 },
-      wss: { secure: true, defaultPort: 443 },
+      wss: { secure: true, defaultPort: 443 }
     },
     
     init: function(args={}) {
       
       global.foundation = this;
       
-      if (!args.has('mode')) args.mode = 'prod';
-      if (!args.has('hosting')) args.hosting = 'localhost:80';
-      if (!args.has('ssl')) args.ssl = null;
+      /// if (!args.has('mode')) args.mode = 'prod';
+      /// if (!args.has('hosting')) args.hosting = 'localhost:80';
+      /// if (!args.has('ssl')) args.ssl = null;
       
-      this.origArgs = args;
-      this.spoofEnabled = args.mode === 'test';
-      this.isSpoofed = args.seek('isSpoofed').val || false;
+      this.args = this.processArgs(args).then(args => {
+        this.args = args;
+        if (this.args.debug.has('foundation')) console.log(`${this.getPlatform()} running with`, this.args);
+      });
       this.initData = args.seek('initData').val || null;
+      
+      ///this.spoofEnabled = args.mode === 'test';
+      ///this.isSpoofed = args.seek('isSpoofed').val || false;
+      
       this.uidCnt = 0;
       this.installedRooms = {};
+      this.servers = {};
       
       this.hutPrm = null;
       this.keepPrm = null;
       this.realPrm = null;
       
     },
-    ready: function() { return Promise.resolve(); },
+    processArgs: async function({ mode='prod', debug=[], ...args }) {
+      return { mode, ...args, debug: Set(debug) };
+    },
+    ready: function() { return this.args; },
     halt: function() { throw Error(`Foundation halted`); },
     getPlatform: C.noFn('getPlatform'),
-    
+    getServerName: function(type) {
+      let { protocol, host, port } = this.args.hosting[type];
+      return `${protocol}://${host}${port === Form.protocols[protocol].defaultPort ? '' : port}`;
+    },
     access: function(arg) {
       if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.getFormName(arg)}`);
       if (arg === 'hut') return this.getRootHut();
@@ -73,53 +85,78 @@ Hut at the very bottom runs using a single Reality.
     getRootHut: function(options={}) { return this.hutPrm = (this.hutPrm || this.createHut(options)); },
     getRootKeep: function(options={}) { return this.keepPrm = (this.keepPrm || this.createKeep(options)); },
     getRootReal: function(options={}) { return this.realPrm = (this.realPrm || this.createReal(options)); },
+    getServer: async function(pool, term) {
+      
+      // TODO: switch from:
+      //   create*Server(hut, ...);
+      // to:
+      //   hut.addServer(create*Server(...));
+      
+      if (!this.servers.has(term)) {
+        let opts = this.args.hosting[term];
+        
+        this.servers[term] = ({
+          http:   this.createHttpServer,
+          https:  this.createHttpServer,
+          sokt:     this.createSoktServer,
+          ws:     this.createSoktServer,
+          wss:    this.createSoktServer,
+        })[opts.protocol].call(this, pool, opts);
+        
+        this.servers[term].then(v => this.servers[term] = v);
+      }
+      return this.servers[term];
+      
+    },
     
-    createHut: async function(options={}) {
+    createHut: async function(uid) {
       
       // Note: An instance of node could have multiple RootHuts, each
       // representing a server with a variety of Roads, and different
       // servers could host entirely different applications - all within
       // the same node VM context!
       
-      if (!options.has('uid')) throw Error('Must provide "uid"');
+      // if (!options.has('uid')) throw Error('Must provide "uid"');
       
       // Ensure good defaults inside `options`:
       
-      // Hosting:
-      if (!options.has('hosting')) options.hosting = {};
-      if (!options.hosting.has('host')) options.hosting.host = 'localhost';
-      if (!options.hosting.has('port')) options.hosting.port = 80;
-      if (!options.hosting.has('sslArgs')) options.hosting.sslArgs = null;
+      /// // Hosting:
+      /// if (!options.has('hosting')) options.hosting = {};
+      /// if (!options.hosting.has('host')) options.hosting.host = 'localhost';
+      /// if (!options.hosting.has('port')) options.hosting.port = 80;
+      /// if (!options.hosting.has('sslArgs')) options.hosting.sslArgs = null;
+      /// 
+      /// // SSL:
+      /// if (!options.hosting.sslArgs) options.hosting.sslArgs = {};
+      /// if (!options.hosting.sslArgs.has('keyPair')) options.hosting.sslArgs.keyPair = null;
+      /// if (!options.hosting.sslArgs.has('selfSign')) options.hosting.sslArgs.selfSign = null;
+      /// 
+      /// // Protocols:
+      /// if (!options.has('protocols')) options.protocols = {};
+      /// if (!options.protocols.has('http')) options.protocols.http = true;
+      /// if (!options.protocols.has('sokt')) options.protocols.sokt = true;
+      /// 
+      /// // Heartbeat:
+      /// if (!options.has('heartMs')) options.heartMs = 1000 * 30;
       
-      // SSL:
-      if (!options.hosting.sslArgs) options.hosting.sslArgs = {};
-      if (!options.hosting.sslArgs.has('keyPair')) options.hosting.sslArgs.keyPair = null;
-      if (!options.hosting.sslArgs.has('selfSign')) options.hosting.sslArgs.selfSign = null;
+      let hut = (await this.getRoom('hinterlands')).Hut(this, uid);
       
-      // Protocols:
-      if (!options.has('protocols')) options.protocols = {};
-      if (!options.protocols.has('http')) options.protocols.http = true;
-      if (!options.protocols.has('sokt')) options.protocols.sokt = true;
-      
-      // Heartbeat:
-      if (!options.has('heartMs')) options.heartMs = 1000 * 30;
-      
-      let hut = (await this.getRoom('hinterlands')).Hut(this, options.uid, options.slice('heartMs'));
-      
-      let { hosting, protocols, heartMs } = options;
-      if (protocols.http) {
-        console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
-        this.makeHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
-      }
-      if (protocols.sokt) {
-        console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
-        this.makeSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
-      }
+      /// let { hosting, protocols, heartMs } = options;
+      /// if (protocols.http) {
+      ///   console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
+      ///   this.createHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
+      /// }
+      /// if (protocols.sokt) {
+      ///   console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
+      ///   this.createSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
+      /// }
       
       return hut;
     },
     createKeep: C.noFn('createKeep'),
     createReal: C.noFn('createReal'),
+    createHttpServer: C.noFn('createHttpServer', (pool, params) => {}),
+    createSoktServer: C.noFn('createSoktServer', (pool, params) => {}),
     
     // Error
     parseErrorLine: C.noFn('parseErrorLine'),
@@ -205,8 +242,6 @@ Hut at the very bottom runs using a single Reality.
     // Platform
     getMs: function() { return +new Date(); },
     queueTask: C.noFn('queueTask'),
-    makeHttpServer: async function(pool, ip, port) { C.notImplemented.call(this); },
-    makeSoktServer: async function(pool, ip, port) { C.notImplemented.call(this); },
     getUid: function() { return (this.uidCnt++).encodeStr(C.base62, 8); },
     
     // Setup

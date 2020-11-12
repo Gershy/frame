@@ -205,12 +205,12 @@ let PromiseOrig = Promise;
 Promise = global.Promise = function Promise(...args) { return new PromiseOrig(...args); };
 Promise.Native = PromiseOrig;
 Promise.prototype = PromiseOrig.prototype;
-Promise.allArr = (...args) => PromiseOrig.all(...args);
+Promise.allArr = (...args) => PromiseOrig.all(...args).then(arr => arr.map(v => v));
 Promise.allObj = async obj => {
   let result = await Promise.allArr(obj.toArr(v => v));
   let ind = 0;
   let ret = {};
-  for (let k in obj) ret[k] = result[ind++];
+  for (let k in obj) { let r = result[ind++]; if (r !== C.skip) ret[k] = r; }
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
@@ -301,15 +301,14 @@ let U = global.U = {
     // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
     // make `forms.allArr(name, fn)` available. `forms.allArr` is very
     // similar to `forms.all`, except `workFn`'s signature isn't:
-    //    |     workFn(...origArgs)
+    //    |     workFn(...args)
     // but rather:
-    //    |     workFn(parResultArr, ...origArgs)
-    // The difference is the `parResultArr`, which contains the values
-    // the results of all parents calling their own `name` functions.
-    // Note that the use of an Array rather than an Object intentionally
-    // encourages design to treat all returned parent values equally.
-    // There is no explicit way to determine which parent provided any
-    // particular value.
+    //    |     workFn(parResultArr, ...args)
+    // The difference is the `parResultArr`, which contains the results
+    // of all parents calling their own `name` functions. Note that the
+    // use of an Array rather than an Object intentionally encourages
+    // design to treat all returned parent values equally. There is no
+    // explicit way to tell which parent returned a particular value.
     parForms.allArr = (methodName, workFn) => {
       let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
       return function(...args) { return workFn.call(this, props.map(m => m.call(this, ...args)), ...args); };
@@ -326,7 +325,6 @@ let U = global.U = {
     
     // Collect all inherited props
     let propsByName = {};
-    // Avoid `for (v of formProto)` - `formProto` is prototype-less! // TODO: THIS COMMENT LIES???
     
     // Iterate all props of all ParForm prototypes
     for (let [ formName, proto ] of parForms) { for (let [ propName, prop ] of proto) {
@@ -344,8 +342,8 @@ let U = global.U = {
     // unique to the Form being created!
     for (let [ propName, prop ] of props) {
       
-      // All props here are the single method of their name!
-      // They may call inherited props of the same name (or not)
+      // `propName` values iterated here will be unique; `props` is
+      // an object, and must have unique keys
       if (propName[0] === '$')  Form[propName.slice(1)] = prop;        // "$" indicates class-level property
       else                      propsByName[propName] = Set([ prop ]); // Guaranteed to be singular
       
@@ -534,12 +532,16 @@ U.logic = (() => {
     }
   })});
   let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    // TODO: What if Tmps normally don't have any sense of RefCount, but
+    // as soon as Tmp.prototype.ref() gets called they gain it?
+    
     init: function(fn=null) {
       forms.Src.init.call(this);
       forms.Endable.init.call(this);
       if (fn) this.route(fn, 'prm');
     },
-    end: function(...args) { return this.sendAndEnd(...args); },
+    end: function(...args) { return this.sendAndEnd(...args); },  // TODO: high-traffic code... should reference `sendAndEnd` instead of delegating...??
     send: function(...args) { return this.sendAndEnd(...args); },
     sendAndEnd: function(...args) {
       // Sending and ending are synonymous for a Tmp
