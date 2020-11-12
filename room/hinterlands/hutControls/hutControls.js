@@ -53,16 +53,19 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     /// =ABOVE}
     
     init: function(fullName, params={}) {
-      let { hostTerms=null } = params;
-      let { debug=[], habitats=[], recForms={}, storage=null } = params;
+      let { hosting=foundation.getArg('hosting') } = params;
+      let { debug=foundation.getArg('debug') } = params;
+      let { habitats=[], recForms={}, storage=null } = params;
       let { parFn=Function.stub, kidFn=Function.stub } = params;
-      ({}).gain.call(this, { fullName, debug, hostTerms, habitats, recForms, storage, parFn, kidFn });
+      ({}).gain.call(this, { fullName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
     },
     
     /// {ABOVE=
     setupReplayStorage: async function(hut, { keep, bufferMinSize=50, bufferMs=10*1000 }) {
       
-      console.log('Init replay storage', { keep, bufferMinSize, bufferMs });
+      let doDbg = this.debug.has('storage');
+      
+      doDbg && console.log('Init replay storage', { keep, bufferMinSize, bufferMs });
       
       let { Hut } = await foundation.getRoom('hinterlands');
       let { Rec } = await foundation.getRoom('record');
@@ -100,7 +103,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
           
         };
         
-        console.log(`Catching up; replaying ${replayCount} files...`);
+        doDbg && console.log(`Catching up; replaying ${replayCount} files...`);
         let t = foundation.getMs();
         let replayCnt = 0;
         for (let i = 0; i < replayCount; i++) {
@@ -116,13 +119,13 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
             Hut.tell(kidHut, hut, null, null, msg, ms);
           }
         }
-        console.log(`Caught up via replays after ${((foundation.getMs() - t) / 1000).toFixed(2)}s`);
+        doDbg && console.log(`Caught up via replays after ${((foundation.getMs() - t) / 1000).toFixed(2)}s`);
         
         for (let [ k, hut ] of huts) hut.end();
         
       } else {
         
-        console.log(`Fresh start; no replay required`);
+        doDbg && console.log(`Fresh start; no replay required`);
         
       }
       
@@ -164,13 +167,20 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       
       hut.roadDbgEnabled = this.debug.has('road');
       
+      let debug = await Promise.resolve(this.debug);
+      
       // In the future (but it's gonna require figuring out exactly
       // what's going on with the arcane "processNewRoad"):
       //  let server = await foundation.getServer(hostingTerm);
       //  tmp.endWith(hut.addServer(server));
-      let hostTerms = await (this.hostTerms || foundation.getArg('hosting'));
-      if (U.isForm(hostTerms, Object)) hostTerms = hostTerms.toArr((v, k) => k);
-      await Promise.allArr(hostTerms.map(term => foundation.getServer(hut, term)));
+      let hosting = await Promise.resolve(this.hosting);
+      for (let [ term, opts ] of hosting) foundation.getServer(hut, opts);
+      
+      if (debug.has('hosting') && !hosting.isEmpty()) {
+        console.log(`Hut ${this.fullName} is now hosted; access via:`);
+        for (let h of hosting.toArr(v => v))
+          console.log(`- ${foundation.formatHostUrl(h)}`);
+      }
       
       /// let { hosting, protocols, heartMs } = options;
       /// if (protocols.http) {
@@ -204,10 +214,13 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       tmp.endWith(parScope);
       
       if (this.storage) {
+        if (this.debug.has('storage')) console.log(`Setting up "${this.storage.type}" storage on "${this.fullName}"; params:`, this.storage);
         tmp.endWith(await {
           replay: () => this.setupReplayStorage(hut, this.storage),
           postgres: () => { /* imagine the possibilities! */ }
         }[this.storage.type]());
+      } else {
+        if (this.debug.has('storage')) console.log(`No storage requested for "${this.fullName}"`);
       }
       
       /// =ABOVE} {BELOW=

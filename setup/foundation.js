@@ -81,19 +81,11 @@ Hut at the very bottom runs using a single Reality.
     ready: function() { return Promise.resolve(); },
     halt: function() { throw Error(`Foundation halted`); },
     getPlatform: C.noFn('getPlatform'),
-    getServerUrl: function(type) {
-      let fn = hosting => {
-        let { protocol, host, port } = hosting[type];
-        let includePort = port !== Form.protocols[protocol].defaultPort;
-        return `${protocol}://${host}${includePort ? ':' + port : ''}`;
-      }
-      let hosting = this.getArg('hosting');
-      return U.isForm(hosting, Promise) ? hosting.then(fn) : fn(hosting);
-    },
-    getServerNames: function() {
-      let fn = obj => obj.toArr((v, k) => k);
-      let hosting = this.getArg('hosting');
-      return U.isForm(hosting, Promise) ? hosting.then(fn) : fn(hosting);
+    formatHostUrl: function({ protocol, host, port }) {
+      let excludePort = true
+        && Form.protocols.has(protocol)
+        && port === Form.protocols[protocol].defaultPort;
+      return `${protocol}://${host}${excludePort ? '' : (':' + port)}`;
     },
     access: function(arg) {
       if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.getFormName(arg)}`);
@@ -106,15 +98,16 @@ Hut at the very bottom runs using a single Reality.
     getRootHut: function(options={}) { return this.hutPrm = (this.hutPrm || this.createHut(options)); },
     getRootKeep: function(options={}) { return this.keepPrm = (this.keepPrm || this.createKeep(options)); },
     getRootReal: function(options={}) { return this.realPrm = (this.realPrm || this.createReal(options)); },
-    getServer: async function(pool, term) {
+    getServer: async function(pool, opts) {
       
       // TODO: switch from:
       //   create*Server(hut, ...);
       // to:
       //   hut.addServer(create*Server(...));
+      let { protocol, host, port } = opts;
+      let term = `${protocol}://${host}:${port}`;
       
       if (!this.servers.has(term)) {
-        let opts = (await this.getArg('hosting'))[term];
         
         this.servers[term] = ({
           http:   this.createHttpServer,
@@ -124,8 +117,8 @@ Hut at the very bottom runs using a single Reality.
           ws:     this.createSoktServer,
           wss:    this.createSoktServer
         })[opts.protocol].call(this, pool, opts);
-        
         this.servers[term].then(v => this.servers[term] = v);
+        
       }
       return this.servers[term];
       

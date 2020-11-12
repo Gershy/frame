@@ -1088,7 +1088,18 @@
             
             let bestRank = Math.max(...potentialHosts.map(v => v.rank));
             let bestHosts = potentialHosts.map(v => v.rank === bestRank ? (v.addr || v.ip) : C.skip);
-            console.log({ bestRank, potentialHosts, bestHosts });
+            
+            if (this.getArg('debug').has('hosting')) {
+              
+              console.log('Autodetected hosts; results:');
+              for (let { type, rank, ip, addr } of potentialHosts.sort((h1, h2) => h2.rank - h1.rank)) {
+                console.log(addr
+                  ? `- Priority ${rank} (${type}): ${addr} (${ip})`
+                  : `- Priority ${rank} (${type}): ${ip}`
+                );
+              }
+              
+            }
             
             return bestHosts.count() !== 1
               ? (bestHosts.count() && console.log(`Using host "localhost" but there are multiple options: ${bestHosts.join(', ')}`), 'localhost')
