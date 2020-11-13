@@ -1377,16 +1377,16 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getHutRoadForQuery: function(server, parHut, hutId) {
+    getHutRoadForQuery: function(server, pool, hutId) {
       
       // TODO: Right now a Road can be spoofed - this should be a
       // property of the Hut, shouldn't it?
       
       // Free pass for Huts that declare themselves unfamiliar
-      if (hutId === null) return parHut.processNewRoad(server, null);
+      if (hutId === null) return pool.processNewRoad(server, null);
       
       // Check if this RoadedHut is familiar:
-      let roadedHut = parHut.getRoadedHut(hutId);
+      let roadedHut = pool.getRoadedHut(hutId);
       if (roadedHut) {
         
         // Familiar RoadedHuts are guaranteed a Road
@@ -1394,7 +1394,7 @@
           // Any previous Road is reused
           ? roadedHut.serverRoads.get(server)
           // Otherwise a new Road is processed for the RoadedHut
-          : parHut.processNewRoad(server, hutId);
+          : pool.processNewRoad(server, hutId);
         
       }
       
@@ -1402,12 +1402,12 @@
       if (!this.spoofEnabled) return null;
       
       // Return a Road spoofed to have the requested `hutId`
-      let newSpoofyRoad = parHut.processNewRoad(server, hutId);
+      let newSpoofyRoad = pool.processNewRoad(server, hutId);
       newSpoofyRoad.hut.isSpoofed = true;
       return newSpoofyRoad;
       
     },
-    createHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createHttpServer: async function({ host, port, keyPair=null, selfSign=null }) {
       
       if (!port) port = keyPair ? 443 : 80;
       
@@ -1491,6 +1491,9 @@
         
         // Error response for invalid params
         if (!params.has('command')) return res.writeHead(400).end();
+        
+        // Figure out which Pool will handle this request
+        let pool = server.pickTrgPool(params);
         
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
@@ -1633,11 +1636,18 @@
         road.endWith(() => road.waitResps.each(res => res.end()));
         road.currentCost = () => 1.0;
       };
+      server.pools = Set();
+      server.pickTrgPool = params => server.pools.toArr(v => v)[0];
+      server.addPool = pool => {
+        if (server.pools.has(pool)) throw Error(`Added duplicate pool: ${U.getFormName(pool)}`);
+        server.pools.add(pool);
+        return Tmp(() => server.pools.rem(pool));
+      };
       
       return server;
       
     },
-    createSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createSoktServer: async function({ host, port, keyPair=null, selfSign=null }) {
       if (!port) port = keyPair ? 444 : 81;
       
       let makeSoktState = (status='initial') => ({
@@ -1676,8 +1686,12 @@
           '\r\n'
         ].join('\r\n'));
         
-        let { query: { hutId=null } } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
-        let road = this.getHutRoadForQuery(server, pool, hutId);
+        let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
+        
+        // Figure out which Pool will handle this request
+        let pool = server.pickTrgPool(query);
+        
+        let road = this.getHutRoadForQuery(server, pool, query.seek('hutId').val);
         if (!road) return sokt.end();
         road.sokt = sokt;
         
@@ -1755,6 +1769,13 @@
         
         road.endWith(() => road.sokt.end());
         road.currentCost = () => 0.5;
+      };
+      server.pools = Set();
+      server.pickTrgPool = params => server.pools.toArr(v => v)[0];
+      server.addPool = pool => {
+        if (server.pools.has(pool)) throw Error(`Added duplicate pool: ${U.getFormName(pool)}`);
+        server.pools.add(pool);
+        return Tmp(() => server.pools.rem(pool));
       };
       
       return server;

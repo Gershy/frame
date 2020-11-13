@@ -1,4 +1,4 @@
-global.rooms.promo = async foundation => {
+global.rooms['internal.promo'] = async foundation => {
   
   let { Tmp, Slots } = U.logic;
   

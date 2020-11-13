@@ -98,7 +98,7 @@ Hut at the very bottom runs using a single Reality.
     getRootHut: function(options={}) { return this.hutPrm = (this.hutPrm || this.createHut(options)); },
     getRootKeep: function(options={}) { return this.keepPrm = (this.keepPrm || this.createKeep(options)); },
     getRootReal: function(options={}) { return this.realPrm = (this.realPrm || this.createReal(options)); },
-    getServer: async function(pool, opts) {
+    getServer: async function(opts) {
       
       // TODO: switch from:
       //   create*Server(hut, ...);
@@ -116,7 +116,7 @@ Hut at the very bottom runs using a single Reality.
           sokts:  this.createSoktServer,
           ws:     this.createSoktServer,
           wss:    this.createSoktServer
-        })[opts.protocol].call(this, pool, opts);
+        })[opts.protocol].call(this, opts);
         this.servers[term].then(v => this.servers[term] = v);
         
       }
@@ -135,12 +135,6 @@ Hut at the very bottom runs using a single Reality.
       
       // Ensure good defaults inside `options`:
       
-      /// // Hosting:
-      /// if (!options.has('hosting')) options.hosting = {};
-      /// if (!options.hosting.has('host')) options.hosting.host = 'localhost';
-      /// if (!options.hosting.has('port')) options.hosting.port = 80;
-      /// if (!options.hosting.has('sslArgs')) options.hosting.sslArgs = null;
-      /// 
       /// // SSL:
       /// if (!options.hosting.sslArgs) options.hosting.sslArgs = {};
       /// if (!options.hosting.sslArgs.has('keyPair')) options.hosting.sslArgs.keyPair = null;
@@ -156,22 +150,12 @@ Hut at the very bottom runs using a single Reality.
       
       let hut = (await this.getRoom('hinterlands')).Hut(this, uid);
       
-      /// let { hosting, protocols, heartMs } = options;
-      /// if (protocols.http) {
-      ///   console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
-      ///   this.createHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
-      /// }
-      /// if (protocols.sokt) {
-      ///   console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
-      ///   this.createSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
-      /// }
-      
       return hut;
     },
     createKeep: C.noFn('createKeep'),
     createReal: C.noFn('createReal'),
-    createHttpServer: C.noFn('createHttpServer', (pool, params) => {}),
-    createSoktServer: C.noFn('createSoktServer', (pool, params) => {}),
+    createHttpServer: C.noFn('createHttpServer', opts => {}),
+    createSoktServer: C.noFn('createSoktServer', opts => {}),
     
     // Error
     parseErrorLine: C.noFn('parseErrorLine'),

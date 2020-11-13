@@ -174,23 +174,25 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       //  let server = await foundation.getServer(hostingTerm);
       //  tmp.endWith(hut.addServer(server));
       let hosting = await Promise.resolve(this.hosting);
-      for (let [ term, opts ] of hosting) foundation.getServer(hut, opts);
+      let servers = await Promise.allObj(hosting.map(opts => foundation.getServer(opts)));
+      
+      for (let [ term, server ] of servers) {
+        
+        // Attach given hut to Pool
+        server.addPool(hut);
+        
+        /// {BELOW=
+        // Link BELOW servers with the Hut instance representing ABOVE
+        hut.processNewRoad(server, '!above'); // TODO: Does this belong here?
+        /// =BELOW}
+        
+      }
       
       if (debug.has('hosting') && !hosting.isEmpty()) {
         console.log(`Hut ${this.fullName} is now hosted; access via:`);
         for (let h of hosting.toArr(v => v))
           console.log(`- ${foundation.formatHostUrl(h)}`);
       }
-      
-      /// let { hosting, protocols, heartMs } = options;
-      /// if (protocols.http) {
-      ///   console.log(`Using HTTP: ${hosting.host}:${hosting.port + 0}`);
-      ///   this.createHttpServer(hut, { host: hosting.host, port: hosting.port + 0, ...hosting.sslArgs });
-      /// }
-      /// if (protocols.sokt) {
-      ///   console.log(`Using SOKT: ${hosting.host}:${hosting.port + 1}`);
-      ///   this.createSoktServer(hut, { host: hosting.host, port: hosting.port + 1, ...hosting.sslArgs });
-      /// }
       
       let name = this.fullName.split('.')[1];
       let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(name, hut)));

@@ -59,7 +59,6 @@
         return this.par.urlImages[url];
       }
     })}),
-    
     $TextNode: document.createTextNode('').constructor,
     
     init: function({ hutId, isSpoofed, aboveMsAtResponseTime, ...supArgs }) {
@@ -125,23 +124,7 @@
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     
     // High level
-    createHut: async function(options={}) {
-      
-      /// if (options.has('uid')) throw Error(`Don't specify "uid"!`);
-      /// options.uid = this.hutId;
-      /// 
-      /// if (!options.has('hosting')) options.hosting = {};
-      /// if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
-      /// if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
-      /// if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
-      /// 
-      /// let { protocol, host, port } = this.parseUrl(window.location.href);
-      /// let { secure } = Foundation.protocols[protocol];
-      /// options.hosting.gain({ host, port, sslArgs: { keyPair: secure, selfSign: secure } });
-      
-      return forms.Foundation.createHut.call(this, this.hutId);
-      
-    },
+    createHut: async function(options={}) { return forms.Foundation.createHut.call(this, this.hutId); },
     createKeep: function(options={}) { return Form.KeepBrowser(this); },
     createReal: async function() {
       
@@ -656,7 +639,7 @@
     },
     
     // Connectivity
-    createHttpServer: async function(pool, { host, port, keyPair=false, selfSign=false }) {
+    createHttpServer: async function({ host, port, keyPair=false, selfSign=false }) {
       if (!port) port = keyPair ? 443 : 80;
       
       let numPendingReqs = 0;
@@ -709,13 +692,11 @@
         road.currentCost = () => 1.0;
         this.queueTask(() => road.tell({ command: 'bankPoll' })); // Immediately bank a poll
       };
-      
-      // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, '!above');
+      server.addPool = () => Tmp.stub;
       
       return server;
     },
-    createSoktServer: async function(pool, { host, port, keyPair=false, selfSign=false }) {
+    createSoktServer: async function({ host, port, keyPair=false, selfSign=false }) {
       if (!WebSocket) return null;
       
       if (!port) port = keyPair ? 444 : 81;
@@ -735,18 +716,14 @@
         road.currentCost = () => 0.5;
         sokt.onmessage = ({ data }) => data && road.hear.send([ JSON.parse(data), null, this.getMs() ]);
       };
+      server.addPool = pool => Tmp.stub;
       
-      // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, '!above');
       return server;
     },
     
     parseErrorLine: function(line) {
       let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9.]*)/).slice(1);
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
-      
-      console.log({ line, roomName, lineInd, charInd });
-      
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10), bearing: 'below' };
     },
     srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: null, line: 0, char: 0 }) }; }

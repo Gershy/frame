@@ -35,7 +35,7 @@ let { FoundationNodejs } = U.setup;
 
 let evalContent = process.argv.slice(2).join(' ').trim();
 let args = evalContent ? eval(`(${evalContent})`) : null;
-if (!args || args.isEmpty()) args = { settle: 'internal', app: 'credits', ...args };
+if (!args || !args.has('settle')) args = { settle: 'internal.help', ...args };
 if (!U.isForm(args, Object)) throw Error(`Arguments should be Object (got ${U.getFormName(args)})`);
 
 let foundation = FoundationNodejs(args);
