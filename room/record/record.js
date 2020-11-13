@@ -44,7 +44,7 @@ global.rooms.record = async foundation => {
       let newRecTypes = []; // Terms that have never been seen before
       let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
       
-      recTypes.forEach((recType, term) => {
+      for (let [ term, recType ] of recTypes) {
         let memInf = this.memberInfoSrc.vals.find(mi => mi.term === term).val;
         let curRt = memInf ? memInf.recType : null;
         
@@ -54,7 +54,7 @@ global.rooms.record = async foundation => {
         
         if (!memInf)      newRecTypes.push({ term, recType });
         else if (!curRt)  defRecTypes.push({ memInf, recType });
-      });
+      }
       
       for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
       for (let nrt of newRecTypes) this.memberInfoSrc.retain(nrt);

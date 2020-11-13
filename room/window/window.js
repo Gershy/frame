@@ -747,8 +747,8 @@ global.rooms['window'] = foundation => ({ open: async () => {
   let complexChars = Set([ 0, 7, 8, 9, 10, 13, 27, 32, 155 ]);
   let charReplace = c => complexChars.has(c.charCodeAt(0)) ? ' ' : c;
   let cmpSeq = (seq1, seq2) => {
-    if (U.isForm(seq1, String)) seq1 = Array.fill(seq1.count(), i => seq1.charCodeAt(i));
-    if (U.isForm(seq2, String)) seq2 = Array.fill(seq2.count(), i => seq2.charCodeAt(i));
+    if (U.isForm(seq1, String)) seq1 = seq1.split('').map(c => c.code());
+    if (U.isForm(seq2, String)) seq2 = seq2.split('').map(c => c.code());
     
     if (seq1.count() !== seq2.count()) return false;
     if (seq1.find((v, n) => v !== seq2[n]).found) return false;
@@ -816,7 +816,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       let imageData = await Promise((r, e) => require('zlib').inflate(cmpImageData, (err, b) => err ? e(err) : r(b)));
       let bytesPerLine = imageData.length / h;
       let bytesPerPx = (bytesPerLine - 1) / w;
-      let scanLines = Array.fill(h, y => imageData.slice(bytesPerLine * y, bytesPerLine * (y + 1)));
+      let scanLines = h.toArr(y => imageData.slice(bytesPerLine * y, bytesPerLine * (y + 1)));
       
       let pixelData = [];
       for (let i = 0; i < scanLines.length; i++) {
@@ -873,7 +873,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       }
       
       let min = +1000000, max = -1000000;
-      let pixels = Array.fill(h, () => Array.fill(w));
+      let pixels = h.toArr(() => w.toArr(() => null));
       for (let y = 0; y < h; y++) { for (let x = 0; x < w; x++) {
         let [ r, g, b, a ] = pixelData[y].slice(x * bytesPerPx);
         let lum = Math.sqrt(r * r * 0.241 + g * g * 0.691 + b * b * 0.068);
@@ -925,7 +925,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
         this.w = w;
         this.h = h;
         this.choices = {};
-        this.lumChoices = Array.fill(numLums, () => ({}));
+        this.lumChoices = numLums.toArr(() => ({}));
       },
       reduce: function() {
         this.lumChoices = this.lumChoices.map(v => v.isEmpty() ? C.skip : v);
@@ -1009,7 +1009,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
         let charsVert = Math.floor(h / this.h);
         let charsHorz = Math.floor(w / this.w);
         
-        return Array.fill(charsVert, cy => Array.fill(charsHorz, cx => {
+        return charsVert.toArr(cy => charsHorz.toArr(cx => {
           
           let cnt = cy * charsHorz + cx;
           
@@ -1017,7 +1017,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
           
           let offY = cy * this.h;
           let offX = cx * this.w;
-          let regionImage = Array.fill(this.h, y => Array.fill(this.w, x => image[offY + y][offX + x]));
+          let regionImage = this.h.toArr(y => this.w.toArr(x => image[offY + y][offX + x]));
           return this.nearest(regionImage).char;
           
         }));
@@ -1034,7 +1034,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       
       let yOff = yy * ascii.h;
       let xOff = xx * ascii.w;
-      let img = Array.fill(ascii.h, y => Array.fill(ascii.w, x => pixels[yOff + y][xOff + x].lum));
+      let img = ascii.h.toArr(y => ascii.w.toArr(x => pixels[yOff + y][xOff + x].lum));
       
       let code = yy * numHorz + xx;
       //if (code > 90 && code < 100) showPixels(img);
@@ -1052,7 +1052,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     console.log('Loaded; processing:');
     let graphicImg = graphicPng.pixels.map(row => row.map(v => v.lum));
-    //let graphicImg = Array.fill(200, y => Array.fill(200, x => x / 200));
+    //let graphicImg = (200).toArr(y => (200).toArr(x => x / 200));
     
     let asciiRender = asciiPicker.imageToAscii(graphicImg);
     console.log(asciiRender.map(ln => '- ' + ln.join('') + ' -').join('\n'));
@@ -1071,8 +1071,8 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     let w = process.stdout.columns;
     let h = process.stdout.rows - 1;
-    let buffer = Array.fill(h, () => Array.fill(w, () => ' '));
-    let modBuffer = Array.fill(h, () => Array.fill(w, () => Set()));
+    let buffer = h.toArr(() => w.toArr(() => ' '));
+    let modBuffer = h.toArr(() => w.toArr(() => Set()));
     let setBuff = (x, y, c, mods=[]) => {
       
       if (y < 0 || y >= buffer.length) return;
@@ -1114,7 +1114,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
   
   let w = process.stdout.columns;
   let h = process.stdout.rows - 1;
-  let rows = Array.fill(h, y => Array.fill(w, x => charReplace(String.fromCharCode(y * w + x))));
+  let rows = h.toArr(y => w.toArr(x => charReplace(String.fromCharCode(y * w + x))));
   for (let row of rows) console.log(row.join(''));
   process.exit(0);
   
@@ -1193,7 +1193,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       }}
       
       let lines = this.text.split('\n').slice(this.scroll);
-      lines.slice(0, h).forEach((ln, n) => setBuff(x, y + n, ln.slice(0, w)));
+      lines.slice(0, h).each((ln, n) => setBuff(x, y + n, ln.slice(0, w)));
       
     }
   })});
@@ -1231,7 +1231,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     if (showKeys) disp.text = `"${name}": ${sequence}, [ ${sequence.split('').map(v => v.charCodeAt(0)).join(', ')} ], ${JSON.stringify({ meta, ctrl, shift })}`;
     
-    let seq = Array.fill(sequence.count(), i => sequence.charCodeAt(i));
+    let seq = sequence.split('').map(v => c.code());
     
     let cyclePrev = cmpSeq(seq, [ 27, 27, 91, 68 ]);
     let cycleNext = cmpSeq(seq, [ 27, 27, 91, 67 ]);

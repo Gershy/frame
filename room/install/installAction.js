@@ -19,8 +19,8 @@ async hosting => {
       let children = JSON.parse(data);
       if (!children || children.constructor !== Array) throw Error('Sad');
       await fs.promises.mkdir(path.join(...local));
-      yield remote;
       for (let c of children) yield* copy([ ...local, c ], [ ...remote, c ]);
+      yield remote;
     } catch(err) {
       yield remote;
       await fs.promises.writeFile(path.join(...local), data);
@@ -36,8 +36,8 @@ async hosting => {
     if (stat) throw Error(`${local.join('/')} already exists!`);
     
     console.log('Installing hut to:', local);
-    let remote = [ '.' ];
-    for await (let p of copy(local, remote)) console.log(`Copied path: [${p.join('/')}]`);
+    let remote = [];
+    for await (let p of copy(local, remote)) console.log(`Fully copied: [${[ ...local, ...p ].join('/')}]`);
     
   } catch(err) {
     

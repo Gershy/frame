@@ -478,13 +478,13 @@ global.rooms.write = async foundation => {
           //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
           //    |     }));
           //    |     let storyReal = roomReal.addReal('wrt.activeRoom.story', ctx => ({
-          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fillRemaining().mult(0.5) }) ]
           //    |     }));
           //    |     let statusReal = roomReal.addReal('wrt.activeRoom.status', ctx => ({
           //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.occupy().abs(40) }) ]
           //    |     }));
           //    |     let controlsReal = roomReal.addReal('wrt.activeRoom.controls', ctx => ({
-          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fill().mult(0.5) }) ]
+          //    |       layouts: [ SizedLayout({ w: ctx.w, h: ctx.fillRemaining().mult(0.5) }) ]
           //    |     }));
           
           // Real to display entire room

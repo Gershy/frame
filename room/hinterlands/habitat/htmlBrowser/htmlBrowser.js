@@ -254,7 +254,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
             id: `multi${n}`,
             title: `Multi #${n + 1}`,
             width: w, height: h,
-            src: `?textSize=${textSize}`
+            src: `/?textSize=${textSize}`
           }).toArr((v, k) => `${k}="${v}"`).join(' ');
           return `<iframe ${paramStr}></iframe>`
         }

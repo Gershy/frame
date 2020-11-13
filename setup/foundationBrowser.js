@@ -711,7 +711,7 @@
       };
       
       // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, roadedHut => roadedHut.hutId = '!above');
+      pool.processNewRoad(server, '!above');
       
       return server;
     },
@@ -727,13 +727,17 @@
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.hear = Src();
-        road.tell = msg => sokt.send(JSON.stringify(msg));
+        road.tell = msg => {
+          (sokt.readyState === WebSocket.OPEN)
+            ? sokt.send(JSON.stringify(msg))
+            : console.log(`Sokt unavailable (consider refreshing)`);
+        }
         road.currentCost = () => 0.5;
         sokt.onmessage = ({ data }) => data && road.hear.send([ JSON.parse(data), null, this.getMs() ]);
       };
       
       // Allow communication with only a single Server: our AboveHut
-      pool.processNewRoad(server, roadedHut => roadedHut.hutId = '!above');
+      pool.processNewRoad(server, '!above');
       return server;
     },
     

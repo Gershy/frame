@@ -106,7 +106,7 @@ U.buildRoom({
     };
     
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v)).found;
-    let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
+    let checkBadN = obj => obj.each((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     
     // BASE STUFF
     let Entity = U.inspire({ name: 'FlyEntity', insps: { Rec }, methods: (insp, Insp) => ({
@@ -1008,7 +1008,7 @@ U.buildRoom({
       comboMissiles: function(dir, ud) {
         
         let args = { owner: this, team: 'ace', w: 6, h: 20, vel: 700, ang: 0, horzMs: 400, delayMs: 120, dmg: Insp.missileDmg, pDmg: Insp.missilePDmg };
-        Array.fill(5, n => n).forEach(n => {
+        (5).toArr(n => n).each(n => {
           this.v('effects').add({ mark: ud.ms + 50 + n * 30, endFn: (i, ud) => ud.spawnEntity({
             type: 'SalvoLadMissile', ...args, ...i.getRelVal(ud).slice({ ax: 'x', ay: 'y' }),
             horzSpd: (115 + 30 * (n + 1)) * dir
@@ -1759,7 +1759,7 @@ U.buildRoom({
         if (Math.random() < ((spf * 1000) / this.shootDelayMs)) {
           
           let bulletArgs = { aheadDist, ms, owner: this, x: this.x, y: this.y, vel: Insp.bulletSpd, dmg: 1, r: 8 };
-          birth.gain(Array.fill(Insp.numBullets, () => MBullet({
+          birth.gain(Insp.numBullets.toArr(() => MBullet({
             ...bulletArgs, ang: 0.5 + ((Math.random() - 0.5) * 2 * 0.05), lsMs: 3000
           })));
           

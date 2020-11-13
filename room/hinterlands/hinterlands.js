@@ -266,40 +266,42 @@ global.rooms.hinterlands = async foundation => {
       return (ret.length > this.dbgLimit) ? ret.substr(0, this.roadDbgCharLimit - 3) + '...' : ret;
     },
     getRoadedHut: function(kidHutId) { return this.roadedHuts.get(kidHutId) || null; },
-    processNewRoad: function(server, decorateRoad) {
+    processNewRoad: function(server, hutId) {
+      
+      // If no `hutId` provided directly generate a stock `hutId` from
+      //  an incrementing counter (to absolutely guarantee uniqueness)
+      // and a random value (to ensure unpredictability)
+      if (!hutId) {
+        let cnt = this.roadedHutIdCnt++;
+        let rnd = Math.floor(Math.random() * Math.pow(62, 8));
+        hutId = cnt.encodeStr(C.base62, 8) + rnd.encodeStr(C.base62, 8);
+      }
       
       let road = Tmp();
+      road.hutId = hutId;
       road.desc = `Road on ${server.desc}`;
-      decorateRoad(road); // This can apply a HutId
-      server.decorateRoad(road);
+      server.decorateRoad(road); // Call only after any `hutId` is set
       road.server = server;
       
+      // `server.decorateRoad` implementation must set `hear` and `tell`
       if (!road.hear) throw Error('Invalid road: missing "hear"');
       if (!road.tell) throw Error('Invalid road: missing "tell"');
-      
-      let cnt = this.roadedHutIdCnt++;
-      let rnd = Math.floor(Math.random() * Math.pow(62, 8));
-      if (!road.hutId) road.hutId = cnt.encodeStr(C.base62, 8) + rnd.encodeStr().padHead(C.base62, 8);
-      
-      let hutId = road.hutId;
-      let roadedHut = null;
       
       // The idea for drying Hut + RoadedHut is:
       // - Dry everything when all RoadedHut's Roads dry
       // - Drying the RoadedHut dries all RoadedHut's Roads
-      
+      let roadedHut = null;
       if (!this.roadedHuts.has(hutId)) {
         
         /// {BELOW=
-        // Note that if a hut is BELOW *and* ABOVE, we can't assume
-        // that the first Hut to connect is the Above - there will be
-        // a multitude of Huts connecting, and we can't simply throw
+        // Note that if a hut is BELOW *and* ABOVE, we can't assume that
+        // the first Hut to connect is the Above - there will be a
+        // multitude of Huts connecting, and we can't simply throw
         // Errors for each one past the first.....
         if (this.aboveHut) throw Error(`Already have an aboveHut, but ${hutId} tried to connect`);
         /// =BELOW}
         
-        // Create a new RoadedHut, Hut, and KidHut relation
-        
+        // Create RoadedHut, Hut, and KidHut relation
         let hut = Hut(null, hutId, { parHut: this, heartMs: this.heartMs });
         roadedHut = Tmp();
         roadedHut.hut = road.hut = hut;
@@ -625,7 +627,7 @@ global.rooms.hinterlands = async foundation => {
       // Reset version and current delta, and recalculate all adds
       this.syncTellVersion = 0;
       this.pendingSync = this.pendingSync.map(v => ({}));
-      this.recFollows.forEach((f, rec) => this.toSync('add', rec));
+      for (let [ rec, f ] of this.recFollows) this.toSync('add', rec);
       
     },
     consumePendingSync: function(ctxErr=Error('')) {

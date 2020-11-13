@@ -115,7 +115,7 @@ U.buildRoom({
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
     let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v)).found;
-    let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
+    let checkBadN = obj => obj.each((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     let getLevelData = name => ({
       name, ...levels[name].slice('num', 'password'),
       dispName: levels[name].name, dispDesc: levels[name].desc
@@ -732,7 +732,7 @@ U.buildRoom({
                 scoreReal.setText(`Dmg: ${Math.round(score) * 100}\nDeaths: ${deaths}`);
               }));
               dep(lobbyPlayer.route(({ model, score }) => {
-                modelReals.forEach((modelReal, k) => {
+                modelReals.each((modelReal, k) => {
                   modelReal.setBorder(k === model ? UnitPx(10) : UnitPx(0), isMine ? '#ff9000' : '#a8a8a8');
                 });
               }));

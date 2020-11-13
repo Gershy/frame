@@ -17,12 +17,12 @@ let protoDef = (Cls, name, value) => {
   
   // Note that these properties should not be available on `global`! If
   // they were available, typos resulting in `protoDef` names resolve to
-  // unexpected values, instead of `C.skip`.
+  // unexpected values instead of `C.skip`; this lead someone (whose
+  // name remains undisclosed) into a ridiculous debugging scenario
   if (Cls === global.constructor) global[name] = C.skip;
 };
 
-protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
-protoDef(Object, 'each', function(fn) { for (let k in this) fn(this[k], k); });
+protoDef(Object, 'each', function(fn) { for (let [ k, v ] of this) fn(v, k); });
 protoDef(Object, 'map', function(fn) {
   let ret = Object.assign({}, this);
   for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
@@ -52,7 +52,6 @@ protoDef(Object, 'gain', function(obj) {
   for (let k in obj) if (obj[k] === C.skip) delete this[k];
   return this;
 });
-protoDef(Object, 'to', function(f) { return f(this); });
 protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
   if (U.isForm(keys, String)) keys = keys.split('.');
@@ -63,8 +62,6 @@ protoDef(Object, Symbol.iterator, function*() { // Iterate [ key, val ]
   for (let k in this) yield [ k, this[k] ];
 });
 
-Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
-Array.combine = (...as) => [].concat(...as);
 protoDef(Array, 'each', Array.prototype.forEach);
 protoDef(Array, 'map', function(it) {
   let ret = [];
@@ -85,10 +82,16 @@ protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns {
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
-protoDef(Array, 'add', Array.prototype.push);
+protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 protoDef(Array, 'count', function() { return this.length; });
 protoDef(Array, 'invert', function() { let r = []; for (let i = this.length - 1; i >= 0; i--) r.push(this[i]); return r; });
+protoDef(Array, 'tilt', function*() {
+  if (!this.count() || this.find(v => !U.isForm(v, Array)).found) throw Error(`Invalid structure for zipping`);
+  let w = this.count(); let h = this[0].count();
+  if (this.find(v => v.count() !== h).found) throw Error(`Members have differing lengths`);
+  for (let y = 0; y < h; y++) yield w.toArr(x => this[x][y]);
+});
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -125,6 +128,7 @@ protoDef(String, 'indent', function(amt=2, char=' ', indentStr=char[0].repeat(am
 });
 protoDef(String, 'encodeInt', function(chrs=C.base62) {
   if (!chrs) throw Error(`No characters provided`);
+  if (chrs.count() === 1) return this.count();
   let base = chrs.count(), map = chrs.split('').toObj((c, i) => [ c, i ]), sum = 0, len = this.count();
   for (let i = 0; i < len; i++) sum += Math.pow(base, len - i - 1) * map[this[i]];
   return sum;
@@ -134,7 +138,7 @@ protoDef(Number, 'char', function() { return String.fromCharCode(this); });
 protoDef(Number, 'each', function(fn) { for (let i = 0; i < this; i++) fn(i); });
 protoDef(Number, 'toArr', function(fn) { let arr = Array(this); for (let i = 0; i < this; i++) arr[i] = fn(i); return arr; });
 protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return p; });
-protoDef(Number, 'encodeStr', function(chrs=C.base62, len=null) {
+protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
   
   // Note that base-1 requires 0 to map to the empty string. This also
   // means that, for `n >= 1`:
@@ -154,7 +158,7 @@ protoDef(Number, 'encodeStr', function(chrs=C.base62, len=null) {
     n -= pow * div;
   }
   
-  return len ? seq.join('').padHead(len, chrs[0]) : seq.join('');
+  return padLen ? seq.join('').padHead(padLen, chrs[0]) : seq.join('');
   
 });
 
@@ -231,7 +235,6 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
-let GenFnOrig = (function*(){}).constructor;
 let GenOrig = (function*(){})().constructor;
 protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
 protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });

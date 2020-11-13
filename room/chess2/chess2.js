@@ -148,7 +148,7 @@ global.rooms.chess2 = async foundation => {
   
   // Compile a set of every unique piece name
   let pieceTypes = Set();
-  pieceDefs.forEach(mode => mode.forEach(pl => pl.forEach(([ type ]) => pieceTypes.add(type))));
+  pieceDefs.each(mode => mode.each(pl => pl.each(([ type ]) => pieceTypes.add(type))));
   
   // Populate a mapping between the name of a piece image and the Keep
   // representing that image.
@@ -249,8 +249,8 @@ global.rooms.chess2 = async foundation => {
       let pieces = match.relRecs('c2.matchPiece').toArr(matchPiece => matchPiece.mem('piece'));
       
       // Make a nice 2d representation of the board
-      let calc = Array.fill(8, () => Array.fill(8, () => null));
-      pieces.forEach(piece => calc[piece.val.col][piece.val.row] = piece);
+      let calc = (8).toArr(() => (8).toArr(() => null));
+      pieces.each(piece => calc[piece.val.col][piece.val.row] = piece);
       
       // Utility func for checking tiles (OOB=out-of-bounds, null=empty-tile, otherwise a Piece)
       let checkTile = (col, row) => (col < 0 || col > 7 || row < 0 || row > 7) ? 'OOB' : calc[col][row];
@@ -283,7 +283,7 @@ global.rooms.chess2 = async foundation => {
         let offsets = [
           [ -2, -1 ], [ -2, 1 ], [ -1, 2 ], [ 1, 2 ], [ 2, 1 ], [ 2, -1 ], [ 1, -2 ], [ -1, -2 ]
         ];
-        offsets.forEach(([ dx, dy ]) => {
+        offsets.each(([ dx, dy ]) => {
           let [ c, r ] = [ col + dx, row + dy ];
           let check = checkTile(c, r);
           if (!check || (check !== 'OOB' && check.val.colour !== colour)) moves.push([ c, r, check ]);
@@ -295,7 +295,7 @@ global.rooms.chess2 = async foundation => {
         let orth = [ [ -1,  0 ], [  0, +1 ], [ +1,  0 ], [  0, -1 ] ];
         let steps = [ 'queen', 'king' ].has(type) ? [].gain(diag).gain(orth) : (type === 'bishop' ? diag : orth);
         
-        steps.forEach(([dx, dy]) => {
+        steps.each(([dx, dy]) => {
           
           let xx = col, yy = row;
           while (true) {
@@ -371,7 +371,7 @@ global.rooms.chess2 = async foundation => {
       let dangerTiles = { white: [], black: [] };
       
       // Update piece positions
-      playerMoves.forEach(({ type, pieceUid, tile }) => {
+      playerMoves.each(({ type, pieceUid, tile }) => {
         
         if (type === 'pass') return;
         let piece = pieces.find(p => p.uid === pieceUid).val;
@@ -442,7 +442,7 @@ global.rooms.chess2 = async foundation => {
       }
       
       // Look for promotions
-      pieces.forEach(piece => {
+      pieces.each(piece => {
         let { type, colour, row } = piece.val;
         let lastRow = (colour === 'white') ? 7 : 0;
         if (type === 'pawn' && row === lastRow) piece.modVal(v => v.gain({ type: 'queen' }));
@@ -854,7 +854,7 @@ global.rooms.chess2 = async foundation => {
             
             c2Hut.tell({ command: 'doMove', type: 'retract' });
             
-            validMoves(myMatchPlayer, match, piece).forEach(([ col, row, cap ]) => {
+            validMoves(myMatchPlayer, match, piece).each(([ col, row, cap ]) => {
               
               let moveReal = dep(boardReal.addReal('c2.showMoveTile'));
               moveReal.setGeom(tileExt(), tileExt(), tileLoc(col), tileLoc(row));

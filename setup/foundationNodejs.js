@@ -299,21 +299,21 @@
     
     $parseSoktMessages: soktState => {
       let messages = [];
-      let buffer = soktState.buffer;
-      while (buffer.length >= 2) {
+      let buff = soktState.buff;
+      while (buff.length >= 2) {
         
         // ==== PARSE FRAME
         
-        let b = buffer[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
+        let b = buff[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
         if (b % 8) throw Error('Some reserved bits are on');
         let isFinalFrame = b === 8;
         
-        let op = buffer[0] % 16;  // The 4 high bits of 1st byte give us the operation
+        let op = buff[0] % 16;  // The 4 high bits of 1st byte give us the operation
         if (op < 0 || (op > 2 && op < 8) || op > 10) throw Error(`Invalid op: ${op}`);
         
         if (op >= 8 && !isFinalFrame) throw Error('Incomplete control frame');
         
-        b = buffer[1];            // Look at second byte
+        b = buff[1];            // Look at second byte
         let masked = b >> 7;      // Lowest bit of 2nd byte - states whether frame is masked
         
         // Server requires a mask; Client requires no mask
@@ -322,21 +322,21 @@
         let length = b % 128;
         let offset = 6; // Masked frames have an extra 4 halfwords containing the mask
         
-        if (buffer.length < offset + length) return []; // No messages - should await more data
+        if (buff.length < offset + length) return []; // No messages - should await more data
         
         if (length === 126) {         // Websocket's "medium-size" frame format
-          length = buffer.readUInt16BE(2);
+          length = buff.readUInt16BE(2);
           offset += 2;
         } else if (length === 127) {  // Websocket's "large-size" frame format
-          length = buffer.readUInt32BE(2) * U.int32 + buffer.readUInt32BE(6);
+          length = buff.readUInt32BE(2) * U.int32 + buff.readUInt32BE(6);
           offset += 8;
         }
         
-        if (buffer.length < offset + length) return []; // No messages - should await more data
+        if (buff.length < offset + length) return []; // No messages - should await more data
         
         // Now we know the exact range of the incoming frame; we can slice and unmask it as necessary
-        let mask = buffer.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
-        let data = buffer.slice(offset, offset + length); // After the mask comes the data
+        let mask = buff.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
+        let data = buff.slice(offset, offset + length); // After the mask comes the data
         let w = 0;
         for (let i = 0, len = data.length; i < len; i++) {
           data[i] ^= mask[w];     // Apply XOR
@@ -364,7 +364,7 @@
         // Text ops are our ONLY supported ops! (TODO: For now?)
         if (op !== 1) throw Error(`Unsupported op: ${op}`);
         
-        buffer = buffer.slice(offset + length); // Dispense with the frame we've just processed
+        buff = buff.slice(offset + length); // Dispense with the frame we've just processed
         soktState.curOp = 1;                              // Our only supported op is "text"
         soktState.curFrames.push(data);                   // Include the complete frame
         
@@ -375,28 +375,27 @@
           soktState.curFrames = [];
         }
       }
-      soktState.buffer = buffer; // Set remaining buffer
+      soktState.buff = buff; // Set remaining buff
       return messages;
     },
     $parseSoktUpgradeRequest: soktState => {
       
-      let buffer = soktState.buffer;
-      if (buffer.length < 4) return null;
+      let buff = soktState.buff;
+      if (buff.length < 4) return null;
       
-      // TODO: Could it be more efficient to search backwards from the
-      //       end of `buffer`?
-      // Search for a 0x1101, 0x1010, 0x1101, 0x1010 (\r\n\r\n) sequence
+      // Can't search backwards; the 1st \r\n\r\n sequence found would
+      // not necessarily belong to the nextmost message
       let packetEndInd = null;
-      for (let i = 0, len = buffer.length - 4; i <= len; i++) {
+      for (let i = 0, len = buff.length - 4; i <= len; i++) {
         // TODO: We could be smart enough to jump more than 1 byte at a time in some cases
         // E.g. if the first byte doesn't match we increment by 1, but if the second
         // byte doesn't match we can increment by 2. Watch out for the repetition of the
         // same byte in the "needle" (as opposed to haystack)
-        if (buffer[i] === 13 && buffer[i + 1] === 10 && buffer[i + 2] === 13 && buffer[i + 3] === 10) { packetEndInd = i; break; }
+        if (buff[i] === 13 && buff[i + 1] === 10 && buff[i + 2] === 13 && buff[i + 3] === 10) { packetEndInd = i; break; }
       }
       if (packetEndInd === null) return null;
       
-      let packet = buffer.slice(0, packetEndInd).toString('utf8');
+      let packet = buff.slice(0, packetEndInd).toString('utf8');
       
       // Do an http upgrade operation
       let [ methodLine, ...lines ] = packet.replace(/\\r/g, '').split('\n'); // TODO: I think line-endings will always be \r\n
@@ -409,7 +408,7 @@
         headers[head.trim().lower()] = tail.join(':').trim();
       }
       
-      soktState.buffer = buffer.slice(packetEndInd + 4);
+      soktState.buff = buff.slice(packetEndInd + 4);
       
       return { method, path, httpVersion, headers };
       
@@ -565,13 +564,13 @@
           
           ...[ FnSrc.Prm1, FnSrc.PrmM ].map(FnSrcCls => [
             async m => { // FnSrc fn doesn't run if no child has event
-              let srcs = Array.fill(5, () => Src());
+              let srcs = (5).toArr(() => Src());
               let events = [];
               let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
               if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
             },
             async m => { // FnSrc fn runs for each child event
-              let srcs = Array.fill(5, () => Src());
+              let srcs = (5).toArr(() => Src());
               let events = [];
               let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
               
@@ -585,7 +584,7 @@
               if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
             },
             async m => { // FnSrc sends values as expected
-              let srcs = Array.fill(3, () => Src());
+              let srcs = (3).toArr(() => Src());
               let cnt = 0;
               let events = [];
               let fnSrc = FnSrcCls(srcs, () => cnt++);
@@ -691,7 +690,7 @@
           
           async m => { // FnSrc.Prm1 only sends once, for multiple src sends, if value is always the same
             
-            let srcs = Array.fill(3, () => Src());
+            let srcs = (3).toArr(() => Src());
             let fnSrc = FnSrc.Prm1(srcs, (...args) => 'haha');
             let events = [];
             fnSrc.route(v => events.push(v));
@@ -705,7 +704,7 @@
           },
           async m => { // FnSrc.Prm1 gets MemSrc.Prm1 vals as expected
             
-            let srcs = Array.fill(3, () => MemSrc.Prm1('a'));
+            let srcs = (3).toArr(() => MemSrc.Prm1('a'));
             let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
             let results = [];
             fnSrc.route(v => results.push(v));
@@ -740,7 +739,7 @@
           },
           async m => { // FnSrc.Prm1 gets Chooser vals as expected
             
-            let choosers = Array.fill(3, () => Chooser([ 'a', 'b' ]));
+            let choosers = (3).toArr(() => Chooser([ 'a', 'b' ]));
             let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
             let results = [];
             fnSrc.route(v => results.push(v));
@@ -775,7 +774,7 @@
           },
           async m => { // FnSrc.Tmp1 only sends once, for multiple src sends, if value is always the same Tmp
             
-            let srcs = Array.fill(3, () => Src());
+            let srcs = (3).toArr(() => Src());
             let tmppp = Tmp();
             let fnSrc = FnSrc.Tmp1(srcs, (v1, v2, v3, tmp=tmppp) => tmp);
             let events = [];
@@ -857,7 +856,7 @@
             let depTmps = []
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
-              depTmps = Array.fill(5, () => dep(Tmp()));
+              depTmps = (5).toArr(() => dep(Tmp()));
             });
             src.send(Tmp());
             scp.end();
@@ -872,7 +871,7 @@
             let depTmps = [];
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
-              dep.scp(tmp.src, (tmp, dep) => depTmps = Array.fill(5, () => dep(Tmp())));
+              dep.scp(tmp.src, (tmp, dep) => depTmps = (5).toArr(() => dep(Tmp())));
             });
             let tmp = Tmp();
             tmp.src = Src();
@@ -889,7 +888,7 @@
             let depTmps = [];
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
-              depTmps = Array.fill(5, () => dep(Tmp()));
+              depTmps = (5).toArr(() => dep(Tmp()));
             });
             
             for (let i = 0; i < 5; i++) {
@@ -907,10 +906,10 @@
             let depTmpsArr = [];
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
-              depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+              depTmpsArr.push((5).toArr(() => dep(Tmp())));
             });
             
-            let tmps = Array.fill(5, () => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            let tmps = (5).toArr(() => { let tmp = Tmp(); src.send(tmp); return tmp; });
             if (depTmpsArr.count() !== 5) throw Error('What??');
             
             for (let depTmps of depTmpsArr) {
@@ -930,10 +929,10 @@
             let depTmpsArr = [];
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
-              depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+              depTmpsArr.push((5).toArr(() => dep(Tmp())));
             });
             
-            let tmps = Array.fill(5, () => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            let tmps = (5).toArr(() => { let tmp = Tmp(); src.send(tmp); return tmp; });
             if (depTmpsArr.count() !== 5) throw Error('What??');
             
             for (let depTmps of depTmpsArr) {
@@ -954,11 +953,11 @@
             let src = Src();
             let scp = Scope(src, (tmp, dep) => {
               dep.scp(tmp.src, (tmp, dep) => {
-                depTmpsArr.push(Array.fill(5, () => dep(Tmp())));
+                depTmpsArr.push((5).toArr(() => dep(Tmp())));
               });
             });
             
-            let tmps = Array.fill(5, () => {
+            let tmps = (5).toArr(() => {
               let tmp = Tmp();
               tmp.src = Src();
               src.send(tmp);
@@ -1340,12 +1339,6 @@
     },
     
     // Functionality
-    getStaticIps: function(pref=[]) {
-      return require('os').networkInterfaces()
-        .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
-        .to(arr => Array.combine(...arr))
-        .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
-    },
     getJsSource: async function(type, name, bearing) {
       
       if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
@@ -1384,13 +1377,13 @@
       let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
       return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
     },
-    getHutRoadForQuery: function(server, parHut, hutId, decorate=null) {
+    getHutRoadForQuery: function(server, parHut, hutId) {
       
       // TODO: Right now a Road can be spoofed - this should be a
       // property of the Hut, shouldn't it?
       
       // Free pass for Huts that declare themselves unfamiliar
-      if (hutId === null) return parHut.processNewRoad(server, decorate || (road => {}));
+      if (hutId === null) return parHut.processNewRoad(server, null);
       
       // Check if this RoadedHut is familiar:
       let roadedHut = parHut.getRoadedHut(hutId);
@@ -1401,14 +1394,15 @@
           // Any previous Road is reused
           ? roadedHut.serverRoads.get(server)
           // Otherwise a new Road is processed for the RoadedHut
-          : parHut.processNewRoad(server, road => (road.hutId = hutId, decorate && decorate(road)));
+          : parHut.processNewRoad(server, hutId);
+        
       }
       
       // Past this point a Road can only be returned by spoofing
       if (!this.spoofEnabled) return null;
       
       // Return a Road spoofed to have the requested `hutId`
-      let newSpoofyRoad = parHut.processNewRoad(server, road => (road.hutId = hutId, decorate && decorate(road)));
+      let newSpoofyRoad = parHut.processNewRoad(server, hutId);
       newSpoofyRoad.hut.isSpoofed = true;
       return newSpoofyRoad;
       
@@ -1648,7 +1642,7 @@
       
       let makeSoktState = (status='initial') => ({
         status, // "initial", "upgrading", "ready", "ended"
-        buffer: Buffer.alloc(0),
+        buff: Buffer.alloc(0),
         curOp: null,
         curFrames: []
       });
@@ -1658,11 +1652,11 @@
         
         // Wait to get websocket request - it contains only headers
         let upgradeReq = null;
-        while (upgradeReq === null) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
+        while (upgradeReq === null) { // TODO: Limit iterations? Timeouts? Max size of `buff`?
           upgradeReq = await Promise(resolve => sokt.once('readable', () => {
-            let newBuffer = sokt.read();
-            if (!newBuffer || !newBuffer.length) return resolve(null);
-            soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
+            let newBuff = sokt.read();
+            if (!newBuff || !newBuff.length) return resolve(null);
+            soktState.buff = Buffer.concat([ soktState.buff, newBuff ]);
             resolve(Form.parseSoktUpgradeRequest(soktState));
           }));
         }
@@ -1682,18 +1676,19 @@
           '\r\n'
         ].join('\r\n'));
         
-        let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
-        let road = this.getHutRoadForQuery(server, pool, query.seek('hutId').val, road => road.sokt = sokt);
+        let { query: { hutId=null } } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
+        let road = this.getHutRoadForQuery(server, pool, hutId);
         if (!road) return sokt.end();
+        road.sokt = sokt;
         
         soktState.status = 'ready';
         sokt.on('readable', () => {
           if (road.off()) return;
           let ms = this.getMs();
-          let newBuffer = sokt.read();
+          let newBuff = sokt.read();
           
-          if (!newBuffer || !newBuffer.length) return;
-          soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
+          if (!newBuff || !newBuff.length) return;
+          soktState.buff = Buffer.concat([ soktState.buff, newBuff ]);
           
           try {
             for (let message of Form.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
@@ -1702,7 +1697,10 @@
           if (soktState.status === 'ended') road.end();
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
-        sokt.on('error', () => { soktState = makeSoktState('ended'); road.end(); });
+        sokt.on('error', err => {
+          err.message = `Sokt error: ${err.message}`; console.log(foundation.formatError(err));
+          soktState = makeSoktState('ended'); road.end();
+        });
         
       };
       
