@@ -8,7 +8,7 @@ global.rooms.write = async foundation => {
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
   
   let storage = await foundation.getArg('storage');
-  return HutControls('wrt.write', {
+  return HutControls('wrt', 'write', {
     
     storage: storage && { type: 'replay', keep: storage, bufferMinSize: 50, bufferMs: 10 * 1000 },
     habitats: [ HtmlBrowserHabitat() ],
@@ -173,8 +173,8 @@ global.rooms.write = async foundation => {
       
     },
     kidFn: (hut, writeRec, real, dep) => {
-      // "Real" => "Representation"? "Depiction"? ("Dep" is already a thing D:)
       
+      // "Real" => "Representation"? "Depiction"? ("Dep" is already a thing D:)
       let mainReal = dep(real.addReal('wrt.main', {
         layouts: [ FreeLayout({ w: '100%', h: '100%' }) ],
         innerLayout: Axis1DLayout({ axis: 'y', flow: '+' }),

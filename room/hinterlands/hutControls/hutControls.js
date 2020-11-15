@@ -52,12 +52,12 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     })}),
     /// =ABOVE}
     
-    init: function(fullName, params={}) {
+    init: function(prefix, hutName, params={}) {
       let { hosting=foundation.getArg('hosting') } = params;
       let { debug=foundation.getArg('debug') } = params;
       let { habitats=[], recForms={}, storage=null } = params;
       let { parFn=Function.stub, kidFn=Function.stub } = params;
-      ({}).gain.call(this, { fullName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
+      ({}).gain.call(this, { prefix, hutName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
     },
     
     /// {ABOVE=
@@ -189,46 +189,45 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       }
       
       if (debug.has('hosting') && !hosting.isEmpty()) {
-        console.log(`Hut ${this.fullName} is now hosted; access via:`);
-        for (let h of hosting.toArr(v => v))
-          console.log(`- ${foundation.formatHostUrl(h)}`);
+        console.log(`Hut ${this.hutName} is now hosted; access via:`);
+        for (let h of hosting.toArr(v => v)) console.log(`- ${foundation.formatHostUrl(h)}`);
       }
       
-      let name = this.fullName.split('.')[1];
-      let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(name, hut)));
+      let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(this.hutName, hut)));
       tmp.endWith(() => preparations.each(p => p.end()));
       
       hut.addTypeClsFns(this.recForms.map(RecForm => () => RecForm));
       tmp.endWith(()=> hut.remTypeClsFns(this.recForms.toArr((v, k) => k)));
       
       let real = await foundation.seek('real', 'primary');
+      let recName = `${this.prefix}.${this.hutName.split('.').slice(-1)[0]}`;
       
       /// {ABOVE=
       
-      hut.createRec(this.fullName, [ hut ]);
-      let parScope = RecScope(hut, this.fullName, (rec, dep) => {
+      hut.createRec(recName, [ hut ]);
+      let parScope = RecScope(hut, recName, (rec, dep) => {
         this.parFn(hut, rec, real, dep);
         dep.scp(hut, 'lands.kidHut/par', (kidParHut, dep) => {
           let kidHut = kidParHut.mems.kid;
-          dep(Form.FollowRecScope(kidHut, hut, this.fullName, (rec, dep) => this.kidFn(kidHut, rec, real, dep)));
+          dep(Form.FollowRecScope(kidHut, hut, recName, (rec, dep) => this.kidFn(kidHut, rec, real, dep)));
         });
       });
       tmp.endWith(parScope);
       
       if (this.storage) {
-        if (this.debug.has('storage')) console.log(`Setting up "${this.storage.type}" storage on "${this.fullName}"; params:`, this.storage);
+        if (this.debug.has('storage')) console.log(`Setting up "${this.storage.type}" storage on "${this.hutName}"; params:`, this.storage);
         tmp.endWith(await {
           replay: () => this.setupReplayStorage(hut, this.storage),
           postgres: () => { /* imagine the possibilities! */ }
         }[this.storage.type]());
       } else {
-        if (this.debug.has('storage')) console.log(`No storage requested for "${this.fullName}"`);
+        if (this.debug.has('storage')) console.log(`No storage requested for "${this.hutName}"`);
       }
       
       /// =ABOVE} {BELOW=
       
       // As soon as Below syncs the root Rec it's good to go
-      let kidScope = RecScope(hut, this.fullName, (rec, dep) => this.kidFn(hut, rec, real, dep));
+      let kidScope = RecScope(hut, recName, (rec, dep) => this.kidFn(hut, rec, real, dep));
       tmp.endWith(kidScope);
       
       /// =BELOW}

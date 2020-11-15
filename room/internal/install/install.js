@@ -1,4 +1,4 @@
-global.rooms.install = async foundation => {
+global.rooms['internal.install'] = async foundation => {
   
   let { FreeLayout, Axis1DLayout, TextLayout } = U.setup;
   let HutControls = await foundation.getRoom('hinterlands.hutControls');
@@ -7,7 +7,7 @@ global.rooms.install = async foundation => {
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
   let debug = foundation.getArg('debug');
-  return HutControls('stl.install', {
+  return HutControls('stl', 'internal.install', {
     debug,
     habitats: [ HtmlBrowserHabitat() ],
     parFn: (hut, install, real, dep) => {
@@ -15,7 +15,7 @@ global.rooms.install = async foundation => {
       /// {ABOVE=
       // Make sure to use the non-admin fileSystem to control access
       let fsKeep = foundation.seek('keep', 'fileSystem');
-      let installActionKeep = fsKeep.seek('room', 'install', 'installAction.js').setContentType('text');
+      let installActionKeep = fsKeep.seek('room', 'internal', 'install', 'installAction.js').setContentType('text');
       
       hut.roadSrc('stl.run').route(({ reply, srcHut }) => reply(installActionKeep));
       hut.roadSrc('stl.item').route(async ({ msg, reply, srcHut }) => {
@@ -43,6 +43,8 @@ global.rooms.install = async foundation => {
       
     },
     kidFn: (hut, install, real, dep) => {
+      
+      console.log('Here...');
       
       let stlReal = dep(real.addReal('stl.install', {
         layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],

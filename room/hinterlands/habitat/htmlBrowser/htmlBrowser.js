@@ -39,12 +39,11 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         let initSyncTell = srcHut.consumePendingSync();
         
         let { textSize='100%' } = msg;
-        
         reply(U.multilineString(`
           <!doctype html>
           <html>
             <head>
-              <title>${name.upper()}</title>
+              <title>${name.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
               <style type="text/css">
@@ -262,7 +261,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
           <!doctype html>
           <html>
             <head>
-              <title>${name.upper()}</title>
+              <title>${name.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
               <style type="text/css">

@@ -602,7 +602,7 @@ global.rooms.hinterlands = async foundation => {
       this.requestSendPendingSync();
       
     },
-    makeThrottleSyncPrm: function() { return Promise(r => foundation.queueTask(r)); },
+    createThrottleSyncPrm: function() { return Promise(r => foundation.queueTask(r)); },
     requestSendPendingSync: function(ctxErr=null) {
       
       // Schedules Below to be synced if not already scheduled
@@ -610,7 +610,7 @@ global.rooms.hinterlands = async foundation => {
       if (this.throttleSyncPrm) return; // A request to sync already exists
       this.throttleSyncPrm = (async (ctxErr=Error('')) => {
         
-        await this.makeThrottleSyncPrm();
+        await this.createThrottleSyncPrm();
         this.throttleSyncPrm = null;
         
         // Hut may have dried between scheduling and executing sync

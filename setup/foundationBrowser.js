@@ -61,6 +61,7 @@
     })}),
     $TextNode: document.createTextNode('').constructor,
     
+    // Initialization
     init: function({ hutId, isSpoofed, aboveMsAtResponseTime, ...supArgs }) {
       forms.Foundation.init.call(this, supArgs);
       
@@ -82,48 +83,29 @@
       
       // With this value, `new Date() + this.clockDeltaMs` is best guess
       // at current value of Above's `foundation.getMs()` *right now*
+      // TODO: It's flawed to assume that the delta calculated here is
+      // consistently the latency between server and client... If
+      // anything, it would make sense to constantly update the delta as
+      // a side-effect of other requests.
       this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
       this.hutId = hutId;
-      this.isSpoofed = isSpoofed;
+      /// this.isSpoofed = isSpoofed;
       
       // Make sure that refreshes redirect to the same session
       let { query } = this.parseUrl(window.location.href);
       window.history.replaceState({}, '', this.seek('keep', 'urlResource', { params: query }).getUrl());
       
     },
-    getPlatform: function() { return { name: 'browser' }; },
     halt: function() { /* debugger */; },
-    installRoom: async function(name, bearing='below') {
-      
-      let urlParams = { command: 'html.room', type: 'room', room: name, reply: '1' };
-      let url = this.seek('keep', 'urlResource', { params: urlParams }).getUrl();
-      
-      let script = document.createElement('script');
-      script.setAttribute('defer', '');
-      script.setAttribute('async', '');
-      script.setAttribute('type', 'text/javascript');
-      script.setAttribute('src', url);
-      document.head.appendChild(script);
-      
-      // Wait for the script to load; ensure it populated `global.rooms`
-      await Promise((rsv, rjc) => {
-        script.addEventListener('load', rsv);
-        script.addEventListener('error', err => { err.message = `Couldn't load room "${name}" (${err.message})`; rjc(err); });
-      });
-      if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
-      
-      return {
-        debug: global.roomDebug[name],
-        content: global.rooms[name](this)
-      };
-      
-    },
     
-    // Util
+    // Sandbox
     queueTask: function(func) { Promise.resolve().then(func); },
     getMs: function() { return (+new Date()) + this.clockDeltaMs; },
     
-    // High level
+    // Config
+    processArg: function(term, val) { return forms.Foundation.processArg(term, val); },
+    
+    // Services
     createHut: async function(options={}) { return forms.Foundation.createHut.call(this, this.hutId); },
     createKeep: function(options={}) { return Form.KeepBrowser(this); },
     createReal: async function() {
@@ -638,7 +620,7 @@
       
     },
     
-    // Connectivity
+    // Transport
     createHttpServer: async function({ host, port, keyPair=false, selfSign=false }) {
       if (!port) port = keyPair ? 443 : 80;
       
@@ -659,7 +641,7 @@
         numPendingReqs++;
         let res = await new Promise((rsv, rjc) => req.gain({ onreadystatechange: () => {
           if (req.readyState !== 4) return;
-          if (req.status === 0) return rjc(Error('Got HTTP status 0'));
+          if (req.status === 0) return rjc(Error('Http transport unavailable'));
           
           ms = this.getMs();
           try {
@@ -709,9 +691,8 @@
       server.decorateRoad = road => {
         road.hear = Src();
         road.tell = msg => {
-          (sokt.readyState === WebSocket.OPEN)
-            ? sokt.send(JSON.stringify(msg))
-            : console.log(`Sokt unavailable (consider refreshing)`);
+          if (sokt.readyState !== WebSocket.OPEN) throw Error(`Sokt transport unavailable`);
+          sokt.send(JSON.stringify(msg));
         }
         road.currentCost = () => 0.5;
         sokt.onmessage = ({ data }) => data && road.hear.send([ JSON.parse(data), null, this.getMs() ]);
@@ -721,6 +702,34 @@
       return server;
     },
     
+    // Room
+    installRoom: async function(name, bearing='below') {
+      
+      let urlParams = { command: 'html.room', type: 'room', room: name, reply: '1' };
+      let url = this.seek('keep', 'urlResource', { params: urlParams }).getUrl();
+      
+      let script = document.createElement('script');
+      script.setAttribute('defer', '');
+      script.setAttribute('async', '');
+      script.setAttribute('type', 'text/javascript');
+      script.setAttribute('src', url);
+      document.head.appendChild(script);
+      
+      // Wait for the script to load; ensure it populated `global.rooms`
+      await Promise((rsv, rjc) => {
+        script.addEventListener('load', rsv);
+        script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`));
+      });
+      if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
+      
+      return {
+        debug: global.roomDebug[name],
+        content: global.rooms[name](this)
+      };
+      
+    },
+    
+    // Error
     parseErrorLine: function(line) {
       let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9.]*)/).slice(1);
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);

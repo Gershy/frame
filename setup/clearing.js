@@ -240,7 +240,12 @@ protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
 protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });
 protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
 
-protoDef(Error, 'update', function(msg, props=null) { this.message = U.isForm(msg, String) ? msg : msg(this.message); return this; });
+protoDef(Error, 'update', function(props) {
+  if (U.isForm(props, Function)) props = props(this.message);
+  if (U.isForm(props, String)) props = { message: props };
+  for (let [ k, v ] of props) this[k] = v;
+  return this;
+});
 
 Function.stub = v => v;
 Function.makeStub = v => Function.stub.bind(null, v);
@@ -424,6 +429,7 @@ let U = global.U = {
     return (fact instanceof (FormOrCls.Native || FormOrCls));
     
   },
+  getForm: f => f.constructor || null,
   getFormName: f => U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
   
   multilineString: str => {
@@ -849,7 +855,7 @@ U.logic = (() => {
   })});
   let Slots = U.form({ name: 'Slots', props: (forms, Form) => ({
     
-    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { e.message = `Slot ${U.getFormName(v)} -> "${p}" failed: (${e.message})`; throw e; } },
+    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { throw e.update(m => `Slot ${U.getFormName(v)} -> "${p}" failed: (${m})`); } },
     init: function() {},
     access: C.noFn('access', arg => {}),
     seek: function(...args) {

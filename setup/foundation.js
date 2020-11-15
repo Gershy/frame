@@ -38,6 +38,7 @@ Hut at the very bottom runs using a single Reality.
       wss: { secure: true, defaultPort: 443 }
     },
     
+    // Initialization
     init: function(args={}) {
       
       global.foundation = this;
@@ -62,6 +63,15 @@ Hut at the very bottom runs using a single Reality.
       this.realPrm = null;
       
     },
+    halt: function() { throw Error(`Foundation halted`); },
+    ready: function() { return Promise.resolve(); },
+    
+    // Sandbox
+    getMs: function() { return +new Date(); },
+    queueTask: C.noFn('queueTask'),
+    getUid: function() { return (this.uidCnt++).encodeStr(C.base62, 8); },
+    
+    // Config
     getArg: function(term) {
       if (!this.readyArgs.has(term)) {
         // TODO: should seek should return `C.skip` if `!found`?? I
@@ -73,20 +83,33 @@ Hut at the very bottom runs using a single Reality.
       }
       return this.readyArgs[term];
     },
+    parseUrl: function(url) {
+      let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
+      
+      if (!Form.protocols.has(protocol)) throw Error(`Invalid protocol: "${protocol}"`);
+      
+      if (!path.hasHead('/')) path = `/${path}`;
+      if (!port) port = Form.protocols[protocol].defaultPort;
+      
+      return {
+        protocol, host, port: parseInt(port, 10), path,
+        query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.split('=') : [ pc, null ])
+      };
+      
+    },
     processArg: function(term, val=null) {
       if (term === 'deploy') return val || 'prod';
       if (term === 'debug') return Set(val ? (U.isForm(val, String) ? [ val ] : val) : []);
       return val;
     },
-    ready: function() { return Promise.resolve(); },
-    halt: function() { throw Error(`Foundation halted`); },
-    getPlatform: C.noFn('getPlatform'),
     formatHostUrl: function({ protocol, host, port }) {
       let excludePort = true
         && Form.protocols.has(protocol)
         && port === Form.protocols[protocol].defaultPort;
       return `${protocol}://${host}${excludePort ? '' : (':' + port)}`;
     },
+    
+    // Services
     access: function(arg) {
       if (!U.isForm(arg, String)) throw Error(`Invalid type for access: ${U.getFormName(arg)}`);
       if (arg === 'hut') return this.getRootHut();
@@ -94,36 +117,9 @@ Hut at the very bottom runs using a single Reality.
       if (arg === 'real') return this.getRootReal();
       return null;
     },
-    
     getRootHut: function(options={}) { return this.hutPrm = (this.hutPrm || this.createHut(options)); },
     getRootKeep: function(options={}) { return this.keepPrm = (this.keepPrm || this.createKeep(options)); },
     getRootReal: function(options={}) { return this.realPrm = (this.realPrm || this.createReal(options)); },
-    getServer: async function(opts) {
-      
-      // TODO: switch from:
-      //   create*Server(hut, ...);
-      // to:
-      //   hut.addServer(create*Server(...));
-      let { protocol, host, port } = opts;
-      let term = `${protocol}://${host}:${port}`;
-      
-      if (!this.servers.has(term)) {
-        
-        this.servers[term] = ({
-          http:   this.createHttpServer,
-          https:  this.createHttpServer,
-          sokt:   this.createSoktServer,
-          sokts:  this.createSoktServer,
-          ws:     this.createSoktServer,
-          wss:    this.createSoktServer
-        })[opts.protocol].call(this, opts);
-        this.servers[term].then(v => this.servers[term] = v);
-        
-      }
-      return this.servers[term];
-      
-    },
-    
     createHut: async function(uid) {
       
       // Note: An instance of node could have multiple RootHuts, each
@@ -154,8 +150,49 @@ Hut at the very bottom runs using a single Reality.
     },
     createKeep: C.noFn('createKeep'),
     createReal: C.noFn('createReal'),
+    
+    // Transport
+    getServer: async function(opts) {
+      
+      let term = this.formatHostUrl(opts);
+      console.log(`Server for: ${term}`)
+      if (!this.servers.has(term)) {
+        
+        this.servers[term] = ({
+          http:   this.createHttpServer,
+          sokt:   this.createSoktServer,
+          ws:     this.createSoktServer
+        })[opts.protocol].call(this, opts);
+        this.servers[term].then(v => this.servers[term] = v);
+        
+      }
+      return this.servers[term];
+      
+    },
     createHttpServer: C.noFn('createHttpServer', opts => {}),
     createSoktServer: C.noFn('createSoktServer', opts => {}),
+    
+    // Room
+    getRoom: async function(name, ...args) {
+      
+      if (!this.installedRooms.has(name)) {
+        this.installedRooms[name] = {};
+        this.installedRooms[name].gain(await this.installRoom(name, ...args));
+      }
+      return this.installedRooms[name].content;
+      
+    },
+    settleRoom: async function(name, ...args) {
+      await this.ready();
+      
+      // These do not parallelize (TODO: why??)
+      let room = await this.getRoom(name, 'above');
+      let hut = await this.getRootHut({ heartMs: 1000 * 40 });
+      
+      this.seek('keep', 'static').setHut(hut);
+      return room.open(hut);
+    },
+    installRoom: C.noFn('installRoom'),
     
     // Error
     parseErrorLine: C.noFn('parseErrorLine'),
@@ -213,6 +250,7 @@ Hut at the very bottom runs using a single Reality.
       // some characters of the "error message" can be reflected in
       // `msg` but not `err.stack`. Fortunately for SyntaxErrors the
       // "message" component of the stack will only be a single line!
+      // TODO: This isn't necessarily cross-brower compatible!
       if (U.isForm(err, SyntaxError)) {
         [ diagram, stack ] = stack.cut('\n\n', 1);
         traceBegins = stack.cut('\n')[0].count() + 1; // +1 accounts for newline
@@ -253,48 +291,8 @@ Hut at the very bottom runs using a single Reality.
       
       return result;
       
-    },
+    }
     
-    // Platform
-    getMs: function() { return +new Date(); },
-    queueTask: C.noFn('queueTask'),
-    getUid: function() { return (this.uidCnt++).encodeStr(C.base62, 8); },
-    
-    // Setup
-    getRoom: async function(name, ...args) {
-      
-      if (!this.installedRooms.has(name)) {
-        this.installedRooms[name] = {};
-        this.installedRooms[name].gain(await this.installRoom(name, ...args));
-      }
-      return this.installedRooms[name].content;
-      
-    },
-    settleRoom: async function(name, ...args) {
-      await this.ready();
-      
-      // These do not parallelize (TODO: why??)
-      let room = await this.getRoom(name, 'above');
-      let hut = await this.getRootHut({ heartMs: 1000 * 40 });
-      
-      this.seek('keep', 'static').setHut(hut);
-      return room.open(hut);
-    },
-    installRoom: C.noFn('installRoom'),
-    parseUrl: function(url) {
-      let [ full, protocol, host, port=null, path='/', query='' ] = url.match(/^([^:]+):\/\/([^:?/]+)(?::([0-9]+))?(\/[^?]*)?(?:\?(.+))?/);
-      
-      if (!Form.protocols.has(protocol)) throw Error(`Invalid protocol: "${protocol}"`);
-      
-      if (!path.hasHead('/')) path = `/${path}`;
-      if (!port) port = Form.protocols[protocol].defaultPort;
-      
-      return {
-        protocol, host, port: parseInt(port, 10), path,
-        query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.split('=') : [ pc, null ])
-      };
-      
-    },
   })});
   U.setup.gain({ Foundation });
   

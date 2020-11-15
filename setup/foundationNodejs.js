@@ -63,17 +63,13 @@
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
-          // let err = Error('');
-          return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
-            if (err0) rsv(null); // rjc(err.update(err0.message));
-            else      rsv(children);
-          }));
+          return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => rsv(err0 ? null : children)));
         },
         addFolder: async (cmps, ...opts) => {
           let err = Error('');
           return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
-            // Ignore EEXIST - it means the folder is already created!
-            if (err0 && err0.code !== 'EEXIST') rjc(err.update(err0.message));
+            if (err0 && err0.code === 'EEXIST') err0 = null; // EEXIST means already created! We're good!
+            if (err0) rjc(err.update(err0.message));
             else      rsv(null);
           }));
         },
@@ -81,16 +77,13 @@
           let err = Error('');
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
             if (err0 && err0.code === 'ENOENT') err0 = null; // ENOENT means already deleted! Mission accomplished!
-            if (err0) { err.reason = err0; err.message = err0.message; rjc(err); }
+            if (err0) { err.rjc(err.update(err0.message)); }
             else      { rsv(null); }
           }));
         },
         getLetter: async (cmps, ...opts) => {
           let err = Error('');
-          return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
-            if (err0) rjc(err.update(err0.message));
-            else      rsv(content)
-          }));
+          return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => err0 ? rjc(err.update(err0.message)) : rsv(content)));
         },
         setLetter: async (cmps, content, ...opts) => { // "set" is "'add' if nonexistent, otherwise 'upd'"
           let err = Error('');
@@ -143,7 +136,6 @@
         if (blacklist) this.blacklist = blacklist;
       },
       setContentType: function(contentType) { this.contentType = contentType; return this; },
-      desc: function() { return `${U.getFormName(this)}@[${this.absPath.join(', ')}]`; },
       getFileUrl: function() { return Form.fs.cmpsToFileUrl(this.absPath); },
       access: function(dirNames) {
         if (U.isForm(dirNames, String)) dirNames = [ dirNames ];
@@ -415,6 +407,7 @@
     },
     $removeLineCommentRegex: /^(([^'"`]|'[^']*'|"[^"]*"|`[^`]*`)*)[/][/]/,
     
+    // Initialization
     init: function(...args) {
       
       forms.Foundation.init.call(this, ...args);
@@ -989,7 +982,21 @@
       })();
       
     },
-    getPlatform: function() { return { name:  'nodejs' }; },
+    halt: function() { process.exit(0); },
+    ready: function() { return this.canSettlePrm; },
+    
+    // Sandbox
+    queueTask: setImmediate,
+    getMemUsage: function() {
+      let usage1 = process.memoryUsage();
+      return {
+        rss: usage1.rss - this.usage0.rss,
+        heapTotal: usage1.heapTotal,
+        heapUsed: usage1.heapUsed - this.usage0.heapUsed
+      };
+    },
+    
+    // Config
     processArg: function(term, val=null) {
       
       // TODO: CloudFlare best choice of default dns server??
@@ -1137,125 +1144,8 @@
       return forms.Foundation.processArg.call(this, term, val);
       
     },
-    ready: function() { return this.canSettlePrm; },
-    halt: function() { process.exit(0); },
-    installRoom: async function(name, bearing='above') {
-      
-      let pcs = name.split('.');
-      let keep = this.seek('keep', 'adminFileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
-      
-      let contents = await keep.getContent('utf8');
-      if (!contents) throw Error(`Invalid room name: "${name}"`);
-      let { lines, offsets } = await this.compileContent(bearing, contents);
-      
-      return {
-        debug: { offsets },
-        content: (async () => {
-          
-          // Write, `require`, and ensure file populates `global.rooms`
-          await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
-          try         { require(`../mill/compiled/${name}@${bearing}.js`); }
-          catch(err)  { err.message = `Error requiring ${name}.cmp (${err.message})`; throw err; }
-          if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
-          if (!U.hasForm(global.rooms[name], Function)) throw Error(`Room "${name}" set non-function at global.rooms.${name}`);
-          
-          // The file and set a function at `global.room[name]`. Return
-          // a call to that function, providing a `foundation` argument!
-          return global.rooms[name](this);
-          
-        })()
-      };
-      
-    },
     
-    // Util
-    queueTask: setImmediate,
-    getMemUsage: function() {
-      let usage1 = process.memoryUsage();
-      return {
-        rss: usage1.rss - this.usage0.rss,
-        heapTotal: usage1.heapTotal,
-        heapUsed: usage1.heapUsed - this.usage0.heapUsed
-      };
-    },
-    compileContent: function(variantName, srcLines) {
-      
-      // Compile file content; filter based on variant tags
-      if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
-      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.getFormName(srcLines)}`);
-      let variantDef = this.variantDefs[variantName];
-      
-      let blocks = [];
-      let curBlock = null;
-      
-      for (let i = 0; i < srcLines.length; i++) {
-        let line = srcLines[i].trim();
-        
-        if (curBlock) { // In a block, check for the block end
-          if (line.has(`=${curBlock.type.upper()}}`)) {
-            curBlock.end = i;
-            blocks.push(curBlock);
-            curBlock = null;
-          }
-        }
-        
-        if (!curBlock) { // Outside a block, check for start of any block
-          for (let k in variantDef) {
-            if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
-          }
-        }
-        
-      }
-      
-      if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
-      let curOffset = null;
-      let offsets = [];
-      let nextBlockInd = 0;
-      let filteredLines = [];
-      
-      for (let i = 0; i < srcLines.length; i++) {
-        let rawLine = srcLines[i];
-        let line = rawLine.trim();
-        
-        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i)
-          curBlock = blocks[nextBlockInd++];
-        
-        let keepLine = true;
-        if (!line) keepLine = false; // Remove blank lines
-        if (line.hasHead('//')) keepLine = false; // Remove comments
-        if (curBlock && i === curBlock.startInd) keepLine = false;
-        if (curBlock && i === curBlock.endInd) keepLine = false;
-        if (curBlock && !variantDef[curBlock.type]) keepLine = false;
-        
-        if (keepLine) {
-          
-          curOffset = null;
-          let [ lineNoComment=line ] = (line.match(Form.removeLineCommentRegex) || []).slice(1);
-          filteredLines.push(lineNoComment.trim());
-          
-        } else {
-          
-          if (!curOffset) offsets.push(curOffset = { at: i, offset: 0 });
-          curOffset.offset++;
-          
-        }
-        
-        if (curBlock && i === curBlock.end) {
-          curBlock = null;
-          if (nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
-            curBlock = blocks[nextBlockInd];
-            nextBlockInd++;
-          }
-        }
-        
-      }
-      
-      if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
-      return { lines: filteredLines, offsets };
-      
-    },
-    
-    // High level
+    // Services
     createHut: async function(options={}) {
       
       /// if (options.has('uid')) throw Error(`Don't specify "uid"!`);
@@ -1310,73 +1200,7 @@
       
     },
     
-    // Errors
-    parseErrorLine: function(line) {
-      
-      // The codepoint filename must not contain round/square brackets or spaces
-      let [ path, lineInd, charInd ] = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/).slice(1);
-      let [ fileName ] = path.match(/([a-zA-Z0-9.@]*)$/);
-      
-      // Skip non-hut files
-      let fileNamePcs = Form.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
-      if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
-      
-      // Extract room name and bearing from filename
-      let [ roomName, , bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
-      //let [ roomName, bearing=null ] = fileName.split('@').slice(0, -1);
-      return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
-      
-    },
-    srcLineRegex: function() {
-      return {
-        regex: /([^ ]*[^a-zA-Z0-9@.])?[a-zA-Z0-9@.]*[.]js:[0-9]+/, // TODO: No charInd
-        extract: fullMatch => {
-          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.@]/).slice(-2);
-          let [ roomName, bearing ] = roomBearingName.split('@');
-          return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
-        }
-      };
-    },
-    
-    // Functionality
-    getJsSource: async function(type, name, bearing) {
-      
-      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
-      let fp = (type === 'setup')
-        ? [ 'setup', `${name}.js` ]
-        : [ 'room', name, `${name}@${bearing}.js` ];
-      let srcContent = await this.seek('keep', 'adminFileSystem', fp).getContent('utf8');
-      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
-      
-      let offsets = [];
-      let srcLines = srcContent.replace(/\r/g, '').split('\n');
-      let cmpLines = [];
-      let cur = { at: 0, offset: 0 };
-      
-      for (let ind = 0; ind < srcLines.length; ind++) {
-        let srcLine = srcLines[ind].trim();
-        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
-        if (cur.offset > 0) offsets.push(cur);
-        cur = { at: ind, offset: 0 };
-        cmpLines.push(srcLine);
-      }
-      
-      return {
-        content: cmpLines.join('\n'),
-        srcNumLines: srcLines.length,
-        cmpNumLines: cmpLines.length,
-        offsets
-      };
-      
-    },
-    compactIp: function(verboseIp, verbosePort) {
-      // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
-      if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
-      let pcs = verboseIp.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v)).found) throw Error(`Invalid ip: "${verboseIp}"`);
-      let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
-      return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
-    },
+    // Transport
     getHutRoadForQuery: function(server, pool, hutId) {
       
       // TODO: Right now a Road can be spoofed - this should be a
@@ -1712,7 +1536,7 @@
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
         sokt.on('error', err => {
-          err.message = `Sokt error: ${err.message}`; console.log(foundation.formatError(err));
+          console.log(foundation.formatError(err.update(m => `Sokt error: ${m}`)));
           soktState = makeSoktState('ended'); road.end();
         });
         
@@ -1779,7 +1603,171 @@
       };
       
       return server;
-    }
+    },
+    
+    // Room
+    compileContent: function(variantName, srcLines) {
+      
+      // Compile file content; filter based on variant tags
+      if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
+      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.getFormName(srcLines)}`);
+      let variantDef = this.variantDefs[variantName];
+      
+      let blocks = [];
+      let curBlock = null;
+      
+      for (let i = 0; i < srcLines.length; i++) {
+        let line = srcLines[i].trim();
+        
+        if (curBlock) { // In a block, check for the block end
+          if (line.has(`=${curBlock.type.upper()}}`)) {
+            curBlock.end = i;
+            blocks.push(curBlock);
+            curBlock = null;
+          }
+        }
+        
+        if (!curBlock) { // Outside a block, check for start of any block
+          for (let k in variantDef) {
+            if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
+          }
+        }
+        
+      }
+      
+      if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
+      let curOffset = null;
+      let offsets = [];
+      let nextBlockInd = 0;
+      let filteredLines = [];
+      
+      for (let i = 0; i < srcLines.length; i++) {
+        let rawLine = srcLines[i];
+        let line = rawLine.trim();
+        
+        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i)
+          curBlock = blocks[nextBlockInd++];
+        
+        let keepLine = true;
+        if (!line) keepLine = false; // Remove blank lines
+        if (line.hasHead('//')) keepLine = false; // Remove comments
+        if (curBlock && i === curBlock.startInd) keepLine = false;
+        if (curBlock && i === curBlock.endInd) keepLine = false;
+        if (curBlock && !variantDef[curBlock.type]) keepLine = false;
+        
+        if (keepLine) {
+          
+          curOffset = null;
+          let [ lineNoComment=line ] = (line.match(Form.removeLineCommentRegex) || []).slice(1);
+          filteredLines.push(lineNoComment.trim());
+          
+        } else {
+          
+          if (!curOffset) offsets.push(curOffset = { at: i, offset: 0 });
+          curOffset.offset++;
+          
+        }
+        
+        if (curBlock && i === curBlock.end) {
+          curBlock = null;
+          if (nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
+            curBlock = blocks[nextBlockInd];
+            nextBlockInd++;
+          }
+        }
+        
+      }
+      
+      if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
+      return { lines: filteredLines, offsets };
+      
+    },
+    getJsSource: async function(type, name, bearing) {
+      
+      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
+      let fp = (type === 'setup')
+        ? [ 'setup', `${name}.js` ]
+        : [ 'room', name, `${name}@${bearing}.js` ];
+      let srcContent = await this.seek('keep', 'adminFileSystem', fp).getContent('utf8');
+      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
+      
+      let offsets = [];
+      let srcLines = srcContent.replace(/\r/g, '').split('\n');
+      let cmpLines = [];
+      let cur = { at: 0, offset: 0 };
+      
+      for (let ind = 0; ind < srcLines.length; ind++) {
+        let srcLine = srcLines[ind].trim();
+        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
+        if (cur.offset > 0) offsets.push(cur);
+        cur = { at: ind, offset: 0 };
+        cmpLines.push(srcLine);
+      }
+      
+      return {
+        content: cmpLines.join('\n'),
+        srcNumLines: srcLines.length,
+        cmpNumLines: cmpLines.length,
+        offsets
+      };
+      
+    },
+    installRoom: async function(name, bearing='above') {
+      
+      let pcs = name.split('.');
+      let keep = this.seek('keep', 'adminFileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
+      
+      let contents = await keep.getContent('utf8');
+      if (!contents) throw Error(`Invalid room name: "${name}"`);
+      let { lines, offsets } = await this.compileContent(bearing, contents);
+      
+      return {
+        debug: { offsets },
+        content: (async () => {
+          
+          // Write, `require`, and ensure file populates `global.rooms`
+          await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
+          try         { require(`../mill/compiled/${name}@${bearing}.js`); }
+          catch(err)  { throw err.update(m => `Error requiring ${name}.cmp (${m})`); }
+          if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
+          if (!U.hasForm(global.rooms[name], Function)) throw Error(`Room "${name}" set non-function at global.rooms.${name}`);
+          
+          // The file and set a function at `global.room[name]`. Return
+          // a call to that function, providing a `foundation` argument!
+          return global.rooms[name](this);
+          
+        })()
+      };
+      
+    },
+    
+    // Errors
+    parseErrorLine: function(line) {
+      
+      // The codepoint filename must not contain round/square brackets or spaces
+      let [ path, lineInd, charInd ] = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/).slice(1);
+      let [ fileName ] = path.match(/([a-zA-Z0-9.@]*)$/);
+      
+      // Skip non-hut files
+      let fileNamePcs = Form.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
+      if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
+      
+      // Extract room name and bearing from filename
+      let [ roomName, , bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
+      //let [ roomName, bearing=null ] = fileName.split('@').slice(0, -1);
+      return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
+      
+    },
+    srcLineRegex: function() {
+      return {
+        regex: /([^ ]*[^a-zA-Z0-9@.])?[a-zA-Z0-9@.]*[.]js:[0-9]+/, // TODO: No charInd
+        extract: fullMatch => {
+          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.@]/).slice(-2);
+          let [ roomName, bearing ] = roomBearingName.split('@');
+          return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
+        }
+      };
+    },
     
   })});
   
