@@ -52,9 +52,15 @@ global.rooms.hinterlands = async foundation => {
       if (!srcHut && reply) throw Error(`Can't omit "srcHut" but provide "reply"`);
       if (srcHut && srcHut.parHut !== trgHut && trgHut.parHut !== srcHut) throw Error(`Supplied unrelated Huts`);
       
-      // Debug output if any ParHut has debug enabled
-      let dbgParHut = [ srcHut, trgHut ].find(h => h && h.isHere() && h.roadDbgEnabled).val;
-      if (dbgParHut) console.log(`--COMM ${srcHut ? srcHut.uid : '<none>'} -> ${trgHut.uid}: ${dbgParHut.dbgRoadsItem(msg)}`);
+      /// {DEBUG=
+      // Do debug output if enabled
+      if (foundation.getArg('debug').has('road')) {
+        let lim = 150;
+        let dbgStr = JSON.stringify(msg);
+        if (dbgStr.count() > lim) dbgStr = dbgStr.slice(0, lim - 3) + '...';
+        console.log(`--COMM ${srcHut ? srcHut.uid : '<none>'} -> ${trgHut.uid}: ${dbgStr}`);
+      }
+      /// =DEBUG}
       
       if (!srcHut) {
         if (trgHut.isAfar()) throw Error(`Can't tell TrgAfarHut when SrcHut is null`);
@@ -261,10 +267,6 @@ global.rooms.hinterlands = async foundation => {
       
     },
     
-    dbgRoadsItem: function(item) {
-      let ret = JSON.stringify(item);
-      return (ret.length > this.dbgLimit) ? ret.substr(0, this.roadDbgCharLimit - 3) + '...' : ret;
-    },
     getRoadedHut: function(kidHutId) { return this.roadedHuts.get(kidHutId) || null; },
     processNewRoad: function(server, hutId) {
       
@@ -820,7 +822,17 @@ global.rooms.hinterlands = async foundation => {
       // will ensure that no value ever gets sent.
       let hearSrc = this.roadSrcs[command] = Src(); hearSrc.desc = `Hut TellSender for "${command}"`;
       tmp.endWith(() => delete this.roadSrcs[command]);
-      tmp.endWith(hearSrc.route( ({ msg, reply }) => reply(U.safe(() => fn(msg))) ));
+      tmp.endWith(hearSrc.route(({ msg, reply }) => {
+        let result = U.safe(() => fn(msg));
+        
+        /// {DEBUG= // TODO: this is DEBUG inside ABOVE; nesting not supported yet
+        if (result != null && !U.isForm(result, Object, Array, String))
+          if (![ U.setup.Keep, Error ].find(Form => U.hasForm(result, Form)).found)
+            throw Error(`Action for "${command}" returned invalid type ${U.getFormName(result)}`);
+        /// =DEBUG}
+        
+        reply(result);
+      }));
       
       /// =ABOVE} 
       

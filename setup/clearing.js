@@ -263,6 +263,10 @@ let U = global.U = {
     try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
     catch(err) { return f2(err); }
   },
+  then: (v, rsv, rjc) => {
+    if (U.isForm(v, Promise)) return v.then(rsv, rjc);
+    try { return rsv(v); } catch(err) { return rjc(err); }
+  },
   reservedFormProps: Set([ 'constructor', 'Form' ]),
   form: ({ name, has={}, parForms=has, props=()=>({}) }) => {
     

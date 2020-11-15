@@ -7,13 +7,13 @@
 //  - Think about an abstract "default command" to replace "syncInit"
 //    This will allow multiplexing apps on the same server!!
 
-global.rooms['hinterlands.hutControls'] = async foundation => {
+global.rooms['hinterlands.setup'] = async foundation => {
   
   let { RecSrc, RecScope } = await foundation.getRoom('record');
   
-  return U.form({ name: 'HutControls', props: (forms, Form) => ({
+  return U.form({ name: 'Setup', props: (forms, Form) => ({
     
-    // HutControls consolidates a bunch of boilerplate configuration in
+    // Setup consolidates a bunch of boilerplate configuration in
     // one place. The main functions are to:
     // - Define debug options
     // - Enumerate hosting options
@@ -55,8 +55,25 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
     init: function(prefix, hutName, params={}) {
       let { hosting=foundation.getArg('hosting') } = params;
       let { debug=foundation.getArg('debug') } = params;
-      let { habitats=[], recForms={}, storage=null } = params;
+      let { habitats=[], recForms={} } = params;
       let { parFn=Function.stub, kidFn=Function.stub } = params;
+      
+      let storage = null;
+      
+      /// {ABOVE=
+      
+      // "storage" defaults to `null` unless the "storageKeep" arg is
+      // defined, in which case it defaults to replay-style storage
+      // using that Keep
+      storage = params.has('storage') ? params.storage : (() => {
+        let storageKeep = foundation.getArg('storageKeep');
+        return storageKeep
+          ? { type: 'replay', keep: storageKeep, bufferMinSize: 50, bufferMs: 10*1000 }
+          : null;
+      })();
+      
+      /// =ABOVE}
+      
       ({}).gain.call(this, { prefix, hutName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
     },
     
@@ -65,18 +82,14 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       
       let doDbg = this.debug.has('storage');
       
-      doDbg && console.log('Init replay storage', { keep, bufferMinSize, bufferMs });
+      doDbg && console.log(`Init replay storage on "${this.hutName}" @ "${keep.absPath.join('/')}"; bufferMinSize: ${bufferMinSize}; bufferMs: ${bufferMs}`);
       
       let { Hut } = await foundation.getRoom('hinterlands');
       let { Rec } = await foundation.getRoom('record');
       
       let tmp = U.logic.Tmp();
       
-      let storageKeep = U.isForm(keep, String)
-        ? foundation.seek('keep', 'adminFileSystem', 'mill', 'storage', 'hutControls', keep)
-        : keep;
-      
-      let replayCount = (await storageKeep.getContent() || []).count();
+      let replayCount = (await keep.getContent() || []).count();
       let getItemName = i => (i).encodeStr('0123456789abcdefghijklmnopqrstuvwxyz', 8);
       
       // Perform any existing replays to catch up to the latest state
@@ -107,7 +120,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
         let t = foundation.getMs();
         let replayCnt = 0;
         for (let i = 0; i < replayCount; i++) {
-          let replayLines = (await storageKeep.seek(getItemName(i)).getContent('utf8')).split('\n');
+          let replayLines = (await keep.seek(getItemName(i)).getContent('utf8')).split('\n');
           for (let replayJson of replayLines) {
             let { uid, ms, msg } = JSON.parse(replayJson);
             if (uid && !huts.has(uid)) {
@@ -138,7 +151,7 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
         if (!writeTimeout) writeTimeout = setTimeout(async () => {
           writeTimeout = null;
           let content = writeBuffer.map(item => JSON.stringify(item)).join('\n');
-          await storageKeep.seek(getItemName(writeIndex)).setContent(content);
+          await keep.seek(getItemName(writeIndex)).setContent(content);
           if (writeBuffer.count() >= bufferMinSize) { writeBuffer = []; writeIndex++; }
         }, bufferMs);
           
@@ -215,7 +228,6 @@ global.rooms['hinterlands.hutControls'] = async foundation => {
       tmp.endWith(parScope);
       
       if (this.storage) {
-        if (this.debug.has('storage')) console.log(`Setting up "${this.storage.type}" storage on "${this.hutName}"; params:`, this.storage);
         tmp.endWith(await {
           replay: () => this.setupReplayStorage(hut, this.storage),
           postgres: () => { /* imagine the possibilities! */ }

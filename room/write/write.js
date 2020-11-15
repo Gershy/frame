@@ -4,13 +4,11 @@ global.rooms.write = async foundation => {
   let { FreeLayout, SizedLayout, Axis1DLayout, TextLayout, TextInputLayout, ScrollLayout } = U.setup;
   let { Rec } = await foundation.getRoom('record');
   
-  let HutControls = await foundation.getRoom('hinterlands.hutControls');
+  let Setup = await foundation.getRoom('hinterlands.setup');
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
   
-  let storage = await foundation.getArg('storage');
-  return HutControls('wrt', 'write', {
+  return Setup('wrt', 'write', {
     
-    storage: storage && { type: 'replay', keep: storage, bufferMinSize: 50, bufferMs: 10 * 1000 },
     habitats: [ HtmlBrowserHabitat() ],
     recForms: {
       'wrt.room': U.form({ name: 'RoomRec', has: { Rec }, props: (forms, Form) => ({

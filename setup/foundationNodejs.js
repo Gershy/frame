@@ -13,10 +13,7 @@
       init: function() {
         forms.Keep.init.call(this);
         
-        let fileSystemKeep = Form.KeepFileSystem({
-          secure: true,
-          blacklist: Set([ '.git', '.gitignore', 'mill' ])
-        });
+        let fileSystemKeep = Form.KeepFileSystem({ secure: true, blacklist: Set([ '.git', '.gitignore', 'mill' ]) });
         this.keepsByType = {
           static: Form.KeepStatic(fileSystemKeep),
           fileSystem: fileSystemKeep,
@@ -34,6 +31,15 @@
         this.fileSystemKeep = fileSystemKeep;
         this.hut = null;
       },
+      
+      // TODO: Instead of having a single KeepStatic linked to a single
+      // hut should consider `access`ing a new "KeepStaticHut" instance
+      // via a Hut seek parameter. `KeepStatic` could track all existing
+      // instances of "KeepStaticHut" to avoid creating multiple
+      // instances for the same Hut. KeepStaticHut could inherit from
+      // Tmp as well as Keep to facilitate it ending when its Hut end.
+      // And would need to clean up the mapped entry in `KeepStatic` if
+      // the "KeepStaticHut" ends
       setHut: function(hut) { this.hut = hut; },
       access: function(fpCmps) {
         
@@ -412,24 +418,9 @@
       
       forms.Foundation.init.call(this, ...args);
       
-      // As soon as we're compiled we can install useful cmp->src exception handlers
-      process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
-      process.removeAllListeners('unhandledRejection');
-      process.on('uncaughtException', err => console.error(this.formatError(err)));
-      process.on('unhandledRejection', err => console.error(this.formatError(err)));
-      
       this.bearing = 'above';
       this.fsKeep = this.seek('keep', 'adminFileSystem');
-      
-      this.roomsInOrder = [];
       this.compilationData = {};
-      
-      this.variantDefs = {
-        above: { above: 1, below: 0 },
-        below: { above: 0, below: 1 }
-      };
-      
-      this.transportDebug = false;
       
       this.usage0 = process.memoryUsage().map(v => v);
       
@@ -438,6 +429,21 @@
       this.canSettlePrm = (async () => {
         
         await this.fsKeep.seek([ 'mill', 'compiled' ]).setContent(null);
+        
+        let argKeep = this.getArg('argKeep');
+        if (argKeep) {
+          
+          let content = await U.safe(async () => eval(`(${await argKeep.getContent()})`), () => null);
+          if (!U.isForm(content, Object)) throw Error(`Specified bad arg keep: ${argKeep.absPath.join('/')}`);
+          this.readyArgs = {};
+          this.origArgs = {
+            ...this.origArgs,
+            ...content,
+            debug: [ ...(this.origArgs.debug || []), ...(content.debug || []) ]
+          };
+          if (this.getArg('debug').has('arg')) console.log(`Loading additional args from ${argKeep.absPath.join('/')}`);
+          
+        }
         
         let tests = [
           
@@ -979,6 +985,10 @@
           this.halt();
         });
         
+        if (this.getArg('debug').has('arg')) {
+          console.log(`Running with args:`, this.origArgs);
+        }
+        
       })();
       
     },
@@ -1083,7 +1093,7 @@
                   
                   // Reversable ips without A records are one level down
                   // from globally addressable results
-                  catch(err) { return { type: 'external', rank: 3, ip, addr }; }
+                  catch(err) { return { type: 'publicNoHost', rank: 3, ip, addr }; }
                   
                 }));
                 
@@ -1140,6 +1150,31 @@
         });
         
       })();
+      
+      if (term === 'argKeep') {
+        
+        if (U.isForm(val, String)) val = val.split(/[,/]/);
+        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
+        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
+        
+        return val || null;
+        
+      }
+      
+      if (term === 'storageKeep') {
+        
+        if (U.isForm(val, String)) val = val.split(/[,/]/);
+        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
+        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
+        
+        if (this.getArg('debug').has('storage')) console.log(val
+          ? `Running with storage @ ${val.absPath.join('/')}`
+          : `No storage provided; this will be a transient run`
+        );
+        
+        return val || null;
+        
+      }
       
       return forms.Foundation.processArg.call(this, term, val);
       
@@ -1223,7 +1258,7 @@
       }
       
       // Past this point a Road can only be returned by spoofing
-      if (!this.spoofEnabled) return null;
+      if (this.getArg('deploy') !== 'dev') return null;
       
       // Return a Road spoofed to have the requested `hutId`
       let newSpoofyRoad = pool.processNewRoad(server, hutId);
@@ -1606,12 +1641,17 @@
     },
     
     // Room
-    compileContent: function(variantName, srcLines) {
+    compileContent: function(path, variantName, srcLines) {
       
       // Compile file content; filter based on variant tags
       if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
       if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.getFormName(srcLines)}`);
-      let variantDef = this.variantDefs[variantName];
+      
+      let variantDef = {
+        above: variantName === 'above',
+        below: variantName === 'below',
+        debug: this.getArg('deploy') === 'dev' || !this.getArg('debug').isEmpty()
+      };
       
       let blocks = [];
       let curBlock = null;
@@ -1635,7 +1675,7 @@
         
       }
       
-      if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
+      if (curBlock) throw Error(`Ended with unbalanced "${curBlock.type}" block`);
       let curOffset = null;
       let offsets = [];
       let nextBlockInd = 0;
@@ -1678,6 +1718,12 @@
         
       }
       
+      if (this.getArg('debug').has('compile')) {
+        let srcCnt = srcLines.count();
+        let trgCnt = filteredLines.count();
+        console.log(`Compiled ${path.join('/')}: ${srcCnt} -> ${trgCnt} (-${srcCnt - trgCnt}) lines`);
+      }
+      
       if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
       return { lines: filteredLines, offsets };
       
@@ -1714,12 +1760,13 @@
     },
     installRoom: async function(name, bearing='above') {
       
-      let pcs = name.split('.');
-      let keep = this.seek('keep', 'adminFileSystem', [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ]);
+      let namePcs = name.split('.');
+      let pcs = [ 'room', ...namePcs, `${namePcs.slice(-1)[0]}.js` ]
+      let keep = this.seek('keep', 'adminFileSystem', pcs);
       
       let contents = await keep.getContent('utf8');
       if (!contents) throw Error(`Invalid room name: "${name}"`);
-      let { lines, offsets } = await this.compileContent(bearing, contents);
+      let { lines, offsets } = await this.compileContent(pcs, bearing, contents);
       
       return {
         debug: { offsets },

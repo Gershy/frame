@@ -1,16 +1,16 @@
 global.rooms['internal.install'] = async foundation => {
   
   let { FreeLayout, Axis1DLayout, TextLayout } = U.setup;
-  let HutControls = await foundation.getRoom('hinterlands.hutControls');
+  let Setup = await foundation.getRoom('hinterlands.setup');
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
   // let TerminalHabitat = await foundation.getRoom('hinterlands.habitat.terminal'); // Interact with app purely via command line (and maybe even a separate graphical ui experience like 'window' room
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   
   let debug = foundation.getArg('debug');
-  return HutControls('stl', 'internal.install', {
+  return Setup('stl', 'internal.install', {
     debug,
     habitats: [ HtmlBrowserHabitat() ],
-    parFn: (hut, install, real, dep) => {
+    parFn: async (hut, install, real, dep) => {
       
       /// {ABOVE=
       // Make sure to use the non-admin fileSystem to control access
@@ -42,9 +42,44 @@ global.rooms['internal.install'] = async foundation => {
       /// =ABOVE}
       
     },
-    kidFn: (hut, install, real, dep) => {
+    kidFn: async (hut, install, real, dep) => {
       
-      console.log('Here...');
+      /*
+      
+      // Compare:
+      let lay = [ 'Text', 'Free', 'Axis1D' ];
+      let layout = await Promise.allObj(lay.toObj(v => [ v, real.techLayout(v) ]));
+      real.addReal('stl.install', {
+        layouts: [ layout.Free({ w: '100%', h: '100%' }) ]
+      });
+      
+      real.addReal('stl'install', {
+        layouts: [ real.techLayout('Free', { w: '100%', h: '100%' }) ]
+      });
+      
+      // `real.techLayout` references the "tech" property of the root
+      // Real to provide a reference to a Layout Form of the specified
+      // name. If given a 2nd param it returns an instance of the Form
+      // initialized with the 2nd param as its arguments. If only 1
+      // param (the name of the Form), the Form itself is returned. I
+      // think it may be workable for a Real, upon initialization, to
+      // determine any sync (immediately available) layouts/decals, and
+      // render using them. If there are leftover layouts/decals waiting
+      // to resolve the Real could simply wait for those promises to
+      // fulfill, and then re-render with the newly available
+      // information! Shortcomings of this?? Not exactly sure... A plus
+      // is that any "innerLayout" will probably be immediately
+      // available - it isn't likely that a TechRoom (like
+      // /room/internal/tech/htmlBrowser/axis1D/axis1D.js) would define
+      // its "innerLayout" (Axis1D.Item) in a separate Room!
+      
+      // It looks like there will be no requirement for tech-agnostic
+      // Layout definitions (as in foundation.js) to exist. There *is*
+      // an expected structure for Layouts of the same name amongst
+      // differing habitats, but this doesn't need to be enshrined in
+      // real code, especially BELOW (which is sensitive to bloat)
+      
+      */
       
       let stlReal = dep(real.addReal('stl.install', {
         layouts: [ FreeLayout({ w: '100%', h: '92%', x: '0', y: '-4%' }) ],

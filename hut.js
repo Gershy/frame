@@ -39,6 +39,8 @@ if (!args || !args.has('settle')) args = { settle: 'internal.help', ...args };
 if (!U.isForm(args, Object)) throw Error(`Arguments should be Object (got ${U.getFormName(args)})`);
 
 let foundation = FoundationNodejs(args);
+process.on('uncaughtException', err => console.error(foundation.formatError(err)));
+process.on('unhandledRejection', err => console.error(foundation.formatError(err)));
 foundation.settleRoom(args.settle, 'above').catch(err => {
   console.log(`FATAL ERROR:\n${foundation.formatError(err)}`);
   foundation.halt();

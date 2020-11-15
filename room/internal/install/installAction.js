@@ -39,10 +39,6 @@ async hosting => {
     let remote = [];
     for await (let p of copy(local, remote)) console.log(`Fully copied: [${[ ...local, ...p ].join('/')}]`);
     
-  } catch(err) {
-    
-    console.log(`Couldn't install: ${err.message}`);
-    
-  }
+  } catch(err) { console.log(`Couldn't install: ${err.message}`); }
   
 };

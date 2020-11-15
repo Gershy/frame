@@ -23,7 +23,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
       let urlFn = (srcHut, p={}, { reply='1' }=p) => {
         return '?' + ({ hutId: srcHut.uid, ...p, reply }).toArr((v, k) => `${k}=${v}`).join('&');
       };
-      tmp.endWith(hut.roadSrc(this.rootRoadSrcName).route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(this.rootRoadSrcName).route(async ({ srcHut, msg, reply }) => {
         
         // TODO: If supporting outdated browsers, useragent agent
         // detection at this point has an opportunity to send html which
@@ -85,6 +85,18 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
                   aboveMsAtResponseTime: foundation.getMs(),
                   initData: initSyncTell
                 })}'));
+                
+                /// {DEBUG=
+                // Catch exceptions after building all Rooms
+                let handleError = evt => {
+                  evt.preventDefault();
+                  console.error(foundation.formatError(evt.error || evt.reason));
+                  foundation.halt();
+                };
+                window.addEventListener('unhandledrejection', handleError);
+                window.addEventListener('error', handleError);
+                /// =DEBUG}
+                
                 foundation.settleRoom('${name}', 'below').catch(err => {
                   console.log('FATAL ERROR:\\n' + foundation.formatError(err));
                   foundation.halt();
@@ -97,7 +109,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         `));
         
       }));
-      tmp.endWith(hut.roadSrc('html.room').route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc('html.room').route(async ({ srcHut, msg, reply }) => {
         
         let roomPcs = msg.room.split('.');
         let pcs = (msg.type === 'room')
@@ -108,7 +120,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         let srcContent = await srcKeep.getContent('utf8');
         
         if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}');`);
-        let { lines, offsets } = foundation.compileContent('below', srcContent);
+        let { lines, offsets } = foundation.compileContent(pcs, 'below', srcContent);
         
         let dbg = 0;
         if (dbg) {
@@ -142,12 +154,12 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         ].join('\n'));
         
       }));
-      tmp.endWith(hut.roadSrc('html.icon').route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc('html.icon').route(async ({ srcHut, msg, reply }) => {
         
         reply(foundation.seek('keep', 'fileSystem', 'setup', 'favicon.ico'));
         
       }));
-      tmp.endWith(hut.roadSrc('html.css').route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc('html.css').route(async ({ srcHut, msg, reply }) => {
         
         reply(U.multilineString(`
           @keyframes smoothFocus {
@@ -172,7 +184,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         `));
         
       }));
-      tmp.endWith(hut.roadSrc('html.renderCss').route(async ({ road, srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc('html.renderCss').route(async ({ srcHut, msg, reply }) => {
         
         // Only for use with auto-rendering!
         reply(U.multilineString(`
@@ -244,7 +256,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         `));
         
       }));
-      tmp.endWith(hut.roadSrc('html.multi').route(async ({ road, srcHut, msg, reply }) => {
+      (foundation.getArg('deploy') === 'dev') && tmp.endWith(hut.roadSrc('html.multi').route(async ({ srcHut, msg, reply }) => {
         
         let { num='4', w='400', h='400', textSize='100%' } = msg;
         

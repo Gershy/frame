@@ -31,10 +31,7 @@
       }
     })}),
     $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
-      init: function(foundation) {
-        this.foundation = foundation;
-        this.urlImages = {};
-      },
+      init: function(foundation) { this.foundation = foundation; this.urlImages = {}; },
       access: function({ path='', params={} }) { return Form.KeepUrlResource(this, path, params); }
     })}),
     $KeepUrlResource: U.form({ name: 'KeepUrlResource', has: { Keep }, props: forms => ({
@@ -62,7 +59,7 @@
     $TextNode: document.createTextNode('').constructor,
     
     // Initialization
-    init: function({ hutId, isSpoofed, aboveMsAtResponseTime, ...supArgs }) {
+    init: function({ hutId, aboveMsAtResponseTime, ...supArgs }) {
       forms.Foundation.init.call(this, supArgs);
       
       // GOAL: delta since Above generated "aboveMsAtResponseTime"?
@@ -71,12 +68,6 @@
       //   This is the time we heard the server's 1st byte
       // - Without making any assumptions: `now - firstContactMs`
       // - This estimates LESS than the real latency
-      
-      // Catch exceptions after building all Rooms
-      let handleError = evt => { evt.preventDefault(); console.error(this.formatError(evt.error || evt.reason)); this.halt(); };
-      window.addEventListener('unhandledrejection', handleError);
-      window.addEventListener('error', handleError);
-      
       let nativeNow = +new Date();
       let firstContactMs = performance.timing.responseStart;
       let knownLatencyMs = nativeNow - firstContactMs;
@@ -89,7 +80,6 @@
       // a side-effect of other requests.
       this.clockDeltaMs = nativeNow - (aboveMsAtResponseTime + knownLatencyMs);
       this.hutId = hutId;
-      /// this.isSpoofed = isSpoofed;
       
       // Make sure that refreshes redirect to the same session
       let { query } = this.parseUrl(window.location.href);
@@ -729,6 +719,7 @@
       
     },
     
+    /// {DEBUG=
     // Error
     parseErrorLine: function(line) {
       let [ roomName ] = line.match(/[?&]room=([a-zA-Z0-9.]*)/).slice(1);
@@ -736,6 +727,7 @@
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10), bearing: 'below' };
     },
     srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: null, line: 0, char: 0 }) }; }
+    /// =DEBUG}
     
   })});
   
