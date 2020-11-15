@@ -718,7 +718,7 @@
       // Wait for the script to load; ensure it populated `global.rooms`
       await Promise((rsv, rjc) => {
         script.addEventListener('load', rsv);
-        script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`));
+        script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`)));
       });
       if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
       
