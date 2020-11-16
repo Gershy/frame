@@ -21,12 +21,6 @@
 // sub-POs?). If we had a way to measure the overall "cost" of an app,
 // AI could optimize values for all POs.
 
-// To save on precision-insensitive geometry updates from Below, could
-// slow the rate of updates from the server and have the client side
-// extrapolate finer-grained time-steps based on sampling the low-res
-// location data, and guessing velocity, acceleration, etc. More CPU
-// work for the client, much less network pressure on the server!
-
 // Keep-Alive headers
 // NODE_ENV should be production?
 
@@ -37,75 +31,17 @@
 require('./setup/clearing.js');
 require('./setup/foundation.js');
 require('./setup/foundationNodejs.js');
+let { FoundationNodejs } = U.setup;
 
-// ARG PROCESSING:
-// We process the raw text typed into the terminal. Every attempt is
-// made to normalize terminal-level argument-passing. We always want the
-// exact string which the user typed in.
-//
-// Two argument modes: 1) object literal; 2) hut params
-//
-// 1) OBJECT LITERAL:
-// The user may type a literal javascript (not necessarily JSON) object
-// into the terminal. We'll use `eval` to determine the contents
-//
-// 2) HUT PARAMS:
-// The user may declare multiple heirarchical keys, with corresponding
-// values. Heirarchical components are separated with the "." character.
-// Values are separated from keys with the "=" character.
+let evalContent = process.argv.slice(2).join(' ').trim();
+let args = evalContent ? eval(`(${evalContent})`) : null;
+if (!args || !args.has('settle')) args = { settle: 'internal.help', ...args };
+if (!U.isForm(args, Object)) throw Error(`Arguments should be Object (got ${U.getFormName(args)})`);
 
-// Terminal normalization
-
-let args = process.argv.slice(2).join(' ').trim();
-if (args.has('-encodedCommand')) { // Process "encodedCommand"
-  
-  let ind = args.indexOf('-encodedCommand');
-  args = args.crop(ind + '-encodedCommand'.length, 0).trim();
-  
-  let base64Data = args.split(' ', 1)[0]; // Get everything until the next space (or end)
-  args = Buffer
-    .from(base64Data, 'base64')             // Decode from base64
-    .toString('utf8').split('')             // Get an array of characters
-    .map(v => v.charCodeAt(0) ? v : C.skip) // Strip all chars of code 0
-    .join('');                              // Stick remaining chars together
-  args = `{${args}}`; // Re-wrap in "{}"
-  
-}
-
-// Process normalized data
-
-if (args[0] === '{') {     // Process object literal
-  
-  args = eval(`(${args})`);
-  
-} else {                   // Process hut args
-  
-  let orig = args;
-  args = {};
-  
-  orig.split(' ').forEach(entry => {
-    let [ k, ...v ] = entry.trim().split('=');
-    k = k.polish('-').split('.');
-    let lastProp = k.pop();
-    let ptr = args;
-    for (let prop of k) { if (!ptr.has(prop)) ptr[prop] = {}; ptr = ptr[prop]; }
-    ptr[lastProp] = v.length ? v.join('=') : true; // No value indicates a flag - so set to `true`
-  });
-  
-}
-
-if (args.has('test')) {
-  
-  require(`./setup/test/${args.test}`)(args);
-  
-} else {
-  
-  // Make the foundation
-  let { FoundationNodejs } = U.setup;
-  let foundation = FoundationNodejs(args);
-  foundation.raise(args).catch(err => {
-    console.log('FATAL ERROR:', foundation.formatError(err));
-    process.exit(1);
-  });
-  
-}
+let foundation = FoundationNodejs(args);
+process.on('uncaughtException', err => console.error(foundation.formatError(err)));
+process.on('unhandledRejection', err => console.error(foundation.formatError(err)));
+foundation.settleRoom(args.settle, 'above').catch(err => {
+  console.log(`FATAL ERROR:\n${foundation.formatError(err)}`);
+  foundation.halt();
+});

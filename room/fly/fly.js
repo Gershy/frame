@@ -114,8 +114,8 @@ U.buildRoom({
       momentName: 'practice1',
       ace: testAces[Math.floor(Math.random() * testAces.length)]
     };
-    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v));
-    let checkBadN = obj => obj.forEach((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
+    let badN = (...vals) => vals.find(v => !U.isType(v, Number) || isNaN(v)).found;
+    let checkBadN = obj => obj.each((v, k) => { if (badN(v)) throw Error(`BAD VAL AT ${k} (${U.nameOf(v)}, ${v})`); });
     let getLevelData = name => ({
       name, ...levels[name].slice('num', 'password'),
       dispName: levels[name].name, dispDesc: levels[name].desc
@@ -270,13 +270,13 @@ U.buildRoom({
       let fly = flyHut.createRec('fly.fly', [ flyHut ]);
       let termBank = term.TermBank();
       
-      let flyInfoDoc = foundation.getKeep('fileSystem', [ 'room', 'fly', 'info.html' ]);
+      let flyInfoDoc = foundation.seek('keep', 'fileSystem', [ 'room', 'fly', 'info.html' ]);
       flyHut.roadNozz('fly.info').route(({ reply }) => reply(flyInfoDoc));
       
-      let resourceKeep = foundation.getKeep('fileSystem', [ 'room', 'fly', 'resource' ]);
+      let resourceKeep = foundation.seek('keep', 'fileSystem', [ 'room', 'fly', 'resource' ]);
       let resourceNames = await resourceKeep.getContent();
       for (let rn of resourceNames) {
-        let resource = resourceKeep.to(rn);
+        let resource = resourceKeep.seek(rn);
         flyHut.roadNozz(`fly.sprite.${rn.split('.')[0]}`).route(({ reply }) => reply(resource));
       }
       
@@ -314,14 +314,13 @@ U.buildRoom({
               let lobby = null;
               if (lobbyId) {
                 let allLobbies = fly.relNozz('fly.lobby').set.toArr(v => v);
-                let findLobby = allLobbies.find(l => l.val.id === lobbyId);
-                if (!findLobby) throw Error('Invalid lobby id');
-                lobby = findLobby[0];
+                let lobby = allLobbies.find(l => l.val.id === lobbyId).val;
+                if (!lobby) throw Error('Invalid lobby id');
               } else {
                 let randInt = Math.floor(Math.random() * Math.pow(62, 4));
                 lobby = flyHut.createRec('fly.lobby', [ fly ], {
                   // The id used to get into the lobby
-                  id: `${U.base62(randInt).padHead(4, '0')}`,
+                  id: randInt.encodeStr(C.base62, 4),
                   
                   // Level values
                   level: getLevelData('rustlingMeadow'),
@@ -353,7 +352,7 @@ U.buildRoom({
           dep.scp(lobbyPlayerNozz, (lobbyPlayer, dep) => {
             
             dep(hut.roadNozz('lobbyPass').route(({ msg: { pass } }) => {
-              let [ level=null, levelName ] = levels.find(v => v.password === pass) || [];
+              let { key: levelName, val: level } = levels.find(v => v.password === pass);
               if (!level) return;
               
               let lobby = lobbyPlayer.mems['fly.lobby'];
@@ -404,7 +403,7 @@ U.buildRoom({
               let levelDef = levels[levelName];
               if (momentName) {
                 levelDef.moments = levelDef.moments.toArr(v => v);
-                let [ firstMoment, ind ] = levelDef.moments.find(m => m.name === momentName);
+                let { ind, val: firstMoment } = levelDef.moments.find(m => m.name === momentName);
                 
                 if (!firstMoment.bounds) {
                   for (let i = ind; i >= 0; i--) {
@@ -712,7 +711,7 @@ U.buildRoom({
                 let modelReal = modelListReal.addReal('fly.model');
                 modelReal.addReal('fly.modelName').addReal('fly.content3').setText(name);
                 modelReal.setImage(
-                  foundation.getKeep('urlResource', { path: `fly.sprite.ace${model[0].upper()}${model.slice(1)}` }),
+                  foundation.seek('keep', 'urlResource', { path: `fly.sprite.ace${model[0].upper()}${model.slice(1)}` }),
                   { smoothing: false, scale: 0.5 }
                 );
                 
@@ -733,7 +732,7 @@ U.buildRoom({
                 scoreReal.setText(`Dmg: ${Math.round(score) * 100}\nDeaths: ${deaths}`);
               }));
               dep(lobbyPlayer.route(({ model, score }) => {
-                modelReals.forEach((modelReal, k) => {
+                modelReals.each((modelReal, k) => {
                   modelReal.setBorder(k === model ? UnitPx(10) : UnitPx(0), isMine ? '#ff9000' : '#a8a8a8');
                 });
               }));

@@ -3,64 +3,93 @@
   // TODO: For `res.writeHead(...)`, consider Keep-Alive
   // e.g. 'Keep-Alive: timeout=5, max=100'
   
-  let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, Scope, defDrier } = U.water;
+  let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
-  let path = require('path');
-  let { Foundation, Keep } = U.setup;
+  let { Foundation, Real, Keep } = U.setup;
   
-  let FoundationNodejs = U.inspire({ name: 'FoundationNodejs', insps: { Foundation }, methods: (insp, Insp) => ({
+  let FoundationNodejs = U.form({ name: 'FoundationNodejs', has: { Foundation }, props: (forms, Form) => ({
     
-    $KeepNodejs: U.inspire({ name: 'KeepNodejs', insps: { Keep }, methods: insp => ({
+    $KeepNodejs: U.form({ name: 'KeepNodejs', has: { Keep }, props: forms => ({
       init: function() {
-        insp.Keep.init.call(this);
+        forms.Keep.init.call(this);
+        
+        let fileSystemKeep = Form.KeepFileSystem({ secure: true, blacklist: Set([ '.git', '.gitignore', 'mill' ]) });
         this.keepsByType = {
-          fileSystem: Insp.KeepFileSystem(),
-          urlResource: Insp.KeepUrlResources()
+          static: Form.KeepStatic(fileSystemKeep),
+          fileSystem: fileSystemKeep,
+          adminFileSystem: Form.KeepFileSystem({ secure: false }),
+          urlResource: Form.KeepUrlResources()
         };
       },
-      innerKeep: function(type) {
+      access: function(type) {
         if (this.keepsByType.has(type)) return this.keepsByType[type];
         throw Error(`Invalid Keep type: "${type}" (options are: ${this.keepsByType.toArr((v, k) => `"${k}"`).join(', ')})`);
       }
     })}),
-    $KeepFileSystem: U.inspire({ name: 'KeepFileSystem', insps: { Keep }, methods: (insp, Insp) => ({
+    $KeepStatic: U.form({ name: 'KeepStatic', has: { Keep }, props: (forms, Form) => ({
+      init: function(fileSystemKeep) {
+        this.fileSystemKeep = fileSystemKeep;
+        this.hut = null;
+      },
+      
+      // TODO: Instead of having a single KeepStatic linked to a single
+      // hut should consider `access`ing a new "KeepStaticHut" instance
+      // via a Hut seek parameter. `KeepStatic` could track all existing
+      // instances of "KeepStaticHut" to avoid creating multiple
+      // instances for the same Hut. KeepStaticHut could inherit from
+      // Tmp as well as Keep to facilitate it ending when its Hut end.
+      // And would need to clean up the mapped entry in `KeepStatic` if
+      // the "KeepStaticHut" ends
+      setHut: function(hut) { this.hut = hut; },
+      access: function(fpCmps) {
+        
+        let key = [ 'static', ...fpCmps ].join('/');
+        if (!this.hut.roadSrcs.has(key)) {
+          // Make keep available to Below
+          this.hut.roadSrc(key).route(async ({ reply }) => reply(this.fileSystemKeep.seek(fpCmps)));
+        }
+        return this.fileSystemKeep.seek(fpCmps);
+        
+      }
+    })}),
+    $KeepFileSystem: U.form({ name: 'KeepFileSystem', has: { Keep }, props: (forms, Form) => ({
       
       $fs: ((path, fs) => ({
         
         // "folder" = "directory"; "letter" = "file"
         
-        hutRootCmps: __dirname.split(path.sep).slice(0, -1),
+        hutRootCmps: (() => {
+          // If the absolute path is prefixed with the path separator
+          // (common for *nix) the leading item will be an empty string.
+          // We also need to ensure this path is absolute, so any
+          // leading empty string can be replaced with the separator
+          let [ root, ...cmps ] = __dirname.split(path.sep);
+          return [ root || path.sep, ...cmps ].slice(0, -1);
+        })(),
         cmpsToFileUrl: cmps => path.join(...cmps),
         getMeta: cmps => Promise(rsv => fs.stat(path.join(...cmps), (e, m) => rsv(e ? null : m))),
         getFolder: async (cmps, ...opts) => {
-          let err = Error('');
-          return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => {
-            if (err0) rjc(err.update(err0.message));
-            else      rsv(children);
-          }));
+          return Promise((rsv, rjc) => fs.readdir(path.join(...cmps), ...opts, (err0, children) => rsv(err0 ? null : children)));
         },
         addFolder: async (cmps, ...opts) => {
           let err = Error('');
           return Promise((rsv, rjc) => fs.mkdir(path.join(...cmps), ...opts, err0 => {
-            // Ignore EEXIST - it means the folder is already created!
-            if (err0 && err0.code !== 'EEXIST') rjc(err.update(err0.message));
+            if (err0 && err0.code === 'EEXIST') err0 = null; // EEXIST means already created! We're good!
+            if (err0) rjc(err.update(err0.message));
             else      rsv(null);
           }));
         },
         remFolder: async (cmps, ...opts) => {
           let err = Error('');
           return Promise((rsv, rjc) => fs.rmdir(path.join(...cmps), ...opts, err0 => {
-            // Ignore ENOENT - it means the folder is already deleted!
-            if (err0 && err0.code !== 'ENOENT') rjc(err.update(err0.message));
-            else      rsv(null);
+            if (err0 && err0.code === 'ENOENT') err0 = null; // ENOENT means already deleted! Mission accomplished!
+            if (err0) { err.rjc(err.update(err0.message)); }
+            else      { rsv(null); }
           }));
         },
         getLetter: async (cmps, ...opts) => {
           let err = Error('');
-          return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => {
-            if (err0) rjc(err.update(err0.message));
-            else      rsv(content)
-          }));
+          return Promise((rsv, rjc) => fs.readFile(path.join(...cmps), ...opts, (err0, content) => err0 ? rjc(err.update(err0.message)) : rsv(content)));
         },
         setLetter: async (cmps, content, ...opts) => { // "set" is "'add' if nonexistent, otherwise 'upd'"
           let err = Error('');
@@ -79,81 +108,131 @@
         getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
         
       }))(require('path'), require('fs')),
-      $extensionContentTypeMap: {
-        html: 'text/html',
+      $HoneyPotKeep: U.form({ name: 'HoneyPotKeep', has: { Keep }, props: (forms, Form) => ({
+        init: function(data=[ 'honey', 'passwords', 'tokens', 'credentials', 'bitcoin', 'wallet' ]) { this.data = data; },
+        access: function() { return this; },
+        setContentType: function() { return this; },
+        getContentType: function() { return 'application/json'; },
+        getFsType: function() { return 'folder'; },
+        getContent: function() { return this.data; },
+        setContent: function() {},
+        getContentByteLength: function() { return Buffer.byteLength(JSON.stringify(this.data)); },
+        getPipe: function() { return ({ pipe: async res => res.end(JSON.stringify(this.data)) }); }
+      })}),
+      
+      // Ensures that a filepath component is "secure"; that it does not
+      // define parent access. The ".." sequence is prevented, since "."
+      // characters cannot occur side-by-side.
+      $secureFpReg: /^[.]?([a-zA-Z0-9@][.]?)*$/,
+      $extToContentType: {
         json: 'text/json',
+        html: 'text/html',
         css: 'text/css',
         txt: 'text/plain',
+        ico: 'image/x-icon',
         png: 'image/png',
         jpg: 'image/jpeg',
-        svg: 'image/svg'
+        svg: 'image/svg+xml'
       },
       
-      init: function(absPath=Insp.fs.hutRootCmps) {
-        if (absPath.find(v => !U.isType(v, String))) throw Error(`Invalid absPath for ${U.nameOf(this)}`);
+      init: function({ absPath=Form.fs.hutRootCmps, secure=true, blacklist=null }) {
+        if (absPath.find(v => !U.isForm(v, String)).found) throw Error(`Invalid absPath for ${U.getFormName(this)}`);
         this.absPath = absPath;
+        this.secure = secure;
+        if (blacklist) this.blacklist = blacklist;
       },
-      desc: function() { return `${U.nameOf(this)}@[${this.absPath.join(', ')}]`; },
-      getFileUrl: function() { return Insp.fs.cmpsToFileUrl(this.absPath); },
-      innerKeep: function(dirNames) {
-        if (U.isType(dirNames, String)) dirNames = [ dirNames ];
+      setContentType: function(contentType) { this.contentType = contentType; return this; },
+      getFileUrl: function() { return Form.fs.cmpsToFileUrl(this.absPath); },
+      access: function(dirNames) {
+        if (U.isForm(dirNames, String)) dirNames = [ dirNames ];
+        if (!U.isForm(dirNames, Array)) throw Error(`Dir names must be Array (or String)`);
+        if (dirNames.find(d => !U.isForm(d, String)).found) throw Error(`All dir names must be Strings`);
+        
+        // Remove any useless cmps
+        dirNames = dirNames.map(d => (d === '' || d === '.') ? C.skip : d);
+        
+        // Ensure all cmps are valid
+        if (this.secure && dirNames.find(d => !d.match(Form.secureFpReg)).found) return Form.HoneyPotKeep();
+        if (this.blacklist && this.blacklist.has(dirNames[0])) return Form.HoneyPotKeep();
+        
+        // No need to create a child for 0 cmps
+        if (!dirNames.count()) return this;
+        
         let KeepCls = this.constructor;
-        return KeepCls([ ...this.absPath, ...dirNames ]);
+        return KeepCls({ absPath: [ ...this.absPath, ...dirNames ], secure: this.secure });
       },
-      checkType: async function() {
-        let meta = await Insp.fs.getMeta(this.absPath);
+      getFsType: async function() {
+        if (!this.metaPrm) this.metaPrm = Form.fs.getMeta(this.absPath);
+        
+        let meta = await this.metaPrm;
         if (!meta) return null;
-        if (meta.isDirectory()) return 'folder';
-        if (meta.isFile()) return 'letter';
-        throw Error(`${this.desc()} is non-folder, non-letter`);
+        if (meta.isDirectory()) { return 'folder'; }
+        if (meta.isFile())      { this.contentType = Form.extToContentType.json; return 'letter'; }
+        throw Error(`${this.desc()} has unknown fsType (exists; non-folder, non-letter)`);
       },
       getContent: async function(...opts) {
-        let type = await this.checkType();
-        if (!type) return null;
-        return Insp.fs[type === 'folder' ? 'getFolder' : 'getLetter'](this.absPath, ...opts);
+        let fsType = await this.getFsType();
+        if (fsType === 'folder') {
+          
+          let content = await Form.fs.getFolder(this.absPath, ...opts);
+          
+          // Filter blacklisted items if necessary
+          return this.blacklist
+            ? content.map(v => this.blacklist.has(v) ? C.skip : v)
+            : content;
+          
+        } else if (fsType === 'letter') {
+          
+          return Form.fs.getLetter(this.absPath, ...opts);
+          
+        } else {
+          
+          return null;
+          
+        }
       },
       setContent: async function(content, ...opts) {
-        let type = await this.checkType();
+        
+        let fsType = await this.getFsType();
         
         if (content !== null) { // Insert new content
           
-          if (type === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
+          if (fsType === 'folder') throw Error(`${this.desc()} is type "folder"; can't set non-null content`);
           
-          // Create all ancestor dirs
-          for (let depth = 1; depth < this.absPath.length; depth++) {
-            let cmps = this.absPath.slice(0, depth);
-            let meta = await Insp.fs.getMeta(cmps);
-            
-            // If this ancestor is non-existent, create it
-            // If this ancestor exists but isn't a directory, throw error
-            if (!meta) await Insp.fs.addFolder(cmps);
-            else if (!meta.isDirectory()) throw Error(`${this.desc()} has an invalid path; can't set content`);
-          }
+          // Simply try to write
+          try { return await Form.fs.setLetter(this.absPath, content, ...opts); } catch(err) {}
           
-          // Write content into file
-          await Insp.fs.setLetter(this.absPath, content, ...opts);
+          // Count how many parent folders are missing
+          let folderCmps = this.absPath.slice(0, -1);
+          let numMissingDirs = 1;
+          while (!await Form.fs.getMeta(folderCmps.slice(0, -numMissingDirs))) numMissingDirs++;
           
-        } else if (content === null && type === 'folder') {
+          // Create `numMissingDirs` folders
+          for (let n = 0; n < numMissingDirs; n++)
+            await Form.fs.addFolder(this.absPath.slice(0, n - numMissingDirs));
+          
+          // Write content into file - more likely to work!
+          await Form.fs.setLetter(this.absPath, content, ...opts);
+          
+        } else if (content === null && fsType === 'folder') {
           
           let items = await this.getContent();
           
-          if (items) {
+          // Set content of all items to `null`
+          if (items) await Promise.allArr(items.map(item => this.access(item).setContent(null, { remAncestry: false })));
             
-            // Set content of all items to `null`
-            await Promise.allArr(items.map(item => this.innerKeep(item).setContent(null)));
-            
-          } else {
-            
-            // Without a single child
-            await Insp.fs.remFolder(this.absPath);
-            await this.remNullAncestry();
-            
-          }
+          // Now there are no children; delete folder and ancestry
+          await Form.fs.remFolder(this.absPath);
           
-        } else if (content === null && type === 'letter') {
-          
-          await Insp.fs.remLetter(this.absPath);
+          let [ { remAncestry=true }={} ] = opts;
           await this.remNullAncestry();
+          
+        } else if (content === null && fsType === 'letter') {
+          
+          await Form.fs.remLetter(this.absPath);
+          
+          let [ { remAncestry=true }={} ] = opts;
+          if (remAncestry) await this.remNullAncestry();
           
         }
         
@@ -167,37 +246,45 @@
         for (let depth = this.absPath.length - 1; depth > 1; depth--) {
           
           let cmps = this.absPath.slice(0, depth);
-          let children = await Insp.fs.getFolder(cmps);
+          let children = await Form.fs.getFolder(cmps);
           
           if (children === null) continue; // If `children` is `null` the ancestor is already deleted
           if (children.length) break; // An ancestor is populated - stop deleting!
           
-          await Insp.fs.remFolder(cmps); // This ancestor is empty - delete it!
+          await Form.fs.remFolder(cmps); // This ancestor is empty - delete it!
           
         }
         
       },
       getContentType: function() {
-        let lastCmp = this.absPath[this.absPath.length - 1];
-        let [ pcs, ext=null ] = lastCmp.split('.');
-        return Insp.extensionContentTypeMap.has(ext)
-          ? Insp.extensionContentTypeMap[ext]
-          : 'application/octet-stream'
+        if (this.contentType) return this.contentType;
+        let [ lastCmp ] = this.absPath.slice(-1);
+        let [ pcs, ext=null ] = lastCmp.split('.').slice(-2);
+        return Form.extToContentType.has(ext) ? Form.extToContentType[ext] : 'application/octet-stream'
       },
       getContentByteLength: async function() {
-        let meta = await Insp.fs.getMeta(this.absPath);
-        return meta ? meta.size : 0;
+        let fsType = await this.getFsType();
+        if (fsType === 'letter') return (await this.metaPrm).size;
+        if (fsType === 'folder') return 0;
+        return 0;
       },
-      getPipe: function() { return Insp.fs.getPipe(this.absPath); }
+      getPipe: async function() {
+        
+        let fsType = await this.getFsType();
+        if (fsType === 'letter') return Form.fs.getPipe(this.absPath);
+        if (fsType === 'folder') return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
+        return null;
+        
+      }
       
     })}),
-    $KeepUrlResources: U.inspire({ name: 'KeepUrlResources', insps: { Keep }, methods: insp => ({
+    $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
       init: function() {},
-      innerKeep: function({ path, urlParams }) { return Insp.KeepUrlResource(this, path, urlParams); }
+      access: function({ path, urlParams }) { return Form.KeepUrlResource(this, path, urlParams); }
     })}),
-    $KeepUrlResource: U.inspire({ name: 'KeepUrlResource', insps: { Keep }, methods: insp => ({
+    $KeepUrlResource: U.form({ name: 'KeepUrlResource', has: { Keep }, props: forms => ({
       init: function(path='', params={}) {
-        insp.Keep.init.call(this);
+        forms.Keep.init.call(this);
         this.path = path;
         this.params = params;
       },
@@ -210,21 +297,21 @@
     
     $parseSoktMessages: soktState => {
       let messages = [];
-      let buffer = soktState.buffer;
-      while (buffer.length >= 2) {
+      let buff = soktState.buff;
+      while (buff.length >= 2) {
         
         // ==== PARSE FRAME
         
-        let b = buffer[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
+        let b = buff[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
         if (b % 8) throw Error('Some reserved bits are on');
         let isFinalFrame = b === 8;
         
-        let op = buffer[0] % 16;  // The 4 high bits of 1st byte give us the operation
+        let op = buff[0] % 16;  // The 4 high bits of 1st byte give us the operation
         if (op < 0 || (op > 2 && op < 8) || op > 10) throw Error(`Invalid op: ${op}`);
         
         if (op >= 8 && !isFinalFrame) throw Error('Incomplete control frame');
         
-        b = buffer[1];            // Look at second byte
+        b = buff[1];            // Look at second byte
         let masked = b >> 7;      // Lowest bit of 2nd byte - states whether frame is masked
         
         // Server requires a mask; Client requires no mask
@@ -233,21 +320,21 @@
         let length = b % 128;
         let offset = 6; // Masked frames have an extra 4 halfwords containing the mask
         
-        if (buffer.length < offset + length) return []; // No messages - should await more data
+        if (buff.length < offset + length) return []; // No messages - should await more data
         
         if (length === 126) {         // Websocket's "medium-size" frame format
-          length = buffer.readUInt16BE(2);
+          length = buff.readUInt16BE(2);
           offset += 2;
         } else if (length === 127) {  // Websocket's "large-size" frame format
-          length = buffer.readUInt32BE(2) * U.int32 + buffer.readUInt32BE(6);
+          length = buff.readUInt32BE(2) * U.int32 + buff.readUInt32BE(6);
           offset += 8;
         }
         
-        if (buffer.length < offset + length) return []; // No messages - should await more data
+        if (buff.length < offset + length) return []; // No messages - should await more data
         
         // Now we know the exact range of the incoming frame; we can slice and unmask it as necessary
-        let mask = buffer.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
-        let data = buffer.slice(offset, offset + length); // After the mask comes the data
+        let mask = buff.slice(offset - 4, offset); // The 4 halfwords preceeding the offset are the mask
+        let data = buff.slice(offset, offset + length); // After the mask comes the data
         let w = 0;
         for (let i = 0, len = data.length; i < len; i++) {
           data[i] ^= mask[w];     // Apply XOR
@@ -275,7 +362,7 @@
         // Text ops are our ONLY supported ops! (TODO: For now?)
         if (op !== 1) throw Error(`Unsupported op: ${op}`);
         
-        buffer = buffer.slice(offset + length); // Dispense with the frame we've just processed
+        buff = buff.slice(offset + length); // Dispense with the frame we've just processed
         soktState.curOp = 1;                              // Our only supported op is "text"
         soktState.curFrames.push(data);                   // Include the complete frame
         
@@ -286,28 +373,27 @@
           soktState.curFrames = [];
         }
       }
-      soktState.buffer = buffer; // Set remaining buffer
+      soktState.buff = buff; // Set remaining buff
       return messages;
     },
     $parseSoktUpgradeRequest: soktState => {
       
-      let buffer = soktState.buffer;
-      if (buffer.length < 4) return null;
+      let buff = soktState.buff;
+      if (buff.length < 4) return null;
       
-      // TODO: Could it be more efficient to search backwards from the
-      //       end of `buffer`?
-      // Search for a 0x1101, 0x1010, 0x1101, 0x1010 (\r\n\r\n) sequence
+      // Can't search backwards; the 1st \r\n\r\n sequence found would
+      // not necessarily belong to the nextmost message
       let packetEndInd = null;
-      for (let i = 0, len = buffer.length - 4; i <= len; i++) {
+      for (let i = 0, len = buff.length - 4; i <= len; i++) {
         // TODO: We could be smart enough to jump more than 1 byte at a time in some cases
         // E.g. if the first byte doesn't match we increment by 1, but if the second
         // byte doesn't match we can increment by 2. Watch out for the repetition of the
         // same byte in the "needle" (as opposed to haystack)
-        if (buffer[i] === 13 && buffer[i + 1] === 10 && buffer[i + 2] === 13 && buffer[i + 3] === 10) { packetEndInd = i; break; }
+        if (buff[i] === 13 && buff[i + 1] === 10 && buff[i + 2] === 13 && buff[i + 3] === 10) { packetEndInd = i; break; }
       }
       if (packetEndInd === null) return null;
       
-      let packet = buffer.slice(0, packetEndInd).toString('utf8');
+      let packet = buff.slice(0, packetEndInd).toString('utf8');
       
       // Do an http upgrade operation
       let [ methodLine, ...lines ] = packet.replace(/\\r/g, '').split('\n'); // TODO: I think line-endings will always be \r\n
@@ -320,442 +406,596 @@
         headers[head.trim().lower()] = tail.join(':').trim();
       }
       
-      soktState.buffer = buffer.slice(packetEndInd + 4);
+      soktState.buff = buff.slice(packetEndInd + 4);
       
       return { method, path, httpVersion, headers };
       
     },
+    $removeLineCommentRegex: /^(([^'"`]|'[^']*'|"[^"]*"|`[^`]*`)*)[/][/]/,
     
+    // Initialization
     init: function(...args) {
       
-      insp.Foundation.init.call(this, ...args);
+      forms.Foundation.init.call(this, ...args);
       
-      this.rootKeep = Insp.KeepNodejs();
-      this.fsKeep = this.rootKeep.innerKeep('fileSystem');
-      
-      this.roomsInOrder = [];
+      this.bearing = 'above';
+      this.fsKeep = this.seek('keep', 'adminFileSystem');
       this.compilationData = {};
-      
-      this.variantDefs = {
-        above: { above: 1, below: 0 },
-        below: { above: 0, below: 1 }
-      };
-      
-      this.transportDebug = false;
-      this.httpFullDebug = false;
       
       this.usage0 = process.memoryUsage().map(v => v);
       
+      // Create a Promise describing whether the Nodejs environment is
+      // ready and sufficiently valid to settle some Room
       this.canSettlePrm = (async () => {
-        await Promise.allArr([
-          this.fsKeep.to([ 'mill', 'storage' ]).setContent(null),
-          this.fsKeep.to([ 'mill', 'room' ]).setContent(null)
-        ]);
+        
+        await this.fsKeep.seek([ 'mill', 'compiled' ]).setContent(null);
+        
+        let argKeep = this.getArg('argKeep');
+        if (argKeep) {
+          
+          let content = await U.safe(async () => eval(`(${await argKeep.getContent()})`), () => null);
+          if (!U.isForm(content, Object)) throw Error(`Specified bad arg keep: ${argKeep.absPath.join('/')}`);
+          this.readyArgs = {};
+          this.origArgs = {
+            ...this.origArgs,
+            ...content,
+            debug: [ ...(this.origArgs.debug || []), ...(content.debug || []) ]
+          };
+          if (this.getArg('debug').has('arg')) console.log(`Loading additional args from ${argKeep.absPath.join('/')}`);
+          
+        }
+        
+        let tests = [
+          
+          async m => { // Number.prototype.toArr
+            let arr = (10).toArr(v => v);
+            if (!U.isForm(arr, Array)) throw Error(`Expected Array; got ${U.getFormName(arr)}`);
+            if (arr.count() !== 10) throw Error(`Expected exactly 10 items; got ${arr.count()}`);
+            
+            for (let i = 0; i < arr.count(); i++) {
+              if (arr[i] !== i) throw Error(`Expected ${i} at position ${i}; got ${arr[i]}`);
+            }
+          },
+          
+          async m => { // Promise.allObj
+            let prms = {
+              thing1: 'hi',
+              thing2: 'yo',
+              thing3: Promise(r => setTimeout(() => r('ha'), 0)),
+              thing4: Promise(r => this.queueTask(() => r('69')))
+            };
+            let { thing1, thing2, thing3, thing4, ...more } = await Promise.allObj(prms);
+            
+            if (thing1 !== 'hi') throw Error(`Invalid "thing1"`);
+            if (thing2 !== 'yo') throw Error(`Invalid "thing2"`);
+            if (thing3 !== 'ha') throw Error(`Invalid "thing3"`);
+            if (thing4 !== '69') throw Error(`Invalid "thing4"`);
+            if (more.toArr(v => v).count()) throw Error(`allObj resulted in unexpected values`);
+          },
+          
+          async m => { // Ending a Temp changes the results of getter methods
+            let tmp = Tmp();
+            if (!tmp.onn()) throw Error(`getPosActive() === false before setInactive()`);
+            if (tmp.off()) throw Error(`getNegActive() === true before setInactive()`);
+            tmp.end();
+            if (tmp.onn()) throw Error(`getPosActive() === true after setInactive()`);
+            if (!tmp.off()) throw Error(`getNegActive() === false after setInactive()`);
+          },
+          async m => { // Tmps linked to end with each other stay alive
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            if (tmp1.off()) throw Error(`Tmp #1 ended for no reason`);
+            if (tmp2.off()) throw Error(`Tmp #2 ended for no reason`);
+          },
+          async m => { // Tmps linked to end with each other end correctly #1
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            tmp1.end();
+            if (tmp1.onn()) throw Error(`Tmp #1 still onn after ended`);
+            if (tmp2.onn()) throw Error(`Tmp #2 didn't end with Tmp #1`);
+          },
+          async m => { // Tmps linked to end with each other end correctly #2
+            let tmp1 = Tmp();
+            let tmp2 = Tmp();
+            tmp1.endWith(tmp2);
+            tmp2.endWith(tmp1);
+            tmp2.end();
+            if (tmp1.onn()) throw Error(`Tmp #1 didn't end with Tmp #2`);
+            if (tmp2.onn()) throw Error(`Tmp #2 still onn after ended`);
+          },
+          async m => { // Send 0 events correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
+          },
+          async m => { // Ensure single undefined value is sent correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            src.send();
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+          },
+          async m => { // Send 3 events correctly
+            let src = Src();
+            let events = [];
+            src.route(val => events.push(val));
+            for (let v of [ 1, 'hah', 3 ]) src.send(v);
+            if (events.count() !== 3) throw Error(`Expected exactly 3 events; got ${events.count()}`);
+            if (events[0] !== 1)      throw Error(`Received wrong value @ ind 0; expected 1, got ${events[0]}`);
+            if (events[1] !== 'hah')  throw Error(`Received wrong value @ ind 1; expected "hah", got ${events[1]}`);
+            if (events[2] !== 3)      throw Error(`Received wrong value @ ind 2; expected 3, got ${events[2]}`);
+          },
+          async m => { // Disabling route prevents function being called
+            let src = Src();
+            let events = [];
+            let route = src.route(val => events.push(val));
+            route.end();
+            for (let v of [ 1, 'hah', 3 ]) src.send(v);
+            if (events.count() !== 0) throw Error(`Expected 0 results; got ${events.count()}`);
+          },
+          async m => { // Inactive event sent when function applied before setInactive()
+            let tmp = Tmp();
+            let gotInactiveEvent = false;
+            tmp.route(() => gotInactiveEvent = true);
+            tmp.end();
+            if (!gotInactiveEvent) throw Error(`No inactive event after setInactive()`);
+          },
+          async m => { // Inactive event sent when function applied after setInactive() (immediate setInactive)
+            let tmp = Tmp();
+            tmp.end();
+            let gotInactiveEvent = false;
+            tmp.route(() => gotInactiveEvent = true);
+            if (!gotInactiveEvent) throw Error(`No inactive event after setInactive()`);
+          },
+          async m => { // Inactive event not sent when removed; function applied before setInactive()
+            let tmp = Tmp();
+            let gotInactiveEvent = false;
+            let runFunctionOnEvent = tmp.route(() => gotInactiveEvent = true);
+            runFunctionOnEvent.end();
+            tmp.end();
+            if (gotInactiveEvent) throw Error(`Invaled inactive event after setInactive()`);
+          },
+          
+          ...[ FnSrc.Prm1, FnSrc.PrmM ].map(FnSrcCls => [
+            async m => { // FnSrc fn doesn't run if no child has event
+              let srcs = (5).toArr(() => Src());
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
+              if (events.count() !== 0) throw Error(`Expected exactly 0 events; got ${events.count()}`);
+            },
+            async m => { // FnSrc fn runs for each child event
+              let srcs = (5).toArr(() => Src());
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, (...args) => events.push(args));
+              
+              for (let i = 0; i < 3; i++) srcs[0].send();
+              for (let i = 0; i < 6; i++) srcs[1].send();
+              for (let i = 0; i < 2; i++) srcs[2].send();
+              for (let i = 0; i < 1; i++) srcs[3].send();
+              for (let i = 0; i < 9; i++) srcs[4].send();
+              
+              let exp = 3 + 6 + 2 + 1 + 9;
+              if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
+            },
+            async m => { // FnSrc sends values as expected
+              let srcs = (3).toArr(() => Src());
+              let cnt = 0;
+              let events = [];
+              let fnSrc = FnSrcCls(srcs, () => cnt++);
+              fnSrc.route(val => events.push(val));
+              for (let i = 0; i < 5; i++) srcs[0].send('hee');
+              for (let i = 0; i < 9; i++) srcs[1].send('haa');
+              for (let i = 0; i < 7; i++) srcs[2].send('hoo');
+              let exp = 5 + 9 + 7;
+              if (events.count() !== exp) throw Error(`Expected exactly ${exp} events; got ${events.count()}`);
+            },
+            async m => { // FnSrc events have correct values
+              
+              let src1 = Src();
+              let src2 = Src();
+              let events = [];
+              let last = 0;
+              let fnSrc = FnSrcCls([ src1, src2 ], (v1, v2) => { events.push([ v1, v2, last ]); return last++; });
+              
+              src2.send('src2val1');
+              src1.send('src1val1');
+              src2.send('src2val2');
+              src1.send('src1val2');
+              src1.send('src1val3');
+              
+              if (events.count() !== 5) throw Error(`Expected exactly 5 results; got ${events.count()}`);
+              
+              [ [ C.skip,     'src2val1', 0 ],
+                [ 'src1val1', 'src2val1', 1 ],
+                [ 'src1val1', 'src2val2', 2 ],
+                [ 'src1val2', 'src2val2', 3 ],
+                [ 'src1val3', 'src2val2', 4 ] ]
+              .each((vals, ind1) => vals.each((v, ind2) => {
+                if (events[ind1][ind2] !== v) throw Error(`events[${ind1}][${ind2}] should be ${v} (got ${events[ind1][ind2]})`);
+              }));
+              
+            },
+          ]).flat(Infinity),
+          
+          async m => { // MemSrc.Tmp1 sends value
+            
+            let src = MemSrc.Tmp1();
+            let sends = [];
+            src.route(v => sends.push(v));
+            src.retain(Tmp());
+            if (sends.count() !== 1) throw Error(`Expected exactly 1 send; got ${sends.count()}`);
+            
+          },
+          async m => { // MemSrc.Tmp1 sends multiple Tmps, one at a time
+            
+            let src = MemSrc.Tmp1();
+            let sends = [];
+            src.route(v => sends.push(v));
+            src.retain(Tmp());
+            src.retain(Tmp());
+            if (sends.count() !== 2) throw Error(`Expected exactly 2 sends; got ${sends.count()}`);
+            
+          },
+          
+          async m => { // MemSrc.TmpM handles add-route-while-sending edge-case
+            
+            let src = MemSrc.TmpM();
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(fn));
+            src.retain(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          async m => { // MemSrc.Tmp1 handles add-route-while-sending edge-case
+            
+            let src = MemSrc.Tmp1();
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(fn));
+            src.retain(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          async m => { // MemSrc.TmpM handles more difficult add-route-while-sending edge-case
+            
+            let src = MemSrc.TmpM();
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(() => src.route(fn)));
+            src.retain(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.TmpM breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          async m => { // MemSrc.Tmp1 handles more difficult add-route-while-sending edge-case
+            
+            let src = MemSrc.Tmp1();
+            let n = 0;
+            let fn = () => n++;
+            src.route(() => src.route(() => src.route(fn)));
+            src.retain(Tmp());
+            
+            if (n !== 1) throw Error(`MemSrc.Tmp1 breaks under edge-case; expected 1 call to route fn; got ${n}`);
+            
+          },
+          
+          async m => { // FnSrc.Prm1 only sends once, for multiple src sends, if value is always the same
+            
+            let srcs = (3).toArr(() => Src());
+            let fnSrc = FnSrc.Prm1(srcs, (...args) => 'haha');
+            let events = [];
+            fnSrc.route(v => events.push(v));
+            
+            for (let i = 0; i < 20; i++) srcs[0].send('yo');
+            for (let i = 0; i < 35; i++) srcs[1].send('ha');
+            for (let i = 0; i < 60; i++) srcs[2].send('hi');
+            
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+            
+          },
+          async m => { // FnSrc.Prm1 gets MemSrc.Prm1 vals as expected
+            
+            let srcs = (3).toArr(() => MemSrc.Prm1('a'));
+            let fnSrc = FnSrc.Prm1(srcs, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            srcs[1].retain('b');
+            srcs[1].retain('a');
+            srcs[1].retain('b');
+            srcs[2].retain('b');
+            srcs[2].retain('b'); // Should be ignored!
+            srcs[1].retain('b'); // Should be ignored!
+            srcs[0].retain('a'); // Should be ignored!
+            srcs[0].retain('b');
+            srcs[1].retain('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
+            
+          },
+          async m => { // FnSrc.Prm1 gets Chooser vals as expected
+            
+            let choosers = (3).toArr(() => Chooser([ 'a', 'b' ]));
+            let fnSrc = FnSrc.Prm1(choosers, (s1, s2, s3) => [ s1, s2, s3 ]);
+            let results = [];
+            fnSrc.route(v => results.push(v));
+            
+            choosers[1].choose('b');
+            choosers[1].choose('a');
+            choosers[1].choose('b');
+            choosers[2].choose('b');
+            choosers[2].choose('b'); // Should be ignored!
+            choosers[1].choose('b'); // Should be ignored!
+            choosers[0].choose('a'); // Should be ignored!
+            choosers[0].choose('b');
+            choosers[1].choose('a');
+            
+            let expected = [
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'a', 'a' ],
+              [ 'a', 'b', 'a' ],
+              [ 'a', 'b', 'b' ],
+              [ 'b', 'b', 'b' ],
+              [ 'b', 'a', 'b' ]
+            ];
+            if (expected.count() !== results.count()) throw Error(`Expected exactly ${expected.count()} results; got ${results.count()}`);
+            expected.each(([ e1, e2, e3 ], i) => {
+              
+              let [ r1, r2, r3 ] = results[i];
+              if (e1 !== r1 || e2 !== r2 || e3 !== r3) throw Error(`Mismatch on row ${i}; expected [ ${e1}, ${e2}, ${e3} ]; got [ ${r1}, ${r2}, ${r3} ]`);
+              
+            });
+            
+          },
+          async m => { // FnSrc.Tmp1 only sends once, for multiple src sends, if value is always the same Tmp
+            
+            let srcs = (3).toArr(() => Src());
+            let tmppp = Tmp();
+            let fnSrc = FnSrc.Tmp1(srcs, (v1, v2, v3, tmp=tmppp) => tmp);
+            let events = [];
+            fnSrc.route(v => events.push(v));
+            
+            for (let i = 0; i < 20; i++) srcs[0].send('yo');
+            for (let i = 0; i < 35; i++) srcs[1].send('ha');
+            for (let i = 0; i < 60; i++) srcs[2].send('hi');
+            
+            if (events.count() !== 1) throw Error(`Expected exactly 1 event; got ${events.count()}`);
+            if (events[0] !== tmppp) throw Error(`Single send had unexpected value`);
+            
+          },
+          async m => { // FnSrc.Tmp1 Tmp value ends when FnSrc ends
+            
+            let src = Src();
+            let tmppp = Tmp();
+            let fnSrc = FnSrc.Tmp1([ src ], (v, tmp=tmppp) => tmp);
+            src.send('whee');
+            
+            if (tmppp.off()) throw Error(`Tmp ended too early`);
+            fnSrc.end();
+            if (tmppp.onn()) throw Error(`Tmp didn't end with FnSrc`);
+            
+          },
+          async m => { // FnSrc.Tmp1 sending ends any previous Tmp sent by same FnSrc
+            
+            let srcs = [ Src(), Src() ];
+            let tmps = [ Tmp(), Tmp(), Tmp() ];
+            let fnSrc = FnSrc.Tmp1(srcs, v1 => (v1 !== null) ? tmps[v1] : null);
+            
+            srcs[0].send(1);
+            if (tmps[1].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(0);
+            if (tmps[1].onn()) throw Error(`Tmp didn't end`);
+            if (tmps[0].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(2);
+            if (tmps[0].onn()) throw Error(`Tmp didn't end`);
+            if (tmps[2].off()) throw Error(`Tmp ended too early`);
+            
+            srcs[0].send(null);
+            if (tmps[2].onn()) throw Error(`Tmp didn't end`);
+            
+          },
+          
+          async m => { // Scope basics
+            
+            let src1 = Src();
+            let tmpsGot = [];
+            let scp = Scope(src1, (tmp1, dep) => {
+              tmpsGot.push(tmp1);
+              dep.scp(tmp1.src1, (tmp11, dep) => tmpsGot.push(tmp11));
+              dep.scp(tmp1.src2, (tmp12, dep) => tmpsGot.push(tmp12));
+            });
+            
+            let tmpsSent = [];
+            for (let i = 0; i < 2; i++) {
+              let tmp1 = Tmp();
+              tmp1.src1 = Src();
+              tmp1.src2 = Src();
+              
+              tmpsSent.push(tmp1); src1.send(tmp1);
+              
+              let tmp11 = Tmp(), tmp12 = Tmp();
+              
+              tmpsSent.push(tmp11); tmp1.src1.send(tmp11);
+              tmpsSent.push(tmp12); tmp1.src2.send(tmp12);
+            }
+            
+            if (tmpsSent.count() !== tmpsGot.count()) throw Error(`Sent ${tmpsSent.count} Tmps, but got ${tmpsGot.count()}`);
+            for (let i = 0; i < tmpsSent.count(); i++)
+              if (tmpsSent[i] !== tmpsGot[i]) throw Error(`Tmps arrived out of order`);
+            
+          },
+          async m => { // Deps end when Scope ends
+            
+            let depTmps = []
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmps = (5).toArr(() => dep(Tmp()));
+            });
+            src.send(Tmp());
+            scp.end();
+            
+            if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+            if (depTmps.find(tmp => !U.isForm(tmp, Tmp)).found) throw Error(`Not all sends resulted in Tmps`);
+            if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Scope ended`);
+            
+          },
+          async m => { // Deps end when parent Scope ends
+            
+            let depTmps = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              dep.scp(tmp.src, (tmp, dep) => depTmps = (5).toArr(() => dep(Tmp())));
+            });
+            let tmp = Tmp();
+            tmp.src = Src();
+            src.send(tmp);
+            tmp.src.send(Tmp());
+            scp.end();
+            
+            if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+            if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when parent Scope ended`);
+            
+          },
+          async m => { // Deps end when Tmp ends, multi, one at a time
+            
+            let depTmps = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmps = (5).toArr(() => dep(Tmp()));
+            });
+            
+            for (let i = 0; i < 5; i++) {
+              let tmp = Tmp();
+              src.send(tmp);
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+              tmp.end();
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when Tmp ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmpsArr.push((5).toArr(() => dep(Tmp())));
+            });
+            
+            let tmps = (5).toArr(() => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            for (let tmp of tmps) tmp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when Scope ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              depTmpsArr.push((5).toArr(() => dep(Tmp())));
+            });
+            
+            let tmps = (5).toArr(() => { let tmp = Tmp(); src.send(tmp); return tmp; });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            scp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          },
+          async m => { // Deps end when nested Scope ends, multi, all at once
+            
+            let depTmpsArr = [];
+            let src = Src();
+            let scp = Scope(src, (tmp, dep) => {
+              dep.scp(tmp.src, (tmp, dep) => {
+                depTmpsArr.push((5).toArr(() => dep(Tmp())));
+              });
+            });
+            
+            let tmps = (5).toArr(() => {
+              let tmp = Tmp();
+              tmp.src = Src();
+              src.send(tmp);
+              tmp.src.send(Tmp());
+              return tmp;
+            });
+            if (depTmpsArr.count() !== 5) throw Error('What??');
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.count() !== 5) throw Error(`Scope never ran`);
+              if (depTmps.find(tmp => tmp.off()).found) throw Error(`Dep ended too early`);
+            }
+            
+            scp.end();
+            
+            for (let depTmps of depTmpsArr) {
+              if (depTmps.find(tmp => tmp.onn()).found) throw Error(`Not all Deps ended when Tmp ended`);
+            }
+            
+          }
+          
+        ];
+        for (let test of tests) await U.safe(test, err => {
+          let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
+          console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
+          this.halt();
+        });
+        
+        if (this.getArg('debug').has('arg')) {
+          console.log(`Running with args:`, this.origArgs);
+        }
+        
       })();
       
     },
-    defaultGoals: function() {
-      
-      let { Goal } = U.setup;
-      
-      let habitGoal = Goal({
-        name: 'habit',
-        desc: 'Deal with tasks that are done regularly',
-        detect: args => args.has('habit'),
-        enact: async (foundation, args) => {}
-      });
-      
-      habitGoal.children.add(Goal({
-        name: 'all',
-        desc: 'List all habits',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('all'),
-        enact: async (foundation, args) => {
-          
-          // TODO: Would be cool when DB is implemented to abstractly
-          // save habits into DB instead of fileSystem
-          
-          let habitNames = await this.fsKeep.to([ 'mill', 'habit' ]).getContent();
-          if (habitNames.length) {
-            console.log('Available habits:');
-            habitNames.sort().forEach(f => console.log(`  - ${f.crop(0, 5)}`)); // 5 is length of ".json"
-          } else {
-            console.log('-- No habits available --');
-          }
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'add',
-        desc: 'Add a new habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('add'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.add;
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          let habitJson = JSON.stringify(({ ...args }).gain({ habit: C.skip }), null, 2);
-          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(habitJson);
-          console.log(`Saved habit "${habitName}"; args:`, habitJson);
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'rem',
-        desc: 'Remove an existing habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('rem'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.rem.split('.');
-          
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).setContent(null);
-          console.log(`Removed habit "${habitName}"`);
-          
-        }
-      }));
-      
-      habitGoal.children.add(Goal({
-        name: 'use',
-        desc: 'Repeat an existing habit',
-        detect: args => U.isType(args.habit, Object) && args.habit.has('use'),
-        enact: async (foundation, args) => {
-          
-          let habitName = args.habit.use.split('.');
-          if (!habitName) throw Error('Need to provide name for habit');
-          
-          // TODO: This won't work, now that `raiseArgs` are given to
-          // the constructor, not the `raise` function...
-          let data = JSON.parse(await this.fsKeep.to([ 'mill', 'habit', `${habitName}.json` ]).getContent());
-          await foundation.raise(({ ...data, ...args }).gain({ habit: C.skip }));
-          
-        }
-      }));
-      
-      let versionGoal = Goal({
-        name: 'version',
-        desc: 'Show version information',
-        detect: args => args.has('version') && args.version,
-        enact: async (foundation, args) => {
-          console.log('Version 0.0.1');
-          console.log('Author: Gershom Maes');
-          console.log('Email: gershom.maes@gmail.com');
-        }
-      });
-      
-      let helpGoal = Goal({
-        name: 'help',
-        desc: 'Show help information',
-        detect: args => args.has('help') && args.help,
-        enact: async (foundation, args) => {
-          
-          let helpWithGoal = (goal, depth=0, pref=[]) => {
-            
-            pref.push(goal.name);
-            let indent = ' '.repeat(depth * 2);
-            let name = pref.join('.');
-            console.log(`${indent}${name.upper()}:`);
-            console.log(`${indent}"${goal.desc}"`);
-            
-            for (let child of goal.children) {
-              helpWithGoal(child, depth + 1, [ ...pref ]);
-            }
-            
-          };
-          
-          for (let goal of foundation.goals) helpWithGoal(goal);
-          
-        }
-      });
-      
-      let environmentGoal = Goal({
-        name: 'env',
-        desc: 'Query environment information',
-        detect: args => args.has('env') && args.env,
-        enact: async (foundation, args) => {}
-      });
-      
-      environmentGoal.children.add(Goal({
-        name: 'network',
-        desc: 'Show network information',
-        detect: args => args.env === 'network',
-        enact: async (foundation, args) => {
-          console.log('Network info:');
-          console.log(JSON.stringify(foundation.getStaticIps(), null, 2));
-        }
-      }));
-      
-      // Make sure habits have precendence!
-      return [ habitGoal, ...insp.Foundation.defaultGoals.call(this), versionGoal, environmentGoal, helpGoal ];
-      
-    },
+    halt: function() { process.exit(0); },
+    ready: function() { return this.canSettlePrm; },
     
-    // Compilation
-    parseDependencies: async function(roomName) {
-      
-      // Determine the inner rooms of `roomName` by parsing the file for the "innerRooms" property
-      // TODO: Could potentially spoof U.buildRoom, and then require and
-      // uncache the room file. It will call U.buildRoom with the
-      // anticipated room names...
-      
-      let roomFileContents = await this.fsKeep.to([ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
-      let depStr = U.safe(
-        () => roomFileContents.match(/[^\w]innerRooms:\s*\[([^\]]*)\]/)[1].trim(),
-        () => { throw Error(`Couldn't parse dependencies for room "${roomName}"`); }
-      );
-      
-      return depStr
-        ? depStr.split(',').map(v => v.trim()).map(v => v.substr(1, v.length - 2))
-        : [];
-    },
-    compileRecursive: async function(roomName, compiledPrms={}, precedence=[]) {
-      
-      // Note that we deal with only the names of rooms instead of full-fledged
-      // room-data, because no room is being brought to life here. We are only
-      // compiling source code at this stage.
-      
-      // Note there are two separate containers for room names:
-      // - `compiledPrms` keeps track of every room currently compiling. It
-      //   also tells us which rooms are done compiling, as opposed to those
-      //   still in progress (via pending/resolved state of the promise).
-      // - `precedence` is extended whenever a room becomes fully compiled.
-      //   this function will ensure that a room can only fully compile not
-      //   only when all its dependencies are *in the process of compiling*,
-      //   but are *fully compiled*! This means that rooms will always be
-      //   added to `precedence` such that a added earlier never depends on
-      //   a room added later.
-      
-      if (U.isType(roomName, Object)) {
-        let virtualRoom = roomName;
-        compiledPrms[virtualRoom.name] = Promise.resolve();
-        let depNames = virtualRoom.innerRooms;
-        await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
-        return precedence.gain([ virtualRoom ]);
-      }
-      
-      if (compiledPrms.has(roomName)) return compiledPrms[roomName];
-      
-      let rsv = null, rjc = null, prm = Promise((rsv0, rjc0) => { rsv = rsv0; rjc = rjc0; });
-      compiledPrms[roomName] = prm;
-      
-      // Get dependency room names
-      let depNames = await this.parseDependencies(roomName);
-      
-      // Don't continue until all dependencies are compiled! Even if we
-      // know that our dependencies are already under compilation, we
-      // need to wait for them to finish. This will ensure that rooms
-      // compile in order of dependency-precedence.
-      await Promise.allArr(depNames.map(dn => this.compileRecursive(dn, compiledPrms, precedence)));
-      
-      // All dependencies are compiled!
-      await this.compile(roomName);
-      
-      // There may be other rooms waiting on our compilation. Notify
-      // them by resolving our promise!
-      rsv(precedence.gain([ roomName ]));
-      
-      return precedence;
-      
-    },
-    compile: async function(roomName) {
-      
-      // Compile a single room; generate a new file for each variant
-      
-      let content = await this.getKeep('fileSystem', [ 'room', roomName, `${roomName}.js` ]).getContent('utf8');
-      let contentLines = content.split('\n');
-      this.compilationData[roomName] = {};
-      
-      for (let variantName in this.variantDefs) {
-        
-        let compiledFilePcs = [ 'room', roomName, `${roomName}.${variantName}.js` ];
-        let { lines: cmpLines, offsets } = this.compileContent(variantName, contentLines);
-        
-        await this.getKeep('fileSystem', compiledFilePcs).setContent(cmpLines.join('\n'));
-        
-        this.compilationData[roomName][variantName] = {
-          srcNumLines: contentLines.length,
-          cmpNumLines: cmpLines.length,
-          offsets
-        }; // Filename, offsets, and length are kept
-      }
-      
-    },
-    compileContent: function(variantName, contentLines) {
-      
-      // Compile file content; filter based on variant tags
-      
-      if (U.isType(contentLines, String)) contentLines = contentLines.split('\n');
-      let variantDef = this.variantDefs[variantName];
-      
-      let blocks = [];
-      let curBlock = null;
-      
-      for (let i = 0; i < contentLines.length; i++) {
-        let line = contentLines[i].trim();
-        
-        if (curBlock) {
-          if (line.has(`=${curBlock.type.upper()}}`)) {
-            curBlock.end = i;
-            blocks.push(curBlock);
-            curBlock = null;
-          }
-        }
-        
-        if (!curBlock) {
-          for (let k in variantDef) {
-            if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
-          }
-        }
-      }
-      
-      if (curBlock) throw Error(`Final ${curBlock.type} block is unbalanced`);
-      let curOffset = null;
-      let offsets = [];
-      let nextBlockInd = 0;
-      let filteredLines = [];
-      
-      for (let i = 0; i < contentLines.length; i++) {
-        let rawLine = contentLines[i];
-        let line = rawLine.trim();
-        
-        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
-          curBlock = blocks[nextBlockInd];
-          nextBlockInd++;
-        }
-        
-        let keepLine = true;
-        if (!line) keepLine = false; // Remove blank lines
-        if (line.hasHead('//')) keepLine = false; // Remove comments
-        if (curBlock && i === curBlock.startInd) keepLine = false;
-        if (curBlock && i === curBlock.endInd) keepLine = false;
-        if (curBlock && !variantDef[curBlock.type]) keepLine = false;
-        
-        if (keepLine) {
-          curOffset = null;
-          filteredLines.push(rawLine);
-        } else {
-          if (!curOffset) {
-            curOffset = { at: i, offset: 0 };
-            offsets.push(curOffset);
-          }
-          curOffset.offset++;
-        }
-        
-        if (curBlock && i === curBlock.end) {
-          curBlock = null;
-          if (nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
-            curBlock = blocks[nextBlockInd];
-            nextBlockInd++;
-          }
-        }
-        
-      }
-      
-      return { lines: filteredLines, offsets };
-    },
-    mapLineToSource: function(fileName, lineInd) {
-      // For a compiled file and line number, return the corresponding line number
-      // in the source
-      
-      fileName = path.basename(fileName);
-      
-      let fileNameData = fileName.match(/^([^.]+)\.([^.]+)\.js/);
-      if (!fileNameData) return null;
-      
-      let [ roomName, variant ] = fileNameData.slice(1);
-      if (!this.compilationData.has(roomName)) throw Error(`Missing room ${roomName}`);
-      if (!this.compilationData[roomName].has(variant)) return null;
-      
-      let variantData = this.compilationData[roomName][variant];
-      
-      let offsets = variantData.offsets;
-      
-      let srcLineInd = 0; // The line of code in the source which maps to the line of compiled code
-      let nextOffset = 0; // The index of the next offset chunk which may take effect
-      for (let i = 0; i < lineInd; i++) {
-        // Find all the offsets which exist for the source line
-        // For each offset increment the line in the source file
-        while (offsets[nextOffset] && offsets[nextOffset].at === srcLineInd) {
-          srcLineInd += offsets[nextOffset].offset;
-          nextOffset++;
-        }
-        srcLineInd++;
-      }
-      
-      return { roomName, srcLineInd };
-    },
-    formatError: function(err) {
-      // Form a pretty representation of an error. Remove noise from filepaths
-      // and map line indices from compiled->source.
-      
-      let [ msg, type, stack ] = [ err.message, err.constructor.name, err.stack ];
-      
-      let rootFileUrl = this.fsKeep.getFileUrl()
-      
-      let traceBeginSearch = `${type}: ${msg}\n`;
-      let traceInd = stack.indexOf(traceBeginSearch);
-      let traceBegins = traceInd + traceBeginSearch.length;
-      let trace = stack.substr(traceBegins);
-      
-      let lines = trace.split('\n').map(line => {
-        
-        // Note: Some lines look like
-        //    "    at Function.Module (internal/modules/cjs/loader.js:69:100)"
-        // while others are less verbose:
-        //    "    at internal/modules/cjs/loader.js:69:100"
-        
-        let origLine = line;
-        
-        try {
-          
-          // The codepoint filename must not contain round/square brackets or spaces
-          let codePointPcs = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/);
-          let [ fileName, lineInd, charInd ] = codePointPcs.slice(1);
-          
-          fileName = Insp.KeepFileSystem.fs.cmpsToFileUrl([ fileName ]);
-          if (!fileName.hasHead(rootFileUrl)) return C.skip; // Skip non-hut files
-          
-          let mappedLineData = this.mapLineToSource(fileName, parseInt(lineInd, 10));
-          
-          if (mappedLineData) {
-            fileName = `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src`;
-            lineInd = mappedLineData.srcLineInd;
-          } else {
-            fileName = fileName.substr(rootFileUrl.length + 1).split(/[^a-zA-Z0-9.]/).join('/');
-          }
-          
-          return `${fileName.padTail(36)} @ ${lineInd.toString()}`;
-          
-        } catch(err) {
-          
-          return C.skip; // `TRACEERR - ${err.message.split('\n').join(' ')} - "${origLine}"`;
-          
-        }
-        
-      });
-      
-      let fileRegex = /([^\s]+\.(above|below|between|alone)\.js):([0-9]+)/;
-      let preLen = err.constructor.name.length + 2; // The classname plus ": "
-      let moreLines = stack.substr(preLen, traceBegins - 1 - preLen).replace(fileRegex, (match, file, bearing, lineInd) => {
-        let mappedLineData = this.mapLineToSource(file, parseInt(lineInd, 10));
-        return mappedLineData
-          ? `room/${mappedLineData.roomName}/${mappedLineData.roomName}.src:${mappedLineData.srcLineInd}`
-          : match;
-      }).split('\n');
-      
-      return [
-        '='.repeat(46),
-        ...moreLines.map(ln => `||  ${ln}`),
-        '||' + ' -'.repeat(22),
-        ...(lines.length ? lines : [ `Showing unformatted "${type}":`, ...trace.split('\n').map(ln => `? ${ln.trim()}`) ]).map(ln => `||  ${ln}`)
-      ].join('\n');
-      
-    },
-    getOrderedRoomNames: function() { return this.roomsInOrder; },
-    
-    // Platform
+    // Sandbox
     queueTask: setImmediate,
     getMemUsage: function() {
       let usage1 = process.memoryUsage();
@@ -766,207 +1006,302 @@
       };
     },
     
-    // High level
-    getRootKeep: function() { return this.rootKeep; },
-    getRootHut: async function(options={}) {
+    // Config
+    processArg: function(term, val=null) {
       
-      // TODO: Think about what is happening with `hutInstance.uid` -
-      // For Above the uid is hard-coded and basically arbitrary. For
-      // Below the uid is an unguessable, private base62 string.
-      // There are two different ways to add the AboveHut as a MemberRec
-      // of some arbitrary Rec:
-      // 1) Above-only: 
+      // TODO: CloudFlare best choice of default dns server??
+      if (term === 'dnsServers') return !val ? [ '1.1.1.1', '1.0.0.1' ] : U.isForm(val, String) ? [ val ] : val;
       
-      if (options.has('uid')) throw Error(`Don't specify "uid"!`);
-      
-      if (!options.has('hosting')) options.hosting = {};
-      if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
-      if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
-      if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
-      
-      let [ host, port ] = this.origArgs.has('hosting')
-        ? this.origArgs.hosting.split(':')
-        : [ 'localhost', '80' ];
-      
-      let sslArgs = { keyPair: null, selfSign: null };
-      if (this.origArgs.has('ssl') && !!this.origArgs.ssl) {
-        let certFolder = this.getKeep('fileSystem', [ 'mill', 'cert' ]);
-        let { cert, key, selfSign } = await Promise.allObj({
-          cert:     certFolder.to('server.cert').getContent(),
-          key:      certFolder.to('server.key').getContent(),
-          selfSign: certFolder.to('localhost.cert').getContent()
+      if (term === 'hosting') return (async () => {
+        
+        let hosting = val;
+        let host = await this.getArg('host');
+        
+        // Note that the "hosting" arg can hold an arbitrary number of
+        // hosting definitions. The "host" arg can be used to quickly
+        // specify the "host" value for all "hosting" entries. If using
+        // "host" arg should omit any "host" props throughout `hosting`
+        if (!hosting) {
+          
+          // If no hosting options are provided we'll try to generate
+          // suitable http+sokt options
+          
+          host = host || await (async () => {
+            
+            // If no `host` was specified we'll use dns searches to find
+            // any publicly addressable hostnames available for this
+            // machine. Note this will only find addresses which can be
+            // reversed from ips through dns methods.
+            
+            let externalIps = require('os').networkInterfaces()
+              .toArr(v => v).flat()                       // Flat list of all interfaces
+              .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces
+            
+            let dnsResolver = new (require('dns').promises.Resolver)();
+            dnsResolver.setServers(this.getArg('dnsServers'));
+            
+            let potentialHosts = (await Promise.allArr(externalIps.map(async ip => {
+              
+              let type = ((pcs=ip.split('.').map(v => parseInt(v, 10))) => {
+                
+                // Check for non-ipv4-style ips
+                if (pcs.count() !== 4 || pcs.find(v => !U.isForm(v, Number)).found) return null;
+                
+                // Reserved:
+                // 0.0.0.0 -> 0.255.255.255
+                if (pcs[0] === 0) return 'reserved';
+                
+                // Loopback:
+                // 127.0.0.0 -> 127.255.255.255
+                if (pcs[0] === 127) return 'loopback';
+                
+                // Private; any of:
+                // 10.0.0.0 -> 10.255.255.255,
+                // 172.16.0.0 -> 172.32.255.255,
+                // 192.168.0.0 -> 192.168.255.255
+                if (pcs[0] === 10) return 'private'
+                if (pcs[0] === 172 && pcs[1] >= 16 && pcs[1] < 32) return 'private';
+                if (pcs[0] === 192 && pcs[1] === 168) return 'private';
+                
+                // Any other address is public
+                return 'external';
+                
+              })();
+              
+              // Non-ipv4 and reserved hosts are ignored entirely
+              if (type === null) return C.skip;
+              if (type === 'reserved') return C.skip;
+              
+              // Loopback hosts are the least powerful
+              if (type === 'loopback') return { type, rank: 0, ip, addr: null };
+              
+              // Next-best is private; available on local network
+              if (type === 'private') return { type, rank: 1, ip, addr: null };
+              
+              // Remaining types will be "external"; process these:
+              try {
+                
+                // Reverse `ip` into any related hostnames
+                let addrs = await dnsResolver.reverse(ip);
+                
+                // Only consider hostnames with available A records
+                return Promise.allArr(addrs.map(async addr => {
+                  
+                  // If an A record is found this is the most powerful
+                  // host possible; globally addressable
+                  try { await dnsResolver.resolve(addr, 'A'); return { type: 'public', rank: 4, ip, addr }; }
+                  
+                  // Reversable ips without A records are one level down
+                  // from globally addressable results
+                  catch(err) { return { type: 'publicNoHost', rank: 3, ip, addr }; }
+                  
+                }));
+                
+                // The address is external but not reversible
+              } catch(err) { return { type: 'external', rank: 2, ip, addr: null }; }
+              
+            }))).flat();
+            
+            let bestRank = Math.max(...potentialHosts.map(v => v.rank));
+            let bestHosts = potentialHosts.map(v => v.rank === bestRank ? (v.addr || v.ip) : C.skip);
+            
+            if (this.getArg('debug').has('hosting')) {
+              
+              console.log('Autodetected hosts; results:');
+              for (let { type, rank, ip, addr } of potentialHosts.sort((h1, h2) => h2.rank - h1.rank)) {
+                console.log(addr
+                  ? `- Priority ${rank} (${type}): ${addr} (${ip})`
+                  : `- Priority ${rank} (${type}): ${ip}`
+                );
+              }
+              
+            }
+            
+            return bestHosts.count() !== 1
+              ? (bestHosts.count() && console.log(`Using host "localhost" but there are multiple options: ${bestHosts.join(', ')}`), 'localhost')
+              : bestHosts[0];
+            
+          })();
+          
+          hosting = {
+            http: { protocol: 'http', host, port: 80 },
+            sokt: { protocol: 'sokt', host, port: 81 }
+          };
+          
+        }
+        
+        if (U.isForm(hosting, String)) hosting = { main: hosting };
+        if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...params }) => [ name, params ]);
+        return hosting.map(v => {
+          
+          if (U.isForm(v, String)) {
+            let [ protocol=null, host=null, port=null ] = (v.trim().match(/^(.*):[/][/](.*):([0-9]+)$/) || []).slice(1);
+            if (!protocol) throw Error(`Hosting term "${v}" missing protocol`);
+            if (!host) throw Error(`Hosting term "${v}" missing host`);
+            if (!port) throw Error(`Hosting term "${v}" missing port`);
+            v = { protocol, host, port: parseInt(port, 10) };
+          }
+          
+          if (!v.has('host') || !v.host) v.host = host;
+          if (!v.has('host') || !v.host) throw Error(`Missing "host" for ${JSON.stringify(v)}`);
+          if (!U.isForm(v.port, Number)) throw Error(`Port for ${JSON.stringify(v)} is not a number`);
+          return v;
+          
         });
-        sslArgs = { keyPair: { cert, key }, selfSign };
-      }
-      
-      options.uid = 'nodejs.root';
-      options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
-      
-      return insp.Foundation.getRootHut.call(this, options);
-      
-    },
-    getRootReal: async function() {
-      
-      // There is only a single RootReal for an instance of node,
-      // reflecting the deepest abstraction for visuals.
-      
-      if (!this.rootReal) {
         
-        let rootReal = this.rootReal = U.rooms.real.built.Real(null, 'nodejs.root');
-        rootReal.defineReal('nodejs.ascii', { slotters: null, tech: 'ASCII' });
-        rootReal.defineReal('nodejs.system', { slotters: null, tech: 'SYSTEM' });
+      })();
+      
+      if (term === 'argKeep') {
         
-        rootReal.defineInsert('nodejs.root', 'nodejs.ascii');
-        rootReal.defineInsert('nodejs.root', 'nodejs.system');
+        if (U.isForm(val, String)) val = val.split(/[,/]/);
+        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
+        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
         
-        rootReal.techReals = [
-          rootReal.addReal('nodejs.ascii'),
-          rootReal.addReal('nodejs.system')
-        ];
+        return val || null;
         
       }
       
-      return this.rootReal;
+      if (term === 'storageKeep') {
+        
+        if (U.isForm(val, String)) val = val.split(/[,/]/);
+        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
+        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
+        
+        if (this.getArg('debug').has('storage')) console.log(val
+          ? `Running with storage @ ${val.absPath.join('/')}`
+          : `No storage provided; this will be a transient run`
+        );
+        
+        return val || null;
+        
+      }
+      
+      return forms.Foundation.processArg.call(this, term, val);
       
     },
     
-    // Functionality
-    getStaticIps: function(pref=[]) {
-      return require('os').networkInterfaces()
-        .toArr((v, type) => v.map(vv => ({ type, ...vv.slice('address', 'family', 'internal') })))
-        .to(arr => Array.combine(...arr))
-        .map(v => v.family.hasHead('IPv') && v.address !== '127.0.0.1' ? v.slice('type', 'address', 'family') : C.skip);
+    // Services
+    createHut: async function(options={}) {
+      
+      /// if (options.has('uid')) throw Error(`Don't specify "uid"!`);
+      /// 
+      /// if (!options.has('hosting')) options.hosting = {};
+      /// if (options.hosting.has('host')) throw Error(`Don't specify "hosting.host"!`);
+      /// if (options.hosting.has('port')) throw Error(`Don't specify "hosting.port"!`);
+      /// if (options.hosting.has('sslArgs')) throw Error(`Don't specify "hosting.sslArgs"!`);
+      /// 
+      /// let { host, port } = this.args.hosting;
+      /// 
+      /// let sslArgs = { keyPair: null, selfSign: null };
+      /// if (this.args.hosting.has('ssl') && !!this.args.hosting.ssl) {
+      ///   let certFolder = this.seek('keep', 'adminFileSystem', [ 'mill', 'cert' ]);
+      ///   let { cert, key, selfSign } = await Promise.allObj({
+      ///     cert:     certFolder.seek('server.cert').getContent(),
+      ///     key:      certFolder.seek('server.key').getContent(),
+      ///     selfSign: certFolder.seek('localhost.cert').getContent()
+      ///   });
+      ///   sslArgs = { keyPair: { cert, key }, selfSign };
+      /// }
+      /// 
+      /// options.hosting.gain({ host, port: parseInt(port, 10), sslArgs });
+      
+      return forms.Foundation.createHut.call(this, 'nodejs.root');
+      
     },
-    getJsSource: async function(type, name, bearing, ...opts) {
-      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
-      let fp = (type === 'setup')
-        ? [ 'setup', `${name}.js` ]
-        : [ 'room', name, `${name}.${bearing}.js` ];
+    createKeep: function(options={}) { return Form.KeepNodejs(); },
+    createReal: async function(options={}) {
       
-      let srcContent = await this.getKeep('fileSystem', fp).getContent('utf8');
-      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
-      
-      let offsets = [];
-      let srcLines = srcContent.replace(/\r/g, '').split('\n');
-      let cmpLines = [];
-      let cur = { at: 0, offset: 0 };
-      
-      for (let ind = 0; ind < srcLines.length; ind++) {
-        let srcLine = srcLines[ind].trim();
-        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
-        if (cur.offset > 0) offsets.push(cur);
-        cur = { at: ind, offset: 0 };
-        cmpLines.push(srcLine);
-      }
+      let primaryFakeReal = Real({ name: 'nodejs.fakeReal' });
+      primaryFakeReal.techNode = null;
+      primaryFakeReal.tech = {
+        createTechNode: real => null,
+        render: (real, techNode) => {},
+        addNode: (parTechNode, kidTechNode) => {},
+        
+        addViewportEntryChecker: real => { let ret = Tmp(); ret.src = Src(); return ret; },
+        
+        setText: (real, text) => {},
+        addInput: real => { let ret = Tmp(); ret.src = Src(); return ret; },
+        addPress: real => { let ret = Tmp(); ret.src = Src(); return ret; },
+        addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }
+      };
       
       return {
-        content: cmpLines.join('\n'),
-        srcNumLines: srcLines.length,
-        cmpNumLines: cmpLines.length,
-        offsets
+        access: name => {
+          if (name === 'primary') return primaryFakeReal;
+          throw Error(`Invalid access for Real -> "${name}"`);
+        }
       };
+      
     },
-    compactIp: function(verboseIp, verbosePort) {
-      // TODO: This is ipv4; could move to v6 easily by lengthening return value and padding v4 vals with 0s
-      if (verboseIp === 'localhost') verboseIp = '127.0.0.1';
-      let pcs = verboseIp.split(',')[0].trim().split('.');
-      if (pcs.length !== 4 || pcs.find(v => isNaN(v))) throw Error(`Invalid ip: "${verboseIp}"`);
-      let ip = pcs.map(v => parseInt(v, 10).toString(16).padHead(2, '0')).join('');
-      return ip + ':' + verbosePort.toString(16).padHead(4, '0'); // Max port hex value is ffff; 4 digits
-    },
-    getHutRoadForQuery: function(server, parHut, query, decorate=null) {
+    
+    // Transport
+    getHutRoadForQuery: function(server, pool, hutId) {
       
       // TODO: Right now a Road can be spoofed - this should be a
       // property of the Hut, shouldn't it?
       
-      if (query.has('spoof')) {
+      // Free pass for Huts that declare themselves unfamiliar
+      if (hutId === null) return pool.processNewRoad(server, null);
+      
+      // Check if this RoadedHut is familiar:
+      let roadedHut = pool.getRoadedHut(hutId);
+      if (roadedHut) {
         
-        // Spoofing only available if allowed by Foundation
-        if (!this.spoofEnabled) return null;
-        
-        // Return the current connection for `server` for the spoofed
-        // identity, or create such a connection if none exists
-        let roadedHut = parHut.getRoadedHut(query.spoof);
-        if (roadedHut && roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
-        return parHut.processNewRoad(server, road => {
-          road.hutId = query.spoof;
-          road.isSpoofed = true;
-          if (decorate) decorate(road);
-        });
-        
-      } else if (query.has('hutId')) {
-        
-        // Supplying a "hutId" means the Hut claims to be familiar
-        let roadedHut = parHut.getRoadedHut(query.hutId);
-        if (!roadedHut) return null;
-        
-        if (roadedHut.serverRoads.has(server)) return roadedHut.serverRoads.get(server);
-        return parHut.processNewRoad(server, road => {
-          road.hutId = query.hutId;
-          if (decorate) decorate(road);
-        });
+        // Familiar RoadedHuts are guaranteed a Road
+        return roadedHut.serverRoads.has(server)
+          // Any previous Road is reused
+          ? roadedHut.serverRoads.get(server)
+          // Otherwise a new Road is processed for the RoadedHut
+          : pool.processNewRoad(server, hutId);
         
       }
       
-      return parHut.processNewRoad(server, decorate || (road => {}));
+      // Past this point a Road can only be returned by spoofing
+      if (this.getArg('deploy') !== 'dev') return null;
+      
+      // Return a Road spoofed to have the requested `hutId`
+      let newSpoofyRoad = pool.processNewRoad(server, hutId);
+      newSpoofyRoad.hut.isSpoofed = true;
+      return newSpoofyRoad;
       
     },
-    makeHttpServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createHttpServer: async function({ host, port, keyPair=null, selfSign=null }) {
       
       if (!port) port = keyPair ? 443 : 80;
       
       // Translates a javascript value `msg` into http content type and payload
-      let sendData = (res, msg) => {
+      let sendData = async (req=null, res, msg) => {
         
-        // json, html, text, savd, error
-        let type = (() => {
-          if (msg === null || U.isTypes(msg, Object, Array)) return 'json';
-          if (U.isType(msg, String)) return msg.hasHead('<!DOCTYPE') ? 'html' : 'text';
-          if (U.isInspiredBy(msg, Keep)) return 'keep';
-          if (msg instanceof Error) throw msg; //return 'error';
-          throw Error(`Unknown type for ${U.nameOf(msg)}`);
-        })();
+        if (msg === C.skip) return;
+        let httpCode = 200;
+        if (U.hasForm(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
-        // TODO: This displays nice content-type-dependent information!
-        if (this.transportDebug) console.log(`??TELL ${'hutId'}:`, ({
-          text: () => ({ type: 'text', size: msg.length, val: msg }),
-          html: () => ({ type: 'html', size: msg.length, val: `${msg.split('\n')[0].substr(0, 30)}...` }),
-          json: () => JSON.stringify(msg).length < 200 ? msg : `${JSON.stringify(msg).substr(0, 200)}...`,
-          keep: () => ({ type: 'keep', desc: msg.desc || null }),
-          error: () => ({ type: 'error', msg: msg.error })
-        })[type]());
-        
-        return ({
-          text: () => {
-            res.writeHead(200, { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          html: () => {
-            res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          json: () => {
-            try { msg = JSON.stringify(msg); }
-            catch(err) { console.log('Couldn\'t serialize json', msg); throw err; }
-            res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
-            res.end(msg);
-          },
-          keep: async () => {
-            res.writeHead(200, {
-              'Content-Type': (await msg.getContentType()) || 'application/octet-stream',
-              'Content-Length': await msg.getContentByteLength()
-            });
-            msg.getPipe().pipe(res);
-          },
-          error: () => {
-            let text = msg.message;
-            res.writeHead(400, {
-              'Content-Type': 'text/plain',
-              'Content-Length': Buffer.byteLength(text)
-            });
-            res.end(text);
-          }
-        })[type]();
+        if (U.hasForm(msg, Keep)) { // File!
+          
+          let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
+          res.writeHead(httpCode, {
+            'Content-Type': ct || 'application/octet-stream',
+            ...(cl ? { 'Content-Length': cl } : {})
+          });
+          (await msg.getPipe()).pipe(res);
+          
+        } else if (msg === null || U.isForm(msg, Object, Array)) { // Json!
+          
+          msg = JSON.stringify(msg);
+          res.writeHead(httpCode, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
+          res.end(msg);
+          
+        } else {
+          
+          msg = msg.toString();
+          let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
+          let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
+          let ct = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
+          res.writeHead(httpCode, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
+          res.end(msg);
+          
+        }
         
       };
       let serverFn = async (req, res) => {
@@ -974,70 +1309,78 @@
         let ms = this.getMs();
         
         // Stream the body
-        // TODO: Watch for exploits; slow loris, etc.
+        // TODO: Watch for exploits - slow loris, etc.
         let chunks = [];
+        req.setEncoding('utf8');
         req.on('data', chunk => chunks.push(chunk));
-        let body = await new Promise(r => req.on('end', () => r(chunks.join(''))));
+        let body = await Promise((resolve, reject) => {
+          req.on('end', () => resolve(chunks.join('')));
+          req.on('error', err => reject(Error(`Client abandoned http request (err.message)`)));
+        });
+        
+        // TODO: Depending on how the handshake works it may be possible
+        // for `res` to end at absolutely any moment. While receiving
+        // chunks these errors will be handled nicely, since for errors
+        // occuring early on event cleanup is extremely straightforward.
+        // But `res` can end at any time (or can it??), including when
+        // it's queued up in a list of longpolls. That could be really
+        // awkward, since a critical sync could be transferred using an
+        // invalid `res` request, leaving the client with a sync gap for
+        // an indefinite amount of time. Any `res` object which becomes
+        // invalid needs to be taken out of the queue of polls! And if I
+        // think about this more it may turn out that any client whose
+        // `res` goes invalid may need to sync-from-scratch...
         
         // `body` is either JSON or the empty string (TODO: For now!)
         try {
           body = body.length ? JSON.parse(body) : {};
-          if (!U.isType(body, Object)) throw Error(`Http body should be Object; got ${U.nameOf(body)}`);
+          if (!U.isForm(body, Object)) throw Error(`Http body should be Object; got ${U.getFormName(body)}`);
         } catch(err) { return res.writeHead(400).end(); }
         
         let { path: urlPath, query } = this.parseUrl(`http://${req.headers.host}${req.url}`);
-        let params = { ...body, ...query }; // Params are initially based on body and query
+        let { hutId=null, ...params } = { ...body, ...query }; // Params are initially based on body and query
         
-        if (this.httpFullDebug) console.log('\n\n' + [
-          '==== INCOMING REQUEST ====',
-          `IP: ${req.connection.remoteAddress}`,
-          `METHOD: ${req.method}`,
-          `REQURL: ${req.url}`,
-          `REQQRY: ${JSON.stringify(query, null, 2)}`,
-          `REQHDS: ${JSON.stringify(req.headers, null, 2)}`,
-          `BODY: ${JSON.stringify(body, null, 2)}`
-        ].join('\n'));
-        
-        // Get identity-specifying props; remove them from the params.
-        // Past this point identity is based on the connection and cpu;
-        // best practice to remove identity info from params
-        let iden = params.splice('spoof', 'hutId');
-        
-        // If params are empty at this point, look at http path
-        if (params.isEmpty()) params = (p => {
+        // Detect "command" from `urlPath` if none given explicitly
+        if (!params.has('command')) params = (p => {
           // Map typical http requests to their meaning within Hut
-          if (p === '/') return { command: 'syncInit', reply: true };
-          if (p === '/favicon.ico') return { command: 'getIcon', reply: true };
-          if (urlPath.length > 1) return { command: urlPath.slice(1), reply: true };
+          if (p === '/') return { command: 'syncInit', ...params, reply: '1' };
+          if (urlPath.length > 1) return { command: urlPath.slice(1), ...params, reply: '1' };
           return {};
         })(urlPath);
         
         // Error response for invalid params
         if (!params.has('command')) return res.writeHead(400).end();
         
+        // Figure out which Pool will handle this request
+        let pool = server.pickTrgPool(params);
+        
         // Get the Road used. An absence of any such Road indicates that
         // authentication failed - in this case redirect the user to a
         // spot where they can request a new identity
-        let road = this.getHutRoadForQuery(server, pool, iden);
+        let road = (params.reply !== '2')
+          ? this.getHutRoadForQuery(server, pool, hutId)
+          : { knownHosts: Set.stub, hear: { send: async ([ msg, reply, ms ]) => {
+              let hut = await this.getRootHut();
+              let tempSrcHut = { isAfar: Function.stub, refreshDryTimeout: Function.stub, roadSrcs: Set.stub };
+              hut.hear(tempSrcHut, null, reply, msg, ms);
+            }}};
+              
         if (!road) return res.writeHead(302, { 'Location': '/' }).end();
         
-        // Confirm that we've seen this Hut under this host
+        // Note that we've seen this Hut under this host
         road.knownHosts.add(req.connection.remoteAddress);
         
         // Determine the actions that need to happen at various levels for this command
         let comTypesMap = {
           // syncInit has effects at both transport- and hut-level
-          syncInit:  {
-            transport: road => {
-              // Clear any buffered responses and tells
-              road.waitResps.forEach(res => res.end());
-              road.waitResps = [];
-              road.waitTells = [];
-            },
-            hut: true
-          },
-          close: { transport: road => road.dry() },
-          bankPoll: { transport: road => { /* empty transport-level action */ } }
+          syncInit:  { hut: true, transport: road => {
+            // Clear any buffered responses and tells
+            road.waitResps.forEach(res => res.end());
+            road.waitResps = [];
+            road.waitTells = [];
+          }},
+          close: { hut: false, transport: road => road.end() },
+          bankPoll: { hut: false, transport: road => { /* empty transport-level action */ } }
         };
         
         // If no ComType found, default to Hut-level command!
@@ -1051,37 +1394,39 @@
         // figures out which http response should get used... could be
         // tricky to figure out which response an instance of `hut.tell`
         // should correspond to tho. Imagine the following:
-        // 1. { command: 'login', reply: false } is received
-        // 2. { command: 'getRealDomFavicon', reply: true } is received
+        // 1. { command: 'login', reply: false } is heard
+        // 2. { command: 'getRealDomFavicon', reply: true } is heard
         // 3. The `hut.tell` for #1 occurs - how to avoid the server
-        //    thinking that *this* is the response for { reply: true }??
-        
-        // TODO: Maybe there should be no such thing as `hut.tell`?? Or
-        // at least it should be inaccessible in situations where
+        //    thinking that tell is the response for { reply: true }??
         
         // Synced requests end here - `road.tell` MUST occur or the
         // request will hang indefinitely
         // TODO: Consider a timeout to deal with improper usage
         if (params.reply) {
           try {
-            return road.hear.drip([ params, msg => sendData(res, msg), ms ]);
+            return road.hear.send([ params, msg => sendData(req, res, msg), ms ]);
           } catch(err) {
-            // TODO: Stop leaking `err.message`!
-            console.log('Http error response:', this.formatError(err));
-            sendData(res, { command: 'error', msg: err.message, orig: params });
+            sendData(req, res, {
+              command: 'error', type: 'unexpectedError',
+              msg: 'Error is on our end! We extend four quintillion apologies, dear sweet user!',
+              orig: params
+            });
           }
         }
         
         // Run hut-level actions
-        if (comTypes.has('hut') && comTypes.hut) road.hear.drip([ params, null, ms ]);
+        if (comTypes.hut) road.hear.send([ params, null, ms ]);
         
         // We now have an unspent, generic-purpose poll available. If we
         // have tells then send the oldest, otherwise hold the response.
-        // Finally return all but one poll. (TODO: Can raise this if the
-        // browser allows us multiple connections?)
+        // Finally return all but one poll. TODO: Could we learn from
+        // the client how many polls we are allowed to hold at once??
         if (road.waitTells.isEmpty()) {
+          
           road.waitResps.push(res);
+          
         } else {
+          
           // Bundle as many waiting responses as possible into a "multi"
           // command
           // TODO: This waits for `road.waitTells[<index too big>]` to
@@ -1096,19 +1441,19 @@
           // TODO: What makes json special, in that it is bundle-able?
           // What if the primary protocol switches to binary?
           let bundleSize = 0;
-          while (U.isTypes(road.waitTells[bundleSize], Object, Array)) bundleSize++; // TODO: This isn't working - waitTells[ind] is always a STRING!! :(
+          while (U.isForm(road.waitTells[bundleSize], Object, Array)) bundleSize++; // TODO: This isn't working - waitTells[ind] is always a STRING!! :(
           
           if (bundleSize <= 1) {
             
             // Either a leading contiguous string of 1 json Tell, or the
             // 1st Tell is non-json.
             // Send the single, unbundled Tell
-            sendData(res, road.waitTells.shift());
+            sendData(req, res, road.waitTells.shift());
             
           } else {
             
             // Send `bundleSize` bundled json Tells!
-            sendData(res, {
+            sendData(req, res, {
               command: 'multi',
               list: road.waitTells.slice(0, bundleSize)
             });
@@ -1119,7 +1464,7 @@
         }
         
         // Bank only a single response (otherwise most clients hang)
-        while (road.waitResps.length > 1) sendData(road.waitResps.shift(), { command: 'fizzle' });
+        while (road.waitResps.length > 1) sendData(req, road.waitResps.shift(), { command: 'fizzle' });
         
       };
       
@@ -1134,28 +1479,39 @@
       
       await new Promise(r => httpServer.listen(port, host, 511, r));
       
-      let server = TubSet({ onceDry: () => httpServer.close() }, Nozz());
+      // Return the Server as a Tmp which ends with the native server
+      let server = Tmp(() => httpServer.close());
+      
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.knownHosts = Set();
         road.waitResps = [];
         road.waitTells = [];
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => road.waitResps.length
-          ? sendData(road.waitResps.shift(), msg)
-          : road.waitTells.push(msg)
-        road.drierNozz().route(() => { for (let res of road.waitResps) res.end(); });
+          ? sendData(null, road.waitResps.shift(), msg)
+          : road.waitTells.push(msg);
+        
+        road.endWith(() => road.waitResps.each(res => res.end()));
         road.currentCost = () => 1.0;
+      };
+      server.pools = Set();
+      server.pickTrgPool = params => server.pools.toArr(v => v)[0];
+      server.addPool = pool => {
+        if (server.pools.has(pool)) throw Error(`Added duplicate pool: ${U.getFormName(pool)}`);
+        server.pools.add(pool);
+        return Tmp(() => server.pools.rem(pool));
       };
       
       return server;
+      
     },
-    makeSoktServer: async function(pool, { host, port, keyPair=null, selfSign=null }) {
+    createSoktServer: async function({ host, port, keyPair=null, selfSign=null }) {
       if (!port) port = keyPair ? 444 : 81;
       
       let makeSoktState = (status='initial') => ({
         status, // "initial", "upgrading", "ready", "ended"
-        buffer: Buffer.alloc(0),
+        buff: Buffer.alloc(0),
         curOp: null,
         curFrames: []
       });
@@ -1165,14 +1521,13 @@
         
         // Wait to get websocket request - it contains only headers
         let upgradeReq = null;
-        while (true) { // TODO: Limit iterations? Timeouts? Max size of `buffer`?
-          upgradeReq = await Promise(r => sokt.once('readable', () => {
-            let newBuffer = sokt.read();
-            if (!newBuffer || !newBuffer.length) return r(null);
-            soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
-            r(Insp.parseSoktUpgradeRequest(soktState));
+        while (upgradeReq === null) { // TODO: Limit iterations? Timeouts? Max size of `buff`?
+          upgradeReq = await Promise(resolve => sokt.once('readable', () => {
+            let newBuff = sokt.read();
+            if (!newBuff || !newBuff.length) return resolve(null);
+            soktState.buff = Buffer.concat([ soktState.buff, newBuff ]);
+            resolve(Form.parseSoktUpgradeRequest(soktState));
           }));
-          if (upgradeReq) break;
         }
         
         if (!upgradeReq.headers.has('sec-websocket-key')) return sokt.end();
@@ -1182,38 +1537,43 @@
         let hash = require('crypto').createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
         
-        await new Promise(r => sokt.write([
+        sokt.write([ // This is fire-and-forget
           'HTTP/1.1 101 Switching Protocols',
           'Upgrade: websocket',
           'Connection: Upgrade',
           `Sec-WebSocket-Accept: ${hash.read().toString('base64')}`,
           '\r\n'
-        ].join('\r\n'), r));
-        
-        soktState.status = 'ready';
+        ].join('\r\n'));
         
         let { query } = this.parseUrl(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${upgradeReq.path}`);
         
-        let road = this.getHutRoadForQuery(server, pool, query, road => road.sokt = sokt);
-        if (!road) return sokt.end();
+        // Figure out which Pool will handle this request
+        let pool = server.pickTrgPool(query);
         
+        let road = this.getHutRoadForQuery(server, pool, query.seek('hutId').val);
+        if (!road) return sokt.end();
+        road.sokt = sokt;
+        
+        soktState.status = 'ready';
         sokt.on('readable', () => {
-          if (road.isDry()) return;
+          if (road.off()) return;
           let ms = this.getMs();
-          let newBuffer = sokt.read();
+          let newBuff = sokt.read();
           
-          if (!newBuffer || !newBuffer.length) return;
-          soktState.buffer = Buffer.concat([ soktState.buffer, newBuffer ]);
+          if (!newBuff || !newBuff.length) return;
+          soktState.buff = Buffer.concat([ soktState.buff, newBuff ]);
           
           try {
-            for (let message of Insp.parseSoktMessages(soktState)) road.hear.drip([ message, null, ms ]);
+            for (let message of Form.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
           
-          if (soktState.status === 'ended') road.dry();
+          if (soktState.status === 'ended') road.end();
         });
-        sokt.on('close', () => { soktState = makeSoktState('ended'); road.dry(); });
-        sokt.on('error', () => { soktState = makeSoktState('ended'); road.dry(); });
-        sokt.on('error', err => console.log(`Socket error:\n${this.formatError(err)}`));
+        sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
+        sokt.on('error', err => {
+          console.log(foundation.formatError(err.update(m => `Sokt error: ${m}`)));
+          soktState = makeSoktState('ended'); road.end();
+        });
         
       };
       
@@ -1228,11 +1588,12 @@
       
       await Promise(r => soktServer.listen(port, host, r));
       
-      let server = TubSet({ onceDry: () => soktServer.close() }, Nozz());
+      let server = Tmp(() => soktServer.close());
       server.desc = `SOKT @ ${host}:${port}`;
       server.decorateRoad = road => {
-        road.hear = Nozz();
+        road.hear = Src();
         road.tell = msg => {
+          if (msg === C.skip) return;
           let dataBuff = Buffer.from(JSON.stringify(msg), 'utf8');
           let len = dataBuff.length;
           let metaBuff = null;
@@ -1264,57 +1625,197 @@
           metaBuff[0] = 129; // 128 + 1; `128` pads for modding by 128; `1` is the "text" op
           road.sokt.write(Buffer.concat([ metaBuff, dataBuff ]), () => {}); // Ignore the callback
         };
-        road.drierNozz().route(() => road.sokt.end());
+        
+        road.endWith(() => road.sokt.end());
         road.currentCost = () => 0.5;
+      };
+      server.pools = Set();
+      server.pickTrgPool = params => server.pools.toArr(v => v)[0];
+      server.addPool = pool => {
+        if (server.pools.has(pool)) throw Error(`Added duplicate pool: ${U.getFormName(pool)}`);
+        server.pools.add(pool);
+        return Tmp(() => server.pools.rem(pool));
       };
       
       return server;
     },
     
-    getPlatformName: function() { return 'nodejs'; },
-    establishHut: async function({ hut, bearing }) {
+    // Room
+    compileContent: function(path, variantName, srcLines) {
       
-      await this.canSettlePrm;
+      // Compile file content; filter based on variant tags
+      if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
+      if (!U.isForm(srcLines, Array)) throw Error(`Param "srcLines" is invalid type: ${U.getFormName(srcLines)}`);
       
-      if (!hut) throw Error('Missing "hut" param');
-      if (!bearing) throw Error('Missing "bearing" param');
-      if (![ 'above', 'below', 'between', 'alone' ].has(bearing)) throw Error(`Invalid bearing: "${bearing}"`);
+      let variantDef = {
+        above: variantName === 'above',
+        below: variantName === 'below',
+        debug: this.getArg('deploy') === 'dev' || !this.getArg('debug').isEmpty()
+      };
       
-      // We're establishing with known params! So set them on `this`
-      this.hut = U.isType(hut, Object) ? hut.name : hut;
-      this.bearing = bearing;
+      let blocks = [];
+      let curBlock = null;
       
-      // Compile everything!
-      this.roomsInOrder = await this.compileRecursive(hut);
-      
-      // As soon as we're compiled we can install useful cmp->src exception handlers
-      process.removeAllListeners('uncaughtException');  // TODO: Bad bandaid for multiple instances of FoundationNodejs
-      process.removeAllListeners('unhandledRejection');
-      process.on('uncaughtException', err => console.error(this.formatError(err)));
-      process.on('unhandledRejection', err => console.error(this.formatError(err)));
-      
-      // Require all rooms nodejs-style
-      this.roomsInOrder.forEach(room => {
-        if (U.isType(room, String)) {
-          // Install and run the room-building-function
-          require(`../room/${room}/${room}.${this.bearing}.js`);
-          if (!U.rooms.has(room)) throw Error(`Room "${room}" didn't build correctly`);
-          U.rooms[room](this);
-        } else {
-          U.rooms[room.name] = {
-            name: room.name,
-            built: room.build(this, ...U.rooms.slice(...room.innerRooms).toArr(v => v.built))
-          };
+      for (let i = 0; i < srcLines.length; i++) {
+        let line = srcLines[i].trim();
+        
+        if (curBlock) { // In a block, check for the block end
+          if (line.has(`=${curBlock.type.upper()}}`)) {
+            curBlock.end = i;
+            blocks.push(curBlock);
+            curBlock = null;
+          }
         }
-      });
+        
+        if (!curBlock) { // Outside a block, check for start of any block
+          for (let k in variantDef) {
+            if (line.has(`{${k.upper()}=`)) { curBlock = { type: k, start: i, end: -1 }; break; }
+          }
+        }
+        
+      }
       
-      // At this stage it's safe to filter out virtual rooms
-      this.roomsInOrder = this.roomsInOrder.map(n => U.isType(n, String) ? n : C.skip);
+      if (curBlock) throw Error(`Ended with unbalanced "${curBlock.type}" block`);
+      let curOffset = null;
+      let offsets = [];
+      let nextBlockInd = 0;
+      let filteredLines = [];
       
-      // The final Room is our Hut!
-      return U.rooms[this.hut];
+      for (let i = 0; i < srcLines.length; i++) {
+        let rawLine = srcLines[i];
+        let line = rawLine.trim();
+        
+        if (!curBlock && nextBlockInd < blocks.length && blocks[nextBlockInd].start === i)
+          curBlock = blocks[nextBlockInd++];
+        
+        let keepLine = true;
+        if (!line) keepLine = false; // Remove blank lines
+        if (line.hasHead('//')) keepLine = false; // Remove comments
+        if (curBlock && i === curBlock.startInd) keepLine = false;
+        if (curBlock && i === curBlock.endInd) keepLine = false;
+        if (curBlock && !variantDef[curBlock.type]) keepLine = false;
+        
+        if (keepLine) {
+          
+          curOffset = null;
+          let [ lineNoComment=line ] = (line.match(Form.removeLineCommentRegex) || []).slice(1);
+          filteredLines.push(lineNoComment.trim());
+          
+        } else {
+          
+          if (!curOffset) offsets.push(curOffset = { at: i, offset: 0 });
+          curOffset.offset++;
+          
+        }
+        
+        if (curBlock && i === curBlock.end) {
+          curBlock = null;
+          if (nextBlockInd < blocks.length && blocks[nextBlockInd].start === i) {
+            curBlock = blocks[nextBlockInd];
+            nextBlockInd++;
+          }
+        }
+        
+      }
       
-    }
+      if (this.getArg('debug').has('compile')) {
+        let srcCnt = srcLines.count();
+        let trgCnt = filteredLines.count();
+        console.log(`Compiled ${path.join('/')}: ${srcCnt} -> ${trgCnt} (-${srcCnt - trgCnt}) lines`);
+      }
+      
+      if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
+      return { lines: filteredLines, offsets };
+      
+    },
+    getJsSource: async function(type, name, bearing) {
+      
+      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
+      let fp = (type === 'setup')
+        ? [ 'setup', `${name}.js` ]
+        : [ 'room', name, `${name}@${bearing}.js` ];
+      let srcContent = await this.seek('keep', 'adminFileSystem', fp).getContent('utf8');
+      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
+      
+      let offsets = [];
+      let srcLines = srcContent.replace(/\r/g, '').split('\n');
+      let cmpLines = [];
+      let cur = { at: 0, offset: 0 };
+      
+      for (let ind = 0; ind < srcLines.length; ind++) {
+        let srcLine = srcLines[ind].trim();
+        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
+        if (cur.offset > 0) offsets.push(cur);
+        cur = { at: ind, offset: 0 };
+        cmpLines.push(srcLine);
+      }
+      
+      return {
+        content: cmpLines.join('\n'),
+        srcNumLines: srcLines.length,
+        cmpNumLines: cmpLines.length,
+        offsets
+      };
+      
+    },
+    installRoom: async function(name, bearing='above') {
+      
+      let namePcs = name.split('.');
+      let pcs = [ 'room', ...namePcs, `${namePcs.slice(-1)[0]}.js` ]
+      let keep = this.seek('keep', 'adminFileSystem', pcs);
+      
+      let contents = await keep.getContent('utf8');
+      if (!contents) throw Error(`Invalid room name: "${name}"`);
+      let { lines, offsets } = await this.compileContent(pcs, bearing, contents);
+      
+      return {
+        debug: { offsets },
+        content: (async () => {
+          
+          // Write, `require`, and ensure file populates `global.rooms`
+          await this.seek('keep', 'adminFileSystem', [ 'mill', 'compiled', `${name}@${bearing}.js` ]).setContent(lines.join('\n'));
+          try         { require(`../mill/compiled/${name}@${bearing}.js`); }
+          catch(err)  { throw err.update(m => `Error requiring ${name}.cmp (${m})`); }
+          if (!global.rooms.has(name)) throw Error(`Room "${name}" didn't set global.rooms.${name}`);
+          if (!U.hasForm(global.rooms[name], Function)) throw Error(`Room "${name}" set non-function at global.rooms.${name}`);
+          
+          // The file and set a function at `global.room[name]`. Return
+          // a call to that function, providing a `foundation` argument!
+          return global.rooms[name](this);
+          
+        })()
+      };
+      
+    },
+    
+    // Errors
+    parseErrorLine: function(line) {
+      
+      // The codepoint filename must not contain round/square brackets or spaces
+      let [ path, lineInd, charInd ] = line.match(/([^()[\] ]+):([0-9]+):([0-9]+)/).slice(1);
+      let [ fileName ] = path.match(/([a-zA-Z0-9.@]*)$/);
+      
+      // Skip non-hut files
+      let fileNamePcs = Form.KeepFileSystem.fs.cmpsToFileUrl([ path ]);
+      if (!fileNamePcs.hasHead(this.fsKeep.getFileUrl())) throw Error(`Path "${path}" isn't relevant to error`);
+      
+      // Extract room name and bearing from filename
+      let [ roomName, , bearing=null ] = fileName.match(/^([a-zA-Z0-9.]*)(@([a-zA-Z]*))?[.]js/).slice(1);
+      //let [ roomName, bearing=null ] = fileName.split('@').slice(0, -1);
+      return { roomName, bearing, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10) };
+      
+    },
+    srcLineRegex: function() {
+      return {
+        regex: /([^ ]*[^a-zA-Z0-9@.])?[a-zA-Z0-9@.]*[.]js:[0-9]+/, // TODO: No charInd
+        extract: fullMatch => {
+          let [ roomBearingName, lineInd ] = fullMatch.split(/[^a-zA-Z0-9.@]/).slice(-2);
+          let [ roomName, bearing ] = roomBearingName.split('@');
+          return { roomName, lineInd: parseInt(lineInd, 10), charInd: null };
+        }
+      };
+    },
+    
   })});
   
   U.setup.gain({ FoundationNodejs });

@@ -1,21 +1,28 @@
-// The "clearing" is javascript-level bootstrapping; top-level configuration
-// and extension for increased functionality and consistency
+// The "clearing" is javascript-level bootstrapping
 
-Error.stackTraceLimit = Infinity;
-
-let protoDef = (Cls, name, value) => Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
+Error.stackTraceLimit = 200;
 
 let C = global.C = {
-  skip: { SKIP: 1 },
-  notImplemented: function() { throw Error(`Not implemented by ${U.nameOf(this)}`); },
+  skip: undefined,
+  base62: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  notImplemented: function() { throw Error(`Not implemented by ${U.getFormName(this)}`); },
   noFn: name => {
-    let fn = function() { throw Error(`${U.nameOf(this)} does not implement "${name}"`); }
-    fn['~noInspCollision'] = true;
+    let fn = function() { throw Error(`${U.getFormName(this)} does not implement "${name}"`); }
+    fn['~noFormCollision'] = true; // TODO: Use Symbol here??
     return fn;
   }
 };
+let protoDef = (Cls, name, value) => {
+  Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
+  
+  // Note that these properties should not be available on `global`! If
+  // they were available, typos resulting in `protoDef` names resolve to
+  // unexpected values instead of `C.skip`; this lead someone (whose
+  // name remains undisclosed) into a ridiculous debugging scenario
+  if (Cls === global.constructor) global[name] = C.skip;
+};
 
-protoDef(Object, 'forEach', function(fn) { for (let k in this) fn(this[k], k); });
+protoDef(Object, 'each', function(fn) { for (let [ k, v ] of this) fn(v, k); });
 protoDef(Object, 'map', function(fn) {
   let ret = Object.assign({}, this);
   for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
@@ -27,21 +34,16 @@ protoDef(Object, 'toArr', function(it) {
   return ret;
 });
 protoDef(Object, 'slice', function(...props) {
-  if (props.length === 1 && U.isType(props[0], Object)) {
+  if (props.length === 1 && U.isForm(props[0], Object)) {
     let map = props[0]; // Maps existingKey -> newKeyName
-    let ret = {};
-    for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]];
-    return ret;
+    let ret = {}; for (let k in map) if (this.has(map[k])) ret[k] = this[map[k]]; return ret;
   } else { // `props` is an Array of property names (Strings)
-    let ret = {};
-    for (let p of props) if (this.has(p)) ret[p] = this[p];
-    return ret;
+    let ret = {}; for (let p of props) if (this.has(p)) ret[p] = this[p]; return ret;
   }
 });
-protoDef(Object, 'splice', function(...props) { let p = this.slice(...props); for (let k in p) delete this[k]; return p; });
-protoDef(Object, 'find', function(f) { // Returns [ VAL, KEY ]
-  for (let k in this) if (f(this[k], k)) return [ this[k], k ];
-  return null;
+protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
+  for (let k in this) if (f(this[k], k)) return { found: true, val: this[k], key: k };
+  return { found: false, val: null, k: null };
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
@@ -50,12 +52,17 @@ protoDef(Object, 'gain', function(obj) {
   for (let k in obj) if (obj[k] === C.skip) delete this[k];
   return this;
 });
-protoDef(Object, 'to', function(f) { return f(this); });
-protoDef(Object, 'pref', function(obj) { for (let k in obj) if (this.has(k)) this[k] = obj[k]; return this; });
-protoDef(Object, 'def', function(k, def=null) { return this.has(k) ? this[k] : def; });
+protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
+  let ret = this;
+  if (U.isForm(keys, String)) keys = keys.split('.');
+  for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
+  return { found: true, val: ret };
+});
+protoDef(Object, Symbol.iterator, function*() { // Iterate [ key, val ]
+  for (let k in this) yield [ k, this[k] ];
+});
 
-Array.fill = (n, f=()=>null) => { let a = new Array(n); for (let i = 0; i < n; i++) a[i] = f(i); return a; };
-Array.combine = (...as) => [].concat(...as);
+protoDef(Array, 'each', Array.prototype.forEach);
 protoDef(Array, 'map', function(it) {
   let ret = [];
   for (let i = 0, len = this.length; i < len; i++) {
@@ -64,22 +71,26 @@ protoDef(Array, 'map', function(it) {
   }
   return ret;
 });
-protoDef(Array, 'toObj', function(it) { // Iterator returns [ KEY, VAL ] pairs
+protoDef(Array, 'toObj', function(it) { // Iterator: (val, ind) => [ key0, val0 ]
   let ret = {};
   for (let i = 0, len = this.length; i < len; i++) { let v = it(this[i], i); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(Array, 'find', function(f) { // Returns [ VAL, IND ]
-  for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return [ this[i], i ];
-  return null; // TODO: Return empty array instead??
+protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns { found, val, ind }
+  for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return { found: true, val: this[i], ind: i };
+  return { found: false, val: null, ind: null };
 });
 protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(Array, 'isEmpty', function() { return !this.length; });
+protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
-protoDef(Array, 'invert', function() {
-  let ret = [];
-  for (let i = this.length - 1; i >= 0; i--) ret.push(this[i]);
-  return ret;
+protoDef(Array, 'count', function() { return this.length; });
+protoDef(Array, 'invert', function() { let r = []; for (let i = this.length - 1; i >= 0; i--) r.push(this[i]); return r; });
+protoDef(Array, 'tilt', function*() {
+  if (!this.count() || this.find(v => !U.isForm(v, Array)).found) throw Error(`Invalid structure for zipping`);
+  let w = this.count(); let h = this[0].count();
+  if (this.find(v => v.count() !== h).found) throw Error(`Members have differing lengths`);
+  for (let y = 0; y < h; y++) yield w.toArr(x => this[x][y]);
 });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
@@ -106,20 +117,56 @@ protoDef(String, 'padTail', function(amt, char=' ') {
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
-protoDef(String, 'crop', function(amtL=0, amtR=0) { return this.substr(amtL, this.length - amtR); });
-protoDef(String, 'polish', function(c=null) {
-  if (c === null) return this.trim();
-  let [ ind0, ind1 ] = [ 0, this.length - 1 ];
-  while (this[ind0] === c[0]) ind0++;
-  while (this[ind1] === c[0]) ind1--;
-  return this.substr(ind0, ind1 + 1);
+protoDef(String, 'cut', function(seq, num=null) {
+  // `num` defines how many cuts occur (# of resulting items - 1)
+  let r = this.split(seq); return (num === null) ? r : [ ...r.slice(0, num), r.slice(num).join(seq) ];
+});
+protoDef(String, 'code', function(ind=0) { return this.charCodeAt(0); });
+protoDef(String, 'count', function() { return this.length; });
+protoDef(String, 'indent', function(amt=2, char=' ', indentStr=char[0].repeat(amt)) {
+  return this.split('\n').map(ln => `${indentStr}${ln}`).join('\n');
+});
+protoDef(String, 'encodeInt', function(chrs=C.base62) {
+  if (!chrs) throw Error(`No characters provided`);
+  if (chrs.count() === 1) return this.count();
+  let base = chrs.count(), map = chrs.split('').toObj((c, i) => [ c, i ]), sum = 0, len = this.count();
+  for (let i = 0; i < len; i++) sum += Math.pow(base, len - i - 1) * map[this[i]];
+  return sum;
+});
+
+protoDef(Number, 'char', function() { return String.fromCharCode(this); });
+protoDef(Number, 'each', function(fn) { for (let i = 0; i < this; i++) fn(i); });
+protoDef(Number, 'toArr', function(fn) { let arr = Array(this); for (let i = 0; i < this; i++) arr[i] = fn(i); return arr; });
+protoDef(Number, 'toObj', function(fn) { let o = {}; for (let i = 0; i < this; i++) { let [ k, v ] = fn(i); o[k] = v; } return p; });
+protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
+  
+  // Note that base-1 requires 0 to map to the empty string. This also
+  // means that, for `n >= 1`:
+  //      |       (n).encodeStr(singleChr)
+  // is always equivalent to
+  //      |       singleChr.repeat(n - 1)
+  
+  if (!chrs) throw Error(`No characters provided`);
+  
+  let n = this, base = chrs.count(), digits = 1, amt = 1, seq = [];
+  if (base === 1) { digits = n; n = 0; }
+  else            while (true) { let t = amt * base; if (t > n) break; digits++; amt = t; }
+  
+  for (let p = digits - 1; p >= 0; p--) {
+    let pow = Math.pow(base, p), div = Math.floor(n / pow);
+    seq.push(chrs[div]);
+    n -= pow * div;
+  }
+  
+  return padLen ? seq.join('').padHead(padLen, chrs[0]) : seq.join('');
+  
 });
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
 Set.Native = SetOrig;
 Set.prototype = SetOrig.prototype;
-protoDef(SetOrig, 'toArr', function(fn) { // Iterator args: [ VAL, IND ]; returns VAL
+protoDef(SetOrig, 'toArr', function(fn) { // Iterator: (val, ind) => val0
   let ret = [], ind = 0;
   for (let v of this) { v = fn(v, ind++); if (v !== C.skip) ret.push(v); }
   return ret;
@@ -129,10 +176,12 @@ protoDef(SetOrig, 'toObj', function(fn) {
   for (let v of this) { v = fn(v); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(SetOrig, 'find', function(f) { // Returns [ VAL, null ]
-  for (let v of this) if (f(v)) return [ v ];
-  return null;
+protoDef(SetOrig, 'each', SetOrig.prototype.forEach);
+protoDef(SetOrig, 'find', function(f) { // Iterator: (val) => bool; returns { found, val }
+  for (let v of this) if (f(v)) return { found: true, val: v };
+  return { found: false, val: null };
 });
+protoDef(SetOrig, 'count', function() { return this.size; });
 protoDef(SetOrig, 'isEmpty', function() { return !this.size; });
 protoDef(SetOrig, 'rem', SetOrig.prototype.delete);
 
@@ -140,20 +189,22 @@ let MapOrig = Map;
 Map = global.Map = function Map(...args) { return new MapOrig(...args); };
 Map.Native = MapOrig;
 Map.prototype = MapOrig.prototype;
-protoDef(MapOrig, 'toObj', function(fn) { // Iterator args: [ VAL, KEY ]; returns [ KEY, VAL ] pairs
+protoDef(MapOrig, 'toObj', function(fn) { // Iterator: (val, key) => [ key0, val0 ]
   let ret = {};
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
-protoDef(MapOrig, 'toArr', function(fn) { // Iterator args: [ VAL, KEY ]; returns VALs
+protoDef(MapOrig, 'toArr', function(fn) { // Iterator: (val, key) => val0
   let ret = [];
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
-protoDef(MapOrig, 'find', function(f) { // Returns [ VAL, KEY ]
-  for (let [ k, v ] of this) if (f(v, k)) return [ v, k ];
-  return null;
+protoDef(MapOrig, 'each', MapOrig.prototype.forEach);
+protoDef(MapOrig, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
+  for (let [ k, v ] of this) if (f(v, k)) return { found: true, val: v, key: k };
+  return { found: false, val: null, key: null };
 });
+protoDef(MapOrig, 'count', function() { return this.size; });
 protoDef(MapOrig, 'isEmpty', function() { return !this.size; });
 protoDef(MapOrig, 'rem', MapOrig.prototype.delete);
 
@@ -161,15 +212,22 @@ let PromiseOrig = Promise;
 Promise = global.Promise = function Promise(...args) { return new PromiseOrig(...args); };
 Promise.Native = PromiseOrig;
 Promise.prototype = PromiseOrig.prototype;
-Promise.allArr = (...args) => PromiseOrig.all(...args);
+Promise.allArr = (...args) => PromiseOrig.all(...args).then(arr => arr.map(v => v));
 Promise.allObj = async obj => {
   let result = await Promise.allArr(obj.toArr(v => v));
   let ind = 0;
   let ret = {};
-  for (let k in obj) ret[k] = result[ind++];
+  for (let k in obj) { let r = result[ind++]; if (r !== C.skip) ret[k] = r; }
   return ret;
 };
 Promise.resolve = PromiseOrig.resolve;
+Promise.defer = () => {
+  let resolve = null, reject = null;
+  let prm = Promise((rsv, rjc) => [ resolve, reject ] = [ rsv, rjc ]);
+  prm.resolve = resolve;
+  prm.reject = reject;
+  return prm;
+};
 Promise.ext = () => {
   let rsv=null, rjc=null;
   let prm = Promise((rsv0, rjc0) => (rsv=rsv0, rjc=rjc0));
@@ -177,153 +235,228 @@ Promise.ext = () => {
 };
 protoDef(Promise, 'route', Promise.prototype.then);
 
-protoDef(Error, 'update', function(msg, props=null) { this.message = U.isType(msg, String) ? msg : msg(this.message); return this; });
+let GenOrig = (function*(){})().constructor;
+protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
+protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });
+protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
+
+protoDef(Error, 'update', function(props) {
+  if (U.isForm(props, Function)) props = props(this.message);
+  if (U.isForm(props, String)) props = { message: props };
+  for (let [ k, v ] of props) this[k] = v;
+  return this;
+});
+
+Function.stub = v => v;
+Function.makeStub = v => Function.stub.bind(null, v);
+Set.stub = { count: Function.makeStub(0), add: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
+Map.stub = { count: Function.makeStub(0), set: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
 
 let U = global.U = {
   dbgCnt: name => {
     if (!U.has('dbgCntMap')) U.dbgCntMap = {};
-    U.dbgCntMap[name] = U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0;
-    return U.dbgCntMap[name];
+    return U.dbgCntMap[name] = (U.dbgCntMap.has(name) ? U.dbgCntMap[name] + 1 : 0);
   },
-  dbgVar: obj => { for (let k in obj) console.log(k.upper(), obj[k]); },
   int32: Math.pow(2, 32),
-  base62: n => {
-    let pow = 0, amt = 1, next;
-    while (true) { next = amt * 62; if (next > n) break; pow++; amt = next; }
-    let amts = [];
-    for (let p = pow; p >= 0; p--) {
-      let amt = Math.pow(62, p), div = Math.floor(n / amt);
-      n -= amt * div;
-      if (div < 10)       amts.push(`${div}`);
-      else if (div < 36)  amts.push(String.fromCharCode(97 + div - 10));
-      else                amts.push(String.fromCharCode(65 + div - 36));
-    }
-    return amts.join('');
+  safe: (f1, f2=e=>e) => {
+    if (!U.isForm(f2, Function)) f2 = Function.stub.bind(null, f2);
+    try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
+    catch(err) { return f2(err); }
   },
-  safe: (f1, f2=e=>e) => { try { return f1(); } catch(err) { return f2(err); } },
-  toss: v => { throw v; },
-  inspire: ({ name, insps={}, methods=()=>({}) }) => {
+  then: (v, rsv, rjc) => {
+    if (U.isForm(v, Promise)) return v.then(rsv, rjc);
+    try { return rsv(v); } catch(err) { return rjc(err); }
+  },
+  reservedFormProps: Set([ 'constructor', 'Form' ]),
+  form: ({ name, has={}, parForms=has, props=()=>({}) }) => {
     
-    let parInsps = insps;
-    parInsps.forEach((ParInsp, k) => { if (!U.isType(ParInsp, Function)) throw Error(`Invalid Insp: "${k}"`); });
+    // Ensure every ParForm is truly a Form (Function)
+    for (let [ k, Form ] of parForms) if (!U.isForm(Form, Function)) throw Error(`Invalid Form: "${k}"`);
     
-    let Insp = eval(`let Insp = function ${name}(...p) { /* ${name} */ return (this && this.constructor === Insp) ? this.init(...p) : new Insp(...p); }; Insp;`);
-    Object.defineProperty(Insp, 'name', { value: name });
+    let fName = name.replace(/[^a-zA-Z0-9]/g, '$');
+    let Form = eval(`let Form = function ${fName}(...p) { /* ${name} */ return (this && this.constructor === Form) ? this.init(...p) : new Form(...p); }; Form;`);
+    Object.defineProperty(Form, 'name', { value: name });
     
-    // Calculate a Set of all inspirations for `isInspiredBy` testing
-    let inheritedInsps = [ Insp ];
-    parInsps.forEach(ParInsp => inheritedInsps.gain(ParInsp.allInsps.toArr(v => v)));
-    Insp.allInsps = Set(inheritedInsps);
+    // Calculate a Set of all parent Forms for `hasForm` testing
+    Form.forms = Set([ Form ]);
+    parForms.each(({ forms }) => forms.each(ParForm => Form.forms.add(ParForm)));
     
     // Keep track of parent classes directly
-    Insp.parents = insps;
+    Form.parents = parForms;
     
     // Initialize prototype
-    Insp.prototype = Object.create(null);
+    Form.prototype = Object.create(null);
     
-    // Resolve all SupInsps to their prototypes
-    parInsps = parInsps.map(ParInsp => {
+    // Resolve all ParForms to their prototypes
+    parForms = parForms.map(ParForm => {
       // `protoDef` sets non-enumerable prototype properties
       // Iterate non-enumerable props with `Object.getOwnPropertyNames`
-      let proto = ParInsp.prototype;
-      let pNames = Object.getOwnPropertyNames(proto);
-      return pNames.toObj(v => [ v, proto[v] ]);
+      let proto = ParForm.prototype;
+      return Object.getOwnPropertyNames(proto).toObj(v => [ v, proto[v] ]);
     });
-    parInsps.all = (methodName, workFn) => {
-      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+    
+    // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
+    // make `forms.all(name, fn)` available. `forms.all` generates a
+    // method which calls all underlying parent functionality for the
+    // name `name`. It's also possible for this generated function to
+    // return a value; this is enabled by supplying `workFn`, which is
+    // called with the original arguments to the generated function.
+    // Note that `workFn` has no access to any of the values generated
+    // by parent methods! Note that `function(){}` rather than `()=>{}`
+    // syntax should be preferred for `workFn`, as no `this` reference
+    // will be available using `()=>{}` syntax.
+    parForms.all = (methodName, workFn) => {
+      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
       return function(...args) {
-        for (let m of methods) m.call(this, ...args);
-        if (workFn) return workFn(...args);
+        for (let m of props) m.call(this, ...args);
+        if (workFn) return workFn.call(this, ...args);
       };
     };
-    parInsps.allArr = (methodName, workFn) => {
-      let methods = parInsps.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
-      return function(...args) { return workFn(this, methods.map(m => m.call(this, ...args)), ...args); };
+    
+    // For `U.form({ name: 'MyForm', props: (forms, Form) => ... })`,
+    // make `forms.allArr(name, fn)` available. `forms.allArr` is very
+    // similar to `forms.all`, except `workFn`'s signature isn't:
+    //    |     workFn(...args)
+    // but rather:
+    //    |     workFn(parResultArr, ...args)
+    // The difference is the `parResultArr`, which contains the results
+    // of all parents calling their own `name` functions. Note that the
+    // use of an Array rather than an Object intentionally encourages
+    // design to treat all returned parent values equally. There is no
+    // explicit way to tell which parent returned a particular value.
+    parForms.allArr = (methodName, workFn) => {
+      let props = parForms.toArr(proto => proto.has(methodName) ? proto[methodName] : C.skip);
+      return function(...args) { return workFn.call(this, props.map(m => m.call(this, ...args)), ...args); };
     };
     
-    // If `methods` is a function it becomes the result of its call
-    if (U.isType(methods, Function)) methods = methods(parInsps, Insp);
+    // If `props` is a function it becomes the result of its call
+    if (U.isForm(props, Function)) props = props(parForms, Form);
     
-    // Ensure we have valid "methods"
-    if (!U.isType(methods, Object)) throw Error('Couldn\'t resolve "methods" to Object');
+    // Ensure we have valid "props"
+    if (!U.isForm(props, Object)) throw Error(`Couldn't resolve "props" to Object`);
     
     // Ensure reserved property names haven't been used
-    if (methods.has('constructor')) throw Error('Used reserved "constructor" key');
+    for (let k of U.reservedFormProps) if (props.has(k)) throw Error(`Used reserved "${k}" key`);
     
-    // Collect all inherited methods
-    let methodsByName = {};
-    parInsps.forEach((inspProto, inspName) => {
-      // Can`t do `inspProto.forEach` - `inspProto` is prototype-less!
-      for (let [ methodName, method ] of Object.entries(inspProto)) {
-        // `inspProto` contains a "constructor" property that needs to be skipped
-        if (methodName === 'constructor') continue;
-        if (!methodsByName.has(methodName)) methodsByName[methodName] = Set();
-        methodsByName[methodName].add(method);
-      }
-    });
+    // Collect all inherited props
+    let propsByName = {};
     
-    // Collect all methods for this particular Insp
-    for (let methodName in methods) {
-      let method = methods[methodName];
+    // Iterate all props of all ParForm prototypes
+    for (let [ formName, proto ] of parForms) { for (let [ propName, prop ] of proto) {
       
-      // All methods here are the single method of their name!
-      // They may call inherited methods of the same name (or not)
-      if (methodName[0] === '$')  Insp[methodName.slice(1)] = method;        // "$" = class-level property
-      else                        methodsByName[methodName] = Set([ method ]); // Guaranteed to be singular
+      // Skip reserved names (they certainly exist in `formProto`!)
+      if (U.reservedFormProps.has(propName)) continue;
+      
+      // Store all props under the same name in the same Set
+      if (!propsByName.has(propName)) propsByName[propName] = Set();
+      propsByName[propName].add(prop);
+      
+    }};
+    
+    // `propsByName` already has all ParForm props; now add in the props
+    // unique to the Form being created!
+    for (let [ propName, prop ] of props) {
+      
+      // `propName` values iterated here will be unique; `props` is
+      // an object, and must have unique keys
+      if (propName[0] === '$')  Form[propName.slice(1)] = prop;        // "$" indicates class-level property
+      else                      propsByName[propName] = Set([ prop ]); // Guaranteed to be singular
       
     }
     
-    if (!methodsByName.has('init')) throw Error('No "init" method available');
+    // At this point an "init" prop is required! TODO: Allow for uninitializable ("abstract") Forms?
+    if (!propsByName.has('init')) throw Error('No "init" method available');
     
-    parInsps[name] = {};
-    for (let methodName in methodsByName) {
-      let methodsAtName = methodsByName[methodName].toArr(v => (v && v['~noInspCollision']) ? C.skip : v);
-      if (methodsAtName.length > 1) {
-        throw Error(`Found ${methodsAtName.length} methods "${methodName}" for ${name}; declare a custom method`);
-      }
-      let fn = methodsAtName.length ? methodsAtName[0] : C.noFn(methodName);
-      parInsps[name][methodName] = fn;
-      protoDef(Insp, methodName, fn);
+    for (let [ propName, props ] of propsByName) {
+      
+      // Filter out any '~noFormCollision
+      let propsAtName = props.toArr(v => (v && v['~noFormCollision']) ? C.skip : v);
+      
+      // Ensure there are no collisions for this prop. In case of
+      // collisions, the solution is for the Form defining the collision
+      // to define its own property under the collision name (and this
+      // property may take into account aspects of the ParForm props
+      // which collided; for example it may call all ParForm methods of
+      // the same name!)
+      if (propsAtName.length > 1)
+        throw Error(`Found ${propsAtName.length} props named "${propName}" for ${name} (to resolve define ${name}.protoype.${propName})`);
+      
+      protoDef(Form, propName, propsAtName.length ? propsAtName[0] : C.noFn(propName));
+      
     }
     
-    protoDef(Insp, 'constructor', Insp);
-    return Insp;
+    protoDef(Form, 'Form', Form);
+    protoDef(Form, 'constructor', Form);
+    return Form;
   },
-  isType: (val, Cls) => {
-    // Note: This is hopefully the *only* use of `!=` throughout Hut!
-    // Falsy only for unboxed values (`null` and `undefined`)
-    if (Cls && Cls.Native) Cls = Cls.Native;
-    return val != null && val.constructor === Cls;
-  },
-  isTypes: (val, ...Classes) => {
-    for (let Cls of Classes) if (U.isType(val, Cls)) return true;
+  isForm: (fact, ...forms) => {
+    
+    // Detect and reject NaN! Hut philosophy!
+    if (fact !== fact) return false;
+    
+    // Allow any provided Form to match...
+    for (let Form of forms) {
+      
+      // Prefer to compare against `FormNative`. Some native Cls
+      // references represent the hut-altered form (e.g. they have an
+      // extended prototype and can be called without "new"). Such Cls
+      // references are not true "Classes" in that they are never set as
+      // the "constructor" property of any instance - "contructor"
+      // properties will always reflect the native, unmodified Cls. Any
+      // Cls which has been hut-modified will have a "Native" property
+      // pointing to the original class, which serves as a good value to
+      // compare against "constructor" properties
+      if (fact != null && fact.constructor === (Form.Native || Form)) return true;
+      
+    }
+    
     return false;
+    
   },
-  isInspiredBy: (Insp1, Insp2) => {
-    try {
-      if (!U.isType(Insp1, Function)) Insp1 = Insp1.constructor;
-      return Insp1.has('allInsps') && Insp1.allInsps.has(Insp2);
-    } catch(err) { return false; }
+  hasForm: (fact, FormOrCls) => {
+    
+    if (fact == null) return false;
+    
+    // `fact` may either be a fact/instance, or a Form/Cls. In case a
+    // fact/instance was given the "constructor" property points us to
+    // the appropriate Form/Cls. We name this value `Form`, although it
+    // is also still ambiguously a Form/Cls.
+    let Form = U.isForm(fact, Function) ? fact : fact.constructor;
+    
+    // If a "forms" property exists, `FormOrCls` is specifically a Form,
+    // and inheritance can be checked by existence in the set
+    if (Form.forms) return Form.forms.has(FormOrCls);
+    
+    // No "forms" property; FormOrCls is specifically a Cls. Inheritance
+    // can be checked using `instanceof`; prefer to compare against a
+    // "Native" property
+    return (fact instanceof (FormOrCls.Native || FormOrCls));
+    
   },
-  nameOf: obj => { try { return obj.constructor.name; } catch(err) {} return String(obj); },
-  inspOf: obj => { try { return obj.constructor; } catch(err) {} return null; },
+  getForm: f => f.constructor || null,
+  getFormName: f => U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
   
-  // TODO: "buildRoom" probably doesn't belong in `U`
+  multilineString: str => {
+    
+    let lines = str.split('\n').map(ln => ln.replace(/\r/g, ''));
+    
+    // Trim any leading empty lines
+    while (lines.length && !lines[0].trim()) lines = lines.slice(1);
+    
+    // Count leading whitespace chars on first line with content
+    let initSpace = 0;
+    while (lines[0][initSpace].match(/\s/)) initSpace++;
+    
+    return lines.map(ln => ln.slice(initSpace)).join('\n').trimEnd(); // TODO: "trimTail" would be more consistent
+    
+  },
+  
   buildRoom: ({ name, innerRooms=[], build }) => {
     
-    if (!U.isType(name, String)) throw Error(`Invalid name: ${U.nameOf(name)}`);
-    if (U.rooms.has(name)) throw Error(`Tried to overwrite room "${name}"`);
-    return U.rooms[name] = foundation => {
-      
+    global.rooms[name] = async foundation => {
       if (!foundation) throw Error('Missing "foundation" param');
-      let missingRoom = innerRooms.find(roomName => !U.rooms.has(roomName));
-      if (missingRoom) throw Error(`Missing innerRoom: ${missingRoom[0]}`);
-      
-      return U.rooms[name] = {
-        name,
-        built: build(foundation, ...innerRooms.map(rn => U.rooms[rn].built))
-      };
-      
+      let innerRoomContents = await Promise.allArr(innerRooms.map(rn => foundation.getRoom(rn)));
+      return build(foundation, innerRoomContents);
     };
     
   },
@@ -331,320 +464,422 @@ let U = global.U = {
   setup: {}, // Gains items used for setup
   rooms: {}
 };
+global.rooms = {};
 
-let Drop = U.inspire({ name: 'Drop', methods: (insp, Insp) => ({
-  init: function(drier=null, onceDry=null) {
-    this.drier = drier; // `drier` may have "nozz", "isWet", "onceDry"
-    if (onceDry) this.onceDry = onceDry;
-  },
-  isWet: function() {
-    // If our drier setup tells us "isWet", use that; otherwise `true`
-    return (this.drier && this.drier.has('isWet'))
-      ? this.drier.isWet()
-      : true;
-  },
-  isDry: function() { return !this.isWet(); },
-  onceDry: function() {},
-  dry: function() {
-    if (this.isDry()) return;
-    this.isWet = () => false;
-    this.onceDry();
-    if (this.drier && this.drier.has('onceDry')) this.drier.onceDry();
-  },
-  drierNozz: function() {
-    if (!this.drier) throw Error('No "drier" available');
-    if (!this.drier.has('nozz')) throw Error('No "drier.nozz" available');
-    return this.drier.nozz;
-  }
-})});
-let Nozz = U.inspire({ name: 'Nozz', methods: (insp, Insp) => ({
-  init: function() {
-    this.routes = Set();
-  },
-  route: function(routeFn) {
-    this.routes.add(routeFn);
-    this.newRoute(routeFn);
-    return Drop(null, () => this.routes.rem(routeFn));
-  },
-  newRoute: function(routeFn) {},
-  drip: function(...items) {
-    
-    // The idea for preventing Routes during a Drip from receiving that
-    // drip: when intending to iterate over `this.routes` first take a
-    // snapshot of these Routes. Then iterate over that snapshot, at 
-    // each stage ensuring that each Route still exists in `this.routes`
-    // 1 - Only Routes present before Drip receive drip
-    // 2 - Routes which dry before Dripping still don't receive drip
-    
-    for (let routeFn of Set(this.routes)) if (this.routes.has(routeFn)) routeFn(...items);
-  },
-  block: function(doDrip, ...dripVals) {
-    // Cause any new Routes to receive "newRoute" functionality, but not
-    // to be held (and return a dry Drop in indication of this)
-    this.route = routeFn => { this.newRoute(routeFn); return Drop({ isWet: () => false }); };
-    
-    // Keep track of our most recent set of Routes, and then clear our Routes
-    let origRoutes = this.routes;
-    this.routes = Set();
-    
-    // Do a final drip to our latest set of Routes if required
-    if (doDrip) for (let routeFn of origRoutes) routeFn(...dripVals);
-    
-    // If we're an instance of Drop release any resources
-    if (this.dry) this.dry();
-  }
-})});
-
-let defDrier = (nozz=Nozz()) => {
+U.logic = (() => {
   
-  // Takes a Nozz to be the DrierNozz. Telling the associated Drop to
-  // dry will cause the given Nozz to drip, and become blocked. It will
-  // also cause the Nozz to always immediately drip into any new Routes
-  // that are attempted to be attached. (These Routes won't be attached,
-  // but the immediate drip will signal dryness to the implementation.)
-  // Note that dripping from the Nozz does NOT cause the associated Drop
-  // to dry. Call `Drop.prototype.dry()` as desired; it causes `nozz` to
-  // drip. Never call `nozz.drip()` directly - it would NOT cause the
-  // instance of Drop to dry.
+  // TODO: What about something with a ref count; e.g. it can be
+  // initiated multiple times, and can withstand a call to `end` for
+  // each time it has been initiated past the first? An implementation
+  // could look like:
+  //      |     U.form({ name: '...', props: (forms, Form) => ({
+  //      |       
+  //      |       init: function() { this.watcher = Tmp.stub; },
+  //      |       actuallyCreateWatcher: function() {
+  //      |       
+  //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
+  //      |         // doesn't matter!
+  //      |         return someKindOfWatcher();
+  //      |         
+  //      |       },
+  //      |       getWatcher: function() {
+  //      |         
+  //      |         if (this.watcher.off()) {
+  //      |           // I can't immediately see how to do this without
+  //      |           // supplying a list of exposed fields.
+  //      |           // RefCountWatcher.prototype.ref needs to return
+  //      |           // an object that behaves exactly like the value
+  //      |           // `this.actuallyCreateWatcher()`, but with an
+  //      |           // `end` method that only ends the underlying
+  //      |           // object if the RefCount drops to 0. Note it's
+  //      |           // important to indicate which exposed fields are
+  //      |           // functions since they'll need to be bound.
+  //      |           this.watcher = RefCountWatcher(this.actuallyCreateWatcher(), [ 'src', 'cleanup()' ]);
+  //      |         }
+  //      |         return this.watcher.ref();
+  //      |         
+  //      |       }
+  //      |     })});
   
-  let dried = false;
-  nozz.newHold = holdFn => dried && holdFn();
-  nozz.desc = `Default Drier using ${U.nameOf(nozz)}`;
-  let drier = { nozz, onceDry: () => {
-    dried = false;
-    drier.onceDry = () => {};
-    nozz.block(true);
-  }};
-  return drier;
+  let Endable = U.form({ name: 'Endable', props: (forms, Form) => ({
+    
+    $globalRegistry: 0 ? Set.stub : Set(),
+    
+    init: function(fn) {
+      // Allow Endable.prototype.cleanup to be masked
+      if (fn) this.cleanup = fn;
+      Form.globalRegistry.add(this);
+    },
+    onn: function() { return true; },
+    off: function() { return !this.onn(); },
+    cleanup: function() {},
+    end: function(...args) {
+      if (this.off()) return false;
+      this.onn = () => false;
+      Form.globalRegistry.rem(this);
+      this.cleanup(...args);
+      return true;
+    }
+  })});
+  let Src = U.form({ name: 'Src', props: (forms, Form) => ({
+    init: function() { this.fns = Set(); },
+    newRoute: function(fn) {},
+    route: function(fn, mode='tmp') {
+      if (!U.hasForm(fn, Function)) throw Error(`Can't route to a ${U.getFormName(fn)}`);
+      if (this.fns.has(fn)) return; // Ignore duplicates
+      
+      this.fns.add(fn);
+      this.newRoute(fn);
+      if (mode === 'tmp') return Tmp(() => this.fns.rem(fn));
+    },
+    send: function(...args) {
+      
+      // Behaviour is much better when "addRoute-while-send" does not
+      // result in the route being called **from Src.prototype.send**
+      // (note it may be called from, e.g., "newRoute"). So when "send"
+      // is called our goal is to iterate a snapshot of `this.fns`. Note
+      // that while "addRoute-while-send" cases should effectively be
+      // ignored, "remRoute-while-send" should *not* be ignored. So for
+      // each route in the snapshot, when the time comes to call that
+      // route we need to ensure it still exists within `this.fns`.
+      
+      for (let fn of [ ...this.fns ]) if (this.fns.has(fn)) fn(...args);
+      
+    }
+  })});
+  let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    // TODO: What if Tmps normally don't have any sense of RefCount, but
+    // as soon as Tmp.prototype.ref() gets called they gain it?
+    
+    init: function(fn=null) {
+      forms.Src.init.call(this);
+      forms.Endable.init.call(this);
+      if (fn) this.route(fn, 'prm');
+    },
+    end: function(...args) { return this.sendAndEnd(...args); },  // TODO: high-traffic code... should reference `sendAndEnd` instead of delegating...??
+    send: function(...args) { return this.sendAndEnd(...args); },
+    sendAndEnd: function(...args) {
+      // Sending and ending are synonymous for a Tmp
+      if (!forms.Endable.end.call(this)) return; // Check if we're already ended
+      forms.Src.send.call(this, ...args);
+      this.fns = Set.stub;
+      return;
+    },
+    newRoute: function(fn) { if (this.off()) fn(); },
+    endWith: function(val, mode='prm') {
+      if (U.hasForm(val, Function)) return this.route(val, mode) || this;
+      if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
+      throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
+    }
+  })});
+  Tmp.stub = (t => (t.end(), t))(Tmp());
   
-};
-
-let Funnel = U.inspire({ name: 'Funnel', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(...nozzes) {
-    insp.Drop.init.call(this);
-    insp.Nozz.init.call(this);
-    this.joinRoutes = Set();
-    for (let nozz of nozzes) this.joinRoute(nozz);
-  },
-  joinRoute: function(nozz) {
-    let joinRoute = nozz.route(this.drip.bind(this));
-    this.joinRoutes.add(joinRoute);
-    return joinRoute;
-  },
-  onceDry: function() { for (let jr in this.joinRoutes) jr.dry(); }
-})});
-let TubVal = U.inspire({ name: 'TubVal', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;   // This Nozz is "above" the Tub - it flows into the Tub
-    this.val = C.skip;  // `null` indicates the `null` will be Dripped. `C.skip` indicates no Drip
-    this.itemDryRoute = null; // A Route to know if latest item goes Dry
-    this.nozzRoute = this.nozz.route(item => {
-      // If filter, replace `item` with filter result and ignore skips
-      if (flt && (item = flt(item)) === C.skip) return;
+  let TmpAll = U.form({ name: 'TmpAll', has: { Tmp }, props: (forms, Form) => ({
+    init: function(tmps) {
+      forms.Tmp.init.call(this);
+      let fn = this.end.bind(this);
+      this.routes = tmps.map(tmp => {
+        let route = tmp.route(fn);
+        this.endWith(route);
+        return route;
+      });
+    },
+    cleanup: function() { for (let r of this.routes) r.end(); }
+  })});
+  let TmpAny = U.form({ name: 'TmpAny', has: { Tmp }, props: (forms, Form) => ({
+    init: function(tmps) {
+      forms.Tmp.init.call(this);
+      let cnt = tmps.length;
+      let endFn = () => (--cnt > 0) || this.end();
+      for (let tmp of tmps) this.endWith(tmp.route(endFn));
+    }
+  })});
+  
+  let MemSrc = U.form({ name: 'MemSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    init: function() {
+      if (U.isForm(this, MemSrc)) throw Error(`Don't init the parent MemSrc class!`);
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
+    },
+    retain: C.noFn('retain')
+  })});
+  MemSrc.Prm1 = U.form({ name: 'MemSrc.Prm1', has: { MemSrc }, props: (forms, Form) => ({
+    init: function(val=C.skip) { forms.MemSrc.init.call(this); this.val = val; },
+    newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
+    retain: function(val) { if (val === this.val && U.isForm(val, String, Number, Boolean)) return; this.val = val; if (this.val !== C.skip) this.send(val); },
+    cleanup: function() { this.val = C.skip; }
+  })});
+  MemSrc.PrmM = U.form({ name: 'MemSrc.PrmM', has: { MemSrc }, props: (forms, Form) => ({
+    init: function() { forms.MemSrc.init.call(this); this.vals = []; },
+    count: function() { return this.vals.count(); },
+    retain: function(val) { this.vals.push(val); this.send(val); },
+    newRoute: function(fn) { for (let val of this.vals) fn(val); },
+    cleanup: function() { this.vals = []; }
+  })});
+  MemSrc.Tmp1 = U.form({ name: 'MemSrc.Tmp1', has: { MemSrc }, props: (forms, Form) => ({
+    init: function(val) {
+      forms.MemSrc.init.call(this);
+      this.valEndRoute = null;
+      this.val = null;
+    },
+    retain: function(tmp) {
       
-      // Check to see if `item` is a Drop
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return; // Skip Dry Drops
+      if (tmp.off()) return; // Don't bother with inactive Tmps
       
-      // Remove previous Item-Dry-Route if it exists
-      if (this.itemDryRoute) throw Error('A value is already set');
+      if (this.val === tmp) return; // Ignore duplicates;
+      this.val = tmp;
+      this.valEndRoute = tmp.route(() => this.val = this.valEndRoute = null);
+      this.send(tmp);
       
-      // If `item` is a Drop with a Drier-Nozz add additional Routes
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        // Note that no drip occurs when `item` dries
-        this.itemDryRoute = itemDryNozz.route(() => { this.itemDryRoute = null; this.val = C.skip; });
-      }
+    },
+    newRoute: function(fn) { if (this.val) fn(this.val); },
+    cleanup: function() { this.valEndRoute && this.valEndRoute.end(); this.val = this.valEndRoute = null; }
+  })});
+  MemSrc.TmpM = U.form({ name: 'MemSrc.TmpM', has: { MemSrc }, props: (forms, Form) => ({
+    init: function() {
+      forms.MemSrc.init.call(this);
+      this.valEndRoutes = Map();
+      this.vals = Set();
+      this.counter = null;
+    },
+    count: function() { return this.vals.count(); },
+    getCounterSrc: function() {
+      if (!this.counter) this.counter = MemSrc.Prm1(this.vals.count());
+      return this.counter;
+    },
+    retain: function(tmp) {
+      if (tmp.off()) return; // Ignore inactive Tmps
+      if (this.vals.has(tmp)) return; // Ignore duplicates
       
-      // Update our value
-      this.val = item;
-      if (this.val !== C.skip) this.drip(item);
-    });
-  },
-  newRoute: function(routeFn) { if (this.val !== C.skip) routeFn(this.val); },
-  dryContents: function() {
-    if (this.val === C.skip) return;
-    if (U.isInspiredBy(this.val, Drop)) this.val.dry();
-    this.val = C.skip;
-  },
-  onceDry: function() {
-    this.nozzRoute.dry();
-    if (this.itemDryRoute) this.itemDryRoute.dry();
-  }
-})});
-let TubSet = U.inspire({ name: 'TubSet', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    this.set = Set();
-    this.tubRoutes = Set();
-    this.tubRoutes.add(this.nozz.route(item => {
-      // If filter, replace `item` with filter result and ignore skips
-      if (flt && (item = flt(item)) === C.skip) return;
+      this.vals.add(tmp);
+      this.counter && this.counter.retain(this.vals.count());
       
-      // Check to see if `item` is a Drop
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return;
-      
-      // If `item` is a Drop with a Drier-Nozz add additional Routes
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.set.rem(item); });
-        this.tubRoutes.add(itemDryRoute);
-      }
-      
-      // Add `item` to our set
-      this.set.add(item);
-      this.drip(item);
-    }));
-  },
-  newRoute: function(routeFn) { for (let val of this.set) routeFn(val); },
-  dryContents: function() { for (let val of this.set) if (U.isInspiredBy(val, Drop)) val.dry(); },
-  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
-})});
-let TubDry = U.inspire({ name: 'TubDry', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    
-    this.count = 0;
-    this.drop = Drop(defDrier());
-    
-    this.dropDryRoutes = Set();
-    this.nozzRoute = this.nozz.route(drop => {
-      
-      if (!U.isInspiredBy(drop, Drop)) throw Error(`TubDry expected nozz to drip Drops - got ${U.nameOf(drop)}`);
-      if (!drop.drier) throw Error('TubDry expects Drops to have "drier"');
-      if (!drop.drier.nozz) throw Error('TubDry expects Drops to have "drier.nozz"');
-      if (drop.isDry()) return;
-      
-      if (this.count === 0) this.drop.dry();
-      this.count++;
-      
-      this.dropDryRoutes.add(drop.drier.nozz.route(() => {
-        this.count--;
-        if (this.count === 0) this.drip(this.drop = Drop(defDrier()));
+      this.valEndRoutes.set(tmp, tmp.route(() => {
+        this.vals.rem(tmp);
+        this.valEndRoutes.rem(tmp);
+        this.counter && this.counter.retain(this.vals.count());
       }));
       
-    });
-  },
-  newRoute: function(routeFn) { if (this.drop.isWet()) routeFn(this.drop); },
-  onceDry: function() {
-    this.nozzRoute.dry();
-    for (let dr of this.dropDryRoutes) dr.dry();
-  }
-})});
-let TubCnt = U.inspire({ name: 'TubCnt', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(drier, nozz, flt=null) {
-    insp.Drop.init.call(this, drier);
-    insp.Nozz.init.call(this);
-    this.nozz = nozz;
-    this.count = 0;
-    this.tubRoutes = Set();
-    this.tubRoutes.add(this.nozz.route(item => {
+      this.send(tmp);
+    },
+    newRoute: function(fn) { for (let val of this.vals) fn(val); },
+    cleanup: function() {
+      for (let [ , route ] of this.valEndRoutes) route.end();
+      this.vals = Set();
+      this.valEndRoutes = Map();
+    }
+  })});
+
+  let FilterSrc = U.form({ name: 'FilterSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    init: function(src, fn) {
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
+      this.src = src;
+      this.srcRoute = src.route((...vals) => fn(...vals) && this.send(...vals));
+    },
+    cleanup: function() { this.srcRoute.end(); }
+  })});
+  let FnSrc = U.form({ name: 'FnSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    init: function(srcs, fn) {
+      if (U.isForm(this, FnSrc)) throw Error(`Don't init the parent FnSrc class!`);
       
-      if (flt && (item = flt(item)) === C.skip) return;
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
       
-      let itemIsDrop = U.isInspiredBy(item, Drop);
-      if (itemIsDrop && item.isDry()) return;
+      let vals = srcs.map(v => C.skip);
+      this.routes = srcs.map((src, ind) => src.route(val => {
+        vals[ind] = val;
+        let result = this.applyFn(fn, vals);
+        if (result !== C.skip) this.send(result);
+      }));
+    },
+    applyFn: C.noFn('applyFn', (fn, vals) => 'valToSend'),
+    cleanup: function() { for (let r of this.routes) r.end(); }
+  })});
+  FnSrc.Prm1 = U.form({ name: 'FnSrc.Prm1', has: { FnSrc }, props: (forms, Form) => ({
+    init: function(...args) {
+      this.lastResult = C.skip;
+      forms.FnSrc.init.call(this, ...args);
+    },
+    newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
+    applyFn: function(fn, vals) {
+      let result = fn(...vals);
+      return (result === this.lastResult) ? C.skip : (this.lastResult = result);
+    }
+  })});
+  FnSrc.PrmM = U.form({ name: 'FnSrc.PrmM', has: { FnSrc }, props: (forms, Form) => ({
+    applyFn: function(fn, vals) { return fn(...vals); }
+  })});
+  FnSrc.Tmp1 = U.form({ name: 'FnSrc.Tmp1', has: { FnSrc }, props: (forms, Form) => ({
+    init: function(...params) { this.lastResult = C.skip; forms.FnSrc.init.call(this, ...params); },
+    newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
+    applyFn: function(fn, vals) {
+      // Call function; ignore `C.skip`
+      let result = fn(...vals, this.lastResult);
+      if (result === this.lastResult) return C.skip;
       
-      let itemDryNozz = itemIsDrop && item.drier && item.drier.nozz;
-      if (itemDryNozz) {
-        let itemDryRoute = itemDryNozz.route(() => { this.tubRoutes.rem(itemDryRoute); this.drip(--this.count); });
-        this.tubRoutes.add(itemDryRoute);
+      // End any previous result; remember result and return it!
+      if (this.lastResult) this.lastResult.end();
+      return this.lastResult = result;
+    },
+    cleanup: function() { forms.FnSrc.cleanup.call(this); this.lastResult && this.lastResult.end(); }
+  })});
+  FnSrc.TmpM = U.form({ name: 'FnSrc.TmpM', has: { FnSrc }, props: (forms, Form) => ({
+    // Interestingly, FnSrc.TmpM behaves exactly like FnSrc.PrmM! `fn`
+    // is expected to return Tmp instances (or C.skip), but this class
+    // takes no responsibility for ending these Tmps - this is because
+    // there are no restrictions on how many Tmps may exist in parallel!
+    applyFn: function(fn, vals) { return fn(...vals); }
+  })});
+  
+  let Chooser = U.form({ name: 'Chooser', has: { Endable, Src }, props: (forms, Form) => ({
+    init: function(names, src=null) {
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
+      
+      if (U.hasForm(names, Src)) [ src, names ] = [ names, [ 'off', 'onn' ] ];
+      
+      this.activeSrcName = names[0];
+      this.srcs = names.toObj(n => [ n, MemSrc.Tmp1() ]);
+      this.srcs[this.activeSrcName].retain(Tmp());
+      
+      if (src) {
+        if (names.count() !== 2) throw Error(`Chooser requires exactly 2 names when used with a Src; got ${names.count()}: ${names.join(', ')}`);
+        let [ nOff, nOnn ] = names;
+        this.srcRoute = Scope(src, (tmp, dep) => {
+          
+          // Consider `Chooser(src); src.send(Tmp()); src.send(Tmp());`.
+          // In this situation a 2nd Tmp is sent before the 1st one
+          // expires. This means that `this.activeSrcName` will not
+          // toggle to "off", but rather remain the same, for the
+          // upcoming call `this.choose(nOnn, tmp)`. But because
+          // `Chooser.prototype.choose` ignores any duplicate choices,
+          // the newly retained Tmp will be completely ignored, and
+          // never be produced external to the Chooser. For this reason
+          // if we're already in an "onn" state and we are routed
+          // another Tmp we first toggle to "off" before choosing "onn"
+          // once again.
+          if (this.activeSrcName === nOnn) {
+            
+            // Ignore duplicate values
+            if (this.srcs[this.activeSrcName].val === tmp) return;
+            
+            // Toggle off so that this new value can retrigger onn
+            this.choose(nOff);
+            
+          }
+          
+          this.choose(nOnn, tmp);
+          dep(() => this.choose(nOff));
+          
+        });
       }
       
-      this.drip(++this.count);
-    }));
-  },
-  newRoute: function(routeFn) { routeFn(this.count); },
-  onceDry: function() { for (let tr of this.tubRoutes) tr.dry(); }
-})});
-let CondNozz = U.inspire({ name: 'CondNozz', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-  init: function(nozzesObj, fn, initial=null) {
-    insp.Drop.init.call(this);
-    insp.Nozz.init.call(this);
-    this.fn = fn;
-    this.curVals = initial || nozzesObj.map(v => C.skip);
-    this.nozzRoutes = nozzesObj.toArr((nozz, k) => nozz.route(val => {
-      // Check for duplicate value. Objects can't be duplicates.
-      //if (!U.isType(val, Object) && this.curVals[k] === val) return;
-      this.curVals[k] = val;
-      this.reevaluate();
-    }));
-    
-    // Value is initially a dry Drop
-    this.drop = null;
-    
-    this.reevaluate();
-  },
-  newRoute: function(routeFn) { if (this.drop) routeFn(this.drop); },
-  reevaluate: function() {
-    let result = this.fn(this.curVals, this);
-    if (this.drop && result !== C.skip) return; // The Drop is appropriately wet
-    if (!this.drop && result === C.skip) return; // The Drop is appropriately dry
-    
-    if (result !== C.skip) {
-      this.drop = Drop(defDrier());
-      this.drop.rawVals = this.curVals.map(v => v);
-      this.drop.result = result;
-      this.drip(this.drop);
-    } else {
-      this.drop.dry();
-      this.drop = null;
+    },
+    newRoute: function(fn) { if (this.onn()) fn(this.activeSrcName); },
+    choose: function(name, tmp=null) {
+      if (!this.srcs.has(name)) throw Error(`Invalid choice name: "${name}"`);
+      
+      // Prevent duplicate choices from producing multiple sends. If
+      // this isn't a duplicate send, immediately set the newly active
+      // name, to "lock the door behind us".
+      if (name === this.activeSrcName) return;
+      let prevSrcName = this.activeSrcName;
+      this.activeSrcName = name;
+      
+      // End any previous Src val
+      // Note that if `val` is ended externally, the `MemSrc.Tmp1` that
+      // stored it may have already set its own `val` to `null`. If this
+      // is the case, the `MemSrc.Tmp1` is already taken care of ending
+      // `val`, so all is good - we just need to check for nullness
+      this.srcs[prevSrcName].val && this.srcs[prevSrcName].val.end();
+      
+      // Send new val to newly chosen Src
+      this.srcs[this.activeSrcName].retain(tmp || Tmp());
+      
+      // The Chooser itself also sends the currently active name
+      this.send(this.activeSrcName);
+    },
+    cleanup: function() {
+      if (this.srcRoute) this.srcRoute.end();
+      this.srcs[this.activeSrcName].val.end();
     }
-  },
-  dryContents: function() {
-    if (!this.drop) return;
-    this.drop.dry();
-    this.drop = null;
-  },
-  onceDry: function() {
-    for (let r of this.nozzRoutes) r.dry();
-  }
-})});
-let Scope = U.inspire({ name: 'Scope', insps: { Drop }, methods: (insp, Insp) => ({
-  
-  $addDep: (deps, dep) => { if (dep && dep.isWet()) deps.add(dep); return dep; },
-  
-  init: function(nozz, fn) {
+  })});
+  let Scope = U.form({ name: 'Scope', has: { Tmp }, props: (forms, Form) => ({
+    init: function(src, fn) {
+      
+      forms.Tmp.init.call(this);
+      this.fn = fn;
+      this.srcRoute = src.route(tmp => {
+        
+        if (!U.hasForm(tmp, Tmp)) throw Error(`Scope expects Tmp - got ${U.getFormName(tmp)}`);
+        if (tmp.off()) return;
+        
+        // Define `addDep` and `addDep.scp` to enable nice shorthand
+        let deps = Set();
+        let addDep = dep => {
+          
+          // Allow raw functions; wrap them in `Endable`
+          if (U.isForm(dep, Function)) dep = Endable(dep);
+          
+          if (deps.has(dep)) return; // Ignore duplicates
+          if (dep.off()) return; // Ignore any inactive Deps
+          
+          // `deps` no longer existing requires all Deps to end
+          if (!deps) return dep.end();
+          
+          if (U.hasForm(dep, Tmp)) {
+            // Note `deps` falsiness check; `deps` may be set to `null`
+            let remDep = dep.route(() => deps && (deps.rem(dep), deps.rem(remDep)));
+            deps.add(remDep);
+          }
+          
+          deps.add(dep);
+          
+          return dep;
+          
+        };
+        addDep.scp = (...args) => addDep(this.subScope(...args));
+        
+        // If either `tmp` or this Scope ends, all existing dependencies
+        // end as well. This relationship is itself a dependency
+        let depsEndTmp = TmpAll([ this, tmp ]);
+        depsEndTmp.endWith((...args) => { let deps0 = deps; deps = null; deps0.each(d => d.end(...args)); });
+        addDep(depsEndTmp);
+        
+        this.processTmp(tmp, addDep);
+        
+      });
+      
+    },
+    processTmp: function(tmp, dep) { this.fn(tmp, dep); },
+    subScope: function(...args) { return (0, this.constructor)(...args); },
+    cleanup: function() { this.srcRoute.end(); }
+  })});
+  let Slots = U.form({ name: 'Slots', props: (forms, Form) => ({
     
-    this.dryNozz = Funnel();
-    insp.Drop.init.call(this, { nozz: TubVal(null, this.dryNozz), isWet: () => !!this.fn });
+    $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { throw e.update(m => `Slot ${U.getFormName(v)} -> "${p}" failed: (${m})`); } },
+    init: function() {},
+    access: C.noFn('access', arg => {}),
+    seek: function(...args) {
+      let val = this;
+      for (let arg of args) val = U.isForm(val, Promise) ? val.then(v => Form.tryAccess(v, arg)) : Form.tryAccess(val, arg);
+      return val;
+    }
     
-    this.fn = fn;
-    this.nozzRoute = nozz.route(drop => {
-      
-      if (!U.isInspiredBy(drop, Drop)) throw Error(`Scope expects Drop - got ${U.nameOf(drop)}`);
-      if (drop.isDry()) return;
-      
-      // Allow shorthand adding of Deps and SubScopes
-      let deps = Set();
-      let addDep = Insp.addDep.bind(null, deps);
-      addDep.scp = (...args) => addDep(this.constructor.call(null, ...args));
-      
-      // Unscope if the Scope or Drop (assuming dryable Drop) dries
-      let dropUnscopedNozz = Funnel(this.dryNozz);
-      let drierNozz = drop.drier && drop.drier.has('nozz') && drop.drier.nozz;
-      if (drierNozz) dropUnscopedNozz.joinRoute(drierNozz);
-      deps.add(dropUnscopedNozz);
-      
-      // When Drop unscopes dry up all deps (Note: not the Drop itself!)
-      dropUnscopedNozz.route(() => { for (let dep of deps) dep.dry(); });
-      
-      this.fn(drop, addDep);
-      
-    });
-  },
-  onceDry: function() {
-    this.fn = null;
-    this.nozzRoute.dry();
-    this.dryNozz.drip();
-  }
-})});
+  })});
+  
+  return {
+    // Basic logic
+    Endable, Src, Tmp, TmpAll, TmpAny,
+    
+    // Higher level logic
+    MemSrc, FilterSrc, FnSrc, Chooser, Scope,
+    
+    // Utility
+    Slots
+  };
+  
+})();
 
-U.water = { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, CondNozz, Scope, defDrier };

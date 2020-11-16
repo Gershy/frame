@@ -1,194 +1,235 @@
-U.buildRoom({
-  name: 'record',
-  innerRooms: [],
-  build: (foundation) => {
-    
-    // Recs are data items with a number of properties, including relational properties
-    
-    // TODO: ==== CHANGES FOR ETHER ====
-    // 
-    // A Rec can be out of memory WHILE:
-    // true
-    //   && (1. no Routes on its value OR 2. its value won't change)
-    //   && (3. no Routes on relNozzes OR 4. relNozzes won't drip)
-    //   && (5. no Routes on drierNozz OR 6. Rec won't dry)
-    // 
-    // HINTERLANDS:
-    // 1. routes Rec value for Follow ("updRec")
-    // 2. only updates Rec values when its updated (LandsAbove will
-    //    never update value!)
-    // 3. never routes relNozzes
-    // 4. ^^
-    // 5. listens to all drierNozzes of freshly created Recs (to
-    //    determine when to remove them from "allRecs")
-    // 6. dries Recs only for "remRec" update (so Above is safe).
-    //    dries Huts when their Cpu dries (Huts won't be saved to Ether)
-    // 
-    // RECORD:
-    // 1. never Routes Rec values
-    // 2. never changes Rec values
-    // 3. never Routes relNozzes
-    // 4. drips relNozzes of MemberRecs when they join a GroupRec
-    // 5. routes DrierNozzes to dry GroupRec upon MemberRec drying
-    // 6. dries GroupRecs when any MemberRec dries
-    
-    let { Drop, Nozz, Funnel, TubVal, TubSet, TubDry, TubCnt, Scope, defDrier } = U.water;
-    
-    let RecTypes = U.inspire({ name: 'RecTypes', insps: {}, methods: (insp, Insp) => ({
-      init: function() { this.typeMap = {}; },
-      desc: function() { return 'RecTypes'; },
-      ensure: function(name, type) {
-        if (this.typeMap.has(name) && this.typeMap[name] === type)
-          throw Error(`Multiple instances of type "${name}"`);
-        this.typeMap[name] = type;
-      },
-      getType: function(name) {
-        return this.typeMap.has(name) ? this.typeMap[name] : (this.typeMap[name] = RecType(name, this));
-      },
-      getNextRecUid: function() { return null; },
-      getRecCls: function(name, mems, val) { return Rec; },
-      createRec: function(name, mems, val) {
-        let RecCls = this.getRecCls(name, mems, val);
-        return RecCls(this.getType(name), this.getNextRecUid(), mems, val);
+global.rooms.record = async foundation => {
+  
+  let { Endable, Src, MemSrc, Tmp, TmpAll, TmpAny, Scope } = U.logic;
+  
+  let RecTypes = U.form({ name: 'RecTypes', has: {}, props: (forms, Form) => ({
+    init: function() { this.typeMap = {}; },
+    desc: function() { return 'RecTypes'; },
+    ensure: function(name, type) {
+      if (this.typeMap.has(name) && this.typeMap[name] === type)
+        throw Error(`Multiple instances of type "${name}"`);
+      this.typeMap[name] = type;
+    },
+    getType: function(name) {
+      return this.typeMap.has(name) ? this.typeMap[name] : (this.typeMap[name] = RecType(name, this));
+    },
+    getNextRecUid: function() { return null; },
+    getRecCls: function(name, mems, val) { return Rec; },
+    createRec: function(name, mems, val) {
+      let RecCls = this.getRecCls(name, mems, val);
+      return RecCls(this.getType(name), this.getNextRecUid(), mems, val);
+    }
+  })});
+  let RecType = U.form({ name: 'RecType', has: {}, props: (forms, Form) => ({
+    init: function(name, types=RecTypes()) {
+      
+      if (!name.match(/^[a-z][a-zA-Z0-9]*[.][a-z][a-zA-Z0-9]*$/)) throw Error(`Invalid RecType name: ${name}`);
+      if (types.typeMap.has(name) && types.typeMap[name] === this) throw Error(`Multiple instances of type "${name}"`);
+      
+      this.name = name;
+      this.types = types;
+      
+      types.typeMap[name] = this;
+      
+      this.memberInfoSrc = MemSrc.PrmM();
+      this.terms = {};
+      this.memberInfoSrc.route(mi => { this.terms[mi.term] = mi; });
+      this.validators = [
+        (hut, type, value) => ({ valid: false, value: null })
+      ];
+      
+    },
+    updMems: function(recTypes) { /* { term1: recType1, term2: recType2, ... } */
+      
+      let newRecTypes = []; // Terms that have never been seen before
+      let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
+      
+      for (let [ term, recType ] of recTypes) {
+        let memInf = this.memberInfoSrc.vals.find(mi => mi.term === term).val;
+        let curRt = memInf ? memInf.recType : null;
+        
+        if (memInf && curRt && curRt !== recType && term.slice(-1) !== '?') {
+          throw Error(`RecType ${this.name} already has ${term}->${memInf.recType.name}; tried to supply ${term}->${recType.name}`);
+        }
+        
+        if (!memInf)      newRecTypes.push({ term, recType });
+        else if (!curRt)  defRecTypes.push({ memInf, recType });
       }
-    })});
-    let RecType = U.inspire({ name: 'RecType', insps: {}, methods: (insp, Insp) => ({
-      init: function(name, types=RecTypes()) {
-        
-        if (!name.match(/[a-z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*/))
-          throw Error(`Invalid RecType name: ${name}`);
-        
-        this.name = name;
-        this.types = types;
-        this.types.ensure(this.name, this);
-        
-        this.memberInfoNozz = TubSet(null, Nozz()); // TODO: A "TubMap" would serve this purpose better...
-        this.terms = {};
-        this.memberInfoNozz.route(mi => { this.terms[mi.term] = mi; });
-        
-      },
-      updMems: function(recTypes) {
-        
-        let newRecTypes = []; // Terms that have never been seen before
-        let defRecTypes = []; // RecTypes corresponding to Terms whose RecType was previously unknown
-        
-        recTypes.forEach((recType, term) => {
-          let findMemInf = this.memberInfoNozz.set.find(mi => mi.term === term);
-          let curRt = findMemInf ? findMemInf[0].recType : null;
-          
-          if (findMemInf && curRt && curRt !== recType) {
-            throw Error(`RecType ${this.name} already has ${term}->${findMemInf[0].recType.name}; tried to supply ${term}->${recType.name}`);
-          }
-          
-          if (!findMemInf) newRecTypes.push({ term, recType });
-          else if (!curRt) defRecTypes.push({ memInf: findMemInf[0], recType });
-        });
-        
-        for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
-        for (let nrt of newRecTypes) this.memberInfoNozz.nozz.drip(nrt);
-        
-      }
-    })});
-    let Rec = U.inspire({ name: 'Rec', insps: { Drop, Nozz }, methods: (insp, Insp) => ({
-      init: function(type, uid, mems={}, val=null) {
-        if (U.isType(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
-        
-        type.updMems(mems.map(m => m.type));
-        
-        insp.Drop.init.call(this, defDrier());
-        insp.Nozz.init.call(this);
-        
-        this.type = type;
-        this.uid = uid;
-        this.val = val;
-        this.mems = mems;
-        this.relNozzes = {};
-        
-        // Set us up to dry if any MemberRec dries
-        let dryMe = this.dry.bind(this);
-        this.memDryRoutes = Set(this.mems.toArr(m => m ? m.drierNozz() : C.skip)) . toArr(dn => dn.route(dryMe));
+      
+      for (let { memInf, recType } of defRecTypes) memInf.recType = recType;
+      for (let nrt of newRecTypes) this.memberInfoSrc.retain(nrt);
+      
+    }
+  })});
+  
+  let RecSrc = U.form({ name: 'RecSrc', has: { 'MemSrc.TmpM': MemSrc.TmpM }, methods: {} });
+  let Rec = U.form({ name: 'Rec', has: { Tmp }, props: (forms, Form) => ({
+    init: function(type, uid, mems={}, val=null) {
+      
+      if (U.isForm(mems, Array)) mems = mems.toObj(mem => [ mem.type.name, mem ]);
+      type.updMems(mems.map(m => m.type));
+      
+      forms.Tmp.init.call(this);
+      
+      this.type = type;
+      this.uid = uid;
+      this.mems = mems;
+      this.relSrcs = {};
+      this.relTermSrc = MemSrc.PrmM();
+      
+      this.valSrc = MemSrc.Prm1(val);
+      
+      // Set us up to dry if any MemberRec dries
+      this.allMemsTmp = TmpAll(this.mems.toArr(m => m || C.skip));
+      this.allMemsTmp.endWith(this); // If any Mem ends, we end
+      
+      try {
         
         // Inform all MemberRecs of this GroupRec
-        this.mems.forEach((m, t) => m.relNozz(this.type, t).nozz.drip(this));
+        for (let [ term, mem ] of this.mems) mem.relSrc(this.type, term).retain(this);
         
-      },
-      desc: function() { return `${this.type.name} @ ${this.uid}`; },
-      mem: function(termTail) {
-        if (termTail[0] !== '.') termTail = `.${termTail}`;
-        for (let term in this.mems) if (term.has(termTail)) return this.mems[term];
-        return null;
-      },
-      relNozz: function(recType, term = null) {
+      } catch(err) {
         
-        if (U.isType(recType, String)) recType = this.type.types.getType(recType);
+        // Constraints on relationships (e.g. TypeA can only have max 3
+        // recs related via TypeB) can be enforced by throwing errors
+        // upon receiving Recs from RecSrcs! E.g.:
+        // 
+        //      |     hut.relSrc('pfx.recType').route(rec => {
+        //      |       if (hut.relRecs('pfx.recType').count() > 3)
+        //      |         throw Error(`No more "pfx.recType" rels allowed!`);
+        //      |     });
+        // 
+        // The Error from such restrictions will wind up here. The Rec
+        // which violated the restriction needs to end immediately, and
+        // then the error can be thrown to implementing code.
         
-        if (term === null) {
-          
-          let findMemInf = recType.memberInfoNozz.set.find(mi => mi.recType === this.type);
-          let memInf = null;
-          if (!findMemInf) {
-            // TODO: What if somehow `this.type.name` is already a term
-            // for a different type?? Then we'd need to try another
-            // "made up" term, like `${this.type.name}/2` or something
-            // silly like that
-            recType.updMems({ [this.type.name]: this.type });
-            term = this.type.name;
-          } else {
-            term = findMemInf[0].term;
-          }
-          
-        }
+        this.end();
+        throw err;
         
-        if (!U.isType(term, String)) throw Error(`Invalid "term" of type ${U.nameOf(term)}`);
-        
-        let key = `${recType.name}/${term}`;
-        if (!this.relNozzes.has(key)) {
-          this.relNozzes[key] = TubSet(null, Nozz());
-          this.relNozzes[key].desc = `RelNozz: ${this.type.name} -> ${recType.name} (${term})`;
-        }
-        
-        return this.relNozzes[key];
-      },
-      relRecs: function(recType, term) { return this.relNozz(recType, term).set; },
-      relRec: function(recType, term) { for (let r of this.relNozz(recType, term).set) return r; return null; },
-      setVal: function(newVal) {
-        if (newVal !== this.val || U.isType(newVal, Object)) this.drip(this.val = newVal);
-        return this;
-      },
-      modVal: function(fn) { return this.setVal(fn(this.val)); },
-      dltVal: function(delta=null) {
-        // Note that if we have `rec.route(v => { ... })` and a drip
-        // occurs, `v` may not be the Rec's full value - to work with
-        // the full value one needs to consult `rec.val` at the time of
-        // the drip!
-        if (!delta || delta.isEmpty()) return;
-        this.val.gain(delta);
-        this.drip(delta);
-        return this;
-      },
-      newRoute: function(routeFn) { routeFn(this.val); },
-      onceDry: function() {
-        for (let memRoute of this.memDryRoutes) memRoute.dry();
-        this.relNozzes = {};
-        this.mems = {};
       }
-    })});
-    
-    let RecScope = U.inspire({ name: 'RecScope', insps: { Scope }, methods: (insp, Insp) => ({
-      init: function(...args) {
-        if (args.length === 3) {
-          let [ rec, term, fn ] = args;
-          insp.Scope.init.call(this, rec.relNozz(...term.split('/')), fn);
-        } else if (args.length === 2) {
-          let [ nozz, fn ] = args;
-          insp.Scope.init.call(this, nozz, fn);
+    },
+    desc: function() { return `${this.type.name} @ ${this.uid}`; },
+    mem: function(termTail) {
+      // TODO: This is ugly!
+      if (termTail[0] !== '.') termTail = `.${termTail}`;
+      for (let term in this.mems) if (term.has(termTail)) return this.mems[term];
+      return null;
+    },
+    getRecJurisdiction: function*() {
+      yield this;
+      for (let [ , mem ] of this.mems) yield* mem.getRecJurisdiction();
+    },
+    relSrc: function(recType, term=null) {
+      
+      // Allow RecType to be provided as a String
+      if (U.isForm(recType, String)) {
+        if (recType.has('/')) [ recType, term ] = recType.split('/');
+        recType = this.type.types.getType(recType);
+      }
+      
+      if (term === null) {
+        
+        // Guess the term if one wasn't given. We need to assume we only
+        // have a single RelSrc of type `recType`. Search memberInfo for
+        // RecType; if its been seen before use the existing term. If
+        // never seen before, use the type name as the term.
+        let memInf = recType.memberInfoSrc.vals.find(mi => mi.recType === this.type).val;
+        if (!memInf) {
+          // TODO: Theoretically `this.type.name` could already be a
+          // term. This isn't likely, as it would need to be the term
+          // for some RecType other than this (which is very odd), but
+          // it could happen. This conflict could be detected, and we
+          // could uniquify the term used (e.g. `${this.type.name/2}`).
+          // This could be very surprising for the implementing code!
+          recType.updMems({ [this.type.name]: this.type });
+          term = this.type.name;
         } else {
-          throw Error(`Expected 3 or 2 args; received ${args.length}`);
+          term = memInf.term;
+        }
+        
+      }
+      
+      if (!U.isForm(term, String)) throw Error(`Invalid "term" of type ${U.getFormName(term)}`);
+      
+      let key = `${recType.name}/${term}`;
+      if (!this.relSrcs.has(key)) {
+        this.relSrcs[key] = RecSrc();
+        this.relSrcs[key].desc = `RelSrc: ${this.type.name} -> ${recType.name} (${term})`;
+        this.relTermSrc.retain(key);
+      }
+      return this.relSrcs[key];
+      
+    },
+    relRecs: function(recType, term) { return this.relSrc(recType, term).vals; },
+    relRec: function(recType, term) { for (let r of this.relRecs(recType, term)) return r; return null; },
+    
+    getVal: function(param=null) {
+      if (!param) return this.valSrc.val;
+      
+      // Return the value of some member in breadth-first fashion. This
+      // is more memory intensive than depth-first, but the results are
+      // much more intuitive (for a complex GroupRec, it is much easier
+      // to understand how "far away" some indirect value is, than the
+      // depth-wise iteration order that would occur otherwise).
+      let mems = [ this ];
+      while (mems.count()) {
+        let layerMems = mems; mems = [];
+        for (let mem of layerMems) {
+          let val = mem.valSrc.val;
+          if (U.isForm(val, Object) && val.has(param)) return val[param];
+          mems.gain(mem.mems.toArr(m => m));
         }
       }
-    })});
+      return null;
+    },
     
-    return { RecTypes, RecType, Rec, RecScope };
+    setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
+    modVal: function(fn) { return this.setVal(fn(this.getVal())); },
+    objVal: function(delta=null) {
+      
+      // Note that when `someRec.valSrc.route(val => { ... })` sends
+      // there are two values available: first, `val` represents a
+      // *delta*; aka only any fields that have changed. Second, the
+      // complete value is always available via `someRec.getVal()`
+      
+      // Ignore any empty deltas
+      if (!delta || delta.isEmpty()) return;
+      
+      // Note that we manually set and send the val - this is so that
+      // the full val gets set first, and then only the delta is sent.
+      // This allows consuming code to detect that certain properties
+      // have not changed, which may allow unnecessary reactions to be
+      // avoided.
+      this.valSrc.val = { ...this.getVal(), ...delta };
+      this.valSrc.send(delta);
+      return this;
+      
+    },
     
-  }
-});
+    end: function() {
+      if (!forms.Tmp.end.call(this)) return false;
+      this.allMemsTmp.end();
+      this.relSrcs = {};
+      this.relTermSrc.end();
+      return true;
+    }
+    
+  })});
+  
+  let RecScope = U.form({ name: 'RecScope', has: { Scope }, props: (forms, Form) => ({
+    init: function(...args) {
+      if (args.count() === 3) {
+        let [ rec, term, fn ] = args;
+        forms.Scope.init.call(this, rec.relSrc(...term.split('/')), fn);
+      } else if (args.count() === 2) {
+        let [ src, fn ] = args;
+        forms.Scope.init.call(this, src, fn);
+      } else {
+        throw Error(`Expected 3 or 2 args; got ${args.length}`);
+      }
+    }
+  })});
+  
+  return { RecTypes, RecType, RecSrc, Rec, RecScope };
+  
+};
