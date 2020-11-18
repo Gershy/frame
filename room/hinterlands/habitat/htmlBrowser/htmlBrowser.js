@@ -167,7 +167,6 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
             20% { outline: solid 10px; }
             100% { outline: solid 2px; }
           }
-          
           html, body {
             position: absolute; left: 0; top: 0; width: 100%; height: 100%;
             margin: 0; padding: 0;
@@ -257,7 +256,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         `));
         
       }));
-      (foundation.getArg('deploy') === 'dev') && tmp.endWith(hut.roadSrc('html.multi').route(async ({ srcHut, msg, reply }) => {
+      if (foundation.getArg('deploy') === 'dev') tmp.endWith(hut.roadSrc('html.multi').route(async ({ srcHut, msg, reply }) => {
         
         let { num='4', w='400', h='400', textSize='100%' } = msg;
         

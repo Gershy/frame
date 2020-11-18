@@ -6,6 +6,11 @@
   let { Tmp, Src, MemSrc, FnSrc, Chooser, Scope, Range } = U.logic;
   
   let { Foundation, Real, Keep } = U.setup;
+  let nativeLibs = {};
+  let native = name => {
+    if (!nativeLibs.has(name)) nativeLibs[name] = require(name);
+    return nativeLibs[name];
+  };
   
   let FoundationNodejs = U.form({ name: 'FoundationNodejs', has: { Foundation }, props: (forms, Form) => ({
     
@@ -105,9 +110,9 @@
             else      rsv(null)
           }));
         },
-        getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts),
+        getPipe: (cmps, ...opts) => fs.createReadStream(path.join(...cmps), ...opts)
         
-      }))(require('path'), require('fs')),
+      }))(native('path'), native('fs')),
       $HoneyPotKeep: U.form({ name: 'HoneyPotKeep', has: { Keep }, props: (forms, Form) => ({
         init: function(data=[ 'honey', 'passwords', 'tokens', 'credentials', 'bitcoin', 'wallet' ]) { this.data = data; },
         access: function() { return this; },
@@ -273,19 +278,7 @@
         let fsType = await this.getFsType();
         if (fsType === 'letter') return Form.fs.getPipe(this.absPath);
         if (fsType === 'folder') {
-          
-          let content = await this.getContent();
-          return require('stream').Readable.from(JSON.stringify(content));
-          
-          // return new Proxy({}, {
-          //   get: (target, prop, receiver) => {
-          //     
-          //     
-          //     
-          //   }
-          // });
-          // 
-          // return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
+          return native('stream').Readable.from(JSON.stringify(await this.getContent()));
         }
         return null;
         
@@ -1047,11 +1040,11 @@
             // machine. Note this will only find addresses which can be
             // reversed from ips through dns methods.
             
-            let externalIps = require('os').networkInterfaces()
+            let externalIps = native('os').networkInterfaces()
               .toArr(v => v).flat()                       // Flat list of all interfaces
               .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces
             
-            let dnsResolver = new (require('dns').promises.Resolver)();
+            let dnsResolver = new (native('dns').promises.Resolver)();
             dnsResolver.setServers(this.getArg('dnsServers'));
             
             let potentialHosts = (await Promise.allArr(externalIps.map(async ip => {
@@ -1282,7 +1275,7 @@
       return newSpoofyRoad;
       
     },
-    createHttpServer: async function({ host, port, keyPair=null, selfSign=null }) {
+    createHttpServer: async function({ host, port, compress=[ 'deflate', 'gzip' ], keyPair=null, selfSign=null }) {
       
       if (!port) port = keyPair ? 443 : 80;
       
@@ -1293,32 +1286,74 @@
         let httpCode = 200;
         if (U.hasForm(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
-        let acceptEncoding = (req ? req.headers : res.reqHeaders)['accept-encoding'] || '';
-        if (U.isForm(acceptEncoding, Array)) acceptEncoding = acceptEncoding.join(',');
-        let encodeOptions = acceptEncoding.split(',').map(v => v.trim() || C.skip);
+        let acceptEncoding = (req ? req.headers : res.reqHeaders)['accept-encoding'] || [];
         
-        if (U.hasForm(msg, Keep)) { // File!
+        // Aggregate multiple "Accept-Encoding" headers
+        if (U.isForm(acceptEncoding, Array)) acceptEncoding = acceptEncoding.join(',');
+        
+        // Sanitize encoding options
+        let encodeOptions = acceptEncoding.split(',').map(v => v.trim() || C.skip).slice(0, 4);
+        
+        // Find a compression option which is supported by both us and this client
+        let encodeOption = compress ? compress.find(v => encodeOptions.has(v)).val : null;
+        
+        console.log(`Reply to ${req ? req.url : '/'} with ${encodeOption}'d data`);
+        
+        if (U.hasForm(msg, Keep)) { // Stream files via `pipe`
           
-          let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
           res.writeHead(httpCode, {
-            'Content-Type': ct || 'application/octet-stream',
-            ...(cl ? { 'Content-Length': cl } : {})
+            'Content-Type': (await msg.getContentType()) || 'application/octet-stream',
+            ...(encodeOption ? { 'Content-Encoding': encodeOption } : {}),
           });
-          (await msg.getPipe()).pipe(res);
           
-        } else if (msg === null || U.isForm(msg, Object, Array)) { // Json!
+          if (encodeOption === null) {
+            
+            (await msg.getPipe()).pipe(res);
+            
+          } else {
+            
+            // Note we always compress no matter how small the resource
+            // is. Chances are any Keep's content will be large enough
+            // to merit compression. TODO: Look out for applications
+            // which transfer large numbers of tiny files!
+            let compressFn = native('zlib')[{ deflate: 'createDeflate', gzip: 'createGzip' }[encodeOption]];
+            await Promise(async (rsv, rjc) => {
+              native('stream').pipeline(await msg.getPipe(), compressFn(), res, err => err ? rjc(err) : rsv());
+            });
+            
+          }
           
-          msg = JSON.stringify(msg);
-          res.writeHead(httpCode, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(msg) });
-          res.end(msg);
+        } else { // Handle json and other immediately-available responses
           
-        } else {
+          let contentType = null;
           
-          msg = msg.toString();
-          let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
-          let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
-          let ct = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
-          res.writeHead(httpCode, { 'Content-Type': ct, 'Content-Length': Buffer.byteLength(msg) });
+          if (msg === null || U.isForm(msg, Object, Array)) {
+            
+            // Interpret `null`, Object and Array as json responses
+            contentType = 'application/json';
+            msg = JSON.stringify(msg);
+            
+          } else {
+            
+            // Other responses depend on the Accept header, defaulting
+            // to "application/octet-stream"
+            let accept = ({ req }).seek([ 'req', 'headers', 'accept' ]).val || '*/*';
+            let [ t1='*', t2='*' ] = accept.split(/[,;]/)[0].split('/');
+            contentType = (t1 !== '*' && t2 !== '*') ? `${t1}/${t2}` : 'application/octet-stream';
+            msg = msg.toString();
+            
+          }
+          
+          let doEncode = encodeOption && msg.count() > 75;
+          if (doEncode) msg = await Promise((rsv, rjc) => {
+            native('zlib')[encodeOption](msg, (err, buff) => err ? rjc(err) : rsv(buff));
+          });
+          
+          res.writeHead(httpCode, {
+            'Content-Type': contentType,
+            'Content-Length': Buffer.byteLength(msg),
+            ...(doEncode ? { 'Content-Encoding': encodeOption } : {})
+          });
           res.end(msg);
           
         }
@@ -1351,9 +1386,9 @@
           if (body) lines.add(...body.split('\n'), '');
           
           console.log([
-            '<<<<< BEGIN HTTP <<<<<',
+            '<<<<< BEGIN HTTP REQUEST <<<<<',
             ...lines.map(ln => `  ${ln}`),
-            '>>>>>> END HTTP >>>>>>'
+            '>>>>>> END HTTP REQUEST >>>>>>'
           ].join('\n'));
           
         }
@@ -1510,8 +1545,8 @@
       };
       
       let httpServer = !keyPair
-        ? require('http').createServer(serverFn)
-        : require('https').createServer({
+        ? native('http').createServer(serverFn)
+        : native('https').createServer({
             ...keyPair.slice('key', 'cert'),
             ...(selfSign ? { ca: [ selfSign ] } : {}),
             requestCert: false,
@@ -1574,7 +1609,7 @@
         
         // Now we have the headers - send upgrade response
         soktState.status = 'upgrading';
-        let hash = require('crypto').createHash('sha1');
+        let hash = native('crypto').createHash('sha1');
         hash.end(`${upgradeReq.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`);
         
         sokt.write([ // This is fire-and-forget
@@ -1618,8 +1653,8 @@
       };
       
       let soktServer = !keyPair
-        ? require('net').createServer(serverFn)
-        : require('tls').createServer({
+        ? native('net').createServer(serverFn)
+        : native('tls').createServer({
             ...keyPair.slice('key', 'cert'),
             ...(selfSign ? { ca: [ selfSign ] } : {}),
             requestCert: false,

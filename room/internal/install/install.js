@@ -22,7 +22,7 @@ global.rooms['internal.install'] = async foundation => {
         
         let { pcs=null } = msg;
         if (U.isForm(pcs, String)) pcs = pcs.split(/[,/]/);
-        if (!U.isForm(pcs, Array)) reply(Error(`"pcs" should be Array (or String); got ${U.nameOf(pcs)}`));
+        if (!U.isForm(pcs, Array)) reply(Error(`"pcs" should be Array (or String); got ${U.getFormName(pcs)}`));
         if (pcs.find(v => !U.isForm(v, String)).found) reply(Error(`"pcs" should contain only strings`));
         
         let keep = foundation.seek('keep', 'fileSystem', ...pcs);
