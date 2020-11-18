@@ -109,164 +109,178 @@
         // https://css-tricks.com/almanac/properties/c/contain/
         
         let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout } = U.setup;
-        let renderClassMap = Map();
         let getRenderClass = layout => {
-          let LayoutCls = layout.constructor;
-          if (!renderClassMap.has(LayoutCls)) throw Error(`Invalid render class: "${LayoutCls.name}"`);
-          return renderClassMap.get(LayoutCls);
+          let LayoutForm = U.getForm(layout);
+          if (!renderFormMap.has(LayoutForm)) throw Error(`Invalid render class: "${LayoutCls.name}"`);
+          return renderFormMap.get(LayoutForm);
         };
-        renderClassMap.set(Axis1DLayout, (layout, hCss, domNode) => {
-          
-          if (![ 'relative', 'absolute' ].includes(domNode.style.position)) domNode.style.position = 'relative';
-          
-          if ([ null, 'focus', 'distribute' ].includes(layout.cuts)) {
+        let renderFormMap = Map([
+          [ Axis1DLayout,       (layout, hCss, domNode) => {
             
-            domNode.style.display = 'flex';
-            domNode.style.flexDirection = (layout.axis === 'x')
-              ? (layout.flow === '+' ? 'row' : 'row-reverse')
-              : (layout.flow === '+' ? 'column' : 'column-reverse');
-            domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
+            if (![ 'relative', 'absolute' ].includes(domNode.style.position)) domNode.style.position = 'relative';
             
-            domNode.style.justifyContent = {
-              stack: 'auto',
-              focus: 'center',
-              distribute: 'auto'
-            }[layout.cuts || 'stack']; // null -> 'stack'
+            if ([ null, 'focus', 'distribute' ].includes(layout.cuts)) {
+              
+              domNode.style.display = 'flex';
+              domNode.style.flexDirection = (layout.axis === 'x')
+                ? (layout.flow === '+' ? 'row' : 'row-reverse')
+                : (layout.flow === '+' ? 'column' : 'column-reverse');
+              domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
+              
+              domNode.style.justifyContent = {
+                stack: 'auto',
+                focus: 'center',
+                distribute: 'auto'
+              }[layout.cuts || 'stack']; // null -> 'stack'
+              
+            } else if (U.isForm(layout, Array)) {
+              
+              // Children are sized using the specified "cuts"
+              let values = [];
+              
+            }
             
-          } else if (U.isForm(layout, Array)) {
+          }],
+          [ Axis1DLayout.Item,  (layout, hCss, domNode) => {
             
-            // Children are sized using the specified "cuts"
-            let values = [];
+            if (layout.par.cuts === null) {
+              
+              // Children determine their own size in the axis direction, and have 100% perp direction
+              
+            } else if (layout.par.cuts === 'distribute') {
+              
+              // Children are all the same size
+              domNode.style.flexGrow = '1';
+              domNode.style.flexShrink = '1';
+              domNode.style.flexBasis = '0';
+              domNode.style[layout.par.axis === 'x' ? 'height' : 'width'] = '100%';
+              
+            } else if (U.isForm(layout.par.cuts, Array)) {
+              
+              // Children are sized using the specified "cuts"
+              console.log(layout.params, domNode);
+              let cutInd = layout.params[0];
+              let offCuts = layout.par.cuts.slice(0, cutInd);
+              
+              let off = offCuts.length ? `calc(${offCuts.join(' + ')})` : '0';
+              let ext = (cutInd <= (layout.par.cuts.length - 1))
+                ? layout.par.cuts[cutInd]
+                : `calc(100% - ${layout.par.cuts.join(' - ')})`;
+              
+              domNode.style.position = 'absolute';
+              
+              let dir = `${layout.par.flow}${layout.par.axis}`
+              if (dir === '+x') domNode.style.gain({ left: off, width: ext, height: '100%' });
+              if (dir === '-x') domNode.style.gain({ right: off, width: ext, height: '100%' });
+              if (dir === '+y') domNode.style.gain({ top: off, width: '100%', height: ext });
+              if (dir === '-y') domNode.style.gain({ bottom: off, width: '100%', height: ext });
+              
+            }
             
-          }
-          
-        });
-        renderClassMap.set(Axis1DLayout.Item, (layout, hCss, domNode) => {
-          
-          if (layout.par.cuts === null) {
+          }],
+          [ FreeLayout,         (layout, hCss, domNode) => {
             
-            // Children determine their own size in the axis direction, and have 100% perp direction
-            
-          } else if (layout.par.cuts === 'distribute') {
-            
-            // Children are all the same size
-            domNode.style.flexGrow = '1';
-            domNode.style.flexShrink = '1';
-            domNode.style.flexBasis = '0';
-            domNode.style[layout.par.axis === 'x' ? 'height' : 'width'] = '100%';
-            
-          } else if (U.isForm(layout.par.cuts, Array)) {
-            
-            // Children are sized using the specified "cuts"
-            let cutInd = layout.params[0];
-            let offCuts = layout.par.cuts.slice(0, cutInd);
-            
-            let off = offCuts.length ? `calc(${offCuts.join(' + ')})` : '0';
-            let ext = (cutInd <= (layout.par.cuts.length - 1))
-              ? layout.par.cuts[cutInd]
-              : `calc(100% - ${layout.par.cuts.join(' - ')})`;
+            // TODO: Decouple w/h from FreeLayout!! Should use SizedLayout
+            // for this instead - BUT how to center a child, without
+            // altering the parent, when child size is unknown??
             
             domNode.style.position = 'absolute';
+            if (layout.w) domNode.style.width = layout.w;
+            if (layout.h) domNode.style.height = layout.h;
+            if (layout.mode === 'center') {
+              let { x, y } = layout;
+              if (x === '0') x = null;
+              if (y === '0') y = null;
+              domNode.style.left = `calc(50% - ${layout.w} * 0.5${x ? ' + ' + x : ''})`;
+              domNode.style.top = `calc(50% - ${layout.h} * 0.5${y ? ' + ' + y : ''})`;
+            } else if (layout.mode === 'tl') {
+              let { x, y } = layout;
+              if (x) domNode.style.left = x || '0';
+              if (y) domNode.style.top = y || '0';
+            } else if (layout.mode === 'tr') {
+              let { x, y } = layout;
+              if (x) domNode.style.right = x || '0';
+              if (y) domNode.style.top = y || '0';
+            } else {
+              throw Error(`Unsupported mode: "${layout.mode}"`);
+            }
             
-            let dir = `${layout.par.flow}${layout.par.axis}`
-            if (dir === '+x') domNode.style.gain({ left: off, width: ext, height: '100%' });
-            if (dir === '-x') domNode.style.gain({ right: off, width: ext, height: '100%' });
-            if (dir === '+y') domNode.style.gain({ top: off, width: '100%', height: ext });
-            if (dir === '-y') domNode.style.gain({ bottom: off, width: '100%', height: ext });
+          }],
+          [ SizedLayout,        (layout, hCss, domNode) => {
             
-          }
-          
-        });
-        renderClassMap.set(FreeLayout, (layout, hCss, domNode) => {
-          
-          // TODO: Decouple w/h from FreeLayout!! Should use SizedLayout
-          // for this instead - BUT how to center a child, without
-          // altering the parent, when child size is unknown??
-          
-          domNode.style.position = 'absolute';
-          if (layout.w) domNode.style.width = layout.w;
-          if (layout.h) domNode.style.height = layout.h;
-          if (layout.mode === 'center') {
-            domNode.style.left = `calc(50% - ${layout.w} * 0.5 + ${layout.x || 0})`;
-            domNode.style.top = `calc(50% - ${layout.h} * 0.5 + ${layout.y || 0})`;
-          } else {
-            throw Error(`Unsupported mode: "${layout.mode}"`);
-          }
-          
-        });
-        renderClassMap.set(SizedLayout, (layout, hCss, domNode) => {
-          
-          let { w, h, ratio } = layout;
-          if (ratio !== null) {
-            let [ amt, unit ] = ((w !== null) ? w : h).match(/([0-9]*)(.*)/).slice(1);
-            if (w !== null) h = `${parseInt(amt) / ratio}${unit}`;
-            if (h !== null) w = `${parseInt(amt) * ratio}${unit}`;
-            domNode.style.width = w;
-            domNode.style.paddingBottom = h;
-          } else {
-            if (w !== null) domNode.style.width = w;
-            if (h !== null) domNode.style.height = h;
-          }
-          
-        });
-        renderClassMap.set(ScrollLayout, (layout, hCss, domNode) => {
-          let { x, y } = layout;
-          if (x === 'auto') domNode.style.overflowX = 'auto';
-          if (x === 'show') domNode.style.overflowX = 'scroll';
-          if (y === 'auto') domNode.style.overflowY = 'auto';
-          if (y === 'show') domNode.style.overflowY = 'scroll';
-        });
-        renderClassMap.set(ScrollLayout.Item, (layout, hCss, domNode) => {
-          let { x, y } = layout.par;
-          if (x !== 'none' || y !== 'none') domNode.style.scrollBehavior = 'smooth';
-        });
-        renderClassMap.set(TextLayout, (layout, hCss, domNode) => {
-          domNode.style.gain({
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            overflow: 'hidden', textOverflow: 'ellipsis'
-          });
-          
-          // Apply font size
-          if (layout.size) domNode.style.fontSize = layout.size;
-          
-          // Apply text
-          domNode.textContent = layout.text;
-          
-          // Apply text alignment; best results occur when flex and classic "text-align' props are used
-          domNode.style.alignItems = { fwd: 'flex-start', bak: 'flex-end', mid: 'center', all: 'stretch' }[layout.align || 'mid'];
-          domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center', all: 'justify' }[layout.align || 'mid'];
-          
-          if (layout.gap) {
-            domNode.style.boxSizing = 'border-box';
-            domNode.style.padding = layout.gap;
-          }
-        });
-        renderClassMap.set(TextInputLayout, (layout, hCss, domNode) => {
-          if (layout.multiline) {
+            let { w, h, ratio } = layout;
+            if (ratio !== null) {
+              let [ amt, unit ] = ((w !== null) ? w : h).match(/([0-9]*)(.*)/).slice(1);
+              if (w !== null) h = `${parseInt(amt) / ratio}${unit}`;
+              if (h !== null) w = `${parseInt(amt) * ratio}${unit}`;
+              domNode.style.width = w;
+              domNode.style.paddingBottom = h;
+            } else {
+              if (w !== null) domNode.style.width = w;
+              if (h !== null) domNode.style.height = h;
+            }
             
-          } else {
+          }],
+          [ ScrollLayout,       (layout, hCss, domNode) => {
+            let { x, y } = layout;
+            if (x === 'auto') domNode.style.overflowX = 'auto';
+            if (x === 'show') domNode.style.overflowX = 'scroll';
+            if (y === 'auto') domNode.style.overflowY = 'auto';
+            if (y === 'show') domNode.style.overflowY = 'scroll';
+          }],
+          [ ScrollLayout.Item,  (layout, hCss, domNode) => {
+            let { x, y } = layout.par;
+            if (x !== 'none' || y !== 'none') domNode.style.scrollBehavior = 'smooth';
+          }],
+          [ TextLayout,         (layout, hCss, domNode) => {
+            domNode.style.gain({
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
+              overflow: 'hidden', textOverflow: 'ellipsis'
+            });
             
-          }
-          if (layout.size) domNode.style.fontSize = layout.size;
-          if (layout.align) domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center' }[layout.align];
-          if (layout.gap) {
-            domNode.style.boxSizing = 'border-box';
-            domNode.style.padding = layout.gap;
-          }
-        });
-        renderClassMap.set(ImageLayout, (layout, hCss, domNode) => {
-          
-          domNode.style.backgroundImage = `url('${layout.image.getUrl()}')`;
-          domNode.style.backgroundSize = ({
-            useMinAxis: 'contain',
-            useMaxAxis: 'cover',
-            stretch: '100%'
-          })[layout.mode] || layout.mode;
-          domNode.style.backgroundRepeat = 'no-repeat';
-          domNode.style.backgroundPosition = 'center';
-          domNode.style.pointerEvents = 'none';
-          
-        });
+            // Apply font size
+            if (layout.size) domNode.style.fontSize = layout.size;
+            
+            // Apply text
+            domNode.textContent = layout.text;
+            
+            // Apply text alignment; best results occur when flex and classic "text-align' props are used
+            domNode.style.alignItems = { fwd: 'flex-start', bak: 'flex-end', mid: 'center', all: 'stretch' }[layout.align || 'mid'];
+            domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center', all: 'justify' }[layout.align || 'mid'];
+            
+            if (layout.gap) {
+              domNode.style.boxSizing = 'border-box';
+              domNode.style.padding = layout.gap;
+            }
+          }],
+          [ TextInputLayout,    (layout, hCss, domNode) => {
+            if (layout.multiline) {
+              
+            } else {
+              
+            }
+            
+            if (layout.size) domNode.style.fontSize = layout.size;
+            if (layout.align) domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center' }[layout.align];
+            if (layout.gap) {
+              domNode.style.boxSizing = 'border-box';
+              domNode.style.padding = layout.gap;
+            }
+          }],
+          [ ImageLayout,        (layout, hCss, domNode) => {
+            
+            domNode.style.backgroundImage = `url('${layout.image.getUrl()}')`;
+            domNode.style.backgroundSize = ({
+              useMinAxis: 'contain',
+              useMaxAxis: 'cover',
+              stretch: '100%'
+            })[layout.mode] || layout.mode;
+            domNode.style.backgroundRepeat = 'no-repeat';
+            domNode.style.backgroundPosition = 'center';
+            domNode.style.pointerEvents = 'none';
+            
+          }]
+        ]);
         
         let applyDecalsStack = (decalsStack, hCss, domNode) => {
           
@@ -279,6 +293,9 @@
                 domNode.style.backgroundColor = decals[k];
               } else if (k === 'textColour') {
                 domNode.style.color = decals[k];
+                
+                console.log(`Apply ${decals[k]} to`, domNode);
+                
               } else if (k === 'border') {
                 let { ext, colour } = decals[k];
                 domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
@@ -331,7 +348,7 @@
           name: 'HtmlCssJsTech',
           createTechNode: real => {
             let domNode = document.createElement('div');
-            if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z]+)([a-zA-Z])?/g, (f, p, c) => c ? c.upper() : ''));
+            if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z0-9]+)([a-zA-Z0-9])?/g, (f, p, c) => c ? c.upper() : ''));
             return domNode;
           },
           render: (real, domNode) => {
@@ -441,7 +458,7 @@
               width: '100%', height: '100%', left: '0', top: '0',
               padding: 'inherit', border: 'none',
               backgroundColor: 'transparent',
-              textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit'
+              textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit', color: 'inherit'
             });
             input.value = initVal;
             

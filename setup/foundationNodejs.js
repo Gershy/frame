@@ -272,7 +272,21 @@
         
         let fsType = await this.getFsType();
         if (fsType === 'letter') return Form.fs.getPipe(this.absPath);
-        if (fsType === 'folder') return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
+        if (fsType === 'folder') {
+          
+          let content = await this.getContent();
+          return require('stream').Readable.from(JSON.stringify(content));
+          
+          // return new Proxy({}, {
+          //   get: (target, prop, receiver) => {
+          //     
+          //     
+          //     
+          //   }
+          // });
+          // 
+          // return { pipe: async res => res.end(JSON.stringify(await this.getContent())) };
+        }
         return null;
         
       }
@@ -470,7 +484,7 @@
             if (thing2 !== 'yo') throw Error(`Invalid "thing2"`);
             if (thing3 !== 'ha') throw Error(`Invalid "thing3"`);
             if (thing4 !== '69') throw Error(`Invalid "thing4"`);
-            if (more.toArr(v => v).count()) throw Error(`allObj resulted in unexpected values`);
+            if (!more.isEmpty()) throw Error(`allObj resulted in unexpected values`);
           },
           
           async m => { // Ending a Temp changes the results of getter methods
@@ -1151,6 +1165,8 @@
         
       })();
       
+      if (term === 'heartMs') return val || (30 * 1000);
+      
       if (term === 'argKeep') {
         
         if (U.isForm(val, String)) val = val.split(/[,/]/);
@@ -1277,6 +1293,10 @@
         let httpCode = 200;
         if (U.hasForm(msg, Error)) [ httpCode, msg ] = [ 400, { command: 'error', msg: msg.message } ];
         
+        let acceptEncoding = (req ? req.headers : res.reqHeaders)['accept-encoding'] || '';
+        if (U.isForm(acceptEncoding, Array)) acceptEncoding = acceptEncoding.join(',');
+        let encodeOptions = acceptEncoding.split(',').map(v => v.trim() || C.skip);
+        
         if (U.hasForm(msg, Keep)) { // File!
           
           let [ ct, cl ] = await Promise.allArr([ msg.getContentType(), msg.getContentByteLength() ]);
@@ -1318,10 +1338,30 @@
           req.on('error', err => reject(Error(`Client abandoned http request (err.message)`)));
         });
         
+        if (this.getArg('debug').has('httpRaw')) {
+          
+          let lines = [];
+          lines.add(`GET ${req.url} HTTP/${req.httpVersion}`);
+          for (let [ k, vals ] of req.headers) {
+            if (!U.isForm(vals, Array)) vals = [ vals ];
+            let headerName = k.replace(/(^|-)[a-z]/g, v => v.upper());
+            for (let val of vals) lines.add(`${headerName}: ${val}`);
+          }
+          lines.add('');
+          if (body) lines.add(...body.split('\n'), '');
+          
+          console.log([
+            '<<<<< BEGIN HTTP <<<<<',
+            ...lines.map(ln => `  ${ln}`),
+            '>>>>>> END HTTP >>>>>>'
+          ].join('\n'));
+          
+        }
+        
         // TODO: Depending on how the handshake works it may be possible
         // for `res` to end at absolutely any moment. While receiving
         // chunks these errors will be handled nicely, since for errors
-        // occuring early on event cleanup is extremely straightforward.
+        // occuring early-on event cleanup is extremely straightforward.
         // But `res` can end at any time (or can it??), including when
         // it's queued up in a list of longpolls. That could be really
         // awkward, since a critical sync could be transferred using an
@@ -1423,6 +1463,7 @@
         // the client how many polls we are allowed to hold at once??
         if (road.waitTells.isEmpty()) {
           
+          res.reqHeaders = req.headers; // TODO: Should more information be provided?
           road.waitResps.push(res);
           
         } else {
@@ -1481,7 +1522,6 @@
       
       // Return the Server as a Tmp which ends with the native server
       let server = Tmp(() => httpServer.close());
-      
       server.desc = `HTTP @ ${host}:${port}`;
       server.decorateRoad = road => {
         road.knownHosts = Set();

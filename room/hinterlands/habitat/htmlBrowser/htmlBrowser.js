@@ -41,7 +41,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         let { textSize='100%' } = msg;
         reply(U.multilineString(`
           <!doctype html>
-          <html>
+          <html spellcheck="false">
             <head>
               <title>${name.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -163,9 +163,9 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         
         reply(U.multilineString(`
           @keyframes smoothFocus {
-            0% { outline: rgba(0, 0, 0, 0) solid 0px; }
-            20% { outline: rgba(0, 0, 0, 0.4) solid 10px; }
-            100% { outline: rgba(0, 0, 0, 0.2) solid 2px; }
+            0% { outline: solid 0px; }
+            20% { outline: solid 10px; }
+            100% { outline: solid 2px; }
           }
           
           html, body {
@@ -181,6 +181,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
             animation-iteration-count: 1;
             animation-fill-mode: forwards;
           }
+          ::placeholder { color: inherit; opacity: 0.6; }
         `));
         
       }));

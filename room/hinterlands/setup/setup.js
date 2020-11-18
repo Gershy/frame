@@ -13,12 +13,11 @@ global.rooms['hinterlands.setup'] = async foundation => {
   
   return U.form({ name: 'Setup', props: (forms, Form) => ({
     
-    // Setup consolidates a bunch of boilerplate configuration in
-    // one place. The main functions are to:
+    // Setup consolidates a bunch of boilerplate configuration in one
+    // place. The main functions are to:
     // - Define debug options
     // - Enumerate hosting options
     // - Enumerate what habitats this app supports
-    //    (TODO: At the moment every habitat runs on every host...?)
     //    (TODO: Once hut.addServer(...) is available, servers should
     //    allow a "default road term" to be defined to replace
     //    "syncInit" - this would mean many habitats could all run on

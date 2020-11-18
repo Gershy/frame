@@ -433,7 +433,7 @@ let U = global.U = {
     return (fact instanceof (FormOrCls.Native || FormOrCls));
     
   },
-  getForm: f => f.constructor || null,
+  getForm: f => (f != null) ? f.constructor : null,
   getFormName: f => U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
   
   multilineString: str => {

@@ -120,7 +120,7 @@ global.rooms.hinterlands = async foundation => {
     },
     
     // TODO: `heartMs` should possibly be handled by the server.
-    init: function(foundation, uid, { parHut=null, heartMs=30 * 1000 }={}) {
+    init: function(foundation, uid, { parHut=null, heartMs=foundation.getArg('heartMs') }={}) {
       
       this.uid = uid;
       this.parHut = parHut;
@@ -722,7 +722,7 @@ global.rooms.hinterlands = async foundation => {
       
       if (rec.off()) return; // Always ignore any Recs which may be off
       
-      let tmp = Tmp();
+      let tmp = Tmp(); tmp.rec = rec;
       
       for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, +1);
       tmp.endWith(() => { for (let r of rec.getRecJurisdiction()) this.modRecFollowStrength(r, -1); });
@@ -840,8 +840,11 @@ global.rooms.hinterlands = async foundation => {
       
     },
     
-    onceDry: function() {
-      forms.Rec.onceDry.call(this);
+    cleanup: function() {
+      forms.Rec.cleanup.call(this);
+      /// {BELOW=
+      clearTimeout(this.tellHeartTimeout);
+      /// =BELOW}
     }
     
   })});
