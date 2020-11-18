@@ -1297,8 +1297,6 @@
         // Find a compression option which is supported by both us and this client
         let encodeOption = compress ? compress.find(v => encodeOptions.has(v)).val : null;
         
-        console.log(`Reply to ${req ? req.url : '/'} with ${encodeOption}'d data`);
-        
         if (U.hasForm(msg, Keep)) { // Stream files via `pipe`
           
           res.writeHead(httpCode, {
