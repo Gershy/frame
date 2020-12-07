@@ -116,14 +116,11 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
           ? [ 'room', ...roomPcs, `${roomPcs.slice(-1)[0]}.js` ]
           : [ 'setup', `${msg.room}.js` ];
         
-        let srcKeep = foundation.seek('keep', 'fileSystem', pcs);
-        let srcContent = await srcKeep.getContent('utf8');
-        
+        let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
         if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}');`);
         let { lines, offsets } = foundation.compileContent(pcs, 'below', srcContent);
         
-        let dbg = 0;
-        if (dbg) {
+        if (foundation.getArg('debug').has('wrapClientJs')) {
           
           // SyntaxError is uncatchable in the FoundationBrowser and
           // gives no trace information. We can circumvent this by
@@ -138,9 +135,9 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
           let escQt = '\\' + `'`;
           let escEsc = '\\' + '\\';
           let headEvalStr = `try { eval([`;
-          let tailEvalStr = `].join('\\n')); } catch(err) { console.log({ err }); throw err; }`;
+          let tailEvalStr = `].join('\\n')); } catch(err) { console.log('Error from wrapped client code:', err); throw err; }`;
           
-          lines = lines.map(ln => `  '` + ln.replace(/\\/g, '\\\\').replace(/'/g, escQt) + `',`);
+          lines = lines.map(ln => `  '` + ln.replace(/\\/g, escEsc).replace(/'/g, escQt) + `',`);
           let headInd = 0;
           let tailInd = lines.count() - 1;
           lines[headInd] = headEvalStr + lines[headInd];
@@ -174,6 +171,7 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
             overflow: hidden;
           }
           :focus {
+            outline: none;
             animation-name: smoothFocus;
             animation-duration: 400ms;
             animation-timing-function: ease-in-out;

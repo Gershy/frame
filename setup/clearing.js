@@ -86,12 +86,6 @@ protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; }
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 protoDef(Array, 'count', function() { return this.length; });
 protoDef(Array, 'invert', function() { let r = []; for (let i = this.length - 1; i >= 0; i--) r.push(this[i]); return r; });
-protoDef(Array, 'tilt', function*() {
-  if (!this.count() || this.find(v => !U.isForm(v, Array)).found) throw Error(`Invalid structure for zipping`);
-  let w = this.count(); let h = this[0].count();
-  if (this.find(v => v.count() !== h).found) throw Error(`Members have differing lengths`);
-  for (let y = 0; y < h; y++) yield w.toArr(x => this[x][y]);
-});
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -263,8 +257,9 @@ let U = global.U = {
     try { let r = f1(); return U.isForm(r, Promise) ? r.catch(f2) : r; }
     catch(err) { return f2(err); }
   },
-  then: (v, rsv, rjc) => {
+  then: (v, rsv, rjc=null) => {
     if (U.isForm(v, Promise)) return v.then(rsv, rjc);
+    if (!rjc) return rsv(v); // No `rjc` means no error handling
     try { return rsv(v); } catch(err) { return rjc(err); }
   },
   reservedFormProps: Set([ 'constructor', 'Form' ]),
@@ -573,6 +568,8 @@ U.logic = (() => {
       throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
     }
   })});
+  
+  Src.stub = { route: () => Tmp.stub, send: Function.stub };
   Tmp.stub = (t => (t.end(), t))(Tmp());
   
   let TmpAll = U.form({ name: 'TmpAll', has: { Tmp }, props: (forms, Form) => ({
@@ -687,7 +684,7 @@ U.logic = (() => {
       forms.Endable.init.call(this);
       forms.Src.init.call(this);
       
-      let vals = srcs.map(v => C.skip);
+      let vals = srcs.map(v => C.skip); // TODO: Does this not produce an empty Array??
       this.routes = srcs.map((src, ind) => src.route(val => {
         vals[ind] = val;
         let result = this.applyFn(fn, vals);

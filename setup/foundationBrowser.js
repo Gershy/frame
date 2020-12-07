@@ -56,7 +56,7 @@
         return this.par.urlImages[url];
       }
     })}),
-    $TextNode: document.createTextNode('').constructor,
+    $TextNode: U.getForm(document.createTextNode('')),
     
     // Initialization
     init: function({ hutId, aboveMsAtResponseTime, ...supArgs }) {
@@ -100,250 +100,14 @@
     createKeep: function(options={}) { return Form.KeepBrowser(this); },
     createReal: async function() {
       
-      let { Real } = U.setup;
+      let Real = await this.getRoom('internal.real.htmlBrowser.Real');
       let primaryHtmlCssJsReal = Real({ name: 'browser.htmlCssJs' });
       primaryHtmlCssJsReal.techNode = document.body;
       primaryHtmlCssJsReal.tech = (() => {
         
         // css techniques:
         // https://css-tricks.com/almanac/properties/c/contain/
-        
-        let { Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout } = U.setup;
-        let getRenderClass = layout => {
-          let LayoutForm = U.getForm(layout);
-          if (!renderFormMap.has(LayoutForm)) throw Error(`Invalid render class: "${LayoutCls.name}"`);
-          return renderFormMap.get(LayoutForm);
-        };
-        let renderFormMap = Map([
-          [ Axis1DLayout,       (layout, hCss, domNode) => {
-            
-            if (![ 'relative', 'absolute' ].includes(domNode.style.position)) domNode.style.position = 'relative';
-            
-            if ([ null, 'focus', 'distribute' ].includes(layout.cuts)) {
-              
-              domNode.style.display = 'flex';
-              domNode.style.flexDirection = (layout.axis === 'x')
-                ? (layout.flow === '+' ? 'row' : 'row-reverse')
-                : (layout.flow === '+' ? 'column' : 'column-reverse');
-              domNode.style.alignItems = 'center'; // 'flex-start', 'center', 'flex-end'
-              
-              domNode.style.justifyContent = {
-                stack: 'auto',
-                focus: 'center',
-                distribute: 'auto'
-              }[layout.cuts || 'stack']; // null -> 'stack'
-              
-            } else if (U.isForm(layout, Array)) {
-              
-              // Children are sized using the specified "cuts"
-              let values = [];
-              
-            }
-            
-          }],
-          [ Axis1DLayout.Item,  (layout, hCss, domNode) => {
-            
-            if (layout.par.cuts === null) {
-              
-              // Children determine their own size in the axis direction, and have 100% perp direction
-              
-            } else if (layout.par.cuts === 'distribute') {
-              
-              // Children are all the same size
-              domNode.style.flexGrow = '1';
-              domNode.style.flexShrink = '1';
-              domNode.style.flexBasis = '0';
-              domNode.style[layout.par.axis === 'x' ? 'height' : 'width'] = '100%';
-              
-            } else if (U.isForm(layout.par.cuts, Array)) {
-              
-              // Children are sized using the specified "cuts"
-              console.log(layout.params, domNode);
-              let cutInd = layout.params[0];
-              let offCuts = layout.par.cuts.slice(0, cutInd);
-              
-              let off = offCuts.length ? `calc(${offCuts.join(' + ')})` : '0';
-              let ext = (cutInd <= (layout.par.cuts.length - 1))
-                ? layout.par.cuts[cutInd]
-                : `calc(100% - ${layout.par.cuts.join(' - ')})`;
-              
-              domNode.style.position = 'absolute';
-              
-              let dir = `${layout.par.flow}${layout.par.axis}`
-              if (dir === '+x') domNode.style.gain({ left: off, width: ext, height: '100%' });
-              if (dir === '-x') domNode.style.gain({ right: off, width: ext, height: '100%' });
-              if (dir === '+y') domNode.style.gain({ top: off, width: '100%', height: ext });
-              if (dir === '-y') domNode.style.gain({ bottom: off, width: '100%', height: ext });
-              
-            }
-            
-          }],
-          [ FreeLayout,         (layout, hCss, domNode) => {
-            
-            // TODO: Decouple w/h from FreeLayout!! Should use SizedLayout
-            // for this instead - BUT how to center a child, without
-            // altering the parent, when child size is unknown??
-            
-            domNode.style.position = 'absolute';
-            if (layout.w) domNode.style.width = layout.w;
-            if (layout.h) domNode.style.height = layout.h;
-            if (layout.mode === 'center') {
-              let { x, y } = layout;
-              if (x === '0') x = null;
-              if (y === '0') y = null;
-              domNode.style.left = `calc(50% - ${layout.w} * 0.5${x ? ' + ' + x : ''})`;
-              domNode.style.top = `calc(50% - ${layout.h} * 0.5${y ? ' + ' + y : ''})`;
-            } else if (layout.mode === 'tl') {
-              let { x, y } = layout;
-              if (x) domNode.style.left = x || '0';
-              if (y) domNode.style.top = y || '0';
-            } else if (layout.mode === 'tr') {
-              let { x, y } = layout;
-              if (x) domNode.style.right = x || '0';
-              if (y) domNode.style.top = y || '0';
-            } else {
-              throw Error(`Unsupported mode: "${layout.mode}"`);
-            }
-            
-          }],
-          [ SizedLayout,        (layout, hCss, domNode) => {
-            
-            let { w, h, ratio } = layout;
-            if (ratio !== null) {
-              let [ amt, unit ] = ((w !== null) ? w : h).match(/([0-9]*)(.*)/).slice(1);
-              if (w !== null) h = `${parseInt(amt) / ratio}${unit}`;
-              if (h !== null) w = `${parseInt(amt) * ratio}${unit}`;
-              domNode.style.width = w;
-              domNode.style.paddingBottom = h;
-            } else {
-              if (w !== null) domNode.style.width = w;
-              if (h !== null) domNode.style.height = h;
-            }
-            
-          }],
-          [ ScrollLayout,       (layout, hCss, domNode) => {
-            let { x, y } = layout;
-            if (x === 'auto') domNode.style.overflowX = 'auto';
-            if (x === 'show') domNode.style.overflowX = 'scroll';
-            if (y === 'auto') domNode.style.overflowY = 'auto';
-            if (y === 'show') domNode.style.overflowY = 'scroll';
-          }],
-          [ ScrollLayout.Item,  (layout, hCss, domNode) => {
-            let { x, y } = layout.par;
-            if (x !== 'none' || y !== 'none') domNode.style.scrollBehavior = 'smooth';
-          }],
-          [ TextLayout,         (layout, hCss, domNode) => {
-            domNode.style.gain({
-              display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              overflow: 'hidden', textOverflow: 'ellipsis'
-            });
-            
-            // Apply font size
-            if (layout.size) domNode.style.fontSize = layout.size;
-            
-            // Apply text
-            domNode.textContent = layout.text;
-            
-            // Apply text alignment; best results occur when flex and classic "text-align' props are used
-            domNode.style.alignItems = { fwd: 'flex-start', bak: 'flex-end', mid: 'center', all: 'stretch' }[layout.align || 'mid'];
-            domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center', all: 'justify' }[layout.align || 'mid'];
-            
-            if (layout.gap) {
-              domNode.style.boxSizing = 'border-box';
-              domNode.style.padding = layout.gap;
-            }
-          }],
-          [ TextInputLayout,    (layout, hCss, domNode) => {
-            if (layout.multiline) {
-              
-            } else {
-              
-            }
-            
-            if (layout.size) domNode.style.fontSize = layout.size;
-            if (layout.align) domNode.style.textAlign = { fwd: 'left', bak: 'right', mid: 'center' }[layout.align];
-            if (layout.gap) {
-              domNode.style.boxSizing = 'border-box';
-              domNode.style.padding = layout.gap;
-            }
-          }],
-          [ ImageLayout,        (layout, hCss, domNode) => {
-            
-            domNode.style.backgroundImage = `url('${layout.image.getUrl()}')`;
-            domNode.style.backgroundSize = ({
-              useMinAxis: 'contain',
-              useMaxAxis: 'cover',
-              stretch: '100%'
-            })[layout.mode] || layout.mode;
-            domNode.style.backgroundRepeat = 'no-repeat';
-            domNode.style.backgroundPosition = 'center';
-            domNode.style.pointerEvents = 'none';
-            
-          }]
-        ]);
-        
-        let applyDecalsStack = (decalsStack, hCss, domNode) => {
-          
-          let complexDecals = {};
-          for (let decals of decalsStack) {
-            
-            for (let k in decals) {
-              
-              if (k === 'colour') {
-                domNode.style.backgroundColor = decals[k];
-              } else if (k === 'textColour') {
-                domNode.style.color = decals[k];
-                
-                console.log(`Apply ${decals[k]} to`, domNode);
-                
-              } else if (k === 'border') {
-                let { ext, colour } = decals[k];
-                domNode.style.boxShadow = `inset 0 0 0 ${ext} ${colour}`;
-              } else if (k === 'texture') {
-                domNode.style.cursor = ({ smooth: '', bumpy: 'pointer' })[decals[k]];
-              } else {
-                if (!U.isForm(decals[k], Object)) throw Error(`Decal type for "${k}" should be Object; got ${U.getFormName(decals[k])}`);
-                if (!complexDecals.has(k)) complexDecals[k] = {};
-                complexDecals[k].gain(decals[k]);
-              }
-              
-            }
-            
-          }
-          
-          for (let k in complexDecals) {
-            
-            if (k === 'transition') {
-              
-              domNode.style.transition = complexDecals[k].toArr(({ ms=1000, curve='linear', delayMs=0 }, prop) => {
-                
-                prop = {
-                  colour: 'background-color',
-                  textColour: 'color',
-                  border: 'box-shadow'
-                }[prop];
-                curve = {
-                  linear: 'linear',
-                  smooth: 'ease-in-out'
-                }[curve];
-                return `${prop} ${ms}ms ${curve} ${delayMs}ms`;
-                
-              }).join(', ');
-              
-            } else if (k === 'transform') {
-              
-              throw Error('Transform not implemented');
-              
-            } else {
-              
-              throw Error(`Invalid decal: ${k}`);
-              
-            }
-            
-          }
-          
-        };
-        
+        let layouts = {};
         let browserTech = {
           name: 'HtmlCssJsTech',
           createTechNode: real => {
@@ -351,25 +115,31 @@
             if (real.name) domNode.classList.add(real.name.replace(/([^a-zA-Z0-9]+)([a-zA-Z0-9])?/g, (f, p, c) => c ? c.upper() : ''));
             return domNode;
           },
-          render: (real, domNode) => {
+          render: (real, delta) => {
             
-            if (!U.hasForm(real, Real)) throw Error(`Invalid type: ${U.getFormName(real)}`);
-            
-            // Reset styles (and text)
+            // Naive: ignoring `delta` purify Real & apply all layouts
+            let domNode = real.getTechNode();
             let childNodes = [ ...domNode.childNodes ];
-            let textNode = (childNodes.count() === 1 && childNodes[0].nodeType === Node.TEXT_NODE) ? childNodes[0] : null;
+            let textNode = (childNodes.count() === 1 && U.isForm(childNodes[0], Form.TextNode)) ? childNodes[0] : null;
             if (textNode) textNode.remove();
             domNode.removeAttribute('style');
+            [ ...domNode.attributes ].each(attr => attr !== 'class' && domNode.removeAttribute(attr));
             
-            // Apply `real.layouts`, `real.innerLayout`, and decals
-            let hCss = {};
-            for (let layout of real.layouts) getRenderClass(layout)(layout, hCss, domNode);
-            if (real.innerLayout) getRenderClass(real.innerLayout)(real.innerLayout, hCss, domNode);
-            applyDecalsStack(real.decalsStack, hCss, domNode);
+            for (let layout of real.getLayouts()) layout.render(real, domNode);
             
           },
           addNode: (parReal, kidReal) => parReal.getTechNode().appendChild(kidReal.getTechNode()),
           remNode: real => real.getTechNode().remove(),
+          
+          getLayoutForm: name => {
+            
+            if (!layouts.has(name)) {
+              layouts[name] = this.getRoom(`internal.real.htmlBrowser.${name}`);
+              U.then(layouts[name], Form => layouts[name] = Form);
+            }
+            return layouts[name];
+            
+          },
           
           makeFocusable: (real, techNode=real.getTechNode()) => {
             let tmp = Tmp();
@@ -426,17 +196,15 @@
             techNode.appendChild(document.createTextNode(text));
             
           },
-          selectTextContent: real => {
-            
-            let techNode = real.getTechNode();
-            let childNodes = [ ...techNode.childNodes ];
-            if (childNodes.count() > 1) throw Error(`Can't select text; there's multiple child nodes!`);
-            let [ childNode=null ] = childNodes;
-            if (!childNode) return;
-            if (!U.isForm(childNode, Form.TextNode)) throw Error(`Can't select text; non-text child`);
+          select: (real=null) => {
             
             // Clear previous selection
             window.getSelection().removeAllRanges();
+            
+            // Select `real` if non-null
+            if (!real) return;
+            
+            let techNode = real.getTechNode();
             
             // Create new selection
             let selRange = document.createRange(); selRange.selectNodeContents(techNode);
@@ -480,117 +248,6 @@
             return tmp;
             
           },
-          addPress: (real, modes=[ 'continuous', 'discrete' ]) => {
-            
-            if (!U.isForm(modes, Array)) modes = [ modes ];
-            if (!modes.count()) throw Error(`Supply at least one mode`);
-            if (modes.count() > 2) throw Error(`Supply maximum two modes`);
-            if (modes.find(v => !U.isForm(v, String)).found) throw Error(`All modes should be String`);
-            if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
-            
-            let tmp = Tmp(); tmp.src = Src();
-            let techNode = real.getTechNode();
-            
-            if (modes.includes('continuous')) {
-              let clickFn = evt => tmp.src.send();
-              techNode.addEventListener('click', clickFn);
-              tmp.endWith(() => techNode.removeEventListener('click', clickFn));
-              
-              techNode.style.cursor = 'pointer';
-              tmp.endWith(() => techNode.style.cursor = '');
-            }
-            
-            if (modes.includes('discrete')) {
-              
-              let keyPressFn = evt => {
-                if (evt.ctrlKey || evt.altKey || evt.shiftKey || evt.code !== 'Enter') return;
-                [ 'preventDefault', 'stopPropagation' ].each(v => evt[v]());
-                tmp.src.send(evt);
-              };
-              techNode.addEventListener('keypress', keyPressFn);
-              tmp.endWith(() => techNode.removeEventListener('keypress', keyPressFn));
-              
-            }
-            
-            // TODO: This is a sloppy heuristic to get around the issue
-            // that adding a tabIndex for any "discrete" mode may wind
-            // up making the <div> containing an <input> focusable; this
-            // means that tabbing to the <input> would require first
-            // tabbing to the <div>. The real issue is that `techNode`
-            // is always assumed to be the primary, interactive surface
-            // of a Real - but in the case of a techNode overlaid with
-            // an <input>, this isn't the case! This is therefore an
-            // odd heuristic to add tabIndex for discreet press events,
-            // only if the press is also continuous - because chances
-            // are, if `real` is overlaid with an <input> the press will
-            // *only* be discrete (since a continuous press would mean
-            // clicks to focus the input element would result in sends)
-            if (modes.includes('continuous') && modes.includes('discrete')) {
-              
-              techNode.setAttribute('tabIndex', '0');
-              tmp.endWith(() => techNode.removeAttribute('tabIndex'));
-              tmp.endWith(browserTech.makeFocusable(real, techNode));
-              
-              // tmp.endWith(real.addDecals({ texture: 'rough' }));
-              
-            }
-            
-            return tmp;
-          },
-          addFeel: (real, modes=[ 'continuous', 'discrete' ]) => {
-            
-            if (!U.isForm(modes, Array)) modes = [ modes ];
-            if (!modes.count()) throw Error(`Supply at least one mode`);
-            if (modes.count() > 2) throw Error(`Supply maximum two modes`);
-            if (modes.find(v => !U.isForm(v, String)).found) throw Error(`All modes should be String`);
-            if (modes.find(v => ![ 'continuous', 'discrete' ].includes(v)).found) throw Error(`Invalid mode; use either "continuous" or "discrete"`);
-            
-            let techNode = real.getTechNode();
-            let tmp = Tmp(); tmp.src = Src();
-            
-            if (modes.has('continuous')) {
-              
-              let sentTmp = null;
-              let onnFn = evt => {
-                if (sentTmp) return;
-                
-                // Create a new Tmp indicating hover.
-                sentTmp = Tmp();
-                techNode.addEventListener('mouseleave', offFn);
-                sentTmp.endWith(() => techNode.removeEventListener('mouseleave', offFn));
-                
-                tmp.src.send(sentTmp);
-              };
-              let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
-              
-              tmp.endWith(real.addDecals({ texture: 'bumpy' }));
-              
-              techNode.addEventListener('mouseenter', onnFn);
-              tmp.endWith(() => techNode.removeEventListener('mouseenter', onnFn));
-              
-            }
-            if (modes.has('discrete')) {
-              
-              let sentTmp = null;
-              let onnFn = evt => {
-                if (sentTmp) return;
-                
-                // Create a new Tmp indicating hover.
-                sentTmp = Tmp();
-                techNode.addEventListener('blur', offFn);
-                sentTmp.endWith(() => techNode.removeEventListener('blur', offFn));
-                
-                tmp.src.send(sentTmp);
-              };
-              let offFn = evt => sentTmp && (sentTmp.end(), sentTmp = null);
-              techNode.addEventListener('focus', onnFn);
-              tmp.endWith(() => techNode.removeEventListener('focus', onnFn));
-              
-            }
-            
-            return tmp;
-            
-          },
           addViewportEntryChecker: real => {
             
             let src = Src();
@@ -628,7 +285,7 @@
     },
     
     // Transport
-    createHttpServer: async function({ host, port, keyPair=false, selfSign=false }) {
+    createHttpServer: function({ host, port, keyPair=false, selfSign=false }) {
       if (!port) port = keyPair ? 443 : 80;
       
       let numPendingReqs = 0;
@@ -691,7 +348,7 @@
       if (!port) port = keyPair ? 444 : 81;
       
       let sokt = new WebSocket(`${keyPair ? 'wss' : 'ws'}://${host}:${port}${this.seek('keep', 'urlResource', {}).getUrl()}`);
-      await Promise(r => sokt.onopen = r);
+      await Promise(r => sokt.addEventListener('open', r));
       
       let server = Tmp(() => { /* sokt.close */ });
       server.desc = `SOKT @ ${host}:${port}`;
@@ -727,6 +384,7 @@
         script.addEventListener('load', rsv);
         script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`)));
       });
+      
       if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);
       
       return {
@@ -743,7 +401,7 @@
       let [ lineInd, charInd ] = line.match(/:([0-9]+):([0-9]+)/).slice(1);
       return { roomName, lineInd: parseInt(lineInd, 10), charInd: parseInt(charInd, 10), bearing: 'below' };
     },
-    srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: null, line: 0, char: 0 }) }; }
+    srcLineRegex: function() { return { regex: /.^/, extract: fullMatch => ({ roomName: null, line: 0, char: 0 }) }; } // That regex ain't ever gonna match! (Intentionally!)
     /// =DEBUG}
     
   })});

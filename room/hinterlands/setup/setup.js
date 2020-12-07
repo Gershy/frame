@@ -181,29 +181,29 @@ global.rooms['hinterlands.setup'] = async foundation => {
       
       let debug = await Promise.resolve(this.debug);
       
-      // In the future (but it's gonna require figuring out exactly
-      // what's going on with the arcane "processNewRoad"):
-      //  let server = await foundation.getServer(hostingTerm);
-      //  tmp.endWith(hut.addServer(server));
+      // Setup all servers; note this is fire-and-forget! Awaiting the
+      // server connection can seriously impact client-side UX!
+      // Note: There would be race-condition ramifications if code were
+      // allowed to continue without any immediately-available servers
+      // (e.g. quickly occurring requests from the BelowHut could
+      // encounter the error that it cannot do Tells since there is no
+      // AboveHut). This currently cannot happen to FoundationBrowser,
+      // as the function for creating the http server is synchronous!
+      // This is contextually sensible, as the FoundationBrowser itself
+      // has been transported over a functioning http connection.
       let hosting = await Promise.resolve(this.hosting);
-      let servers = await Promise.allObj(hosting.map(opts => foundation.getServer(opts)));
-      
-      for (let [ term, server ] of servers) {
+      for (let [ term, hostingOpts ] of hosting) U.then(foundation.getServer(hostingOpts), server => {
         
-        // Attach given hut to Pool
         server.addPool(hut);
         
         /// {BELOW=
-        // Link BELOW servers with the Hut instance representing ABOVE
+        // Link BELOW servers to the Hut instance representing ABOVE
         hut.processNewRoad(server, '!above'); // TODO: Does this belong here?
         /// =BELOW}
         
-      }
-      
-      if (debug.has('hosting') && !hosting.isEmpty()) {
-        console.log(`Hut ${this.hutName} is now hosted; access via:`);
-        for (let h of hosting.toArr(v => v)) console.log(`- ${foundation.formatHostUrl(h)}`);
-      }
+        if (debug.has('hosting')) console.log(`Access ${this.hutName} at ${foundation.formatHostUrl(hostingOpts)}`);
+        
+      });
       
       let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(this.hutName, hut)));
       tmp.endWith(() => preparations.each(p => p.end()));

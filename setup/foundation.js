@@ -69,12 +69,18 @@ Hut at the very bottom runs using a single Reality.
     // Config
     getArg: function(term) {
       if (!this.readyArgs.has(term)) {
+        
         // TODO: should seek should return `C.skip` if `!found`?? I
         // think it makes some cases more convenient, others less. Also
         // consider??:
         // `{ found: <bool>, val: <val|null>, res: <val|C.skip> }`
-        this.readyArgs[term] = this.processArg(term, this.origArgs.seek(term).val);
-        if (U.hasForm(this.readyArgs[term], Promise)) this.readyArgs[term].then(v => this.readyArgs[term] = v);
+        let rawVal = this.origArgs.seek(term).val;
+        this.readyArgs[term] = this.argProcessors.has(term)
+          ? this.argProcessors[term](rawVal, this)
+          : rawVal;
+        
+        U.then(this.readyArgs[term], arg => this.readyArgs[term] = arg);
+        
       }
       return this.readyArgs[term];
     },
@@ -92,10 +98,12 @@ Hut at the very bottom runs using a single Reality.
       };
       
     },
-    processArg: function(term, val=null) {
-      if (term === 'deploy') return val || 'prod';
-      if (term === 'debug') return Set(val ? (U.isForm(val, String) ? [ val ] : val) : []);
-      return val;
+    argProcessors: {
+      deploy: val => val || 'prod',
+      debug: val => {
+        if (U.isForm(val, String)) val = val.split(',').map(v => v.trim() || C.skip);
+        return Set(val || []);
+      }
     },
     formatHostUrl: function({ protocol, host, port }) {
       let excludePort = true
@@ -147,7 +155,11 @@ Hut at the very bottom runs using a single Reality.
     createReal: C.noFn('createReal'),
     
     // Transport
-    getServer: async function(opts) {
+    getServer: function(opts) {
+      
+      // Returns either an immediate value or a Promise. Immediate
+      // server availability is important to allow efficient setup of
+      // some clients.
       
       let term = this.formatHostUrl(opts);
       if (!this.servers.has(term)) {
@@ -157,7 +169,7 @@ Hut at the very bottom runs using a single Reality.
           sokt:   this.createSoktServer,
           ws:     this.createSoktServer
         })[opts.protocol].call(this, opts);
-        this.servers[term].then(v => this.servers[term] = v);
+        U.then(this.servers[term], server => this.servers[term] = server);
         
       }
       return this.servers[term];
@@ -170,8 +182,17 @@ Hut at the very bottom runs using a single Reality.
     getRoom: async function(name, ...args) {
       
       if (!this.installedRooms.has(name)) {
-        this.installedRooms[name] = {};
-        this.installedRooms[name].gain(await this.installRoom(name, ...args));
+        
+        // Note that `Foundation.prototype.installRoom` returns an
+        // Object with "debug" and "content" properties. Note that
+        // "debug" should be immediately available, whereas "content"
+        // may be a promise. This is to allow debug information to be
+        // available for any SyntaxErrors that can occur during the
+        // resolution of the "content" property.
+        let prm = this.installRoom(name, ...args);
+        this.installedRooms[name] = { debug: { offsets: [] }, content: prm.then(v => v.content) };
+        prm.then(obj => this.installedRooms[name].gain(obj));
+        
       }
       return this.installedRooms[name].content;
       
@@ -291,148 +312,5 @@ Hut at the very bottom runs using a single Reality.
     
   })});
   U.setup.gain({ Foundation });
-  
-  let Real = U.form({ name: 'Real', has: { Slots, Tmp }, props: (forms, Form) => ({
-    init: function(params={}, { name=null, layouts=[], innerLayout=null, decals=null }=params) {
-      
-      if (innerLayout && !U.hasForm(innerLayout, Layout)) throw Error(`"innerLayout" must be Layout; got ${U.getFormName(innerLayout)}`);
-      
-      forms.Slots.init.call(this);
-      forms.Tmp.init.call(this);
-      
-      this.name = name;
-      
-      this.layouts = layouts;
-      this.innerLayout = innerLayout;
-      this.decalsStack = Set(decals ? [ decals ] : []);
-      
-      this.parent = null;
-      this.tech = null; // TODO: Do we need a "rootReal", or "tech"? (Or both?)
-      this.techNode = null;
-      this.children = Set();
-      
-      this.addOns = {};
-    },
-    ancestry: function() { return !this.parent ? [] : [ this, ...this.parent.ancestry() ]; },
-    getTechNode: function() { return this.techNode || (this.techNode = this.tech.createTechNode(this)); },
-    addReal: function(real, params={}) {
-      
-      // If String was given instead of Real, create Real
-      if (U.isForm(real, String)) {
-        if (U.isForm(params, Function)) {
-          params = params({
-            layouts: (...p) => {
-              let childOuterLayout = this.innerLayout ? this.innerLayout.getChildOuterLayout(...p) : null;
-              return childOuterLayout ? [ childOuterLayout ] : [];
-            }
-          });
-        } else {
-          if (!params.has('layouts')) params.layouts = [];
-          if (this.innerLayout) params.layouts.unshift(this.innerLayout.getChildOuterLayout());
-        }
-        real = Real({ name: real, ...params });
-      }
-      
-      if (!U.isForm(real, Real)) throw Error(`Invalid real param; got ${U.getFormName(real)}`);
-      if (real.parent) throw Error(`Real already has a parent`);
-      if (real.tech) throw Error(`Real already has tech`);
-      
-      real.parent = this;
-      real.tech = this.tech;
-      
-      this.children.add(real);
-      real.endWith(() => this.children.rem(real));
-      
-      // Apply `real`'s styles to `real`'s tech node
-      this.tech.render(real, real.getTechNode());
-      
-      // Attach `real` using the tech
-      this.tech.addNode(this, real);
-      
-      return real;
-      
-    },
-    cleanup: function() {
-      if (this.techNode) this.tech.remNode(this);
-      this.techNode = null;
-      this.parent = null;
-    },
-    
-    scrollTo: function(real, ...args) { return this.tech.scrollTo(this, real, ...args); },
-    
-    setText: function(...args) { return this.tech.setText(this, ...args) },
-    selectTextContent: function(...args) { return this.tech.selectTextContent(this, ...args) },
-    
-    addInput: function(...args) { return this.tech.addInput(this, ...args); },
-    addPress: function(...args) { return this.tech.addPress(this, ...args); },
-    addFeel: function(...args) { return this.tech.addFeel(this, ...args); },
-    addViewportEntryChecker: function(...args) { return this.tech.addViewportEntryChecker(this, ...args); },
-    addDecals: function(decals) {
-      this.decalsStack.add(decals);
-      this.tech.render(this, this.getTechNode());
-      return Tmp(() => {
-        this.decalsStack.rem(decals)
-        this.tech.render(this, this.getTechNode());
-      });
-    }
-  })});
-  let Layout = U.form({ name: 'Layout', has: {}, props: (forms, Form) => ({
-    init: C.noFn('init'),
-    getChildOuterLayout: function(params) { return null; }
-  })});
-  let Axis1DLayout = U.form({ name: 'Axis1DLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ axis='y', flow='+', cuts=null }) {
-      this.axis = axis;
-      this.flow = flow;
-      this.cuts = cuts;
-    },
-    getChildOuterLayout: function(...params) { return Form.Item(this, ...params); },
-    
-    $Item: U.form({ name: 'Axis1DLayout.Item', has: { Layout }, props: (forms, Form) => ({
-      init: function(par, ...params) {
-        this.par = par;
-        this.params = params;
-      }
-    })})
-    
-  })});
-  let FreeLayout = U.form({ name: 'FreeLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ mode='center', w=null, h=null, x=null, y=null }={}) {
-      this.mode = mode;
-      ({}).gain.call(this, { mode, w, h, x, y });
-    }
-  })});
-  let SizedLayout = U.form({ name: 'SizedLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ ratio=null, w=ratio ? null : '100%', h=ratio ? null : '100%' }) {
-      if (ratio !== null && (w === null) === (h === null)) throw Error(`With "ratio" must provide exactly one of "w" or "h"`);
-      this.w = w;
-      this.h = h;
-      this.ratio = ratio;
-    }
-  })});
-  let ScrollLayout = U.form({ name: 'ScrollLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ x='none', y='auto' }) { ({}).gain.call(this, { x, y }); },
-    getChildOuterLayout: function(...params) { return Form.Item(this, ...params); },
-    
-    $Item: U.form({ name: 'ScrollLayout.Item', has: { Layout }, props: (forms, Form) => ({
-      init: function(par) { this.par = par; }
-    })})
-      
-  })});
-  let TextLayout = U.form({ name: 'TextLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ text='', size=null, align=null, gap=null }) { ({}).gain.call(this, { text, size, align, gap }); }
-  })});
-  let TextInputLayout = U.form({ name: 'TextInputLayout', has: { TextLayout }, props: (forms, Form) => ({
-    init: function({ multiline=false, prompt=null, ...params }) {
-      forms.TextLayout.init.call(this, params);
-      this.multiline = multiline;
-      this.prompt = prompt;
-    }
-  })});
-  let ImageLayout = U.form({ name: 'ImageLayout', has: { Layout }, props: (forms, Form) => ({
-    init: function({ mode='useMinAxis', image }) { ({}).gain.call(this, { mode, image }); }
-  })});
-  
-  U.setup.gain({ Real, Axis1DLayout, FreeLayout, SizedLayout, ScrollLayout, TextLayout, TextInputLayout, ImageLayout });
   
 })();

@@ -310,7 +310,7 @@
         // ==== PARSE FRAME
         
         let b = buff[0] >> 4;   // The low 4 bits of 1st byte give us flags (importantly "final")
-        if (b % 8) throw Error('Some reserved bits are on');
+        if (b % 8) throw Error('Some reserved bits are on'); // % gets us low-end bits
         let isFinalFrame = b === 8;
         
         let op = buff[0] % 16;  // The 4 high bits of 1st byte give us the operation
@@ -319,7 +319,7 @@
         if (op >= 8 && !isFinalFrame) throw Error('Incomplete control frame');
         
         b = buff[1];            // Look at second byte
-        let masked = b >> 7;      // Lowest bit of 2nd byte - states whether frame is masked
+        let masked = b >> 7;    // Lowest bit of 2nd byte - states whether frame is masked
         
         // Server requires a mask; Client requires no mask
         if (!masked) throw Error('No mask');
@@ -345,7 +345,7 @@
         let w = 0;
         for (let i = 0, len = data.length; i < len; i++) {
           data[i] ^= mask[w];     // Apply XOR
-          w = w < 3 ? w + 1 : 0;  // `w` follows `i`, but wraps every 4. More efficient than `%`
+          w = w < 3 ? w + 1 : 0;  // `w` follows `i`, but wraps every 4. Faster than `%`
         }
         
         // ==== PROCESS FRAME (based on `isFinalFrame`, `op`, and `data`)
@@ -370,8 +370,8 @@
         if (op !== 1) throw Error(`Unsupported op: ${op}`);
         
         buff = buff.slice(offset + length); // Dispense with the frame we've just processed
-        soktState.curOp = 1;                              // Our only supported op is "text"
-        soktState.curFrames.push(data);                   // Include the complete frame
+        soktState.curOp = 1;                // Our only supported op is "text"
+        soktState.curFrames.push(data);     // Include the complete frame
         
         if (isFinalFrame) {
           let fullStr = Buffer.concat(soktState.curFrames).toString('utf8');
@@ -432,23 +432,26 @@
       this.usage0 = process.memoryUsage().map(v => v);
       
       // Create a Promise describing whether the Nodejs environment is
-      // ready and sufficiently valid to settle some Room
+      // sufficiently initialized to settle a Room
       this.canSettlePrm = (async () => {
         
         await this.fsKeep.seek([ 'mill', 'compiled' ]).setContent(null);
         
-        let argKeep = this.getArg('argKeep');
-        if (argKeep) {
+        let argsKeep = this.getArg('argsKeep');
+        if (argsKeep) {
           
-          let content = await U.safe(async () => eval(`(${await argKeep.getContent()})`), () => null);
-          if (!U.isForm(content, Object)) throw Error(`Specified bad arg keep: ${argKeep.absPath.join('/')}`);
+          let content = await U.safe(async () => eval(`(${await argsKeep.getContent()})`), () => null);
+          if (!U.isForm(content, Object)) throw Error(`Specified bad arg keep: ${argsKeep.absPath.join('/')}`);
           this.readyArgs = {};
           this.origArgs = {
             ...this.origArgs,
             ...content,
-            debug: [ ...(this.origArgs.debug || []), ...(content.debug || []) ]
+            debug: [
+              ...this.argProcessors.debug(this.origArgs.debug, this),
+              ...this.argProcessors.debug(content.debug, this)
+            ]
           };
-          if (this.getArg('debug').has('arg')) console.log(`Loading additional args from ${argKeep.absPath.join('/')}`);
+          if (this.getArg('debug').has('arg')) console.log(`Loading additional args from ${argsKeep.absPath.join('/')}`);
           
         }
         
@@ -992,9 +995,17 @@
           this.halt();
         });
         
-        if (this.getArg('debug').has('arg')) {
-          console.log(`Running with args:`, this.origArgs);
+        if (this.getArg('debug').has('args')) {
+          console.log(`Computed args:`, await Promise.allObj(this.argProcessors.map((v, k) => this.getArg(k))));
         }
+        if (this.getArg('debug').has('rawArgs')) {
+          console.log(`Raw args:`, this.origArgs);
+        }
+        
+        if (this.getArg('debug').has('storage')) console.log(val
+          ? `Running with storage @ ${val.absPath.join('/')}`
+          : `No storage provided; this will be a transient run`
+        );
         
       })();
       
@@ -1014,15 +1025,17 @@
     },
     
     // Config
-    processArg: function(term, val=null) {
+    argProcessors: {
+      ...forms.Foundation.argProcessors,
       
-      // TODO: CloudFlare best choice of default dns server??
-      if (term === 'dnsServers') return !val ? [ '1.1.1.1', '1.0.0.1' ] : U.isForm(val, String) ? [ val ] : val;
-      
-      if (term === 'hosting') return (async () => {
+      dnsServers: val => {
+        // TODO: CloudFlare best choice of default dns server??
+        if (!val) return [ '1.1.1.1', '1.0.0.1' ];
+        return U.isForm(val, String) ? val.split(',').map(v => v.trim() || C.skip) : val;
+      },
+      hosting: async (hosting, foundation) => {
         
-        let hosting = val;
-        let host = await this.getArg('host');
+        let host = await foundation.getArg('host');
         
         // Note that the "hosting" arg can hold an arbitrary number of
         // hosting definitions. The "host" arg can be used to quickly
@@ -1045,7 +1058,7 @@
               .map(v => v.internal ? C.skip : v.address); // Remove internal interfaces
             
             let dnsResolver = new (native('dns').promises.Resolver)();
-            dnsResolver.setServers(this.getArg('dnsServers'));
+            dnsResolver.setServers(foundation.getArg('dnsServers'));
             
             let potentialHosts = (await Promise.allArr(externalIps.map(async ip => {
               
@@ -1112,7 +1125,7 @@
             let bestRank = Math.max(...potentialHosts.map(v => v.rank));
             let bestHosts = potentialHosts.map(v => v.rank === bestRank ? (v.addr || v.ip) : C.skip);
             
-            if (this.getArg('debug').has('hosting')) {
+            if (foundation.getArg('debug').has('hosting')) {
               
               console.log('Autodetected hosts; results:');
               for (let { type, rank, ip, addr } of potentialHosts.sort((h1, h2) => h2.rank - h1.rank)) {
@@ -1131,7 +1144,7 @@
           })();
           
           hosting = {
-            http: { protocol: 'http', host, port: 80 },
+            http: { protocol: 'http', host, port: 80, compress: [ 'deflate', 'gzip' ] },
             sokt: { protocol: 'sokt', host, port: 81 }
           };
           
@@ -1156,36 +1169,22 @@
           
         });
         
-      })();
-      
-      if (term === 'heartMs') return val || (30 * 1000);
-      
-      if (term === 'argKeep') {
+      },
+      heartMs: val => val || (30 * 1000),
+      argsKeep: val => {
+        if (U.isForm(val, String)) val = val.split(/[,/]/);
+        if (U.isForm(val, Array)) val = foundation.seek('keep', 'adminFileSystem', ...val);
+        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
+        return val || null;
+      },
+      storageKeep: val => {
         
         if (U.isForm(val, String)) val = val.split(/[,/]/);
-        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
+        if (U.isForm(val, Array)) val = foundation.seek('keep', 'adminFileSystem', ...val);
         if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
-        
         return val || null;
         
       }
-      
-      if (term === 'storageKeep') {
-        
-        if (U.isForm(val, String)) val = val.split(/[,/]/);
-        if (U.isForm(val, Array)) val = this.seek('keep', 'adminFileSystem', ...val);
-        if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
-        
-        if (this.getArg('debug').has('storage')) console.log(val
-          ? `Running with storage @ ${val.absPath.join('/')}`
-          : `No storage provided; this will be a transient run`
-        );
-        
-        return val || null;
-        
-      }
-      
-      return forms.Foundation.processArg.call(this, term, val);
       
     },
     
@@ -1220,19 +1219,65 @@
     createKeep: function(options={}) { return Form.KeepNodejs(); },
     createReal: async function(options={}) {
       
-      let primaryFakeReal = Real({ name: 'nodejs.fakeReal' });
+      let FakeReal = U.form({ name: 'FakeReal', has: { Tmp }, props: (forms, Form) => ({
+        init: function(params={}, { name }) {
+          forms.Tmp.init.call(this);
+          this.name = name;
+          this.techNode = null;
+          this.fakeLayout = null;
+          this.params = {
+            text: MemSrc.Prm1('')
+          };
+        },
+        addReal: real => {
+          if (U.isForm(real, String)) return FakeReal({}, { name: real });
+          return real;
+        },
+        mod: function() {},
+        addLayout: function() {
+          let tmp = Tmp();
+          tmp.layout = { src: Src.stub };
+          return tmp;
+        },
+        getLayout: function() { return this.fakeLayout || (this.fakeLayout = primaryFakeReal.getLayoutForm('SuperFake')()); },
+        getLayoutForm: function(name) { return primaryFakeReal.tech.getLayoutForm(name); },
+        getLayoutForms: function(...names) { return names.toObj(n => [ n, primaryFakeReal.tech.getLayoutForm(n) ]); },
+        makeLayout: function(name, ...args) { return primaryFakeReal.tech.getLayoutForm(name)(...args); },
+        getTech: function() { return primaryFakeReal.tech; }
+      })});
+      
+      let layouts = {};
+      let primaryFakeReal = FakeReal({}, { name: 'nodejs.fakeReal' });
       primaryFakeReal.techNode = null;
       primaryFakeReal.tech = {
         createTechNode: real => null,
         render: (real, techNode) => {},
         addNode: (parTechNode, kidTechNode) => {},
         
+        getLayoutForm: name => {
+          if (!layouts.has(name)) {
+            
+            layouts[name] = U.form({ name: `Fake${name}`, has: { Tmp }, props: (forms, Form) => ({
+              init: function() { forms.Tmp.init.call(this); },
+              isInnerLayout: function() { return false; },
+              setText: function(){},
+              addReal: function(){},
+              src: Src.stub
+            })});
+            
+          }
+          return layouts[name];
+        },
+        render: Function.stub
+        
+        /*,
+        
         addViewportEntryChecker: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         
         setText: (real, text) => {},
         addInput: real => { let ret = Tmp(); ret.src = Src(); return ret; },
         addPress: real => { let ret = Tmp(); ret.src = Src(); return ret; },
-        addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }
+        addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }*/
       };
       
       return {
@@ -1639,13 +1684,12 @@
           try {
             for (let message of Form.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
-          
-          if (soktState.status === 'ended') road.end();
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
         sokt.on('error', err => {
           console.log(foundation.formatError(err.update(m => `Sokt error: ${m}`)));
-          soktState = makeSoktState('ended'); road.end();
+          soktState = makeSoktState('ended');
+          road.end();
         });
         
       };
