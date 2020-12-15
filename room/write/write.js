@@ -527,7 +527,7 @@ global.rooms.write = async foundation => {
               let mins = Math.floor(secs / 60); secs -= (mins * 60);
               
               [ hrs, mins, secs ] = [ Math.min(99, hrs), mins, secs ].map(v => `${v}`.padHead(2, '0'));
-              timerElem.setText(`${hrs} : ${mins} : ${secs}`);
+              timerElem.mod({ text: `${hrs} : ${mins} : ${secs}` });
             };
             updateTimer();
             
@@ -573,13 +573,12 @@ global.rooms.write = async foundation => {
               ]);
               let submitReal = submitEntryReal.addReal('wrt.submitEntry.submit', [
                 lay.Size({ w: '80px', h: '100%' }),
-                lay.Decal({ colour: 'rgba(0, 150, 0, 1)' })
+                lay.Decal({ colour: 'rgba(0, 150, 0, 1)' }),
+                lay.Press({})
               ]);
               
-              let inputSrc = dep(inputReal.addLayout(lay.TextInput({}))).layout.src;
-              let submitSrc = dep(submitReal.addLayout(lay.Press({}))).layout.src;
-              
-              dep(submitSrc.route(() => submitEntryAct.act({ text: inputSrc.val })));
+              let submitSrc = submitReal.getLayout(lay.Press).src;
+              dep(submitSrc.route(() => submitEntryAct.act({ text: inputReal.params.text.val })));
               
             });
             dep.scp(submittedEntryChooser.srcs.onn, (submittedEntry, dep) => {
@@ -639,12 +638,13 @@ global.rooms.write = async foundation => {
                   
                   dep.scp(submittedVoteChooser.srcs.off, (noVote, dep) => {
                     
-                    dep(doVoteReal.addDecals({ colour: 'rgba(0, 120, 0, 1)' }));
+                    dep(doVoteReal.addLayout(lay.Decal({ colour: 'rgba(0, 120, 0, 1)' })));
                     
                     let feelSrc = dep(doVoteReal.addLayout(lay.Feel({}))).layout.src;
-                    dep.scp(feelSrc, (feel, dep) => dep(doVoteReal.addDecals({ colour: 'rgba(0, 160, 0, 1)' })));
                     
-                    let pressSrc = dep(doVoteReal.addLayout(lay.Press({}))).src;
+                    dep.scp(feelSrc, (feel, dep) => dep(doVoteReal.addLayout(lay.Decal({ colour: 'rgba(0, 160, 0, 1)' }))));
+                    
+                    let pressSrc = dep(doVoteReal.addLayout(lay.Press({}))).layout.src;
                     dep(pressSrc.route(() => submitVoteAct.act({ entryId: entry.uid })));
                     
                   });
@@ -652,7 +652,8 @@ global.rooms.write = async foundation => {
                     
                     let votedRoomUserEntry = vote.mems['wrt.roomUserEntry'];
                     if (fellowRoomUserEntry !== votedRoomUserEntry) return;
-                    dep(doVoteReal.addDecals({ colour: 'rgba(0, 200, 0, 1)' }));
+                    
+                    dep(doVoteReal.addLayout(lay.Decal({ colour: 'rgba(0, 200, 0, 1)' })));
                     
                   });
                   

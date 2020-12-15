@@ -11,12 +11,11 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
     
     install: function(real) {
       
-      // TODO: Get rid of "getTechNode"! It's USELEZZ
-      
       if (!real.params.has('text')) real.params.text = '';
       if (U.isForm(real.params.text, String)) real.params.text = MemSrc.Prm1(real.params.text);
       if (!U.isForm(real.params.text, MemSrc.Prm1)) throw Error(`Invalid Real "text" param; need MemSrc.Prm1; got ${U.getFormName(real.params.text)}`);
       
+      let domNode = real.domNode;
       let src = real.params.text;
       let tmp = Tmp();
       
@@ -32,12 +31,12 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
       
       if (this.prompt) input.setAttribute('placeholder', this.prompt);
       
-      if (!real.techNode.style.position) {
-        real.techNode.style.position = 'relative';
-        tmp.endWith(() => real.techNode.style.position = '');
+      if (!domNode.style.position) {
+        domNode.style.position = 'relative';
+        tmp.endWith(() => domNode.style.position = '');
       }
       
-      real.techNode.appendChild(input);
+      domNode.appendChild(input);
       tmp.endWith(() => input.remove());
       
       let inpFn = evt => src.retain(input.value);

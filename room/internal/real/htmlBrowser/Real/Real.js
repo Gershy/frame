@@ -4,6 +4,9 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
   return U.form({ name: 'Real', has: { Slots, Tmp }, props: (forms, Form) => ({
     init: function({ name=null, params={}, layouts=Set(), parent=null }={}) {
       
+      this.domNode = document.createElement('div');
+      if (name) this.domNode.classList.add(name.replace(/([^a-zA-Z0-9]+)([a-zA-Z0-9])?/g, (f, p, c) => c ? c.upper() : ''));
+      
       if (U.isForm(layouts, Array)) layouts = Set(layouts);
       if (!U.isForm(layouts, Set)) throw Error(`"layouts" should be Set (or Array); got ${U.getFormName(layouts)}`);
       
@@ -16,8 +19,6 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
       this.parent = parent;
       this.root = parent ? parent.root : this;
       
-      this.techNode = this.domNode = document.createElement('div');
-      if (this.name) this.domNode.classList.add(this.name.replace(/([^a-zA-Z0-9]+)([a-zA-Z0-9])?/g, (f, p, c) => c ? c.upper() : ''));
       
       this.children = Set();
       
@@ -27,7 +28,6 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
     },
     ancestry: function() { return !this.parent ? [] : [ this, ...this.parent.ancestry() ]; },
     getTech: function() { return this.root.tech; },
-    getTechNode: function() { return this.techNode || (this.techNode = this.getTech().createTechNode(this)); },
     
     getLayoutForms: function(...formNames) {
       return formNames.toObj(formName => [ formName, this.getLayoutForm(formName) ]);
@@ -47,8 +47,8 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
       if (this.renderPrm) return;
       
       this.renderPrm = Promise(r => foundation.queueTask(() => {
-        this.renderPrm = null;
         this.getTech().render(this, delta);
+        this.renderPrm = null;
       }));
       
     },
@@ -81,7 +81,7 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
       real.endWith(() => this.children.rem(real));
       
       // Attach `real` using the tech
-      this.getTech().addNode(this, real);
+      this.domNode.appendChild(real.domNode);
       
       // Render from scratch
       real.render();
@@ -90,7 +90,7 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
       
     },
     cleanup: function() {
-      if (this.techNode) { this.getTech().remNode(this); this.techNode = null; }
+      if (this.domNode) { this.domNode.remove(); this.domNode = null; }
       this.parent = null;
       // TODO: rerender upon cleanup? Some Techs may require it...
     },

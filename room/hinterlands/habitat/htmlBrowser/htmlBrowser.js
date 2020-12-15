@@ -160,9 +160,9 @@ global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
         
         reply(U.multilineString(`
           @keyframes smoothFocus {
-            0% { outline: solid 0px; }
-            20% { outline: solid 10px; }
-            100% { outline: solid 2px; }
+            0% { box-shadow: inset 0 0 0 0; }
+            20% { box-shadow: inset 0 0 12px 4px; }
+            100% { box-shadow: inset 0 0 2px 1px; }
           }
           html, body {
             position: absolute; left: 0; top: 0; width: 100%; height: 100%;

@@ -17,6 +17,21 @@ global.rooms['internal.real.htmlBrowser.Scroll'] = async foundation => {
       if (y === 'show') real.domNode.style.overflowY = 'scroll';
       
     },
+    scrollTo: function(parReal, kidReal) {
+      
+      let scrollElem = parReal.domNode;
+      let children = [ ...scrollElem.childNodes ];
+      if (children.count() !== 1) throw Error(`Scrollable parent needs 1 child; has ${children.count()}`);
+      
+      let offsetElem = children[0];
+      let targetElem = kidReal.domNode;
+      if (!offsetElem.contains(targetElem)) throw Error(`The target elem is outside the scrollable context`);
+      
+      let tops = [ scrollElem, offsetElem, targetElem ].map(elem => elem.getBoundingClientRect().top);
+      offsetElem.scrollTop += tops[2] - tops[1];
+      
+    },
+    
     
     $Item: U.form({ name: 'Scroll.Item', has: { Layout }, props: (forms, Form) => ({
       init: function(par, ...params) {

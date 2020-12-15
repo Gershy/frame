@@ -17,6 +17,7 @@ global.rooms['internal.real.htmlBrowser.Feel'] = async foundation => {
     isInnerLayout: function() { return false; },
     install: function(real) {
       
+      let domNode = real.domNode;
       let tmp = Tmp();
       let feelTmp = null;
       
@@ -33,15 +34,15 @@ global.rooms['internal.real.htmlBrowser.Feel'] = async foundation => {
           feelTmp = Tmp();
           
           // The Tmp ends when "mouseleave" occurs
-          real.techNode.addEventListener('mouseleave', offFn);
-          feelTmp.endWith(() => real.techNode.removeEventListener('mouseleave', offFn));
+          domNode.addEventListener('mouseleave', offFn);
+          feelTmp.endWith(() => domNode.removeEventListener('mouseleave', offFn));
           
           this.src.send(feelTmp);
         };
         let offFn = evt => feelTmp && (feelTmp.end(), feelTmp = null);
         
-        real.techNode.addEventListener('mouseenter', onnFn);
-        tmp.endWith(() => real.techNode.removeEventListener('mouseenter', onnFn));
+        domNode.addEventListener('mouseenter', onnFn);
+        tmp.endWith(() => domNode.removeEventListener('mouseenter', onnFn));
         
       }
       if (this.modes.has('discrete')) {
@@ -53,15 +54,15 @@ global.rooms['internal.real.htmlBrowser.Feel'] = async foundation => {
           feelTmp = Tmp();
           
           // The Tmp ends when "blur" occurs
-          real.techNode.addEventListener('blur', offFn);
-          feelTmp.endWith(() => real.techNode.removeEventListener('blur', offFn));
+          domNode.addEventListener('blur', offFn);
+          feelTmp.endWith(() => domNode.removeEventListener('blur', offFn));
           
           this.src.send(feelTmp);
         };
         let offFn = evt => feelTmp && (feelTmp.end(), feelTmp = null);
         
-        real.techNode.addEventListener('focus', onnFn);
-        tmp.endWith(() => real.techNode.removeEventListener('focus', onnFn));
+        domNode.addEventListener('focus', onnFn);
+        tmp.endWith(() => domNode.removeEventListener('focus', onnFn));
         
       }
       

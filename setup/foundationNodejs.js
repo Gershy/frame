@@ -1171,7 +1171,8 @@
         
       },
       heartMs: val => val || (30 * 1000),
-      argsKeep: val => {
+      argsKeep: (val, foundation) => {
+        if (!val) val = foundation.getArg('args');
         if (U.isForm(val, String)) val = val.split(/[,/]/);
         if (U.isForm(val, Array)) val = foundation.seek('keep', 'adminFileSystem', ...val);
         if (val && !U.hasForm(val, Keep)) throw Error(`Value of type ${U.getFormName(val)} could not be interpreted as storage Keep`);
@@ -1223,7 +1224,6 @@
         init: function(params={}, { name }) {
           forms.Tmp.init.call(this);
           this.name = name;
-          this.techNode = null;
           this.fakeLayout = null;
           this.params = {
             text: MemSrc.Prm1('')
@@ -1248,11 +1248,8 @@
       
       let layouts = {};
       let primaryFakeReal = FakeReal({}, { name: 'nodejs.fakeReal' });
-      primaryFakeReal.techNode = null;
       primaryFakeReal.tech = {
-        createTechNode: real => null,
-        render: (real, techNode) => {},
-        addNode: (parTechNode, kidTechNode) => {},
+        render: (real, delta) => {},
         
         getLayoutForm: name => {
           if (!layouts.has(name)) {
@@ -1269,15 +1266,6 @@
           return layouts[name];
         },
         render: Function.stub
-        
-        /*,
-        
-        addViewportEntryChecker: real => { let ret = Tmp(); ret.src = Src(); return ret; },
-        
-        setText: (real, text) => {},
-        addInput: real => { let ret = Tmp(); ret.src = Src(); return ret; },
-        addPress: real => { let ret = Tmp(); ret.src = Src(); return ret; },
-        addFeel: real => { let ret = Tmp(); ret.src = Src(); return ret; }*/
       };
       
       return {
@@ -1517,9 +1505,9 @@
         // 3. The `hut.tell` for #1 occurs - how to avoid the server
         //    thinking that tell is the response for { reply: true }??
         
-        // Synced requests end here - `road.tell` MUST occur or the
+        // Synced requests end here - `road.tell` must be called or the
         // request will hang indefinitely
-        // TODO: Consider a timeout to deal with improper usage
+        // TODO: Request  should end with 500 after some delay
         if (params.reply) {
           try {
             return road.hear.send([ params, msg => sendData(req, res, msg), ms ]);
@@ -1684,6 +1672,7 @@
           try {
             for (let message of Form.parseSoktMessages(soktState)) road.hear.send([ message, null, ms ]);
           } catch(err) { sokt.emit('error', err); }
+          
         });
         sokt.on('close', () => { soktState = makeSoktState('ended'); road.end(); });
         sokt.on('error', err => {
