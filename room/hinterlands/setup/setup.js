@@ -7,7 +7,7 @@
 //  - Think about an abstract "default command" to replace "syncInit"
 //    This will allow multiplexing apps on the same server!!
 
-global.rooms['hinterlands.setup'] = async foundation => {
+global.rooms['hinterlands.Setup'] = async foundation => {
   
   let { RecSrc, RecScope } = await foundation.getRoom('record');
   

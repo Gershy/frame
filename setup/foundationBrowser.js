@@ -1,7 +1,7 @@
 (() => {
   
-  let { Tmp, Src, FnSrc, MemSrc } = U.logic;
-  let { Foundation, Keep } = U.setup;
+  let { Tmp, Src } = U.logic;
+  let { Foundation, Keep  } = U.setup;
   
   let FoundationBrowser = U.form({ name: 'FoundationBrowser', has: { Foundation }, props: (forms, Form) => ({
     
@@ -46,14 +46,6 @@
         return params.isEmpty()
           ? `/${this.path}`
           : `/${this.path}?${params.toArr((v, k) => `${k}=${v}`).join('&')}`;
-      },
-      getImage: function() {
-        let url = this.getUrl();
-        if (!this.par.urlImages.has(url)) {
-          this.par.urlImages[url] = new Image();
-          this.par.urlImages[url].src = url;
-        }
-        return this.par.urlImages[url];
       }
     })}),
     $TextNode: U.getForm(document.createTextNode('')),
@@ -236,11 +228,12 @@
       server.decorateRoad = road => {
         road.hear = Src();
         road.tell = msg => {
+          if (msg === null) return;
           if (sokt.readyState !== WebSocket.OPEN) throw Error(`Sokt transport unavailable`);
           sokt.send(JSON.stringify(msg));
         }
         road.currentCost = () => 0.5;
-        sokt.onmessage = ({ data }) => data && road.hear.send([ JSON.parse(data), null, this.getMs() ]);
+        sokt.onmessage = ({ data }) => road.hear.send([ JSON.parse(data), null, this.getMs() ]);
       };
       server.addPool = pool => Tmp.stub;
       
@@ -250,8 +243,8 @@
     // Room
     installRoom: async function(name, bearing='below') {
       
-      let urlParams = { command: 'html.room', type: 'room', room: name, reply: '1' };
-      let url = this.seek('keep', 'urlResource', { params: urlParams }).getUrl();
+      let params = { command: 'html.room', type: 'room', room: name, reply: '1' };
+      let url = this.seek('keep', 'urlResource', { params }).getUrl();
       
       let script = document.createElement('script');
       script.setAttribute('defer', '');

@@ -1,4 +1,4 @@
-global.rooms['hinterlands.habitat.htmlBrowser'] = async foundation => {
+global.rooms['hinterlands.habitat.HtmlBrowser'] = async foundation => {
   
   let { Tmp } = U.logic;
   

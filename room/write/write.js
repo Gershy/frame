@@ -3,13 +3,14 @@ global.rooms.write = async foundation => {
   let { Tmp, Slots, Src, Chooser, FnSrc } = U.logic;
   let { Rec } = await foundation.getRoom('record');
   
-  let Setup = await foundation.getRoom('hinterlands.setup');
-  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
+  let Setup = await foundation.getRoom('hinterlands.Setup');
+  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowser');
   
   return Setup('wrt', 'write', {
     
     habitats: [ HtmlBrowserHabitat() ],
     recForms: {
+      
       'wrt.room': U.form({ name: 'RoomRec', has: { Rec }, props: (forms, Form) => ({
         getStatusWatcher: function() {
           
@@ -33,6 +34,7 @@ global.rooms.write = async foundation => {
           return timerMs + timeout * 1000;
         }
       })})
+      
     },
     parFn: async (hut, writeRec, real, dep) => {
       
@@ -172,7 +174,7 @@ global.rooms.write = async foundation => {
     kidFn: async (hut, writeRec, real, dep) => {
       
       let layoutNames = [ 'Free', 'Size', 'Axis1D', 'Decal', 'Press', 'Feel', 'Text', 'TextInput', 'Scroll' ];
-      let lay = await Promise.allObj(layoutNames.toObj(v => [ v, real.getLayoutForm(v) ]));
+      let lay = await Promise.allObj(layoutNames.toObj(ln => [ ln, real.getLayoutForm(ln) ]));
       
       // "Real" => "Representation"? "Depiction"? ("Dep" is already a thing D:)
       let mainReal = dep(real.addReal('wrt.main', [
@@ -457,15 +459,30 @@ global.rooms.write = async foundation => {
             lay.Decal({ colour: 'rgba(255, 255, 255, 1)' })
           ]));
           
-          let titleText = `${room.getVal().name} (by ${roomCreator.getVal().username})`;
-          roomReal.addReal('wrt.activeRoom.title', { text: titleText }, [
+          let headerReal = roomReal.addReal('wrt.activeRoom.header', [
             lay.Size({ w: '100%', h: '60px' }),
+            lay.Axis1D({ axis: 'x', dir: '+', cuts: 'distribute' })
+          ]);
+          
+          headerReal.addReal('wrt.activeRoom.header.pad', [ lay.Size({ w: '30%' }) ]);
+          
+          let titleText = `${room.getVal().name} (by ${roomCreator.getVal().username})`;
+          headerReal.addReal('wrt.activeRoom.header.title', { text: titleText }, [
+            lay.Size({ h: '60px' }),
             lay.Text({ size: '150%' })
           ]);
           
+          let leaveRoomReal = headerReal.addReal('wrt.activeRoom.header.leave', { text: 'Leave' }, [
+            lay.Size({ h: '60px' }),
+            lay.Text({ size: '120%' }),
+            lay.Decal({ textColour: 'rgba(120, 120, 120, 1)' }),
+            lay.Press({})
+          ]);
+          dep(leaveRoomReal.getLayout(lay.Press).src.route(() => leaveRoomAct.act()));
+          
           // Show fellow users in room, and indicate which are online
           let usersReal = roomReal.addReal('wrt.activeRoom.users', [
-            lay.Size({ w: '100%', h: '40px' }),
+            lay.Size({ h: '40px' }),
             lay.Axis1D({ axis: 'x', flow: '+', cuts: 'focus' })
           ]);
           dep.scp(room, 'wrt.roomUser', (fellowRoomUser, dep) => {

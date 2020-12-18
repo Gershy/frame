@@ -29,9 +29,6 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
     ancestry: function() { return !this.parent ? [] : [ this, ...this.parent.ancestry() ]; },
     getTech: function() { return this.root.tech; },
     
-    getLayoutForms: function(...formNames) {
-      return formNames.toObj(formName => [ formName, this.getLayoutForm(formName) ]);
-    },
     getLayoutForm: function(formName) { return this.getTech().getLayoutForm(formName); },
     makeLayout: function(formName, ...args) { return U.then(this.getTech().getLayoutForm(formName), Form => Form(...args)); },
     

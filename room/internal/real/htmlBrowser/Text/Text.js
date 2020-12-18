@@ -18,7 +18,7 @@ global.rooms['internal.real.htmlBrowser.Text'] = async foundation => {
       if (this.size) domNode.style.fontSize = this.size;
       
       // Apply text
-      domNode.textContent = real.params.seek('text').val || '';
+      domNode.textContent = `${real.params.seek('text').val}`;
       
       // Apply text alignment; best results occur when flex and classic "text-align' props are used
       domNode.style.alignItems = { fwd: 'flex-start', bak: 'flex-end', mid: 'center', all: 'stretch' }[this.align || 'mid'];
