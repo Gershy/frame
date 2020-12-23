@@ -12,10 +12,7 @@ let data2 = U.multilineStr(`
   let varBoolFalse = false;
   let varArrEmpty = [];
   let varArrInts = [ 3423, 9879, 9837483 ];
-  let varArrStrs = [
-    'abc', 'def', 'ghi', 'jklmnopqr',
-    'stu', 'vwx', 'yz'
-  ];
+  let varArrStrs = [ 'abc', 'def', 'ghi', 'jklmnopqr', 'stu', 'vwx', 'yz' ];
   let varArrVars = [ varBoolTrue, varBoolFalse, varArrEmpty ];
   let varArrMixed = [
     varFlt, [ 'a', 'b' ], 493, 983789.3487

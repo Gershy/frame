@@ -444,8 +444,8 @@
           if (!U.isForm(content, Object)) throw Error(`Specified bad arg keep: ${argsKeep.absPath.join('/')}`);
           this.readyArgs = {};
           this.origArgs = {
-            ...this.origArgs,
             ...content,
+            ...this.origArgs,
             debug: [
               ...this.argProcessors.debug(this.origArgs.debug, this),
               ...this.argProcessors.debug(content.debug, this)
@@ -1143,9 +1143,10 @@
             
           })();
           
+          let port = foundation.getArg('port') || 80;
           hosting = {
-            http: { protocol: 'http', host, port: 80, compress: [ 'deflate', 'gzip' ] },
-            sokt: { protocol: 'sokt', host, port: 81 }
+            http: { protocol: 'http', host, port, compress: [ 'deflate', 'gzip' ] },
+            sokt: { protocol: 'sokt', host, port: port + 1 }
           };
           
         }
