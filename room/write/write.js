@@ -511,9 +511,9 @@ global.rooms.write = async foundation => {
           dep.scp(room, 'wrt.roomEntry', (roomEntry, dep) => {
             
             let entry = roomEntry.mems['wrt.entry'];
-            let entryText = `${entry.getVal('username')}: ${entry.getVal('text')}`;
+            let entryText = entry.getVal('text'); // `${entry.getVal('username')}: ${entry.getVal('text')}`;
             dep(storyReal.addReal('wrt.storyItem', { text: entryText }, [
-              lay.Text({ size: '100%' })
+              lay.Text({ size: '100%', align: 'fwd' })
             ]));
             
           });
