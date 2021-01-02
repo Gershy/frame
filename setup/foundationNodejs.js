@@ -1002,10 +1002,13 @@
           console.log(`Raw args:`, this.origArgs);
         }
         
-        if (this.getArg('debug').has('storage')) console.log(val
-          ? `Running with storage @ ${val.absPath.join('/')}`
-          : `No storage provided; this will be a transient run`
-        );
+        if (this.getArg('debug').has('storage')) {
+          let storageKeep = this.getArg('storageKeep');
+          console.log(storageKeep
+            ? `Running with storage @ ${storageKeep.absPath.join('/')}`
+            : `No storage provided; this will be a transient run`
+          );
+        }
         
       })();
       
