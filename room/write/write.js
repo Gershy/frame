@@ -574,9 +574,16 @@ global.rooms.write = async foundation => {
             dep.scp(submittedEntryChooser.srcs.off, (noSubmittedEntry, dep) => {
               
               let submitEntryAct = dep(hut.enableAction('wrt.submitEntry', ({ text }) => {
+                
                 console.log(`User ${username} submitted entry: ${text}`);
+                if (text.count() > room.getVal('writeParams').charLimit) {
+                  console.log('Entry was too long!');
+                  return;
+                }
+                
                 let entry = hut.parHut.createRec('wrt.entry', [ roomUser ], { ms: foundation.getMs(), text });
                 hut.createRec('wrt.roomUserEntry', [ roomUser, entry ]);
+                
               }));
               
               let submitEntryReal = dep(controlsReal.addReal('wrt.submitEntry', [
@@ -595,7 +602,35 @@ global.rooms.write = async foundation => {
               ]);
               
               let submitSrc = submitReal.getLayout(lay.Press).src;
-              dep(submitSrc.route(() => submitEntryAct.act({ text: inputReal.params.text.val })));
+              dep(submitSrc.route(() => {
+                let text = inputReal.params.text.val;
+                submitEntryAct.act({ text });
+              }));
+              
+              let charCountReal = submitEntryReal.addReal('wrt.submitEntry.charCount', [
+                lay.Free({ mode: 'tl', x: '5px', y: 'calc(100% - 35px)', h: '30px' }),
+                lay.Axis1D({ axis: 'x', flow: '+' })
+              ]);
+              let charCountNumReal = charCountReal.addReal('wrt.submitEntry.charCountNum', { text: '?' }, [
+                lay.Text({ size: '14px' })
+              ]);
+              let charCountDelReal = charCountReal.addReal('wrt.submitEntry.charCountDel', { text: '/' }, [
+                lay.Text({ size: '14px' })
+              ]);
+              let charCountDenReal = charCountReal.addReal('wrt.submitEntry.charCountDen', { text: '?' }, [
+                lay.Text({ size: '14px' })
+              ]);
+              
+              console.log('SRC??', inputReal.params.text);
+              
+              dep(inputReal.params.text.route(() => {
+                let text = inputReal.params.text.val;
+                charCountNumReal.mod({ text: text.count().toString() });
+              }));
+              dep(room.valSrc.route(() => {
+                let { charLimit } = room.getVal('writeParams');
+                charCountDenReal.mod({ text: charLimit.toString() });
+              }));
               
             });
             dep.scp(submittedEntryChooser.srcs.onn, (submittedEntry, dep) => {
