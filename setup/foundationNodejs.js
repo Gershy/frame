@@ -32,8 +32,8 @@
       }
     })}),
     $KeepStatic: U.form({ name: 'KeepStatic', has: { Keep }, props: (forms, Form) => ({
-      init: function(fileSystemKeep) {
-        this.fileSystemKeep = fileSystemKeep;
+      init: function(sourceKeep) {
+        this.sourceKeep = sourceKeep;
         this.hut = null;
       },
       
@@ -42,7 +42,7 @@
       // via a Hut seek parameter. `KeepStatic` could track all existing
       // instances of "KeepStaticHut" to avoid creating multiple
       // instances for the same Hut. KeepStaticHut could inherit from
-      // Tmp as well as Keep to facilitate it ending when its Hut end.
+      // Tmp as well as Keep to facilitate it ending when its Hut ends.
       // And would need to clean up the mapped entry in `KeepStatic` if
       // the "KeepStaticHut" ends
       setHut: function(hut) { this.hut = hut; },
@@ -50,10 +50,10 @@
         
         let key = [ 'static', ...fpCmps ].join('/');
         if (!this.hut.roadSrcs.has(key)) {
-          // Make keep available to Below
-          this.hut.roadSrc(key).route(async ({ reply }) => reply(this.fileSystemKeep.seek(fpCmps)));
+          // Make Keep available Below
+          this.hut.roadSrc(key).route(async ({ reply }) => reply(this.sourceKeep.seek(fpCmps)));
         }
-        return this.fileSystemKeep.seek(fpCmps);
+        return this.sourceKeep.seek(fpCmps);
         
       }
     })}),

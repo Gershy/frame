@@ -179,6 +179,11 @@ Hut at the very bottom runs using a single Reality.
     createSoktServer: C.noFn('createSoktServer', opts => {}),
     
     // Room
+    getRooms: async function(...names) {
+      
+      return Promise.allObj(names.toObj(name => this.getRoom(name)));
+      
+    },
     getRoom: async function(name, ...args) {
       
       if (!this.installedRooms.has(name)) {
@@ -204,6 +209,8 @@ Hut at the very bottom runs using a single Reality.
       let room = await this.getRoom(name, 'above');
       let hut = await this.getRootHut({ heartMs: 1000 * 40 });
       
+      // The settled room gets its Hut linked to static resources
+      // TODO: Move to hinterlands.Setup?
       this.seek('keep', 'static').setHut(hut);
       return room.open(hut);
     },
