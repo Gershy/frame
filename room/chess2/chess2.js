@@ -1,25 +1,157 @@
-global.rooms.chess2 = async foundation => {
+global.rooms['chess2'] = async foundation => {
   
-  // TODO: Would be nice to include the 'term' room so that Above could
-  // grant a nice friendly term to each Hut (or more appropriately,
-  // Player), but then the long list of hut terms must be included Below
-  // as well, causing bloat! No good way to have this appear only Above;
-  // the current method would be to mark the undesired sections of
-  // term.js with {ABO/VE= =ABO/VE}, but this would be a semantic Error:
-  // the undesired section isn't necessarily for Above, only in this one
-  // case...
+  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
+  let Setup = await foundation.getRoom('hinterlands.Setup');
   
-  // I think the best way to do this is to list "innerRooms" twice, once
-  // for Above, and once for Below. This will, however, require some
-  // changes to FoundationNodejs, which currently parses "innerRooms"
-  // *before* compiling each room (I think!). FoundationNodejs could
-  // find itself in an ambiguous situation if two "innerRooms"
-  // declarations exist in the plaintext of the file.
+  let staticKeep = foundation.seek('keep', 'static');
   
-  // TODO: Why bother with "innerRooms" in the first place? Why not just
-  // parse the parameters of the "build" property's function? (This
-  // would require implementations to always name a parameter precisely
-  // after the room it corresponds to.)
+  return Setup('c2', 'chess2', {
+    habitats: [ HtmlBrowserHabitat() ],
+    parFn: (hut, rec, real, dep) => {
+      
+      /// {ABOVE=
+      
+      staticKeep.setHut(hut);
+      
+      // Config values
+      let moveMs = 50 * 1000;
+      let matchmakeMs = 3000;
+      let pieceDefs = {
+        minimal: {
+          white: [ [ 'queen', 3, 3 ], [ 'king', 4, 3 ] ],
+          black: [ [ 'queen', 4, 4 ], [ 'king', 3, 4 ] ]
+        },
+        standard: {
+          white: [
+            [ 'rook',     0, 0 ],
+            [ 'knight',   1, 0 ],
+            [ 'bishop',   2, 0 ],
+            [ 'queen',    4, 0 ],
+            [ 'king',     3, 0 ],
+            [ 'bishop',   5, 0 ],
+            [ 'knight',   6, 0 ],
+            [ 'rook',     7, 0 ],
+            [ 'pawn',     0, 1 ],
+            [ 'pawn',     1, 1 ],
+            [ 'pawn',     2, 1 ],
+            [ 'pawn',     3, 1 ],
+            [ 'pawn',     4, 1 ],
+            [ 'pawn',     5, 1 ],
+            [ 'pawn',     6, 1 ],
+            [ 'pawn',     7, 1 ]
+          ],
+          black: [
+            [ 'rook',     0, 7 ],
+            [ 'knight',   1, 7 ],
+            [ 'bishop',   2, 7 ],
+            [ 'queen',    4, 7 ],
+            [ 'king',     3, 7 ],
+            [ 'bishop',   5, 7 ],
+            [ 'knight',   6, 7 ],
+            [ 'rook',     7, 7 ],
+            [ 'pawn',     0, 6 ],
+            [ 'pawn',     1, 6 ],
+            [ 'pawn',     2, 6 ],
+            [ 'pawn',     3, 6 ],
+            [ 'pawn',     4, 6 ],
+            [ 'pawn',     5, 6 ],
+            [ 'pawn',     6, 6 ],
+            [ 'pawn',     7, 6 ]
+          ]
+        },
+        castlingTest: {
+          white: [
+            [ 'rook',     0, 0 ],
+            [ 'king',     3, 0 ],
+            [ 'rook',     7, 0 ],
+            [ 'pawn',     0, 1 ],
+            [ 'pawn',     1, 1 ],
+            [ 'pawn',     2, 1 ],
+            [ 'pawn',     3, 1 ],
+            [ 'pawn',     4, 1 ],
+            [ 'pawn',     5, 1 ],
+            [ 'pawn',     6, 1 ],
+            [ 'pawn',     7, 1 ]
+          ],
+          black: [
+            [ 'rook',     0, 7 ],
+            [ 'king',     3, 7 ],
+            [ 'rook',     7, 7 ],
+            [ 'pawn',     0, 6 ],
+            [ 'pawn',     1, 6 ],
+            [ 'pawn',     2, 6 ],
+            [ 'pawn',     3, 6 ],
+            [ 'pawn',     4, 6 ],
+            [ 'pawn',     5, 6 ],
+            [ 'pawn',     6, 6 ],
+            [ 'pawn',     7, 6 ]
+          ]
+        },
+        gameOverTest: {
+          white: [
+            [ 'rook',     0, 0 ],
+            [ 'knight',   1, 0 ],
+            [ 'bishop',   2, 0 ],
+            [ 'queen',    4, 6 ],
+            [ 'king',     4, 0 ],
+            [ 'bishop',   5, 0 ],
+            [ 'knight',   6, 0 ],
+            [ 'rook',     7, 0 ],
+            [ 'pawn',     0, 1 ],
+            [ 'pawn',     1, 1 ],
+            [ 'pawn',     2, 1 ],
+            [ 'pawn',     3, 1 ],
+            [ 'pawn',     5, 1 ],
+            [ 'pawn',     6, 1 ],
+            [ 'pawn',     7, 1 ]
+          ],
+          black: [
+            [ 'rook',     0, 7 ],
+            [ 'knight',   1, 7 ],
+            [ 'bishop',   2, 7 ],
+            [ 'queen',    4, 1 ],
+            [ 'king',     4, 7 ],
+            [ 'bishop',   5, 7 ],
+            [ 'knight',   6, 7 ],
+            [ 'rook',     7, 7 ],
+            [ 'pawn',     0, 6 ],
+            [ 'pawn',     1, 6 ],
+            [ 'pawn',     2, 6 ],
+            [ 'pawn',     3, 6 ],
+            [ 'pawn',     5, 6 ],
+            [ 'pawn',     6, 6 ],
+            [ 'pawn',     7, 6 ]
+          ]
+        }
+      };
+      
+      let pieceDefName = 'standard';
+      let pieceStyle = 'classic';
+      
+      let activePieceDef = pieceDefs[pieceDefName];
+      let pieceTypes = Set(activePieceDef.toArr( col => col.map(([ name ]) => name) ).flat(Infinity));
+      
+      for (let colour of [ 'white', 'black' ]) { for (let name of pieceTypes) {
+        
+        let k = staticKeep.seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${name[0].upper()}${name.slice(1)}.png` ]);
+        console.log(k);
+        
+      }}
+      
+      /// =ABOVE}
+      
+    },
+    kidFn: (hut, rec, real, dep) => {
+      
+      let staticKeep = foundation.seek('keep', 'static');
+      /// {BELOW=
+      staticKeep.setHut(hut);
+      /// =BELOW}
+      
+    }
+  });
+  
+  return;
   
   let record = await foundation.getRoom('record');
   let hinterlands = await foundation.getRoom('hinterlands');
