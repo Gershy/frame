@@ -1,7 +1,7 @@
 global.rooms['internal.test.test2'] = async foundation => {
   
   let Setup = await foundation.getRoom('hinterlands.Setup');
-  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowser');
+  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
   
   return Set('t2', 'internal.test.t2', {
     

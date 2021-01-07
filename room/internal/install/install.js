@@ -1,7 +1,7 @@
 global.rooms['internal.install'] = async foundation => {
   
-  let Setup = await foundation.getRoom('hinterlands.setup');
-  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.htmlBrowser');
+  let Setup = await foundation.getRoom('hinterlands.Setup');
+  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
   // let TerminalHabitat = await foundation.getRoom('hinterlands.habitat.terminal'); // Interact with app purely via command line (and maybe even a separate graphical ui experience like 'window' room
   // let TerminalGraphicalHabitat = await foundation.getRoom('hinterlands.habitat.terminalGraphical');
   

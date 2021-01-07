@@ -4,7 +4,7 @@ global.rooms.write = async foundation => {
   let { Rec } = await foundation.getRoom('record');
   
   let Setup = await foundation.getRoom('hinterlands.Setup');
-  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowser');
+  let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
   
   return Setup('wrt', 'write', {
     
