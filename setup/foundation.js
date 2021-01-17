@@ -24,7 +24,8 @@ Hut at the very bottom runs using a single Reality.
     setContent: C.noFn('setContent'),
     getContentType: C.noFn('getContentType'),
     getContentByteLength: C.noFn('getContentByteLength'),
-    getPipe: C.noFn('getPipe')
+    getPipe: C.noFn('getPipe'),
+    desc: C.noFn('desc')
   })});
   U.setup.gain({ Keep });
   

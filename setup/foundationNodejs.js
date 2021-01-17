@@ -44,7 +44,13 @@
       // instances for the same Hut. KeepStaticHut could inherit from
       // Tmp as well as Keep to facilitate it ending when its Hut ends.
       // And would need to clean up the mapped entry in `KeepStatic` if
-      // the "KeepStaticHut" ends
+      // the "KeepStaticHut" ends.
+      // Could even support multiple "access" param types. For example:
+      //    |   hut.access('static', [ 'room', 'testy', 'asset', 'testy.jpg' ]);
+      // retrieves a Keep available to any client, whereas:
+      //    |   hut.access('static', instanceOfHut);
+      // retrieves a more specialized Keep for accessing content only
+      // available to a particular Hut instance
       setHut: function(hut) { this.hut = hut; },
       access: function(fpCmps) {
         
@@ -282,7 +288,8 @@
         }
         return null;
         
-      }
+      },
+      desc: function() { return `${U.getFormName(this)}: ${this.absPath.join('/')}`; }
       
     })}),
     $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
@@ -517,6 +524,43 @@
             if (tmp1.onn()) throw Error(`Tmp #1 didn't end with Tmp #2`);
             if (tmp2.onn()) throw Error(`Tmp #2 still onn after ended`);
           },
+          async m => { // Tmps with references end appropriately #1
+            
+            // TODO: Think about referenced Tmps + U.logic classes
+            // that manage their underlying Tmps; e.g. FnSrc.Tmp1 ends
+            // every Tmp when a new one arrives
+            
+            let tmp = Tmp();
+            tmp.ref();
+            tmp.end();
+            if (tmp.onn()) throw Error(`Tmp was referenced then ended, but was onn`);
+            
+          },
+          async m => { // Tmps with references end appropriately #2
+            
+            let tmp = Tmp();
+            tmp.ref();
+            tmp.ref();
+            tmp.end();
+            if (tmp.off()) throw Error(`Tmp referenced twice, ended once, but was off`);
+            
+          },
+          async m => { // Tmps with references end appropriately #1
+            
+            let tmp = Tmp();
+            for (let i = 0; i < 10; i++) tmp.ref();
+            for (let i = 0; i < 10; i++) tmp.end();
+            if (tmp.onn()) throw Error(`Tmp was referenced x 10, ended x 10, but was onn`);
+            
+          },
+          async m => { // Tmps with references end appropriately #1
+            
+            let tmp = Tmp();
+            for (let i = 0; i < 11; i++) tmp.ref();
+            for (let i = 0; i < 10; i++) tmp.end();
+            if (tmp.off()) throw Error(`Tmp was referenced x 11, ended x 10, but was off`);
+            
+          },
           async m => { // Send 0 events correctly
             let src = Src();
             let events = [];
@@ -590,7 +634,7 @@
               for (let i = 0; i < 9; i++) srcs[4].send();
               
               let exp = 3 + 6 + 2 + 1 + 9;
-              if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${exp.count()}`);
+              if (events.count() !== exp) throw Error(`Expected exactly 0 events; got ${events.count()}`);
             },
             async m => { // FnSrc sends values as expected
               let srcs = (3).toArr(() => Src());
@@ -1005,9 +1049,16 @@
         if (this.getArg('debug').has('storage')) {
           let storageKeep = this.getArg('storageKeep');
           console.log(storageKeep
-            ? `Running with storage @ ${storageKeep.absPath.join('/')}`
+            ? `Running with storage @ ${storageKeep.desc()}`
             : `No storage provided; this will be a transient run`
           );
+        }
+        
+        if (this.getArg('debug').has('residentSetSize')) {
+          let mbMult = 1 / (1024 * 1024);
+          let fn = () => console.log(`Resident set size: ${(process.memoryUsage().rss * mbMult).toFixed(2)}mb`);
+          setInterval(fn, this.getArg('residentSetSizeDebugMs'));
+          fn();
         }
         
       })();
@@ -1036,6 +1087,8 @@
         if (!val) return [ '1.1.1.1', '1.0.0.1' ];
         return U.isForm(val, String) ? val.split(',').map(v => v.trim() || C.skip) : val;
       },
+      residentSetSize: val => (val != null) ? val : false,
+      residentSetSizeDebugMs: val => val || 20 * 1000,
       hosting: async (hosting, foundation) => {
         
         let host = await foundation.getArg('host');
