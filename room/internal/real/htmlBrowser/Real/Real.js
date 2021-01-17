@@ -18,8 +18,6 @@ global.rooms['internal.real.htmlBrowser.Real'] = async foundation => {
       this.params = params; // For dynamic layout behaviour
       this.parent = parent;
       this.root = parent ? parent.root : this;
-      
-      
       this.children = Set();
       
       this.layouts = Set();

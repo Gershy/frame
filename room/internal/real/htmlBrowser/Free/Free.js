@@ -8,6 +8,7 @@ global.rooms['internal.real.htmlBrowser.Free'] = async foundation => {
     render: function(real, domNode) {
       
       domNode.style.position = 'absolute';
+      
       if (this.w) domNode.style.width = this.w;
       if (this.h) domNode.style.height = this.h;
       if (this.mode === 'cen') {

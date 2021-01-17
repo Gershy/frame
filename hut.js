@@ -27,6 +27,8 @@
 // ==== NOTES
 // EventSource looks useful: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
 
+'use strict';
+
 // Do setup
 require('./setup/clearing.js');
 require('./setup/foundation.js');

@@ -107,7 +107,6 @@ global.rooms['term'] = async foundation => {
     init: function(terms=stockTerms, r=random.NativeRandom()) { // TODO: foundation.getRootRandom()?
       
       let [ initTerm, ...otherTerms ] = r.genShuffled(terms);
-      
       this.termsHead = this.termsTail = { term: initTerm, next: null };
       for (let term of otherTerms) this.termsTail = this.termsTail.next = { term, next: null };
       

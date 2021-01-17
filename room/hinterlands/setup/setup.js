@@ -9,7 +9,7 @@
 
 global.rooms['hinterlands.Setup'] = async foundation => {
   
-  let { RecSrc, RecScope } = await foundation.getRoom('record');
+  let { Rec, RecSrc, RecScope } = await foundation.getRoom('record');
   
   return U.form({ name: 'Setup', props: (forms, Form) => ({
     
@@ -31,20 +31,49 @@ global.rooms['hinterlands.Setup'] = async foundation => {
     
     /// {ABOVE=
     $FollowRecScope: U.form({ name: 'FollowRecScope', has: { RecScope }, props: (forms, Form) => ({
+      
+      // A RecScope linked to a Hut; any Tmp produced by the Scope which
+      // is followable by the Hut gets followed - this is a great
+      // reduction to implementation overhead!
+      
+      // Note that RecScopes may deal with Tmps that are Recs, but this
+      // doesn't necessarily have to be the case! Non-Rec Tmps can be
+      // handled by RecScopes. Not all Tmps can be followed - this means
+      // that for every Tmp which appears for a FollowRecScope we must
+      // decide whether or not to follow it. A previous attempt made
+      // this determination upon initializing the Scope, looking at the
+      // types of args used for initialization. For example we assumed
+      // that IFF either of the following two patterns occurred:
+      // 
+      //    1 - FollowRecScope(rec, 'pfx.recName', (rec, dep) => { ... })
+      //    2 - FollowRecScope(rec.relSrc('pfx.recName'), (rec, dep) => { ... })
+      // 
+      // then the FollowRecScope would always follow any resulting Rec.
+      // But this overlooked an important use case:
+      // 
+      //    FollowRecScope(Chooser(rec.relSrc('pfx.recName')), (rec, dep) => { ... })
+      // 
+      // The Scope would see not a RelSrc, but a Chooser, and decide not
+      // to follow any resulting Tmps (which are Recs). The implementor
+      // will feel as if they've captured 'pfx.recName' Recs here, but
+      // they won't have. This flaw is addressed by determining whether
+      // to follow when Tmps become scoped, NOT when the Scope itself is
+      // initialized. This seems to work in all cases!
+      
+      // TODO: What about a case:
+      //    FollowRecScope(TheoreticalSrc(rec.relSrc('pfx.recName')), (rec, dep) => { ... })
+      // where `TheoreticalSrc` takes a RecSrc, but sends some kind of
+      // calculated value that is NOT a Rec? The implementor may think
+      // they've captured 'pfx.recName', but because the FollowRecSrc
+      // never scopes a Rec (only the calculated value), it won't be
+      // captured. Is this realistic??
+      
       init: function(hut, ...args) {
-        
         this.hut = hut;
-        
-        // Our src will send Recs if using either of these styles:
-        // 1 - `RecScope(srcTmp, 'relTerm', (rec, dep) => ...)`
-        // 2 - `RecScope(srcTmp.relSrc('relTerm'), (rec, dep) => ...)`
-        this.doFollowRecs = args.count() === 3 || U.isForm(args[0], RecSrc);
-        
         forms.RecScope.init.call(this, ...args);
-        
       },
       processTmp: function(tmp, dep) {
-        if (this.doFollowRecs) dep(this.hut.followRec(tmp));
+        if (U.hasForm(tmp, Rec)) dep(this.hut.followRec(tmp));
         return forms.RecScope.processTmp.call(this, tmp, dep);
       },
       subScope: function(...args) { return forms.RecScope.subScope.call(this, this.hut, ...args); }
@@ -189,8 +218,8 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       // encounter the error that it cannot do Tells since there is no
       // AboveHut). This currently cannot happen to FoundationBrowser,
       // as the function for creating the http server is synchronous!
-      // This is contextually sensible, as the FoundationBrowser itself
-      // has been transported over a functioning http connection.
+      // This is contextually sensible, as the FoundationBrowser code
+      // itself has been transported over a functioning http connection.
       let hosting = await Promise.resolve(this.hosting);
       for (let [ term, hostingOpts ] of hosting) U.then(foundation.getServer(hostingOpts), server => {
         

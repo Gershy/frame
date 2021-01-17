@@ -682,20 +682,20 @@ global.rooms.hinterlands = async foundation => {
         
         // The Rec wasn't Followed, and now it is!
         
-        let followDrop = Tmp();
+        let followTmp = Tmp();
+        fol = { strength: str1, followTmp };
         
-        fol = { strength: str1, followDrop };
         this.recFollows.set(rec, fol);
-        followDrop.endWith(() => this.recFollows.rem(rec));
+        followTmp.endWith(() => this.recFollows.rem(rec));
         
         this.toSync('add', rec);
-        followDrop.endWith(() => this.toSync('rem', rec));
+        followTmp.endWith(() => this.toSync('rem', rec));
         
         let updRecRoute = rec.valSrc.route(v => this.toSync('upd', rec, v));
-        followDrop.endWith(updRecRoute);
+        followTmp.endWith(updRecRoute);
         
-        let recDryRoute = rec.endWith(followDrop, 'tmp');
-        followDrop.endWith(recDryRoute);
+        let recDryRoute = rec.endWith(followTmp, 'tmp');
+        followTmp.endWith(recDryRoute);
         
       } else if (str0 > 0 && str1 > 0) {
         
@@ -705,7 +705,7 @@ global.rooms.hinterlands = async foundation => {
       } else if (str0 > 0 && str1 <= 0) {
         
         // The Rec was Followed; now it isn't
-        fol.followDrop.end();
+        fol.followTmp.end();
         fol = null;
         
       }
@@ -824,6 +824,8 @@ global.rooms.hinterlands = async foundation => {
       tmp.endWith(() => delete this.roadSrcs[command]);
       tmp.endWith(hearSrc.route(({ msg, reply }) => {
         let result = U.safe(() => fn(msg));
+        
+        if (U.hasForm(result, Error)) foundation.queueTask(() => { throw result; });
         
         /// {DEBUG= // TODO: this is DEBUG inside ABOVE; nesting not supported yet
         if (result != null && !U.isForm(result, Object, Array, String))
