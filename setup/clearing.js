@@ -2,7 +2,7 @@
 
 Error.stackTraceLimit = 200;
 
-let C = global.C = {
+let C = global.C = Object.freeze({
   skip: undefined,
   base62: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
   notImplemented: function() { throw Error(`Not implemented by ${U.getFormName(this)}`); },
@@ -11,12 +11,12 @@ let C = global.C = {
     fn['~noFormCollision'] = true; // TODO: Use Symbol here??
     return fn;
   }
-};
+});
 let protoDef = (Cls, name, value) => {
   Object.defineProperty(Cls.prototype, name, { value, enumerable: false, writable: true });
   
-  // Note that these properties should not be available on `global`! If
-  // they were available, typos resulting in `protoDef` names resolve to
+  // Note these properties should not be available on `global`! If they
+  // were available, typos resulting in `protoDef` names resolve to
   // unexpected values instead of `C.skip`; this lead someone (whose
   // name remains undisclosed) into a ridiculous debugging scenario
   if (Cls === global.constructor) global[name] = C.skip;
@@ -170,6 +170,7 @@ protoDef(SetOrig, 'toObj', function(fn) {
   for (let v of this) { v = fn(v); if (v !== C.skip) ret[v[0]] = v[1]; }
   return ret;
 });
+protoDef(SetOrig, 'map', SetOrig.prototype.toArr);
 protoDef(SetOrig, 'each', SetOrig.prototype.forEach);
 protoDef(SetOrig, 'find', function(f) { // Iterator: (val) => bool; returns { found, val }
   for (let v of this) if (f(v)) return { found: true, val: v };
@@ -193,6 +194,7 @@ protoDef(MapOrig, 'toArr', function(fn) { // Iterator: (val, key) => val0
   for (let [ k, v ] of this) { v = fn(v, k); if (v !== C.skip) ret.push(v); }
   return ret;
 });
+protoDef(MapOrig, 'map', MapOrig.prototype.toObj);
 protoDef(MapOrig, 'each', MapOrig.prototype.forEach);
 protoDef(MapOrig, 'find', function(f) { // Iterator: (val, key) => bool; returns { found, val, key }
   for (let [ k, v ] of this) if (f(v, k)) return { found: true, val: v, key: k };
@@ -382,6 +384,7 @@ let U = global.U = {
     
     protoDef(Form, 'Form', Form);
     protoDef(Form, 'constructor', Form);
+    Object.freeze(Form.prototype);
     return Form;
   },
   isForm: (fact, ...forms) => {
@@ -502,7 +505,7 @@ U.logic = (() => {
     
     init: function(fn) {
       // Allow Endable.prototype.cleanup to be masked
-      if (fn) this.cleanup = fn;
+      if (fn) Object.defineProperty(this, 'cleanup', { value: fn, writable: true, configurable: true, enumerable: true });
       Form.globalRegistry.add(this);
     },
     onn: function() { return true; },
@@ -510,7 +513,7 @@ U.logic = (() => {
     cleanup: function() {},
     end: function(...args) {
       if (this.off()) return false;
-      this.onn = () => false;
+      Object.defineProperty(this, 'onn', { value: () => false, writable: true, configurable: true, enumerable: true }); //this.onn = () => false;
       Form.globalRegistry.rem(this);
       this.cleanup(...args);
       return true;
@@ -552,14 +555,24 @@ U.logic = (() => {
       forms.Endable.init.call(this);
       if (fn) this.route(fn, 'prm');
     },
+    ref: function() { this.refCount = (this.refCount || 0) + 1; },
     end: function(...args) { return this.sendAndEnd(...args); },  // TODO: high-traffic code... should reference `sendAndEnd` instead of delegating...??
     send: function(...args) { return this.sendAndEnd(...args); },
     sendAndEnd: function(...args) {
+      
       // Sending and ending are synonymous for a Tmp
+      
+      // For ref'd Tmps, prevent ending if refs still exist
+      if (this.refCount) {
+        this.refCount--;
+        if (this.refCount > 0) return;
+      }
+      
       if (!forms.Endable.end.call(this)) return; // Check if we're already ended
       forms.Src.send.call(this, ...args);
       this.fns = Set.stub;
       return;
+      
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
@@ -604,7 +617,15 @@ U.logic = (() => {
   MemSrc.Prm1 = U.form({ name: 'MemSrc.Prm1', has: { MemSrc }, props: (forms, Form) => ({
     init: function(val=C.skip) { forms.MemSrc.init.call(this); this.val = val; },
     newRoute: function(fn) { if (this.val !== C.skip) fn(this.val); },
-    retain: function(val) { if (val === this.val && U.isForm(val, String, Number, Boolean)) return; this.val = val; if (this.val !== C.skip) this.send(val); },
+    retain: function(val) {
+      
+      // Only short-circuit for primitive types; don't trust identity
+      // to tell us if compound types (Object, Array) really changed
+      if (val === this.val && U.isForm(val, String, Number, Boolean)) return;
+      this.val = val;
+      if (this.val !== C.skip) this.send(val);
+      
+    },
     cleanup: function() { this.val = C.skip; }
   })});
   MemSrc.PrmM = U.form({ name: 'MemSrc.PrmM', has: { MemSrc }, props: (forms, Form) => ({
@@ -667,7 +688,44 @@ U.logic = (() => {
       this.valEndRoutes = Map();
     }
   })});
-
+  
+  let SetSrc = U.form({ name: 'SetSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    // Allows a Tmp-sending Src to be treated in aggregate, instead of
+    // an item-by-item basis. Instead of monitoring a Src for sent Tmps
+    // and each sent Tmp for ending, SetSrc allows a Src to be monitored
+    // for any change, whether it is a new Tmp or an ended Tmp. Sends
+    // from this class return the entire set of Tmps
+    
+    init: function(src) {
+      
+      let tmps = Set();
+      this.tmpRoutes = Set();
+      this.srcRoute = src.route(tmp => {
+        
+        if (tmp.off()) return;
+        
+        let tmpRoute = tmp.route(() => {
+          tmps.rem(tmp);
+          this.tmpRoutes.rem(tmpRoute);
+          this.send(tmps);
+        });
+        
+        tmps.add(tmp);
+        this.tmpRoutes.add(tmpRoute);
+        
+        this.send(tmps);
+        
+      });
+      
+    },
+    cleanup: function() {
+      this.srcRoute.end();
+      for (let r of this.tmpRoutes) r.end();
+    }
+    
+  })});
+  
   let FilterSrc = U.form({ name: 'FilterSrc', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(src, fn) {
       forms.Endable.init.call(this);
@@ -678,13 +736,24 @@ U.logic = (() => {
     cleanup: function() { this.srcRoute.end(); }
   })});
   let FnSrc = U.form({ name: 'FnSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    // Provides capacity to monitor an arbitrary number of Srcs and run
+    // functionality based on the most recent result from each Src.
+    // Overview:
+    // - Array index for each Src; array initially full of `C.skip`
+    // - Src sends replace value at array index
+    // - For every such send an arbitrary `fn` maps the current array
+    //    to a single arbitrary value
+    // - Subclass may provide some intermediate processing on this value
+    // - If the processed arbitrary value isn't `C.skip`, a send occurs
+    
     init: function(srcs, fn) {
       if (U.isForm(this, FnSrc)) throw Error(`Don't init the parent FnSrc class!`);
       
       forms.Endable.init.call(this);
       forms.Src.init.call(this);
       
-      let vals = srcs.map(v => C.skip); // TODO: Does this not produce an empty Array??
+      let vals = []; // Indices not yet populated return `C.skip` by default
       this.routes = srcs.map((src, ind) => src.route(val => {
         vals[ind] = val;
         let result = this.applyFn(fn, vals);
@@ -695,6 +764,11 @@ U.logic = (() => {
     cleanup: function() { for (let r of this.routes) r.end(); }
   })});
   FnSrc.Prm1 = U.form({ name: 'FnSrc.Prm1', has: { FnSrc }, props: (forms, Form) => ({
+    
+    // Remember most recent arbitrary value; if this value is repeated,
+    // prevent a duplicate send by returning `C.skip` from `applyFn`. No
+    // regard for any late routes; they won't be sent buffered value
+    
     init: function(...args) {
       this.lastResult = C.skip;
       forms.FnSrc.init.call(this, ...args);
@@ -706,10 +780,21 @@ U.logic = (() => {
     }
   })});
   FnSrc.PrmM = U.form({ name: 'FnSrc.PrmM', has: { FnSrc }, props: (forms, Form) => ({
+    
+    // Allows duplicate sends
+    
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   FnSrc.Tmp1 = U.form({ name: 'FnSrc.Tmp1', has: { FnSrc }, props: (forms, Form) => ({
-    init: function(...params) { this.lastResult = C.skip; forms.FnSrc.init.call(this, ...params); },
+    
+    // Prevents duplicate sends; sends most recent Tmp to any late
+    // routes; manages arbitrary results by ending them when a new one
+    // is received
+    
+    init: function(...params) {
+      this.lastResult = C.skip;
+      forms.FnSrc.init.call(this, ...params);
+    },
     newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
       // Call function; ignore `C.skip`
@@ -723,10 +808,12 @@ U.logic = (() => {
     cleanup: function() { forms.FnSrc.cleanup.call(this); this.lastResult && this.lastResult.end(); }
   })});
   FnSrc.TmpM = U.form({ name: 'FnSrc.TmpM', has: { FnSrc }, props: (forms, Form) => ({
-    // Interestingly, FnSrc.TmpM behaves exactly like FnSrc.PrmM! `fn`
-    // is expected to return Tmp instances (or C.skip), but this class
-    // takes no responsibility for ending these Tmps - this is because
-    // there are no restrictions on how many Tmps may exist in parallel!
+    
+    // Interestingly, behaves exactly like FnSrc.PrmM! `fn` is expected
+    // to return Tmp instances (or C.skip), but this class takes no
+    // responsibility for ending these Tmps - this is because there are
+    // no restrictions on how many Tmps may exist in parallel!
+    
     applyFn: function(fn, vals) { return fn(...vals); }
   })});
   
@@ -756,7 +843,9 @@ U.logic = (() => {
           // never be produced external to the Chooser. For this reason
           // if we're already in an "onn" state and we are routed
           // another Tmp we first toggle to "off" before choosing "onn"
-          // once again.
+          // once again - this allows any cleanup which may be defined
+          // under `chooser.srcs.off` to run for the previous value, and
+          // then for the next value to be immediately installed
           if (this.activeSrcName === nOnn) {
             
             // Ignore duplicate values
@@ -837,7 +926,7 @@ U.logic = (() => {
           return dep;
           
         };
-        addDep.scp = (...args) => addDep(this.subScope(...args));
+        addDep.scp = addDep.scope = (...args) => addDep(this.subScope(...args));
         
         // If either `tmp` or this Scope ends, all existing dependencies
         // end as well. This relationship is itself a dependency
@@ -867,12 +956,42 @@ U.logic = (() => {
     
   })});
   
+  let TimerSrc = U.form({ name: 'TimerSrc', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    init: function({ ms, num=1, immediate=num!==1 }) {
+      
+      // `num` may be set to `Infinity` for unlimited ticks
+      
+      if (!U.isForm(num, Number)) throw Error(`"num" must be integer`);
+      
+      forms.Endable.init.call(this);
+      forms.Src.init.call(this);
+      
+      if (num <= 0) { this.end(); return; }
+      this.num = num;
+      this.interval = setInterval(() => this.doSend(), ms);
+      if (immediate) Promise.resolve().then(() => this.doSend());
+      
+    },
+    doSend: function() {
+      this.send(--this.num);
+      if (this.num <= 0) this.end();
+    },
+    cleanup: function() {
+      this.send = () => {}; // TODO: Maybe an intermediate EndableSrc Form, whose cleanup always destroys any further ability to send?
+      clearInterval(this.interval);
+    }
+    
+  })});
+  
   return {
     // Basic logic
-    Endable, Src, Tmp, TmpAll, TmpAny,
+    Endable, Src, Tmp, TmpAll, TmpAny, SetSrc, TimerSrc,
+    Source: Src, Temp: Tmp, TempAll: TmpAll, TempAny: TmpAny, SetSource: SetSrc, TimerSource: TimerSrc,
     
     // Higher level logic
     MemSrc, FilterSrc, FnSrc, Chooser, Scope,
+    MemSource: MemSrc, FilterSource: FilterSrc,
     
     // Utility
     Slots
