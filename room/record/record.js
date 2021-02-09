@@ -182,6 +182,7 @@ global.rooms.record = async foundation => {
       }
       return null;
     },
+    getVals: function(...vals) { return vals.toObj(val => [ val, this.getVal(val) ]); },
     
     setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
