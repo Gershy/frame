@@ -10,7 +10,7 @@
         forms.Keep.init.call(this);
         let urlResourceKeep = Form.KeepUrlResources(foundation);
         this.keepsByType = {
-          static: Form.KeepStatic(foundation, urlResourceKeep),
+          static: Form.KeepStatic(urlResourceKeep),
           urlResource: urlResourceKeep
         };
       },
@@ -20,8 +20,7 @@
       }
     })}),
     $KeepStatic: U.form({ name: 'KeepStatic', has: { Keep }, props: forms => ({
-      init: function(foundation, urlResourceKeep) {
-        this.foundation = foundation;
+      init: function(urlResourceKeep) {
         this.urlResourceKeep = urlResourceKeep;
         this.hut = null;
       },
@@ -31,7 +30,7 @@
       }
     })}),
     $KeepUrlResources: U.form({ name: 'KeepUrlResources', has: { Keep }, props: forms => ({
-      init: function(foundation) { this.foundation = foundation; this.urlImages = {}; },
+      init: function(foundation) { this.foundation = foundation; },
       access: function({ path='', params={} }) { return Form.KeepUrlResource(this, path, params); }
     })}),
     $KeepUrlResource: U.form({ name: 'KeepUrlResource', has: { Keep }, props: forms => ({
@@ -255,8 +254,8 @@
       
       // Wait for the script to load; ensure it populated `global.rooms`
       await Promise((rsv, rjc) => {
-        script.addEventListener('load', rsv);
-        script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`)));
+        script.addEventListener('load', rsv, { once: true });
+        script.addEventListener('error', err => rjc(err.update(m => `Couldn't load room "${name}" (${m})`)), { once: true });
       });
       
       if (!global.rooms.has(name)) throw Error(`Room "${name}" does not set global.rooms['${name}']!`);

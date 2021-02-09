@@ -180,9 +180,25 @@ Hut at the very bottom runs using a single Reality.
     createSoktServer: C.noFn('createSoktServer', opts => {}),
     
     // Room
-    getRooms: async function(...names) {
+    getRooms: async function(names, ...args) {
       
-      return Promise.allObj(names.toObj(name => this.getRoom(name)));
+      return Promise.allObj(names.toObj(name => {
+        
+        // Prexisting Promise or resolved values are returned
+        if (this.installedRooms.has(name)) return [ name, this.installedRooms[name] ];
+        
+        // Unresolved promise representing room installation
+        let prm = this.installRoom(name, ...args);
+        
+        // Immediately set key; prevents double-installation
+        this.installedRooms[name] = { debug: { offsets: [] }, content: prm.then(v => v.content) };
+        
+        // Overwrite with resolved values once they're available
+        prm.then(obj => this.installedRooms[name].gain(obj));
+        
+        return [ name, prm ];
+        
+      }));
       
     },
     getRoom: async function(name, ...args) {

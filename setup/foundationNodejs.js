@@ -1299,7 +1299,8 @@
         getLayout: function() { return this.fakeLayout || (this.fakeLayout = primaryFakeReal.getLayoutForm('SuperFake')()); },
         getLayoutForm: function(name) { return primaryFakeReal.tech.getLayoutForm(name); },
         makeLayout: function(name, ...args) { return primaryFakeReal.tech.getLayoutForm(name)(...args); },
-        getTech: function() { return primaryFakeReal.tech; }
+        getTech: function() { return primaryFakeReal.tech; },
+        render: function() {}
       })});
       
       let layouts = {};
