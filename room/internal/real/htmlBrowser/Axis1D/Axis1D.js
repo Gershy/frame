@@ -3,7 +3,7 @@ global.rooms['internal.real.htmlBrowser.Axis1D'] = async foundation => {
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
   return U.form({ name: 'Axis1D', has: { Layout }, props: (forms, Form) => ({
     init: function({ axis='y', flow='+', cuts=null }) {
-      ({}).gain.call(this, { axis, flow, cuts });
+      Object.assign(this, { axis, flow, cuts });
     },
     isInnerLayout: function() { return true; },
     getChildLayout: function() { return Form.Item(this); },
@@ -66,7 +66,7 @@ global.rooms['internal.real.htmlBrowser.Axis1D'] = async foundation => {
           
           domNode.style.position = 'absolute';
           
-          let dir = `${this.par.flow}${this.par.axis}`
+          let dir = this.par.flow + this.par.axis;
           if (dir === '+x') domNode.style.gain({ left: off, width: ext, height: '100%' });
           if (dir === '-x') domNode.style.gain({ right: off, width: ext, height: '100%' });
           if (dir === '+y') domNode.style.gain({ top: off, width: '100%', height: ext });

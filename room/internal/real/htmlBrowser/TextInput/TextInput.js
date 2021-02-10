@@ -5,7 +5,7 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
   
   return U.form({ name: 'TextInput', has: { Layout }, props: (forms, Form) => ({
     init: function({ multiline=false, prompt, size=null, align=null, gap=null }) {
-      ({}).gain.call(this, { multiline, prompt, size, align, gap });
+      Object.assign(this, { multiline, prompt, size, align, gap });
     },
     isInnerLayout: function() { return false; },
     

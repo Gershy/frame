@@ -3,7 +3,7 @@ global.rooms['internal.real.htmlBrowser.Text'] = async foundation => {
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
   return U.form({ name: 'Text', has: { Layout }, props: (forms, Form) => ({
     init: function({ text='', size=null, align=null, gap=null }) {
-      ({}).gain.call(this, { text, size, align, gap });
+      Object.assign(this, { text, size, align, gap });
     },
     isInnerLayout: function() { return false; },
     

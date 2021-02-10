@@ -3,7 +3,7 @@ global.rooms['internal.real.htmlBrowser.Free'] = async foundation => {
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
   return U.form({ name: 'Free', has: { Layout }, props: (forms, Form) => ({
     init: function({ mode='cen', x=null, y=null, w=null, h=null }) {
-      ({}).gain.call(this, { mode, x, y, w, h });
+      Object.assign(this, { mode, x, y, w, h });
     },
     render: function(real, domNode) {
       
