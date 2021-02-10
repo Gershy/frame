@@ -11,11 +11,14 @@ global.rooms['chess2'] = async foundation => {
   
   // "Setup" -> "Hoist"??
   
-  let { Chooser, TimerSrc } = U.logic;
+  let { TmpAny, TmpAll, Chooser, TimerSrc } = U.logic;
   
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
   let Setup = await foundation.getRoom('hinterlands.Setup');
   let { Rec } = await foundation.getRoom('record');
+  
+  let pieceDefName = 'standard';
+  let pieceStyle = 'classic';
   
   let staticKeep = foundation.seek('keep', 'static');
   /// {ABOVE=
@@ -26,7 +29,7 @@ global.rooms['chess2'] = async foundation => {
   return Setup('c2', 'chess2', {
     habitats: [ HtmlBrowserHabitat() ],
     recForms: {
-      'c2.match': U.form({ name: 'MatchRec', has: { Rec }, props: (forms, Form) => ({
+      'c2.match': U.form({ name: 'Chess2MatchRec', has: { Rec }, props: (forms, Form) => ({
         validMoves: (matchPlayer, piece) => {
           
           if (piece.val.wait > 0) return [];
@@ -376,39 +379,44 @@ global.rooms['chess2'] = async foundation => {
       };
       
       // Broad parameters
-      let pieceDefName = 'standard';
-      let pieceStyle = 'classic';
       let activePieceDef = pieceDefs[pieceDefName];
       let pieceTypes = Set(activePieceDef.toArr( col => col.map(([ name ]) => name) ).flat(Infinity));
       
       // Make piece images available
-      for (let colour of [ 'white', 'black' ]) { for (let name of pieceTypes) {
-        staticKeep.seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${name[0].upper()}${name.slice(1)}.png` ]);
-      }}
+      //for (let colour of [ 'white', 'black' ]) { for (let name of pieceTypes) {
+      //  staticKeep.seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${name[0].upper()}${name.slice(1)}.png` ]);
+      //}}
       
-      let matchmakeSrc = dep(TimerSrc({ ms: 2 * 1000, num: Infinity }));
       let matchmakeAct = hut.enableAction('c2.matchmake', () => {
         
         let waitingPlayers = random.genShuffled(rec.relRecs('c2.player').map(p => p.relRec('c2.matchPlayer') ? C.skip : p));
-        
-        console.log(`Matchmaking ${waitingPlayers.count()} player(s)`);
-        
         for (let pairInd = 0; (pairInd + 1) < waitingPlayers.count(); pairInd += 2) {
           
           let [ playerWhite, playerBlack ] = waitingPlayers.slice(pairInd, pairInd + 2);
           
           let match = hut.createRec('c2.match', [ rec ], { ms: foundation.getMs() });
-          let matchPlayerWhite = hut.createRec('c2.matchPlayer', [ match, playerWhite ], { colour: 'white' });
-          let matchPlayerBlack = hut.createRec('c2.matchPlayer', [ match, playerBlack ], { colour: 'black' });
+          let matchPlayers = {
+            white: hut.createRec('c2.matchPlayer', [ match, playerWhite ], { colour: 'white' }),
+            black: hut.createRec('c2.matchPlayer', [ match, playerBlack ], { colour: 'black' })
+          };
           
-          matchPlayerWhite.endWith(() => { throw Error('white??'); });
-          matchPlayerBlack.endWith(() => { throw Error('Black??'); });
+          let anyPlayerInMatch = dep(TmpAny(matchPlayers.toArr(v => v)));
+          anyPlayerInMatch.endWith(match);
+          
+          for (let [ colour, pieces ] of activePieceDef) { for (let [ type, col, row ] of pieces) {
+            hut.createRec('c2.piece', [ match, matchPlayers[colour] ], { type, col, row });
+          }}
+          
+          matchPlayers.white.endWith(() => { console.log(`WHITE ENDED (${playerWhite.getVal('term')})`); });
+          matchPlayers.black.endWith(() => { console.log(`BLACK ENDED (${playerBlack.getVal('term')})`); });
+          match.endWith(() => { console.log(`MATCH ENDED (${playerWhite.getVal('term')} vs ${playerBlack.getVal('term')})`); });
           
           console.log(`Matched ${playerWhite.getVal('term')} (white) vs ${playerBlack.getVal('term')} (black)`);
           
         }
         
       });
+      let matchmakeSrc = dep(TimerSrc({ ms: 2 * 1000, num: Infinity }));
       dep(matchmakeSrc.route( () => matchmakeAct.act() ));
       
       dep.scp(rec.relSrc('c2.match'), (match, dep) => {
@@ -420,11 +428,6 @@ global.rooms['chess2'] = async foundation => {
           console.log(`Created ${match.desc()} -> ${round.desc()}`);
           
         });
-        dep.scp(roundChooser.srcs.onn, (round, dep) => {
-          
-          
-          
-        });
         
       });
       
@@ -433,7 +436,7 @@ global.rooms['chess2'] = async foundation => {
     },
     kidFn: async (hut, rec, real, dep) => {
       
-      let layoutNames = [ 'Free', 'Size', 'Axis1D', 'Decal', 'Text', 'Press' ];
+      let layoutNames = [ 'Free', 'Size', 'Axis1D', 'Decal', 'Text', 'Press', 'Image', 'Transform' ];
       let lay = await Promise.allObj(layoutNames.toObj(ln => [ ln, real.getLayoutForm(ln) ]));
       
       let bgReal = dep(real.addReal('c2.bg', [
@@ -443,11 +446,60 @@ global.rooms['chess2'] = async foundation => {
       ]));
       let mainReal = bgReal.addReal('c2.main', [ lay.Free({ w: '100vmin', h: '100vmin' }) ]);
       
+      /*
+      
+      // TODO: Unify Real and Rec??
+      // TODO: Think about how to alter Layout properties
+      
+      // This .js:
       let playerChooser = dep(Chooser(hut.relSrc('c2.player')));
       dep.scp(playerChooser.srcs.off, (noPlayer, dep) => {
         
         let createPlayerAct = dep(hut.enableAction('c2.createPlayer', () => {
           let termTmp = termBank.hold();
+          let player = hut.createRec('c2.player', [ rec, hut ], { term: termTmp.term });
+          player.endWith(termTmp);
+        }));
+        
+        let enterReal = dep(mainReal.addReal('c2.enter', [
+          lay.Free({ w: '60%', h: '60%' }),
+          lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' }),
+          lay.Press({}),
+          lay.Decal({ colour: 'rgba(120, 120, 170, 1)' })
+        ]));
+        
+        let createPlayerSrc = enterReal.getLayout(lay.Press).src;
+        dep(createPlayerSrc.route( () => createPlayerAct.act() ));
+        
+      });
+      
+      // Is equivalent to this .hut:
+      let playerChooser = @Chooser(hut.relSrc('c2.player'));
+      playerChooser.srcs.off -> noPlayer:
+        
+        let createPlayerAct = @hut.enableAction('c2.createPlayer', () => {
+          let termTmp = termBank.hold();
+          let player = hut.createRec('c2.player', [ rec, hut ], { term: termTmp.term });
+          player.endWith(termTmp);
+        });
+        
+        let enterReal = @mainReal.addReal('c2.enter', [
+          lay.Free({ w: '60%', h: '60%' }),
+          lay.Axis1D({ axis: 'y', dir: '+', cuts: 'focus' }),
+          lay.Press({}),
+          lay.Decal({ colour: 'rgba(120, 120, 170, 1)' })
+        ]);
+        
+        let createPlayerSrc = enterReal.getLayout(lay.Press).src;
+        @createPlayerSrc.route(() => createPlayerAct.act());
+        
+      */
+      
+      let playerChooser = dep(Chooser(hut.relSrc('c2.player')));
+      dep.scp(playerChooser.srcs.off, (noPlayer, dep) => {
+        
+        let createPlayerAct = dep(hut.enableAction('c2.createPlayer', () => {
+          let termTmp = termBank.hold(); // TODO: Deal with this global var??
           let player = hut.createRec('c2.player', [ rec, hut ], { term: termTmp.term });
           player.endWith(termTmp);
         }));
@@ -483,27 +535,27 @@ global.rooms['chess2'] = async foundation => {
         dep.scp(matchPlayerChooser.srcs.onn, (matchPlayer, dep) => {
           
           let match = matchPlayer.mems['c2.match'];
+          let myColour = matchPlayer.getVal('colour');
           
           let matchReal = dep(mainReal.addReal('c2.match', [
             lay.Size({ w: '100%', h: '100%' }),
             lay.Axis1D({ axis: 'y', dir: '+' }),
-            lay.Decal({ colour: '#646496' })
+            lay.Decal({ colour: '#646496' }),
+            lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
           ]));
-          let whitePlayerHolderReal = matchReal.addReal('c2.playerHolder', [
-            lay.Size({ w: '100%', h: '10%' }),
-          ]);
-          let boardReal = matchReal.addReal('c2.board', [
-            lay.Size({ w: '80%', h: '80%' }),
-            lay.Decal({})
-          ]);
           let blackPlayerHolderReal = matchReal.addReal('c2.playerHolder', [
             lay.Size({ w: '100%', h: '10%' }),
+            lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
+          ]);
+          let boardReal = matchReal.addReal('c2.board', [ lay.Size({ w: '80%', h: '80%' }) ]);
+          let whitePlayerHolderReal = matchReal.addReal('c2.playerHolder', [
+            lay.Size({ w: '100%', h: '10%' }),
+            lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
           ]);
           
           dep.scp(match, 'c2.matchPlayer', (matchPlayer, dep) => {
             
             let colour = matchPlayer.getVal('colour');
-            
             let holderReal = (colour === 'white') ? whitePlayerHolderReal : blackPlayerHolderReal;
             let playerReal = dep(holderReal.addReal('c2.player', { text: '...' }, [
               lay.Size({ w: '100%', h: '100%' }),
@@ -511,15 +563,52 @@ global.rooms['chess2'] = async foundation => {
             ]));
             
             let player = matchPlayer.mems['c2.player'];
-            dep(player.valSrc.route(() => {
-              
-              playerReal.mod({ text: player.getVal('term') });
-              
-            }));
-            
+            dep(player.valSrc.route( () => playerReal.mod({ text: player.getVal('term') }) ));
             
           });
           
+          let tileDecals = {
+            white: lay.Decal({ colour: '#9a9abb', border: { ext: '1px', colour: '#c0c0d8' } }),
+            black: lay.Decal({ colour: '#8989af', border: { ext: '1px', colour: '#c0c0d8' } })
+          };
+          let tileVal = v => `${(100 * (v / 8)).toFixed(2)}%`;
+          let tileCoord = (col, row) => ({ x: tileVal(col), y: tileVal(7 - row) });
+          
+          (8).each(col => (8).each(row => {
+            let colour = ((col % 2) === (row % 2)) ? 'white' : 'black';
+            boardReal.addReal('c2.tile', [
+              lay.Free({ mode: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(col, row) }),
+              tileDecals[colour]
+            ]);
+          }));
+          
+          dep.scp(match, 'c2.piece', (piece, dep) => {
+            
+            let pieceReal = dep(boardReal.addReal('c2.piece', [
+              lay.Free({ mode: 'tl', w: tileVal(1), h: tileVal(1), ...tileCoord(0, 0) }),
+              lay.Image({ keep: null }),
+              lay.Transform({ rotate: (myColour === 'white') ? 0 : -0.5 })
+            ]));
+            
+            dep(piece.valSrc.route(() => {
+              
+              let { type, colour, col, row } = piece.getVals('type', 'col', 'row', 'colour');
+              Object.assign(pieceReal.getLayout(lay.Free), tileCoord(col, row));
+              
+              pieceReal.getLayout(lay.Image).keep = foundation.seek('keep', 'static')
+                .seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${type[0].upper()}${type.slice(1)}.png` ]);
+              
+              pieceReal.render();
+              
+            }));
+            
+            dep.scp(match, 'c2.round', (round, dep) => {
+              
+              
+              
+            });
+            
+          });
           
         });
         

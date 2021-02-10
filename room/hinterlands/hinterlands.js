@@ -412,11 +412,11 @@ global.rooms.hinterlands = async foundation => {
     // Fly is using functions that decide on a variety of classes for a
     // given rec type, but I think this logic should occur without any
     // help from hinterlands.
-    addTypeClsFn: function(name, fn) {
+    addTypeFormFn: function(name, fn, mode='tmp') {
       if (this.typeToClsFns.has(name)) throw Error(`Tried to overwrite class function for "${name}"`);
       this.typeToClsFns[name] = fn;
+      if (mode === 'tmp') return Tmp(() => { delete this.typeToClsFns[name]; });
     },
-    addTypeClsFns: function(obj) { for (let [ name, fn ] of obj) this.addTypeClsFn(name, fn); },
     getCategorizedRecs: function() {
       let ret = {};
       for (let rec of this.allRecs.values()) {

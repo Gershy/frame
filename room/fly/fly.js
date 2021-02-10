@@ -136,8 +136,8 @@ U.buildRoom({
       let flyHut = global.hut = await foundation.getRootHut({ heartMs: 1000 * 20 });
       flyHut.roadDbgEnabled = false; // TODO: This doesn't affect the Below!
       
-      flyHut.addTypeClsFn('fly.level', val => models.Level);
-      flyHut.addTypeClsFn('fly.entity', val => {
+      flyHut.addTypeFormFn('fly.level', val => models.Level);
+      flyHut.addTypeFormFn('fly.entity', val => {
         if (!models.has(val.type)) {
           console.log(val);
           throw Error(`No model class for "${val.type}"`);
