@@ -58,7 +58,10 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       // will feel as if they've captured 'pfx.recName' Recs here, but
       // they won't have. This flaw is addressed by determining whether
       // to follow when Tmps become scoped, NOT when the Scope itself is
-      // initialized. This seems to work in all cases!
+      // initialized. This seems to work in all cases! TODO: Is it
+      // possible to memoize the result of the first check the scope
+      // makes to see if it should follow items, and then reuse that
+      // value to avoid multiple `U.hasForm` calls?
       
       // TODO: What about a case:
       //    FollowRecScope(TheoreticalSrc(rec.relSrc('pfx.recName')), (rec, dep) => { ... })
@@ -102,7 +105,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       
       /// =ABOVE}
       
-      ({}).gain.call(this, { prefix, hutName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
+      Object.assign(this, { prefix, hutName, debug, hosting, habitats, recForms, storage, parFn, kidFn });
     },
     
     /// {ABOVE=
@@ -118,7 +121,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       let tmp = U.logic.Tmp();
       
       let replayCount = (await keep.getContent() || []).count();
-      let getItemName = i => (i).encodeStr('0123456789abcdefghijklmnopqrstuvwxyz', 8);
+      let getItemName = i => i.encodeStr('0123456789abcdefghijklmnopqrstuvwxyz', 8);
       
       // Perform any existing replays to catch up to the latest state
       if (replayCount) {
@@ -234,11 +237,17 @@ global.rooms['hinterlands.Setup'] = async foundation => {
         
       });
       
-      let preparations = await Promise.allArr(this.habitats.map(h => h.prepare(this.hutName, hut)));
-      tmp.endWith(() => preparations.each(p => p.end()));
+      // Prepare all habitats
+      await Promise.allArr(this.habitats.map(async habitat => {
+        let prepareTmp = await habitat.prepare(this.hutName, hut);
+        tmp.endWith(prepareTmp);
+      }));
       
-      hut.addTypeClsFns(this.recForms.map(RecForm => () => RecForm));
-      tmp.endWith(()=> hut.remTypeClsFns(this.recForms.toArr((v, k) => k)));
+      // Add all type -> Form mappings
+      for (let [ k, v ] of this.recForms) {
+        let addTypeFormFnTmp = hut.addTypeFormFn(k, () => v);
+        tmp.endWith(addTypeFormFnTmp);
+      }
       
       let real = await foundation.seek('real', 'primary');
       let recName = `${this.prefix}.${this.hutName.split('.').slice(-1)[0]}`;

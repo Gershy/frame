@@ -47,7 +47,8 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
               <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
               <style type="text/css">
-                body { position: relative; opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
+                * { position: relative; }
+                body { opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
                 body::before {
                   content: ''; display: block; position: absolute;
                   left: 0; right: 0; top: 0; bottom: 0;

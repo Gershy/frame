@@ -25,7 +25,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     init: function({ w, h, xOff=0, yOff=0, rect=null, format, mode='lenient' }) {
       if (!rect) rect = w.toArr(x => h.toArr(y => format));
-      ({}).gain.call(this, { w, h, xOff, yOff, rect, format, mode });
+      Object.assign(this, { w, h, xOff, yOff, rect, format, mode });
     },
     getVal: function(x, y) {
       if (x < 0)        { if (this.mode === 'strict') throw Error(`x too small`); return this.format; }
@@ -96,7 +96,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     init: function({ out, bg={ chr: ' ' }, prefChrW=1, prefChrH=2 }) {
       forms.Tmp.init.call(this);
       
-      ({}).gain.call(this, { out, w: out.columns, h: out.rows, prefChrW, prefChrH, bg, renderers: Set() });
+      Object.assign(this, { out, w: out.columns, h: out.rows, prefChrW, prefChrH, bg, renderers: Set() });
       
       let resizeFn = () => this.render();
       this.out.on('resize', resizeFn);
@@ -308,9 +308,9 @@ global.rooms['window'] = foundation => ({ open: async () => {
   let TerminalRenderer = U.form({ name: 'TerminalRenderer', has: { Src }, props: (forms, Form) => ({
     init: function({ x, y, w, h, z=0, bg=' ' }) {
       forms.Src.init.call(this);
-      ({}).gain.call(this, { x, y, w, h, z, bg });
+      Object.assign(this, { x, y, w, h, z, bg });
     },
-    update: function(props={}) { ({}).gain.call(this, props); this.send(); },
+    update: function(props={}) { Object.assign(this, props); this.send(); },
     fillRenderRect: C.noFn('fillRenderRect', (w, h) => {}),
     render: function(real, canvas) {
       
@@ -378,7 +378,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
       });
       
       if (U.isForm(text, String)) text = Form.strToLns(text);
-      ({}).gain.call(this, { text, vertOff });
+      Object.assign(this, { text, vertOff });
     },
     update: function(args) {
       if (args.has('text')) {

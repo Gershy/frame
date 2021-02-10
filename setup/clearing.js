@@ -47,20 +47,14 @@ protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns 
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
-protoDef(Object, 'gain', function(obj) {
-  Object.assign(this, obj);
-  for (let k in obj) if (obj[k] === C.skip) delete this[k];
-  return this;
-});
+protoDef(Object, 'gain', function(obj) { return Object.assign(this, obj); });
 protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
   if (U.isForm(keys, String)) keys = keys.split('.');
   for (let key of keys) { if (!ret || !ret.has(key)) return { found: false, val: null }; ret = ret[key]; }
   return { found: true, val: ret };
 });
-protoDef(Object, Symbol.iterator, function*() { // Iterate [ key, val ]
-  for (let k in this) yield [ k, this[k] ];
-});
+protoDef(Object, Symbol.iterator, function*() { for (let k in this) yield [ k, this[k] ]; });
 
 protoDef(Array, 'each', Array.prototype.forEach);
 protoDef(Array, 'map', function(it) {
@@ -234,19 +228,22 @@ protoDef(Promise, 'route', Promise.prototype.then);
 let GenOrig = (function*(){})().constructor;
 protoDef(GenOrig, 'each', function(fn) { for (let v of this) fn(v); });
 protoDef(GenOrig, 'toArr', function(fn) { return [ ...this ].map(fn); });
-protoDef(GenOrig, 'toObj', function(fn) { return [ ...this ].toObj(fn); });
+protoDef(GenOrig, 'toObj', function(fn) {
+  let ret = {};
+  for (let v of this) { v = it(v); if (v !== C.skip) ret[v[0]] = v[1]; }
+  return ret;
+});
 
 protoDef(Error, 'update', function(props) {
   if (U.isForm(props, Function)) props = props(this.message);
   if (U.isForm(props, String)) props = { message: props };
-  for (let [ k, v ] of props) this[k] = v;
-  return this;
+  return Object.assign(this, props);
 });
 
 Function.stub = v => v;
-Function.makeStub = v => Function.stub.bind(null, v);
-Set.stub = { count: Function.makeStub(0), add: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
-Map.stub = { count: Function.makeStub(0), set: Function.stub, rem: Function.stub, has: Function.makeStub(false) };
+Function.createStub = v => Function.stub.bind(null, v);
+Set.stub = { count: Function.createStub(0), add: Function.stub, rem: Function.stub, has: Function.createStub(false) };
+Map.stub = { count: Function.createStub(0), set: Function.stub, rem: Function.stub, has: Function.createStub(false) };
 
 let U = global.U = {
   dbgCnt: name => {
@@ -466,39 +463,6 @@ global.rooms = {};
 
 U.logic = (() => {
   
-  // TODO: What about something with a ref count; e.g. it can be
-  // initiated multiple times, and can withstand a call to `end` for
-  // each time it has been initiated past the first? An implementation
-  // could look like:
-  //      |     U.form({ name: '...', props: (forms, Form) => ({
-  //      |       
-  //      |       init: function() { this.watcher = Tmp.stub; },
-  //      |       actuallyCreateWatcher: function() {
-  //      |       
-  //      |         // Arbitrary; return, MemSrc.Tmp1, FnSrc.TmpM, it
-  //      |         // doesn't matter!
-  //      |         return someKindOfWatcher();
-  //      |         
-  //      |       },
-  //      |       getWatcher: function() {
-  //      |         
-  //      |         if (this.watcher.off()) {
-  //      |           // I can't immediately see how to do this without
-  //      |           // supplying a list of exposed fields.
-  //      |           // RefCountWatcher.prototype.ref needs to return
-  //      |           // an object that behaves exactly like the value
-  //      |           // `this.actuallyCreateWatcher()`, but with an
-  //      |           // `end` method that only ends the underlying
-  //      |           // object if the RefCount drops to 0. Note it's
-  //      |           // important to indicate which exposed fields are
-  //      |           // functions since they'll need to be bound.
-  //      |           this.watcher = RefCountWatcher(this.actuallyCreateWatcher(), [ 'src', 'cleanup()' ]);
-  //      |         }
-  //      |         return this.watcher.ref();
-  //      |         
-  //      |       }
-  //      |     })});
-  
   let Endable = U.form({ name: 'Endable', props: (forms, Form) => ({
     
     $globalRegistry: 0 ? Set.stub : Set(),
@@ -546,10 +510,6 @@ U.logic = (() => {
     }
   })});
   let Tmp = U.form({ name: 'Tmp', has: { Endable, Src }, props: (forms, Form) => ({
-    
-    // TODO: What if Tmps normally don't have any sense of RefCount, but
-    // as soon as Tmp.prototype.ref() gets called they gain it?
-    
     init: function(fn=null) {
       forms.Src.init.call(this);
       forms.Endable.init.call(this);
@@ -563,18 +523,21 @@ U.logic = (() => {
       // Sending and ending are synonymous for a Tmp
       
       // For ref'd Tmps, prevent ending if refs still exist
-      if (this.refCount) {
-        this.refCount--;
-        if (this.refCount > 0) return;
-      }
+      if (this.refCount && --this.refCount > 0) return;
       
       if (!forms.Endable.end.call(this)) return; // Check if we're already ended
-      forms.Src.send.call(this, ...args);
+      forms.Src.send.call(this, ...args); // Consider inlining to reduce stack
       this.fns = Set.stub;
       return;
       
     },
     newRoute: function(fn) { if (this.off()) fn(); },
+    // needs: function(tmp, mode='prm') {
+    //   if (!U.hasForm(tmp, Tmp)) throw Error(`Param must be Tmp; got ${U.getFormName(tmp)}`);
+    //   return (mode === 'tmp')
+    //     ? Object.assign(tmp.route(() => this.end, 'tmp'), { v: this })
+    //     : { v: this };
+    // },
     endWith: function(val, mode='prm') {
       if (U.hasForm(val, Function)) return this.route(val, mode) || this;
       if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
@@ -586,9 +549,13 @@ U.logic = (() => {
   Tmp.stub = (t => (t.end(), t))(Tmp());
   
   let TmpAll = U.form({ name: 'TmpAll', has: { Tmp }, props: (forms, Form) => ({
+    
+    // A Tmp which lasts as long as all underlying Tmps last
+    
     init: function(tmps) {
       forms.Tmp.init.call(this);
       let fn = this.end.bind(this);
+      this.routes = [];
       this.routes = tmps.map(tmp => {
         let route = tmp.route(fn);
         this.endWith(route);
@@ -598,6 +565,9 @@ U.logic = (() => {
     cleanup: function() { for (let r of this.routes) r.end(); }
   })});
   let TmpAny = U.form({ name: 'TmpAny', has: { Tmp }, props: (forms, Form) => ({
+    
+    // A Tmp which lasts as long as any underlying Tmp lasts
+    
     init: function(tmps) {
       forms.Tmp.init.call(this);
       let cnt = tmps.length;
