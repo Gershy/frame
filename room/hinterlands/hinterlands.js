@@ -55,7 +55,7 @@ global.rooms.hinterlands = async foundation => {
       /// {DEBUG=
       // Do debug output if enabled
       if (foundation.getArg('debug').has('road')) {
-        let lim = 150;
+        let lim = foundation.getArg('roadDebugLimit');
         let dbgStr = JSON.stringify(msg);
         if (dbgStr.count() > lim) dbgStr = dbgStr.slice(0, lim - 3) + '...';
         console.log(`--COMM ${srcHut ? srcHut.uid : '<none>'} -> ${trgHut.uid}: ${dbgStr}`);

@@ -1,4 +1,5 @@
 // The "clearing" is javascript-level bootstrapping
+// write ui bug; no scrollbar for story viewing component (entries spill out, downwards)
 
 Error.stackTraceLimit = 200;
 
@@ -723,7 +724,7 @@ U.logic = (() => {
       forms.Endable.init.call(this);
       forms.Src.init.call(this);
       
-      let vals = []; // Indices not yet populated return `C.skip` by default
+      let vals = []; // Accessing unpopulated indices gives `C.skip`
       this.routes = srcs.map((src, ind) => src.route(val => {
         vals[ind] = val;
         let result = this.applyFn(fn, vals);
@@ -767,7 +768,7 @@ U.logic = (() => {
     },
     newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
-      // Call function; ignore `C.skip`
+      // Call function; ignore duplicates
       let result = fn(...vals, this.lastResult);
       if (result === this.lastResult) return C.skip;
       

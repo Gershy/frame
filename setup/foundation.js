@@ -104,7 +104,8 @@ Hut at the very bottom runs using a single Reality.
       debug: val => {
         if (U.isForm(val, String)) val = val.split(',').map(v => v.trim() || C.skip);
         return Set(val || []);
-      }
+      },
+      roadDebugLimit: val => val || Infinity
     },
     formatHostUrl: function({ protocol, host, port }) {
       let excludePort = true

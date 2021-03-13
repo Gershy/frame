@@ -1,6 +1,6 @@
 global.rooms.record = async foundation => {
   
-  let { Endable, Src, MemSrc, Tmp, TmpAll, TmpAny, Scope } = U.logic;
+  let { MemSrc, Tmp, TmpAll, Scope, FnSrc } = U.logic;
   
   let RecTypes = U.form({ name: 'RecTypes', has: {}, props: (forms, Form) => ({
     init: function() { this.typeMap = {}; },
@@ -183,6 +183,13 @@ global.rooms.record = async foundation => {
       return null;
     },
     getVals: function(...vals) { return vals.toObj(val => [ val, this.getVal(val) ]); },
+    getValSrc: function() { return this.valSrc; },
+    getFullValSrc: function() {
+      let srcs = [ this.valSrc, ...this.mems.map(mem => mem.valSrc) ];
+      return FnSrc.PrmM(srcs, (...vals) => {
+        return Object.assign({}, ...vals.map(v => v || {}));
+      });
+    },
     
     setVal: function(v) { if (v !== this.valSrc.val || U.isForm(v, Object)) this.valSrc.retain(v); return this; },
     modVal: function(fn) { return this.setVal(fn(this.getVal())); },
