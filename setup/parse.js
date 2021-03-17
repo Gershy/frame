@@ -1,11 +1,331 @@
 require('./clearing.js');
 
-let data1 = U.multilineStr(`
+// https://en.wikipedia.org/wiki/Left_recursion
+
+let parse = (parser, input) => parseNormalized(normalizedParser(parser), input);
+
+let getParserParams = parser => {
+  
+  if (parser.type === 'repeat') return { minReps: 0, maxReps: Infinity, greedy: true, ...parser };
+  return { ...parser };
+  
+};
+let isLeftRecursionSafe = (parser, seen=Map()) => {
+  
+  // If we've already seen `parser`, return `true` if it was resolved,
+  // otherwise false (meaning we've encountered it again before
+  // resolving it; a sure sign there can be left-recursion!)
+  if (seen.has(parser)) return seen.get(parser);
+  
+  // Set `parser` as "unresolved" initially. It will become resolved if
+  // we can iterate through all of it without finding it again!
+  seen.set(parser, false);
+  
+  let result = (() => {
+    
+    if ([ 'token', 'regex' ].includes(parser.type)) return true;
+    
+    if (parser.type === 'repeat')
+      return isLeftRecursionSafe(parser.parser, seen);
+    
+    if (parser.type === 'all')
+      return isLeftRecursionSafe(parser.parsers[0], seen);
+    
+    if (parser.type === 'any')
+      return parser.parsers.every(parser => isLeftRecursionSafe(parser, seen));
+    
+    throw Error(`Unexpected parser type: "${parser.type}"`);
+    
+  })();
+  
+  seen.set(parser, result);
+  return result;
+  
+};
+let iterateAllParsers = function*(parser, seen=Set()) {
+  
+  if (seen.has(parser)) return;
+  seen.add(parser);
+  
+  yield parser;
+  if (parser.type === 'any') for (let p of parser.parsers) yield* iterateAllParsers(p, seen);
+  if (parser.type === 'all') for (let p of parser.parsers) yield* iterateAllParsers(p, seen);
+  if (parser.type === 'repeat') yield* iterateAllParsers(parser.parser, seen);
+  
+};
+let normalizedParser = parser => {
+  
+  for (let p of iterateAllParsers(parser)) {
+    
+    // Convert string regex to regex object
+    if (p.type === 'regex' && U.isForm(p.pattern, String)) {
+      if (!p.pattern.hasHead('^')) p.pattern = `^(${p.pattern})`;
+      p.pattern = new RegExp(p.pattern.replace(/\\/g, '\\\\')); // Escape all backslashes
+    }
+    
+    if (!isLeftRecursionSafe(p)) {
+      
+      console.log(`Parser contains left-recursion:`, p);
+      throw Error(`Possible left recursion`);
+      
+    }
+    
+  }
+  
+  return parser;
+  
+};
+let parseNormalized = function*(parser, input) {
+  
+  let applyParserTypeFns = {
+    
+    token: function*(parser, input) {
+      if (input.hasHead(parser.token)) yield { parser, result: parser.token };
+    },
+    regex: function*(parser, input) {
+      let [ result=null ] = input.match(parser.pattern) || [];
+      if (result) yield { parser, result };
+    },
+    repeat: function*(parser, input) {
+      
+      let { greedy, minReps, maxReps } = getParserParams(parser);
+      
+      let allChildrenPerms = function*(offset=0, num=0) {
+        
+        if (num > maxReps) return;
+        
+        for (let parsedHead of applyParser(parser.parser, input.slice(offset))) {
+          
+          if (num >= minReps && !greedy) yield [ parsedHead ];
+          for (let parsedTail of allChildrenPerms(offset + parsedHead.result.length, num + 1)) yield [ parsedHead, ...parsedTail ];
+          if (num >= minReps && greedy) yield [ parsedHead ];
+          
+        }
+        
+      }
+      
+      if (minReps === 0 && !greedy) yield { parser, result: '', children: [] };
+      for (let children of allChildrenPerms()) yield { parser, result: children.map(r => r.result).join(''), children };
+      if (minReps === 0 && greedy) yield { parser, result: '', children: [] };
+      
+    },
+    all: function*(parser, input) {
+      
+      let lastChildOffset = parser.parsers.count() - 1;
+      
+      let allChildrenPerms = function*(inputOffset=0, childOffset=0) {
+        
+        let childParser = parser.parsers[childOffset];
+        
+        if (childOffset === lastChildOffset) {
+          
+          // Immediately yield tail-less results for the final offset
+          for (let parsedHead of applyParser(childParser, input.slice(inputOffset))) yield [ parsedHead ];
+          
+        } else {
+          
+          // Yield head + tail for non-final parsers
+          for (let parsedHead of applyParser(childParser, input.slice(inputOffset)))
+            for (let parsedTail of allChildrenPerms(inputOffset + parsedHead.result.length, childOffset + 1))
+              yield [ parsedHead, ...parsedTail ];
+          
+        }
+        
+      }
+      
+      for (let children of allChildrenPerms()) yield { parser, result: children.map(r => r.result).join(''), children };
+      
+    },
+    any: function*(parser, input) {
+      
+      for (let p of parser.parsers)
+        for (let child of applyParser(p, input))
+          yield { parser, result: child.result, child };
+      
+    }
+    
+  };
+  let applyParser = function*(parser, input) {
+    if (!parser) throw Error(`Invalid parser: ${U.getFormName(parser)}`);
+    yield* applyParserTypeFns[parser.type](parser, input);
+  }
+  
+  yield* applyParser(parser, input);
+  
+};
+
+let genParser = () => {
+  
+  let rootParser = { name: 'root', type: 'any', parsers: [] };
+  
+  let inPlaceValue = rootParser.parsers.add({ name: 'inPlaceValue', type: 'any', parsers: [] });
+  
+  let varRef = { name: 'varRef', type: 'regex', pattern: '[a-zA-Z$_][a-zA-Z0-9$_]*' };
+  
+  inPlaceValue.parsers.add(varRef);
+  
+  inPlaceValue.parsers.add({ name: 'singleQuoteString', type: 'all', parsers: [
+    
+    { name: 'openQuote', type: 'token', token: `'` },
+    
+    { name: 'contentEntities', type: 'repeat', parser: { name: 'contentEntity', type: 'any', parsers: [
+      
+      { name: 'chars', type: 'regex', pattern: `[^\\']+` },
+      { name: 'escapeSeq', type: 'regex', pattern: `\\.` }
+      
+    ]}},
+    
+    { name: 'closeQuote', type: 'token', token: `'` }
+    
+  ]});
+  
+  inPlaceValue.parsers.add({ name: 'doubleQuoteString', type: 'all', parsers: [
+    
+    { name: 'openQuote', type: 'token', token: '"' },
+    
+    { name: 'contentEntities', type: 'repeat', parser: { name: 'contentEntity', type: 'any', parsers: [
+      
+      { name: 'chars', type: 'regex', pattern: `[^\\"]+` }, // Non-backslash, non-double-quote
+      { name: 'escapeSeq', type: 'regex', pattern: `\\.` }     // Backslash followed by anything
+      
+    ]}},
+    
+    { name: 'closeQuote', type: 'token', token: '"' }
+    
+  ]});
+  
+  inPlaceValue.parsers.add({ name: 'backtickString', type: 'all', parsers: [
+    
+    { name: 'openQuote', type: 'token', token: '`' },
+    
+    { name: 'contentEntities', type: 'repeat', parser: { name: 'contentEntity', type: 'any', parsers: [
+      
+      { name: 'chars', type: 'regex', pattern: '([^\\`$]|$[^{])+' },
+      
+      { name: 'escapeSeq', type: 'regex', pattern: '\\.' },
+      
+      { name: 'interpolatedValue', type: 'all', parsers: [
+        
+        { name: 'openInterpolatedValue', type: 'token', token: '${' },
+        
+        inPlaceValue,
+        
+        { name: 'closeInterpolatedValue', type: 'token', token: '}' }
+        
+      ]}
+      
+    ]}},
+    
+    { name: 'closeQuote', type: 'token', token: '`' }
+    
+  ]});
+  
+  inPlaceValue.parsers.add({ name: 'decimalInteger', type: 'regex', pattern: '[0-9]+' });
+  
+  inPlaceValue.parsers.add({ name: 'decimalFloat', type: 'regex', pattern: '[0-9]+[.][0-9]+' });
+  
+  inPlaceValue.parsers.add({ name: 'boolean', type: 'regex', pattern: 'true|false' });
+  
+  let arrayEntity = { name: 'arrayEntity', type: 'any', parsers: [
+    inPlaceValue,
+    { name: 'spreadEntity', type: 'all', parsers: [
+      { type: 'token', token: '...' },
+      inPlaceValue
+    ]}
+  ]};
+  inPlaceValue.parsers.add({ name: 'array', type: 'all', parsers: [
+    
+    { name: 'open', type: 'token', token: '[' },
+    
+    { name: 'headEntities', type: 'repeat', parser: { type: 'all', parsers: [
+      arrayEntity,
+      { name: 'delimiter', type: 'token', token: ',' }
+    ]}},
+    
+    { name: 'tailEntity', type: 'repeat', maxReps: 1, parser: arrayEntity },
+    
+    { name: 'close', type: 'token', token: ']' }
+    
+  ]});
+  
+  let objectEntity = { name: 'objectEntity', type: 'any', parsers: [
+    
+    varRef, // Shorthand - e.g. { a, b, c: 3 }
+    
+    { name: 'mapping', type: 'all', parsers: [
+      
+      varRef,
+      { name: 'mappingDelim', type: 'token', token: ':' },
+      inPlaceValue
+      
+    ]},
+    
+  ]};
+  inPlaceValue.parsers.add({ name: 'object', type: 'all', parsers: [
+    
+    { name: 'open', type: 'token', token: '{' },
+    
+    { name: 'headEntities', type: 'repeat', parser: { type: 'all', parsers: [
+      
+      objectEntity,
+      { name: 'delimiter', type: 'token', token: ',' }
+      
+    ]}},
+    
+    { name: 'tailEntity', type: 'repeat', maxReps: 1, parser: objectEntity },
+    
+    { name: 'close', type: 'token', token: '}' }
+    
+  ]});
+  
+  return rootParser;
+  
+};
+let genInput = () => {
+  
+  return '{a:1}';
+  
+};
+
+(() => {
+  
+  let cleanResult = (result, seen=Map()) => {
+    
+    if (!result) throw Error('BAD');
+    
+    if (seen.has(result)) return seen.get(result);
+    let clean = {};
+    seen.set(result, clean);
+    
+    clean.parser = `${result.parser.name || '<anon>'} (${result.parser.type})`;
+    clean.result = result.result;
+    
+    if (result.parser.type === 'any')
+      clean.child = cleanResult(result.child, seen);
+    
+    if ([ 'repeat', 'all' ].includes(result.parser.type))
+      clean.children = result.children.map(child => cleanResult(child, seen));
+    
+    return clean;
+    
+  };
+  
+  let parser = genParser();
+  let input = genInput();
+  for (let match of parse(parser, input)) {
+    console.log(`MATCH <${input}>`, require('util').inspect(cleanResult(match), { colors: true, depth: Infinity }));
+    break;
+  }
+  
+})();
+
+return;
+
+let data1 = U.multilineString(`
   let varInt = 98349;
   let varFlt = 893.0394809;
 `);
-
-let data2 = U.multilineStr(`
+let data2 = U.multilineString(`
   let varInt = 98349;
   let varFlt = 893.0394809;
   let varBoolTrue = true;
@@ -19,7 +339,7 @@ let data2 = U.multilineStr(`
   ];
 `);
 
-let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
+let Parser = U.form({ name: 'Parser', props: (insp, Insp) => ({
   
   $from: (rep, seen=Map()) => {
     
@@ -36,15 +356,15 @@ let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
       for (let k in props) parser[k] = props[k];
       
       // Handle special types
-      if (U.isType(parser, AnyParser)) {
+      if (U.isForm(parser, AnyParser)) {
         
         parser.parsers = parser.parsers.map(rep => Parser.from(rep, seen));
         
-      } else if (U.isType(parser, AllParser)) {
+      } else if (U.isForm(parser, AllParser)) {
         
         parser.parsers = parser.parsers.map(rep => Parser.from(rep, seen));
         
-      } else if (U.isType(parser, RepeatParser)) {
+      } else if (U.isForm(parser, RepeatParser)) {
         
         parser.parser = Parser.from(parser.parser, seen);
         
@@ -85,7 +405,7 @@ let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
   },
   
   init: function(name) {
-    if (!U.isType(name, String)) throw Error(`Name was not a String (${U.nameOf(name)})`);
+    if (!U.isForm(name, String)) throw Error(`Name was not a String (${U.nameOf(name)})`);
     this.name = name;
   },
   trimSpace: function() { return true; },
@@ -124,7 +444,7 @@ let Parser = U.inspire({ name: 'Parser', methods: (insp, Insp) => ({
     obj.gain({ cls: this.constructor.name.slice(0, -6), ...this });
   }
 })});
-let RegexParser = U.inspire({ name: 'RegexParser', insps: { Parser }, methods: (insp, Insp) => ({
+let RegexParser = U.form({ name: 'RegexParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name, regex) {
     insp.Parser.init.call(this, name);
     this.regex = regex;
@@ -134,7 +454,7 @@ let RegexParser = U.inspire({ name: 'RegexParser', insps: { Parser }, methods: (
     if (match) yield { input, chain, inner: [], consumed: match[0] };
   }
 })});
-let TokenParser = U.inspire({ name: 'TokenParser', insps: { Parser }, methods: (insp, Insp) => ({
+let TokenParser = U.form({ name: 'TokenParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name, token) {
     //if (token.count() === 0) throw Error(`Invalid 0-length token`);
     insp.Parser.init.call(this, name);
@@ -146,7 +466,7 @@ let TokenParser = U.inspire({ name: 'TokenParser', insps: { Parser }, methods: (
     yield { input, chain, inner: [], consumed: this.token };
   }
 })});
-let SpaceParser = U.inspire({ name: 'SpaceParser', insps: { Parser }, methods: (insp, Insp) => ({
+let SpaceParser = U.form({ name: 'SpaceParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name) { this.name = name; },
   trimSpace: function() { return false; },
   consumeSanitized: function*(input, chain=[ this ]) {
@@ -154,7 +474,7 @@ let SpaceParser = U.inspire({ name: 'SpaceParser', insps: { Parser }, methods: (
     yield { input, chain, inner: [], consumed: input[0] }
   }
 })});
-let AnyParser = U.inspire({ name: 'AnyParser', insps: { Parser }, methods: (insp, Insp) => ({
+let AnyParser = U.form({ name: 'AnyParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name, parsers=[]) {
     insp.Parser.init.call(this, name);
     this.parsers = parsers;
@@ -178,7 +498,7 @@ let AnyParser = U.inspire({ name: 'AnyParser', insps: { Parser }, methods: (insp
     obj.parsers = this.parsers.map(p => p.toRep(seen));
   }
 })});
-let AllParser = U.inspire({ name: 'AllParser', insps: { Parser }, methods: (insp, Insp) => ({
+let AllParser = U.form({ name: 'AllParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name, parsers=[]) {
     insp.Parser.init.call(this, name);
     this.parsers = parsers;
@@ -215,7 +535,7 @@ let AllParser = U.inspire({ name: 'AllParser', insps: { Parser }, methods: (insp
     obj.parsers = this.parsers.map(p => p.toRep(seen));
   }
 })});
-let RepeatParser = U.inspire({ name: 'RepeatParser', insps: { Parser }, methods: (insp, Insp) => ({
+let RepeatParser = U.form({ name: 'RepeatParser', has: { Parser }, props: (insp, Insp) => ({
   init: function(name, min=null, max=null, parser=null) {
     //if (!parser) throw Error('Need "parser" param');
     insp.Parser.init.call(this, name);
