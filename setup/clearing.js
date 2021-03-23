@@ -430,7 +430,17 @@ let U = global.U = {
     
   },
   getForm: f => (f != null) ? f.constructor : null,
-  getFormName: f => U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
+  getFormName: f => {
+    
+    // Previous implementation:
+    // U.safe(() => f.constructor.name, () => U.safe(() => String(f), 'Unrepresentable')),
+    
+    if (f === null) return 'Null';
+    if (f === undefined) return 'Undefined';
+    if (f !== f) return 'NaN';
+    return U.safe(() => f.constructor.name, 'Unrepresentable');
+    
+  },
   
   multilineString: str => {
     
