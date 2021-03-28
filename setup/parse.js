@@ -3,12 +3,15 @@ require('./clearing.js');
 // https://en.wikipedia.org/wiki/Left_recursion
 
 let parse = (parser, input) => parseNormalized(normalizedParser(parser), input);
-let whiteSpaceReg = /[ \n\t]/;
+let whiteSpaceRegex = /[ \n\t]/;
 
 let getParserParams = parser => {
   
-  let defaults = { consumeWhiteSpace: true, diveParser: null, diveGreedy: true };
+  let defaults = { consumeWhiteSpace: false, diveParser: null, diveGreedy: true };
+  
+  if ([ 'token', 'regex' ].has(parser.type)) defaults.consumeWhiteSpace = true;
   if (parser.type === 'repeat') defaults = { ...defaults, minReps: 0, maxReps: Infinity, greedy: true };
+  
   return { ...defaults, ...parser };
   
 };
@@ -44,6 +47,7 @@ let isLeftRecursionSafe = (parser, seen=Map()) => {
   return result;
   
 };
+
 let iterateAllParsers = function*(parser, seen=Set()) {
   
   if (seen.has(parser)) return;
@@ -57,6 +61,7 @@ let iterateAllParsers = function*(parser, seen=Set()) {
 };
 let normalizedParser = parser => {
   
+  // Sanitization step
   for (let p of iterateAllParsers(parser)) {
     
     // Convert string regex to regex object
@@ -65,12 +70,148 @@ let normalizedParser = parser => {
       p.regex = new RegExp(p.regex.replace(/\\/g, '\\\\')); // Escape all backslashes
     }
     
-    if (!isLeftRecursionSafe(p)) {
+    // TODO: Sort options of "any" by descending complexity??
+    if (0 && p.type === 'any') {
       
-      console.log(`Parser contains left-recursion:`, p);
-      throw Error(`Possible left recursion`);
+      p.parsers = p.parsers.sort((p1, p2) => {
+        
+        let c1 = 0;
+        for (let p of iterateAllParsers(p1)) c1++;
+        
+        let c2 = 0;
+        for (let p of iterateAllParsers(p2)) c2++;
+        
+        return c2 - c1;
+        
+      });
+      
+      console.log(p.parsers.map(p => p.name || p.type));
       
     }
+    
+  }
+  
+  let getLeftRecursionChainsForParser = (root, chain=[], seen=Set()) => {
+    
+    // We're looking to see if `root` left-recurses in `current`
+    
+    let current = chain.slice(-1)[0] || root;
+    
+    // Ignore terminals
+    if ([ 'token', 'regex' ].has(current.type)) return [];
+    
+    if (seen.has(current)) return [];
+    seen.add(current);
+    
+    if (current.type === 'all') {
+      
+      if (current.parsers[0] === root) return [ chain ];
+      return getLeftRecursionChainsForParser(root, [ ...chain, current.parsers[0] ], seen);
+      
+    } else if (current.type === 'repeat') {
+      
+      if (current.parser === root) [ chain ];
+      return getLeftRecursionChainsForParser(root, [ ...chain, current.parser ], seen);
+      
+    } else if (current.type === 'any') {
+      
+      let chains = [];
+      if (current.parsers.has(root)) chains.push(chain);
+      
+      for (let parser of current.parsers) {
+        chains = [
+          ...chains,
+          ...getLeftRecursionChainsForParser(root, [ ...chain, parser ], seen)
+        ];
+      }
+      
+      return chains;
+      
+    }
+    
+    throw Error(`Unexpected parser: ${parser.type}`);
+    
+  };
+  let resolveLeftRecursionChainsForParser = (parser, chains) => {
+    
+    if (!parser.diveParser)
+      parser.diveParser = { name: '~diveRepeat', type: 'repeat', parser: { name: '~diveAny', type: 'any', parsers: [] } };
+    
+    let diveParsersArr = parser.diveParser.parser.parsers;
+    
+    for (let chain of chains) {
+      
+      // Note: a chain of length 0 can actually occur for a parser
+      // such as:
+      //      |   let parser = { type: 'any', parsers: [] };
+      //      |   parser.parsers.push(parser);
+      
+      // This parser immediately delegates to `parser`, and can be
+      // returned to from `parser` (causing LR). If this is "repeat",
+      // its "parser" prop is `parser`. If it's "any", `parser` is
+      // directly within its "parsers" prop. If it's "all" then
+      // `parser === cycleClosingParser.parsers[0]`!
+      let cycleClosingParser = chain.slice(-1)[0];
+      
+      if (chain.length !== 1) throw Error(`Handle indirect left recursion??`);
+      if (parser.type !== 'any') throw Error(`Handle cyclically closed non-any parser`);
+      
+      if (cycleClosingParser.type === 'repeat') {
+        
+        let { minReps, maxReps } = getParserParams(cycleClosingParser);
+        
+        // Remove from `parser.parsers`
+        parser.parsers = parser.parsers.map(p => (p === cycleClosingParser) ? C.skip : p);
+        
+        // Subtract one off min and max reps, since there will always
+        // have been one repetition occurred before the dive parser is
+        // even hit
+        diveParsersArr.push({
+          ...cycleClosingParser,
+          minReps: Math.max(0, minReps - 1),
+          maxReps: maxReps - 1
+        });
+        
+      } else if (cycleClosingParser.type === 'all') {
+        
+        let numHeadReps = 0;
+        while (cycleClosingParser.parsers[numHeadReps] === parser) numHeadReps++;
+        
+        if (numHeadReps !== 1) throw Error(`All-type cycle closing parser repeats head multiple times`);
+        
+        // Remove from `parser.parsers`
+        parser.parsers = parser.parsers.map(p => (p === cycleClosingParser) ? C.skip : p);
+        
+        // Remove the head (the cyclical step; we'll dive instead, so
+        // the head is guaranteed already to exist!)
+        cycleClosingParser.parsers = cycleClosingParser.parsers.slice(1);
+        
+        diveParsersArr.push(cycleClosingParser);
+        
+      } else if (cycleClosingParser.type === 'any') {
+        
+      }
+      
+    }
+    
+  };
+  
+  // Repeat as long as there are left-recursion chains
+  while (true) {
+    
+    let leftRecursionChainExists = false;
+    for (let p of iterateAllParsers(parser)) {
+      
+      let chains = getLeftRecursionChainsForParser(p);
+      if (!chains.length) continue;
+      
+      leftRecursionChainExists = true;
+      resolveLeftRecursionChainsForParser(p, chains);
+      break; // Begin looping from beginning after resolving first issue
+      
+    }
+    
+    if (!leftRecursionChainExists) break;
     
   }
   
@@ -147,6 +288,7 @@ let parseNormalized = function*(parser, input) {
     }
     
   };
+  
   let applyParser = function*(parser, input) {
     
     if (!input) return;
@@ -155,30 +297,34 @@ let parseNormalized = function*(parser, input) {
     let { consumeWhiteSpace, diveParser, diveGreedy } = getParserParams(parser);
     
     let pre = '';
-    if (consumeWhiteSpace) while (input[pre.length].match(whiteSpaceReg)) pre += input[pre.length];
+    if (consumeWhiteSpace) while ((input[pre.length] || '').match(whiteSpaceRegex)) pre += input[pre.length];
     input = input.slice(pre.length);
     
     if (!diveParser) {
       
-      for (let parsed of applyParserTypeFns[parser.type](parser, input)) yield { ...parsed, result: pre + parsed.result };
+      for (let parsed of applyParserTypeFns[parser.type](parser, input)) {
+        yield { ...parsed, result: pre + parsed.result };
+      }
       
     } else {
       
       for (let parsedDiveHead of applyParserTypeFns[parser.type](parser, input)) {
-        
-        console.log(`${parser.name} matched <${parsedDiveHead.result}>; diving...`);
         
         let result = pre + parsedDiveHead.result;
         let remainingInput = input.slice(result.length);
         if (diveGreedy && remainingInput) {
           for (let parsedDiveTail of applyParser(diveParser, remainingInput)) {
             yield { parser, ...parsedDiveHead, result: result + parsedDiveTail.result, diveTail: parsedDiveTail };
+            //yield { parser, ...parsedDiveHead, diveTail: parsedDiveTail };
           }
         }
+        
         yield { ...parsedDiveHead, result };
+        
         if (!diveGreedy && remainingInput) {
           for (let parsedDiveTail of applyParser(diveParser, remainingInput)) {
             yield { parser, ...parsedDiveHead, result: result + parsedDiveTail.result, diveTail: parsedDiveTail };
+            //yield { parser, ...parsedDiveHead, diveTail: parsedDiveTail };
           }
         }
         
@@ -188,19 +334,82 @@ let parseNormalized = function*(parser, input) {
     
   }
   
-  yield* applyParser(parser, input);
+  let normalizedParseTree = parsed => {
+    
+    if (parsed.parser.type === 'any')
+      parsed = { ...parsed, child: normalizedParseTree(parsed.child) };
+    
+    if ([ 'repeat', 'all' ].includes(parsed.parser.type))
+      parsed = { ...parsed, children: parsed.children.map(normalizedParseTree) };
+    
+    if (parsed.has('diveTail')) {
+      
+      if (parsed.diveTail.parser.name !== '~diveRepeat') throw Error(`Unexpected`);
+      
+      let { diveTail: diveRepeatParsed, ...parsedNormalized } = parsed;
+      parsed = parsedNormalized;
+      
+      // "~diveRepeat" should only contain "~diveAny" items
+      if (diveRepeatParsed.children.find(parsed => parsed.parser.name !== '~diveAny').found) throw Error(`Unexpected`);
+      
+      // Every option picked by "~diveAny" should be "all"-type
+      if (diveRepeatParsed.children.find(parsed => parsed.child.parser.type !== 'all').found) throw Error(`Unexpected`);
+      
+      let resultFromDive = diveRepeatParsed.children.map(c => c.result).join('');
+      let resultWithoutDive = parsed.result.slice(0, parsed.result.length - resultFromDive.length);
+      let accumulatedResult = resultWithoutDive;
+      parsed.result = resultWithoutDive;
+      
+      for (let diveChild of diveRepeatParsed.children.map(parsed => parsed.child)) {
+        
+        // `diveChild` is certainly of type "all"!
+        diveChild = normalizedParseTree(diveChild);
+        accumulatedResult += diveChild.result;
+        parsed = { ...diveChild, result: accumulatedResult, children: [ parsed, ...diveChild.children ] };
+        
+        //console.log({ parsed, diveAllTypeChild })
+        
+        
+      }
+      
+    }
+    
+    return parsed;
+    
+  };
+  for (let parsed of applyParser(parser, input)) {
+    
+    if (input.slice(parsed.result.length).trim()) continue;
+    yield normalizedParseTree(parsed);
+    //yield parsed;
+    
+  }
   
 };
 
 let genParser = () => {
   
+  /*
+  let exp = { name: 'root', type: 'any', parsers: [] };
+  exp.parsers.push({ name: 'num', type: 'regex', regex: '[0-9]+' });
+  exp.parsers.push({ name: 'add', type: 'all', parsers: [ exp, { type: 'token', token: '+' }, exp ]});
+  exp.parsers.push({ name: 'sub', type: 'all', parsers: [ exp, { type: 'token', token: '-' }, exp ]});
+  exp.parsers.push({ name: 'mul', type: 'all', parsers: [ exp, { type: 'token', token: '*' }, exp ]});
+  exp.parsers.push({ name: 'div', type: 'all', parsers: [ exp, { type: 'token', token: '/' }, exp ]});
+  exp.parsers.push({ name: 'parentheses', type: 'all', parsers: [
+    { type: 'token', token: '(' }, exp, { type: 'token', token: ')' }
+  ]});
+  
+  return exp;
+  */
+  
   let rootParser = { name: 'root', type: 'any', parsers: [] };
   
   let inPlaceVal = rootParser.parsers.add({ name: 'inPlaceVal', type: 'any', parsers: [] });
   
-  let varRef = { name: 'varRef', type: 'regex', regex: '[a-zA-Z$_][a-zA-Z0-9$_]*' };
+  let varName = { name: 'varName', type: 'regex', regex: '[a-zA-Z$_][a-zA-Z0-9$_]*' };
   
-  inPlaceVal.parsers.add(varRef);
+  inPlaceVal.parsers.add(varName);
   
   inPlaceVal.parsers.add({ name: 'singleQuoteString', type: 'all', parsers: [
     
@@ -289,11 +498,11 @@ let genParser = () => {
   
   let objectEntity = { name: 'objectEntity', type: 'any', parsers: [
     
-    varRef, // Shorthand - e.g. { a, b, c: 3 }
+    varName, // Shorthand - e.g. { a, b, c: 3 }
     
     { name: 'mapping', type: 'all', parsers: [
       
-      varRef,
+      varName,
       { name: 'mappingDelim', type: 'token', token: ':' },
       inPlaceVal
       
@@ -317,26 +526,188 @@ let genParser = () => {
     
   ]});
   
-  inPlaceVal.parsers.add({ name: 'bracketedVal', type: 'all', parsers: [
+  let functionDefParams = { name: 'functionDefParams', type: 'all', parsers: [
     
-    { type: 'token', token: '(' },
+    { name: 'functionDefParamsOpen', type: 'token', token: '(' },
+    { type: 'all', parsers: [
+      
+      { type: 'repeat', parser: { type: 'all', parsers: [
+        varName,
+        { name: 'delimiter', type: 'token', token: ',' }
+      ]}},
+      
+      { name: 'functionDefTailParam', type: 'repeat', maxReps: 1, parser: { type: 'all', parsers: [
+        // Last param may be variadic
+        { name: 'functionDefTailParamOptionallyVariadic', type: 'repeat', maxReps: 1, parser: { type: 'token', token: '...' } },
+        varName
+      ]}},
+      
+    ]},
+    { name: 'functionDefParamsClose', type: 'token', token: ')' }
+    
+  ]};
+  let functionCallParams = { name: 'functionCallParams', type: 'all', parsers: [
+    
+    { name: 'open', type: 'token', token: '(' },
+    { name: 'headEntities', type: 'repeat', parser: { type: 'all', parsers: [
+      arrayEntity,
+      { name: 'delimiter', type: 'token', token: ',' }
+    ]}},
+    { name: 'tailEntity', type: 'repeat', maxReps: 1, parser: arrayEntity },
+    { name: 'close', type: 'token', token: ')' }
+    
+  ]};
+  let functionBodyStatement = { name: 'functionBodyStatement', type: 'any', parsers: [
+    
     inPlaceVal,
-    { type: 'token', token: ')' }
+    { name: 'functionBodyVarAssign', type: 'all', parsers: [
+      
+      { name: 'functionBodyVarAssignType', type: 'any', parsers: [
+        { name: 'functionBodyVarAssignLet', type: 'token', token: 'let' },
+        { name: 'functionBodyVarAssignConst', type: 'token', token: 'const' },
+        { name: 'functionBodyVarAssignVar', type: 'token', token: 'var' }
+      ]},
+      { name: 'functionBodyVarAssignWhiteSpaceDelim', type: 'regex', consumeWhiteSpace: false, regex: whiteSpaceRegex },
+      varName,
+      { name: 'functionBodyVarAssignToken', type: 'token', token: '=' },
+      inPlaceVal
+      
+    ]}
+    
+  ]};
+  let functionBody = { name: 'functionBody', type: 'all', parsers: [
+    { name: 'functionBodyOpen', type: 'token', token: '{' },
+    { name: 'functionBodyStatementsHead', type: 'repeat', parser: { name: 'functionBodyDelimitedStatement', type: 'all', parsers: [
+      
+      functionBodyStatement,
+      { name: 'functionBodyStatementDelimiter', type: 'any', parsers: [
+        { name: 'functionBodyStatementDelimiterSemicolon', type: 'token', token: ';' },
+        { name: 'functionBodyStatementDelimiterWhiteSpace', consumeWhiteSpace: false, type: 'regex', regex: whiteSpaceRegex },
+      ]}
+      
+    ]}},
+    
+    // Optional undelimited tailing statement
+    { name: 'functionBodyStatementsTail', type: 'repeat', maxReps: 1, parser: functionBodyStatement },
+    
+    { name: 'functionBodyClose', type: 'token', token: '}' }
+  ]};
+  inPlaceVal.parsers.add({ name: 'functionDef', type: 'all', parsers: [
+    
+    { name: 'functionDefToken', type: 'token', token: 'function' },
+    
+    // Optional function name
+    { name: 'functionInlineOptionalName', type: 'repeat', maxReps: 1, parser: { type: 'all', parsers: [
+      { name: 'functionNameWhiteSpaceSeparator', type: 'regex', consumeWhiteSpace: false, regex: whiteSpaceRegex },
+      varName
+    ]}},
+    
+    functionDefParams,
+    
+    functionBody
+    
+  ]});
+  inPlaceVal.parsers.add({ name: 'shorthandFunctionDef', type: 'all', parsers: [
+    
+    // Shorthand functions allowed a single simple unbracketed parameter
+    { name: 'shorthandFunctionParams', type: 'any', parsers: [
+      varName,
+      functionDefParams
+    ]},
+    
+    { name: 'shorthandFunctionToken', type: 'token', token: '=>' },
+    
+    // Shorthand functions can have an unbracketed body consisting of a
+    // single in-place value
+    { name: 'shorthandFunctionBody', type: 'any', parsers: [
+      inPlaceVal,
+      functionBody
+    ]}
     
   ]});
   
-  inPlaceVal.diveParser = { type: 'repeat', parser: { type: 'any', parsers: [
+  inPlaceVal.parsers.add({ name: 'bracketedVal', type: 'all', parsers: [
     
-    { name: 'functionCallNoParams', type: 'token', token: '()' }
+    { name: 'bracketedValOpen', type: 'token', token: '(' },
+    { name: 'bracketedLeadingVals', type: 'repeat', parser: { type: 'all', parsers: [
+      inPlaceVal,
+      { type: 'token', token: ',' }
+    ]}},
+    inPlaceVal,
+    { name: 'bracketedValClose', type: 'token', token: ')' }
     
-  ]}};
+  ]});
+  
+  inPlaceVal.parsers.add({ name: 'functionCall', type: 'all', parsers: [
+    
+    inPlaceVal,
+    functionCallParams
+    
+  ]});
+  
+  inPlaceVal.parsers.add({ name: 'binaryOp', type: 'all', parsers: [
+    
+    inPlaceVal,
+    { type: 'any', parsers: [
+      { name: 'add', type: 'token', token: '+' },
+      { name: 'subtract', type: 'token', token: '-' },
+      { name: 'multiply', type: 'token', token: '*' },
+      { name: 'divide', type: 'token', token: '/' },
+      { name: 'booleanAnd', type: 'token', token: '&&' },
+      { name: 'booleanOr', type: 'token', token: '||' },
+      { name: 'bitwiseAnd', type: 'token', token: '&' },
+      { name: 'bitwiseOr', type: 'token', token: '|' }
+    ]},
+    inPlaceVal
+    
+  ]});
+  
+  let inPlaceReference = { name: 'inPlaceReference', type: 'any', parsers: [
+    
+    varName,
+    
+    //// TODO: **INDIRECT** LEFT RECURSION IS ALL-TOO-REAL :'(
+    // { name: 'propAccessSimple', type: 'all', parsers: [
+    //   inPlaceVal,
+    //   { type: 'token', token: '.' },
+    //   varName
+    // ]},
+    // { name: 'propAccessDynamic', type: 'all', parsers: [
+    //   inPlaceVal,
+    //   { type: 'token', token: '[' },
+    //   inPlaceVal,
+    //   { type: 'token', token: ']' }
+    // ]}
+    
+  ]};
+  inPlaceVal.parsers.add(inPlaceReference);
+  
+  inPlaceVal.parsers.add({ name: 'ternary', type: 'all', parsers: [
+    
+    inPlaceVal,
+    { type: 'token', token: '?' },
+    inPlaceVal,
+    { type: 'token', token: ':' },
+    inPlaceVal
+    
+  ]});
+  
+  inPlaceVal.parsers.add({ name: 'inPlaceAssignment', type: 'all', parsers: [
+    
+    inPlaceReference,
+    { type: 'token', token: '=' },
+    inPlaceVal
+    
+  ]});
   
   return rootParser;
   
 };
 let genInput = () => {
   
-  return 'f()()()()()()()()';
+  return U.multilineString(`
+    a => { let v = 100; }
+  `).trim();
   
 };
 
@@ -365,12 +736,31 @@ let genInput = () => {
     return clean;
     
   };
+  let displayResult = (parsed, ind=0) => {
+    
+    let indStr = ' '.repeat(ind * 2);
+    let log = str => console.log(indStr + str);
+    log(`${parsed.parser.name || '<anon>'} (${parsed.parser.type}): "${parsed.result}"`);
+    
+    if (parsed.parser.type === 'any')
+      displayResult(parsed.child, ind + 1);
+    
+    if ([ 'repeat', 'all' ].has(parsed.parser.type))
+      for (let child of parsed.children) displayResult(child, ind + 1);
+    
+    if (parsed.diveTail) {
+      displayResult(parsed.diveTail, ind + 1);
+    }
+    
+  };
   
   let parser = genParser();
   let input = genInput();
-  for (let match of parse(parser, input)) {
-    console.log(`MATCH <${match.result}>`, require('util').inspect(cleanResult(match), { colors: true, depth: Infinity }));
+  for (let parsed of parse(parser, input)) {
+    displayResult(parsed);
+    //console.log(`MATCH <${parsed.result}>`, require('util').inspect(cleanResult(parsed), { colors: true, depth: Infinity }));
     break;
+    console.log('\n\n');
   }
   
 })();

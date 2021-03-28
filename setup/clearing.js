@@ -75,8 +75,8 @@ protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns {
   for (let i = 0, len = this.length; i < len; i++) if (f(this[i], i)) return { found: true, val: this[i], ind: i };
   return { found: false, val: null, ind: null };
 });
-protoDef(Array, 'has', function(v) { return this.indexOf(v) >= 0; });
-protoDef(Array, 'isEmpty', function() { return !this.length; });
+protoDef(Array, 'has', Array.prototype.includes);
+protoDef(Array, 'isEmpty', function() { return !this.length; }); // "isEmpty" -> "empty"
 protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
 protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
 protoDef(Array, 'count', function() { return this.length; });
