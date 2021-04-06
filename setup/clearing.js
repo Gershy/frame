@@ -24,7 +24,7 @@ let protoDef = (Cls, name, value) => {
 };
 
 protoDef(Object, 'each', function(fn) { for (let [ k, v ] of this) fn(v, k); });
-protoDef(Object, 'map', function(fn) {
+protoDef(Object, 'map', function(fn) { // Iterator: (val, key) => val
   let ret = Object.assign({}, this);
   for (let k in ret) { let v = fn(ret[k], k); if (v !== C.skip) ret[k] = v; else delete ret[k]; }
   return ret;
