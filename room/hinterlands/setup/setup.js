@@ -49,7 +49,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       //    2 - FollowRecScope(rec.relSrc('pfx.recName'), (rec, dep) => { ... })
       // 
       // then the FollowRecScope would always follow any resulting Rec.
-      // But this overlooked an important use case:
+      // But this overlooked an important use class of cases, e.g.:
       // 
       //    FollowRecScope(Chooser(rec.relSrc('pfx.recName')), (rec, dep) => { ... })
       // 
@@ -137,7 +137,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
           // Stifle any hears the KidHut receives. The KidHut doesn't
           // require any input whatsoever; the storage already knows
           // everything the KidHut will tell!
-          kidHut.hear = () => {};
+          Object.defineProperty(kidHut, 'hear', { value: () => {} });
           
           // Create Rec relating KidHut and ParHut (TODO: Necessary??)
           let kidHutType = hut.getType('lands.kidHut');
@@ -147,7 +147,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
           
         };
         
-        doDbg && console.log(`Catching up; replaying ${replayCount} files...`);
+        doDbg && console.log(`Catching up; files to replay: ${replayCount}`);
         let t = foundation.getMs();
         let replayCnt = 0;
         for (let i = 0; i < replayCount; i++) {
@@ -194,10 +194,12 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       let ignoreCommands = Set([ 'thunThunk', 'syncInit', 'html.multi', 'html.css', 'html.room', 'html.icon' ]);
       hut.roadDbgEnabled = false;
       let hutHearOrig = hut.hear;
-      hut.hear = (srcHut, road, reply, msg, ms=foundation.getMs()) => {
+      
+      Object.defineProperty(hut, 'hear', { value: (srcHut, road, reply, msg, ms=foundation.getMs()) => {
         if (msg.command && !ignoreCommands.has(msg.command)) addItem({ uid: srcHut ? srcHut.uid : null, ms, msg });
         return hutHearOrig.call(hut, srcHut, road, reply, msg, ms);
-      };
+      }});
+      
       tmp.endWith(() => delete hut.hear);
       
       return tmp;
@@ -226,7 +228,8 @@ global.rooms['hinterlands.Setup'] = async foundation => {
       let hosting = await Promise.resolve(this.hosting);
       for (let [ term, hostingOpts ] of hosting) U.then(foundation.getServer(hostingOpts), server => {
         
-        server.addPool(hut);
+        tmp.endWith(server);
+        tmp.endWith(server.addPool(hut));
         
         /// {BELOW=
         // Link BELOW servers to the Hut instance representing ABOVE
@@ -249,7 +252,7 @@ global.rooms['hinterlands.Setup'] = async foundation => {
         tmp.endWith(addTypeFormFnTmp);
       }
       
-      let real = await foundation.seek('real', 'primary');
+      let real = await foundation.seek('real', 'primary'); // TODO: 'primary' -> 'main'
       let recName = `${this.prefix}.${this.hutName.split('.').slice(-1)[0]}`;
       
       /// {ABOVE=

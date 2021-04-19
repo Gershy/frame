@@ -102,6 +102,7 @@ Hut at the very bottom runs using a single Reality.
     argProcessors: {
       deploy: val => val || 'prod',
       debug: val => {
+        if (val === '*') return { has: () => true };
         if (U.isForm(val, String)) val = val.split(',').map(v => v.trim() || C.skip);
         return Set(val || []);
       },

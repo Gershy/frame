@@ -120,7 +120,7 @@
         
       }))(native('path'), native('fs')),
       $HoneyPotKeep: U.form({ name: 'HoneyPotKeep', has: { Keep }, props: (forms, Form) => ({
-        init: function(data=[ 'honey', 'passwords', 'tokens', 'credentials', 'bitcoin', 'wallet' ]) { this.data = data; },
+        init: function(data=[ 'passwords', 'keys', 'tokens', 'secrets', 'credentials', 'bitcoin', 'wallet', 'honey' ]) { this.data = data; },
         access: function() { return this; },
         setContentType: function() { return this; },
         getContentType: function() { return 'application/json'; },
@@ -474,18 +474,56 @@
             }
           },
           
+          async m => { // String.prototype.cut
+            
+            let tests = [
+              [ () => 'abc,def,ghi'       .cut(','),          [ 'abc', 'def', 'ghi' ] ],
+              [ () => 'abc,def,ghi'       .cut(',', 1),       [ 'abc', 'def,ghi' ] ],
+              [ () => 'a,def,ghi'         .cut(',', 1),       [ 'a', 'def,ghi' ] ],
+              [ () => 'abc,d,efgh,ij'     .cut(',', 2),       [ 'abc', 'd', 'efgh,ij' ] ],
+              [ () => 'abc,,d,,efgh,,ij'  .cut(',,', 2),      [ 'abc', 'd', 'efgh,,ij' ] ],
+              [ () => ',,,'               .cut(',,'),         [ '', ',' ] ],
+              [ () => ',,,'               .cut(','),          [ '', '', '', '' ] ],
+              [ () => 'a,,,'              .cut(','),          [ 'a', '', '', '' ] ],
+              [ () => ',a,,'              .cut(','),          [ '', 'a', '', '' ] ],
+              [ () => ',,,a'              .cut(','),          [ '', '', '', 'a' ] ],
+              [ () => ',,,a'              .cut(',', 1),       [ '', ',,a' ] ],
+              [ () => ',,,a'              .cut(',', 2),       [ '', '', ',a' ] ],
+              [ () => ','                 .cut(',', 0),       [ ',' ] ],
+              [ () => ','                 .cut(',', 1),       [ '', '' ] ],
+              [ () => ','                 .cut(',,'),         [ ',' ] ],
+              [ () => ''                  .cut(',', 0),       [ '' ] ],
+              [ () => ''                  .cut(',', 1),       [ '' ] ]
+            ];
+            
+            for (let [ fn, exp ] of tests) {
+              
+              let c = fn();
+              let valid = true
+                && c.length === exp.length
+                && !c.find((v, i) => v !== exp[i]).found;
+              
+              if (!valid) {
+                let fnStr = fn.toString().replace(/ *[.]cut/, '.cut');
+                throw Error(`${fnStr} gave ${JSON.stringify(c)}; expected ${JSON.stringify(exp)}`);
+              }
+              
+            }
+            
+          },
+          
           async m => { // Promise.allObj
             let prms = {
               thing1: 'hi',
-              thing2: 'yo',
-              thing3: Promise(r => setTimeout(() => r('ha'), 0)),
+              thing2: Promise(r => setTimeout(() => r('ha'), 0)),
+              thing3: 'yo',
               thing4: Promise(r => this.queueTask(() => r('69')))
             };
             let { thing1, thing2, thing3, thing4, ...more } = await Promise.allObj(prms);
             
             if (thing1 !== 'hi') throw Error(`Invalid "thing1"`);
-            if (thing2 !== 'yo') throw Error(`Invalid "thing2"`);
-            if (thing3 !== 'ha') throw Error(`Invalid "thing3"`);
+            if (thing2 !== 'ha') throw Error(`Invalid "thing3"`);
+            if (thing3 !== 'yo') throw Error(`Invalid "thing2"`);
             if (thing4 !== '69') throw Error(`Invalid "thing4"`);
             if (!more.isEmpty()) throw Error(`allObj resulted in unexpected values`);
           },
@@ -1033,11 +1071,13 @@
           }
           
         ];
+        if (this.getArg('debug').has('lowLevelTests')) console.log(`Running ${tests.length} low-level tests...`);
         for (let test of tests) await U.safe(test, err => {
           let name = (test.toString().match(/[/][/](.*)\n/) || { 1: '<unnamed>' })[1].trim();
           console.log(`Test FAIL (${name}):\n${this.formatError(err)}`);
           this.halt();
         });
+        if (this.getArg('debug').has('lowLevelTests')) console.log(`All low-level tests passed!`);
         
         if (this.getArg('debug').has('args')) {
           console.log(`Computed args:`, await Promise.allObj(this.argProcessors.map((v, k) => this.getArg(k))));
@@ -1080,6 +1120,7 @@
     
     // Config
     argProcessors: {
+      
       ...forms.Foundation.argProcessors,
       
       dnsServers: val => {

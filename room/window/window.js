@@ -175,7 +175,7 @@ global.rooms['window'] = foundation => ({ open: async () => {
     
     init: function({ inn, ctrlPaneH=10, ...args }) {
       
-      this.render = () => {};
+      this.canRender = false;
       forms.TerminalReal.init.call(this, args);
       
       this.ctrlPaneH = 5;
@@ -263,9 +263,12 @@ global.rooms['window'] = foundation => ({ open: async () => {
       this.endWith(() => this.inn.off('data', keyPressFn));
       keyPressFn('');
       
-      delete this.render;
+      this.canRender = true;
       this.render();
       
+    },
+    render: function(...args) {
+      if (this.canRender) return forms.TerminalReal.render.apply(this, args);
     },
     setCtrlText: function(text) {
       this.cmd = text;

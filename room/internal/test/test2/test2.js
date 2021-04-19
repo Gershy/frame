@@ -3,17 +3,13 @@ global.rooms['internal.test.test2'] = async foundation => {
   let Setup = await foundation.getRoom('hinterlands.Setup');
   let HtmlBrowserHabitat = await foundation.getRoom('hinterlands.habitat.HtmlBrowserHabitat');
   
-  return Set('t2', 'internal.test.t2', {
+  return Setup('test2', 'internal.test.test2', {
     
     habitats: [ HtmlBrowserHabitat() ],
-    parFn: async (hut, t1Rec, t1Real, dep) => {
-      
-      t1Rec.setVal({ count: 0 });
+    parFn: async (hut, test2Rec, real, dep) => {
       
     },
-    kidFn: async (hut, t1Rec, t1Real, dep) => {
-      
-      
+    kidFn: async (hut, test2Rec, real, dep) => {
       
     }
     

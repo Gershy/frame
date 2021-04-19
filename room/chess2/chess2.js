@@ -382,11 +382,6 @@ global.rooms['chess2'] = async foundation => {
       let activePieceDef = pieceDefs[pieceDefName];
       let pieceTypes = Set(activePieceDef.toArr( col => col.map(([ name ]) => name) ).flat(Infinity));
       
-      // Make piece images available
-      //for (let colour of [ 'white', 'black' ]) { for (let name of pieceTypes) {
-      //  staticKeep.seek([ 'room', 'chess2', 'img', pieceStyle, `${colour}${name[0].upper()}${name.slice(1)}.png` ]);
-      //}}
-      
       let matchmakeAct = hut.enableAction('c2.matchmake', () => {
         
         let waitingPlayers = random.genShuffled(rec.relRecs('c2.player').map(p => p.relRec('c2.matchPlayer') ? C.skip : p));
@@ -499,9 +494,11 @@ global.rooms['chess2'] = async foundation => {
       dep.scp(playerChooser.srcs.off, (noPlayer, dep) => {
         
         let createPlayerAct = dep(hut.enableAction('c2.createPlayer', () => {
-          let termTmp = termBank.hold(); // TODO: Deal with this global var??
+          /// {ABOVE=
+          let termTmp = termBank.hold();
           let player = hut.createRec('c2.player', [ rec, hut ], { term: termTmp.term });
           player.endWith(termTmp);
+          /// =ABOVE}
         }));
         
         let enterReal = dep(mainReal.addReal('c2.enter', [
@@ -1069,7 +1066,7 @@ global.rooms['chess2'] = async foundation => {
     reply(foundation.seek('keep', 'fileSystem', [ 'room', 'chess2', 'chess2Info.html' ]));
   });
   /// =ABOVE}
-  */ ]; return;
+  */]; return;
   
   let rootScp = RecScope(c2Hut, 'c2.chess2', async (chess2, dep) => {
     

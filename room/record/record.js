@@ -23,6 +23,11 @@ global.rooms.record = async foundation => {
   let RecType = U.form({ name: 'RecType', has: {}, props: (forms, Form) => ({
     init: function(name, types=RecTypes()) {
       
+      // TODO: Should RecType not subclass Endable? We capture
+      // `this.memberInfoSrc` and claim that the routing of
+      // `this.memberInfoSrc.route(mi => { ... })` is 'prm', but are
+      // they really capturable/permanent?
+      
       if (!name.match(/^[a-z][a-zA-Z0-9]*[.][a-z][a-zA-Z0-9]*$/)) throw Error(`Invalid RecType name: ${name}`);
       if (types.typeMap.has(name) && types.typeMap[name] === this) throw Error(`Multiple instances of type "${name}"`);
       
@@ -33,10 +38,7 @@ global.rooms.record = async foundation => {
       
       this.memberInfoSrc = MemSrc.PrmM();
       this.terms = {};
-      this.memberInfoSrc.route(mi => { this.terms[mi.term] = mi; });
-      this.validators = [
-        (hut, type, value) => ({ valid: false, value: null })
-      ];
+      this.memberInfoSrc.route(mi => { this.terms[mi.term] = mi; }, 'prm');
       
     },
     updMems: function(recTypes) { /* { term1: recType1, term2: recType2, ... } */

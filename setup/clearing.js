@@ -76,11 +76,10 @@ protoDef(Array, 'find', function(f) { // Iterator: (val, ind) => bool; returns {
   return { found: false, val: null, ind: null };
 });
 protoDef(Array, 'has', Array.prototype.includes);
-protoDef(Array, 'isEmpty', function() { return !this.length; }); // "isEmpty" -> "empty"
+protoDef(Array, 'isEmpty', function() { return !this.length; });
 protoDef(Array, 'add', function(...args) { this.push(...args); return args[0]; });
-protoDef(Array, 'gain', function(arr2) { this.push(...arr2); return this; });
+protoDef(Array, 'gain', function(arr) { this.push(...arr); return this; });
 protoDef(Array, 'count', function() { return this.length; });
-protoDef(Array, 'invert', function() { let r = []; for (let i = this.length - 1; i >= 0; i--) r.push(this[i]); return r; });
 
 protoDef(String, 'has', function(v) { return this.indexOf(v) >= 0; });
 protoDef(String, 'hasHead', function(str) {
@@ -106,9 +105,15 @@ protoDef(String, 'padTail', function(amt, char=' ') {
 });
 protoDef(String, 'upper', String.prototype.toUpperCase);
 protoDef(String, 'lower', String.prototype.toLowerCase);
-protoDef(String, 'cut', function(seq, num=null) {
+protoDef(String, 'cut', function(delim, num=Infinity) {
   // `num` defines how many cuts occur (# of resulting items - 1)
-  let r = this.split(seq); return (num === null) ? r : [ ...r.slice(0, num), r.slice(num).join(seq) ];
+  let split = this.split(delim, num < Infinity ? num  : C.skip);
+  let numDelimsSplit = split.length - 1;
+  let lenConsumed = 0
+    + split.reduce((a, s) => a + s.length, 0)
+    + delim.length * numDelimsSplit;
+  if (lenConsumed < this.length) split = [ ...split, this.slice(lenConsumed + delim.length) ];
+  return split;
 });
 protoDef(String, 'code', function(ind=0) { return this.charCodeAt(0); });
 protoDef(String, 'count', function() { return this.length; });
@@ -138,6 +143,9 @@ protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
   if (!chrs) throw Error(`No characters provided`);
   
   let n = this, base = chrs.count(), digits = 1, amt = 1, seq = [];
+  
+  if (base === 1 && padLen) throw Error(`Can't pad when using base-1 encoding`);
+  
   if (base === 1) { digits = n; n = 0; }
   else            while (true) { let t = amt * base; if (t > n) break; digits++; amt = t; }
   
@@ -476,12 +484,14 @@ U.logic = (() => {
   
   let Endable = U.form({ name: 'Endable', props: (forms, Form) => ({
     
-    $globalRegistry: 0 ? Set.stub : Set(),
+    $globalRegistry: Set.stub, // Set(),
     
     init: function(fn) {
+      
       // Allow Endable.prototype.cleanup to be masked
       if (fn) Object.defineProperty(this, 'cleanup', { value: fn, writable: true, configurable: true, enumerable: true });
       Form.globalRegistry.add(this);
+      
     },
     onn: function() { return true; },
     off: function() { return !this.onn(); },
@@ -543,12 +553,6 @@ U.logic = (() => {
       
     },
     newRoute: function(fn) { if (this.off()) fn(); },
-    // needs: function(tmp, mode='prm') {
-    //   if (!U.hasForm(tmp, Tmp)) throw Error(`Param must be Tmp; got ${U.getFormName(tmp)}`);
-    //   return (mode === 'tmp')
-    //     ? Object.assign(tmp.route(() => this.end, 'tmp'), { v: this })
-    //     : { v: this };
-    // },
     endWith: function(val, mode='prm') {
       if (U.hasForm(val, Function)) return this.route(val, mode) || this;
       if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
@@ -707,6 +711,8 @@ U.logic = (() => {
     
   })});
   
+  // "Prm" -> "Raw"/"Simple"? ("Prm" suggests "Promise"; confusing)
+  
   let FilterSrc = U.form({ name: 'FilterSrc', has: { Endable, Src }, props: (forms, Form) => ({
     init: function(src, fn) {
       forms.Endable.init.call(this);
@@ -743,6 +749,7 @@ U.logic = (() => {
     },
     applyFn: C.noFn('applyFn', (fn, vals) => 'valToSend'),
     cleanup: function() { for (let r of this.routes) r.end(); }
+    
   })});
   FnSrc.Prm1 = U.form({ name: 'FnSrc.Prm1', has: { FnSrc }, props: (forms, Form) => ({
     
@@ -759,6 +766,7 @@ U.logic = (() => {
       let result = fn(...vals);
       return (result === this.lastResult) ? C.skip : (this.lastResult = result);
     }
+    
   })});
   FnSrc.PrmM = U.form({ name: 'FnSrc.PrmM', has: { FnSrc }, props: (forms, Form) => ({
     
@@ -799,6 +807,9 @@ U.logic = (() => {
   })});
   
   let Chooser = U.form({ name: 'Chooser', has: { Endable, Src }, props: (forms, Form) => ({
+    
+    ///
+    
     init: function(names, src=null) {
       forms.Endable.init.call(this);
       forms.Src.init.call(this);
@@ -889,12 +900,10 @@ U.logic = (() => {
           
           // Allow raw functions; wrap them in `Endable`
           if (U.isForm(dep, Function)) dep = Endable(dep);
-          
-          if (deps.has(dep)) return; // Ignore duplicates
           if (dep.off()) return; // Ignore any inactive Deps
           
-          // `deps` no longer existing requires all Deps to end
-          if (!deps) return dep.end();
+          if (!deps) return dep.end(); // Scope is already ended; all Deps must end too
+          if (deps.has(dep)) return; // Ignore duplicates
           
           if (U.hasForm(dep, Tmp)) {
             // Note `deps` falsiness check; `deps` may be set to `null`
@@ -939,7 +948,7 @@ U.logic = (() => {
   
   let TimerSrc = U.form({ name: 'TimerSrc', has: { Endable, Src }, props: (forms, Form) => ({
     
-    init: function({ ms, num=1, immediate=num!==1 }) {
+    init: function({ ms, num=1, immediate=(num !== 1) }) {
       
       // `num` may be set to `Infinity` for unlimited ticks
       
