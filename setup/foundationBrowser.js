@@ -240,13 +240,13 @@
     },
     
     // Room
-    installRoom: async function(name, bearing='below') {
+    installRoom: async function(name, { bearing='below' }={}) {
       
       let params = { command: 'html.room', type: 'room', room: name, reply: '1' };
       let url = this.seek('keep', 'urlResource', { params }).getUrl();
       
       let script = document.createElement('script');
-      script.setAttribute('defer', '');
+      //script.setAttribute('defer', '');
       script.setAttribute('async', '');
       script.setAttribute('type', 'text/javascript');
       script.setAttribute('src', url);

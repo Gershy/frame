@@ -1,8 +1,6 @@
 global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
   
-  let { Tmp } = U.logic;
-  
-  return U.form({ name: 'HtmlBrowserHabitat', has: { Tmp }, props: (forms, Form) => ({
+  return U.form({ name: 'HtmlBrowserHabitat', has: {}, props: (forms, Form) => ({
     
     // TODO: All road names should be overridable - in fact if there are
     // multiple HtmlBrowserHabitat instances, no two should share a road
@@ -11,13 +9,66 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
     // be the best solution requires changing how "syncInit" functions
     // in hinterlands
     
-    init: function({ rootRoadSrcName='syncInit' /*, prefix='html' */ }={}) {
-      forms.Tmp.init.call(this);
-      this.rootRoadSrcName = rootRoadSrcName;
-    },
-    prepare: async function(name, hut) {
+    init: function({ rootRoadSrcName='syncInit', ...params }={}) {
       
-      let tmp = Tmp();
+      let { prefix='html' } = params;
+      let { wrapClientJs=foundation.getArg('wrapClientJs') } = params;
+      
+      this.prefix = prefix;
+      this.wrapClientJs = wrapClientJs;
+      this.rootRoadSrcName = rootRoadSrcName;
+      
+    },
+    
+    /// {ABOVE=
+    getJsContentForClient: async function(roomPcs, debugParams) {
+      
+      
+      if (U.isForm(roomPcs, String)) roomPcs = roomPcs.split('.');
+      console.log({ roomPcs });
+      
+      
+      let srcContent = await foundation.seek('keep', 'fileSystem', roomPcs).getContent('utf8');
+      if (srcContent === null) return {
+        lines:  [ `throw Error('Invalid room ${roomPcs.join('.')} (params: ${JSON.stringify(debugParams)}')` ],
+        offsets: []
+      };
+      
+      let { lines, offsets } = foundation.compileContent('below', srcContent, roomPcs.join('/'));
+      
+      if (this.wrapClientJs) {
+        
+        // SyntaxError is uncatchable in the FoundationBrowser and gives
+        // no trace information. We can circumvent this by sending code
+        // which cannot cause a SyntaxError directly; instead the code
+        // is represented as a foolproof String, and then it is eval'd.
+        // If the string represents syntactically incorrect js, `eval`
+        // will crash but the script will have loaded without any issue;
+        // a much more descriptive trace can result! There's also an
+        // effort here to not change the line count in order to keep
+        // debuggability; for this reason all wrapping code is
+        // (ap|pre)pended to the first/last lines.
+        let escQt = '\\' + `'`;
+        let escEsc = '\\' + '\\';
+        let headEvalStr = `try { eval([`;
+        let tailEvalStr = `].join('\\n')); } catch(err) { console.log('Error from wrapped client code:', err); throw err; }`;
+        
+        lines = lines.map(ln => `  '` + ln.replace(/\\/g, escEsc).replace(/'/g, escQt) + `',`);
+        let headInd = 0;
+        let tailInd = lines.count() - 1;
+        lines[headInd] = headEvalStr + lines[headInd];
+        lines[tailInd] = lines[tailInd] + tailEvalStr;
+        
+      }
+      
+      return { lines, offsets };
+      
+    },
+    /// =ABOVE}
+    
+    prepare: async function(roomName, hut) {
+      
+      let tmp = U.logic.Tmp();
       
       /// {ABOVE=
       let urlFn = (srcHut, p={}, { reply='1' }=p) => {
@@ -27,14 +78,14 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         
         // TODO: If supporting outdated browsers, useragent agent
         // detection at this point has an opportunity to send html which
-        // initiates not FoundationBrowser, but rather
-        // FoundationBrowserIE9 (which would need to come complete with
-        // a completely overhauleded clearing.js using only IE9 syntax)
+        // initiates not FoundationBrowser, but FoundationBrowserIE9
+        // (which would provide a completely overhauled clearing.js with
+        // only IE9 syntax)
         
-        // The AfarHut immediately has its state reset, requiring a
-        // full sync to update. Then this full sync is consumed here,
-        // to be included within the html response (the initial html
-        // and sync data will arrive at precisely the same time!)
+        // The AfarHut immediately has its state reset, requiring a full
+        // sync to update. Then this full sync is consumed here, to be
+        // included within the html response (the initial html and sync
+        // data will always arrive together!)
         srcHut.resetSyncState();
         let initSyncTell = srcHut.consumePendingSync();
         
@@ -43,9 +94,9 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
           <!doctype html>
           <html spellcheck="false">
             <head>
-              <title>${name.split('.').slice(-1)[0].upper()}</title>
+              <title>${roomName.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + 'icon', reply: '2' })}" />
               <style type="text/css">
                 * { position: relative; }
                 body { opacity: 0; font-size: ${textSize}; transition: opacity 750ms linear; }
@@ -60,12 +111,14 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
                 body.loaded { opacity: 1; }
                 body.focus::before { box-shadow: inset 0 0 0 0 rgba(255, 255, 255, 1); }
               </style>
-              <link rel="stylesheet" type="text/css" href="${urlFn(srcHut, { command: 'html.css' })}" />
+              <link rel="stylesheet" type="text/css" href="${urlFn(srcHut, { command: this.prefix + '.css' })}" />
               <script type="text/javascript">window.global = window; global.roomDebug = {};</script>
-              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'clearing' })}"></script>
-              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'foundation' })}"></script>
-              <script type="text/javascript" src="${urlFn(srcHut, { command: 'html.room', type: 'setup', room: 'foundationBrowser' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: this.prefix + '.room', type: 'setup', room: 'clearing' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: this.prefix + '.room', type: 'setup', room: 'foundation' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: this.prefix + '.room', type: 'setup', room: 'foundationBrowser' })}"></script>
+              <script type="text/javascript" src="${urlFn(srcHut, { command: this.prefix + '.room', type: 'room', room: roomName })}"></script>
               <script type="text/javascript">
+                
                 global.domAvailable = Promise(r => window.addEventListener('DOMContentLoaded', r));
                 
                 global.domAvailable.then(() => {
@@ -98,10 +151,11 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
                 window.addEventListener('error', handleError);
                 /// =DEBUG}
                 
-                foundation.settleRoom('${name}', 'below').catch(err => {
+                foundation.settleRoom('${roomName}', { bearing: 'below' }).catch(err => {
                   console.log('FATAL ERROR:\\n' + foundation.formatError(err));
                   foundation.halt();
                 });
+                
               </script>
             </head>
             <body>
@@ -110,54 +164,60 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         `));
         
       }));
-      tmp.endWith(hut.roadSrc('html.room').route(async ({ srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(`${this.prefix}.room`).route(async ({ srcHut, msg, reply }) => {
         
-        let roomPcs = msg.room.split('.');
-        let pcs = (msg.type === 'room')
-          ? [ 'room', ...roomPcs, `${roomPcs.slice(-1)[0]}.js` ]
+        let roomName = (msg.type === 'room')
+          ? (pcs => [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ])(msg.room.split('.'))
           : [ 'setup', `${msg.room}.js` ];
+        let { lines, offsets } = await this.getJsContentForClient(roomName, msg);
         
-        let srcContent = await foundation.seek('keep', 'fileSystem', pcs).getContent('utf8');
-        if (srcContent === null) return reply(`throw Error('Invalid room request: ${JSON.stringify(msg)}');`);
-        let { lines, offsets } = foundation.compileContent(pcs, 'below', srcContent);
-        
-        if (foundation.getArg('debug').has('wrapClientJs')) {
-          
-          // SyntaxError is uncatchable in the FoundationBrowser and
-          // gives no trace information. We can circumvent this by
-          // sending code which cannot cause a SyntaxError directly;
-          // instead the code is represented as a foolproof String, and
-          // then it is eval'd. If the string represents syntactically
-          // incorrect js `eval` will crash, but the script will have
-          // loaded without any issue; a much more descriptive trace
-          // can result! There's also an effort here to not change the
-          // line count in order to keep debuggability. All wrapping
-          // code is (ap|pre)pended to the first and last lines.
-          let escQt = '\\' + `'`;
-          let escEsc = '\\' + '\\';
-          let headEvalStr = `try { eval([`;
-          let tailEvalStr = `].join('\\n')); } catch(err) { console.log('Error from wrapped client code:', err); throw err; }`;
-          
-          lines = lines.map(ln => `  '` + ln.replace(/\\/g, escEsc).replace(/'/g, escQt) + `',`);
-          let headInd = 0;
-          let tailInd = lines.count() - 1;
-          lines[headInd] = headEvalStr + lines[headInd];
-          lines[tailInd] = lines[tailInd] + tailEvalStr;
-            
-        }
-        
+        // TODO: Could stream line-by-line instead of buffering...
         reply([
-          ...lines,
-          `global.roomDebug['${msg.room}'] = ${JSON.stringify({ offsets })};`
+          ...lines, `global.roomDebug['${msg.room}'] = ${JSON.stringify({ offsets })};`
         ].join('\n'));
         
       }));
-      tmp.endWith(hut.roadSrc('html.icon').route(async ({ srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(`${this.prefix}.rooms`).route(async ({ srcHut, msg, reply }) => {
+        
+        // Unlike "<prefix>.room" (singular), type must always be "room"
+        // and therefore the "type" param shouldn't be provided.
+        
+        let roomNameArr = msg.rooms.split(',').map(r => {
+          let pcs = r.split('.');
+          return [ 'room', ...pcs, `${pcs.slice(-1)[0]}.js` ];
+        });
+        
+        let compiledRoomsData = await Promise.allArr(roomNameArr.map(roomName => {
+          return this.getJsContentForClient(roomName, msg);
+        }));
+        
+        // TODO: Need to modify `offsets` before doing something like:
+        //    |   reply(compiledRoomsData.map(d => d.lines.join('\n')).join('\n'))
+        // `offsets` needs to consider that a particular room's offsets
+        // have been shifted ahead by the number of lines of all files
+        // preceding it combined, and also that the name of the file
+        // changes every time the threshold between two files is passed.
+        // Both these considerations are nearly facilitated by the
+        // "context" feature of cmp->src line mapping. Overall:
+        // - The "at" property of every line needs to be shifted ahead
+        //   by the combined number of lines of all preceding files
+        // - Need to include `{ name: 'name.of.file' }` in context for
+        //   first offset of every file
+        // - Need to include
+        //   `{ totalOffset: numberOfPreceedingLinesFromOtherFiles }` to
+        //   provide the number of lines that need to be subtracted from
+        //   overall cmp->src line mappings in order to restore the real
+        //   line number for a specific file
+        throw Error('Not implemented from here on...');
+        
+      }));
+      
+      tmp.endWith(hut.roadSrc(`${this.prefix}.icon`).route(async ({ srcHut, msg, reply }) => {
         
         reply(foundation.seek('keep', 'fileSystem', 'setup', 'favicon.ico'));
         
       }));
-      tmp.endWith(hut.roadSrc('html.css').route(async ({ srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(`${this.prefix}.css`).route(async ({ srcHut, msg, reply }) => {
         
         reply(U.multilineString(`
           @keyframes smoothFocus {
@@ -183,7 +243,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         `));
         
       }));
-      tmp.endWith(hut.roadSrc('html.renderCss').route(async ({ srcHut, msg, reply }) => {
+      tmp.endWith(hut.roadSrc(`${this.prefix}.renderCss`).route(async ({ srcHut, msg, reply }) => {
         
         // Only for use with auto-rendering!
         reply(U.multilineString(`
@@ -255,7 +315,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
         `));
         
       }));
-      if (foundation.getArg('deploy') === 'dev') tmp.endWith(hut.roadSrc('html.multi').route(async ({ srcHut, msg, reply }) => {
+      if (foundation.getArg('deploy') === 'dev') tmp.endWith(hut.roadSrc(`${this.prefix}.multi`).route(async ({ srcHut, msg, reply }) => {
         
         let { num='4', w='400', h='400', textSize='100%' } = msg;
         
@@ -272,9 +332,9 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
           <!doctype html>
           <html>
             <head>
-              <title>${name.split('.').slice(-1)[0].upper()}</title>
+              <title>${roomName.split('.').slice(-1)[0].upper()}</title>
               <meta name="viewport" content="width=device-width, initial-scale=1"/>
-              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: 'html.icon', reply: '2' })}" />
+              <link rel="shortcut icon" type="image/x-icon" href="${urlFn(srcHut, { command: this.prefix + '.icon', reply: '2' })}" />
               <style type="text/css">
                 body, html { padding: 0; margin: 0; }
                 body { margin: 2px; text-align: center; }

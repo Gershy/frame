@@ -95,7 +95,7 @@ Hut at the very bottom runs using a single Reality.
       
       return {
         protocol, host, port: parseInt(port, 10), path,
-        query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.split('=') : [ pc, null ])
+        query: (query ? query.split('&') : []).toObj(pc => pc.has('=') ? pc.cut('=', 1) : [ pc, null ])
       };
       
     },
@@ -182,50 +182,56 @@ Hut at the very bottom runs using a single Reality.
     createSoktServer: C.noFn('createSoktServer', opts => {}),
     
     // Room
-    getRooms: async function(names, ...args) {
+    getRooms: async function(roomNames, { shorten=true, ...opts }={}) {
       
-      return Promise.allObj(names.toObj(name => {
+      // Return an Object which maps every name in the Array `roomNames`
+      // to a Promise; this Promise will resolve to the result of
+      // running the function defined by the room for that name. Note
+      // that compilation and minification layers are likely to apply.
+      // Handles recursion (where requested rooms have further
+      // dependencies) and even circular recursion (where a requested
+      // room eventually requires, a room already part of the request).
+      
+      return Promise.allObj(roomNames.toObj(name => {
+        
+        let keyName = shorten ? name.split('.').slice(-1)[0] : name;
         
         // Prexisting Promise or resolved values are returned
-        if (this.installedRooms.has(name)) return [ name, this.installedRooms[name] ];
+        if (this.installedRooms.has(name)) return [ keyName, this.installedRooms[name].content ];
         
         // Unresolved promise representing room installation
-        let prm = this.installRoom(name, ...args);
+        let installPrm = this.installRoom(name, opts);
         
         // Immediately set key; prevents double-installation
-        this.installedRooms[name] = { debug: { offsets: [] }, content: prm.then(v => v.content) };
+        this.installedRooms[name] = { debug: { offsets: [] }, content: installPrm.then(v => v.content) };
         
-        // Overwrite with resolved values once they're available
-        prm.then(obj => this.installedRooms[name].gain(obj));
+        // Note `Foundation.prototype.installRoom` returns a Promise
+        // resolving to an Object with "debug" and "content" properties.
+        // Note "debug" is immediately available, while "content" may be
+        // another Promise. This is to allow debug information to be
+        // available for any SyntaxErrors that can occur during the
+        // resolution of the "content" property.
+        installPrm.then(({ debug, content }) => {
+          Object.assign(this.installedRooms[name], { debug });
+          Promise.resolve(content).then(content => Object.assign(this.installedRooms[name], { content }));
+        });
         
-        return [ name, prm ];
+        return [ keyName, this.installedRooms[name].content ];
         
       }));
       
     },
-    getRoom: async function(name, ...args) {
+    getRoom: async function(roomName, { ...opts }={}) {
       
-      if (!this.installedRooms.has(name)) {
-        
-        // Note that `Foundation.prototype.installRoom` returns an
-        // Object with "debug" and "content" properties. Note that
-        // "debug" should be immediately available, whereas "content"
-        // may be a promise. This is to allow debug information to be
-        // available for any SyntaxErrors that can occur during the
-        // resolution of the "content" property.
-        let prm = this.installRoom(name, ...args);
-        this.installedRooms[name] = { debug: { offsets: [] }, content: prm.then(v => v.content) };
-        prm.then(obj => this.installedRooms[name].gain(obj));
-        
-      }
-      return this.installedRooms[name].content;
+      // Uses `Foundation.prototype.getRooms` to return a single room
+      return (await this.getRooms([ roomName ], { shorten: false, ...opts }))[roomName];
       
     },
-    settleRoom: async function(name, ...args) {
+    settleRoom: async function(name, { bearing, ...opts }={}) {
       await this.ready();
       
       // These do not parallelize (TODO: why??)
-      let room = await this.getRoom(name, 'above');
+      let room = await this.getRoom(name, bearing); // formerly bearing was hardcoded to 'above'
       let hut = await this.getRootHut({ heartMs: 1000 * 40 });
       
       // The settled room gets its Hut linked to static resources
@@ -233,7 +239,22 @@ Hut at the very bottom runs using a single Reality.
       this.seek('keep', 'static').setHut(hut);
       return room.open(hut);
     },
-    installRoom: C.noFn('installRoom'),
+    installRoom: function(name, bearing) {
+      
+      // Returns an Object with "debug" and "content" properties. The
+      // "debug" property must be immediately available, and represent
+      // a mapping between compiled and source codepoints; this if for
+      // use with stack traces. The "content" property may be a Promise
+      // and should resolve eventually to the result of calling the
+      // function defined under `global.rooms[name]`. This function is
+      // called by both `Foundation.prototype.getRoom` and
+      // `Foundation.prototype.getRooms`, allowing import of source code
+      // defined in other files, along with the data needed to display
+      // good stack traces.
+      
+      return C.noFn('installRoom').call(this, name, bearing);
+      
+    },
     
     /// {DEBUG=
     // Error
@@ -244,34 +265,41 @@ Hut at the very bottom runs using a single Reality.
       // For a compiled file and line number, return the corresponding line number
       // in the source
       
+      let context = {}; // Context can accumulate as we iterate through the offsets
       let srcLine = 0; // The line of code in the source which maps to the line of compiled code
       let nextOffset = 0; // The index of the next offset chunk which may take effect
       for (let i = 0; i < cmpLine; i++) {
         
-        let origSrcLineInd = srcLine;
-        
         // Find all the offsets which exist for the source line
         // For each offset increment the line in the source file
         while (offsets[nextOffset] && offsets[nextOffset].at === srcLine) {
+          Object.assign(context, offsets[nextOffset]);
           srcLine += offsets[nextOffset].offset;
           nextOffset++;
         }
         srcLine++;
+        
       }
       
-      return srcLine;
+      return { context, line: srcLine };
       
     },
     cmpRoomLineToSrcLine: function(roomName, cmpLine, cmpChar=null) {
+      
       let offsets = null
         || this.installedRooms.seek([ roomName, 'debug', 'offsets' ]).val
         || (global.roomDebug || {}).seek([ roomName, 'offsets' ]).val;
       
-      let result = offsets
-        ? { disp: null, mapped: true, srcLine: this.cmpLineToSrcLine(offsets, cmpLine, cmpChar) }
-        : { disp: null, mapped: false, srcLine: cmpLine };
+      let result = { name: roomName, disp: null, mapped: false, srcLine: cmpLine };
       
-      return result.gain({ disp: `${roomName}.${result.mapped ? 'cmp' : 'src'} @ ${result.srcLine.toString()}` });
+      if (offsets) {
+        let { context, line } = this.cmpLineToSrcLine(offsets, cmpLine, cmpChar);
+        if (context.has('roomName')) result.name = context.roomName;
+        result.srcLine = line;
+        result.mapped = true;
+      }
+      
+      return result.gain({ disp: `${result.name}.${result.mapped ? 'cmp' : 'src'} @ ${result.srcLine.toString()}` });
     },
     formatError: function(err, verbose=false) {
       

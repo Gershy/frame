@@ -44,7 +44,7 @@ if (!args || !args.has('settle')) args = { settle: 'internal.help', ...args };
 let foundation = FoundationNodejs(args);
 process.on('uncaughtException', err => console.error(foundation.formatError(err)));
 process.on('unhandledRejection', err => console.error(foundation.formatError(err)));
-foundation.settleRoom(args.settle, 'above').catch(err => {
+foundation.settleRoom(args.settle, { bearing: 'above' }).catch(err => {
   console.log(`FATAL ERROR:\n${foundation.formatError(err)}`);
   foundation.halt();
 });

@@ -1,4 +1,27 @@
-U.buildRoom({
+// PLAN:
+// [X] Foundation.prototype.getRooms (plural)
+// [ ] Consider Reals - migrate from a static definition? Add support for
+//     predefined Real trees????
+// [ ] Fix!
+
+global.rooms['fly'] = async foundation => {
+  
+  let { Setup, HtmlBrowserHabitat } = await foundation.getRooms([
+    'hinterlands.Setup',
+    'hinterlands.habitat.HtmlBrowserHabitat'
+  ]);
+  
+  return Setup('fly', 'fly', {
+    habitats: [ HtmlBrowserHabitat() ],
+    parFn: async (hut, flyRec, real, dep) => {
+    },
+    kidFn: async (hut, flyRec, real, dep) => {
+    }
+  });
+  
+};
+
+0 && U.buildRoom({
   name: 'fly',
   innerRooms: [ 'record', 'hinterlands', 'real', 'realWebApp', 'term', 'flyModels', 'flyLevels' ],
   build: (foundation, record, hinterlands, real, realWebApp, term, models, levels) => {

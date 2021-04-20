@@ -493,7 +493,8 @@
               [ () => ','                 .cut(',', 1),       [ '', '' ] ],
               [ () => ','                 .cut(',,'),         [ ',' ] ],
               [ () => ''                  .cut(',', 0),       [ '' ] ],
-              [ () => ''                  .cut(',', 1),       [ '' ] ]
+              [ () => ''                  .cut(',', 1),       [ '' ] ],
+              [ () => 'a,b,c'             .cut(',', 0),       [ 'a,b,c' ] ]
             ];
             
             for (let [ fn, exp ] of tests) {
@@ -1493,7 +1494,7 @@
         let ms = this.getMs();
         
         // Stream the body
-        // TODO: Watch for exploits - slow loris, etc.
+        // TODO: Watch for abuse - slow loris, etc.
         let chunks = [];
         req.setEncoding('utf8');
         req.on('data', chunk => chunks.push(chunk));
@@ -1502,6 +1503,7 @@
           req.on('error', err => reject(Error(`Client abandoned http request (err.message)`)));
         });
         
+        // Show entire HTTP packet if debug options ask for it
         if (this.getArg('debug').has('httpRaw')) {
           
           let lines = [];
@@ -1845,7 +1847,7 @@
     },
     
     // Room
-    compileContent: function(path, variantName, srcLines) {
+    compileContent: function(variantName, srcLines, fileNameForDebug='<unknown file>') {
       
       // Compile file content; filter based on variant tags
       if (U.isForm(srcLines, String)) srcLines = srcLines.split('\n');
@@ -1925,52 +1927,21 @@
       if (this.getArg('debug').has('compile')) {
         let srcCnt = srcLines.count();
         let trgCnt = filteredLines.count();
-        console.log(`Compiled ${path.join('/')}: ${srcCnt} -> ${trgCnt} (-${srcCnt - trgCnt}) lines`);
+        console.log(`Compiled ${fileNameForDebug}: ${srcCnt} -> ${trgCnt} (-${srcCnt - trgCnt}) lines`);
       }
       
       if (filteredLines.count()) filteredLines[0] = `'use strict';${filteredLines[0]}`;
       return { lines: filteredLines, offsets };
       
     },
-    getJsSource: async function(type, name, bearing) {
-      
-      if (![ 'setup', 'room' ].has(type)) throw Error(`Invalid source type: "${type}"`);
-      let fp = (type === 'setup')
-        ? [ 'setup', `${name}.js` ]
-        : [ 'room', name, `${name}@${bearing}.js` ];
-      let srcContent = await this.seek('keep', 'adminFileSystem', fp).getContent('utf8');
-      if (type === 'room') return { content: srcContent, ...this.compilationData[name][bearing] };
-      
-      let offsets = [];
-      let srcLines = srcContent.replace(/\r/g, '').split('\n');
-      let cmpLines = [];
-      let cur = { at: 0, offset: 0 };
-      
-      for (let ind = 0; ind < srcLines.length; ind++) {
-        let srcLine = srcLines[ind].trim();
-        if (!srcLine || srcLine.hasHead('//')) { cur.offset++; continue; } // Skip empty and comment-only lines
-        if (cur.offset > 0) offsets.push(cur);
-        cur = { at: ind, offset: 0 };
-        cmpLines.push(srcLine);
-      }
-      
-      return {
-        content: cmpLines.join('\n'),
-        srcNumLines: srcLines.length,
-        cmpNumLines: cmpLines.length,
-        offsets
-      };
-      
-    },
-    installRoom: async function(name, bearing='above') {
+    installRoom: async function(name, { bearing='above' }={}) {
       
       let namePcs = name.split('.');
       let pcs = [ 'room', ...namePcs, `${namePcs.slice(-1)[0]}.js` ]
-      let keep = this.seek('keep', 'adminFileSystem', pcs);
       
-      let contents = await keep.getContent('utf8');
+      let contents = await this.seek('keep', 'adminFileSystem', pcs).getContent('utf8');
       if (!contents) throw Error(`Invalid room name: "${name}"`);
-      let { lines, offsets } = await this.compileContent(pcs, bearing, contents);
+      let { lines, offsets } = await this.compileContent(bearing, contents, pcs.join('/'));
       
       return {
         debug: { offsets },
