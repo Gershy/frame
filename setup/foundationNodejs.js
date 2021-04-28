@@ -1138,7 +1138,7 @@
         // Note that the "hosting" arg can hold an arbitrary number of
         // hosting definitions. The "host" arg can be used to quickly
         // specify the "host" value for all "hosting" entries. If using
-        // "host" arg should omit any "host" props throughout `hosting`
+        // "host", should not provide any "host" props within `hosting`
         if (!hosting) {
           
           // If no hosting options are provided we'll try to generate
@@ -1175,7 +1175,7 @@
                 
                 // Private; any of:
                 // 10.0.0.0 -> 10.255.255.255,
-                // 172.16.0.0 -> 172.32.255.255,
+                // 172.16.0.0 -> 172.31.255.255,
                 // 192.168.0.0 -> 192.168.255.255
                 if (pcs[0] === 10) return 'private'
                 if (pcs[0] === 172 && pcs[1] >= 16 && pcs[1] < 32) return 'private';
@@ -1196,7 +1196,11 @@
               // Next-best is private; available on local network
               if (type === 'private') return { type, rank: 1, ip, addr: null };
               
-              // Remaining types will be "external"; process these:
+              // Remaining types will be "external"; within "external"
+              // there are three different ranks (from worst to best:)
+              // - Non-reversible
+              // - Reversible without A-record
+              // - Reversible with A-record (globally addressable)
               try {
                 
                 // Reverse `ip` into any related hostnames
@@ -1206,7 +1210,7 @@
                 return Promise.allArr(addrs.map(async addr => {
                   
                   // If an A record is found this is the most powerful
-                  // host possible; globally addressable
+                  // address possible; globally addressable
                   try { await dnsResolver.resolve(addr, 'A'); return { type: 'public', rank: 4, ip, addr }; }
                   
                   // Reversable ips without A records are one level down
@@ -1215,8 +1219,12 @@
                   
                 }));
                 
+              } catch(err) {
+                
                 // The address is external but not reversible
-              } catch(err) { return { type: 'external', rank: 2, ip, addr: null }; }
+                return { type: 'external', rank: 2, ip, addr: null };
+                
+              }
               
             }))).flat();
             
@@ -1250,7 +1258,7 @@
         }
         
         if (U.isForm(hosting, String)) hosting = { main: hosting };
-        if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...params }) => [ name, params ]);
+        if (U.isForm(hosting, Array)) hosting = hosting.toObj(({ name, ...args }) => [ name, args ]);
         return hosting.map(v => {
           
           if (U.isForm(v, String)) {
@@ -1340,7 +1348,6 @@
         },
         getLayout: function() { return this.fakeLayout || (this.fakeLayout = primaryFakeReal.getLayoutForm('SuperFake')()); },
         getLayoutForm: function(name) { return primaryFakeReal.tech.getLayoutForm(name); },
-        makeLayout: function(name, ...args) { return primaryFakeReal.tech.getLayoutForm(name)(...args); },
         getTech: function() { return primaryFakeReal.tech; },
         render: function() {}
       })});

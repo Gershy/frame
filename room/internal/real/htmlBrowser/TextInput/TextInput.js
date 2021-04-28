@@ -1,22 +1,29 @@
 global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
   
   let Layout = await foundation.getRoom('internal.real.generic.Layout');
-  let { MemSrc, Tmp } = U.logic;
+  let { MemSrc, Tmp, Src } = U.logic;
   
-  return U.form({ name: 'TextInput', has: { Layout }, props: (forms, Form) => ({
+  return U.form({ name: 'TextInput', has: { Layout, Src }, props: (forms, Form) => ({
     init: function({ multiline=false, prompt, size=null, align=null, gap=null }) {
-      Object.assign(this, { multiline, prompt, size, align, gap });
+      Object.assign(this, { multiline, prompt, size, align, gap, real: null, lastVal: null });
     },
     isInnerLayout: function() { return false; },
     
     install: function(real) {
       
-      if (!real.params.has('text')) real.params.text = '';
-      if (U.isForm(real.params.text, String)) real.params.text = MemSrc.Prm1(real.params.text);
-      if (!U.isForm(real.params.text, MemSrc.Prm1)) throw Error(`Invalid Real "text" param; need MemSrc.Prm1; got ${U.getFormName(real.params.text)}`);
+      // TODO: CHECK THE DIFF! `this` is a Src which stores its value on
+      // `real.params.text` - only thing left to do is update the dom
+      // when `real.params.text` changes from outside forces!
       
-      let domNode = real.domNode;
-      let src = real.params.text;
+      if (!this.real) {
+        this.real = real;
+        if (!real.params.has('text')) real.params.text = '';
+        if (!U.isForm(real.params.text, String)) throw Error(`Real "text" param should be String; got ${U.getFormName(real.params.text)}`);
+        this.lastText = real.params.text;
+      }
+      
+      if (real !== this.real) throw Error(`${U.getFormName(this)} applied to multiple Reals (both ${this.real.name} and ${real.name})`);
+      
       let tmp = Tmp();
       
       let input = document.createElement('input');
@@ -27,19 +34,21 @@ global.rooms['internal.real.htmlBrowser.TextInput'] = async foundation => {
         backgroundColor: 'transparent',
         textAlign: 'inherit', fontSize: 'inherit', fontFamily: 'inherit', color: 'inherit'
       });
-      input.value = src.val;
+      input.value = real.params.text;
       
       if (this.prompt) input.setAttribute('placeholder', this.prompt);
       
-      if (!domNode.style.position) {
+      let domNode = real.domNode;
+      if (![ 'absolute', 'relative' ].has(domNode.style.position)) {
+        let origPos = domNode.style.position;
         domNode.style.position = 'relative';
-        tmp.endWith(() => domNode.style.position = '');
+        tmp.endWith(() => domNode.style.position = origPos);
       }
       
       domNode.appendChild(input);
       tmp.endWith(() => input.remove());
       
-      let inpFn = evt => src.retain(input.value);
+      let inpFn = evt => this.send(real.params.text = input.value);
       input.addEventListener('input', inpFn);
       tmp.endWith(() => input.removeEventListener('input', inpFn));
       return tmp;

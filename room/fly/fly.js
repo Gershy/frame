@@ -1,21 +1,181 @@
 // PLAN:
 // [X] Foundation.prototype.getRooms (plural)
+// [ ] Clean up Real/Layout API
 // [ ] Consider Reals - migrate from a static definition? Add support for
 //     predefined Real trees????
 // [ ] Fix!
 
 global.rooms['fly'] = async foundation => {
   
-  let { Setup, HtmlBrowserHabitat } = await foundation.getRooms([
+  let { Setup, HtmlBrowserHabitat, RealTree } = await foundation.getRooms([
     'hinterlands.Setup',
-    'hinterlands.habitat.HtmlBrowserHabitat'
+    'hinterlands.habitat.HtmlBrowserHabitat',
+    'internal.real.RealTree'
   ]);
+  
+  // CHANGENOTES:
+  // -  Layout classes should be loaded on-demand, at least for a
+  //    predefined RealTree!(????)
+  // -  `Free` should not exist. `Free` is really the behaviour in case
+  //    no insertion is provided. A `Free` can be layered over anything
+  //    else. Defining the geometry for a Freely laid-out element should
+  //    be done with Size and Offset layouts.
+  // -  Reals may affect their Layouts with Real.prototype.mod, but
+  //    Layouts themselves are immutable!(??)
+  // -  TextInput instances should have an "inputSrc" property instead
+  //    of cannibalizing the `real.params.text` value.
+  //    - If `real.params.text` changes, nothing happens (without
+  //      additional routing)
+  //    - If input occurs, no changes happen to `real.params.text`
+  //      (without additional routing)
+  //    - the `textInputInstance.inputSrc` property is totally unrelated
+  //      to the DOM, by default
+  
+  let realTree = RealTree('fly', (lay, define, insert) => {
+    
+    let { Axis1D, Geom, Text } = lay;
+    
+    define('root', Geom({ w: '100vmin', h: '100vmin' }));
+    //insert('* -> root');
+    
+    define('content1', Text({ size: '200%' }));
+    define('content2', Text({ size: '150%' }));
+    define('content3', Text({ size: '100%' }));
+    define('paragraph', Text({ size: '90%', multiline: true }));
+    
+    define('lobbyChoice', Geom({ w: '100%', h: '100%' }), Axis1D({ axis: 'y', dir: '+' }));
+    define('lobbyCodeField', Geom({ w: '100%', h: '40%' }), Text({ size: '200%' }));
+    
+  });
+  
+  0 && rootReal.layoutDef('fly', (real, insert, decals) => {
+    
+    real('root', MinExtSlotter);
+    insert('* -> root', () => FillParent());
+    insert('root -> main', sl => sl.getMinExtSlot());
+    
+    real('content1', () => TextSized({ size: UnitPc(2) }));
+    real('content2', () => TextSized({ size: UnitPc(1.5) }));
+    real('content3', () => TextSized({ size: UnitPc(1) }));
+    real('paragraph', () => TextSized({ size: UnitPc(0.9), multiLine: true }));
+    
+    let centeredText = (name, cNames=[ 'content1', 'content2', 'content3', 'paragraph' ]) => {
+      for (let cName of cNames) insert(`${name} -> ${cName}`, sl => sl.getCenteredSlot());
+    };
+    
+    // TODO: LinearSlotter provides *no size* for the list container
+    // BUT sometimes we want a relatively-sized element inside the
+    // list container - so like, the 3rd item in the list should be
+    // 40% of the width of its container (with no relation to the
+    // widths of its siblings). Ok... WRONG ENTIRELY. Use an
+    // AxisSlotter, give it `FixedSize(UnitPc(0.4), ...)`!!
+    
+    real('lobbyChooser',        () => CenteredSlotter());
+    real('lobbyChooserContent', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.4), UnitPc(0.3) ] }));
+    real('lobbyNameField',      () => TextSized({ size: UnitPc(2), interactive: true, desc: 'Name' }));
+    real('lobbyChooserField',   () => TextSized({ size: UnitPc(2), interactive: true, desc: 'Lobby code' }));
+    real('lobbyChooserButton',  () => CenteredSlotter());
+    insert('main -> lobbyChooser',                      () => FillParent());
+    insert('lobbyChooser -> lobbyChooserContent',       sl => [ sl.getCenteredSlot(), FixedSize(UnitPc(0.8), UnitPc(0.8)) ]);
+    insert('lobbyChooserContent -> lobbyNameField',     sl => sl.getAxisSlot(0));
+    insert('lobbyChooserContent -> lobbyChooserField',  sl => sl.getAxisSlot(1));
+    insert('lobbyChooserContent -> lobbyChooserButton', sl => sl.getAxisSlot(2));
+    insert('lobbyChooserButton -> content1', sl => sl.getCenteredSlot());
+    
+    real('lobby', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.1), UnitPc(0.3) ] }));
+    real('teamList', () => LinearSlotter({ axis: 'y', dir: '+' }));
+    centeredText('lobbyTitle');
+    centeredText('lobbyBackButton');
+    
+    real('teamMember', () => LinearSlotter({ axis: 'x', dir: '+', scroll: false }));
+    real('playerName', () => CenteredSlotter());
+    real('modelList', () => LinearSlotter({ axis: 'x', dir: '+', scroll: false }));
+    real('model', () => AxisSlotter({ axis: 'y', dir: '-', cuts: [ UnitPc(0.15) ] }));
+    real('modelName', () => CenteredSlotter());
+    real('score', () => CenteredSlotter());
+    centeredText('playerName');
+    centeredText('modelName');
+    centeredText('score');
+    insert('model -> modelName', sl => sl.getAxisSlot(0));
+    insert('main -> lobby', () => FillParent());
+    
+    insert('lobby -> lobbyHeader',  sl => sl.getAxisSlot(0));
+    insert('lobby -> mapChoice',    sl => sl.getAxisSlot(1));
+    insert('lobby -> teamList',     sl => sl.getAxisSlot(2));
+    
+    // Lobby header
+    real('lobbyHeader', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.15), UnitPc(0.7) ] }));
+    real('lobbyTitle', () => CenteredSlotter());
+    real('lobbyBackButton', () => CenteredSlotter());
+    insert('lobbyHeader -> lobbyBackButton', sl => sl.getAxisSlot(0));
+    insert('lobbyHeader -> lobbyTitle', sl => sl.getAxisSlot(1));
+    
+    // Map chooser
+    real('mapChoice', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.01), UnitPc(0.24), UnitPc(0.01), UnitPc(0.73) ] }));
+    
+    real('mapChoiceEntry', () => AxisSlotter({ axis: 'y', dir: '+', cuts: [ UnitPc(0.2), UnitPc(0.3), UnitPc(0.05), UnitPc(0.3) ] }));
+    real('mapChoiceField', () => TextSized({ size: UnitPc(2), interactive: true, desc: 'Passcode' }));
+    real('mapChoiceButton', () => CenteredSlotter());
+    insert('mapChoice -> mapChoiceEntry', sl => sl.getAxisSlot(1));
+    insert('mapChoiceEntry -> mapChoiceField', sl => [ sl.getAxisSlot(1) ]);
+    insert('mapChoiceEntry -> mapChoiceButton', sl => [ sl.getAxisSlot(3) ]);
+    
+    real('mapChoiceContentHolder', () => CenteredSlotter());
+    real('mapChoiceContent', () => LinearSlotter({ axis: 'y', dir: '+' }));
+    real('mapChoiceTitle', () => CenteredSlotter());
+    real('mapChoiceDesc', () => CenteredSlotter());
+    insert('mapChoice -> mapChoiceContentHolder', sl => sl.getAxisSlot(3));
+    insert('mapChoiceContentHolder -> mapChoiceContent', sl => sl.getCenteredSlot());
+    insert('mapChoiceContent -> mapChoiceTitle', sl => sl.getLinearSlot());
+    insert('mapChoiceContent -> mapChoiceDesc', sl => sl.getLinearSlot());
+    centeredText('mapChoiceButton');
+    centeredText('mapChoiceTitle');
+    centeredText('mapChoiceDesc');
+    
+    // Player list
+    insert('teamList -> teamMember',    sl => [ sl.getLinearSlot(), FixedSize(UnitPc(1), UnitPc(1/4)) ]);
+    insert('teamMember -> playerName',  sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.2), UnitPc(1)) ]);
+    insert('teamMember -> modelList',   sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.6), UnitPc(1)) ]);
+    insert('teamMember -> score',       sl => [ sl.getLinearSlot(), FixedSize(UnitPc(0.2), UnitPc(1)) ]);
+    insert('modelList -> model', sl => [ sl.getLinearSlot(), FixedSize(UnitPc(1/4), UnitPc(1)) ]);
+    insert('playerName -> content1', sl => sl.getCenteredSlot());
+    insert('score -> content1', sl => sl.getCenteredSlot());
+    
+    real('level', () => AxisSlotter({ axis: 'x', dir: '+', cuts: [ UnitPc(0.1), UnitPc(0.8) ] }));
+    real('levelLInfo', () => CenteredSlotter());
+    real('levelContent', () => Art({ pixelCount: [ 800, 1000 ] }));
+    real('levelRInfo', () => CenteredSlotter());
+    real('levelDispLives', () => TextSized({ size: UnitPc(0.8) }));
+    insert('main -> level', () => FillParent());
+    insert('level -> levelLInfo', sl => sl.getAxisSlot(0));
+    insert('level -> levelContent', sl => sl.getAxisSlot(1));
+    insert('level -> levelRInfo', sl => sl.getAxisSlot(2));
+    insert('levelLInfo -> levelDispLives', sl => sl.getCenteredSlot());
+    
+    decals('lobbyHeader', { colour: 'rgba(0, 0, 0, 0.15)' });
+    decals('teamList', { colour: 'rgba(0, 0, 0, 0.07)' });
+    decals('lobbyChooserButton', { colour: '#d0d0d0' });
+    decals('lobbyBackButton', { colour: 'rgba(0, 0, 0, 0.5)', textColour: '#ffffff' });
+    decals('playerName', { colour: 'rgba(0, 0, 0, 0.1)' });
+    decals('mapChoiceButton', { colour: 'rgba(0, 0, 0, 0.1)' });
+    decals('score', { colour: 'rgba(0, 0, 0, 0.2)' });
+    decals('level', { colour: '#000000', textColour: '#ffffff' });
+    decals('levelLInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
+    decals('levelRInfo', { colour: 'rgba(255, 0, 0, 0.2)' });
+    
+  });
   
   return Setup('fly', 'fly', {
     habitats: [ HtmlBrowserHabitat() ],
     parFn: async (hut, flyRec, real, dep) => {
     },
     kidFn: async (hut, flyRec, real, dep) => {
+      
+      let mainReal = real.addReal('fly.main', [
+        lay.Free({ w: '100%', h: '100%' }),
+        lay.Decal({ colour: 'rgba(0, 0, 0, 0.7)' })
+      ]);
+      
     }
   });
   

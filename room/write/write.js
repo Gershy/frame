@@ -214,7 +214,7 @@ global.rooms.write = async foundation => {
           lay.Decal({ colour: 'rgba(230, 230, 230, 1)' })
         ]));
         
-        let usernameReal = loggedOutReal.addReal('wrt.loggedOut.user', [
+        let usernameReal = loggedOutReal.addReal('wrt.loggedOutUserField', [
           lay.Size({ w: '200px', h: '50px' }),
           lay.Decal({
             colour: 'rgba(255, 255, 255, 1)',
@@ -223,7 +223,7 @@ global.rooms.write = async foundation => {
           lay.TextInput({ align: 'mid', size: '200%', prompt: 'Username' }),
           lay.Press({ modes: [ 'discrete' ] })
         ]);
-        let passwordReal = loggedOutReal.addReal('wrt.loggedOut.pass', [
+        let passwordReal = loggedOutReal.addReal('wrt.loggedOutPassField', [
           lay.Size({ w: '200px', h: '50px' }),
           lay.Decal({
             colour: 'rgba(255, 255, 255, 1)',
@@ -232,13 +232,13 @@ global.rooms.write = async foundation => {
           lay.TextInput({ align: 'mid', size: '80%', prompt: 'Password' }),
           lay.Press({ modes: [ 'discrete' ] })
         ]);
-        let submitReal = loggedOutReal.addReal('wrt.loggedOut.submit', { text: 'enter' }, [
+        let submitReal = loggedOutReal.addReal('wrt.loggedOutSubmit', { text: 'enter' }, [
           lay.Size({ w: '200px', h: '50px' }),
           lay.Text({ size: '200%' }),
           lay.Decal({ colour: 'rgba(0, 0, 255, 0.2)' }),
           lay.Press({ modes: [ 'discrete', 'continuous' ] })
         ]);
-        loggedOutReal.addReal('wrt.loggedOut.help', { text: 'Account will be created if none exists' }, [
+        loggedOutReal.addReal('wrt.loggedOutHelp', { text: 'Account will be created if none exists' }, [
           lay.Text({ size: '90%', align: 'mid' }),
           lay.Size({ w: '200px', h: '45px' }),
           lay.Decal({ textColour: 'rgba(0, 0, 0, 0.7)' })
@@ -271,18 +271,18 @@ global.rooms.write = async foundation => {
           lay.Decal({ colour: 'rgba(242, 242, 242, 1)' })
         ]));
         
-        let headerReal = loggedInReal.addReal('wrt.loggedIn.header', [
+        let headerReal = loggedInReal.addReal('wrt.loggedInHeader', [
           lay.Size({ w: '100%', h: '100px' }),
           lay.Axis1D({ axis: 'x', flow: '+', cuts: 'distribute' }),
           lay.Decal({ colour: 'rgba(230, 230, 230, 1)' })
         ]);
-        headerReal.addReal('wrt.loggedIn.header.icon', { text: 'RYTE' }, [
+        headerReal.addReal('wrt.loggedInHeaderIcon', { text: 'RYTE' }, [
           lay.Text({ size: '200%' })
         ]);
-        headerReal.addReal('wrt.loggedIn.header.panel', { text: `Welcome ${username}` }, [
+        headerReal.addReal('wrt.loggedInHeaderPanel', { text: `Welcome ${username}` }, [
           lay.Text({ size: '100%' })
         ]);
-        let logoutReal = headerReal.addReal('wrt.loggedIn.header.logout', { text: 'logout' }, [
+        let logoutReal = headerReal.addReal('wrt.loggedInHeaderLogout', { text: 'logout' }, [
           lay.Text({ size: '120%' }),
           lay.Decal({ textColour: 'rgba(120, 120, 120, 1)' }),
           lay.Press({})
@@ -302,7 +302,7 @@ global.rooms.write = async foundation => {
             `on Writing Projects. Why? Maybe you'll write some cool stuff. Why not? Many reasons, but`,
             `we like to say: "tell people to ignore those reasons". Anyways, have a fun ass time!`,
           ].join(' ');
-          let billboardReal = dep(loggedInReal.addReal('wrt.loggedIn.billboard', { text: billboardText }, [
+          let billboardReal = dep(loggedInReal.addReal('wrt.loggedInBillboard', { text: billboardText }, [
             lay.Text({ size: 'calc(70% + 1vw)', gap: '20px', align: 'mid' }),
             lay.Size({ h: '150px' }),
             lay.Decal({ border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.1)' } })
@@ -351,7 +351,7 @@ global.rooms.write = async foundation => {
               lay.Axis1D({ axis: 'y', flow: '+', cuts: 'focus' }),
               lay.Decal({ colour: 'rgba(0, 0, 0, 0.5)' })
             ]));
-            let contentReal = createRoomReal.addReal('wrt.createRoom.content', [
+            let contentReal = createRoomReal.addReal('wrt.createRoomContent', [
               lay.Free({ w: '400px' }),
               lay.Axis1D({ axis: 'y', flow: '+' }),
               lay.Decal({
@@ -359,22 +359,22 @@ global.rooms.write = async foundation => {
                 border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.3)' }
               })
             ]);
-            let headerReal = contentReal.addReal('wrt.createRoom.content.header', [
+            let headerReal = contentReal.addReal('wrt.createRoomContentHeader', [
               lay.Size({ w: '100%', h: '60px' }),
               lay.Axis1D({ axis: 'x', flow: '+', cuts: 'distribute' })
             ]);
-            headerReal.addReal('wrt.createRoom.content.header.left', []);
-            headerReal.addReal('wrt.createRoom.title', { text: 'Create Room' }, [
+            headerReal.addReal('wrt.createRoomContentHeaderLeft', []);
+            headerReal.addReal('wrt.createRoomTitle', { text: 'Create Room' }, [
               lay.Text({ size: '150%', align: 'mid' })
             ]);
-            let cancelReal = headerReal.addReal('wrt.createRoom.content.header.cancel', { text: 'cancel' }, [
+            let cancelReal = headerReal.addReal('wrt.createRoomContentHeaderCancel', { text: 'cancel' }, [
               lay.Text({ size: '120%', align: 'mid' }),
               lay.Decal({ textColour: 'rgba(120, 120, 120, 1)' }),
               lay.Press({})
             ]);
             dep(cancelReal.getLayout(lay.Press).src.route(() => createRoomChooser.choose('off')));
             
-            let fieldsReal = contentReal.addReal('wrt.createRoom.content.fields', [
+            let fieldsReal = contentReal.addReal('wrt.createRoomContentFields', [
               lay.Axis1D({ axis: 'y', flow: '+' })
             ]);
             
@@ -433,7 +433,7 @@ global.rooms.write = async foundation => {
               lay.Size({ w: 'calc(100% - 20px)', h: '50px' }),
               lay.Axis1D({ axis: 'y', flow: '+' })
             ]));
-            roomReal.addReal('wrt.room.title', { text: room.getVal().name }, [
+            roomReal.addReal('wrt.roomTitle', { text: room.getVal().name }, [
               lay.Text({ size: '200%' })
             ]);
             
@@ -459,20 +459,20 @@ global.rooms.write = async foundation => {
             lay.Decal({ colour: 'rgba(255, 255, 255, 1)' })
           ]));
           
-          let headerReal = roomReal.addReal('wrt.activeRoom.header', [
+          let headerReal = roomReal.addReal('wrt.activeRoomHeader', [
             lay.Size({ w: '100%', h: '60px' }),
             lay.Axis1D({ axis: 'x', dir: '+', cuts: 'distribute' })
           ]);
           
-          headerReal.addReal('wrt.activeRoom.header.pad', [ lay.Size({ w: '30%' }) ]);
+          headerReal.addReal('wrt.activeRoomHeaderPad', [ lay.Size({ w: '30%' }) ]);
           
           let titleText = `${room.getVal().name} (by ${roomCreator.getVal().username})`;
-          headerReal.addReal('wrt.activeRoom.header.title', { text: titleText }, [
+          headerReal.addReal('wrt.activeRoomHeaderTitle', { text: titleText }, [
             lay.Size({ h: '60px' }),
             lay.Text({ size: '150%' })
           ]);
           
-          let leaveRoomReal = headerReal.addReal('wrt.activeRoom.header.leave', { text: 'Leave' }, [
+          let leaveRoomReal = headerReal.addReal('wrt.activeRoomHeaderLeave', { text: 'Leave' }, [
             lay.Size({ h: '60px' }),
             lay.Text({ size: '120%' }),
             lay.Decal({ textColour: 'rgba(120, 120, 120, 1)' }),
@@ -481,7 +481,7 @@ global.rooms.write = async foundation => {
           dep(leaveRoomReal.getLayout(lay.Press).src.route(() => leaveRoomAct.act()));
           
           // Show fellow users in room, and indicate which are online
-          let usersReal = roomReal.addReal('wrt.activeRoom.users', [
+          let usersReal = roomReal.addReal('wrt.activeRoomUsers', [
             lay.Size({ h: '40px' }),
             lay.Axis1D({ axis: 'x', flow: '+', cuts: 'focus' })
           ]);
@@ -490,7 +490,7 @@ global.rooms.write = async foundation => {
             let userInRoom = fellowRoomUser.mems['wrt.user'];
             
             let fellowUsername = userInRoom.getVal().username;
-            let userReal = dep(usersReal.addReal('wrt.activeRoom.users.user', { text: fellowUsername }, [
+            let userReal = dep(usersReal.addReal('wrt.activeRoomUsersUser', { text: fellowUsername }, [
               lay.Text({ size: '120%' }),
               lay.Decal({ textColour: 'rgba(0, 0, 0, 0.35)' })
             ]));
@@ -504,7 +504,7 @@ global.rooms.write = async foundation => {
           });
           
           // Show current story
-          let storyReal = roomReal.addReal('wrt.activeRoom.story', [
+          let storyReal = roomReal.addReal('wrt.activeRoomStory', [
             lay.Size({ w: '100%', h: 'calc(50% - 70px)' }),
             lay.Decal({ border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.2)' } })
           ]);
@@ -518,14 +518,14 @@ global.rooms.write = async foundation => {
             
           });
           
-          let statusReal = roomReal.addReal('wrt.activeRoom.status', [
+          let statusReal = roomReal.addReal('wrt.activeRoomStatus', [
             lay.Size({ w: '100%', h: '40px' }),
             lay.Decal({ colour: 'rgba(0, 0, 0, 0.2)' })
           ]);
           let hasTimerChooser = dep(Chooser([ 'noTimer', 'timer' ]));
           dep(room.valSrc.route(() => hasTimerChooser.choose(room.getVal('timerMs') ? 'timer' : 'noTimer')));
           dep.scp(hasTimerChooser.srcs.noTimer, (noTimer, dep) => {
-            dep(statusReal.addReal('wrt.activeRoom.status.noTimer', { text: '-- : -- : --' }, [
+            dep(statusReal.addReal('wrt.activeRoomStatusNoTimer', { text: '-- : -- : --' }, [
               lay.Size({ w: '100%', h: '100%' }),
               lay.Text({ size: '120%' }),
               lay.Decal({ textColour: 'rgba(0, 0, 0, 0.4)' })
@@ -533,7 +533,7 @@ global.rooms.write = async foundation => {
           });
           dep.scp(hasTimerChooser.srcs.timer, (timer, dep) => {
             
-            let timerElem = dep(statusReal.addReal('wrt.activeRoom.status.timer', { text: '' }, [
+            let timerElem = dep(statusReal.addReal('wrt.activeRoomStatusTimer', { text: '' }, [
               lay.Size({ w: '100%', h: '100%' }), lay.Text({ size: '120%' }),
               lay.Decal({ textColour: 'rgba(0, 0, 0, 1)' })
             ]));
@@ -553,7 +553,7 @@ global.rooms.write = async foundation => {
             
           });
           
-          let controlsReal = roomReal.addReal('wrt.activeRoom.controls', [
+          let controlsReal = roomReal.addReal('wrt.activeRoomControls', [
             lay.Size({ w: '100%', h: 'calc(50% - 70px)' })
           ]);
           
@@ -590,12 +590,12 @@ global.rooms.write = async foundation => {
                 lay.Size({ w: '100%', h: '100%' }),
                 lay.Axis1D({ axis: 'x', flow: '+' })
               ]));
-              let inputReal = submitEntryReal.addReal('wrt.submitEntry.input', [
+              let inputReal = submitEntryReal.addReal('wrt.submitEntryInput', [
                 lay.TextInput({ align: 'fwd', size: '120%', gap: '10px', prompt: 'Write your submission...' }),
                 lay.Size({ w: 'calc(100% - 80px)', h: '100%' }),
                 lay.Decal({ border: { ext: '4px', colour: 'rgba(0, 150, 0, 1)' } })
               ]);
-              let submitReal = submitEntryReal.addReal('wrt.submitEntry.submit', [
+              let submitReal = submitEntryReal.addReal('wrt.submitEntrySubmit', [
                 lay.Size({ w: '80px', h: '100%' }),
                 lay.Decal({ colour: 'rgba(0, 150, 0, 1)' }),
                 lay.Press({})
@@ -607,17 +607,17 @@ global.rooms.write = async foundation => {
                 submitEntryAct.act({ text });
               }));
               
-              let charCountReal = submitEntryReal.addReal('wrt.submitEntry.charCount', [
+              let charCountReal = submitEntryReal.addReal('wrt.submitEntryCharCount', [
                 lay.Free({ mode: 'tl', x: '5px', y: 'calc(100% - 35px)', h: '30px' }),
                 lay.Axis1D({ axis: 'x', flow: '+' })
               ]);
-              let charCountNumReal = charCountReal.addReal('wrt.submitEntry.charCountNum', { text: '?' }, [
+              let charCountNumReal = charCountReal.addReal('wrt.submitEntryCharCountNum', { text: '?' }, [
                 lay.Text({ size: '14px' })
               ]);
-              let charCountDelReal = charCountReal.addReal('wrt.submitEntry.charCountDel', { text: '/' }, [
+              let charCountDelReal = charCountReal.addReal('wrt.submitEntryCharCountDel', { text: '/' }, [
                 lay.Text({ size: '14px' })
               ]);
-              let charCountDenReal = charCountReal.addReal('wrt.submitEntry.charCountDen', { text: '?' }, [
+              let charCountDenReal = charCountReal.addReal('wrt.submitEntryCharCountDen', { text: '?' }, [
                 lay.Text({ size: '14px' })
               ]);
               
@@ -679,11 +679,11 @@ global.rooms.write = async foundation => {
                     lay.Size({ w: '100%', h: '50px' }),
                     lay.Axis1D({ axis: 'x', flow: '+' })
                   ]));
-                  let entryTextReal = entryReal.addReal('wrt.entry.text', { text: entry.getVal('text') }, [
+                  let entryTextReal = entryReal.addReal('wrt.entryText', { text: entry.getVal('text') }, [
                     lay.Size({ w: 'calc(100% - 50px)' }), lay.Text({ gap: '5px' }),
                     lay.Decal({ border: { ext: '2px', colour: 'rgba(0, 0, 0, 0.2)' } })
                   ]);
-                  let doVoteReal = entryReal.addReal('wrt.entry.vote', [
+                  let doVoteReal = entryReal.addReal('wrt.entryVote', [
                     lay.Size({ w: '50px', h: '50px' }),
                     lay.Decal({ colour: 'rgba(0, 0, 0, 0.8)' })
                   ]);

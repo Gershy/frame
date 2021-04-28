@@ -48,7 +48,11 @@ protoDef(Object, 'find', function(f) { // Iterator: (val, key) => bool; returns 
 });
 protoDef(Object, 'has', Object.prototype.hasOwnProperty);
 protoDef(Object, 'isEmpty', function() { for (let k in this) return false; return true; });
-protoDef(Object, 'gain', function(obj) { return Object.assign(this, obj); });
+protoDef(Object, 'gain', function(obj) {
+  Object.assign(this, obj);
+  for (let k in obj) if (obj[k] === C.skip) delete this[k];
+  return this;
+});
 protoDef(Object, 'seek', function(keys) { // Returns { found: bool, val }
   let ret = this;
   if (U.isForm(keys, String)) keys = keys.split('.');
@@ -158,6 +162,7 @@ protoDef(Number, 'encodeStr', function(chrs=C.base62, padLen=null) {
   return padLen ? seq.join('').padHead(padLen, chrs[0]) : seq.join('');
   
 });
+protoDef(Number, Symbol.iterator, function*() { for (let i = 0; i < this; i++) yield i; });
 
 let SetOrig = Set;
 Set = global.Set = function Set(...args) { return new SetOrig(...args); };
@@ -424,7 +429,7 @@ let U = global.U = {
     // `fact` may either be a fact/instance, or a Form/Cls. In case a
     // fact/instance was given the "constructor" property points us to
     // the appropriate Form/Cls. We name this value `Form`, although it
-    // is also still ambiguously a Form/Cls.
+    // is ambiguously a Form/Cls.
     let Form = U.isForm(fact, Function) ? fact : fact.constructor;
     
     // If a "forms" property exists, `FormOrCls` is specifically a Form,
@@ -498,7 +503,7 @@ U.logic = (() => {
     cleanup: function() {},
     end: function(...args) {
       if (this.off()) return false;
-      Object.defineProperty(this, 'onn', { value: () => false, writable: true, configurable: true, enumerable: true }); //this.onn = () => false;
+      Object.defineProperty(this, 'onn', { value: () => false, writable: true, configurable: true, enumerable: true });
       Form.globalRegistry.rem(this);
       this.cleanup(...args);
       return true;
@@ -554,9 +559,18 @@ U.logic = (() => {
     },
     newRoute: function(fn) { if (this.off()) fn(); },
     endWith: function(val, mode='prm') {
+      
+      // Creates a relationship such that whenever `this` ends the
+      // supplied `val` also ends. If `mode` is "prm" the relationship
+      // is permanent. Otherwise if `mode` is "tmp" the relationship can
+      // be severed, allowing `this` to end without `val` also ending.
+      // If `mode === 'prm'` returns `this` for convenience
+      // If `mode === 'tmp'` returns a Tmp representing the relationship
+      
       if (U.hasForm(val, Function)) return this.route(val, mode) || this;
       if (U.hasForm(val, Endable)) return this.route((...args) => val.end(...args), mode) || this;
       throw Error(`Can't end with a value of type ${U.getFormName(val)}`);
+      
     }
   })});
   
@@ -780,9 +794,9 @@ U.logic = (() => {
     // routes; manages arbitrary results by ending them when a new one
     // is received
     
-    init: function(...params) {
+    init: function(...args) {
       this.lastResult = C.skip;
-      forms.FnSrc.init.call(this, ...params);
+      forms.FnSrc.init.call(this, ...args);
     },
     newRoute: function(fn) { if (this.lastResult !== C.skip) fn(this.lastResult); },
     applyFn: function(fn, vals) {
@@ -934,6 +948,8 @@ U.logic = (() => {
     cleanup: function() { this.srcRoute.end(); }
   })});
   let Slots = U.form({ name: 'Slots', props: (forms, Form) => ({
+    
+    // Defines heirarchical access via an arbitrary access mechanism.
     
     $tryAccess: (v, p) => { try { return v.access(p); } catch(e) { throw e.update(m => `Slot ${U.getFormName(v)} -> "${p}" failed: (${m})`); } },
     init: function() {},

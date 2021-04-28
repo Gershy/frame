@@ -1,19 +1,3 @@
-/*
-Huts are built on Foundations. There is OurHut representing ourself in
-the hinterlands, and FarHuts representing others.
-
-A Foundation sits on any platform which supports javascript - redhat,
-digitalocean, heroku, browser, etc.
-
-Huts connect to each other through a variable number of Connections
-
-Huts can be uphill, downhill or level with each other. Any Hut may be at
-the very top, or in communication with a single upwards Hut.
-
-Any Hut with Huts underneath it can support a variety of Realities. A
-Hut at the very bottom runs using a single Reality.
-*/
-
 (() => {
   
   let { Src, FnSrc, Tmp, Slots } = U.logic;
@@ -150,9 +134,8 @@ Hut at the very bottom runs using a single Reality.
       /// // Heartbeat:
       /// if (!options.has('heartMs')) options.heartMs = 1000 * 30;
       
-      let hut = (await this.getRoom('hinterlands')).Hut(this, uid);
+      return (await this.getRoom('hinterlands')).Hut(this, uid);
       
-      return hut;
     },
     createKeep: C.noFn('createKeep'),
     createReal: C.noFn('createReal'),
@@ -182,7 +165,7 @@ Hut at the very bottom runs using a single Reality.
     createSoktServer: C.noFn('createSoktServer', opts => {}),
     
     // Room
-    getRooms: async function(roomNames, { shorten=true, ...opts }={}) {
+    getRooms: function(roomNames, { shorten=true, ...opts }={}) {
       
       // Return an Object which maps every name in the Array `roomNames`
       // to a Promise; this Promise will resolve to the result of
@@ -192,7 +175,7 @@ Hut at the very bottom runs using a single Reality.
       // dependencies) and even circular recursion (where a requested
       // room eventually requires, a room already part of the request).
       
-      return Promise.allObj(roomNames.toObj(name => {
+      let rooms = roomNames.toObj(name => {
         
         let keyName = shorten ? name.split('.').slice(-1)[0] : name;
         
@@ -218,7 +201,11 @@ Hut at the very bottom runs using a single Reality.
         
         return [ keyName, this.installedRooms[name].content ];
         
-      }));
+      });
+      
+      // Return immediately-available result if all rooms are loaded,
+      // otherwise need to use `Promise.allObj`
+      return rooms.find(content => U.isForm(content, Promise)).found ? Promise.allObj(rooms) : rooms;
       
     },
     getRoom: async function(roomName, { ...opts }={}) {

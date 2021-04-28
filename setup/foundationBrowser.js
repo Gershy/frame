@@ -97,7 +97,9 @@
       let Real = await this.getRoom('internal.real.htmlBrowser.Real');
       let primaryHtmlCssJsReal = Real({ name: 'browser.htmlCssJs' });
       primaryHtmlCssJsReal.domNode = document.body;
-      primaryHtmlCssJsReal.layoutForms = {};
+      
+      //primaryHtmlCssJsReal.layoutForms = {};
+      
       primaryHtmlCssJsReal.tech = ({
         
         // css techniques:
@@ -120,14 +122,27 @@
           for (let layout of real.getLayouts()) layout.render(real, domNode);
           
         },
+        getLayoutForms: names => {
+          
+          //let layoutForms = primaryHtmlCssJsReal.layoutForms;
+          //let missingRooms = names.map(name => !layoutForms.has(name));
+          //
+          //let rooms = await foundation.getRooms(names.map(name => `internal.real.htmlBrowser.${name}`));
+          
+          return foundation.getRooms(names.map(name => `internal.real.htmlBrowser.${name}`));
+          
+          
+        },
         getLayoutForm: name => {
           
-          let layoutForms = primaryHtmlCssJsReal.layoutForms;
-          if (!layoutForms.has(name)) {
-            layoutForms[name] = this.getRoom(`internal.real.htmlBrowser.${name}`);
-            U.then(layoutForms[name], Form => layoutForms[name] = Form);
-          }
-          return layoutForms[name];
+          return U.then(this.getLayoutForms([ name ]), forms => forms[name]);
+          
+          // let layoutForms = primaryHtmlCssJsReal.layoutForms;
+          // if (!layoutForms.has(name)) {
+          //   layoutForms[name] = this.getRoom(`internal.real.htmlBrowser.${name}`);
+          //   U.then(layoutForms[name], Form => layoutForms[name] = Form);
+          // }
+          // return layoutForms[name];
           
         },
         select: (real=null) => {

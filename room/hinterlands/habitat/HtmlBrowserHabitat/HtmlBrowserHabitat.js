@@ -23,10 +23,7 @@ global.rooms['hinterlands.habitat.HtmlBrowserHabitat'] = async foundation => {
     /// {ABOVE=
     getJsContentForClient: async function(roomPcs, debugParams) {
       
-      
       if (U.isForm(roomPcs, String)) roomPcs = roomPcs.split('.');
-      console.log({ roomPcs });
-      
       
       let srcContent = await foundation.seek('keep', 'fileSystem', roomPcs).getContent('utf8');
       if (srcContent === null) return {
